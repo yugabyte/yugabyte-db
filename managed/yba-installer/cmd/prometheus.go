@@ -29,13 +29,13 @@ type prometheusDirectories struct {
 	templateFileName    string
 	DataDir             string
 	PromDir             string
-	PromBinaryFile      string
+	LogDir              string
 }
 
 func newPrometheusDirectories() prometheusDirectories {
-	binFile := "/usr/local/bin/prometheus"
+	logDir := "/var/log"
 	if !common.HasSudoAccess() {
-		binFile = common.GetSoftwareRoot() + "/prometheus/bin/prometheus"
+		logDir = common.GetBaseInstall() + "/data/logs"
 	}
 	return prometheusDirectories{
 		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
@@ -44,7 +44,7 @@ func newPrometheusDirectories() prometheusDirectories {
 		templateFileName:    "yba-installer-prometheus.yml",
 		DataDir:             common.GetBaseInstall() + "/data/prometheus",
 		PromDir:             common.GetSoftwareRoot() + "/prometheus",
-		PromBinaryFile:      binFile,
+		LogDir:              logDir,
 	}
 }
 
@@ -79,7 +79,7 @@ func (prom Prometheus) TemplateFile() string {
 }
 
 func (prom Prometheus) SystemdFile() string {
-	return prom.SystemdFileLocation
+	return prom.getSystemdFile()
 }
 
 // Name returns the name of the service.
@@ -102,9 +102,6 @@ func (prom Prometheus) Install() error {
 	if err := prom.moveAndExtractPrometheusPackage(); err != nil {
 		return err
 	}
-	if err := prom.createDataDirs(); err != nil {
-		return err
-	}
 	if err := prom.createPrometheusSymlinks(); err != nil {
 		return err
 	}
@@ -123,10 +120,24 @@ func (prom Prometheus) Install() error {
 		}
 	}
 
+	log.Info("Finishing Prometheus install")
+	return nil
+}
+
+func (prom Prometheus) Initialize() error {
+	log.Info("Starting Prometheus initialize")
+	if err := prom.createDataDirs(); err != nil {
+		return err
+	}
+
+	if err := prom.createDataSymlinks(); err != nil {
+		return err
+	}
+
 	if err := prom.Start(); err != nil {
 		return err
 	}
-	log.Info("Finishing Prometheus install")
+	log.Info("Finishing Prometheus initialize")
 	return nil
 }
 
@@ -227,8 +238,7 @@ func (prom Prometheus) Upgrade() error {
 	//chown is not needed when we are operating under non-root, the user will already
 	//have the necessary access.
 	if common.HasSudoAccess() {
-		userName := viper.GetString("service_username")
-		if err := common.Chown(common.GetSoftwareRoot()+"/prometheus", userName, userName, true); err != nil {
+		if err := common.SetSoftwarePermissions(); err != nil {
 			return err
 		}
 	}
@@ -239,12 +249,17 @@ func (prom Prometheus) Upgrade() error {
 // Status prints out the header information for the
 // Prometheus service specifically.
 func (prom Prometheus) Status() (common.Status, error) {
+
+	logFileLoc := common.GetBaseInstall() + "/data/logs/prometheus.log"
+	if common.SystemdLogMethod() == "" {
+		logFileLoc = "journalctl -u prometheus"
+	}
 	status := common.Status{
 		Service:    prom.Name(),
 		Port:       viper.GetInt("prometheus.port"),
 		Version:    prom.version,
 		ConfigLoc:  prom.ConfFileLocation,
-		LogFileLoc: prom.DataDir + "/prometheus.log",
+		LogFileLoc: logFileLoc,
 	}
 
 	// Set the systemd service file location if one exists
@@ -333,14 +348,6 @@ func (prom Prometheus) FinishReplicatedMigrate() error {
 			filepath.Join(rootDir, "prometheusv2"),
 			filepath.Join(prom.DataDir, "storage"),
 		},
-		{
-			filepath.Join(rootDir, "/yugaware/swamper_targets"),
-			filepath.Join(prom.DataDir, "swamper_targets"),
-		},
-		{
-			filepath.Join(rootDir, "yugaware/swamper_rules"),
-			filepath.Join(prom.DataDir, "swamper_rules"),
-		},
 	}
 
 	for _, link := range linkDirs {
@@ -360,8 +367,6 @@ func (prom Prometheus) FinishReplicatedMigrate() error {
 func (prom Prometheus) RollbackMigration(uid, gid uint32, replBaseDir string) error {
 	replDirs := []string{
 		filepath.Join(replBaseDir, "prometheusv2"),
-		filepath.Join(replBaseDir, "/yugaware/swamper_targets"),
-		filepath.Join(replBaseDir, "yugaware/swamper_rules"),
 	}
 	for _, dir := range replDirs {
 		if err := common.Chown(dir, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid), true); err != nil {
@@ -440,8 +445,8 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 		common.GetInstallerSoftwareDir(), prom.version)
 
 	// Required for systemctl.
-	binDir := filepath.Dir(prom.PromBinaryFile)
 	if !common.HasSudoAccess() {
+		binDir := filepath.Dir(common.GetSoftwareRoot() + "/prometheus/bin/prometheus")
 		// promBinaryDir doesn't exist for non-root mode, lets create it.
 		if err := common.MkdirAll(binDir, common.DirMode); err != nil {
 			log.Error("failed to create " + binDir + ": " + err.Error())
@@ -452,8 +457,8 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 	links := []struct {
 		pkgDir, linkDir, binary string
 	}{
-		{promPkg, binDir, "prometheus"},
-		{promPkg, binDir, "promtool"},
+		{promPkg, prom.PromDir, "prometheus"},
+		{promPkg, prom.PromDir, "promtool"},
 		{promPkg, prom.PromDir, "consoles"},
 		{promPkg, prom.PromDir, "console_libraries"},
 	}
@@ -468,6 +473,17 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 		userName := viper.GetString("service_username")
 		if err := common.Chown(prom.PromDir, userName, userName, true); err != nil {
 			log.Error("failed to change ownership of " + prom.PromDir + ": " + err.Error())
+			return err
+		}
+	}
+	return nil
+}
+
+func (prom Prometheus) createDataSymlinks() error {
+	if common.HasSudoAccess() {
+		// for root the log file is in /var/log in case of SELinux
+		if err := common.CreateSymlink(prom.LogDir,
+			filepath.Join(common.GetBaseInstall(), "data/logs"), "prometheus.log"); err != nil {
 			return err
 		}
 	}
@@ -489,14 +505,6 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 		{
 			filepath.Join(rootDir, "prometheusv2"),
 			filepath.Join(prom.DataDir, "storage"),
-		},
-		{
-			filepath.Join(rootDir, "/yugaware/swamper_targets"),
-			filepath.Join(prom.DataDir, "swamper_targets"),
-		},
-		{
-			filepath.Join(rootDir, "yugaware/swamper_rules"),
-			filepath.Join(prom.DataDir, "swamper_rules"),
 		},
 	}
 	for _, ld := range linkDirs {

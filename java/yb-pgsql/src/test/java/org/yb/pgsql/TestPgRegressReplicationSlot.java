@@ -33,8 +33,6 @@ public class TestPgRegressReplicationSlot extends BasePgRegressTest {
     Map<String, String> flagMap = super.getTServerFlags();
 
     if (isTestRunningWithConnectionManager()) {
-      flagMap.put("allowed_preview_flags_csv",
-          "enable_ysql_conn_mgr");
       flagMap.put("enable_ysql_conn_mgr", "true");
     }
     flagMap.put(

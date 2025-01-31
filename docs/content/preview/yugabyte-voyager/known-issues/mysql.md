@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-voyager:
     identifier: mysql-issues
     parent: known-issues
-    weight: 101
+    weight: 103
 type: docs
 rightNav:
   hideH3: true
@@ -29,6 +29,15 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Exporting text type columns with default value](#exporting-text-type-columns-with-default-value)
 - [json_valid() does not exist in PostgreSQL/YugabyteDB](#json-valid-does-not-exist-in-postgresql-yugabytedb)
 - [json_value() does not exist in PostgreSQL/YugabyteDB](#json-value-does-not-exist-in-postgresql-yugabytedb)
+- [Unnecessary DDLs for RANGE COLUMN PARTITIONED tables](#unnecessary-ddls-for-range-column-partitioned-tables)
+- [DOUBLE UNSIGNED and FLOAT UNSIGNED data types are not supported](#double-unsigned-and-float-unsigned-data-types-are-not-supported)
+- [Foreign key referenced column cannot be a subset of a unique/primary key](#foreign-key-referenced-column-cannot-be-a-subset-of-a-unique-primary-key)
+- [Multiple indexes on the same column of a table errors during import](#multiple-indexes-on-the-same-column-of-a-table-errors-during-import)
+- [Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans](#index-on-timestamp-column-should-be-imported-as-asc-range-index-to-avoid-sequential-scans)
+- [Exporting data with names for tables/functions/procedures using special characters/whitespaces fails](#exporting-data-with-names-for-tables-functions-procedures-using-special-characters-whitespaces-fails)
+- [Importing with case-sensitive schema names](#importing-with-case-sensitive-schema-names)
+- [Tables partitioned with expressions cannot contain primary/unique keys](#tables-partitioned-with-expressions-cannot-contain-primary-unique-keys)
+- [Multi-column partition by list is not supported](#multi-column-partition-by-list-is-not-supported)
 
 ### Approaching MAX/MIN double precision values are not imported
 
@@ -580,3 +589,371 @@ Suggested change to the schema is as follows:
 ```sql
 json_extract_path_text(key_value_pair_variable::json,'key');
 ```
+
+---
+
+### Unnecessary DDLs for RANGE COLUMN PARTITIONED tables
+
+**GitHub**: [Issue #511](https://github.com/yugabyte/yb-voyager/issues/511)
+
+**Description**: If you have a schema which contains RANGE COLUMN PARTITIONED tables in MYSQL, some extra indexes are created during migration which are unnecessary and might result in an import error.
+
+**Workaround**: Remove the unnecessary DDLs from `PARTITION_INDEXES_partition.sql` file in the `export-dir/schema/partitions` sub-directory for the corresponding tables.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE range_columns_partition_test (
+a INT,
+b INT
+)
+PARTITION BY RANGE COLUMNS(a, b) (
+PARTITION p0 VALUES LESS THAN (5, 5),
+PARTITION p1 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+);
+```
+
+An example of the exported unnecessary index is as follows:
+
+```sql
+-- Create indexes on each partition of table range_columns_partition_test
+CREATE INDEX range_columns_partition_test_p1_b ON range_columns_partition_test_p1 (b);
+```
+
+Suggested change is to remove the unnecessary index.
+
+---
+
+### DOUBLE UNSIGNED and FLOAT UNSIGNED data types are not supported
+
+**GitHub**: [Issue #1607](https://github.com/yugabyte/yb-voyager/issues/1607)
+
+**Description**: If the schema has a table with a DOUBLE UNSIGNED or FLOAT UNSIGNED column, those data types are not converted by Voyager to a YugabyteDB relevant syntax, and result in errors during import. These data types are deprecated as of [MySQL 8.0.17](https://dev.mysql.com/doc/refman/8.0/en/numeric-type-syntax.html).
+
+**Workaround**: Manually change the exported schema to the closest YugabyteDB supported syntax.
+
+**Example**:
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE test(id int,
+                  n double unsigned,
+                  f float unsigned
+);
+```
+
+An example of the exported table is as follows:
+
+```sql
+CREATE TABLE test (
+        id bigint,
+        n DOUBLE UNSIGNED,
+        f FLOAT UNSIGNED
+);
+```
+
+Suggested change to the schema is to change to YugabyteDB-compatible syntax closest to the respective data types:
+
+```sql
+CREATE TABLE test (
+        id bigint,
+        n DOUBLE PRECISION CHECK (n >= 0),
+        f REAL CHECK (f >= 0)
+);
+```
+
+---
+
+### Foreign key referenced column cannot be a subset of a unique/primary key
+
+**GitHub**: [Issue #1608](https://github.com/yugabyte/yb-voyager/issues/1608)
+
+**Description**: In MySQL, you can reference a column which is part of a unique key or a primary key for a foreign key. This is not allowed in YugabyteDB or PostgreSQL.
+
+**Workaround**: The referenced columns will need to have individual Unique / Primary keys.
+
+**Example**:
+
+An example schema on the source database (allowed in MySQL) is as follows:
+
+```sql
+create table k(id int,id2 int,UNIQUE KEY `uk_k` (`id`,`id2`));
+
+create table h(id int,CONSTRAINT `fk_h` FOREIGN KEY (`id`) REFERENCES `k` (`id`));
+```
+
+An example of the exported schema is as follows:
+
+```sql
+CREATE TABLE h (
+        id bigint
+) ;
+CREATE TABLE k (
+        id bigint,
+        id2 bigint
+) ;
+ALTER TABLE k ADD UNIQUE (id,id2);
+ALTER TABLE h ADD CONSTRAINT fk_h FOREIGN KEY (id) REFERENCES k(id) MATCH SIMPLE ON DELETE NO ACTION ON UPDATE NO ACTION;
+```
+
+Error during import is as follows:
+
+```output
+ERROR:  there is no unique constraint matching given keys for referenced table "k"
+```
+
+Suggested change to the schema is to add individual unique/primary keys to the referenced column as follows:
+
+```sql
+ALTER TABLE k ADD UNIQUE (id);
+```
+
+---
+
+### Multiple indexes on the same column of a table errors during import
+
+**GitHub**: [Issue #1609](https://github.com/yugabyte/yb-voyager/issues/1609)
+
+**Description**: Voyager renames the indexes with a set pattern `table_name_column_name` during export. So having multiple indexes on the same column of a table will have the same name and will error out during import.
+
+**Workarounds**:
+
+1. Rename the duplicate index after the schema export.
+1. Drop the duplicate index on the source.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE test(id int, k int);
+CREATE INDEX index1 on test(k);
+CREATE INDEX index2 on test(k);
+```
+
+An example of the exported indexes are as follows:
+
+```sql
+CREATE INDEX test_k ON test (k);
+CREATE INDEX test_k ON test (k);
+```
+
+Suggested changes:
+
+1. Rename one of the indexes (for example, test_k2).
+1. Drop index1 or index2 on the source before exporting.
+
+---
+
+### Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
+
+**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
+
+**Description**: If there is an index on a timestamp column, the index should be imported as a range index automatically, as most queries relying on timestamp columns use range predicates. This avoids sequential scans and makes indexed scans accessible.
+
+**Workaround**: Manually add the ASC (range) clause to the exported files.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE INDEX ON timestamp_demo (ts);
+```
+
+Suggested change to the schema is to add the `ASC` clause as follows:
+
+```sql
+CREATE INDEX ON timestamp_demo (ts ASC);
+```
+
+---
+
+### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
+
+**GitHub**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688), [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
+
+**Description**: If you define complex names for your source database tables/functions/procedures using backticks or double quotes for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123", the migration hangs during the export data step.
+
+**Workaround**: Rename the objects (tables/functions/procedures) on the source database to a name without special characters.
+
+**Example**
+
+An example schema on the source MySQL database is as follows:
+
+```sql
+CREATE TABLE `xyz abc`(id int);
+INSERT INTO `xyz abc` VALUES(1);
+INSERT INTO `xyz abc` VALUES(2);
+INSERT INTO `xyz abc` VALUES(3);
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE TABLE "xyz abc" (id bigint);
+```
+
+The preceding example may hang or result in an error.
+
+---
+
+### Importing with case-sensitive schema names
+
+**GitHub**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
+
+**Description**: If you migrate your database using a case-sensitive schema name, the migration will fail with a "no schema has been selected" or "schema already exists" error(s).
+
+**Workaround**: Currently, yb-voyager does not support case-sensitive schema names; all schema names are assumed to be case-insensitive (lower-case). If required, you may alter the schema names to a case-sensitive alternative post-migration using the ALTER SCHEMA command.
+
+**Example**
+
+An example yb-voyager import-schema command with a case-sensitive schema name is as follows:
+
+```sh
+yb-voyager import schema --target-db-name voyager
+    --target-db-hostlocalhost
+    --export-dir .
+    --target-db-password password
+    --target-db-user yugabyte
+    --target-db-schema "\"Test\""
+```
+
+The preceding example will result in an error as follows:
+
+```output
+ERROR: no schema has been selected to create in (SQLSTATE 3F000)
+```
+
+Suggested changes to the schema can be done using the following steps:
+
+1. Change the case sensitive schema name during schema migration as follows:
+
+    ```sh
+    yb-voyager import schema --target-db-name voyager
+    --target-db-hostlocalhost
+    --export-dir .
+    --target-db-password password
+    --target-db-user yugabyte
+    --target-db-schema test
+    ```
+
+1. Alter the schema name post migration as follows:
+
+    ```sh
+    ALTER SCHEMA "test" RENAME TO "Test";
+    ```
+
+---
+
+### Tables partitioned with expressions cannot contain primary/unique keys
+
+**GitHub**: [Issue#698](https://github.com/yugabyte/yb-voyager/issues/698)
+
+**Description**: If you have a table in the source database which is partitioned using any expression/function, that table cannot have a primary or unique key on any of its columns, as it is an invalid syntax in YugabyteDB.
+
+**Workaround**: Remove any primary/unique keys from exported schemas.
+
+An example schema on the MySQL source database with primary key is as follows:
+
+```sql
+/* Table definition */
+
+CREATE TABLE Sales (
+    cust_id INT NOT NULL,
+    name VARCHAR(40),
+    store_id VARCHAR(20) NOT NULL,
+    bill_no INT NOT NULL,
+    bill_date DATE NOT NULL,
+    amount DECIMAL(8,2) NOT NULL,
+    PRIMARY KEY (bill_no,bill_date)
+)
+PARTITION BY RANGE (year(bill_date))(
+    PARTITION p0 VALUES LESS THAN (2016),
+    PARTITION p1 VALUES LESS THAN (2017),
+    PARTITION p2 VALUES LESS THAN (2018),
+    PARTITION p3 VALUES LESS THAN (2020)
+);
+```
+
+The exported schema is as follows:
+
+```sql
+/* Table definition */
+CREATE TABLE sales (
+    cust_id bigint NOT NULL,
+    name varchar(40),
+    store_id varchar(20) NOT NULL,
+    bill_no bigint NOT NULL,
+    bill_date timestamp NOT NULL,
+    amount decimal(8,2) NOT NULL,
+    PRIMARY KEY (bill_no,bill_date)
+) PARTITION BY RANGE ((extract(year from date(bill_date)))) ;
+```
+
+Suggested change to the schema is to remove the primary/unique key from the exported schema as follows:
+
+```sql
+CREATE TABLE sales (
+    cust_id bigint NOT NULL,
+    name varchar(40),
+    store_id varchar(20) NOT NULL,
+    bill_no bigint NOT NULL,
+    bill_date timestamp NOT NULL,
+    amount decimal(8,2) NOT NULL
+) PARTITION BY RANGE ((extract(year from date(bill_date)))) ;
+```
+
+---
+
+### Multi-column partition by list is not supported
+
+**GitHub**: [Issue#699](https://github.com/yugabyte/yb-voyager/issues/699)
+
+**Description**: In YugabyteDB, you cannot perform a partition by list on multiple columns and exporting the schema results in an error.
+
+**Workaround**: Make the partition a single column partition by list by making suitable changes or choose other supported partitioning methods.
+
+**Example**
+
+An example schema on the Oracle source database is as follows:
+
+```sql
+CREATE TABLE test (
+   id NUMBER,
+   country_code VARCHAR2(3),
+   record_type VARCHAR2(5),
+   descriptions VARCHAR2(50),
+   CONSTRAINT t1_pk PRIMARY KEY (id)
+)
+PARTITION BY LIST (country_code, record_type)
+(
+  PARTITION part_gbr_abc VALUES (('GBR','A'), ('GBR','B'), ('GBR','C')),
+  PARTITION part_ire_ab VALUES (('IRE','A'), ('IRE','B')),
+  PARTITION part_usa_a VALUES (('USA','A')),
+  PARTITION part_others VALUES (DEFAULT)
+);
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE TABLE test (
+    id numeric NOT NULL,
+    country_code varchar(3),
+    record_type varchar(5),
+    descriptions varchar(50),
+    PRIMARY KEY (id)
+) PARTITION BY LIST (country_code, record_type) ;
+```
+
+The preceding schema example will result in an error as follows:
+
+```output
+ERROR: cannot use "list" partition strategy with more than one column (SQLSTATE 42P17)
+```
+
+---

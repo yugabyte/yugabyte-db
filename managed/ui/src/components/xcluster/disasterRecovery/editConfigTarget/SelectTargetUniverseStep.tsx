@@ -10,6 +10,8 @@ import { YBReactSelectField } from '../../../configRedesign/providerRedesign/com
 import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { getUniverseStatus } from '../../../universes/helpers/universeHelpers';
 import { INPUT_FIELD_WIDTH_PX } from '../../constants';
+import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
 
@@ -66,9 +68,15 @@ export const SelectTargetUniverseStep = ({
         !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
     )
     .map((universe) => {
+      const isDisabled = !hasNecessaryPerm({
+        ...ApiPermissionMap.CREATE_DR_CONFIG,
+        onResource: universe.universeUUID
+      });
       return {
         label: universe.name,
-        value: universe
+        value: universe,
+        isDisabled: isDisabled,
+        disabledReason: isDisabled ? t('missingPermissionOnUniverse') : ''
       };
     });
   return (

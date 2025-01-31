@@ -31,6 +31,8 @@ DECLARE_int32(ysql_output_buffer_size);
 DECLARE_int32(ysql_select_parallelism);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_int32(ysql_num_databases_reserved_in_db_catalog_version_mode);
+DECLARE_string(ysql_sequence_cache_method);
+DECLARE_string(ysql_conn_mgr_sequence_support_mode);
 
 DECLARE_bool(ysql_suppress_unsupported_error);
 DECLARE_bool(ysql_suppress_unsafe_alter_notice);
@@ -41,8 +43,8 @@ DECLARE_bool(ysql_colocate_database_by_default);
 DECLARE_bool(ysql_beta_feature_tablespace_alteration);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_sleep_before_retry_on_txn_conflict);
-DECLARE_bool(ysql_disable_portal_run_context);
 DECLARE_bool(TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset);
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_enable_create_database_oid_collision_retry);
 DECLARE_bool(ysql_use_relcache_file);
+DECLARE_bool(ysql_use_optimized_relcache_update);

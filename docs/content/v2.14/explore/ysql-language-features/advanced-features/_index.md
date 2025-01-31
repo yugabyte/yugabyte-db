@@ -3,7 +3,6 @@ title: Advanced features
 linkTitle: Advanced features
 description: Advanced features in YSQL
 headcontent:  Explore advanced features in YSQL
-image: /images/section_icons/api/ysql.png
 menu:
   v2.14:
     identifier: advanced-features

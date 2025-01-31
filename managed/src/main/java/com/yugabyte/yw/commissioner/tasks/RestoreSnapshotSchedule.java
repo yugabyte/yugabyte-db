@@ -1,6 +1,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
@@ -12,11 +14,12 @@ import org.yb.client.ListSnapshotRestorationsResponse;
 import org.yb.client.RestoreSnapshotScheduleResponse;
 import org.yb.client.SnapshotRestorationInfo;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 @Slf4j
 public class RestoreSnapshotSchedule extends UniverseTaskBase {
-
-  private static final int WAIT_DURATION_IN_MS = 15000;
+  public static final List<State> RESTORATION_VALID_STATES =
+      ImmutableList.of(State.RESTORING, State.RESTORED);
 
   @Inject
   protected RestoreSnapshotSchedule(BaseTaskDependencies baseTaskDependencies) {
@@ -30,84 +33,124 @@ public class RestoreSnapshotSchedule extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName()
-        + "("
-        + taskParams().getUniverseUUID()
-        + ", pitrConfigUUID="
-        + taskParams().pitrConfigUUID
-        + ")";
+    return String.format(
+        "%s(universeUuid=%s, pitrConfigUUID=%s, restoreTimeInMillis=%s)",
+        super.getName(),
+        taskParams().getUniverseUUID(),
+        taskParams().pitrConfigUUID,
+        taskParams().restoreTimeInMillis);
   }
 
   @Override
   public void run() {
-    RestoreSnapshotScheduleResponse resp;
-    YBClient client = null;
+    log.info("Running {}", getName());
+
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    try {
-      log.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
+    String masterAddresses = universe.getMasterAddresses();
+    String universeCertificate = universe.getCertificateNodetoNode();
+    try (YBClient client = ybService.getClient(masterAddresses, universeCertificate)) {
 
-      client = ybService.getClient(masterHostPorts, certificate);
-      resp =
-          client.restoreSnapshotSchedule(
-              taskParams().pitrConfigUUID, taskParams().restoreTimeInMillis);
+      UUID restorationUuid = null;
 
-      if (!resp.hasError()) {
-        pollSnapshotRestorationTask(client, resp.getRestorationUUID());
-      }
-    } catch (Exception ex) {
-      log.error("{} hit exception : {}", getName(), ex.getMessage());
-      throw new RuntimeException(ex);
-    } finally {
-      ybService.closeClient(client, masterHostPorts);
-    }
+      // First, check if a restoration matching the schedule ID and restore time already exists.
+      ListSnapshotRestorationsResponse restorationsResponse =
+          client.listSnapshotRestorations(null /* restorationUUID */);
 
-    if (resp.hasError()) {
-      String errorMsg = getName() + " failed due to error: " + resp.errorMessage();
-      log.error(errorMsg);
-      throw new RuntimeException(errorMsg);
-    }
-  }
-
-  private void pollSnapshotRestorationTask(YBClient client, UUID restorationUUID) {
-    while (true) {
-      waitFor(Duration.ofMillis(WAIT_DURATION_IN_MS));
-      ListSnapshotRestorationsResponse listResp;
-      try {
-        listResp = client.listSnapshotRestorations(restorationUUID);
-      } catch (Exception ex) {
-        throw new RuntimeException(ex);
-      }
-
-      SnapshotRestorationInfo snapshotRestorationInfo = null;
-      List<SnapshotRestorationInfo> snapshotRestorationList =
-          listResp.getSnapshotRestorationInfoList();
-
-      for (SnapshotRestorationInfo info : snapshotRestorationList) {
-        if (info.getRestorationUUID().equals(restorationUUID)) {
-          snapshotRestorationInfo = info;
-          break;
+      List<SnapshotRestorationInfo> restorations =
+          restorationsResponse.getSnapshotRestorationInfoList();
+      for (SnapshotRestorationInfo restoration : restorations) {
+        // Find restoration matching schedule UUID and restore time.
+        if (restoration.getScheduleUUID().equals(taskParams().pitrConfigUUID)) {
+          long restoreAtMillis = restoration.getRestoreTime();
+          if (restoreAtMillis == taskParams().restoreTimeInMillis) {
+            restorationUuid = restoration.getRestorationUUID();
+            break;
+          }
         }
       }
 
-      if (snapshotRestorationInfo == null) {
-        throw new RuntimeException(
-            String.format(
-                "Restore snapshot response for restore uuid: %s is null", restorationUUID));
+      if (restorationUuid == null) {
+        // Start a new restoration since no matching restoration was found.
+        RestoreSnapshotScheduleResponse resp =
+            client.restoreSnapshotSchedule(
+                taskParams().pitrConfigUUID, taskParams().restoreTimeInMillis);
+        if (resp.hasError()) {
+          String errorMsg = getName() + " failed due to error: " + resp.errorMessage();
+          log.error(errorMsg);
+          throw new RuntimeException(errorMsg);
+        }
+        restorationUuid = resp.getRestorationUUID();
+        log.info(
+            "Restoration matching schedule UUID {} and restore time {} created. "
+                + "Restoration UUID: {}",
+            taskParams().pitrConfigUUID,
+            taskParams().restoreTimeInMillis,
+            restorationUuid);
+      } else {
+        log.info(
+            "Restoration matching schedule UUID {} and restore time {} already exists. "
+                + "Restoration UUID: {}",
+            taskParams().pitrConfigUUID,
+            taskParams().restoreTimeInMillis,
+            restorationUuid);
       }
 
-      switch (snapshotRestorationInfo.getState()) {
-        case RESTORING:
-          break;
-        case RESTORED:
-          return;
-        default:
-          throw new RuntimeException(
-              String.format(
-                  "Restore snapshot schedule state for restore uuid: %s is invalid: %s",
-                  restorationUUID, snapshotRestorationInfo.getState()));
-      }
+      // Ensure that the restoration reaches the RESTORED state.
+      ensureStateIsRestored(client, universe, restorationUuid);
+    } catch (Exception e) {
+      log.error("{} hit exception: {}", getName(), e.getMessage());
+      throw new RuntimeException(e);
     }
+
+    log.info("Completed {}", getName());
+  }
+
+  private void ensureStateIsRestored(YBClient client, Universe universe, UUID restorationUuid) {
+    Duration pitrRestorePollDelay =
+        confGetter.getConfForScope(universe, UniverseConfKeys.pitrRestorePollDelay);
+    long pitrRestorePollDelayMs = pitrRestorePollDelay.toMillis();
+    long pitrRestoreTimeoutMs =
+        confGetter.getConfForScope(universe, UniverseConfKeys.pitrRestoreTimeout).toMillis();
+    long startTime = System.currentTimeMillis();
+    long remainingTimeoutMs = pitrRestoreTimeoutMs - (System.currentTimeMillis() - startTime);
+
+    doWithConstTimeout(
+        pitrRestorePollDelayMs,
+        remainingTimeoutMs,
+        () -> {
+          try {
+            ListSnapshotRestorationsResponse listSnapshotRestorationsResponse =
+                client.listSnapshotRestorations(restorationUuid);
+
+            List<SnapshotRestorationInfo> snapshotRestorationInfoList =
+                listSnapshotRestorationsResponse.getSnapshotRestorationInfoList();
+            SnapshotRestorationInfo snapshotRestorationInfo =
+                snapshotRestorationInfoList.stream()
+                    .filter(sri -> restorationUuid.equals(sri.getRestorationUUID()))
+                    .findFirst()
+                    .orElseThrow(
+                        () ->
+                            new RuntimeException(
+                                String.format(
+                                    "Restore snapshot response for restore UUID %s not found",
+                                    restorationUuid)));
+
+            State currentState = snapshotRestorationInfo.getState();
+            if (State.RESTORED.equals(currentState)) {
+              // Restoration is complete.
+              return;
+            }
+            if (State.RESTORING.equals(currentState)) {
+              // Restoration is still in progress; continue polling.
+              throw new RuntimeException("Snapshot is still in RESTORING state");
+            }
+            throw new RuntimeException(
+                String.format(
+                    "Restoration is in an invalid state: %s. Valid states are: %s",
+                    currentState, RESTORATION_VALID_STATES));
+          } catch (Exception e) {
+            throw new RuntimeException(e);
+          }
+        });
   }
 }

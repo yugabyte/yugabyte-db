@@ -34,6 +34,8 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
   virtual void BeforePgProcessStart() {
   }
 
+  virtual void EnableYSQLFlags();
+
   void DoTearDown() override;
 
   void SetUp() override;
@@ -59,15 +61,17 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   PGConnSettings MakeConnSettings(const std::string& dbname = std::string()) const;
 
-  Result<PGConn> Connect() const {
+  virtual Result<PGConn> Connect() const {
     return ConnectToDB(std::string() /* db_name */);
   }
 
-  Result<PGConn> ConnectToDB(const std::string& dbname) const;
+  virtual Result<PGConn> ConnectToDB(const std::string& dbname, size_t timeout = 0) const;
 
   Status RestartCluster();
 
   Status RestartMaster();
+
+  Status RestartPostgres();
 
   const HostPort& pg_host_port() const {
     return pg_host_port_;
@@ -83,10 +87,14 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   void EnableFailOnConflict();
 
- private:
-  Result<PgProcessConf> CreatePgProcessConf(uint16_t port, size_t ts_idx);
+  virtual void StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx);
 
   std::unique_ptr<PgSupervisor> pg_supervisor_;
+
+ private:
+  Result<PgProcessConf> CreatePgProcessConf(uint16_t port, size_t ts_idx);
+  Status RecreatePgSupervisor();
+
   HostPort pg_host_port_;
 };
 

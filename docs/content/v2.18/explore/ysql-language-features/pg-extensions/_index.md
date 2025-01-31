@@ -3,7 +3,6 @@ title: PostgreSQL extensions
 headerTitle: PostgreSQL extensions
 linkTitle: PostgreSQL extensions
 description: Summary of supported PostgreSQL extensions
-image: /images/section_icons/develop/ecosystem-integrations.png
 summary: Reference for YSQL extensions
 aliases:
   - /v2.18/explore/ysql-language-features/pg-extensions/extension-postgis/

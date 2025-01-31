@@ -31,6 +31,8 @@ DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);
 
 DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_table);
 
+DECLARE_int32(load_balancer_max_inbound_remote_bootstraps_per_tserver);
+
 DECLARE_int32(load_balancer_max_over_replicated_tablets);
 
 DECLARE_int32(load_balancer_max_concurrent_adds);
@@ -45,10 +47,9 @@ namespace yb {
 namespace master {
 
 // enum for replica type, either live (synchronous) or read only (timeline consistent)
-enum ReplicaType {
-  LIVE,
-  READ_ONLY,
-};
+YB_DEFINE_ENUM(ReplicaType,
+  (kLive)
+  (kReadOnly));
 
 struct CBTabletMetadata {
   bool is_missing_replicas() { return is_under_replicated || !under_replicated_placements.empty(); }
@@ -69,6 +70,8 @@ struct CBTabletMetadata {
 
   // Number of starting replicas for this tablet.
   int starting = 0;
+
+  int NumReplicas() const { return running + starting; }
 
   // If this tablet has fewer replicas than the configured number in the PlacementInfoPB.
   bool is_under_replicated = false;
@@ -173,41 +176,39 @@ struct Options {
     if (kMaxConcurrentLeaderMovesPerTable == -1) {
       kMaxConcurrentLeaderMovesPerTable = kMaxConcurrentLeaderMoves;
     }
+    if (kMaxTabletRemoteBootstraps < 0) {
+      kMaxTabletRemoteBootstraps = std::numeric_limits<int>::max();
+    }
   }
   virtual ~Options() {}
 
   std::string ToString() {
-    std::string out =
-        Format("{ MinLoadVarianceToBalance: $0, MinGlobalLoadVarianceToBalance: $1, "
-                  "MinLeaderLoadVarianceToBalance: $2, MinGlobalLeaderLoadVarianceToBalance: $3, "
-                  "AllowLimitStartingTablets: $4, MaxTabletRemoteBootstraps: $5, "
-                  "MaxTabletRemoteBootstrapsPerTable: $6, AllowLimitOverReplicatedTablets: $7, "
-                  "MaxOverReplicatedTablets: $8, MaxConcurrentRemovals: $9, ",
-                  kMinLoadVarianceToBalance, kMinGlobalLoadVarianceToBalance,
-                  kMinLeaderLoadVarianceToBalance, kMinGlobalLeaderLoadVarianceToBalance,
-                  kAllowLimitStartingTablets, kMaxTabletRemoteBootstraps,
-                  kMaxTabletRemoteBootstrapsPerTable, kAllowLimitOverReplicatedTablets,
-                  kMaxOverReplicatedTablets, kMaxConcurrentRemovals);
+    std::vector<std::pair<std::string, int>> lb_params = {
+      {"AllowLimitStartingTablets", kAllowLimitStartingTablets},
+      {"MaxTabletRemoteBootstraps", kMaxTabletRemoteBootstraps},
+      {"MaxTabletRemoteBootstrapsPerTable", kMaxTabletRemoteBootstrapsPerTable},
+      {"MaxInboundRemoteBootstrapsPerTs", kMaxInboundRemoteBootstrapsPerTs},
+      {"AllowLimitOverReplicatedTablets", kAllowLimitOverReplicatedTablets},
+      {"MaxOverReplicatedTablets", kMaxOverReplicatedTablets},
+      {"MaxConcurrentRemovals", kMaxConcurrentRemovals},
+      {"MaxConcurrentAdds", kMaxConcurrentAdds},
+      {"MaxConcurrentLeaderMoves", kMaxConcurrentLeaderMoves},
+      {"MaxConcurrentLeaderMovesPerTable", kMaxConcurrentLeaderMovesPerTable}};
 
-    out += Format("MaxConcurrentAdds: $0, MaxConcurrentLeaderMoves: $1, "
-                  "MaxConcurrentLeaderMovesPerTable: $2, ReplicaType: $3, "
-                  "LivePlacementUUID: $4, Read Replica Placement UUID: $5}",
-                  kMaxConcurrentAdds, kMaxConcurrentLeaderMoves, kMaxConcurrentLeaderMovesPerTable,
-                  type, live_placement_uuid, placement_uuid);
-    return out;
+    std::stringstream out;
+    for (const auto& param : lb_params) {
+      out << Format("$0: $1, ", param.first, param.second);
+    }
+    out << Format("ReplicaType: $0, ", type);
+    out << Format("LivePlacementUUID: $0, ", live_placement_uuid);
+    out << Format("Read Replica Placement UUID: $0", placement_uuid);
+    return out.str();
   }
 
   // If variance between load on TS goes past this number, we should try to balance.
+  // Don't balance load variance lower than this else we will repeatedly bounce the same peer back
+  // and forth.
   double kMinLoadVarianceToBalance = 2.0;
-
-  // If variance between global load on TS goes past this number, we should try to balance.
-  double kMinGlobalLoadVarianceToBalance = 2.0;
-
-  // If variance between leader load on TS goes past this number, we should try to balance.
-  double kMinLeaderLoadVarianceToBalance = 2.0;
-
-  // If variance between global leader load on TS goes past this number, we should try to balance.
-  double kMinGlobalLeaderLoadVarianceToBalance = 2.0;
 
   // Whether to limit the number of tablets being spun up on the cluster at any given time.
   bool kAllowLimitStartingTablets = true;
@@ -220,6 +221,10 @@ struct Options {
   // this.
   int kMaxTabletRemoteBootstrapsPerTable =
       FLAGS_load_balancer_max_concurrent_tablet_remote_bootstraps_per_table;
+
+  // Max bootstrapping tablets per tablet server.
+  int kMaxInboundRemoteBootstrapsPerTs =
+      FLAGS_load_balancer_max_inbound_remote_bootstraps_per_tserver;
 
   // Whether to limit the number of tablets that have more peers than configured at any given
   // time.
@@ -302,23 +307,23 @@ class PerTableLoadState {
   virtual ~PerTableLoadState();
 
   // Comparators used for sorting by load.
-  bool CompareByUuid(const TabletServerId& a, const TabletServerId& b);
-
-  bool CompareByReplica(const TabletReplica& a, const TabletReplica& b);
+  bool CompareLoad(
+      const TabletServerId& a, const TabletServerId& b,
+      optional_ref<const TabletId> tablet_id);
 
   // Comparator functor to be able to wrap around the public but non-static compare methods that
   // end up using internal state of the class.
-  struct Comparator {
-    explicit Comparator(PerTableLoadState* state) : state_(state) {}
-    bool operator()(const TabletServerId& a, const TabletServerId& b) {
-      return state_->CompareByUuid(a, b);
-    }
+  struct LoadComparator {
+    LoadComparator(
+        PerTableLoadState* state, optional_ref<const TabletId> tablet_id)
+        : state_(state), tablet_id_(tablet_id) {}
 
-    bool operator()(const TabletReplica& a, const TabletReplica& b) {
-      return state_->CompareByReplica(a, b);
+    bool operator()(const TabletServerId& a, const TabletServerId& b) const {
+      return state_->CompareLoad(a, b, tablet_id_);
     }
 
     PerTableLoadState* state_;
+    optional_ref<const TabletId> tablet_id_;
   };
 
   // Comparator to sort tablet servers' leader load.
@@ -333,15 +338,18 @@ class PerTableLoadState {
 
   // Get the load for a certain TS.
   size_t GetLoad(const TabletServerId& ts_uuid) const;
+  size_t GetTabletDriveLoad(const TabletServerId& ts_uuid, const TabletId& tablet_id) const;
 
   // Get the load for a certain TS.
   size_t GetLeaderLoad(const TabletServerId& ts_uuid) const;
 
-  bool IsTsInLivePlacement(TSDescriptor* ts_desc) {
+  bool IsTsInLivePlacement(const TSDescriptorPtr& ts_desc) {
     return ts_desc->placement_uuid() == options_->live_placement_uuid;
   }
 
-  // Update the per-tablet information for this tablet.
+  // Method called when initially analyzing tablets, to build up load and usage information.
+  // Returns an OK status if the method succeeded or an error if there are transient errors in
+  // updating the internal state.
   Status UpdateTablet(TabletInfo* tablet);
 
   virtual void UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc);
@@ -351,21 +359,18 @@ class PerTableLoadState {
     initialized_ = true;
   }
 
-  Result<bool> CanAddTabletToTabletServer(
-    const TabletId& tablet_id, const TabletServerId& to_ts, const PlacementInfoPB* placement_info);
+  Result<bool> CanAddTabletToTabletServer(const TabletId& tablet_id, const TabletServerId& to_ts);
 
   // For a TS specified by ts_uuid, this function checks if there is a placement
   // block in placement_info where this TS can be placed. If there doesn't exist
-  // any, it returns boost::none. On the other hand if there is a placement block
+  // any, it returns std::nullopt. On the other hand if there is a placement block
   // that satisfies the criteria then it returns the cloud info of that block.
   // If there wasn't any placement information passed in placement_info then
   // it returns the cloud info of the TS itself.
-  boost::optional<CloudInfoPB> GetValidPlacement(const TabletServerId& ts_uuid,
-                                                 const PlacementInfoPB* placement_info);
+  std::optional<CloudInfoPB> GetValidPlacement(const TabletServerId& ts_uuid);
 
   Result<bool> CanSelectWrongPlacementReplicaToMove(
-    const TabletId& tablet_id, const PlacementInfoPB& placement_info, TabletServerId* out_from_ts,
-    TabletServerId* out_to_ts);
+    const TabletId& tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
   Status AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts);
 
@@ -418,12 +423,9 @@ class PerTableLoadState {
     for (const auto& ts_meta : per_ts_meta_) {
       out << " " + ts_meta.first + ": " + ts_meta.second.ToString();
     }
-    out << " ], placement_by_table: [";
-    for (const auto& table_placement : placement_by_table_) {
-      out << " " + table_placement.first + ": " + table_placement.second.ShortDebugString();
-    }
     out << " ], ";
 
+    out << Format("placement: $0, ", placement_.ShortDebugString());
     out << Format("total_running: $0, ", total_running_);
     out << Format("total_starting: $0, ", total_starting_);
     out << Format("sorted_load: $0, ", sorted_load_);
@@ -458,10 +460,10 @@ class PerTableLoadState {
   // Map from tablet server ids to the metadata we store for each.
   std::unordered_map<TabletServerId, CBTabletServerMetadata> per_ts_meta_;
 
-  // Map from table id to placement information for this table. This will be used for both
+  // Placement information for this table. This will be used for both
   // determining over-replication, by checking num_replicas, but also for az awareness, by keeping
   // track of the placement block policies between cluster and table level.
-  std::unordered_map<TableId, PlacementInfoPB> placement_by_table_;
+  PlacementInfoPB placement_;
 
   // Total number of running tablets in the clusters (including replicas).
   int total_running_ = 0;

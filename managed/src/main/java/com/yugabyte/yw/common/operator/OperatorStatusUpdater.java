@@ -20,9 +20,13 @@ public interface OperatorStatusUpdater {
     READY("Ready"),
     ERROR_UPDATING("Error Updating"),
     ERROR_CREATING("Error Creating"),
+    ERROR_PAUSING("Error Pausing"),
+    ERROR_RESUMING("Error Resuming"),
     EDITING("Editing"),
     DELETING("Deleting"),
-    PAUSED("Paused");
+    PAUSED("Paused"),
+    PAUSING("Pausing"),
+    RESUMING("Resuming");
 
     UniverseState(String universeState) {
       this.universeState = universeState;
@@ -59,7 +63,7 @@ public interface OperatorStatusUpdater {
     startYBUniverseEventStatus(universe, universeName, taskName, taskUUID, state, false);
   }
 
-  default void updateRestoreJobStatus(String message, UUID taskUUID) {
+  default void updateRestoreJobStatus(String message, UUID taskUUID, Universe universe) {
     // no-op implementation
   }
 

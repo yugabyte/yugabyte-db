@@ -18,8 +18,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.models.helpers.TaskDetails;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.YBAError;
 import io.ebean.ExpressionList;
 import io.ebean.FetchGroup;
 import io.ebean.Finder;
@@ -35,16 +35,18 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
-import java.util.Collection;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -67,6 +69,8 @@ public class TaskInfo extends Model {
 
   public static final Set<State> INCOMPLETE_STATES =
       Sets.immutableEnumSet(State.Created, State.Initializing, State.Running, State.Abort);
+
+  public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class) {};
 
   /** These are the various states of the task and taskgroup. */
   public enum State {
@@ -185,7 +189,7 @@ public class TaskInfo extends Model {
 
   @JsonIgnore
   public String getErrorMessage() {
-    TaskError error = getTaskError();
+    YBAError error = getTaskError();
     if (error != null) {
       return error.getMessage();
     }
@@ -193,11 +197,11 @@ public class TaskInfo extends Model {
   }
 
   @JsonIgnore
-  public synchronized TaskError getTaskError() {
+  public synchronized YBAError getTaskError() {
     if (taskState == State.Success || details == null) {
       return null;
     }
-    TaskError error = details.getError();
+    YBAError error = details.getError();
     if (error == null || error.getCode() == null) {
       return null;
     }
@@ -205,23 +209,28 @@ public class TaskInfo extends Model {
   }
 
   @JsonIgnore
-  public synchronized void setTaskError(TaskError error) {
+  public synchronized void setTaskError(YBAError error) {
     if (details == null) {
       details = new TaskDetails();
     }
     details.setError(error);
   }
 
+  @JsonIgnore
+  public synchronized String getVersion() {
+    return details == null ? "" : details.getVersion();
+  }
+
+  @JsonIgnore
+  public synchronized void setVersion(String version) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setVersion(version);
+  }
+
   public boolean hasCompleted() {
     return COMPLETED_STATES.contains(taskState);
-  }
-
-  public UUID getTaskUUID() {
-    return uuid;
-  }
-
-  public void setTaskUUID(UUID taskUUID) {
-    uuid = taskUUID;
   }
 
   @JsonIgnore
@@ -233,8 +242,6 @@ public class TaskInfo extends Model {
   public JsonNode getRedactedParams() {
     return RedactingService.filterSecretFields(taskParams, RedactingService.RedactionTarget.LOGS);
   }
-
-  public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class) {};
 
   @Deprecated
   public static TaskInfo get(UUID taskUUID) {
@@ -254,14 +261,13 @@ public class TaskInfo extends Model {
     return taskInfo;
   }
 
-  public static List<TaskInfo> find(Collection<UUID> taskUUIDs) {
+  public static List<TaskInfo> find(Set<UUID> taskUUIDs) {
     // Return the instance details object.
     if (CollectionUtils.isEmpty(taskUUIDs)) {
       return Collections.emptyList();
     }
-    Set<UUID> uniqueTaskUUIDs = new HashSet<>(taskUUIDs);
     ExpressionList<TaskInfo> query = find.query().where();
-    appendInClause(query, "uuid", uniqueTaskUUIDs);
+    appendInClause(query, "uuid", taskUUIDs);
     return query.findList();
   }
 
@@ -274,26 +280,51 @@ public class TaskInfo extends Model {
         .findList();
   }
 
-  // Returns  partial object
+  public static List<TaskInfo> getRecentParentTasksInStates(
+      Set<State> expectedStates, Duration timeWindow) {
+    ExpressionList<TaskInfo> query = find.query().where().isNull("parent_uuid");
+    if (CollectionUtils.isNotEmpty(expectedStates)) {
+      query = query.in("task_state", expectedStates);
+    }
+    if (timeWindow != null && !timeWindow.isZero()) {
+      Instant endTime = Instant.now().minus(timeWindow.getSeconds(), ChronoUnit.SECONDS);
+      query = query.gt("create_time", Date.from(endTime));
+    }
+    query = query.orderBy("create_time desc");
+    return query.findList();
+  }
+
+  // Returns partial TaskInfo object.
+  public static Map<UUID, List<TaskInfo>> getSubTasks(Set<UUID> parentTaskUuids) {
+    if (CollectionUtils.isEmpty(parentTaskUuids)) {
+      return Collections.emptyMap();
+    }
+    ExpressionList<TaskInfo> query =
+        find.query().select(GET_SUBTASKS_FG).where().isNotNull("parent_uuid");
+    query =
+        appendInClause(query, "parent_uuid", parentTaskUuids).orderBy("parent_uuid, position asc");
+    // Ordered by the encounter order within each group.
+    return query.findList().stream().collect(Collectors.groupingBy(TaskInfo::getParentUuid));
+  }
+
+  // Returns partial TaskInfo object.
   @JsonIgnore
   public List<TaskInfo> getSubTasks() {
     ExpressionList<TaskInfo> subTaskQuery =
-        TaskInfo.find
-            .query()
+        find.query()
             .select(GET_SUBTASKS_FG)
             .where()
-            .eq("parent_uuid", getTaskUUID())
+            .eq("parent_uuid", getUuid())
             .orderBy("position asc");
     return subTaskQuery.findList();
   }
 
   @JsonIgnore
   public List<TaskInfo> getIncompleteSubTasks() {
-    return TaskInfo.find
-        .query()
+    return find.query()
         .select(GET_SUBTASKS_FG)
         .where()
-        .eq("parent_uuid", getTaskUUID())
+        .eq("parent_uuid", getUuid())
         .in("task_state", INCOMPLETE_STATES)
         .findList();
   }
@@ -301,15 +332,10 @@ public class TaskInfo extends Model {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("taskType : ").append(taskType);
+    sb.append("taskType: ").append(taskType);
     sb.append(", ");
     sb.append("taskState: ").append(taskState);
     return sb.toString();
-  }
-
-  @JsonIgnore
-  public UserTaskDetails getUserTaskDetails() {
-    return getUserTaskDetails(null);
   }
 
   /**
@@ -322,25 +348,19 @@ public class TaskInfo extends Model {
    * @return UserTaskDetails object for this TaskInfo, including info on the state on each of the
    *     subTaskGroups.
    */
-  public UserTaskDetails getUserTaskDetails(TaskCache taskCache) {
+  @JsonIgnore
+  public UserTaskDetails getUserTaskDetails(List<TaskInfo> subTaskInfos, TaskCache taskCache) {
     UserTaskDetails taskDetails = new UserTaskDetails();
-    List<TaskInfo> result = getSubTasks();
     Map<SubTaskGroupType, SubTaskDetails> userTasksMap = new HashMap<>();
-    SubTaskGroupType lastGroupType = SubTaskGroupType.Invalid;
-    for (TaskInfo taskInfo : result) {
+    SubTaskGroupType lastGroupType = SubTaskGroupType.Configuring;
+    for (TaskInfo taskInfo : subTaskInfos) {
       SubTaskGroupType subTaskGroupType = taskInfo.getSubTaskGroupType();
-      if (subTaskGroupType == SubTaskGroupType.Invalid) {
-        continue;
-      }
       SubTaskDetails subTask = null;
       if (userTasksMap.containsKey(subTaskGroupType)) {
         // The type is already seen, group it with the last task if it is present.
         // This is done not to move back the progress for the group type on the UI
         // if the type shows up later.
-        subTask =
-            lastGroupType == SubTaskGroupType.Invalid
-                ? userTasksMap.get(subTaskGroupType)
-                : userTasksMap.get(lastGroupType);
+        subTask = userTasksMap.get(lastGroupType);
       }
       if (subTask == null) {
         subTask = createSubTask(subTaskGroupType);
@@ -352,7 +372,7 @@ public class TaskInfo extends Model {
       }
       if (taskCache != null) {
         // Populate extra details about task progress from Task Cache.
-        JsonNode cacheData = taskCache.get(taskInfo.getTaskUUID().toString());
+        JsonNode cacheData = taskCache.get(taskInfo.getUuid().toString());
         subTask.populateDetails(cacheData);
       }
       if (subTask.getState().getPrecedence() < taskInfo.getTaskState().getPrecedence()) {
@@ -374,18 +394,18 @@ public class TaskInfo extends Model {
    */
   @JsonIgnore
   public double getPercentCompleted() {
-    int numSubtasks = TaskInfo.find.query().where().eq("parent_uuid", getTaskUUID()).findCount();
+    if (getTaskState() == TaskInfo.State.Success) {
+      return 100.0;
+    }
+    int numSubtasks = TaskInfo.find.query().where().eq("parent_uuid", getUuid()).findCount();
     if (numSubtasks == 0) {
-      if (getTaskState() == TaskInfo.State.Success) {
-        return 100.0;
-      }
       return 0.0;
     }
     int numSubtasksCompleted =
         TaskInfo.find
             .query()
             .where()
-            .eq("parent_uuid", getTaskUUID())
+            .eq("parent_uuid", getUuid())
             .eq("task_state", TaskInfo.State.Success)
             .findCount();
     return numSubtasksCompleted * 100.0 / numSubtasks;
@@ -398,8 +418,8 @@ public class TaskInfo extends Model {
         .eq("task_type", TaskType.DeleteBackup)
         .ne("task_state", State.Failure)
         .ne("task_state", State.Aborted)
-        .eq("details->>'customerUUID'", customerUUID.toString())
-        .eq("details->>'backupUUID'", backupUUID.toString())
+        .eq("task_params->>'customerUUID'", customerUUID.toString())
+        .eq("task_params->>'backupUUID'", backupUUID.toString())
         .findList();
   }
 
@@ -409,8 +429,8 @@ public class TaskInfo extends Model {
         .where()
         .in("task_type", TaskType.DeleteBackup, TaskType.DeleteBackupYb)
         .in("task_state", INCOMPLETE_STATES)
-        .eq("details->>'customerUUID'", customerUUID.toString())
-        .eq("details->>'backupUUID'", backupUUID.toString())
+        .eq("task_params->>'customerUUID'", customerUUID.toString())
+        .eq("task_params->>'backupUUID'", backupUUID.toString())
         .findList();
   }
 }

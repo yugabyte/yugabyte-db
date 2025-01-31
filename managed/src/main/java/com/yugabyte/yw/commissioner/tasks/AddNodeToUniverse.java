@@ -29,10 +29,14 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -116,12 +120,24 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           EncryptionInTransitUtil.isClientRootCARequired(taskParams())
               ? taskParams().getClientRootCA()
               : null);
+
+      createCheckCertificateConfigTask(
+          Collections.singleton(cluster),
+          Collections.singleton(currentNodeClone),
+          taskParams().rootCA,
+          EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+              ? taskParams().getClientRootCA()
+              : null,
+          userIntent.enableClientToNodeEncrypt);
     }
   }
 
   private void freezeUniverseInTxn(Universe universe) {
     NodeDetails universeNode = universe.getNode(taskParams().nodeName);
     universeNode.nodeUuid = currentNode.nodeUuid;
+    if (addMaster) {
+      universeNode.masterState = MasterState.ToStart;
+    }
     // Confirm the node on hold.
     commitReservedNodes();
   }
@@ -148,6 +164,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info(
         "Started {} task for node {} in universe {}",
         getName(),
@@ -182,7 +201,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // ignore node status is true because generic callee checks for node state To Be Added.
       boolean isNextFallThrough =
           createCreateNodeTasks(
-              universe, nodeSet, true /* ignoreNodeStatus */, null /* param customizer */);
+              universe,
+              nodeSet,
+              true /* ignoreNodeStatus */,
+              setupServerParams -> {
+                setupServerParams.rebootNodeAllowed = true;
+              });
 
       Set<NodeDetails> mastersToAdd = null;
       Set<NodeDetails> tServersToAdd = null;
@@ -258,6 +282,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           createWaitForServersTasks(nodeSet, ServerType.YSQLSERVER)
               .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
         }
+        // Set this in memory too.
+        currentNode.isTserver = true;
       }
 
       if (universe.isYbcEnabled()) {
@@ -288,7 +314,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // been added to DB and this block might not have been run.
       if (addMaster || (currentNode.isMaster && !isFirstTry())) {
         // Update master addresses including xcluster with new master information.
-        createMasterInfoUpdateTask(universe, currentNode, null);
+        createMasterInfoUpdateTask(universe, currentNode, null /* stopped node */);
       }
 
       // Add node to load balancer.
@@ -322,5 +348,15 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       }
     }
     log.info("Finished {} task.", getName());
+  }
+
+  public void createCheckCertificateConfigTask(
+      Collection<Cluster> clusters,
+      Set<NodeDetails> nodes,
+      @Nullable UUID rootCA,
+      @Nullable UUID clientRootCA,
+      boolean enableClientToNodeEncrypt) {
+    createCheckCertificateConfigTask(
+        clusters, nodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
   }
 }

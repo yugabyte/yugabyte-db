@@ -55,6 +55,8 @@ import {
   FETCH_CUSTOMER_RUNTIME_CONFIGS_RESPONSE,
   FETCH_PROVIDER_RUNTIME_CONFIGS,
   FETCH_PROVIDER_RUNTIME_CONFIGS_RESPONSE,
+  GET_RUNTIME_CONFIG_KEY,
+  GET_RUNTIME_CONFIG_KEY_RESPONSE,
   SET_RUNTIME_CONFIG,
   SET_RUNTIME_CONFIG_RESPONSE,
   DELETE_RUNTIME_CONFIG,
@@ -502,6 +504,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'updateRuntimeConfig', {});
     case SET_RUNTIME_CONFIG_RESPONSE:
       return setPromiseResponse(state, 'updateRuntimeConfig', action);
+    case GET_RUNTIME_CONFIG_KEY:
+      return setLoadingState(state, 'getRuntimeConfig', {});
+    case GET_RUNTIME_CONFIG_KEY_RESPONSE:
+      return setPromiseResponse(state, 'getRuntimeConfig', action);
     case DELETE_RUNTIME_CONFIG:
       return setLoadingState(state, 'deleteRuntimeConfig', {});
     case DELETE_RUNTIME_CONFIG_RESPONSE:

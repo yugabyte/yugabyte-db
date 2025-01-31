@@ -6,12 +6,17 @@ CREATE ROLE regress_publication_user2;
 CREATE ROLE regress_publication_user_dummy LOGIN NOSUPERUSER;
 SET SESSION AUTHORIZATION 'regress_publication_user';
 
+-- suppress warning that depends on wal_level
+SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_default;
+RESET client_min_messages;
 
 COMMENT ON PUBLICATION testpub_default IS 'test publication';
 SELECT obj_description(p.oid, 'pg_publication') FROM pg_publication p;
 
+SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpib_ins_trunct WITH (publish = insert);
+RESET client_min_messages;
 
 ALTER PUBLICATION testpub_default SET (publish = update);
 
@@ -32,7 +37,9 @@ CREATE TABLE pub_test.testpub_nopk (foo int, bar int);
 CREATE VIEW testpub_view AS SELECT 1;
 CREATE TABLE testpub_parted (a int) PARTITION BY LIST (a);
 
+SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_foralltables FOR ALL TABLES WITH (publish = 'insert');
+RESET client_min_messages;
 -- YB Note: publishing subset of records is unsupported (#19250).
 CREATE PUBLICATION testpub_foralltables FOR ALL TABLES;
 ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update');
@@ -57,8 +64,10 @@ DROP PUBLICATION testpub_foralltables;
 CREATE TABLE testpub_tbl3 (a int);
 -- YB Note: Errors out since YSQL does not support `INHERITS` yet.
 CREATE TABLE testpub_tbl3a (b text) INHERITS (testpub_tbl3);
+SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub3 FOR TABLE testpub_tbl3;
 CREATE PUBLICATION testpub4 FOR TABLE ONLY testpub_tbl3;
+RESET client_min_messages;
 \dRp+ testpub3
 \dRp+ testpub4
 
@@ -73,11 +82,34 @@ DROP PUBLICATION testpub3, testpub4;
 DROP PUBLICATION testpub3;
 DROP PUBLICATION testpub4;
 
+-- Tests for partitioned tables
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION testpub_forparted;
+CREATE PUBLICATION testpub_forparted1;
+RESET client_min_messages;
+CREATE TABLE testpub_parted1 (LIKE testpub_parted);
+CREATE TABLE testpub_parted2 (LIKE testpub_parted);
+ALTER PUBLICATION testpub_forparted1 SET (publish='insert');
+ALTER TABLE testpub_parted ATTACH PARTITION testpub_parted1 FOR VALUES IN (1);
+ALTER TABLE testpub_parted ATTACH PARTITION testpub_parted2 FOR VALUES IN (2);
+-- works despite missing REPLICA IDENTITY, because updates are not replicated
+UPDATE testpub_parted1 SET a = 1;
+-- only parent is listed as being in publication, not the partition
+ALTER PUBLICATION testpub_forparted ADD TABLE testpub_parted;
+DROP TABLE testpub_parted1, testpub_parted2;
+DROP PUBLICATION testpub_forparted, testpub_forparted1;
+-- YB Note: Drop publications one by one to ensure cleanup.
+DROP PUBLICATION testpub_forparted;
+DROP PUBLICATION testpub_forparted1;
+
 -- fail - view
 CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_view;
+
+SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_tbl1, pub_test.testpub_nopk;
 -- YB Note: tables without pk are unsupported.
 CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_tbl1;
+RESET client_min_messages;
 -- fail - already added
 ALTER PUBLICATION testpub_fortbl ADD TABLE testpub_tbl1;
 -- fail - already added
@@ -87,8 +119,6 @@ CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_tbl1;
 
 -- fail - view
 ALTER PUBLICATION testpub_default ADD TABLE testpub_view;
--- fail - partitioned table
-ALTER PUBLICATION testpub_fortbl ADD TABLE testpub_parted;
 
 ALTER PUBLICATION testpub_default ADD TABLE testpub_tbl1;
 ALTER PUBLICATION testpub_default SET TABLE testpub_tbl1;
@@ -115,7 +145,9 @@ CREATE PUBLICATION testpub2;  -- fail
 SET ROLE regress_publication_user;
 GRANT CREATE ON DATABASE yugabyte TO regress_publication_user2;
 SET ROLE regress_publication_user2;
+SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub2;  -- ok
+RESET client_min_messages;
 
 ALTER PUBLICATION testpub2 ADD TABLE testpub_tbl1;  -- fail
 

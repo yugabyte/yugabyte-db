@@ -15,6 +15,7 @@
 
 #include <shared_mutex>
 
+#include "yb/master/catalog_entity_types.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
@@ -44,7 +45,7 @@ class TasksTracker;
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
 // protos and instances of these will be wrapped around CowObjects and locks for access and
 // modifications.
-template <class DataEntryPB, SysRowEntryType entry_type>
+template <class DataEntryPB>
 struct Persistent {
   // Type declaration to be used in templated read/write methods. We are using typename
   // Class::data_type in templated methods for figuring out the type we need.
@@ -52,7 +53,7 @@ struct Persistent {
 
   // Subclasses of this need to provide a valid value of the entry type through
   // the template class argument.
-  static SysRowEntryType type() { return entry_type; }
+  static SysRowEntryType type() { return GetCatalogEntityType<DataEntryPB>::value; }
 
   // The proto that is persisted in the sys_catalog.
   DataEntryPB pb;
@@ -138,7 +139,7 @@ class CatalogEntityWithTasks {
   void AbortTasks(const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore = {})
       EXCLUDES(mutex_);
   // Abort all inflight tasks and prevent new tasks from being added.
-  void AbortTasksAndClose() EXCLUDES(mutex_);
+  void AbortTasksAndClose(bool call_task_finisher) EXCLUDES(mutex_);
   // Wait for all inflight tasks to complete.
   void WaitTasksCompletion() EXCLUDES(mutex_);
 
@@ -146,10 +147,10 @@ class CatalogEntityWithTasks {
 
   template <typename IterableCatalogEntityWithTasks>
   static void CloseAbortAndWaitForAllTasks(
-      const IterableCatalogEntityWithTasks& entity_collection) {
+      const IterableCatalogEntityWithTasks& entity_collection, bool call_task_finisher) {
     for (const auto& entity : entity_collection) {
       VLOG(1) << entity->ToString() << ": Closing and aborting tasks";
-      entity->AbortTasksAndClose();
+      entity->AbortTasksAndClose(call_task_finisher);
     }
     for (const auto& entity : entity_collection) {
       VLOG(1) << entity->ToString() << ": Waiting for tasks for complete";
@@ -160,8 +161,8 @@ class CatalogEntityWithTasks {
 
  private:
   void AbortTasksAndCloseIfRequested(
-      bool close, const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore = {})
-      EXCLUDES(mutex_);
+      bool close, bool call_task_finisher,
+      const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore = {}) EXCLUDES(mutex_);
 
   scoped_refptr<TasksTracker> tasks_tracker_;
 

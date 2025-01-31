@@ -24,7 +24,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.extern.jackson.Jacksonized;
 import org.yb.CommonNet.CloudInfoPB;
-import org.yb.master.CatalogEntityInfo.PlacementBlockPB;
+import org.yb.CommonNet.PlacementBlockPB;
 
 public class TableSpaceStructures {
 

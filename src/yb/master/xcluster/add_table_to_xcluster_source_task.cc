@@ -65,8 +65,48 @@ Status AddTableToXClusterSourceTask::MarkTableAsCheckpointed() {
   RETURN_NOT_OK(outbound_replication_group_->MarkNewTablesAsCheckpointed(
       table_info_->namespace_id(), table_info_->id(), epoch_));
 
+  const auto stream_id = VERIFY_RESULT(
+      outbound_replication_group_->GetStreamId(table_info_->namespace_id(), table_info_->id()));
+  LOG_WITH_PREFIX(INFO)
+      << "Table " << table_info_->ToString()
+      << " successfully checkpointed for xCluster universe replication with Stream: " << stream_id;
+
   Complete();
   return Status::OK();
+}
+
+CreateXClusterStreamForBiDirectionalIndexTask::CreateXClusterStreamForBiDirectionalIndexTask(
+    std::function<Result<xrepl::StreamId>(
+        const TableId&, const LeaderEpoch& epoch, StdStatusCallback callback)>
+        checkpoint_table_func,
+    CatalogManager& catalog_manager, rpc::Messenger& messenger, TableInfoPtr table_info,
+    const LeaderEpoch& epoch)
+    : PostTabletCreateTaskBase(
+          catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, std::move(table_info),
+          epoch),
+      checkpoint_table_func_(std::move(checkpoint_table_func)) {}
+
+std::string CreateXClusterStreamForBiDirectionalIndexTask::description() const {
+  return Format("CreateXClusterStreamForBiDirectionalIndexTask [$0]", table_info_->id());
+}
+
+Status CreateXClusterStreamForBiDirectionalIndexTask::FirstStep() {
+  RETURN_NOT_OK(checkpoint_table_func_(
+      table_info_->id(), epoch_,
+      std::bind(
+          &CreateXClusterStreamForBiDirectionalIndexTask::CheckpointCompletionCallback, this, _1)));
+
+  return Status::OK();
+}
+
+void CreateXClusterStreamForBiDirectionalIndexTask::CheckpointCompletionCallback(
+    const Status& status) {
+  if (!status.ok()) {
+    AbortAndReturnPrevState(status);
+    return;
+  }
+
+  Complete();
 }
 
 }  // namespace yb::master

@@ -199,6 +199,7 @@ void ConsistentReadPoint::SetInTxnLimit(HybridTime value) {
 
 ReadHybridTime ConsistentReadPoint::GetReadTime() const {
   std::lock_guard lock(mutex_);
+  DCHECK_LE(read_time_.read, read_time_.global_limit);
   return read_time_;
 }
 
@@ -218,12 +219,12 @@ ConsistentReadPoint::Momento ConsistentReadPoint::GetMomento() const {
   return {read_time_, restart_read_ht_, local_limits_, restarts_};
 }
 
-void ConsistentReadPoint::SetMomento(ConsistentReadPoint::Momento&& momento) {
+void ConsistentReadPoint::SetMomento(const ConsistentReadPoint::Momento& momento) {
   std::lock_guard lock(mutex_);
-  read_time_ = std::move(momento.read_time_);
-  restart_read_ht_ = std::move(momento.restart_read_ht_);
-  local_limits_ = std::move(momento.local_limits_);
-  restarts_ = std::move(momento.restarts_);
+  read_time_ = momento.read_time_;
+  restart_read_ht_ = momento.restart_read_ht_;
+  local_limits_ = momento.local_limits_;
+  restarts_ = momento.restarts_;
 }
 
 } // namespace yb

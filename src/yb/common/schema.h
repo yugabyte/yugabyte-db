@@ -133,6 +133,10 @@ class ColumnSchema {
     return a.order_ == b.order_;
   }
 
+  static bool CompMarkedForDeletion(const ColumnSchema &a, const ColumnSchema &b) {
+    return a.marked_for_deletion_ == b.marked_for_deletion_;
+  }
+
   // Combined comparators.
   static bool CompareType(const ColumnSchema &a, const ColumnSchema &b) {
     return CompNullable(a, b) && CompKind(a, b) && CompTypeInfo(a, b);
@@ -140,6 +144,10 @@ class ColumnSchema {
 
   static bool CompareByDefault(const ColumnSchema &a, const ColumnSchema &b) {
     return CompareType(a, b) && CompName(a, b);
+  }
+
+  static bool CompareDdlAtomicity(const ColumnSchema &a, const ColumnSchema &b) {
+    return CompareByDefault(a, b) && CompMarkedForDeletion(a, b);
   }
 
   // name: column name
@@ -223,6 +231,8 @@ class ColumnSchema {
   }
 
   bool is_collection() const;
+
+  bool is_vector() const;
 
   int32_t order() const {
     return order_;
@@ -328,8 +338,8 @@ class ColumnSchema {
   bool is_static_;
   bool is_counter_;
   int32_t order_;
-  int32_t pg_type_oid_;
-  int32_t pg_typmod_;
+  int32_t pg_type_oid_ = 0;
+  int32_t pg_typmod_ = 0;
   bool marked_for_deletion_;
   QLValuePB missing_value_;
 };
@@ -507,8 +517,6 @@ class TableProperties {
   // This is optional since its a ysql only field
   std::optional<PgReplicaIdentity> ysql_replica_identity_;
 };
-
-using PgSchemaName = std::string;
 
 // Provides missing, i.e. default, value for specified column if present.
 class MissingValueProvider {
@@ -1249,12 +1257,3 @@ ColumnKind SortingTypeToColumnKind(SortingType sorting_type);
 
 } // namespace yb
 
-// Specialize std::hash for ColumnId
-namespace std {
-template<>
-struct hash<yb::ColumnId> {
-  int operator()(const yb::ColumnId& col_id) const {
-    return col_id;
-  }
-};
-} // namespace std

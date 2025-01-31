@@ -4,7 +4,6 @@ headerTitle: Launch and Manage
 linkTitle: Launch and Manage
 description:
 headcontent:
-image: /images/section_icons/index/quick_start.png
 type: indexpage
 ---
 
@@ -32,7 +31,7 @@ type: indexpage
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="../troubleshoot/">
+    <a class="section-link icon-offset" href="/preview/troubleshoot/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/troubleshoot.png" aria-hidden="true" />
         <div class="title">Troubleshoot</div>

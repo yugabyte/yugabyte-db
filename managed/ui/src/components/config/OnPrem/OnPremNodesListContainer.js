@@ -17,8 +17,8 @@ import {
   getNodesInstancesForProviderResponse,
   precheckInstance,
   precheckInstanceResponse,
-  recommissionInstance,
-  recommissionInstanceResponse,
+  changeNodeInstanceStatus,
+  changeNodeInstanceStatusResponse,
   deleteInstance,
   deleteInstanceResponse
 } from '../../../actions/cloud';
@@ -34,6 +34,7 @@ import {
 } from '../../../actions/universe';
 
 import { openDialog, closeDialog } from '../../../actions/modal';
+import { OnPremNodeState } from '../../../redesign/helpers/dtos';
 
 const mapStateToProps = (state) => {
   return {
@@ -133,22 +134,32 @@ const mapDispatchToProps = (dispatch, ownProps) => {
       });
     },
 
-    recommissionInstance: (providerUUID, instanceIP) => {
-      dispatch(recommissionInstance(providerUUID, instanceIP)).then((response) => {
-        if (response.payload.status === 200 || response.payload.status === 201) {
-          dispatch(recommissionInstanceResponse(response.payload));
-          browserHistory.push('/tasks');
-        } else {
-          const errorMessage =
-            response.payload?.response?.data?.error ??
-            'Something went wrong while recommissioning node instances!';
-          toast.error(errorMessage);
+    changeInstanceStatus: (providerUUID, instanceIP, nodeInstanceStatus) => {
+      dispatch(changeNodeInstanceStatus(providerUUID, instanceIP, nodeInstanceStatus)).then(
+        (response) => {
+          if (response.payload.status === 200 || response.payload.status === 201) {
+            dispatch(changeNodeInstanceStatusResponse(response.payload));
+            browserHistory.push('/tasks');
+          } else {
+            const errorMessage =
+              response.payload?.response?.data?.error ??
+              `Something went wrong while ${
+                nodeInstanceStatus.state === OnPremNodeState.FREE
+                  ? 'recommissioning'
+                  : 'decommissioning'
+              } node instances!`;
+            toast.error(errorMessage);
+          }
         }
-      });
+      );
     },
 
     showConfirmRecommissionNodeModal: () => {
       dispatch(openDialog('confirmRecommissionNodeInstance'));
+    },
+
+    showConfirmDecommissionNodeModal: () => {
+      dispatch(openDialog('confirmDecommissionNodeInstance'));
     },
 
     showConfirmDeleteModal: () => {

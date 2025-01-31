@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.BackupUniverse;
 import com.yugabyte.yw.commissioner.tasks.CreateBackup;
+import com.yugabyte.yw.commissioner.tasks.CreateYbaBackup;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
@@ -105,7 +106,7 @@ public class Scheduler {
             schedule -> {
               if (schedule.getNextScheduleTaskTime() == null
                   || Util.isTimeExpired(schedule.getNextScheduleTaskTime())) {
-                schedule.updateNextScheduleTaskTime(Schedule.nextExpectedTaskTime(null, schedule));
+                schedule.updateNextScheduleTaskTime(schedule.nextExpectedTaskTime(null));
                 if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
                   schedule.updateNextIncrementScheduleTaskTime(
                       ScheduleUtil.nextExpectedIncrementTaskTime(schedule));
@@ -156,9 +157,14 @@ public class Scheduler {
               "Scheduled task does not have a recurrence specified {}", schedule.getScheduleUUID());
           continue;
         }
+        // Lock schedule outside try-catch block
+        schedule =
+            Schedule.modifyScheduleRunningAndSave(
+                schedule.getCustomerUUID(),
+                schedule.getScheduleUUID(),
+                true /* isRunning */,
+                true /* onlyLockIfActive */);
         try {
-          schedule.setRunningState(true);
-          schedule.save();
           TaskType taskType = schedule.getTaskType();
           ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
           Date lastScheduledTime = null;
@@ -189,8 +195,7 @@ public class Scheduler {
 
           // Update next scheduled task time if it is expired or null.
           if (expectedScheduleTaskTime == null || isExpectedScheduleTaskTimeExpired) {
-            Date nextScheduleTaskTime =
-                Schedule.nextExpectedTaskTime(expectedScheduleTaskTime, schedule);
+            Date nextScheduleTaskTime = schedule.nextExpectedTaskTime(expectedScheduleTaskTime);
             expectedScheduleTaskTime =
                 expectedScheduleTaskTime == null ? nextScheduleTaskTime : expectedScheduleTaskTime;
             schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
@@ -231,24 +236,23 @@ public class Scheduler {
           boolean shouldRunTask = isExpectedScheduleTaskTimeExpired || backlogStatus;
           UUID baseBackupUUID = null;
           if (isIncrementalBackupSchedule) {
+            // fetch last successful full backup for the schedule on which incremental
+            // backup can be taken.
             baseBackupUUID = fetchBaseBackupUUIDfromLatestSuccessfulBackup(schedule);
-            if (shouldRunTask || baseBackupUUID == null) {
-              // Update incremental backup task cycle while for full backups.
-              long incrementalBackupFrequency =
-                  ScheduleUtil.getIncrementalBackupFrequency(schedule);
-              if (incrementalBackupFrequency != 0L) {
-                schedule.updateNextIncrementScheduleTaskTime(
-                    new Date(new Date().getTime() + incrementalBackupFrequency));
-              }
+            if (shouldRunTask) {
               // We won't do incremental backups if a full backup is due since
               // full backups take priority but make sure to take an incremental backup
               // either when it's scheduled or to catch up on any backlog.
               baseBackupUUID = null;
               log.debug("Scheduling a full backup for schedule {}", schedule.getScheduleUUID());
             } else if (isExpectedIncrementScheduleTaskTime || incrementBacklogStatus) {
-              shouldRunTask = true;
-              log.debug(
-                  "Scheduling a incremental backup for schedule {}", schedule.getScheduleUUID());
+              // Schedule next incremental backup only if there is a full backup present else
+              // wait for next scheduled full backup.
+              if (baseBackupUUID != null) {
+                shouldRunTask = true;
+                log.debug(
+                    "Scheduling a incremental backup for schedule {}", schedule.getScheduleUUID());
+              }
             }
           }
 
@@ -268,6 +272,8 @@ public class Scheduler {
                 break;
               case CreateAndRotateAccessKey:
                 this.runAccessKeyRotation(schedule, alreadyRunning);
+              case CreateYbaBackup:
+                this.runCreateYbaBackupTask(schedule, alreadyRunning);
               default:
                 log.error(
                     "Cannot schedule task {} for scheduler {}",
@@ -291,8 +297,8 @@ public class Scheduler {
         } catch (Exception e) {
           log.error("Error running schedule {} ", schedule.getScheduleUUID(), e);
         } finally {
-          schedule.setRunningState(false);
-          schedule.save();
+          Schedule.modifyScheduleRunningAndSave(
+              schedule.getCustomerUUID(), schedule.getScheduleUUID(), false /* isRunning */);
         }
       }
     } catch (Exception e) {
@@ -305,6 +311,13 @@ public class Scheduler {
         ScheduleUtil.fetchLatestSuccessfulBackupForSchedule(
             schedule.getCustomerUUID(), schedule.getScheduleUUID());
     return backup == null ? null : backup.getBaseBackupUUID();
+  }
+
+  private boolean verifyScheduledBackupInProgress(Schedule schedule) {
+    Backup backup =
+        ScheduleUtil.fetchInProgressBackupForSchedule(
+            schedule.getCustomerUUID(), schedule.getScheduleUUID());
+    return backup == null ? false : true;
   }
 
   private void runBackupTask(Schedule schedule, boolean alreadyRunning) {
@@ -320,6 +333,11 @@ public class Scheduler {
   private void runCreateBackupTask(Schedule schedule, boolean alreadyRunning, UUID baseBackupUUID) {
     CreateBackup createBackup = AbstractTaskBase.createTask(CreateBackup.class);
     createBackup.runScheduledBackup(schedule, commissioner, alreadyRunning, baseBackupUUID);
+  }
+
+  private void runCreateYbaBackupTask(Schedule schedule, boolean alreadyRunning) {
+    CreateYbaBackup createYbaBackup = AbstractTaskBase.createTask(CreateYbaBackup.class);
+    createYbaBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
   }
 
   private void runExternalScriptTask(Schedule schedule, boolean alreadyRunning) {

@@ -54,6 +54,10 @@ void PgWire::WriteInt64(int64_t value, WriteBuffer *buffer) {
   WriteInt(NetworkByteOrder::Store64, static_cast<uint64>(value), buffer);
 }
 
+Status PgWire::WriteInt64(int64_t value, WriteBuffer *buffer, const WriteBufferPos& pos) {
+  return WriteInt(NetworkByteOrder::Store64, static_cast<uint64>(value), buffer, pos);
+}
+
 void PgWire::WriteFloat(float value, WriteBuffer *buffer) {
   const uint32 int_value = *reinterpret_cast<const uint32*>(&value);
   WriteInt(NetworkByteOrder::Store32, int_value, buffer);

@@ -11,8 +11,11 @@
 // under the License.
 
 #include "yb/cdc/xrepl_stream_metadata.h"
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/client/session.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/gutil/map-util.h"
 #include "yb/util/shared_lock.h"
 
@@ -33,6 +36,7 @@ namespace yb {
 namespace cdc {
 
 namespace {
+
 // This function is to handle the upgrade scenario where the DB is upgraded from a version
 // without CDCSDK changes to the one with it. So in case some required options are missing,
 // the default values will be added for the same.
@@ -42,7 +46,8 @@ void AddDefaultOptionsIfMissing(std::unordered_map<std::string, std::string>* op
   InsertIfNotPresent(options, kSourceType, CDCRequestSource_Name(CDCRequestSource::XCLUSTER));
   InsertIfNotPresent(options, kCheckpointType, CDCCheckpointType_Name(CDCCheckpointType::IMPLICIT));
 }
-}  // namespace
+
+}  // anonymous namespace
 
 std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletMetadata(
     const TabletId& tablet_id) {
@@ -99,10 +104,13 @@ Status StreamMetadata::InitOrReloadIfNeeded(
 
 Status StreamMetadata::GetStreamInfoFromMaster(
     const xrepl::StreamId& stream_id, client::YBClient* client) {
+  std::lock_guard l_table(mutex_);
+
   bool is_refresh = loaded_.load(std::memory_order_acquire);
   // If this is the first time we are loading the metadata then we populate all the fields.
   // If this is a refresh, then only table_ids_, state_, tablet_metadata_map_ and transactional_ are
   // repopulated. The remaining fields are validated for consistency.
+  ASSIGN_ON_LOAD_SCHECK_EQ_ON_REFRESH(stream_id);
 
   {
     std::lock_guard l_tablet_meta(tablet_metadata_map_mutex_);
@@ -115,14 +123,17 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   StreamModeTransactional transactional(false);
   std::optional<uint64> consistent_snapshot_time;
   std::optional<CDCSDKSnapshotOption> consistent_snapshot_option;
+  std::optional<ReplicationSlotLsnType> replication_slot_lsn_type;
   std::optional<uint64> stream_creation_time;
   std::unordered_map<std::string, PgReplicaIdentity> replica_identity_map;
   std::optional<std::string> replication_slot_name;
+  std::vector<TableId> unqualified_table_ids;
+  std::optional<uint32_t> db_oid_to_get_sequences_for;
 
   RETURN_NOT_OK(client->GetCDCStream(
       stream_id, &namespace_id, &object_ids, &options, &transactional, &consistent_snapshot_time,
       &consistent_snapshot_option, &stream_creation_time, &replica_identity_map,
-      &replication_slot_name));
+      &replication_slot_name, &unqualified_table_ids, &replication_slot_lsn_type));
 
   AddDefaultOptionsIfMissing(&options);
 
@@ -166,6 +177,7 @@ Status StreamMetadata::GetStreamInfoFromMaster(
 
       std::lock_guard l_table(table_ids_mutex_);
       table_ids_.swap(object_ids);
+      unqualified_table_ids_.swap(unqualified_table_ids);
     } else if (key == kStreamState) {
       master::SysCDCStreamEntryPB_State state;
       SCHECK(
@@ -176,6 +188,8 @@ Status StreamMetadata::GetStreamInfoFromMaster(
       LOG(WARNING) << "Unsupported CDC Stream option: " << key;
     }
   }
+  db_oid_to_get_sequences_for = VERIFY_RESULT(GetDbOidToGetSequencesForUnlocked());
+  ASSIGN_ON_LOAD_SCHECK_EQ_ON_REFRESH(db_oid_to_get_sequences_for);
 
   {
     std::lock_guard l_table(table_ids_mutex_);
@@ -186,12 +200,29 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   stream_creation_time_.store(stream_creation_time, std::memory_order_release);
   consistent_snapshot_option_ = consistent_snapshot_option;
   replication_slot_name_ = replication_slot_name;
+  replication_slot_lsn_type_ = replication_slot_lsn_type;
 
   if (!is_refresh) {
     loaded_.store(true, std::memory_order_release);
   }
 
   return Status::OK();
+}
+
+Result<std::optional<uint32_t>> StreamMetadata::GetDbOidToGetSequencesForUnlocked() const {
+  if (source_type_ != XCLUSTER) {
+    return std::nullopt;
+  }
+  SharedLock l(table_ids_mutex_);
+  SCHECK_FORMAT(
+      table_ids_.size() == 1, InvalidArgument,
+      "xCluster StreamMetadata for stream $0 does not have exactly one table ID", stream_id_);
+  const auto& table_id = table_ids_.back();
+  if (!xcluster::IsSequencesDataAlias(table_id)) {
+    return std::nullopt;
+  }
+  auto namespace_id = VERIFY_RESULT(xcluster::GetReplicationNamespaceBelongsTo(table_id));
+  return GetPgsqlDatabaseOid(namespace_id);
 }
 
 void StreamMetadata::StreamTabletMetadata::UpdateStats(
@@ -203,6 +234,13 @@ void StreamMetadata::StreamTabletMetadata::UpdateStats(
 
 void StreamMetadata::StreamTabletMetadata::PopulateStats(xrepl::StreamTabletStats* stats) const {
   stats_history_.PopulateStats(stats);
+}
+
+std::string StreamMetadata::ToString() const {
+  std::lock_guard lock(mutex_);
+  return YB_CLASS_TO_STRING(
+      stream_id, namespace_id, (record_type, CDCRecordType_Name(record_type_)),
+      (source_type, CDCRequestSource_Name(source_type_)));
 }
 
 }  // namespace cdc

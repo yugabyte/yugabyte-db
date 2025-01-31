@@ -14,7 +14,7 @@ type: docs
 
 YugabyteDB Anywhere uses a role-based access control (RBAC) model to manage access to your YugabyteDB Anywhere instance (whether via the UI or the REST API). Using roles, you can enforce the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege) (PoLP) by ensuring that users have the precise permissions needed to fulfill their roles while mitigating the risk of unauthorized access or accidental breaches. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
 
-Starting with v2.20.1, RBAC is available with fine-grained control over access to universes. {{<badge/ea>}}
+Starting with v2.20.1, RBAC is available with fine-grained control over access to universes. {{<tags/feature/ea>}}
 
 {{< note title="Fine-grained RBAC is Early Access">}}
 
@@ -53,7 +53,7 @@ The following built-in roles are available:
   - Manage all resources, including universes, nodes, backup, restore, and cloud providers.
   - Manage the user access control by creating and managing users.
 
-  For more information, see [Create admin user](../../configure-yugabyte-platform/create-admin-user/).
+  For more information, see [Create admin user](../../install-yugabyte-platform/create-admin-user/).
 
 - **Admin** has privileges that are similar to the Super Admin, except that Admin cannot manage global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
 
@@ -80,13 +80,13 @@ How you add and modify users varies depending on whether you have enabled fine-g
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#classic" class="nav-link active" id="classic-tab" data-toggle="tab"
+    <a href="#classic" class="nav-link active" id="classic-tab" data-bs-toggle="tab"
       role="tab" aria-controls="classic" aria-selected="true">
       Classic
     </a>
   </li>
   <li>
-    <a href="#finegrain" class="nav-link" id="finegrain-tab" data-toggle="tab"
+    <a href="#finegrain" class="nav-link" id="finegrain-tab" data-bs-toggle="tab"
       role="tab" aria-controls="finegrain" aria-selected="false">
       Fine grained (v2.20.1.0)
     </a>

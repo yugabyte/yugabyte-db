@@ -18,10 +18,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"sort"
 
 	"github.com/spf13/viper"
 	"github.com/vmware-labs/yaml-jsonpath/pkg/yamlpath"
@@ -29,6 +29,7 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 	// "github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 )
 
@@ -54,6 +55,8 @@ const VersionMetadataJSON = "version_metadata.json"
 const javaBinaryGlob = "yba_installer-*linux*/OpenJDK17U-jre_x64_linux_*.tar.gz"
 
 const tarTemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
+
+const BackupRegex = `^backup_\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.tgz$`
 
 // IndexOf returns the index in arr where val is present, -1 otherwise.
 func IndexOf(arr []string, val string) int {
@@ -125,6 +128,22 @@ func RemoveQuotes(input string) string {
 	return strings.Trim(input, "\"")
 }
 
+func SystemdLogMethod() string {
+	version, err := systemd.Version()
+	if err != nil {
+		log.Debug("Error determining systemd version: " + err.Error())
+		return ""
+	}
+	log.Debug("Detected OS with systemd version " + strconv.Itoa(version))
+	if version >= 240 {
+		return "append"
+	}
+	if version >= 236 {
+		return "file"
+	}
+	return ""
+}
+
 // Create or truncate a file at a relative path for the non-root case. Have to make the directory
 // before inserting the file in that directory.
 func Create(p string) (*os.File, error) {
@@ -156,6 +175,15 @@ func CreateSymlink(pkgDir string, linkDir string, binary string) error {
 
 // Symlink implements a more generic symlink utility.
 func Symlink(src string, dest string) error {
+	if stat, err := os.Lstat(dest); err == nil {
+		if stat.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("destination symlink '%s' already exists and is not a symlink", dest)
+		}
+		log.Debug("Deleting existing symlink at " + dest)
+		if err := os.Remove(dest); err != nil {
+			return fmt.Errorf("failed to delete symlink '%s': %w", dest, err)
+		}
+	}
 	out := shell.Run("ln", "-sf", src, dest)
 	out.SucceededOrLog()
 	return out.Error
@@ -263,6 +291,27 @@ func resolveSymlinkFallback(source, target string) error {
 		log.Warn("failed to remove backup source directory " + srcTmpName + ": " + err.Error())
 	}
 	return nil
+}
+
+func IsSubdirectory(base, target string) (bool, error) {
+	// Get absolute paths
+	baseAbs, err := filepath.Abs(base)
+	if err != nil {
+		return false, fmt.Errorf("failed to get absolute path of base: %w", err)
+	}
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return false, fmt.Errorf("failed to get absolute path of target: %w", err)
+	}
+
+	// Check if the base directory is a prefix of the target directory
+	rel, err := filepath.Rel(baseAbs, targetAbs)
+	if err != nil {
+		return false, fmt.Errorf("failed to calculate relative path: %w", err)
+	}
+
+	// If the relative path doesn't start with "..", it means targetAbs is within baseAbs
+	return !strings.HasPrefix(rel, ".."), nil
 }
 
 // Copy will copy the source to the destination
@@ -701,6 +750,16 @@ func SetYamlValue(filePath string, yamlPath string, value interface{}) error {
 		return fmt.Errorf("unable to parse config file %s: %s", filePath, err.Error())
 	}
 
+	// handle case where we read empty file, initialize to blank document
+	if root.Kind == 0 {
+		root = yaml.Node{
+			Kind: yaml.DocumentNode,
+			Content: []*yaml.Node{&yaml.Node{
+				Kind: yaml.MappingNode,
+			}},
+		}
+	}
+
 	before, after, _ := strings.Cut(yamlPath, ".")
 	err = setYamlValue(&root, before, after, value)
 	if err != nil {
@@ -813,7 +872,7 @@ func GetPostgresConnection(dbname string) (*sql.DB, string, error) {
 	return db, nonPwdConnStr, nil
 }
 
-// RunFromInstalled will return if yba-ctl is an "instanlled" yba-ctl or one locally executed
+// RunFromInstalled will return if yba-ctl is an "installed" yba-ctl or one locally executed
 func RunFromInstalled() bool {
 	path, err := os.Executable()
 	if err != nil {
@@ -821,7 +880,7 @@ func RunFromInstalled() bool {
 	}
 
 	matcher, err := regexp.Compile("(?:/opt/yba-ctl/yba-ctl)|(?:/usr/bin/yba-ctl)|" +
-		"(?:.*/yugabyte/software/.*/yba_installer/yba-ctl)")
+		"(?:.*/yugabyte/software/.*/yba_installer/yba-ctl)|(?:.*/yba-ctl/yba-ctl)")
 
 	if err != nil {
 		log.Fatal("could not compile regex: " + err.Error())
@@ -896,12 +955,7 @@ func AbsoluteBundlePath(fp string) string {
 	return filepath.Join(rootDir, fp)
 }
 
-func FindRecentBackup(dir string) string {
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		log.Fatal(fmt.Sprintf("error reading directory %s: %s", dir, err.Error()))
-	}
-	// Looks for most recent backup first.
+func sortFilesDescending(files []fs.DirEntry) {
 	sort.Slice(files, func(i, j int) bool {
 		iinfo, e1 := files[i].Info()
 		jinfo, e2 := files[j].Info()
@@ -910,9 +964,18 @@ func FindRecentBackup(dir string) string {
 		}
 		return iinfo.ModTime().After(jinfo.ModTime())
 	})
+}
+
+func FindRecentBackup(dir string) string {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		log.Fatal(fmt.Sprintf("error reading directory %s: %s", dir, err.Error()))
+	}
+
+	sortFilesDescending(files)
 	// Find the old backup.
 	for _, file := range files {
-		match, _ := regexp.MatchString(`^backup_\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.tgz$`, file.Name())
+		match, _ := regexp.MatchString(BackupRegex, file.Name())
 		if match {
 			input := fmt.Sprintf("%s/%s", dir, file.Name())
 			log.Info(fmt.Sprintf("Found backup file %s", input))
@@ -921,4 +984,65 @@ func FindRecentBackup(dir string) string {
 	}
 	log.Fatal("Could not find backup file in " + dir)
 	return ""
+}
+
+// KeepMostRecentFiles looks inside of a folderPath and finds all files matching regexPattern
+// sorts the files by modification time and only keeps the toKeep most recent ones
+func KeepMostRecentFiles(folderPath string, regexPattern string, toKeep int) error {
+	files, err := os.ReadDir(folderPath)
+	if err != nil {
+		return fmt.Errorf("failed to read directory: %v", err)
+	}
+
+	var matchingFiles []os.DirEntry
+	re := regexp.MustCompile(regexPattern)
+
+	for _, file := range files {
+		if !file.Type().IsDir() && re.MatchString(file.Name()) {
+			matchingFiles = append(matchingFiles, file)
+		}
+	}
+
+	if len(matchingFiles) <= toKeep {
+		// No need to delete any files
+		return nil
+	}
+
+	sortFilesDescending(matchingFiles)
+
+	// Delete all but the two most recent files
+	for _, file := range matchingFiles[toKeep:] {
+		filePath := filepath.Join(folderPath, file.Name())
+		if err := os.Remove(filePath); err != nil {
+			return fmt.Errorf("failed to delete file: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func SetAllPermissions() error {
+	if err := SetSoftwarePermissions(); err != nil {
+		return err
+	}
+	if err := SetDataPermissions(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetSoftwarePermissions() error {
+	userName := viper.GetString("service_username")
+	if err := Chown(GetSoftwareDir(), userName, userName, true); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetDataPermissions() error {
+	userName := viper.GetString("service_username")
+	if err := Chown(GetDataRoot(), userName, userName, true); err != nil {
+		return err
+	}
+	return nil
 }

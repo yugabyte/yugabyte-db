@@ -11,7 +11,9 @@ import {
   updateBackupState,
   updateBackupStateResponse,
   fetchReleasesByProvider,
-  fetchReleasesResponse
+  fetchReleasesResponse,
+  fetchUniverseLbState,
+  fetchUniverseLbStateResponse
 } from '../../../actions/universe';
 import {
   abortTask,
@@ -50,6 +52,12 @@ const mapDispatchToProps = (dispatch) => {
     getUniverseInfo: (uuid) => {
       return dispatch(fetchUniverseInfo(uuid)).then((response) => {
         return dispatch(fetchUniverseInfoResponse(response.payload));
+      });
+    },
+
+    getUniverseLbState: (uuid) => {
+      return dispatch(fetchUniverseLbState(uuid)).then((response) => {
+        return dispatch(fetchUniverseLbStateResponse(response.payload));
       });
     },
 
@@ -92,6 +100,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     showDeleteUniverseModal: () => {
       dispatch(openDialog('deleteUniverseModal'));
+    },
+    showForceDeleteUniverseModal: () => {
+      dispatch(openDialog('forceDeleteUniverseModal'));
     },
     showToggleUniverseStateModal: () => {
       dispatch(openDialog('toggleUniverseStateForm'));
@@ -138,7 +149,15 @@ const mapDispatchToProps = (dispatch) => {
     showEnableYCQLModal: () => {
       dispatch(openDialog('enableYCQLModal'));
     },
-
+    showPGCompatibilityModal: () => {
+      dispatch(openDialog('enablePGCompatibility'));
+    },
+    showConnectionPoolModal: () => {
+      dispatch(openDialog('enableConnectionPooling'));
+    },
+    showInstallNodeAgentModal: () => {
+      dispatch(openDialog('installNodeAgentModal'));
+    },
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {
         if (response.error) {
@@ -216,10 +235,6 @@ function mapStateToProps(state) {
         );
 
         const currentVersion = primaryCluster?.userIntent?.ybSoftwareVersion ?? null;
-        const isReleasesEnabled =
-          state?.customer?.runtimeConfigs?.data?.configEntries?.find(
-            (config) => config.key === RuntimeConfigKey.RELEASES_REDESIGN_UI_FEATURE_FLAG
-          )?.value === 'true';
         // Display the number of upgrades available in the respective track
         // regardless of skipVersionCheck runtime flag
         // If current version belongs to the stable track, see available upgrades only in the stable track
@@ -227,12 +242,10 @@ function mapStateToProps(state) {
         const isCurrentVersionStable = isVersionStable(currentVersion);
         if (currentVersion) {
           let supportedSoftwareVersions;
-          const softwareVersions = isReleasesEnabled
-            ? state.customer?.dbVersionsWithMetadata
-            : state.universe.supportedReleases?.data;
+          const softwareVersions = state.customer?.dbVersionsWithMetadata;
           if (isCurrentVersionStable) {
             supportedSoftwareVersions =
-              softwareVersions
+              Object.keys(softwareVersions)
                 ?.filter((version) => isVersionStable(version))
                 ?.toSorted((versionA, versionB) =>
                   compareYBSoftwareVersions({
@@ -246,7 +259,7 @@ function mapStateToProps(state) {
                 ) ?? [];
           } else {
             supportedSoftwareVersions =
-              softwareVersions
+              Object.keys(softwareVersions)
                 ?.filter((version) => !isVersionStable(version))
                 ?.toSorted((versionA, versionB) =>
                   compareYBSoftwareVersions({

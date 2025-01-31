@@ -148,6 +148,12 @@ message PgsqlPartitionBound {
   optional bool is_inclusive = 2;
 }
 
+// YB_TODO(upgrade): Handle in pg15 upgrade path.
+message PgsqlRandState {
+  required uint64 s0 = 1;
+  required uint64 s1 = 2;
+}
+
 // Random sampling state
 message PgsqlSamplingStatePB {
   // target number of rows to collect
@@ -156,12 +162,18 @@ message PgsqlSamplingStatePB {
   optional int32 numrows = 2;
   // number of rows considered for sample across all blocks
   optional double samplerows = 3;
+  // number of total rows estimated
+  optional double estimated_total_rows = 8;
   // current number of rows to skip
   optional double rowstoskip = 4;
   // reservoir state W
   optional double rstate_w = 5;
-  // 48 bits of sampler random state
-  optional uint64 rand_state = 6;
+  // 48 bits of sampler random state (deprecated).
+  reserved 6;
+  // 128 bits of sampler random state.
+  optional PgsqlRandState rand_state = 7;
+  optional YsqlSamplingAlgorithm sampling_algorithm = 9;
+  optional DocDbBlocksSamplingMethod docdb_blocks_sampling_method = 10;
 }
 
 message PgsqlFetchSequenceParamsPB {
@@ -287,6 +299,11 @@ message PgsqlWriteRequestPB {
   optional bytes partition_key = 22;
 
   optional PgsqlFetchSequenceParamsPB fetch_sequence_params = 25;
+
+  // During ysql major catalog upgrades, we block pg from updating the catalog
+  // data. Bypass this check when we know its safe.
+  // Valid cases are InitDB, pg_upgrade, and temp tables.
+  optional bool force_catalog_modifications = 27;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -334,6 +351,12 @@ message PgsqlPagingStatePB {
 
   // Used read time.
   optional ReadHybridTimePB read_time = 6;
+
+  // Paging state fields for geometric indexes.
+  optional double distance = 7;
+  // Value of the next geometric index row that can be used as a key into the
+  // main RocksDB store.
+  optional bytes main_key = 8;
 }
 
 // Given: master --chunk--> tserver --batch--> postgres --page--> tserver
@@ -360,7 +383,7 @@ message PgsqlBackfillSpecPB {
   optional bytes next_row_key = 3;
 }
 
-// Make sure this is in sync with YBCPgMetricsCaptureType in ybc_pg_typedefs.h.
+// Make sure this is in sync with YbcPgMetricsCaptureType in ybc_pg_typedefs.h.
 enum PgsqlMetricsCaptureType {
   PGSQL_METRICS_CAPTURE_NONE = 0;
   PGSQL_METRICS_CAPTURE_ALL = 1;
@@ -581,6 +604,8 @@ message PgsqlRequestMetricsPB {
 
 // Response from tablet server for both read and write.
 message PgsqlResponsePB {
+  reserved 18;
+
   // Response status
   enum RequestStatus {
     PGSQL_STATUS_OK = 0;
@@ -615,6 +640,18 @@ message PgsqlResponsePB {
   // to place it here, separated from paging status for singular request.
   optional int64 batch_arg_count = 10 [ default = 1 ];
   repeated int64 batch_orders = 12;
+
+  // For use with geometric indexes. The nth value here is the distance of the
+  // nth returned row from the query point/vector.
+  // The distance is encoded into binary representation and converted to int64.
+  // So if we have original_distance1 < original_distance2, then
+  // encoded_distance1 < encoded_distance2.
+  // We are widely use the similar approach for table primary key when it is converted to
+  // binary representation. Here we do the same with addendum that distance could be always encoded
+  // to 8 bytes or less.
+  repeated uint64 vector_index_distances = 19;
+  // The offset of end of encoded row for particular vector.
+  repeated uint64 vector_index_ends = 20;
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;
@@ -658,4 +695,33 @@ message PgsqlResponsePB {
 
   // Metrics changes as a result of processing the request.
   optional PgsqlRequestMetricsPB metrics = 17;
+}
+
+message PgsqlAdvisoryLockPB {
+  repeated QLExpressionPB lock_partition_column_values = 1;
+  repeated QLExpressionPB lock_range_column_values = 2;
+}
+
+message PgsqlLockRequestPB {
+  enum PgsqlAdvisoryLockMode {
+    PG_LOCK_SHARE = 1;
+    PG_LOCK_EXCLUSIVE = 2;
+  }
+  // Client info
+  optional QLClient client = 1; // required
+
+  optional PgsqlAdvisoryLockPB lock_id = 2; // All locks if not specified
+
+  optional PgsqlAdvisoryLockMode lock_mode = 3;
+  optional bool wait = 4;
+  optional bool is_lock = 5; // Lock or Unlock
+
+  optional bytes partition_key = 6;
+  optional uint32 hash_code = 7;
+}
+
+message PgTxnSnapshotPB {
+  optional uint32 db_oid = 1;
+  optional uint32 isolation_level = 2;
+  optional bool read_only = 3;
 }

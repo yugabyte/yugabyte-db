@@ -39,6 +39,9 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/tablet_peer_lookup.h"
+#include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 
@@ -64,7 +67,7 @@ YB_STRONGLY_TYPED_BOOL(HideOnly);
 YB_STRONGLY_TYPED_BOOL(KeepData);
 YB_STRONGLY_TYPED_BOOL(PrimaryTablesOnly);
 
-class CatalogManagerIf {
+class CatalogManagerIf : public tserver::TabletPeerLookupIf {
  public:
   virtual void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) = 0;
 
@@ -119,8 +122,6 @@ class CatalogManagerIf {
     return GetReplicationFactor();
   }
 
-  virtual const NodeInstancePB& NodeInstance() const = 0;
-
   virtual Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
   virtual Status GetYsqlAllDBCatalogVersions(
@@ -139,13 +140,9 @@ class CatalogManagerIf {
 
   virtual void AssertLeaderLockAcquiredForReading() const = 0;
 
-  virtual bool IsUserTable(const TableInfo& table) const = 0;
-
   virtual NamespaceName GetNamespaceName(const NamespaceId& id) const = 0;
 
-  virtual bool IsUserIndex(const TableInfo& table) const = 0;
-
-  virtual TableInfoPtr GetTableInfo(const TableId& table_id) = 0;
+  virtual TableInfoPtr GetTableInfo(const TableId& table_id) const = 0;
 
   virtual Result<ReplicationInfoPB> GetTableReplicationInfo(
       const ReplicationInfoPB& table_replication_info,
@@ -156,8 +153,6 @@ class CatalogManagerIf {
   virtual Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const = 0;
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentJobs() = 0;
-
-  virtual bool IsSystemTable(const TableInfo& table) const = 0;
 
   virtual Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(const NamespaceId& id) const = 0;
 
@@ -179,8 +174,6 @@ class CatalogManagerIf {
   virtual Status IsLoadBalanced(
       const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp) = 0;
 
-  virtual bool IsUserCreatedTable(const TableInfo& table) const = 0;
-
   virtual Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) = 0;
 
   virtual Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const = 0;
@@ -190,12 +183,12 @@ class CatalogManagerIf {
   virtual Status GetTabletLocations(
       const TabletId& tablet_id,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
+      IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
   virtual Status GetTabletLocations(
       const TabletInfoPtr& tablet_info,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
+      IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
   virtual TSDescriptorVector GetAllLiveNotBlacklistedTServers() const = 0;
 
@@ -219,13 +212,6 @@ class CatalogManagerIf {
   GenerateSnapshotInfoFromScheduleForClone(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
-
-  virtual void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
-
-  virtual void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
-
-  virtual void HandleDeleteTabletSnapshotResponse(
-      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) = 0;
 
   virtual Status GetTableLocations(const GetTableLocationsRequestPB* req,
                                            GetTableLocationsResponsePB* resp) = 0;
@@ -268,7 +254,7 @@ class CatalogManagerIf {
     const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;
 
   virtual Result<scoped_refptr<TableInfo>> FindTable(
-      const TableIdentifierPB& table_identifier) const = 0;
+      const TableIdentifierPB& table_identifier, bool include_deleted = true) const = 0;
 
   virtual Status IsInitDbDone(
       const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp) = 0;
@@ -300,10 +286,6 @@ class CatalogManagerIf {
 
   virtual ClusterLoadBalancer* load_balancer() = 0;
 
-  virtual TabletSplitManager* tablet_split_manager() = 0;
-
-  virtual CloneStateManager* clone_state_manager() = 0;
-
   virtual XClusterManagerIf* GetXClusterManager() = 0;
 
   virtual XClusterManager* GetXClusterManagerImpl() = 0;
@@ -313,8 +295,6 @@ class CatalogManagerIf {
   virtual intptr_t tablets_version() const = 0;
 
   virtual intptr_t tablet_locations_version() const = 0;
-
-  virtual MasterSnapshotCoordinator& snapshot_coordinator() = 0;
 
   virtual Status UpdateLastFullCompactionRequestTime(
       const TableId& table_id, const LeaderEpoch& epoch) = 0;
@@ -344,9 +324,6 @@ class CatalogManagerIf {
 
   virtual Status XReplValidateSplitCandidateTable(const TableId& table_id) const = 0;
 
-  virtual Status UpdateXClusterConsumerOnTabletSplit(
-      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
-
   virtual Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
   virtual Status ShouldSplitValidCandidate(
@@ -356,6 +333,10 @@ class CatalogManagerIf {
 
   virtual Status CanSupportAdditionalTablet(
       const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const = 0;
+
+  virtual Result<TSDescriptorPtr> GetClosestLiveTserver(bool* local_ts = nullptr) const = 0;
+
+  virtual bool SkipCatalogVersionChecks() = 0;
 
   virtual ~CatalogManagerIf() = default;
 };

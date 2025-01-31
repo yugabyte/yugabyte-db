@@ -47,6 +47,40 @@
         ansible_distribution_major_version == '8'
       tags: yb-prebuilt-ami
 
+- name: "Install polkit on AlmaLinux 9 machines"
+  hosts: "{{ yb_ansible_host }}"
+  strategy: linear
+  gather_facts: no
+  become: yes
+  become_method: sudo
+  vars:
+    air_gapped: "{{ air_gap | default(false) }}"
+  tasks:
+    - name: "Install polkit on AlmaLinux 9 family"
+      raw: >
+        (test -e /usr/bin/dnf) && (dnf install -y polkit)
+      when: >
+        not air_gapped and ansible_os_family == 'RedHat' and
+        (ansible_distribution_major_version == '9' or
+         (ansible_distribution == 'Amazon' and ansible_distribution_version == '2023'))
+      tags: yb-prebuilt-ami
+
+- name: "Install cronie on Amazon linux 2023 machines"
+  hosts: "{{ yb_ansible_host }}"
+  strategy: linear
+  gather_facts: no
+  become: yes
+  become_method: sudo
+  vars:
+    air_gapped: "{{ air_gap | default(false) }}"
+  tasks:
+    - name: "Install chronie on amazon linux 2023 family"
+      raw: >
+        (test -e /usr/bin/dnf) && (dnf install -y cronie)
+      when: >
+        not air_gapped and ansible_os_family == 'RedHat' and
+        (ansible_distribution == 'Amazon' and ansible_distribution_version == '2023')
+
 - name: "Pre-provisioning tasks"
   hosts: "{{ yb_ansible_host }}"
   become: yes
@@ -125,6 +159,28 @@
         replace: 'repo_gpgcheck=0'
       when: cloud_type == "gcp" and machine_image is match(".*centos-7.*")
       tags: yb-prebuilt-ami
+
+    - block:
+      - name: Find CentOS repo files
+        find:
+          paths: /etc/yum.repos.d/
+          patterns: 'CentOS-*'
+        register: repo_files
+
+      - name: Comment out mirrorlist URLs on CentOS 7
+        replace:
+          dest: "{{ item }}"
+          regexp: '^mirrorlist='
+          replace: '#mirrorlist='
+        with_items: "{{ repo_files.files | map(attribute='path') | list }}"
+
+      - name: Uncomment and set baseurl to vault in CentOS 7 repo files
+        replace:
+          dest: "{{ item }}"
+          regexp: '^#?baseurl=http://mirror.centos.org'
+          replace: 'baseurl=http://vault.centos.org'
+        with_items: "{{ repo_files.files | map(attribute='path') | list }}"
+      when: ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7'
 
     - name: Gather package facts
       package_facts:

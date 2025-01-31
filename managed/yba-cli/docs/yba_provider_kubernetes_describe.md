@@ -10,6 +10,12 @@ Describe a Kubernetes provider in YugabyteDB Anywhere
 yba provider kubernetes describe [flags]
 ```
 
+### Examples
+
+```
+yba provider kubernetes describe --name <provider-name>
+```
+
 ### Options
 
 ```

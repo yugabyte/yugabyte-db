@@ -44,7 +44,7 @@ typedef struct YbChildScanData
 {
 	YbSysScanBaseData base;
 	YbPgInheritsCacheChildEntry cache_entry;
-	bool finished_processing;
+	bool		finished_processing;
 } YbChildScanData;
 
 typedef struct YbChildScanData *YbChildScan;
@@ -53,7 +53,8 @@ typedef struct YbParentScanData
 {
 	YbSysScanBaseData base;
 	YbPgInheritsCacheEntry parent_cache_entry;
-	ListCell *current_tuple;
+	List	   *tuples;
+	ListCell   *current_tuple;
 } YbParentScanData;
 
 typedef struct YbParentScanData *YbParentScan;
@@ -61,11 +62,14 @@ typedef struct YbParentScanData *YbParentScan;
 static HeapTuple
 yb_lookup_cache_get_next(YbSysScanBase child_scan)
 {
-	YbChildScan scan = (void *)child_scan;
+	YbChildScan scan = (void *) child_scan;
+
 	if (scan->finished_processing || !scan->cache_entry)
 		return NULL;
-	// Only one row expected for child-based lookup. Set finished_processing
-	// to true.
+	/*
+	 * Only one row expected for child-based lookup. Set finished_processing
+	 * to true.
+	 */
 	scan->finished_processing = true;
 	return scan->cache_entry->childTuple;
 }
@@ -73,7 +77,8 @@ yb_lookup_cache_get_next(YbSysScanBase child_scan)
 static void
 yb_lookup_cache_end_scan(YbSysScanBase child_scan)
 {
-	YbChildScan scan = (void *)child_scan;
+	YbChildScan scan = (void *) child_scan;
+
 	if (scan->cache_entry)
 		ReleaseYbPgInheritsChildEntry(scan->cache_entry);
 }
@@ -82,29 +87,36 @@ yb_lookup_cache_end_scan(YbSysScanBase child_scan)
 static HeapTuple
 yb_parent_get_next(YbSysScanBase parent_scan)
 {
-	YbParentScan scan = (void *)parent_scan;
-	ListCell *ret = scan->current_tuple;
+	YbParentScan scan = (void *) parent_scan;
+	ListCell   *ret = scan->current_tuple;
+
 	if (ret == NULL)
 		return NULL;
-	scan->current_tuple = lnext(scan->current_tuple);
-	return ret->data.ptr_value;
+	scan->current_tuple = lnext(scan->tuples, scan->current_tuple);
+	return lfirst(ret);
 }
 
 static void
 yb_parent_end_scan(YbSysScanBase parent_scan)
 {
-	YbParentScan scan = (void *)parent_scan;
+	YbParentScan scan = (void *) parent_scan;
+
 	Assert(scan->parent_cache_entry);
 	ReleaseYbPgInheritsCacheEntry(scan->parent_cache_entry);
 }
 
-static YbSysScanVirtualTable yb_parent_scan =
-	{.next = &yb_parent_get_next, .end = &yb_parent_end_scan};
-static YbSysScanVirtualTable yb_child_scan =
-	{.next = &yb_lookup_cache_get_next, .end = &yb_lookup_cache_end_scan};
+static YbSysScanVirtualTable yb_parent_scan = {
+	.next = &yb_parent_get_next,
+	.end = &yb_parent_end_scan
+};
+static YbSysScanVirtualTable yb_child_scan = {
+	.next = &yb_lookup_cache_get_next,
+	.end = &yb_lookup_cache_end_scan
+};
 
 static YbSysScanBase
-YbInitSysScanDesc(YbSysScanBase scan, YbSysScanVirtualTable *vtable) {
+YbInitSysScanDesc(YbSysScanBase scan, YbSysScanVirtualTable *vtable)
+{
 	scan->vtable = vtable;
 	return scan;
 }
@@ -127,9 +139,11 @@ yb_pg_inherits_beginscan(Relation inhrel, ScanKey key, int nkeys, Oid indexId)
 		 */
 		Assert(nkeys == 1);
 		YbParentScan scan = palloc0(sizeof(YbParentScanData));
+
 		scan->parent_cache_entry =
 			GetYbPgInheritsCacheEntry(DatumGetObjectId(key[0].sk_argument));
-		scan->current_tuple = list_head(scan->parent_cache_entry->childTuples);
+		scan->tuples = scan->parent_cache_entry->childTuples;
+		scan->current_tuple = list_head(scan->tuples);
 		return YbInitSysScanDesc(&scan->base, &yb_parent_scan);
 	}
 
@@ -151,7 +165,9 @@ yb_pg_inherits_beginscan(Relation inhrel, ScanKey key, int nkeys, Oid indexId)
 		 * we only expect to see seqno == 1.
 		*/
 		Assert(DatumGetInt32(key[1].sk_argument) == 1);
-	} else {
+	}
+	else
+	{
 		/*
 		 * This is a request to lookup all tuples in pg_inherits matching a given
 		 * child relid.
@@ -160,7 +176,7 @@ yb_pg_inherits_beginscan(Relation inhrel, ScanKey key, int nkeys, Oid indexId)
 	}
 
 	YbChildScan scan = palloc0(sizeof(YbChildScanData));
-	scan->cache_entry = GetYbPgInheritsChildCacheEntry(
-		DatumGetObjectId(key[0].sk_argument));
+
+	scan->cache_entry = GetYbPgInheritsChildCacheEntry(DatumGetObjectId(key[0].sk_argument));
 	return YbInitSysScanDesc(&scan->base, &yb_child_scan);
 }

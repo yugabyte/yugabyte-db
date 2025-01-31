@@ -146,7 +146,8 @@ public class NodeConfigValidator {
     boolean canConnect = sshIntoNode(provider, nodeData, operation);
     nodeConfigs.add(new NodeConfig(Type.SSH_ACCESS, String.valueOf(canConnect)));
 
-    if (operation == Operation.CONFIGURE && nodeAgentClient.isClientEnabled(provider)) {
+    if (operation == Operation.CONFIGURE
+        && nodeAgentClient.isClientEnabled(provider, null /* Universe */)) {
       canConnect = connectToNodeAgent(provider, nodeData, operation);
       nodeConfigs.add(new NodeConfig(Type.NODE_AGENT_ACCESS, String.valueOf(canConnect)));
     }
@@ -168,8 +169,8 @@ public class NodeConfigValidator {
           nodeConfig.getType(),
           ValidationResult.builder()
               .type(nodeConfig.getType())
-              .isValid(isValid)
-              .isRequired(isRequired)
+              .valid(isValid)
+              .required(isRequired)
               .value(nodeConfig.getValue())
               .description(nodeConfig.getType().getDescription())
               .build());
@@ -323,6 +324,7 @@ public class NodeConfigValidator {
       case GSUTIL:
       case S3CMD:
       case YB_HOME_DIR_CLEAN:
+      case NTP_SKEW:
       case DATA_DIR_CLEAN:
         {
           return Boolean.parseBoolean(nodeConfig.getValue());
@@ -349,12 +351,12 @@ public class NodeConfigValidator {
       case SSH_ACCESS:
         {
           return input.getOperation() == Operation.PROVISION
-              || !nodeAgentClient.isClientEnabled(provider);
+              || !nodeAgentClient.isClientEnabled(provider, null /* Universe */);
         }
       case NODE_AGENT_ACCESS:
         {
           return input.getOperation() == Operation.CONFIGURE
-              && nodeAgentClient.isClientEnabled(provider);
+              && nodeAgentClient.isClientEnabled(provider, null /* Universe */);
         }
       case VM_MAX_MAP_COUNT:
         {
@@ -387,15 +389,10 @@ public class NodeConfigValidator {
       case YCQL_SERVER_RPC_PORT:
       case YSQL_SERVER_HTTP_PORT:
       case YSQL_SERVER_RPC_PORT:
-        {
-          return !input.isDetached();
-        }
       case YB_CONTROLLER_HTTP_PORT:
       case YB_CONTROLLER_RPC_PORT:
         {
-          // TODO change this to !input.isDetached() once the issue of not cleaning up yb_controller
-          // is fixed.
-          return false;
+          return !input.isDetached();
         }
       case NODE_EXPORTER_PORT:
         {
@@ -457,6 +454,9 @@ public class NodeConfigValidator {
 
   public boolean sshIntoNode(Provider provider, NodeInstanceData nodeData, Operation operation) {
     AccessKey accessKey = AccessKey.getLatestKey(provider.getUuid());
+    if (accessKey == null) {
+      return false;
+    }
     KeyInfo keyInfo = accessKey.getKeyInfo();
     String sshUser = operation == Operation.CONFIGURE ? "yugabyte" : provider.getDetails().sshUser;
     List<String> commandList =
@@ -489,7 +489,7 @@ public class NodeConfigValidator {
         nodeAgentClient.ping(nodeAgent);
         return true;
       } catch (RuntimeException e) {
-        log.error("Failed to connect to node agent {} - {}", nodeAgent.getUuid(), e.getMessage());
+        log.error("Failed to connect to node agent {} - {}", nodeAgent, e.getMessage());
       }
     }
     return false;

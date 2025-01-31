@@ -4,7 +4,7 @@ headerTitle: Declaring intervals
 linkTitle: Declaring intervals
 description: Explains that the nominally fourteen distinct interval declaration syntaxes have just six distinct semantics. [YSQL]
 menu:
-  preview:
+  preview_api:
     identifier: declaring-intervals
     parent: type-interval
     weight: 30
@@ -72,7 +72,7 @@ However, the regime that the [custom domains approach](../custom-interval-domain
 
 ## Interval declaration syntax variants
 
-The [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html) specifies that this is the general syntax for an _interval_ declaration:
+The [PostgreSQL documentation](https://www.postgresql.org/docs/15/datatype-datetime.html) specifies that this is the general syntax for an _interval_ declaration:
 
 ```output
 interval [ fields ] [ (p) ]

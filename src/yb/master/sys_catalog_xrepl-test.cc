@@ -99,7 +99,11 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
   ASSERT_METADATA_EQ(stream.get(), loader->streams[0]);
 
   // 2. CHECK DELETE_CDCSTREAM.
-  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, stream));
+  {
+    auto l = stream->LockForWrite();
+    ASSERT_OK(sys_catalog->Delete(kLeaderTerm, stream));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -132,7 +136,11 @@ TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
   ASSERT_METADATA_EQ(universe.get(), loader->universes[0]);
 
   // 2. CHECK DELETE_UNIVERSE_REPLICATION.
-  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, universe));
+  {
+    auto l = universe->LockForWrite();
+    ASSERT_OK(sys_catalog->Delete(kLeaderTerm, universe));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();

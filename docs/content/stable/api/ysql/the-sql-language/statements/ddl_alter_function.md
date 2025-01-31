@@ -4,7 +4,7 @@ headerTitle: ALTER FUNCTION
 linkTitle: ALTER FUNCTION
 description: Change properties of an existing function.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_alter_function
     parent: statements
 type: docs
@@ -13,7 +13,7 @@ type: docs
 {{< tip title="See the dedicated 'User-defined subprograms and anonymous blocks' section." >}}
 User-defined functions are part of a larger area of functionality. See this major section:
 
-- [User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"](../../../user-defined-subprograms-and-anon-blocks/) 
+- [User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"](../../../user-defined-subprograms-and-anon-blocks/)
 {{< /tip >}}
 
 ## Synopsis

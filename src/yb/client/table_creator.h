@@ -79,6 +79,8 @@ class YBTableCreator {
 
   YBTableCreator& is_truncate(bool is_truncate);
 
+  YBTableCreator& xcluster_source_table_id(const TableId& source_table_id);
+
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
   YBTableCreator& schema(const YBSchema* schema);
@@ -164,7 +166,7 @@ class YBTableCreator {
   // If not provided, defaults to true.
   YBTableCreator& wait(bool wait);
 
-  YBTableCreator& replication_info(const master::ReplicationInfoPB& ri);
+  YBTableCreator& replication_info(const ReplicationInfoPB& ri);
 
   // Creates the table.
   //
@@ -172,6 +174,10 @@ class YBTableCreator {
   // or a misuse of the builder; in the latter case, only the last error is
   // returned.
   Status Create();
+
+  const std::string& get_table_id() const {
+    return table_id_;
+  }
 
  private:
   friend class YBClient;
@@ -202,7 +208,7 @@ class YBTableCreator {
 
   int num_replicas_ = 0;
 
-  std::unique_ptr<master::ReplicationInfoPB> replication_info_;
+  std::unique_ptr<ReplicationInfoPB> replication_info_;
 
   // When creating index, proxy server construct index_info_, and master server will write it to
   // the data-table being indexed.
@@ -237,6 +243,9 @@ class YBTableCreator {
 
   // Set to true when the table is being re-written as part of a TRUNCATE operation.
   boost::optional<bool> is_truncate_;
+
+  // Set by DDL Replication to link the table to the original table in the source cluster.
+  TableId xcluster_source_table_id_;
 
   const TransactionMetadata* txn_ = nullptr;
 

@@ -8,7 +8,8 @@
      "([.]sql$)",
      "([.]txt$)",
      "(^src/odyssey/.*$)",
-     "(^src/postgres/.*$)",
+     "(^src/inline-thirdparty/.*$)",
+     "(^src/yb/integration-tests/upgrade-tests/builds.xml$)",
      "(^[.]gitmodules$)",
      "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
      "(^managed/src/main/resources/alert/.*[.]template$)",
@@ -52,6 +53,18 @@
      "(^managed/client/java/.*/pom.xml)"
   ],
   "linters": {
+    "go-files": {
+         "type": "golint",
+         "include": "(^managed/yba-cli/.*[.]go$)"
+     },
+     "go-files-length": {
+         "type": "text",
+         "text.max-line-length": 100,
+         "include": "(^managed/yba-cli/.*[.]go$)",
+         "severity": {
+             "2": "disabled"
+         }
+     },
     "script-and-regex.script": {
       "type": "script-and-regex",
       "include": "(^managed/.*[.]java$)",
@@ -64,6 +77,7 @@
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
+        "(^pg15_tests/.*[.](sh|tsv)$)",
         "(^managed/.*[.]go$)",
         "(^managed/.*/go[.]mod)",
         "(^managed/.*/go[.]sum)",
@@ -73,32 +87,39 @@
         "(^yugabyted-ui/.*/go[.]mod)",
         "(^yugabyted-ui/.*/go[.]sum)",
         "(^yugabyted-ui/ui/src/api/)",
+        "(^yugabyted-ui/ui/src/assets/)",
         "(^yugabyted-ui/ui/src/translations/)",
         "(^thirdparty/thirdparty_src_checksums[.]txt$)",
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
         "(^cmake_modules/cotire[.]cmake$)",
         "(^cmake_modules/FindBoost[.]cmake$)",
-        "(^README[.]md$)",
         "(^java/pom[.]xml$)",
         "(^.*[.]patch$)",
         "(java/yb-cdc/pom.xml)",
-        "(java/yb-cdc/README.md)",
-        "(^docs/.*[.]md$)",
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
-        "(^[.]gitignore$)"
+        "(^src/postgres/)",
+        "(^[.]gitignore$)",
+        "(^.*[.]svg$)",
+        "(^.*[.]md$)",
+        "(^java/yb-pgsql/src/test/resources/expected/)"
       ]
     },
     "pycodestyle": {
       "type": "pep8",
       "include": "([.]py$)",
-      "exclude": "(^thirdparty/|^[.]ycm_extra_conf[.]py$)",
+      "exclude": [
+        "(^[.]ycm_extra_conf[.]py$)",
+        "(^src/postgres/)",
+        "(^thirdparty/)"
+      ],
       "bin": "pycodestyle",
       "flags": ["--max-line-length=100"]
     },
     "googlecpplint": {
       "type": "googlecpplint",
       "exclude": [
+        "(^src/postgres/)",
         "(^src/yb/yql/cql/ql/kwlist[.]h$)",
         "(^src/yb/gutil/linux_syscall_support[.]h$)",
         "(^src/yb/gutil/cycleclock-inl[.]h$)",
@@ -125,6 +146,56 @@
         "(^build/c[+][+]11$)": "disabled",
         "(.*)": "error"
       }
+    },
+    "postgres": {
+      "type": "script-and-regex",
+      "exclude": [
+        "(^src/postgres/third-party-extensions/)",
+        "(^src/yb/)"
+      ],
+      "include": [
+        "([.]c$)",
+        "([.]h$)"
+      ],
+      "script-and-regex.script": "src/lint/postgres.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "typedefs_list": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/src/.*typedefs.list$)"
+      ],
+      "script-and-regex.script": "src/lint/typedefs_list.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "unique_sort": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/src/.+/yb[^/]*typedefs.list$)"
+      ],
+      "script-and-regex.script": "src/lint/unique_sort.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+)/m"
+    },
+    "ybc_pg": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/yb/yql/.+/ybc_[^/]*[.]h$)"
+      ],
+      "script-and-regex.script": "src/lint/ybc_pg.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "yql_extern_c": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/yb/yql/.+[.]h$)"
+      ],
+      "script-and-regex.script": "src/lint/yql_extern_c.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
     }
   }
 }

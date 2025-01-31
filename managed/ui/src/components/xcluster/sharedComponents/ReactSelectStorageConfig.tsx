@@ -45,15 +45,16 @@ const TRANSLATION_KEY_PREFIX = 'storageConfig';
 /**
  * Wrapper component around `YBReactSelectField`
  * - Adds storage config specific styling and customization.
- * - Default storage config options are provided and can be overriden.
+ * - Default storage config options are provided and can be overridden.
  */
 export const ReactSelectStorageConfigField = <TFieldValues extends FieldValues>(
   props: Optional<YBReactSelectFieldProps<TFieldValues>, 'options'>
 ) => {
-  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
-    reduxState?.customer?.configs?.data.filter(
-      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
-    )
+  const storageConfigs: BackupStorageConfig[] = useSelector(
+    (reduxState: any) =>
+      reduxState?.customer?.configs?.data?.filter(
+        (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+      ) ?? []
   );
   const theme = useTheme();
   /**

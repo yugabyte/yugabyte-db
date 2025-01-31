@@ -29,6 +29,9 @@ struct od_router {
 	od_list_t servers;
 };
 
+extern bool version_matching;
+extern bool version_matching_connect_higher_version;
+
 #define od_router_lock(router) pthread_mutex_lock(&router->lock);
 #define od_router_unlock(router) pthread_mutex_unlock(&router->lock);
 

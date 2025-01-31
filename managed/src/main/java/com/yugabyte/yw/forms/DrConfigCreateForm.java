@@ -1,6 +1,7 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
@@ -49,12 +50,6 @@ public class DrConfigCreateForm {
   @ApiModelProperty("Run the pre-checks without actually running the subtasks")
   public boolean dryRun = false;
 
-  @ApiModelProperty(
-      value = "WARNING: This is a preview API that could change. Whether to enable db scoped DR",
-      hidden = true)
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
-  public Boolean dbScoped = false;
-
   @Valid
   @ApiModelProperty(
       "Parameters needed for creating PITR configs; if not specified, "
@@ -70,7 +65,11 @@ public class DrConfigCreateForm {
     @ApiModelProperty(value = "Retention period of a snapshot in seconds")
     public long retentionPeriodSec;
 
-    @ApiModelProperty(value = "Time interval between snapshots in seconds")
-    public long snapshotIntervalSec = 86400L;
+    @ApiModelProperty(
+        value =
+            "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Time interval"
+                + " between snapshots in seconds")
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.2.0.0")
+    public long snapshotIntervalSec;
   }
 }

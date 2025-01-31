@@ -70,7 +70,7 @@ Then use one of the following methods:
 
 | Save for later | To configure |
 | :--- | :--- |
-| Service account JSON | [GCP cloud provider](../../../configure-yugabyte-platform/gcp/) |
+| Service account JSON | [GCP provider configuration](../../../configure-yugabyte-platform/gcp/) |
 
 ## Managing SSH keys for VMs
 
@@ -83,4 +83,4 @@ If you will be using your own custom SSH keys, then ensure that you have them wh
 
 | Save for later | To configure |
 | :--- | :--- |
-| Custom SSH keys | [GCP provider](../../../configure-yugabyte-platform/gcp/) |
+| Custom SSH keys | [GCP provider configuration](../../../configure-yugabyte-platform/gcp/) |

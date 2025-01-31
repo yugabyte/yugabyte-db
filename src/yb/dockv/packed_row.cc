@@ -22,6 +22,7 @@
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
+#include "yb/dockv/vector_id.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
@@ -81,6 +82,10 @@ std::string ValueToString(const PackedValueWithPrefixV1& value) {
     return value.second->ToDebugHexString();
   }
   return value.first.ToDebugHexString() + "+" + value.second->ToDebugHexString();
+}
+
+std::string ValueToString(const DocVectorValue& value) {
+  return value.ToString();
 }
 
 bool IsNull(PackedValueV1 value) {
@@ -156,6 +161,10 @@ class ColumnPackerV1 {
     return PackValue(VERIFY_RESULT(UnpackQLValue(value, column_data_.data_type)), limit);
   }
 
+  bool PackValue(const DocVectorValue& value, size_t limit) {
+    return DoPackValue(/* prefix= */ nullptr, value, limit);
+  }
+
   template <class Prefix, class Value>
   auto PackValue(const std::pair<Prefix, Value>& value, size_t limit) {
     return DoPackValue(value.first, value.second, limit);
@@ -192,6 +201,14 @@ class ColumnPackerV1 {
 
   void DoPackValueImpl(const PackableValue& value) {
     value.PackToV1(&buffer_);
+  }
+
+  size_t PackedValueSize(const DocVectorValue& value) {
+    return value.EncodedSize();
+  }
+
+  void DoPackValueImpl(const DocVectorValue& value) {
+    value.EncodeTo(&buffer_);
   }
 
   template <class Prefix, class Value>
@@ -249,6 +266,10 @@ class ColumnPackerV2 {
     return PackValue(VERIFY_RESULT(UnpackQLValue(value, data_type_)), limit);
   }
 
+  bool PackValue(const DocVectorValue& value, size_t limit) {
+    return DoPackValue(value, limit);
+  }
+
   template <class Value>
   auto PackValue(const std::pair<Slice, Value>& value, size_t limit) {
     // Drop control flags when present.
@@ -286,6 +307,14 @@ class ColumnPackerV2 {
 
   void DoPackValueImpl(const PackableValue& value) {
     value.PackToV2(&buffer_);
+  }
+
+  size_t PackedValueSize(const DocVectorValue& value) {
+    return value.EncodedSize();
+  }
+
+  void DoPackValueImpl(const DocVectorValue& value) {
+    value.EncodeTo(&buffer_);
   }
 
   void MarkColumnNull(size_t var_header_start, size_t idx) {
@@ -432,8 +461,8 @@ void RowPackerV1::Init(SchemaVersion version) {
   result_.Truncate(prefix_end_);
 }
 
-Result<bool> RowPackerV1::AddValue(ColumnId column_id, const QLValuePB& value) {
-  return DoAddValue(column_id, value, /* tail_size= */ 0);
+Result<bool> RowPackerV1::AddValue(ColumnId column_id, const QLValuePB& value, ssize_t tail_size) {
+  return DoAddValue(column_id, value, tail_size);
 }
 
 Result<bool> RowPackerV1::AddValue(ColumnId column_id, const LWQLValuePB& value) {
@@ -468,6 +497,10 @@ Result<bool> RowPackerV1::AddValue(
 }
 
 Result<bool> RowPackerV1::AddValue(ColumnId column_id, const PackableValue& value) {
+  return DoAddValue(column_id, value, /* tail_size= */ 0);
+}
+
+Result<bool> RowPackerV1::AddValue(ColumnId column_id, const DocVectorValue& value) {
   return DoAddValue(column_id, value, /* tail_size= */ 0);
 }
 
@@ -519,8 +552,9 @@ Result<bool> RowPackerV2::AddValue(
   return DoAddValue(column_id, std::pair(value_prefix, value_suffix), tail_size);
 }
 
-Result<bool> RowPackerV2::AddValue(ColumnId column_id, const QLValuePB& value) {
-  return DoAddValue(column_id, value, /* tail_size= */ 0);
+Result<bool> RowPackerV2::AddValue(
+    ColumnId column_id, const QLValuePB& value, ssize_t tail_size) {
+  return DoAddValue(column_id, value, tail_size);
 }
 
 Result<bool> RowPackerV2::AddValue(ColumnId column_id, const LWQLValuePB& value) {
@@ -528,6 +562,10 @@ Result<bool> RowPackerV2::AddValue(ColumnId column_id, const LWQLValuePB& value)
 }
 
 Result<bool> RowPackerV2::AddValue(ColumnId column_id, const PackableValue& value) {
+  return DoAddValue(column_id, value, /* tail_size= */ 0);
+}
+
+Result<bool> RowPackerV2::AddValue(ColumnId column_id, const DocVectorValue& value) {
   return DoAddValue(column_id, value, /* tail_size= */ 0);
 }
 

@@ -9,8 +9,9 @@ import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_SCHEMA_MISMATCH;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.ebean.Finder;
@@ -29,7 +30,6 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashSet;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.EqualsAndHashCode;
@@ -48,7 +48,7 @@ import lombok.extern.slf4j.Slf4j;
 @Setter
 public class XClusterTableConfig extends Model {
 
-  private static final Finder<String, XClusterTableConfig> find =
+  public static final Finder<String, XClusterTableConfig> find =
       new Finder<String, XClusterTableConfig>(XClusterTableConfig.class) {};
 
   @Id
@@ -68,10 +68,12 @@ public class XClusterTableConfig extends Model {
   @ApiModelProperty(
       value = "Stream ID if replication is setup; bootstrap ID if the table is bootstrapped",
       example = "a9d2470786694dc4b34e0e58e592da9e")
+  @ToString.Include
   private String streamId;
 
   @ApiModelProperty(value = "YbaApi Internal. Whether replication is set up for this table")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
+  @ToString.Include
   private boolean replicationSetupDone;
 
   @ApiModelProperty(
@@ -86,13 +88,13 @@ public class XClusterTableConfig extends Model {
   @ApiModelProperty(value = "The backup config used to do bootstrapping for this table")
   @ManyToOne
   @JoinColumn(name = "backup_uuid", referencedColumnName = "backup_uuid")
-  @JsonProperty("backupUuid")
+  @JsonIgnore
   private Backup backup;
 
   @ApiModelProperty(value = "The restore config used to do bootstrapping for this table")
   @ManyToOne
   @JoinColumn(name = "restore_uuid", referencedColumnName = "restore_uuid")
-  @JsonProperty("restoreUuid")
+  @JsonIgnore
   private Restore restore;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
@@ -114,23 +116,40 @@ public class XClusterTableConfig extends Model {
       value = "Status",
       allowableValues =
           "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed, UnableToFetch")
+  @ToString.Include
   private Status status;
 
-  // Statuses are declared in reverse severity for showing tables in UI with specific order.
+  @Transient
+  @ApiModelProperty(value = "tableInfo from source universe", required = false)
+  private TableInfoResp sourceTableInfo;
+
+  @Transient
+  @ApiModelProperty(value = "tableInfo from target universe", required = false)
+  private TableInfoResp targetTableInfo;
+
+  // Statuses are declared in reverse severity for showing tables in UI with specific order based on
+  // code.
   public enum Status {
-    Failed("Failed"),
-    Error("Error"), // Not stored in YBA DB.
-    Warning("Warning"), // Not stored in YBA DB.
-    UnableToFetch("UnableToFetch"), // Not stored in YBA DB.
-    Updating("Updating"),
-    Bootstrapping("Bootstrapping"),
-    Validated("Validated"),
-    Running("Running");
+    UnableToFetch("UnableToFetch", 0), // Not stored in YBA DB.
+    Updating("Updating", 1),
+    Bootstrapping("Bootstrapping", 2),
+    Validated("Validated", 3),
+    Running("Running", 4),
+    // The following statuses will leads to alert creation.
+    Failed("Failed", -1),
+    Error("Error", -2), // Not stored in YBA DB.
+    Warning("Warning", -3), // Not stored in YBA DB.
+    DroppedFromSource("DroppedFromSource", -5), // Not stored in YBA DB.
+    DroppedFromTarget("DroppedFromTarget", -6), // Not stored in YBA DB.
+    ExtraTableOnSource("ExtraTableOnSource", -7), // Not stored in YBA DB.
+    ExtraTableOnTarget("ExtraTableOnTarget", -8); // Not stored in YBA DB.
 
     private final String status;
+    @Getter private final int code;
 
-    Status(String status) {
+    Status(String status, int code) {
       this.status = status;
+      this.code = code;
     }
 
     @Override
@@ -168,8 +187,6 @@ public class XClusterTableConfig extends Model {
     }
   }
 
-  @Getter
-  @Setter
   @Transient
   @ApiModelProperty(value = "Short human readable replication status error messages")
   private Set<ReplicationStatusError> replicationStatusErrors = new HashSet<>();
@@ -183,31 +200,13 @@ public class XClusterTableConfig extends Model {
     this.setStatus(Status.Validated);
   }
 
-  public static Optional<XClusterTableConfig> maybeGetByStreamId(String streamId) {
-    XClusterTableConfig xClusterTableConfig =
-        find.query().fetch("tables").where().eq("stream_id", streamId).findOne();
-    if (xClusterTableConfig == null) {
-      log.info("Cannot find an xClusterTableConfig with streamId {}", streamId);
-      return Optional.empty();
+  @JsonSetter("backupUuid")
+  private void setBackupFromUuid(UUID backupUuid) {
+    if (backupUuid == null) {
+      setBackup(null);
+      return;
     }
-    return Optional.of(xClusterTableConfig);
-  }
-
-  /**
-   * Retrieves an XClusterTableConfig object based on the provided tableId.
-   *
-   * @param tableId The unique identifier of the table.
-   * @return An Optional containing the XClusterTableConfig object if found, or an empty Optional if
-   *     not found.
-   */
-  public static Optional<XClusterTableConfig> maybeGetByTableId(String tableId) {
-    XClusterTableConfig xClusterTableConfig =
-        find.query().fetch("tables").where().eq("table_id", tableId).findOne();
-    if (xClusterTableConfig == null) {
-      log.info("Cannot find an xClusterTableConfig with tableId {}", tableId);
-      return Optional.empty();
-    }
-    return Optional.of(xClusterTableConfig);
+    setBackup(Backup.maybeGet(backupUuid).orElse(null));
   }
 
   @JsonGetter("backupUuid")
@@ -216,6 +215,15 @@ public class XClusterTableConfig extends Model {
       return null;
     }
     return getBackup().getBackupUUID();
+  }
+
+  @JsonSetter("restoreUuid")
+  private void setRestoreFromUuid(UUID restoreUuid) {
+    if (restoreUuid == null) {
+      restore = null;
+      return;
+    }
+    setRestore(Restore.maybeGet(restoreUuid).orElse(null));
   }
 
   @JsonGetter("restoreUuid")

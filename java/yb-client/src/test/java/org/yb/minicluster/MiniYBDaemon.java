@@ -350,6 +350,19 @@ public class MiniYBDaemon {
       process.getInputStream().close();
     } catch (IOException ex) {
     }
+
+    // Manually cleanup left behind YB Controller subprocesses if any.
+    if (this.type == MiniYBDaemonType.YBCONTROLLER) {
+      String cmd = "ps -ef | grep -v grep | grep " + dataDirPath + "/tmp"
+          + " | awk '{print $2}' | xargs kill -9";
+      final List<String> cmdLine = Lists.newArrayList("bash", "-c", cmd);
+      try {
+        ProcessUtil.executeSimple(cmdLine, "Killing YB Controller subprocesses!");
+      } catch (Exception e) {
+        // OK to fail. It means there are no subprocesses left behind.
+        LOG.info("No Yb controller subprocesses left behind to kill! " + e.getMessage());
+      }
+    }
   }
 
   /**

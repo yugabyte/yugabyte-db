@@ -75,8 +75,7 @@
 #include "yb/tserver/xcluster_poller_stats.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/url-coding.h"
-#include "yb/util/version_info.h"
-#include "yb/util/version_info.pb.h"
+#include "yb/common/version_info.h"
 #include "yb/util/flags.h"
 
 using yb::consensus::GetConsensusRole;
@@ -491,6 +490,11 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       std::bind(&TabletServerPathHandlers::HandleRemoteBootstrapsPage, this, _1, _2),
       true /* styled */,
       false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/TSLocalLockManager", "",
+      std::bind(&TabletServerPathHandlers::HandleObjectLocksPage, this, _1, _2),
+      true /* styled */,
+      false /* is_on_nav_bar */);
   RegisterTabletPathHandler(
       server, tserver_, "/tablet-consensus-status", &HandleConsensusStatusPage);
   RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
@@ -630,6 +634,17 @@ void TabletServerPathHandlers::HandleRemoteBootstrapsPage(const Webserver::WebRe
     return;
   }
   rbs_service_ptr->DumpStatusHtml(*output);
+}
+
+void TabletServerPathHandlers::HandleObjectLocksPage(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  auto ts_local_lock_manager = tserver_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    *output << "<h2>Could not locate the TSLocalLockManager...</h2>\n";
+    return;
+  }
+  ts_local_lock_manager->DumpLocksToHtml(*output);
 }
 
 namespace {
@@ -886,6 +901,9 @@ void TabletServerPathHandlers::HandleDashboardsPage(const Webserver::WebRequest&
   *output << GetDashboardLine("maintenance-manager", "Maintenance Manager",
                               "List of operations that are currently running and those "
                               "that are registered.");
+  *output << GetDashboardLine(
+      "TSLocalLockManager", "Object locks held at the tserver local TSLocalLockManager",
+      "Dump of all granted and awaiting object locks at the local TSLocalLockManager");
 }
 
 void TabletServerPathHandlers::HandleIntentsDBPage(const Webserver::WebRequest& req,

@@ -121,7 +121,7 @@ public class TemplateManager extends DevopsBase {
       }
     }
 
-    if (nodeAgentClient.isClientEnabled(provider)) {
+    if (nodeAgentClient.isClientEnabled(provider, null /* Universe */)) {
       commandArgs.add("--install_node_agent");
       commandArgs.add("--node_agent_port");
       commandArgs.add(String.valueOf(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort)));

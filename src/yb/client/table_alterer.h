@@ -42,9 +42,13 @@ class YBTableAlterer {
  public:
   ~YBTableAlterer();
 
-  // Renames the table.
-  // If there is no new namespace (only the new table name provided), that means that the table
-  // namespace must not be changed (changing the table name only in the same namespace).
+  // Renames the table. Options:
+  // (1) Provided the new namespace + the new table name - changing the table name and
+  //     moving it to the new namespace (keeping the PG schema name unchanged).
+  // (2) Provided only the new table name - changing the table name only in the same namespace
+  //     (keeping the namespace & the PG schema name unchanged).
+  // (3) Provided only the new PG schema name - changing the table schema only
+  //     (keeping the namespace & the table name unchanged).
   YBTableAlterer* RenameTo(const YBTableName& new_name);
 
   // Adds a new column to the table.
@@ -76,7 +80,7 @@ class YBTableAlterer {
   YBTableAlterer* wait(bool wait);
 
   // Set replication info for the table.
-  YBTableAlterer* replication_info(const master::ReplicationInfoPB& ri);
+  YBTableAlterer* replication_info(const ReplicationInfoPB& ri);
 
   // The altering of this table is dependent upon the success of this higher-level transaction.
   YBTableAlterer* part_of_transaction(const TransactionMetadata* txn);
@@ -118,7 +122,7 @@ class YBTableAlterer {
 
   boost::optional<uint32_t> wal_retention_secs_;
 
-  std::unique_ptr<master::ReplicationInfoPB> replication_info_;
+  std::unique_ptr<ReplicationInfoPB> replication_info_;
 
   const TransactionMetadata* txn_ = nullptr;
 

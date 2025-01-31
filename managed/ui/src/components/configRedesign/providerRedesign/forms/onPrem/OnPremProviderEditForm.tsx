@@ -7,7 +7,13 @@ import { toast } from 'react-toastify';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 
-import { KeyPairManagement, NTPSetupType, ProviderCode, ProviderOperation } from '../../constants';
+import {
+  KeyPairManagement,
+  NTPSetupType,
+  ProviderCode,
+  ProviderOperation,
+  SshPrivateKeyInputType
+} from '../../constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import {
   ConfigureOnPremRegionModal,
@@ -23,7 +29,6 @@ import { NTPConfigField } from '../../components/NTPConfigField';
 import { RegionList } from '../../components/RegionList';
 import { RegionOperation } from '../configureRegion/constants';
 import { YBButton } from '../../../../common/forms/fields';
-import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInput, YBInputField, YBToggleField } from '../../../../../redesign/components';
 import {
   addItem,
@@ -51,6 +56,7 @@ import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
 import { api, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
+import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 
 import {
   OnPremAvailabilityZone,
@@ -84,6 +90,8 @@ export interface OnPremProviderEditFormFieldValues {
   sshKeypairName: string;
   sshPort: number | null;
   sshPrivateKeyContent: File;
+  sshPrivateKeyContentText: string;
+  sshPrivateKeyInputType: SshPrivateKeyInputType;
   sshUser: string;
   version: number;
 
@@ -99,11 +107,30 @@ const VALIDATION_SCHEMA = object().shape({
       ACCEPTABLE_CHARS,
       'Provider name cannot contain special characters other than "-", and "_"'
     ),
-  sshUser: string().required('SSH user is required.'),
-  sshPrivateKeyContent: mixed().when('editSSHKeypair', {
-    is: true,
-    then: mixed().required('SSH private key is required.')
+  sshUser: string().when('skipProvisioning', {
+    is: false,
+    then: string().required('SSH user is required.')
   }),
+  sshPrivateKeyContent: mixed().when(
+    ['editSSHKeypair', 'skipProvisioning', 'sshPrivateKeyInputType'],
+    {
+      is: (editSSHKeypair, skipProvisioning, sshPrivateKeyInputType) =>
+        editSSHKeypair &&
+        !skipProvisioning &&
+        sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY,
+      then: mixed().required('SSH private key is required.')
+    }
+  ),
+  sshPrivateKeyContentText: string().when(
+    ['editSSHKeypair', 'skipProvisioning', 'sshPrivateKeyInputType'],
+    {
+      is: (editSSHKeypair, skipProvisioning, sshPrivateKeyInputType) =>
+        editSSHKeypair &&
+        !skipProvisioning &&
+        sshPrivateKeyInputType === SshPrivateKeyInputType.PASTE_KEY,
+      then: string().required('SSH private key is required.')
+    }
+  ),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
     then: array().of(
@@ -222,7 +249,7 @@ export const OnPremProviderEditForm = ({
   const inUseZones = getInUseAzs(providerConfig.uuid, linkedUniverses, regionSelection?.code);
   const isEditInUseProviderEnabled = runtimeConfigEntries.some(
     (config: any) =>
-      config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
+      config.key === RuntimeConfigKey.EDIT_IN_USE_PROVIDER_UI_FEATURE_FLAG &&
       config.value === 'true'
   );
   const isProviderInUse = linkedUniverses.length > 0;
@@ -370,22 +397,11 @@ export const OnPremProviderEditForm = ({
                       fullWidth
                     />
                   </FormField>
-                  <FormField>
-                    <FieldLabel>SSH Private Key Content</FieldLabel>
-                    <YBDropZoneField
-                      name="sshPrivateKeyContent"
-                      control={formMethods.control}
-                      actionButtonText="Upload SSH Key PEM File"
-                      multipleFiles={false}
-                      showHelpText={false}
-                      disabled={getIsFieldDisabled(
-                        ProviderCode.KUBERNETES,
-                        'sshPrivateKeyContent',
-                        isFormDisabled,
-                        isProviderInUse
-                      )}
-                    />
-                  </FormField>
+                  <SshPrivateKeyFormField
+                    isFormDisabled={isFormDisabled}
+                    isProviderInUse={isProviderInUse}
+                    providerCode={ProviderCode.ON_PREM}
+                  />
                 </>
               )}
             </FieldGroup>
@@ -577,6 +593,7 @@ const constructDefaultFormValues = (
     }))
   })),
   skipProvisioning: providerConfig.details.skipProvisioning,
+  sshPrivateKeyInputType: SshPrivateKeyInputType.UPLOAD_KEY,
   sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
@@ -588,12 +605,16 @@ const constructProviderPayload = async (
   providerConfig: OnPremProvider
 ): Promise<YBProviderMutation> => {
   let sshPrivateKeyContent = '';
-  try {
-    sshPrivateKeyContent = formValues.sshPrivateKeyContent
-      ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-      : '';
-  } catch (error) {
-    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+  if (formValues.sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY) {
+    try {
+      sshPrivateKeyContent = formValues.sshPrivateKeyContent
+        ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+        : '';
+    } catch (error) {
+      throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    }
+  } else {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContentText;
   }
 
   const allAccessKeysPayload = constructAccessKeysEditPayload(

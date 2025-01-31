@@ -12,7 +12,8 @@ import {
   KeyPairManagement,
   NTPSetupType,
   ProviderCode,
-  ProviderOperation
+  ProviderOperation,
+  SshPrivateKeyInputType
 } from '../../constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import {
@@ -30,7 +31,6 @@ import { NTPConfigField } from '../../components/NTPConfigField';
 import { RegionList } from '../../components/RegionList';
 import { RegionOperation } from '../configureRegion/constants';
 import { YBButton } from '../../../../common/forms/fields';
-import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInputField, YBToggleField } from '../../../../../redesign/components';
 import {
   addItem,
@@ -40,6 +40,7 @@ import {
   getIsFormDisabled,
   readFileAsText
 } from '../utils';
+import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 
 import { OnPremRegionMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
@@ -60,6 +61,8 @@ interface OnPremProviderCreateFormFieldValues {
   skipProvisioning: boolean;
   sshKeypairName: string;
   sshPort: number;
+  sshPrivateKeyInputType: SshPrivateKeyInputType;
+  sshPrivateKeyContentText: string;
   sshPrivateKeyContent: File;
   sshUser: string;
 
@@ -75,8 +78,20 @@ const VALIDATION_SCHEMA = object().shape({
       ACCEPTABLE_CHARS,
       'Provider name cannot contain special characters other than "-", and "_"'
     ),
-  sshUser: string().required('SSH user is required.'),
-  sshPrivateKeyContent: mixed().required('SSH private key is required.'),
+  sshUser: string().when('skipProvisioning', {
+    is: false,
+    then: string().required('SSH user is required.')
+  }),
+  sshPrivateKeyContent: mixed().when(['skipProvisioning', 'sshPrivateKeyInputType'], {
+    is: (skipProvisioning, sshPrivateKeyInputType) =>
+      !skipProvisioning && sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY,
+    then: mixed().required('SSH private key is required.')
+  }),
+  sshPrivateKeyContentText: mixed().when(['skipProvisioning', 'sshPrivateKeyInputType'], {
+    is: (skipProvisioning, sshPrivateKeyInputType) =>
+      !skipProvisioning && sshPrivateKeyInputType === SshPrivateKeyInputType.PASTE_KEY,
+    then: mixed().required('SSH private key is required.')
+  }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
     then: array().of(
@@ -111,6 +126,7 @@ export const OnPremProviderCreateForm = ({
     providerName: '',
     regions: [] as ConfigureOnPremRegionFormValues[],
     skipProvisioning: false,
+    sshPrivateKeyInputType: SshPrivateKeyInputType.UPLOAD_KEY,
     sshPort: DEFAULT_SSH_PORT,
     ybHomeDir: ''
   };
@@ -255,17 +271,10 @@ export const OnPremProviderCreateForm = ({
                   disabled={isFormDisabled}
                 />
               </FormField>
-              <FormField>
-                <FieldLabel>SSH Private Key Content</FieldLabel>
-                <YBDropZoneField
-                  name="sshPrivateKeyContent"
-                  control={formMethods.control}
-                  actionButtonText="Upload SSH Key PEM File"
-                  multipleFiles={false}
-                  showHelpText={false}
-                  disabled={isFormDisabled}
-                />
-              </FormField>
+              <SshPrivateKeyFormField
+                isFormDisabled={isFormDisabled}
+                providerCode={ProviderCode.ON_PREM}
+              />
             </FieldGroup>
             <FieldGroup heading="Advanced">
               <FormField>
@@ -388,12 +397,16 @@ const constructProviderPayload = async (
   formValues: OnPremProviderCreateFormFieldValues
 ): Promise<YBProviderMutation> => {
   let sshPrivateKeyContent = '';
-  try {
-    sshPrivateKeyContent = formValues.sshPrivateKeyContent
-      ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-      : '';
-  } catch (error) {
-    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+  if (formValues.sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY) {
+    try {
+      sshPrivateKeyContent = formValues.sshPrivateKeyContent
+        ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+        : '';
+    } catch (error) {
+      throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    }
+  } else {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContentText;
   }
 
   const allAccessKeysPayload = constructAccessKeysCreatePayload(

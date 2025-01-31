@@ -20,14 +20,14 @@ YugabyteDB has a [Debezium connector](https://github.com/yugabyte/debezium-conne
 To connect your YugabyteDB database to Kinesis:
 
 1. Create a [Kinesis Data Stream](https://docs.aws.amazon.com/streams/latest/dev/tutorial-stock-data-kplkcl-create-stream.html) from AWS Management Console. Note the name of the stream you create.
-1. Start a YugabyteDB cluster. Refer [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
+1. Start a YugabyteDB cluster. Refer [YugabyteDB Prerequisites](../tools/#yugabytedb-prerequisites).
 1. Create a CDC stream using following command:
 
     ```sh
     ./bin/yb-admin --master_addresses 127.0.0.1:7100 create_change_data_stream ysql.yugabyte
     ```
 
-1. Create a table using [ysqlsh](../../admin/ysqlsh/#starting-ysqlsh) as follows:
+1. Create a table using [ysqlsh](../../api/ysqlsh/#starting-ysqlsh) as follows:
 
     ```sql
     CREATE TABLE users(

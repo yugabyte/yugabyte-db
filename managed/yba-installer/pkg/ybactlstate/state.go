@@ -2,6 +2,7 @@ package ybactlstate
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
@@ -9,14 +10,14 @@ import (
 )
 
 const (
-	StateFileName     = ".yba_installer.state"
-	schemaVersion int = 6
+	StateFileName = ".yba_installer.state"
 )
 
 type State struct {
 	Version         string                   `json:"version"`
 	RootInstall     string                   `json:"root_install"`
 	Username        string                   `json:"username"`
+	Initialized     bool                     `json:"initialized"`
 	Postgres        PostgresState            `json:"postgres"`
 	Ybdb            YbdbState                `json:"ybdb"`
 	CurrentStatus   status                   `json:"current_status"`
@@ -63,7 +64,8 @@ func New() *State {
 		},
 		_internalFields: internalFields{
 			ChangeID:      0,
-			SchemaVersion: schemaVersion,
+			SchemaVersion: getSchemaVersion(),
+			RunSchemas:    allSchemaSlice(),
 		},
 	}
 }
@@ -73,8 +75,9 @@ type YbdbState struct {
 }
 
 type internalFields struct {
-	ChangeID      int `json:"change_id"`
-	SchemaVersion int `json:"schema"`
+	ChangeID      int   `json:"change_id"`
+	SchemaVersion int   `json:"schema"` // Deprecated
+	RunSchemas    []int `json:"run_schemas"`
 }
 
 // TransitionStatus will move the state from CurrentStatus to next, after first Validating the
@@ -92,4 +95,18 @@ func (s *State) TransitionStatus(next status) error {
 			next.String(), err)
 	}
 	return nil
+}
+
+// Returns sorted list of all schema version defined in migrations map (except default)
+func allSchemaSlice() []int {
+	migrations := getMigrations()
+	var schemas []int
+	for key := range migrations {
+		if key == defaultMigratorValue {
+			continue
+		}
+		schemas = append(schemas, key)
+	}
+	sort.Ints(schemas)
+	return schemas
 }

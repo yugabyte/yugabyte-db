@@ -22,8 +22,8 @@ import (
 )
 
 const SLOW_QUERY_STATS_SQL string = "SELECT a.rolname, t.datname, t.queryid, " +
-    "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, " +
-    "t.stddev_time, t.local_blks_hit, t.local_blks_written FROM " +
+    "t.query, t.calls, t.total_exec_time, t.rows, t.min_exec_time, t.max_exec_time, " +
+    "t.mean_exec_time, t.stddev_exec_time, t.local_blks_hit, t.local_blks_written FROM " +
     "pg_authid a JOIN (SELECT * FROM " +
     "pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid"
 
@@ -66,6 +66,9 @@ var WARNING_MSGS = map[string]string{
     "insecure" :"Cluster started in an insecure mode without " +
         "authentication and encryption enabled. For non-production use only, " +
         "not to be used without firewalls blocking the internet traffic.",
+    "clockbound": "Clockbound is recommended on AWS clusters. It can reduce read restart errors" +
+        " significantly in concurrent workloads." +
+        " Relevant flag: --enhance_time_sync_via_clockbound.",
 }
 
 type SlowQueriesFuture struct {

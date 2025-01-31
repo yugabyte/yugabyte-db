@@ -70,7 +70,7 @@
 
 extern "C" {
 
-struct YBCStatusStruct;
+struct YbcStatusStruct;
 
 }
 
@@ -235,13 +235,13 @@ class Status {
   static const std::string& CategoryName(uint8_t category);
 
   // Adopt status that was previously exported to C interface.
-  explicit Status(YBCStatusStruct* state, AddRef add_ref);
+  explicit Status(YbcStatusStruct* state, AddRef add_ref);
 
   // Increments state ref count and returns pointer that could be used in C interface.
-  YBCStatusStruct* RetainStruct() const;
+  YbcStatusStruct* RetainStruct() const;
 
   // Reset state w/o touching ref count. Return detached pointer that could be used in C interface.
-  YBCStatusStruct* DetachStruct();
+  YbcStatusStruct* DetachStruct();
 
  private:
   struct State;

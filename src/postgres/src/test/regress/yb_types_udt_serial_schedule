@@ -1,0 +1,15 @@
+# src/test/regress/yb_types_udt_serial_schedule
+# This schedule is for non-ported tests only.
+
+# Dependency for `yb_base_type`
+test: yb_create_function
+
+# Overall UDTs
+test: yb_create_type
+test: yb_alter_type
+
+# Base types
+test: yb_base_type
+
+# Operator Class
+test: yb_operator_class

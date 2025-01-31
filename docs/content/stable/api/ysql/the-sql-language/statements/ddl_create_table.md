@@ -4,7 +4,7 @@ headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a table in a database.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_create_table
     parent: statements
 type: docs
@@ -120,6 +120,10 @@ Note that the [INSERT](../dml_insert/) command can only accommodate one override
 
 Using this qualifier will create a temporary table. Temporary tables are visible only in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
+### UNLOGGED
+
+Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default persistence.
+
 ### TABLESPACE
 
 Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
@@ -174,7 +178,7 @@ CREATE TABLE <name> (columns) WITH (COLOCATION = false);
 This ensures that the table is not stored on the same tablet as the rest of the tables for this database, but instead has its own set of tablets. Use this option for large tables that need to be scaled out.
 
 {{<note>}}
-Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for more details.
+Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../explore/colocation/) for more details.
 {{</note>}}
 
 ### Storage parameters

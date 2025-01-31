@@ -50,7 +50,7 @@ DEFINE_test_flag(bool, skip_transaction_verification, false,
     "Test only flag to keep the txn metadata in SysTablesEntryPB and skip"
     " transaction verification on the master");
 
-DEFINE_test_flag(int32, ysql_ddl_transaction_verification_failure_percentage, 0,
+DEFINE_test_flag(double, ysql_ddl_transaction_verification_failure_probability, 0,
     "Inject random failure in checking transaction status for DDL transactions");
 
 DEFINE_test_flag(bool, yb_test_table_rewrite_keep_old_table, false,
@@ -101,7 +101,7 @@ Status PgEntryExistsWithReadTime(
 Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
                                    const scoped_refptr<TableInfo>& table,
                                    const ReadHybridTime& read_time,
-                                   bool* result,
+                                   std::optional<bool>* result,
                                    HybridTime* read_restart_ht);
 
 bool MatchPgDocDBSchemaColumns(const scoped_refptr<TableInfo>& table,
@@ -205,8 +205,9 @@ Status PgEntryExistsWithReadTime(
   return Status::OK();
 }
 
-Result<bool> PgSchemaChecker(SysCatalogTable& sys_catalog, const scoped_refptr<TableInfo>& table) {
-  bool result = false;
+Result<std::optional<bool>> PgSchemaChecker(
+    SysCatalogTable& sys_catalog, const scoped_refptr<TableInfo>& table) {
+  std::optional<bool> result{std::nullopt};
   RETURN_NOT_OK(sys_catalog.ReadWithRestarts(
     std::bind(&PgSchemaCheckerWithReadTime, &sys_catalog, table, std::placeholders::_1, &result,
       std::placeholders::_2)));
@@ -216,7 +217,7 @@ Result<bool> PgSchemaChecker(SysCatalogTable& sys_catalog, const scoped_refptr<T
 Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
                                    const scoped_refptr<TableInfo>& table,
                                    const ReadHybridTime& read_time,
-                                   bool* result,
+                                   std::optional<bool>* result,
                                    HybridTime* read_restart_ht) {
   PgOid oid = kPgInvalidOid;
   string pg_catalog_table_id, name_col;
@@ -226,7 +227,6 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     // We need to check a tablegroup instead.
     const auto tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
     const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTablegroupId(tablegroup_id));
-    const auto pg_yb_tablegroup_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
     oid = VERIFY_RESULT(GetPgsqlTablegroupOid(tablegroup_id));
     pg_catalog_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
     name_col = kTablegroupNameColName;
@@ -240,7 +240,6 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   auto read_data = VERIFY_RESULT(sys_catalog->TableReadData(pg_catalog_table_id, read_time));
   auto oid_col_id = VERIFY_RESULT(read_data.ColumnByName("oid")).rep();
   auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName(name_col)).rep();
-  auto relkind_col_id = VERIFY_RESULT(read_data.ColumnByName("relkind")).rep();
   dockv::ReaderProjection projection;
 
   ColumnIdRep relfilenode_col_id = kInvalidColumnId.rep();
@@ -252,7 +251,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   if (check_relfilenode) {
     relfilenode_col_id = VERIFY_RESULT(read_data.ColumnByName("relfilenode")).rep();
     projection.Init(read_data.schema(),
-        {oid_col_id, relname_col_id, relfilenode_col_id, relkind_col_id});
+        {oid_col_id, relname_col_id, relfilenode_col_id});
   } else {
     projection.Init(read_data.schema(), {oid_col_id, relname_col_id});
   }
@@ -277,9 +276,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     // One row found in pg_class matching the oid. Perform the check on the relfilenode column, if
     // required (as in the case of table rewrite).
     table_found = true;
-    // Table rewrites don't affect parent partition tables (only their children),
-    // so we can skip relfilenode checks for them.
-    if (check_relfilenode && row.GetValue(relkind_col_id)->int8_value() != int8_t('p')) {
+    if (check_relfilenode) {
       const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
       if (relfilenode_col->uint32_value() != VERIFY_RESULT(table->GetPgRelfilenodeOid())) {
         table_found = false;
@@ -337,6 +334,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
 
   // Table was being altered. Check whether its current DocDB schema matches
   // that of PG catalog.
+  VLOG(3) << "Comparing with the PG schema for alter table";
   CHECK(l->ysql_ddl_txn_verifier_state().contains_alter_table_op());
   const auto& relname_col = row.GetValue(relname_col_id);
   const string& table_name = relname_col->string_value();
@@ -357,19 +355,29 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     return lhs.order < rhs.order;
   });
 
-  Schema schema;
-  RETURN_NOT_OK(table->GetSchema(&schema));
+  auto schema = VERIFY_RESULT(table->GetSchema());
+  Schema previous_schema;
+  RETURN_NOT_OK(SchemaFromPB(l->ysql_ddl_txn_verifier_state().previous_schema(), &previous_schema));
+  // CompareDdlAtomicity takes marked_for_deletion() into comparison. If a column is marked for
+  // deletion in the current schema and not in the previous schema, then CompareByDefault would
+  // return true which isn't right for correct handling.
+  if (schema.Equals(previous_schema, ColumnSchema::CompareDdlAtomicity)) {
+    VLOG(3) << "The current DocDB schema is the same as the previous DocDB schema";
+    *result = std::nullopt;
+    return Status::OK();
+  }
+
   if (MatchPgDocDBSchemaColumns(table, schema, pg_cols)) {
     // The PG catalog schema matches the current DocDB schema. The transaction was a success.
+    VLOG(3) << "PG schema matches the current DocDB schema";
     *result = true;
     return Status::OK();
   }
 
-  Schema previous_schema;
-  RETURN_NOT_OK(SchemaFromPB(l->ysql_ddl_txn_verifier_state().previous_schema(), &previous_schema));
   if (MatchPgDocDBSchemaColumns(table, previous_schema, pg_cols)) {
     // The PG catalog schema matches the DocDB schema of the table prior to this transaction. The
     // transaction must have aborted.
+    VLOG(3) << "PG schema matches the previous DocDB schema";
     *result = false;
     return Status::OK();
   }
@@ -588,24 +596,24 @@ Status PollTransactionStatusBase::VerifyTransaction() {
 
 void PollTransactionStatusBase::TransactionReceived(
     Status txn_status, const tserver::GetTransactionStatusResponsePB& resp) {
-  if (FLAGS_TEST_ysql_ddl_transaction_verification_failure_percentage > 0 &&
-    RandomUniformInt(1, 99) <= FLAGS_TEST_ysql_ddl_transaction_verification_failure_percentage) {
-    LOG(ERROR) << "Injecting failure for transaction, inducing failure to enqueue callback";
-    FinishPollTransaction(STATUS_FORMAT(InternalError, "Injected failure"));
+  if (RandomActWithProbability(FLAGS_TEST_ysql_ddl_transaction_verification_failure_probability)) {
+    LOG(ERROR) << "Injecting failure for transaction polling";
+    TransactionPending();
     return;
   }
 
   if (!txn_status.ok()) {
     LOG(WARNING) << "Transaction Status attempt (" << transaction_
                  << ") failed with status " << txn_status;
-    FinishPollTransaction(txn_status);
+    TransactionPending();
     return;
   }
   if (resp.has_error()) {
     const Status s = StatusFromPB(resp.error().status());
-    FinishPollTransaction(STATUS_FORMAT(
-        InternalError, "Transaction Status attempt failed with error code $0: $1",
-        tserver::TabletServerErrorPB::Code_Name(resp.error().code()), s));
+    LOG(WARNING) << "Transaction Status attempt failed with error code "
+                 << tserver::TabletServerErrorPB::Code_Name(resp.error().code())
+                 << s;
+    TransactionPending();
     return;
   }
   YB_LOG_EVERY_N_SECS(INFO, 1) << "Got Response for " << transaction_
@@ -623,7 +631,7 @@ void PollTransactionStatusBase::TransactionReceived(
   // If this transaction isn't pending, then the transaction is in a terminal state.
   // Note: We ignore the resp.status() now, because it could be ABORT'd but actually a SUCCESS.
   // Determine whether the transaction was a success by comparing with the PG schema.
-  FinishPollTransaction(Status::OK());
+  FinishPollTransaction();
 }
 
 NamespaceVerificationTask::NamespaceVerificationTask(
@@ -678,14 +686,13 @@ void NamespaceVerificationTask::TransactionPending() {
   }, "VerifyTransaction");
 }
 
-void NamespaceVerificationTask::FinishPollTransaction(Status status) {
+void NamespaceVerificationTask::FinishPollTransaction() {
   ScheduleNextStep(
-    std::bind(&NamespaceVerificationTask::CheckNsExists, this, std::move(status)),
+    std::bind(&NamespaceVerificationTask::CheckNsExists, this),
     "CheckNsExists");
 }
 
-Status NamespaceVerificationTask::CheckNsExists(Status txn_rpc_status) {
-  RETURN_NOT_OK(txn_rpc_status);
+Status NamespaceVerificationTask::CheckNsExists() {
   const auto pg_table_id = GetPgsqlTableId(atoi(kSystemNamespaceId), kPgDatabaseTableOid);
   const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_info_.id()));
   entry_exists_ = VERIFY_RESULT(
@@ -718,7 +725,8 @@ void NamespaceVerificationTask::PerformAbort() {
 
 TableSchemaVerificationTask::TableSchemaVerificationTask(
     CatalogManager& catalog_manager, scoped_refptr<TableInfo> table,
-    const TransactionMetadata& transaction, std::function<void(Result<bool>)> complete_callback,
+    const TransactionMetadata& transaction,
+    std::function<void(Result<std::optional<bool>>)> complete_callback,
     SysCatalogTable* sys_catalog, std::shared_future<client::YBClient*> client_future,
     rpc::Messenger& messenger, const LeaderEpoch& epoch, bool ddl_atomicity_enabled)
     : MultiStepTableTaskBase(
@@ -740,7 +748,7 @@ void TableSchemaVerificationTask::CreateAndStartTask(
     CatalogManager& catalog_manager,
     scoped_refptr<TableInfo> table,
     const TransactionMetadata& transaction,
-    std::function<void(Result<bool>)> complete_callback,
+    std::function<void(Result<std::optional<bool>>)> complete_callback,
     SysCatalogTable* sys_catalog,
     std::shared_future<client::YBClient*> client_future,
     rpc::Messenger& messenger,
@@ -763,7 +771,6 @@ Status TableSchemaVerificationTask::FirstStep() {
 }
 
 void TableSchemaVerificationTask::TransactionPending() {
-  // Schedule verify transaction with some delay.
   this->ScheduleNextStep([this] {
     return VerifyTransaction();
   }, "VerifyTransaction");
@@ -787,13 +794,13 @@ Status TableSchemaVerificationTask::ValidateRunnable() {
   return Status::OK();
 }
 
-void TableSchemaVerificationTask::FinishPollTransaction(Status status) {
-  ScheduleNextStep([this, status] {
-    return ddl_atomicity_enabled_ ? CompareSchema(status) : CheckTableExists(status);
+void TableSchemaVerificationTask::FinishPollTransaction() {
+  ScheduleNextStep([this] {
+    return ddl_atomicity_enabled_ ? CompareSchema() : CheckTableExists();
   }, "Compare Schema");
 }
 
-Status TableSchemaVerificationTask::FinishTask(Result<bool> is_committed) {
+Status TableSchemaVerificationTask::FinishTask(Result<std::optional<bool>> is_committed) {
   RETURN_NOT_OK(is_committed);
 
   is_committed_ = *is_committed;
@@ -801,8 +808,7 @@ Status TableSchemaVerificationTask::FinishTask(Result<bool> is_committed) {
   return Status::OK();
 }
 
-Status TableSchemaVerificationTask::CheckTableExists(Status txn_rpc_success) {
-  RETURN_NOT_OK(txn_rpc_success);
+Status TableSchemaVerificationTask::CheckTableExists() {
   if (!table_info_->IsColocationParentTable()) {
     // Check that pg_class still has an entry for the table.
     const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table_info_->id()));
@@ -828,9 +834,7 @@ Status TableSchemaVerificationTask::CheckTableExists(Status txn_rpc_success) {
       sys_catalog_, pg_yb_tablegroup_table_id, tablegroup_oid, boost::none /* relfilenode_oid */));
 }
 
-Status TableSchemaVerificationTask::CompareSchema(Status txn_rpc_success) {
-  RETURN_NOT_OK(txn_rpc_success);
-
+Status TableSchemaVerificationTask::CompareSchema() {
   // If the transaction was a success, we need to compare the schema of the table in PG catalog
   // with the schema in DocDB.
   return FinishTask(PgSchemaChecker(sys_catalog_, table_info_));

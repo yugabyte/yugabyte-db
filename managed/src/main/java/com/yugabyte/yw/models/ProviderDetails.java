@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.util.Objects;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -46,8 +47,10 @@ public class ProviderDetails extends MigratedKeyInfoFields {
   }
 
   @ApiModelProperty private CloudInfo cloudInfo;
+
   // Flag to enable node agent for this provider depending on the runtime config settings.
-  @ApiModelProperty public boolean enableNodeAgent;
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  public boolean enableNodeAgent;
 
   @JsonIgnore
   public boolean isUpdateNeeded(ProviderDetails details) {

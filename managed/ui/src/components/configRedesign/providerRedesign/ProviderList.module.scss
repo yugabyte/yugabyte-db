@@ -37,3 +37,22 @@
     }
   }
 }
+
+//TODO : will move it to re-usable css
+.exportActionsColumn {
+  overflow: visible !important;
+  // The following is used to override the overflow: hidden styling
+  // on '.react-bs-table table td *'
+  * {
+    overflow: visible !important;
+  }
+
+  :global(.btn) {
+    border: none;
+    padding: 6px 12px 6px 12px;
+    background-color: transparent;
+  }
+  :global(.btn):hover {
+    background-color: colors.$YB_GRAY_HOVER;
+  }
+}

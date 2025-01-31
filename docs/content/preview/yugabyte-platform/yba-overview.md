@@ -9,12 +9,14 @@ menu:
     identifier: yba-overview
     parent: yugabytedb-anywhere
     weight: 600
+    params:
+      classes: separator
 type: docs
 ---
 
 YugabyteDB Anywhere (YBA) is a self-managed database-as-a-service that allows you to deploy and operate YugabyteDB database clusters (also known as universes) at scale.
 
-In YBA, a database cluster is called a [universe](../../architecture/key-concepts/#universe), and the terms are used interchangeably. More precisely, a universe in YBA always consists of one (and only one) primary cluster, and can optionally also include a single [read replica](../../architecture/docdb-replication/read-replicas/) cluster attached to the primary cluster.
+In YBA, a database cluster is called a [universe](../../architecture/key-concepts/#universe), and the terms are used interchangeably. More precisely, a universe in YBA always consists of one (and only one) [primary cluster](../../architecture/key-concepts/#primary-cluster), and can optionally also include a single [read replica](../../architecture/key-concepts/#read-replica-cluster) cluster attached to the primary cluster.
 
 ## Features
 
@@ -61,7 +63,7 @@ YBA runs on standalone VMs or Kubernetes pods. YBA can in turn be used to deploy
 
 ![YugabyteDB Architecture](/images/yb-platform/prepare/yba-architecture.png)
 
-A VM that is part of a YugabyteDB cluster runs multiple processes, including the [YB-Master](../../architecture/yb-master/) and [YB-TServer](../../architecture/yb-tserver/) services of the cluster, and other secondary agents, including the [node agent](../../faq/yugabyte-platform/#node-agent-1), YB-Controller backup agent, and [Prometheus Node Exporter](https://prometheus.io/docs/guides/node-exporter/) for host metrics export. The YB-Master and YB-TServer services can be deployed in the same VM or, for better isolation, in separate dedicated VMs. On Kubernetes clusters, the YB-Master and YB-TServer services always run in isolated pods. For more information on the architecture of YugabyteDB, see [YugabyteDB Architecture](../../architecture/).
+A VM that is part of a YugabyteDB cluster runs multiple processes, including the [YB-Master](../../architecture/yb-master/) and [YB-TServer](../../architecture/yb-tserver/) services of the cluster, and other secondary agents, including the [node agent](../../faq/yugabyte-platform/#node-agent), YB-Controller backup agent, and [Prometheus Node Exporter](https://prometheus.io/docs/guides/node-exporter/) for host metrics export. The YB-Master and YB-TServer services can be deployed in the same VM or, for better isolation, in separate dedicated VMs. On Kubernetes clusters, the YB-Master and YB-TServer services always run in isolated pods. For more information on the architecture of YugabyteDB, see [YugabyteDB Architecture](../../architecture/).
 
 YBA requires network connectivity to the YugabyteDB database clusters to perform day 2 operations and monitoring. And, of course, in any cluster, database cluster nodes require connectivity to each other. Network connectivity to the public Internet is optional: YBA supports both Internet-connected and air-gapped deployments.
 
@@ -110,7 +112,7 @@ Use this option for any of the following situations:
 - You are deploying a single [stretched cluster across multiple clouds](../create-deployments/create-universe-multi-cloud/) (for example, one cluster with some nodes on AWS, others on GCP, and/or others on Azure).
 - Any other cases where you must retain control over creating the VMs and/or Linux OS, and can't give this control to YBA.
 
-With the on-premises provider, after creating VMs manually (that is, outside of YBA), you will add them to your on premises provider's free pool of servers. Subsequently, when creating the universe, database nodes are taken from the on-premises provider's free pool of servers and added to the universe.
+With the on-premises provider, after creating VMs manually (that is, outside of YBA), you will add them to your on-premises provider's free pool of servers. Subsequently, when creating the universe, database nodes are taken from the on-premises provider's free pool of servers and added to the universe.
 
 ### Kubernetes
 

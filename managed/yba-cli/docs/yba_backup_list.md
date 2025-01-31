@@ -10,11 +10,19 @@ List backups in YugabyteDB Anywhere
 yba backup list [flags]
 ```
 
+### Examples
+
+```
+yba backup list --universe-uuids <universe-uuid-1>,<universe-uuid-2> \
+	--universe-names <universe-name-1>,<universe-name-2>
+```
+
 ### Options
 
 ```
       --universe-uuids string   [Optional] Comma separated list of universe uuids
       --universe-names string   [Optional] Comma separated list of universe names
+  -f, --force                   [Optional] Bypass the prompt for non-interactive usage.
   -h, --help                    help for list
 ```
 
@@ -34,5 +42,5 @@ yba backup list [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere backups
+* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
 

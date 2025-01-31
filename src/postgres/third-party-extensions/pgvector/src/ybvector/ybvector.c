@@ -41,7 +41,7 @@
  * common to YB vector index access methods.
  */
 IndexAmRoutine *
-makeBaseYbVectorHandler()
+makeBaseYbVectorHandler(bool is_copartitioned)
 {
 	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
 
@@ -60,6 +60,7 @@ makeBaseYbVectorHandler()
 	amroutine->ampredlocks = true; /* TODO(tanuj): check what this is */
 	amroutine->amcanparallel = false;
 	amroutine->amcaninclude = false;
+	amroutine->ybamcanupdatetupleinplace = false;
 	amroutine->amkeytype = InvalidOid;
 
 	amroutine->ambuild = ybvectorbuild;
@@ -85,9 +86,21 @@ makeBaseYbVectorHandler()
 	amroutine->yb_amisforybrelation = true;
 	amroutine->yb_aminsert = ybvectorinsert;
 	amroutine->yb_amdelete = ybvectordelete;
+	amroutine->yb_amupdate = NULL;
 	amroutine->yb_ambackfill = ybvectorbackfill;
 	amroutine->yb_ammightrecheck = ybvectormightrecheck;
 	amroutine->yb_ambindschema = NULL;
+
+	/* Override these methods for copartitioned indexes. */
+	if (is_copartitioned)
+	{
+		amroutine->amcanreturn = ybvectorcopartitionedcanreturn;
+		amroutine->yb_aminsert = ybvectorcopartitionedinsert;
+		amroutine->yb_amdelete = ybvectorcopartitioneddelete;
+		amroutine->yb_ambackfill = ybvectorcopartitionedbackfill;
+		amroutine->ambuild = ybvectorcopartitionedbuild;
+		amroutine->yb_amiscopartitioned = true;
+	}
 
 	return amroutine;
 }

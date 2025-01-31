@@ -19,10 +19,12 @@
 #include <boost/assign.hpp>
 #include <gtest/gtest.h>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
-#include "yb/cdc/xcluster_util.h"
+#include "yb/client/xcluster_client.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/client/client-test-util.h"
@@ -75,6 +77,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/xcluster_consumer.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
@@ -123,8 +126,6 @@ DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int64(log_stop_retaining_min_disk_mb);
-DECLARE_int32(ns_replication_sync_backoff_secs);
-DECLARE_int32(ns_replication_sync_retry_secs);
 DECLARE_uint32(replication_failure_delay_exponent);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_int32(transaction_table_num_tablets);
@@ -132,7 +133,6 @@ DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
-DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_bool(TEST_xcluster_disable_delete_old_pollers);
 DECLARE_bool(enable_log_retention_by_op_idx);
 DECLARE_bool(TEST_xcluster_disable_poller_term_check);
@@ -148,10 +148,12 @@ DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(TEST_xcluster_fail_setup_stream_update);
+DECLARE_bool(TEST_xcluster_force_remote_tserver);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
 
 namespace yb {
 
+using cdc::CDCServiceImpl;
 using client::YBClient;
 using client::YBSchema;
 using client::YBSchemaBuilder;
@@ -161,6 +163,7 @@ using client::YBTableAlterer;
 using client::YBTableName;
 using master::MiniMaster;
 
+
 using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransactionPtr>;
 
 struct XClusterTestParams {
@@ -169,6 +172,10 @@ struct XClusterTestParams {
 
   bool transactional_table;  // For XCluster + CQL only. All YSQL tables are transactional.
 };
+
+CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
+  return down_cast<CDCServiceImpl*>(tserver->GetCDCService().get());
+}
 
 class XClusterTestNoParam : public XClusterYcqlTestBase {
  public:
@@ -428,7 +435,7 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
 
     // Verify that for each of the table's tablets, a new row in cdc_state table with the
     // returned id was inserted.
-    cdc::CDCStateTable cdc_state_table(producer_client());
+    auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
     Status s;
     auto table_range = VERIFY_RESULT(
         cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
@@ -644,8 +651,10 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "Producer universe ID must be provided";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Empty required arguments: [replication_group_id, producer_master_addresses, "
+        "producer_table_ids]");
   }
 
   {
@@ -657,8 +666,9 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "Producer master address must be provided";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Empty required arguments: [producer_master_addresses, producer_table_ids]");
   }
 
   {
@@ -671,13 +681,14 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
     setup_universe_req.add_producer_table_ids("a");
     setup_universe_req.add_producer_table_ids("b");
-    setup_universe_req.add_producer_bootstrap_ids("c");
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "Number of bootstrap ids must be equal to number of tables";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Number of bootstrap ids must be equal to number of tables");
   }
 
   {
@@ -693,14 +704,14 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
 
     setup_universe_req.add_producer_table_ids("prod_table_id_1");
     setup_universe_req.add_producer_table_ids("prod_table_id_2");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_1");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_2");
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
 
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string substring = "belongs to the target universe";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().find(substring) != string::npos);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(), "belongs to the target universe");
   }
 
   {
@@ -719,14 +730,15 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
 
     setup_universe_req.add_producer_table_ids("prod_table_id_1");
     setup_universe_req.add_producer_table_ids("prod_table_id_2");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_1");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_2");
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
 
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "The request UUID and cluster UUID are identical.";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Replication group Id cannot be the same as the cluster UUID");
   }
 }
 
@@ -947,7 +959,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
     return true;
   };
   ASSERT_OK(WaitFor(
-      [&]() { return data_replicated_correctly(); }, MonoDelta::FromSeconds(20),
+      [&]() { return data_replicated_correctly(); }, MonoDelta::FromSeconds(60 * kTimeMultiplier),
       "IsDataReplicatedCorrectly"));
 }
 
@@ -1360,7 +1372,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
               tablet_id, table,
               // TODO(tablet splitting + xCluster): After splitting integration is working (+
               // metrics support), then set this to kTrue.
-              master::IncludeInactive::kFalse, master::IncludeDeleted::kFalse,
+              master::IncludeHidden::kFalse, master::IncludeDeleted::kFalse,
               CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
               [&ts_uuid, &data_mutex](const Result<client::internal::RemoteTabletPtr>& result) {
                 if (result.ok()) {
@@ -1384,8 +1396,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   ASSERT_ONLY_NOTNULL(cdc_ts);
 
   // Find the CDCTabletMetric associated with the above pair.
-  auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
-      cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(cdc_ts);
   auto metrics = ASSERT_RESULT(GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id));
 
   /***********************************
@@ -2089,7 +2100,7 @@ TEST_P(XClusterTest, AlterUniverseReplicationBootstrapStateUpdate) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(XClusterTest, ToggleReplicationEnabled) {
+TEST_F_EX(XClusterTest, ToggleReplicationEnabled, XClusterTestNoParam) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   ASSERT_OK(SetUpWithParams({2}, replication_factor));
 
@@ -2105,12 +2116,16 @@ TEST_P(XClusterTest, ToggleReplicationEnabled) {
   // Disable the replication and ensure no tablets are being polled
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
-  ASSERT_OK(CorrectlyPollingAllTablets(0));
+  ASSERT_OK(CorrectlyPollingAllTablets(2));
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_PAUSED));
 
   // Enable replication and ensure that all the tablets start being polled again
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
   ASSERT_OK(CorrectlyPollingAllTablets(2));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
 }
 
 TEST_P(XClusterTest, TestDeleteUniverse) {
@@ -2138,6 +2153,7 @@ TEST_P(XClusterTest, TestDeleteUniverse) {
 
 TEST_P(XClusterTest, TestWalRetentionSet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 8 * 3600;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   ASSERT_OK(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, replication_factor));
@@ -2196,8 +2212,6 @@ TEST_P(XClusterTest, TestProducerUniverseExpansion) {
 }
 
 TEST_P(XClusterTest, TestAlterDDLBasic) {
-  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
-
   uint32_t replication_factor = 1;
   // Use just one tablet here to more easily catch lower-level write issues with this test.
   ASSERT_OK(SetUpWithParams({1}, replication_factor));
@@ -2271,8 +2285,6 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
 }
 
 TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
-  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
-
   uint32_t replication_factor = 3;
   ASSERT_OK(SetUpWithParams({1}, {1}, replication_factor, 2, 3));
 
@@ -2526,10 +2538,12 @@ TEST_P(XClusterTest, TestAlterWhenProducerIsInaccessible) {
 
   // Ensure that we just return an error and don't have a fatal.
   ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
-  ASSERT_TRUE(alter_resp.has_error());
+  auto is_done = ASSERT_RESULT(
+      WaitForSetupUniverseReplication(xcluster::GetAlterReplicationGroupId(kReplicationGroupId)));
+  ASSERT_FALSE(is_done.status().ok());
 }
 
-TEST_P(XClusterTest, TestFailedUniverseDeletionOnRestart) {
+TEST_P(XClusterTest, TestFailedUniverseDeletion) {
   ASSERT_OK(SetUpWithParams({8, 4}, {6, 6}, 3));
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -2549,25 +2563,17 @@ TEST_P(XClusterTest, TestFailedUniverseDeletionOnRestart) {
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
   ASSERT_OK(master_proxy->SetupUniverseReplication(req, &resp, &rpc));
-  // Sleep to allow the universe to be marked as failed
-  std::this_thread::sleep_for(2s);
+
+  auto is_done = ASSERT_RESULT(WaitForSetupUniverseReplication());
+  ASSERT_TRUE(is_done.status().IsNotFound());
 
   master::GetUniverseReplicationRequestPB new_req;
   new_req.set_replication_group_id(kReplicationGroupId.ToString());
   master::GetUniverseReplicationResponsePB new_resp;
   rpc.Reset();
   ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
-  ASSERT_TRUE(new_resp.entry().state() == master::SysUniverseReplicationEntryPB::FAILED);
-
-  // Restart the ENTIRE Consumer cluster.
-  ASSERT_OK(consumer_cluster()->RestartSync());
-
-  // Should delete on restart
-  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kReplicationGroupId));
-  rpc.Reset();
-  Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
-  ASSERT_OK(s);
   ASSERT_TRUE(new_resp.has_error());
+  ASSERT_TRUE(StatusFromPB(new_resp.error().status()).IsNotFound());
 }
 
 TEST_P(XClusterTest, TestFailedDeleteOnRestart) {
@@ -2651,26 +2657,24 @@ TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
 
   ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
 
+  ASSERT_OK(
+      WaitForSetupUniverseReplication(xcluster::GetAlterReplicationGroupId(kReplicationGroupId)));
+
   // Restart the ENTIRE Consumer cluster.
   ASSERT_OK(consumer_cluster()->RestartSync());
 
-  // Wait for alter universe to be deleted on start up
-  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(
-      xcluster::GetAlterReplicationGroupId(kReplicationGroupId)));
-
   // Change should not have gone through
-  new_req.set_replication_group_id(kReplicationGroupId.ToString());
   rpc.Reset();
   ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
-  ASSERT_NE(new_resp.entry().tables_size(), 2);
+  ASSERT_NE(new_resp.entry().tables_size(), 2) << new_resp.ShortDebugString();
 
   // Check that the unfinished alter universe was deleted on start up
   rpc.Reset();
   new_req.set_replication_group_id(
       xcluster::GetAlterReplicationGroupId(kReplicationGroupId).ToString());
-  Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
-  ASSERT_OK(s);
+  ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
   ASSERT_TRUE(new_resp.has_error());
+  ASSERT_TRUE(StatusFromPB(new_resp.error().status()).IsNotFound());
 }
 
 TEST_P(XClusterTest, TestAlterUniverseRemoveTableAndDrop) {
@@ -2742,8 +2746,7 @@ TEST_P(XClusterTest, TestNonZeroLagMetricsWithoutGetChange) {
 
   // Check that the CDC enabled flag is true.
   tserver::TabletServer* cdc_ts = producer_cluster()->mini_tablet_server(0)->server();
-  auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
-      cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(cdc_ts);
 
   ASSERT_OK(WaitFor(
       [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
@@ -2875,130 +2878,6 @@ TEST_P(XClusterTest, DeleteTableChecksCQL) {
     ASSERT_OK(producer_client()->DeleteTable(producer_table_id));
     ASSERT_OK(consumer_client()->DeleteTable(consumer_table_id));
   }
-}
-
-TEST_P(XClusterTest, SetupNSUniverseReplicationExtraConsumerTables) {
-  // Initial setup: create 2 tables on each side.
-  constexpr int kNTabletsPerTable = 3;
-  std::vector<uint32_t> table_vector = {kNTabletsPerTable, kNTabletsPerTable};
-  ASSERT_OK(SetUpWithParams(table_vector, 1));
-
-  // Create 2 more consumer tables.
-  for (int i = 2; i < 4; i++) {
-    auto t = ASSERT_RESULT(CreateTable(
-        consumer_client(), namespace_name, Format("test_table_$0", i), kNTabletsPerTable));
-    consumer_tables_.push_back({});
-    ASSERT_OK(consumer_client()->OpenTable(t, &consumer_tables_.back()));
-  }
-
-  // Setup NS universe replication. Only the first 2 consumer tables will be replicated.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ns_replication_sync_retry_secs) = 1;
-  ASSERT_OK(SetupNSUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
-      namespace_name, YQLDatabase::YQL_DATABASE_CQL));
-  ASSERT_OK(VerifyNSUniverseReplication(
-      consumer_cluster(), consumer_client(), kReplicationGroupId,
-      narrow_cast<int>(producer_tables_.size())));
-
-  // Create the additional 2 tables on producer. Verify that they are added automatically.
-  for (int i = 2; i < 4; i++) {
-    auto t = ASSERT_RESULT(CreateTable(
-        producer_client(), namespace_name, Format("test_table_$0", i), kNTabletsPerTable));
-    producer_tables_.push_back({});
-    ASSERT_OK(producer_client()->OpenTable(t, &producer_tables_.back()));
-  }
-  ASSERT_OK(VerifyNSUniverseReplication(
-      consumer_cluster(), consumer_client(), kReplicationGroupId,
-      narrow_cast<int>(consumer_tables_.size())));
-
-  // Write some data and verify replication.
-  for (size_t i = 0; i < producer_tables_.size(); i++) {
-    ASSERT_OK(InsertRowsAndVerify(0, narrow_cast<int>(10 * (i + 1)), producer_tables_[i]));
-  }
-  ASSERT_OK(DeleteUniverseReplication());
-}
-
-TEST_P(XClusterTest, SetupNSUniverseReplicationExtraProducerTables) {
-  // Initial setup: create 2 tables on each side.
-  constexpr int kNTabletsPerTable = 3;
-  std::vector<uint32_t> table_vector = {kNTabletsPerTable, kNTabletsPerTable};
-  ASSERT_OK(SetUpWithParams(table_vector, 1));
-
-  // Create 2 more producer tables.
-  for (int i = 2; i < 4; i++) {
-    auto t = ASSERT_RESULT(CreateTable(
-        producer_client(), namespace_name, Format("test_table_$0", i), kNTabletsPerTable));
-    producer_tables_.push_back({});
-    ASSERT_OK(producer_client()->OpenTable(t, &producer_tables_.back()));
-  }
-
-  // Setup NS universe replication. Only the first 2 producer tables will be replicated.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ns_replication_sync_backoff_secs) = 1;
-  ASSERT_OK(SetupNSUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
-      namespace_name, YQLDatabase::YQL_DATABASE_CQL));
-  ASSERT_OK(VerifyNSUniverseReplication(
-      consumer_cluster(), consumer_client(), kReplicationGroupId,
-      narrow_cast<int>(consumer_tables_.size())));
-
-  // Create the additional 2 tables on consumer. Verify that they are added automatically.
-  for (int i = 2; i < 4; i++) {
-    auto t = ASSERT_RESULT(CreateTable(
-        consumer_client(), namespace_name, Format("test_table_$0", i), kNTabletsPerTable));
-    consumer_tables_.push_back({});
-    ASSERT_OK(consumer_client()->OpenTable(t, &consumer_tables_.back()));
-  }
-  ASSERT_OK(VerifyNSUniverseReplication(
-      consumer_cluster(), consumer_client(), kReplicationGroupId,
-      narrow_cast<int>(producer_tables_.size())));
-
-  // Write some data and verify replication.
-  for (size_t i = 0; i < producer_tables_.size(); i++) {
-    ASSERT_OK(InsertRowsAndVerify(0, narrow_cast<int>(10 * (i + 1)), producer_tables_[i]));
-  }
-  ASSERT_OK(DeleteUniverseReplication());
-}
-
-TEST_P(XClusterTest, SetupNSUniverseReplicationTwoNamespace) {
-  // Create 2 tables in one namespace.
-  constexpr int kNTabletsPerTable = 1;
-  std::vector<uint32_t> table_vector = {kNTabletsPerTable, kNTabletsPerTable};
-  ASSERT_OK(SetUpWithParams(table_vector, 1));
-
-  // Create 2 tables in another namespace.
-  string kNamespaceName2 = "test_namespace_2";
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
-  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
-  producer_tables.reserve(2);
-  consumer_tables.reserve(2);
-  for (int i = 0; i < 2; i++) {
-    auto ptable = ASSERT_RESULT(CreateTable(
-        producer_client(), kNamespaceName2, Format("test_table_$0", i), kNTabletsPerTable));
-    producer_tables.push_back({});
-    ASSERT_OK(producer_client()->OpenTable(ptable, &producer_tables.back()));
-
-    auto ctable = ASSERT_RESULT(CreateTable(
-        consumer_client(), kNamespaceName2, Format("test_table_$0", i), kNTabletsPerTable));
-    consumer_tables.push_back({});
-    ASSERT_OK(consumer_client()->OpenTable(ctable, &consumer_tables.back()));
-  }
-
-  // Setup NS universe replication for the second namespace. Verify that the tables under the
-  // first namespace will not be added to the replication.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ns_replication_sync_backoff_secs) = 1;
-  ASSERT_OK(SetupNSUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
-      kNamespaceName2, YQLDatabase::YQL_DATABASE_CQL));
-  SleepFor(MonoDelta::FromSeconds(5));  // Let the bg thread run a few times.
-  ASSERT_OK(VerifyNSUniverseReplication(
-      consumer_cluster(), consumer_client(), kReplicationGroupId,
-      narrow_cast<int>(producer_tables.size())));
-
-  // Write some data and verify replication.
-  for (size_t i = 0; i < producer_tables.size(); i++) {
-    ASSERT_OK(InsertRowsAndVerify(0, narrow_cast<int>(10 * (i + 1)), producer_tables[i]));
-  }
-  ASSERT_OK(DeleteUniverseReplication());
 }
 
 class XClusterTestWaitForReplicationDrain : public XClusterTest {
@@ -3323,8 +3202,7 @@ TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerMultiTable) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-// This test is flaky. See #18437.
-TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
+TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
   // When the consumer tablet leader moves around (like during an upgrade) the pollers can start and
   // stop on multiple nodes. This test makes sure that during such poller movement we do not get
   // replication errors.
@@ -3340,10 +3218,12 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
 
   // Dont remove pollers when leaders move.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_delete_old_pollers) = true;
+  // Keep polling even if the leader term is lost.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_poller_term_check) = true;
   // Dont increase Poll delay on failures as it is expected.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 0;
   // The below flags are required for fast log gc.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 0;
@@ -3352,25 +3232,33 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
   const uint32_t kReplicationFactor = 3, kTabletCount = 1, kNumMasters = 1, kNumTservers = 3;
   ASSERT_OK(SetUpWithParams(
       {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
+
+  google::SetVLOGLevel("xcluster*", 5);
+
   ASSERT_OK(
       SetupUniverseReplication(producer_tables_, {LeaderOnly::kFalse, Transactional::kFalse}));
 
   // After creating the cluster, make sure all tablets being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(kTabletCount));
 
-  auto tablet_ids = ListTabletIdsForTable(consumer_cluster(), consumer_table_->id());
-  ASSERT_EQ(tablet_ids.size(), 1);
-  const auto tablet_id = *tablet_ids.begin();
+  auto consumer_tablet_ids = ListTabletIdsForTable(consumer_cluster(), consumer_table_->id());
+  ASSERT_EQ(consumer_tablet_ids.size(), 1);
+  const auto consumer_tablet_id = *consumer_tablet_ids.begin();
+
+  auto producer_tablet_ids = ListTabletIdsForTable(producer_cluster(), producer_table_->id());
+  ASSERT_EQ(producer_tablet_ids.size(), 1);
+  const auto producer_tablet_id = *producer_tablet_ids.begin();
+
   const auto kTimeout = 10s * kTimeMultiplier;
 
-  auto leader_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
-  master::MasterClusterProxy master_proxy(
-      &consumer_client()->proxy_cache(), leader_master->bound_rpc_addr());
+  auto master_proxy =
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMasterProxy<master::MasterClusterProxy>());
   auto ts_map =
       ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &consumer_client()->proxy_cache()));
 
   itest::TServerDetails* old_ts = nullptr;
-  ASSERT_OK(FindTabletLeader(ts_map, tablet_id, kTimeout, &old_ts));
+  ASSERT_OK(FindTabletLeader(ts_map, consumer_tablet_id, kTimeout, &old_ts));
+  tserver::MiniTabletServer* old_tserver = FindTabletLeader(consumer_cluster(), consumer_tablet_id);
 
   itest::TServerDetails* new_ts = nullptr;
   for (auto& [ts_id, ts_details] : ts_map) {
@@ -3380,18 +3268,60 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
     }
   }
 
-  constexpr int kNumWriteRecords = 100;
-  ASSERT_OK(InsertRowsInProducer(0, kNumWriteRecords));
-  ASSERT_OK(VerifyNumRecordsOnConsumer(kNumWriteRecords));
+  int num_rows_inserted = 0;
+  auto insert_rows_and_verify = [this, &num_rows_inserted]() -> Status {
+    constexpr int kNumWriteRecords = 100;
+    RETURN_NOT_OK(InsertRowsInProducer(num_rows_inserted, num_rows_inserted + kNumWriteRecords));
+    num_rows_inserted += kNumWriteRecords;
+    return VerifyNumRecordsOnConsumer(num_rows_inserted);
+  };
+
+  auto wait_for_error = [this, &producer_tablet_id, kTimeout](
+                            tserver::XClusterConsumer& consumer,
+                            ReplicationErrorPb expected_error) {
+    return LoggedWaitFor(
+        [this, &consumer, &producer_tablet_id, expected_error]() -> Result<bool> {
+          auto errors = consumer.error_collector_.GetErrorsToSend(/*get_all_errors=*/true);
+          if (!errors[kReplicationGroupId][consumer_table_->id()].contains(producer_tablet_id)) {
+            LOG(INFO) << "No errors found";
+            return false;
+          }
+
+          const auto error =
+              errors[kReplicationGroupId][consumer_table_->id()][producer_tablet_id].error;
+          LOG(INFO) << "Poller Error: " << ReplicationErrorPb_Name(error);
+          return error == expected_error;
+        },
+        kTimeout,
+        Format("Waiting for poller error to be $0", ReplicationErrorPb_Name(expected_error)),
+        /*initial_delay=*/100ms);
+  };
+
+  ASSERT_OK(insert_rows_and_verify());
+
+  auto& old_consumer =
+      *dynamic_cast<tserver::XClusterConsumer*>(old_tserver->server()->GetXClusterConsumer());
+  ASSERT_OK(wait_for_error(old_consumer, ReplicationErrorPb::REPLICATION_OK));
 
   // Failover to new tserver.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_poller_term_check) = true;
-  ASSERT_OK(itest::LeaderStepDown(old_ts, tablet_id, new_ts, kTimeout));
-  ASSERT_OK(itest::WaitUntilLeader(new_ts, tablet_id, kTimeout));
-  auto new_tserver = FindTabletLeader(consumer_cluster(), tablet_id);
+  ASSERT_OK(itest::LeaderStepDown(old_ts, consumer_tablet_id, new_ts, kTimeout));
+  ASSERT_OK(itest::WaitUntilLeader(new_ts, consumer_tablet_id, kTimeout));
 
-  ASSERT_OK(InsertRowsInProducer(kNumWriteRecords, 2 * kNumWriteRecords));
-  ASSERT_OK(VerifyNumRecordsOnConsumer(2 * kNumWriteRecords));
+  ASSERT_OK(insert_rows_and_verify());
+
+  tserver::MiniTabletServer* new_tserver = FindTabletLeader(consumer_cluster(), consumer_tablet_id);
+  auto& new_consumer =
+      *dynamic_cast<tserver::XClusterConsumer*>(new_tserver->server()->GetXClusterConsumer());
+
+  ASSERT_OK(wait_for_error(new_consumer, ReplicationErrorPb::REPLICATION_OK));
+  // Old consumer should be stuck on the applies.
+  ASSERT_OK(wait_for_error(old_consumer, ReplicationErrorPb::REPLICATION_SYSTEM_ERROR));
+
+  // Master should report healthy since it track only errors from the latest term.
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+
+  ASSERT_OK(insert_rows_and_verify());
 
   // GC log on producer.
   // Note: Ideally cdc checkpoint should advance but we do not see that with our combination of
@@ -3402,27 +3332,17 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
   SetAtomicFlag(true, &FLAGS_enable_log_retention_by_op_idx);
 
   // Failback to old tserver.
-  ASSERT_OK(itest::LeaderStepDown(new_ts, tablet_id, old_ts, kTimeout));
-  ASSERT_OK(itest::WaitUntilLeader(old_ts, tablet_id, kTimeout));
+  ASSERT_OK(itest::LeaderStepDown(new_ts, consumer_tablet_id, old_ts, kTimeout));
+  ASSERT_OK(itest::WaitUntilLeader(old_ts, consumer_tablet_id, kTimeout));
 
-  // Delete old pollers so that we can properly shutdown the servers.
+  ASSERT_OK(wait_for_error(old_consumer, ReplicationErrorPb::REPLICATION_MISSING_OP_ID));
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_delete_old_pollers) = false;
-
-  ASSERT_OK(LoggedWaitFor(
-      [&new_tserver]() {
-        auto new_tserver_pollers = new_tserver->server()->GetXClusterConsumer()->TEST_ListPollers();
-        return new_tserver_pollers.size() == 0;
-      },
-      kTimeout, "Waiting for pollers from new tserver to stop"));
-
-  ASSERT_OK(InsertRowsInProducer(2 * kNumWriteRecords, 3 * kNumWriteRecords));
-
-  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
-  ASSERT_OK(VerifyReplicationError(
-      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_MISSING_OP_ID));
-
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_poller_term_check) = false;
-  ASSERT_OK(VerifyNumRecordsOnConsumer(3 * kNumWriteRecords));
+
+  ASSERT_OK(wait_for_error(old_consumer, ReplicationErrorPb::REPLICATION_OK));
+
+  ASSERT_OK(insert_rows_and_verify());
 }
 
 Status VerifyMetaCacheObjectIsValid(
@@ -3434,25 +3354,28 @@ Status VerifyMetaCacheObjectIsValid(
   return json_reader.ExtractObjectArray(meta_cache, "tablets", &tablets);
 }
 
-void VerifyMetaCacheWithXClusterConsumerSetUp(const std::string& produced_json) {
+Status VerifyMetaCacheWithXClusterConsumerSetUp(const std::string& produced_json) {
   JsonReader json_reader(produced_json);
-  EXPECT_OK(json_reader.Init());
+  RETURN_NOT_OK(json_reader.Init());
   const rapidjson::Value* object = nullptr;
-  EXPECT_OK(json_reader.ExtractObject(json_reader.root(), nullptr, &object));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(object)->GetType());
+  RETURN_NOT_OK(json_reader.ExtractObject(json_reader.root(), nullptr, &object));
+  SCHECK_EQ(
+      CHECK_NOTNULL(object)->GetType(), rapidjson::kObjectType, IllegalState, "Not an JSON object");
 
-  EXPECT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, "MainMetaCache"));
+  RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, "MainMetaCache"));
   bool found_xcluster_member = false;
-  for (auto it = object->MemberBegin(); it != object->MemberEnd();
-       ++it) {
+  for (auto it = object->MemberBegin(); it != object->MemberEnd(); ++it) {
     std::string member_name = it->name.GetString();
-    if (member_name.starts_with("XClusterConsumerRemote_")) {
+    if (member_name.starts_with(client::XClusterRemoteClientHolder::kClientName)) {
       found_xcluster_member = true;
     }
-    EXPECT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, member_name.c_str()));
+    RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, member_name.c_str()));
   }
-  EXPECT_TRUE(found_xcluster_member)
-      << "No member name starting with XClusterConsumerRemote_ is found";
+  SCHECK_FORMAT(
+      found_xcluster_member, IllegalState, "No member name starting with $0 found",
+      client::XClusterRemoteClientHolder::kClientName);
+
+  return Status::OK();
 }
 
 TEST_F_EX(XClusterTest, ListMetaCacheAfterXClusterSetup, XClusterTestNoParam) {
@@ -3476,8 +3399,21 @@ TEST_F_EX(XClusterTest, ListMetaCacheAfterXClusterSetup, XClusterTestNoParam) {
     auto tserver_endpoint = tserver->bound_http_addr();
     auto query_endpoint = "http://" + AsString(tserver_endpoint) + "/api/v1/meta-cache";
     faststring result;
-    ASSERT_OK(EasyCurl().FetchURL(query_endpoint, &result));
-    VerifyMetaCacheWithXClusterConsumerSetUp(result.ToString());
+
+    // Attempts to fetch url until a response with status OK, or until timeout.
+    // On mac the curl command fails with error "A libcurl function was given a bad argument", but
+    // succeeds on retries.
+    ASSERT_OK(WaitFor(
+        [&]() -> bool {
+          EasyCurl curl;
+          auto status = curl.FetchURL(query_endpoint, &result);
+          YB_LOG_IF_EVERY_N(WARNING, !status.ok(), 5) << status;
+
+          return status.ok();
+        },
+        30s, "Wait for curl response to return with status OK"));
+
+    ASSERT_OK(VerifyMetaCacheWithXClusterConsumerSetUp(result.ToString()));
   }
   ASSERT_OK(DeleteUniverseReplication());
 }
@@ -3596,13 +3532,15 @@ TEST_F_EX(XClusterTest, CdcCheckpointPeerMove, XClusterTestNoParam) {
           int64_t min_found = std::numeric_limits<int64_t>::max();
           int64_t max_found = std::numeric_limits<int64_t>::min();
           for (auto& tablet_server : producer_cluster()->mini_tablet_servers()) {
+            auto cdc_service = CDCService(tablet_server->server());
             for (const auto& tablet_peer :
                  tablet_server->server()->tablet_manager()->GetTabletPeers()) {
               if (tablet_peer->tablet_id() != tablet_id) {
                 continue;
               }
               peer_count++;
-              auto cdc_checkpoint = tablet_peer->get_cdc_min_replicated_index();
+              auto cdc_checkpoint =
+                  cdc_service->GetXClusterMinRequiredIndex(tablet_peer->tablet_id());
               LOG(INFO) << "TServer: " << tablet_server->server()->ToString()
                         << ", CDC min replicated index: " << cdc_checkpoint;
               if (cdc_checkpoint == std::numeric_limits<int64_t>::max() ||
@@ -3815,42 +3753,22 @@ TEST_F_EX(XClusterTest, TestStats, XClusterTestNoParam) {
       },
       MonoDelta::FromSeconds(kRpcTimeout), "Waiting for initial target Stats to populate"));
 
-  // Make sure stats on source and target match.
-  auto source_stats = source_cdc_service->GetAllStreamTabletStats();
-  ASSERT_EQ(source_stats.size(), 1);
-  auto initial_index = source_stats[0].sent_index;
-  auto initial_records_sent = source_stats[0].records_sent;
-  auto initial_time = source_stats[0].last_poll_time;
-  ASSERT_GT(source_stats[0].avg_poll_delay_ms, 0);
-  ASSERT_TRUE(source_stats[0].last_poll_time);
-  ASSERT_EQ(source_stats[0].sent_index, source_stats[0].latest_index);
-  ASSERT_TRUE(source_stats[0].status.ok());
-
-  auto target_stats = target_xc_consumer->GetPollerStats();
-  ASSERT_EQ(target_stats.size(), 1);
-  ASSERT_GT(target_stats[0].avg_poll_delay_ms, 0);
-  ASSERT_TRUE(target_stats[0].status.ok());
-
-  ASSERT_EQ(source_stats[0].records_sent, target_stats[0].records_received);
-  ASSERT_EQ(source_stats[0].mbs_sent, target_stats[0].mbs_received);
-  ASSERT_EQ(source_stats[0].sent_index, target_stats[0].received_index);
-
+  // Make sure stats on source and target match and data was sent and received.
   ASSERT_OK(InsertRowsInProducer(0, 100));
   ASSERT_OK(VerifyRowsMatch());
+  auto source_stats = source_cdc_service->GetAllStreamTabletStats();
+  auto target_stats = target_xc_consumer->GetPollerStats();
 
-  // Make sure stats show data was sent and received.
-  source_stats = source_cdc_service->GetAllStreamTabletStats();
   ASSERT_EQ(source_stats.size(), 1);
   ASSERT_GT(source_stats[0].avg_poll_delay_ms, 0);
   ASSERT_GT(source_stats[0].records_sent, 0);
   ASSERT_GT(source_stats[0].mbs_sent, 0);
-  ASSERT_GT(source_stats[0].sent_index, initial_index);
-  ASSERT_GT(source_stats[0].records_sent, initial_records_sent);
-  ASSERT_GT(source_stats[0].last_poll_time, initial_time);
+  ASSERT_GT(source_stats[0].sent_index, 0);
+  ASSERT_GT(source_stats[0].records_sent, 0);
+  ASSERT_GT(source_stats[0].last_poll_time, MonoTime::Min());
   ASSERT_EQ(source_stats[0].sent_index, source_stats[0].latest_index);
   ASSERT_TRUE(source_stats[0].status.ok());
 
-  target_stats = target_xc_consumer->GetPollerStats();
   ASSERT_EQ(target_stats.size(), 1);
   ASSERT_GT(target_stats[0].records_received, 0);
   ASSERT_GT(target_stats[0].mbs_received, 0);
@@ -3957,6 +3875,61 @@ TEST_F_EX(XClusterTest, ReplicationErrorAfterMasterFailover, XClusterTestNoParam
   ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
 }
 
+// Make sure we get SOURCE_UNREACHABLE when the source universe is not reachable.
+TEST_F_EX(XClusterTest, NetworkReplicationError, XClusterTestNoParam) {
+  // Send metrics report including the xCluster status in every heartbeat.
+  const auto short_metric_report_interval_ms = 250;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = short_metric_report_interval_ms * 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+      short_metric_report_interval_ms;
+
+  ASSERT_OK(SetUpWithParams(
+      {1}, {1}, /* replication_factor */ 1, /* num_masters */ 1, /* num_tservers */ 1));
+  ASSERT_OK(SetupReplication());
+  ASSERT_OK(CorrectlyPollingAllTablets(1));
+  const auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 5 * 1000;
+
+  producer_cluster()->mini_tablet_server(0)->Shutdown();
+
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SOURCE_UNREACHABLE,
+      kRpcTimeout));
+
+  ASSERT_OK(producer_cluster()->mini_tablet_server(0)->Start());
+
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+}
+
+// Make sure we get SYSTEM_ERROR when apply fails.
+TEST_F_EX(XClusterTest, ApplyReplicationError, XClusterTestNoParam) {
+  // Send metrics report including the xCluster status in every heartbeat.
+  const auto short_metric_report_interval_ms = 250;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = short_metric_report_interval_ms * 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+      short_metric_report_interval_ms;
+
+  ASSERT_OK(SetUpWithParams(
+      {1}, {1}, /* replication_factor */ 1, /* num_masters */ 1, /* num_tservers */ 1));
+  ASSERT_OK(SetupReplication());
+  ASSERT_OK(CorrectlyPollingAllTablets(1));
+  const auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_random_failure_after_apply) = 1;
+
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SYSTEM_ERROR));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_random_failure_after_apply) = 0;
+
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+}
+
 // Test deleting inbound replication group without performing source stream cleanup.
 TEST_F_EX(XClusterTest, DeleteWithoutStreamCleanup, XClusterTestNoParam) {
   constexpr int kNTabletsPerTable = 1;
@@ -4007,8 +3980,6 @@ TEST_F_EX(XClusterTest, DeleteWithoutStreamCleanup, XClusterTestNoParam) {
 }
 
 TEST_F_EX(XClusterTest, DeleteWhenSourceIsDown, XClusterTestNoParam) {
-  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
-
   // Create 2 tables with 3 tablets each.
   ASSERT_OK(SetUpWithParams({3, 3}, /*replication_factor=*/3));
   ASSERT_OK(SetupReplication());
@@ -4121,7 +4092,7 @@ TEST_F_EX(XClusterTest, FailedSetupStreamUpdate, XClusterTestNoParam) {
 
   ASSERT_NOK_STR_CONTAINS(
       SetupUniverseReplication(producer_tables_, bootstrap_ids),
-      "Unable to update xrepl stream options on source universe");
+      "Test flag to fail setup stream update is set");
 
   master::ListCDCStreamsResponsePB stream_resp;
   ASSERT_OK(GetCDCStreamForTable(producer_table_->id(), &stream_resp));

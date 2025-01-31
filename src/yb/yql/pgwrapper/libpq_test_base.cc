@@ -15,6 +15,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -48,7 +49,7 @@ Result<PGConn> LibPqTestBase::ConnectToDBAsUser(
     const string& db_name, const string& user, bool simple_query_protocol) {
   return PGConnBuilder({
     .host = pg_ts->bind_host(),
-    .port = pg_ts->pgsql_rpc_port(),
+    .port = pg_ts->ysql_port(),
     .dbname = db_name,
     .user = user
   }).Connect(simple_query_protocol);
@@ -57,7 +58,7 @@ Result<PGConn> LibPqTestBase::ConnectToDBAsUser(
 Result<PGConn> LibPqTestBase::ConnectToTs(const ExternalTabletServer& pg_ts) {
   return PGConnBuilder({
     .host = pg_ts.bind_host(),
-    .port = pg_ts.pgsql_rpc_port(),
+    .port = pg_ts.ysql_port(),
   }).Connect();
 }
 
@@ -65,6 +66,15 @@ Result<PGConn> LibPqTestBase::ConnectUsingString(
     const string& conn_str, CoarseTimePoint deadline, bool simple_query_protocol) {
   return PGConn::Connect(
     conn_str, deadline, simple_query_protocol, std::string() /* conn_str_for_log */);
+}
+
+Result<PGConn> LibPqTestBase::ConnectToDBWithReplication(const std::string& db_name) {
+  return PGConnBuilder({
+    .host = pg_ts->bind_host(),
+    .port = pg_ts->pgsql_rpc_port(),
+    .dbname = db_name,
+    .replication = "database"
+  }).Connect(true /* simple_query_protocol */);
 }
 
 bool LibPqTestBase::TransactionalFailure(const Status& status) {
@@ -81,11 +91,45 @@ Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
 }
 
-void LibPqTestBase::BumpCatalogVersion(int num_versions, PGConn* conn) {
-  LOG(INFO) << "Do " << num_versions << " breaking catalog version bumps";
-  for (int i = 0; i < num_versions; ++i) {
-    ASSERT_OK(conn->Execute("ALTER ROLE yugabyte SUPERUSER"));
+// Bump catalog version num_bumps times using conn.  After each bump, wait for the new catalog
+// version to propagate to conn in order to avoid catalog version mismatch errors.
+// Prerequisites:
+// - conn should not be in the middle of a transaction
+// - there should be no other concurrent catalog version bumps
+Status LibPqTestBase::BumpCatalogVersion(int num_bumps, PGConn* conn,
+                                         const std::string& alter_value) {
+  const auto query = "SELECT catalog_version FROM pg_stat_activity WHERE pid = pg_backend_pid()";
+  auto initial_catalog_version = VERIFY_RESULT(conn->FetchRow<int64_t>(query));
+  LOG(INFO) << "Do " << num_bumps << " breaking catalog version bumps starting at "
+            << initial_catalog_version;
+  if (alter_value.empty()) {
+    for (int i = 1; i <= num_bumps; ++i) {
+      RETURN_NOT_OK(IncrementAllDBCatalogVersions(
+          *conn, IsBreakingCatalogVersionChange::kTrue /* is_breaking */));
+      auto target_catalog_version = initial_catalog_version + i;
+      RETURN_NOT_OK(LoggedWaitFor(
+          [conn, target_catalog_version, &query]() -> Result<bool> {
+            auto current_catalog_version = VERIFY_RESULT(conn->FetchRow<int64_t>(query));
+            if (current_catalog_version == target_catalog_version) {
+              return true;
+            }
+            if (current_catalog_version < target_catalog_version) {
+              return false;
+            }
+            return STATUS_FORMAT(
+                IllegalState,
+                "unexpected catalog version $0 > target $1:"
+                " does the test do concurrent DDLs without synchronization?",
+                current_catalog_version, target_catalog_version);
+          },
+          10s,
+          Format("wait for catalog version $0 to propagate", target_catalog_version)));
+    }
+    return Status::OK();
   }
+  // Some tests cannot tolerate the added wait if using increment_all_db_catalog_versions.
+  SCHECK_EQ(num_bumps, 1, InvalidArgument, "cannot bump more than one version with alter_value");
+  return conn->ExecuteFormat("ALTER ROLE yugabyte $0", alter_value);
 }
 
 Result<std::string> GetPGVersionString(PGConn* conn) {

@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: sequelize-1
     parent: nodejs-drivers
-    weight: 500
+    weight: 600
 type: docs
 ---
 

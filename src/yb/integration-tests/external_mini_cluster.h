@@ -106,6 +106,10 @@ class ServerStatusPB;
 
 using yb::consensus::ChangeConfigType;
 
+void AppendCsvFlagValue(
+    std::vector<std::string>& flag_list, const std::string& flag_name,
+    const std::string& value_to_add);
+
 struct ExternalMiniClusterOptions {
 
   // Number of masters to start.
@@ -132,6 +136,7 @@ struct ExternalMiniClusterOptions {
 #endif
 
   bool enable_ysql = false;
+  bool enable_ysql_auth = false;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -252,6 +257,11 @@ class ExternalMiniCluster : public MiniClusterBase {
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
       const std::vector<std::string>& extra_flags = {},
       int num_drives = -1);
+
+  // Shuts down the tablet server(s) and removes it/them from the masters' ts registry.
+  Status RemoveTabletServer(const std::string& ts_uuid, MonoTime deadline);
+  Status RemoveTabletServers(
+      const std::vector<std::reference_wrapper<const std::string>>& ts_uuids, MonoTime deadline);
 
   // Start YB Controller servers for all the existing TSs.
   Status StartYbControllerServers();
@@ -389,8 +399,8 @@ class ExternalMiniCluster : public MiniClusterBase {
     return yb_controller_servers_;
   }
 
-  // Get tablet server host.
-  HostPort pgsql_hostport(int node_index) const;
+  // Get table server host for ysql conn mgr or pg depending if test running with conn mgr.
+  HostPort ysql_hostport(int node_index) const;
 
   size_t num_tablet_servers() const {
     return tablet_servers_.size();
@@ -504,6 +514,10 @@ class ExternalMiniCluster : public MiniClusterBase {
   // to get any effect of that change.
   void RemoveExtraFlagOnTServers(const std::string& flag);
 
+  // Adds the given flag to the extra flags on all servers. Also dynamically sets the flag on the
+  // running processes. Non runtime flags would still require a restart.
+  Status AddAndSetExtraFlag(const std::string& flag, const std::string& value);
+
   // Allocates a free port and stores a file lock guarding access to that port into an internal
   // array of file locks.
   uint16_t AllocateFreePort();
@@ -566,7 +580,14 @@ class ExternalMiniCluster : public MiniClusterBase {
       const TabletId& tablet_id, std::optional<size_t> new_leader_idx = std::nullopt,
       MonoDelta timeout = MonoDelta::kMin);
 
+  void SetMaxGracefulShutdownWaitSec(int max_graceful_shutdown_wait_sec);
+
+  Status CallYbAdmin(
+      const std::vector<std::string>& args, MonoDelta timeout = MonoDelta::FromSeconds(60),
+      std::string* output = nullptr);
+
  protected:
+  friend class UpgradeTestBase;
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
@@ -578,7 +599,6 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::string GetBinaryPath(const std::string& binary) const;
   std::string GetDataPath(const std::string& daemon_id) const;
 
-  Status DeduceBinRoot(std::string* ret);
   Status HandleOptions();
 
   std::string GetClusterDataDirName() const;
@@ -590,8 +610,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status AddMaster(const ExternalMasterPtr& master);
   Status RemoveMaster(const ExternalMasterPtr& master);
 
-  // Get the index of this master in the vector of masters. This might not be the insertion order as
-  // we might have removed some masters within the vector.
+  // Get the index of this master in the vector of masters. This might not be the insertion order
+  // as we might have removed some masters within the vector.
   int GetIndexOfMaster(const ExternalMaster* master) const;
 
   // Checks that the masters_ list and opts_ match in terms of the number of elements.
@@ -599,13 +619,20 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Return the list of opid's for all master's in this cluster.
   Status GetLastOpIdForMasterPeers(
-      const MonoDelta& timeout,
-      consensus::OpIdType opid_type,
-      std::vector<OpIdPB>* op_ids,
+      const MonoDelta& timeout, consensus::OpIdType opid_type, std::vector<OpIdPB>* op_ids,
       const std::vector<ExternalMaster*>& masters);
 
   // Return master address for specified port.
   std::string MasterAddressForPort(uint16_t port) const;
+
+  Status DeduceBinRoot(std::string* ret);
+  std::string GetDaemonBinPath() const { return daemon_bin_path_; }
+  void SetDaemonBinPath(const std::string& bin_path);
+  std::string GetMasterBinaryPath() const;
+  std::string GetTServerBinaryPath() const;
+
+  // Checks whether user has enabled connection manager
+  bool IsYsqlConnMgrEnabledInTests() const;
 
   ExternalMiniClusterOptions opts_;
 
@@ -614,12 +641,13 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   std::string data_root_;
 
-  // This variable is incremented every time a new master is spawned (either in shell mode or create
-  // mode). Avoids reusing an index of a killed/removed master. Useful for master side logging.
+  // This variable is incremented every time a new master is spawned (either in shell mode or
+  // create mode). Avoids reusing an index of a killed/removed master. Useful for master side
+  // logging.
   size_t add_new_master_at_ = 0;
 
-  std::vector<scoped_refptr<ExternalMaster> > masters_;
-  std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;
+  std::vector<scoped_refptr<ExternalMaster>> masters_;
+  std::vector<scoped_refptr<ExternalTabletServer>> tablet_servers_;
 
   std::vector<scoped_refptr<ExternalYbController>> yb_controller_servers_;
 
@@ -711,7 +739,7 @@ class ExternalTabletServer : public ExternalDaemon {
       const std::string& exe, const std::string& data_dir, uint16_t num_drives,
       std::string bind_host, uint16_t rpc_port, uint16_t http_port, uint16_t redis_rpc_port,
       uint16_t redis_http_port, uint16_t cql_rpc_port, uint16_t cql_http_port,
-      uint16_t pgsql_rpc_port, uint16_t pgsql_http_port,
+      uint16_t pgsql_rpc_port, uint16_t ysql_conn_mgr_rpc_port, uint16_t pgsql_http_port,
       const std::vector<HostPort>& master_addrs,
       const std::vector<std::string>& extra_flags);
 
@@ -750,6 +778,20 @@ class ExternalTabletServer : public ExternalDaemon {
   uint16_t pgsql_rpc_port() const {
     return pgsql_rpc_port_;
   }
+
+  // Returns either connection manager or postgres port.
+  uint16_t ysql_port() const {
+    if (ysql_conn_mgr_rpc_port_ != 0) {
+      // Connection manager is enabled
+      return ysql_conn_mgr_rpc_port_;
+    }
+    return pgsql_rpc_port_;
+  }
+
+  uint16_t ysql_conn_mgr_rpc_port() const {
+    return ysql_conn_mgr_rpc_port_;
+  }
+
   uint16_t pgsql_http_port() const {
     return pgsql_http_port_;
   }
@@ -789,6 +831,7 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t redis_rpc_port_;
   const uint16_t redis_http_port_;
   const uint16_t pgsql_rpc_port_;
+  const uint16_t ysql_conn_mgr_rpc_port_;
   const uint16_t pgsql_http_port_;
   const uint16_t cql_rpc_port_;
   const uint16_t cql_http_port_;

@@ -13,21 +13,43 @@
 
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+#include "yb/client/xcluster_client.h"
+#include "yb/common/xcluster_util.h"
+
 #include "yb/gutil/strings/util.h"
-#include "yb/master/catalog_entity_info.pb.h"
+
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/xcluster/add_index_to_bidirectional_xcluster_target_task.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster/xcluster_bootstrap_helper.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
-
 #include "yb/master/xcluster/xcluster_status.h"
-#include "yb/util/jsonwriter.h"
+#include "yb/master/xcluster/xcluster_universe_replication_alter_helper.h"
+#include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+
+DEPRECATE_FLAG(bool, xcluster_wait_on_ddl_alter, "11_2024");
+
+DEFINE_RUNTIME_uint32(add_new_index_to_bidirectional_xcluster_timeout_secs, 10 * 60,
+    "Time in seconds within which index must be created on other universe when the indexed table "
+    "is part of bidirectional xCluster replication. Applies only when "
+    "--ysql_auto_add_new_index_to_bidirectional_xcluster is set.");
+
+DECLARE_bool(ysql_auto_add_new_index_to_bidirectional_xcluster);
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb::master {
 
@@ -37,34 +59,66 @@ XClusterTargetManager::XClusterTargetManager(
 
 XClusterTargetManager::~XClusterTargetManager() {}
 
-void XClusterTargetManager::Shutdown() {
-  if (xcluster_safe_time_service_) {
-    xcluster_safe_time_service_->Shutdown();
+void XClusterTargetManager::StartShutdown() {
+  {
+    std::lock_guard l(replication_setup_tasks_mutex_);
+    for (auto& [_, task] : replication_setup_tasks_) {
+      task->TryCancel();
+    }
+  }
+}
+
+void XClusterTargetManager::CompleteShutdown() {
+  if (safe_time_service_) {
+    safe_time_service_->Shutdown();
   }
 }
 
 Status XClusterTargetManager::Init() {
-  DCHECK(!xcluster_safe_time_service_);
-  xcluster_safe_time_service_ = std::make_unique<XClusterSafeTimeService>(
+  DCHECK(!safe_time_service_);
+  safe_time_service_ = std::make_unique<XClusterSafeTimeService>(
       &master_, &catalog_manager_, master_.metric_registry());
-  RETURN_NOT_OK(xcluster_safe_time_service_->Init());
 
   return Status::OK();
 }
 
 void XClusterTargetManager::Clear() {
-  xcluster_safe_time_info_.Clear();
+  safe_time_info_.Clear();
+
   removed_deleted_tables_from_replication_ = false;
+
+  auto_flags_revalidation_needed_ = true;
+
+  {
+    std::lock_guard l(replication_error_map_mutex_);
+    replication_error_map_.clear();
+  }
+
+  {
+    std::lock_guard l(table_stream_ids_map_mutex_);
+    table_stream_ids_map_.clear();
+  }
 }
 
 Status XClusterTargetManager::RunLoaders() {
-  RETURN_NOT_OK(
-      sys_catalog_.Load<XClusterSafeTimeLoader>("XCluster safe time", xcluster_safe_time_info_));
+  RETURN_NOT_OK(sys_catalog_.Load<XClusterSafeTimeLoader>("XCluster safe time", safe_time_info_));
   return Status::OK();
 }
 
 void XClusterTargetManager::SysCatalogLoaded() {
-  xcluster_safe_time_service_->ScheduleTaskIfNeeded();
+  // Refresh the Consumer registry.
+  auto cluster_config = catalog_manager_.ClusterConfig();
+  if (cluster_config) {
+    auto l = cluster_config->LockForRead();
+    if (l->pb.has_consumer_registry()) {
+      auto& producer_map = l->pb.consumer_registry().producer_map();
+      for (const auto& [replication_group_id, _] : producer_map) {
+        SyncReplicationStatusMap(xcluster::ReplicationGroupId(replication_group_id), producer_map);
+      }
+    }
+  }
+
+  safe_time_service_->ScheduleTaskIfNeeded();
 }
 
 void XClusterTargetManager::DumpState(std::ostream& out, bool on_disk_dump) const {
@@ -72,7 +126,7 @@ void XClusterTargetManager::DumpState(std::ostream& out, bool on_disk_dump) cons
     return;
   }
 
-  auto l = xcluster_safe_time_info_.LockForRead();
+  auto l = safe_time_info_.LockForRead();
   if (l->pb.safe_time_map().empty()) {
     return;
   }
@@ -81,16 +135,16 @@ void XClusterTargetManager::DumpState(std::ostream& out, bool on_disk_dump) cons
 
 void XClusterTargetManager::CreateXClusterSafeTimeTableAndStartService() {
   WARN_NOT_OK(
-      xcluster_safe_time_service_->CreateXClusterSafeTimeTableIfNotFound(),
+      safe_time_service_->CreateXClusterSafeTimeTableIfNotFound(),
       "Creation of XClusterSafeTime table failed");
 
-  xcluster_safe_time_service_->ScheduleTaskIfNeeded();
+  safe_time_service_->ScheduleTaskIfNeeded();
 }
 
 Status XClusterTargetManager::GetXClusterSafeTime(
     GetXClusterSafeTimeResponsePB* resp, const LeaderEpoch& epoch) {
   RETURN_NOT_OK_SET_CODE(
-      xcluster_safe_time_service_->GetXClusterSafeTimeInfoFromMap(epoch, resp),
+      safe_time_service_->GetXClusterSafeTimeInfoFromMap(epoch, resp),
       MasterError(MasterErrorPB::INTERNAL_ERROR));
 
   // Also fill out the namespace_name for each entry.
@@ -109,7 +163,7 @@ Status XClusterTargetManager::GetXClusterSafeTime(
 
 Result<HybridTime> XClusterTargetManager::GetXClusterSafeTime(
     const NamespaceId& namespace_id) const {
-  auto l = xcluster_safe_time_info_.LockForRead();
+  auto l = safe_time_info_.LockForRead();
   SCHECK(
       l->pb.safe_time_map().count(namespace_id), NotFound,
       "XCluster safe time not found for namespace $0", namespace_id);
@@ -117,10 +171,9 @@ Result<HybridTime> XClusterTargetManager::GetXClusterSafeTime(
   return HybridTime(l->pb.safe_time_map().at(namespace_id));
 }
 
-Result<XClusterNamespaceToSafeTimeMap> XClusterTargetManager::GetXClusterNamespaceToSafeTimeMap()
-    const {
+XClusterNamespaceToSafeTimeMap XClusterTargetManager::GetXClusterNamespaceToSafeTimeMap() const {
   XClusterNamespaceToSafeTimeMap result;
-  auto l = xcluster_safe_time_info_.LockForRead();
+  auto l = safe_time_info_.LockForRead();
 
   for (auto& [namespace_id, hybrid_time] : l->pb.safe_time_map()) {
     result[namespace_id] = HybridTime(hybrid_time);
@@ -132,6 +185,8 @@ Status XClusterTargetManager::GetXClusterSafeTimeForNamespace(
     const GetXClusterSafeTimeForNamespaceRequestPB* req,
     GetXClusterSafeTimeForNamespaceResponsePB* resp, const LeaderEpoch& epoch) {
   SCHECK(!req->namespace_id().empty(), InvalidArgument, "Namespace id must be provided");
+
+  RETURN_NOT_OK(safe_time_service_->ComputeSafeTime(epoch.leader_term));
   auto safe_time_ht =
       VERIFY_RESULT(GetXClusterSafeTimeForNamespace(epoch, req->namespace_id(), req->filter()));
   resp->set_safe_time_ht(safe_time_ht.ToUint64());
@@ -141,18 +196,18 @@ Status XClusterTargetManager::GetXClusterSafeTimeForNamespace(
 Result<HybridTime> XClusterTargetManager::GetXClusterSafeTimeForNamespace(
     const LeaderEpoch& epoch, const NamespaceId& namespace_id,
     const XClusterSafeTimeFilter& filter) {
-  return xcluster_safe_time_service_->GetXClusterSafeTimeForNamespace(
+  return safe_time_service_->GetXClusterSafeTimeForNamespace(
       epoch.leader_term, namespace_id, filter);
 }
 
 Status XClusterTargetManager::RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) {
-  RETURN_NOT_OK(xcluster_safe_time_service_->ComputeSafeTime(epoch.leader_term));
+  RETURN_NOT_OK(safe_time_service_->ComputeSafeTime(epoch.leader_term));
   return Status::OK();
 }
 
 Status XClusterTargetManager::SetXClusterNamespaceToSafeTimeMap(
     const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) {
-  auto l = xcluster_safe_time_info_.LockForWrite();
+  auto l = safe_time_info_.LockForWrite();
   auto& safe_time_map_pb = *l.mutable_data()->pb.mutable_safe_time_map();
   safe_time_map_pb.clear();
   for (auto& [namespace_id, hybrid_time] : safe_time_map) {
@@ -160,7 +215,7 @@ Status XClusterTargetManager::SetXClusterNamespaceToSafeTimeMap(
   }
 
   RETURN_NOT_OK_PREPEND(
-      sys_catalog_.Upsert(leader_term, &xcluster_safe_time_info_),
+      sys_catalog_.Upsert(leader_term, &safe_time_info_),
       "Updating XCluster safe time in sys-catalog");
 
   l.Commit();
@@ -170,7 +225,7 @@ Status XClusterTargetManager::SetXClusterNamespaceToSafeTimeMap(
 
 Status XClusterTargetManager::FillHeartbeatResponse(
     const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const {
-  auto l = xcluster_safe_time_info_.LockForRead();
+  auto l = safe_time_info_.LockForRead();
   if (!l->pb.safe_time_map().empty()) {
     *resp->mutable_xcluster_namespace_to_safe_time() = l->pb.safe_time_map();
   }
@@ -201,11 +256,12 @@ XClusterTargetManager::GetPostTabletCreateTasks(
 }
 
 Status XClusterTargetManager::WaitForSetupUniverseReplicationToFinish(
-    const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline) {
+    const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline,
+    bool skip_health_check) {
   return Wait(
       [&]() -> Result<bool> {
         auto is_operation_done =
-            VERIFY_RESULT(IsSetupUniverseReplicationDone(replication_group_id, catalog_manager_));
+            VERIFY_RESULT(IsSetupUniverseReplicationDone(replication_group_id, skip_health_check));
 
         if (is_operation_done.done()) {
           RETURN_NOT_OK(is_operation_done.status());
@@ -221,24 +277,23 @@ Status XClusterTargetManager::WaitForSetupUniverseReplicationToFinish(
 
 Status XClusterTargetManager::RemoveDroppedTablesOnConsumer(
     const std::unordered_set<TabletId>& table_ids, const LeaderEpoch& epoch) {
-  auto table_stream_map = catalog_manager_.GetXClusterConsumerTableStreams();
-  if (table_stream_map.empty()) {
-    return Status::OK();
-  }
-
   std::map<xcluster::ReplicationGroupId, std::vector<TableId>> replication_group_producer_tables;
   {
+    SharedLock table_stream_l(table_stream_ids_map_mutex_);
+    if (table_stream_ids_map_.empty()) {
+      return Status::OK();
+    }
+
     auto cluster_config = catalog_manager_.ClusterConfig();
     auto l = cluster_config->LockForRead();
     auto& replication_group_map = l->pb.consumer_registry().producer_map();
 
     for (auto& table_id : table_ids) {
-      auto stream_ids = FindOrNull(table_stream_map, table_id);
-      if (!stream_ids) {
+      if (!table_stream_ids_map_.contains(table_id)) {
         continue;
       }
 
-      for (const auto& [replication_group_id, stream_id] : *stream_ids) {
+      for (const auto& [replication_group_id, stream_id] : table_stream_ids_map_.at(table_id)) {
         // Fetch the stream entry so we can update the mappings.
         auto producer_entry = FindOrNull(replication_group_map, replication_group_id.ToString());
         // If we can't find the entries, then the stream has been deleted.
@@ -270,8 +325,6 @@ Status XClusterTargetManager::RemoveDroppedTablesOnConsumer(
 
     RETURN_NOT_OK(RemoveTablesFromReplicationGroup(
         replication_group, producer_tables, catalog_manager_, epoch));
-    RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(
-        replication_group_id, CoarseMonoClock::TimePoint::max()));
   }
 
   return Status::OK();
@@ -281,6 +334,8 @@ void XClusterTargetManager::RunBgTasks(const LeaderEpoch& epoch) {
   WARN_NOT_OK(
       RemoveDroppedTablesFromReplication(epoch),
       "Failed to remove dropped tables from consumer replication groups");
+
+  WARN_NOT_OK(RefreshLocalAutoFlagConfig(epoch), "Failed refreshing local AutoFlags config");
 }
 
 Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpoch& epoch) {
@@ -289,12 +344,15 @@ Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpo
   }
 
   std::unordered_set<TabletId> tables_to_remove;
-  auto table_stream_map = catalog_manager_.GetXClusterConsumerTableStreams();
-  for (const auto& [table_id, _] : table_stream_map) {
-    auto table_info = catalog_manager_.GetTableInfo(table_id);
-    if (!table_info || !table_info->LockForRead()->visible_to_client()) {
-      tables_to_remove.insert(table_id);
-      continue;
+  {
+    SharedLock table_stream_l(table_stream_ids_map_mutex_);
+    for (const auto& [table_id, _] : table_stream_ids_map_) {
+      auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
+      auto table_info = catalog_manager_.GetTableInfo(stripped_table_id);
+      if (!table_info || !table_info->LockForRead()->visible_to_client()) {
+        tables_to_remove.insert(table_id);
+        continue;
+      }
     }
   }
 
@@ -344,7 +402,7 @@ XClusterTargetManager::GetXClusterStatus() const {
 
   GetReplicationStatusResponsePB replication_status;
   GetReplicationStatusRequestPB req;
-  RETURN_NOT_OK(catalog_manager_.GetReplicationStatus(&req, &replication_status, /*rpc=*/nullptr));
+  RETURN_NOT_OK(GetReplicationStatus(&req, &replication_status));
 
   std::unordered_map<xrepl::StreamId, std::string> stream_status;
   for (const auto& table_stream_status : replication_status.statuses()) {
@@ -398,6 +456,11 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
 
   if (IsDbScoped(replication_info_pb)) {
     result.replication_type = XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED;
+    result.automatic_ddl_mode = replication_info_pb.db_scoped_info().automatic_ddl_mode();
+
+    result.db_scoped_info += Format(
+        "ddl_mode: $0",
+        replication_info_pb.db_scoped_info().automatic_ddl_mode() ? "automatic" : "semi-automatic");
     for (const auto& namespace_info : replication_info_pb.db_scoped_info().namespace_infos()) {
       result.db_scope_namespace_id_map[namespace_info.consumer_namespace_id()] =
           namespace_info.producer_namespace_id();
@@ -436,7 +499,9 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
         if (stream_info) {
           table_status.target_table_id = stream_info->consumer_table_id();
 
-          auto table_info_res = catalog_manager_.GetTableById(table_status.target_table_id);
+          auto stripped_target_table_id =
+              xcluster::StripSequencesDataAliasIfPresent(table_status.target_table_id);
+          auto table_info_res = catalog_manager_.GetTableById(stripped_target_table_id);
           if (table_info_res) {
             const auto& table_info = table_info_res.get();
             namespace_name = table_info->namespace_name();
@@ -465,7 +530,7 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
 Status XClusterTargetManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
   GetReplicationStatusResponsePB replication_status;
   GetReplicationStatusRequestPB req;
-  RETURN_NOT_OK(catalog_manager_.GetReplicationStatus(&req, &replication_status, /*rpc=*/nullptr));
+  RETURN_NOT_OK(GetReplicationStatus(&req, &replication_status));
 
   SysClusterConfigEntryPB cluster_config =
       VERIFY_RESULT(catalog_manager_.GetClusterConfig());
@@ -518,8 +583,866 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
   SCHECK_FORMAT(replication_info, NotFound, "Replication group $0 not found", replication_group_id);
 
   const auto cluster_config = VERIFY_RESULT(catalog_manager_.GetClusterConfig());
-  auto l = replication_info->LockForRead();
-  return GetUniverseReplicationInfo(l->pb, cluster_config);
+  // Make pb copy to avoid potential deadlock while calling GetUniverseReplicationInfo.
+  auto pb = replication_info->LockForRead()->pb;
+  return GetUniverseReplicationInfo(pb, cluster_config);
+}
+
+Status XClusterTargetManager::ClearXClusterSourceTableId(
+    TableInfoPtr table_info, const LeaderEpoch& epoch) {
+  auto table_l = table_info->LockForWrite();
+  table_l.mutable_data()->pb.clear_xcluster_source_table_id();
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_.Upsert(epoch, table_info), "clearing xCluster source table id from table");
+  table_l.Commit();
+  return Status::OK();
+}
+
+bool XClusterTargetManager::IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const {
+  auto all_universe_replications = catalog_manager_.GetAllUniverseReplications();
+  if (all_universe_replications.empty()) {
+    return false;
+  }
+
+  bool namespace_found = false;
+  for (const auto& replication_info : all_universe_replications) {
+    if (!HasNamespace(*replication_info, namespace_id)) {
+      continue;
+    }
+    if (!replication_info->IsAutomaticDdlMode()) {
+      return false;
+    }
+    namespace_found = true;
+  }
+
+  // Return true only if the namespace was found in repl groups and all in automatic DDL mode.
+  return namespace_found;
+}
+
+void XClusterTargetManager::NotifyAutoFlagsConfigChanged() {
+  auto_flags_revalidation_needed_ = true;
+}
+
+Status XClusterTargetManager::ReportNewAutoFlagConfigVersion(
+    const xcluster::ReplicationGroupId& replication_group_id, uint32 new_version,
+    const LeaderEpoch& epoch) {
+  auto replication_info = catalog_manager_.GetUniverseReplication(replication_group_id);
+  SCHECK(
+      replication_info, NotFound, "Missing replication group $0", replication_group_id.ToString());
+
+  auto cluster_config = catalog_manager_.ClusterConfig();
+
+  return RefreshAutoFlagConfigVersion(
+      sys_catalog_, *replication_info, *cluster_config.get(), new_version,
+      [&master = master_]() { return master.GetAutoFlagsConfig(); }, epoch);
+}
+
+Status XClusterTargetManager::RefreshLocalAutoFlagConfig(const LeaderEpoch& epoch) {
+  if (!auto_flags_revalidation_needed_) {
+    return Status::OK();
+  }
+
+  auto se = ScopeExit([this] { auto_flags_revalidation_needed_ = true; });
+  auto_flags_revalidation_needed_ = false;
+
+  auto replication_groups = catalog_manager_.GetAllUniverseReplications();
+  if (replication_groups.empty()) {
+    return Status::OK();
+  }
+
+  const auto local_auto_flags_config = master_.GetAutoFlagsConfig();
+  auto cluster_config = catalog_manager_.ClusterConfig();
+
+  bool update_failed = false;
+  for (const auto& replication_info : replication_groups) {
+    auto status = HandleLocalAutoFlagsConfigChange(
+        sys_catalog_, *replication_info, *cluster_config.get(), local_auto_flags_config, epoch);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to handle local AutoFlags config change for replication group "
+                   << replication_info->id() << ": " << status;
+      update_failed = true;
+    }
+  }
+
+  SCHECK(!update_failed, IllegalState, "Failed to handle local AutoFlags config change");
+
+  se.Cancel();
+
+  return Status::OK();
+}
+
+void XClusterTargetManager::SyncReplicationStatusMap(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const google::protobuf::Map<std::string, cdc::ProducerEntryPB>& producer_map) {
+  std::lock_guard lock(replication_error_map_mutex_);
+
+  if (producer_map.count(replication_group_id.ToString()) == 0) {
+    // Replication group has been deleted.
+    replication_error_map_.erase(replication_group_id);
+    return;
+  }
+
+  auto& replication_group_errors = replication_error_map_[replication_group_id];
+  auto& producer_entry = producer_map.at(replication_group_id.ToString());
+
+  std::unordered_set<TableId> all_consumer_table_ids;
+  for (auto& [_, stream_map] : producer_entry.stream_map()) {
+    const auto& consumer_table_id = stream_map.consumer_table_id();
+
+    std::unordered_set<TabletId> all_producer_tablet_ids;
+    for (auto& [_, producer_tablet_ids] : stream_map.consumer_producer_tablet_map()) {
+      all_producer_tablet_ids.insert(
+          producer_tablet_ids.tablets().begin(), producer_tablet_ids.tablets().end());
+    }
+
+    if (all_producer_tablet_ids.empty()) {
+      continue;
+    }
+    all_consumer_table_ids.insert(consumer_table_id);
+
+    auto& tablet_error_map = replication_group_errors[consumer_table_id];
+    // Remove tablets that are no longer part of replication.
+    std::erase_if(tablet_error_map, [&all_producer_tablet_ids](const auto& entry) {
+      return !all_producer_tablet_ids.contains(entry.first);
+    });
+
+    // Add new tablets.
+    for (const auto& producer_tablet_id : all_producer_tablet_ids) {
+      if (!tablet_error_map.contains(producer_tablet_id)) {
+        // Default to UNINITIALIZED error. Once the Pollers send the status, this will be updated.
+        tablet_error_map[producer_tablet_id].error =
+            ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED;
+      }
+    }
+  }
+
+  // Remove tables that are no longer part of replication.
+  std::erase_if(replication_group_errors, [&all_consumer_table_ids](const auto& entry) {
+    return !all_consumer_table_ids.contains(entry.first);
+  });
+
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "Synced replication_error_map_ for replication group " << replication_group_id;
+    for (const auto& [consumer_table_id, tablet_error_map] : replication_group_errors) {
+      LOG(INFO) << "Table: " << consumer_table_id;
+      for (const auto& [tablet_id, error] : tablet_error_map) {
+        LOG(INFO) << "Tablet: " << tablet_id << ", Error: " << ReplicationErrorPb_Name(error.error);
+      }
+    }
+  }
+}
+
+void XClusterTargetManager::StoreReplicationStatus(
+    const XClusterConsumerReplicationStatusPB& consumer_replication_status) {
+  const auto& replication_group_id = consumer_replication_status.replication_group_id();
+
+  std::lock_guard lock(replication_error_map_mutex_);
+  // Heartbeats can report stale entries. So we skip anything that is not in
+  // replication_error_map_.
+
+  auto* replication_error_map =
+      FindOrNull(replication_error_map_, xcluster::ReplicationGroupId(replication_group_id));
+  if (!replication_error_map) {
+    VLOG_WITH_FUNC(2) << "Skipping deleted replication group " << replication_group_id;
+    return;
+  }
+
+  for (const auto& table_status : consumer_replication_status.table_status()) {
+    const auto& consumer_table_id = table_status.consumer_table_id();
+    auto* consumer_table_map = FindOrNull(*replication_error_map, consumer_table_id);
+    if (!consumer_table_map) {
+      VLOG_WITH_FUNC(2) << "Skipping removed table " << consumer_table_id
+                        << " in replication group " << replication_group_id;
+      continue;
+    }
+
+    for (const auto& stream_tablet_status : table_status.stream_tablet_status()) {
+      const auto& producer_tablet_id = stream_tablet_status.producer_tablet_id();
+      auto* tablet_status_map = FindOrNull(*consumer_table_map, producer_tablet_id);
+      if (!tablet_status_map) {
+        VLOG_WITH_FUNC(2) << "Skipping removed tablet " << producer_tablet_id
+                          << " in replication group " << replication_group_id;
+        continue;
+      }
+
+      // Get status from highest term only. When consumer leaders move we may get stale status
+      // from older leaders.
+      if (tablet_status_map->consumer_term <= stream_tablet_status.consumer_term()) {
+        DCHECK_NE(
+            stream_tablet_status.error(), ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED);
+        tablet_status_map->consumer_term = stream_tablet_status.consumer_term();
+        tablet_status_map->error = stream_tablet_status.error();
+        VLOG_WITH_FUNC(2) << "Storing error for replication group: " << replication_group_id
+                          << ", consumer table: " << consumer_table_id
+                          << ", tablet: " << producer_tablet_id
+                          << ", term: " << stream_tablet_status.consumer_term()
+                          << ", error: " << ReplicationErrorPb_Name(stream_tablet_status.error());
+      } else {
+        VLOG_WITH_FUNC(2) << "Skipping stale error for  replication group: " << replication_group_id
+                          << ", consumer table: " << consumer_table_id
+                          << ", tablet: " << producer_tablet_id
+                          << ", term: " << stream_tablet_status.consumer_term();
+      }
+    }
+  }
+}
+
+Result<bool> XClusterTargetManager::HasReplicationGroupErrors(
+    const xcluster::ReplicationGroupId& replication_group_id) const {
+  SharedLock l(replication_error_map_mutex_);
+
+  auto* replication_error_map = FindOrNull(replication_error_map_, replication_group_id);
+  SCHECK(
+      replication_error_map, NotFound, "Could not find replication group $0",
+      replication_group_id.ToString());
+
+  std::unordered_map<TableId, std::unordered_set<std::string>> table_errors;
+  for (const auto& [consumer_table_id, tablet_error_map] : *replication_error_map) {
+    for (const auto& [_, error_info] : tablet_error_map) {
+      if (error_info.error != ReplicationErrorPb::REPLICATION_OK) {
+        table_errors[consumer_table_id].insert(ReplicationErrorPb_Name(error_info.error));
+      }
+    }
+  }
+
+  if (!table_errors.empty()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 60)
+        << "Replication group " << replication_group_id
+        << " has errors for the following tables:" << AsString(table_errors);
+  }
+  return !table_errors.empty();
+}
+
+Result<bool> XClusterTargetManager::IsReplicationGroupFullyPaused(
+    const xcluster::ReplicationGroupId& replication_group_id) const {
+  SharedLock l(replication_error_map_mutex_);
+
+  auto* replication_error_map = FindOrNull(replication_error_map_, replication_group_id);
+  SCHECK(
+      replication_error_map, NotFound, "Could not find replication group $0",
+      replication_group_id.ToString());
+
+  for (const auto& [consumer_table_id, tablet_error_map] : *replication_error_map) {
+    for (const auto& [_, error_info] : tablet_error_map) {
+      if (error_info.error != ReplicationErrorPb::REPLICATION_PAUSED) {
+        YB_LOG_EVERY_N_SECS(WARNING, 60) << "Replication group " << replication_group_id
+                                         << " waiting for table to pause:" << consumer_table_id;
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+Status XClusterTargetManager::PopulateReplicationGroupErrors(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    GetReplicationStatusResponsePB* resp) const {
+  auto* replication_error_map = FindOrNull(replication_error_map_, replication_group_id);
+  SCHECK(
+      replication_error_map, NotFound, "Could not find replication group $0",
+      replication_group_id.ToString());
+
+  SharedLock l(table_stream_ids_map_mutex_);
+
+  for (const auto& [consumer_table_id, tablet_error_map] : *replication_error_map) {
+    if (!table_stream_ids_map_.contains(consumer_table_id) ||
+        !table_stream_ids_map_.at(consumer_table_id).contains(replication_group_id)) {
+      // It is possible to hit this if a table is deleted and we are still processing poller errors.
+      YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 10, 1)
+          << "xcluster_consumer_replication_error_map_ contains consumer table "
+          << consumer_table_id << " in replication group " << replication_group_id
+          << " but xcluster_consumer_table_stream_ids_map_ does not.";
+      continue;
+    }
+
+    // Map from error to list of producer tablet IDs/Pollers reporting them.
+    std::unordered_map<ReplicationErrorPb, std::vector<TabletId>> errors;
+    for (const auto& [tablet_id, error_info] : tablet_error_map) {
+      errors[error_info.error].push_back(tablet_id);
+    }
+
+    if (errors.empty()) {
+      continue;
+    }
+
+    auto resp_status = resp->add_statuses();
+    resp_status->set_table_id(consumer_table_id);
+    const auto& stream_id = table_stream_ids_map_.at(consumer_table_id).at(replication_group_id);
+    resp_status->set_stream_id(stream_id.ToString());
+    for (const auto& [error_pb, tablet_ids] : errors) {
+      if (error_pb == ReplicationErrorPb::REPLICATION_OK) {
+        // Do not add errors for healthy tablets.
+        continue;
+      }
+
+      auto* resp_error = resp_status->add_errors();
+      resp_error->set_error(error_pb);
+
+      if (error_pb == ReplicationErrorPb::REPLICATION_PAUSED) {
+        resp_error->set_error_detail("Replication paused");
+      } else {
+        // Only include the first 20 tablet IDs to limit response size.
+        // VLOG(4) will write all tablet to the log.
+        resp_error->set_error_detail(
+            Format("Producer Tablet IDs: $0", JoinStringsLimitCount(tablet_ids, ",", 20)));
+      }
+
+      if (VLOG_IS_ON(4)) {
+        VLOG(4) << "Replication error " << ReplicationErrorPb_Name(error_pb)
+                << " for ReplicationGroup: " << replication_group_id << ", stream id: " << stream_id
+                << ", consumer table: " << consumer_table_id << ", producer tablet IDs:";
+        for (const auto& tablet_id : tablet_ids) {
+          VLOG(4) << tablet_id;
+        }
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+Status XClusterTargetManager::GetReplicationStatus(
+    const GetReplicationStatusRequestPB* req, GetReplicationStatusResponsePB* resp) const {
+  SharedLock l(replication_error_map_mutex_);
+
+  // If the 'replication_group_id' is given, only populate the status for the streams in that
+  // ReplicationGroup. Otherwise, populate all the status for all groups.
+  if (!req->replication_group_id().empty()) {
+    return PopulateReplicationGroupErrors(
+        xcluster::ReplicationGroupId(req->replication_group_id()), resp);
+  }
+
+  for (const auto& [replication_id, _] : replication_error_map_) {
+    RETURN_NOT_OK(PopulateReplicationGroupErrors(replication_id, resp));
+  }
+
+  return Status::OK();
+}
+
+void XClusterTargetManager::RecordTableStream(
+    const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id,
+    const xrepl::StreamId& stream_id) {
+  std::lock_guard lock(table_stream_ids_map_mutex_);
+  table_stream_ids_map_[table_id].emplace(replication_group_id, stream_id);
+}
+
+void XClusterTargetManager::RemoveTableStream(
+    const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id) {
+  RemoveTableStreams(replication_group_id, {table_id});
+}
+
+void XClusterTargetManager::RemoveTableStreams(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::set<TableId>& tables_to_clear) {
+  std::lock_guard lock(table_stream_ids_map_mutex_);
+  for (const auto& table_id : tables_to_clear) {
+    if (table_stream_ids_map_[table_id].erase(replication_group_id) < 1) {
+      LOG(WARNING) << "Failed to remove consumer table from mapping. " << "table_id: " << table_id
+                   << ": replication_group_id: " << replication_group_id;
+    }
+    if (table_stream_ids_map_[table_id].empty()) {
+      table_stream_ids_map_.erase(table_id);
+    }
+  }
+}
+
+std::unordered_map<xcluster::ReplicationGroupId, xrepl::StreamId>
+XClusterTargetManager::GetStreamIdsForTable(const TableId& table_id) const {
+  SharedLock lock(table_stream_ids_map_mutex_);
+  auto* stream_ids = FindOrNull(table_stream_ids_map_, table_id);
+  if (!stream_ids) {
+    return {};
+  }
+
+  return *stream_ids;
+}
+
+bool XClusterTargetManager::IsTableReplicated(const TableId& table_id) const {
+  return !GetStreamIdsForTable(table_id).empty();
+}
+
+Result<TableId> XClusterTargetManager::GetTableIdForStreamId(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const xrepl::StreamId& stream_id) const {
+  SharedLock l(table_stream_ids_map_mutex_);
+
+  auto iter = std::find_if(
+      table_stream_ids_map_.begin(), table_stream_ids_map_.end(),
+      [&replication_group_id, &stream_id](auto& id_map) {
+        return ContainsKeyValuePair(id_map.second, replication_group_id, stream_id);
+      });
+  SCHECK(
+      iter != table_stream_ids_map_.end(), NotFound,
+      Format("Unable to find the stream id $0", stream_id));
+
+  return iter->first;
+}
+
+Status XClusterTargetManager::HandleTabletSplit(
+    const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,
+    const LeaderEpoch& epoch) {
+  // Check if this table is consuming a stream.
+  auto stream_ids = GetStreamIdsForTable(consumer_table_id);
+  if (stream_ids.empty()) {
+    return Status::OK();
+  }
+
+  auto consumer_tablet_keys = VERIFY_RESULT(catalog_manager_.GetTableKeyRanges(consumer_table_id));
+  auto cluster_config = catalog_manager_.ClusterConfig();
+  auto l = cluster_config->LockForWrite();
+  for (const auto& [replication_group_id, stream_id] : stream_ids) {
+    // Fetch the stream entry so we can update the mappings.
+    auto replication_group_map =
+        l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+    auto producer_entry = FindOrNull(*replication_group_map, replication_group_id.ToString());
+    // If we can't find the entries, then the stream has been deleted.
+    if (!producer_entry) {
+      LOG(WARNING) << "Unable to find the producer entry for universe " << replication_group_id;
+      continue;
+    }
+    auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), stream_id.ToString());
+    if (!stream_entry) {
+      LOG(WARNING) << "Unable to find the producer entry for universe " << replication_group_id
+                   << ", stream " << stream_id;
+      continue;
+    }
+    DCHECK(stream_entry->consumer_table_id() == consumer_table_id);
+
+    RETURN_NOT_OK(
+        UpdateTabletMappingOnConsumerSplit(consumer_tablet_keys, split_tablet_ids, stream_entry));
+  }
+
+  // Also bump the cluster_config_ version so that changes are propagated to tservers.
+  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
+
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_.Upsert(epoch, cluster_config.get()),
+      "Failed updating cluster config in sys-catalog");
+  l.Commit();
+
+  CreateXClusterSafeTimeTableAndStartService();
+
+  return Status::OK();
+}
+
+Status XClusterTargetManager::SetupUniverseReplication(
+    const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
+    const LeaderEpoch& epoch) {
+  // We should set the universe uuid even if we fail with AlreadyPresent error.
+  {
+    auto universe_uuid = catalog_manager_.GetUniverseUuidIfExists();
+    if (universe_uuid) {
+      resp->set_universe_uuid(universe_uuid->ToString());
+    }
+  }
+
+  SCHECK_PB_FIELDS_NOT_EMPTY(
+      *req, replication_group_id, producer_master_addresses, producer_table_ids);
+
+  // Construct data struct.
+  XClusterSetupUniverseReplicationData data;
+  data.replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
+  data.source_masters.CopyFrom(req->producer_master_addresses());
+  data.transactional = req->transactional();
+  data.automatic_ddl_mode = req->automatic_ddl_mode();
+
+  for (const auto& bootstrap_id : req->producer_bootstrap_ids()) {
+    data.stream_ids.push_back(VERIFY_RESULT(xrepl::StreamId::FromString(bootstrap_id)));
+  }
+
+  for (const auto& source_ns_id : req->producer_namespaces()) {
+    SCHECK(!source_ns_id.id().empty(), InvalidArgument, "Invalid Namespace Id");
+    SCHECK(!source_ns_id.name().empty(), InvalidArgument, "Invalid Namespace name");
+    SCHECK_EQ(
+        source_ns_id.database_type(), YQLDatabase::YQL_DATABASE_PGSQL, InvalidArgument,
+        "Invalid Namespace database_type");
+
+    data.source_namespace_ids.push_back(source_ns_id.id());
+
+    NamespaceIdentifierPB target_ns_id;
+    target_ns_id.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    target_ns_id.set_name(source_ns_id.name());
+    auto ns_info = VERIFY_RESULT(catalog_manager_.FindNamespace(target_ns_id));
+    data.target_namespace_ids.push_back(ns_info->id());
+  }
+
+  data.source_table_ids.assign(req->producer_table_ids().begin(), req->producer_table_ids().end());
+
+  return SetupUniverseReplication(std::move(data), epoch);
+}
+
+Status XClusterTargetManager::SetupUniverseReplication(
+    XClusterSetupUniverseReplicationData&& data, const LeaderEpoch& epoch) {
+  auto setup_replication_task = VERIFY_RESULT(
+      CreateSetupUniverseReplicationTask(master_, catalog_manager_, std::move(data), epoch));
+
+  {
+    std::lock_guard l(replication_setup_tasks_mutex_);
+    SCHECK(
+        !replication_setup_tasks_.contains(setup_replication_task->Id()), AlreadyPresent,
+        "Setup already running for xCluster ReplicationGroup $0", setup_replication_task->Id());
+    replication_setup_tasks_[setup_replication_task->Id()] = setup_replication_task;
+  }
+
+  setup_replication_task->StartSetup();
+
+  return Status::OK();
+}
+
+Result<IsOperationDoneResult> XClusterTargetManager::IsSetupUniverseReplicationDone(
+    const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) {
+  std::shared_ptr<XClusterInboundReplicationGroupSetupTaskIf> setup_replication_task;
+  {
+    SharedLock l(replication_setup_tasks_mutex_);
+    setup_replication_task = FindPtrOrNull(replication_setup_tasks_, replication_group_id);
+  }
+
+  if (setup_replication_task) {
+    auto is_done = setup_replication_task->DoneResult();
+    if (!is_done.done()) {
+      return is_done;
+    }
+
+    {
+      std::lock_guard l(replication_setup_tasks_mutex_);
+      // Forget about the task now that we've responded to the user.
+      replication_setup_tasks_.erase(replication_group_id);
+    }
+
+    if (!is_done.status().ok()) {
+      // Setup failed.
+      return is_done;
+    }
+  }
+
+  if (skip_health_check) {
+    return IsOperationDoneResult::Done();
+  }
+
+  // Setup completed successfully. Wait for the ReplicationGroup be become healthy.
+  return master::IsSetupUniverseReplicationDone(replication_group_id, catalog_manager_);
+}
+
+Status XClusterTargetManager::SetupNamespaceReplicationWithBootstrap(
+    const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+    SetupNamespaceReplicationWithBootstrapResponsePB* resp, const LeaderEpoch& epoch) {
+  return SetupUniverseReplicationWithBootstrapHelper::SetupWithBootstrap(
+      master_, catalog_manager_, req, resp, epoch);
+}
+
+Result<IsSetupNamespaceReplicationWithBootstrapDoneResponsePB>
+XClusterTargetManager::IsSetupNamespaceReplicationWithBootstrapDone(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  auto bootstrap_info = catalog_manager_.GetUniverseReplicationBootstrap(replication_group_id);
+  SCHECK(
+      bootstrap_info != nullptr, NotFound,
+      Format("Could not find universe replication bootstrap $0", replication_group_id));
+
+  IsSetupNamespaceReplicationWithBootstrapDoneResponsePB resp;
+
+  // Terminal states are DONE or some failure state.
+  auto l = bootstrap_info->LockForRead();
+  resp.set_state(l->state());
+
+  if (l->is_done()) {
+    resp.set_done(true);
+    StatusToPB(Status::OK(), resp.mutable_bootstrap_error());
+  } else if (l->is_deleted_or_failed()) {
+    resp.set_done(true);
+
+    if (!bootstrap_info->GetReplicationBootstrapErrorStatus().ok()) {
+      StatusToPB(
+          bootstrap_info->GetReplicationBootstrapErrorStatus(), resp.mutable_bootstrap_error());
+    } else {
+      LOG(WARNING) << "Did not find setup universe replication bootstrap error status.";
+      StatusToPB(STATUS(InternalError, "unknown error"), resp.mutable_bootstrap_error());
+    }
+
+    // Add failed bootstrap to GC now that we've responded to the user.
+    catalog_manager_.MarkReplicationBootstrapForCleanup(bootstrap_info->ReplicationGroupId());
+  } else {
+    // Not done yet.
+    resp.set_done(false);
+  }
+
+  return resp;
+}
+
+Status XClusterTargetManager::AlterUniverseReplication(
+    const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
+    const LeaderEpoch& epoch) {
+  return AlterUniverseReplicationHelper::Alter(master_, catalog_manager_, req, resp, epoch);
+}
+
+Status XClusterTargetManager::DeleteUniverseReplication(
+    const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
+    bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp,
+    const LeaderEpoch& epoch) {
+  {
+    // If a setup is in progress, then cancel it.
+    std::lock_guard l(replication_setup_tasks_mutex_);
+    auto setup_helper = FindPtrOrNull(replication_setup_tasks_, replication_group_id);
+    if (setup_helper) {
+      replication_setup_tasks_.erase(replication_group_id);
+
+      if (setup_helper->TryCancel()) {
+        // Either we successfully cancelled the Setup or it already failed. There wont be any
+        // UniverseReplication to delete, so we succeeded.
+        return Status::OK();
+      }
+
+      // Setup already completed successfully, but IsSetupUniverseReplicationDone hasn't been
+      // called yet. Proceed with the delete.
+    }
+  }
+
+  auto ri = catalog_manager_.GetUniverseReplication(replication_group_id);
+  SCHECK(ri != nullptr, NotFound, "Universe replication $0 does not exist", replication_group_id);
+
+  RETURN_NOT_OK(master::DeleteUniverseReplication(
+      *ri, ignore_errors, skip_producer_stream_deletion, resp, catalog_manager_, epoch));
+
+  // Run the safe time task as it may need to perform cleanups of it own
+  CreateXClusterSafeTimeTableAndStartService();
+
+  return Status::OK();
+}
+
+Status XClusterTargetManager::AddTableToReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
+    const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
+    const LeaderEpoch& epoch) {
+  AlterUniverseReplicationHelper::AddTablesToReplicationData data;
+  data.replication_group_id = replication_group_id;
+  data.source_table_ids_to_add.push_back(source_table_id);
+  data.source_bootstrap_ids_to_add.push_back(bootstrap_id);
+  data.target_table_id = target_table_id;
+
+  return AlterUniverseReplicationHelper::AddTablesToReplication(
+      master_, catalog_manager_, data, epoch);
+}
+
+Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeForBackfill(
+    const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
+    const LeaderEpoch& epoch) const {
+  auto& xcluster_manager = *master_.xcluster_manager();
+
+  SCHECK_FORMAT(
+      indexed_table->IsBackfilling(), IllegalState, "$0 is not backfilling", indexed_table->id());
+
+  const bool is_colocated = indexed_table->colocated();
+  auto indexed_table_id = indexed_table->id();
+
+  if (master_.xcluster_manager()->ShouldAutoAddIndexesToBiDirectionalXCluster(*indexed_table)) {
+    if (is_colocated) {
+      indexed_table_id = indexed_table->LockForRead()->pb.parent_table_id();
+    }
+    auto backfill_ht = VERIFY_RESULT_PREPEND(
+        PrepareAndGetBackfillTimeForBiDirectionalIndex(index_table_ids, indexed_table_id, epoch),
+        "Failed while preparing index for xCluster");
+
+    LOG(INFO) << "Using " << backfill_ht << " as the backfill read time";
+    return backfill_ht;
+  }
+
+  if (is_colocated) {
+    // Colocated indexes in a transactional xCluster will use the regular tablet safe time.
+    // Only the parent table is part of the xCluster replication, so new data that is added to the
+    // index on the source universe automatically flows to the target universe even before the index
+    // is created on it.
+    // We still need to run backfill since the WAL entries for the backfill are NOT replicated via
+    // xCluster. This is because both backfill entries and xCluster replicated entries use the same
+    // external HT field. To ensure transactional correctness we just need to pick a time higher
+    // than the time that was picked on the source side. Since the table is created on the source
+    // universe before the target this is always guaranteed to be true.
+
+    return std::nullopt;
+  }
+
+  if (xcluster_manager.IsTableReplicationConsumer(indexed_table_id)) {
+    auto safe_time_result = GetXClusterSafeTime(indexed_table->namespace_id());
+    if (safe_time_result.ok()) {
+      SCHECK(
+          !safe_time_result->is_special(), InvalidArgument,
+          "Invalid xCluster safe time for namespace ", indexed_table->namespace_id());
+
+      LOG(INFO) << "Using xCluster safe time " << *safe_time_result << " as the backfill read time";
+      return *safe_time_result;
+    }
+
+    if (safe_time_result.status().IsNotFound()) {
+      VLOG(1) << "Table " << indexed_table->id()
+              << "does not belong to transactional replication, continue with "
+                 "GetSafeTimeForTablet";
+      return std::nullopt;
+    }
+
+    return safe_time_result.status();
+  }
+
+  return std::nullopt;
+}
+
+Result<HybridTime> XClusterTargetManager::PrepareAndGetBackfillTimeForBiDirectionalIndex(
+    const std::vector<TableId>& index_table_ids, const TableId& indexed_table_id,
+    const LeaderEpoch& epoch) const {
+  // Online index creation in Yugabyte is based on the F1 paper, and has 4 stages: Delete Only,
+  // Insert and Delete Only, Backfill, Read, Insert and delete. Consistency is guaranteed as long as
+  // no two nodes in the system are more than 2 stages apart. Within a single universe the
+  // CatalogVersion is bumped to enforce this.
+  //
+  // With bi-directional xCluster writes happen on both universes, each with its own CatalogVersion.
+  // The regular Create Index flow does not have a way to synchronize the stages across the
+  // universes, which before this change meant the user could not write to the indexed table while
+  // creating indexes. Its important to note that in bi-directional xCluster the users have the
+  // responsibility to insert into different key ranges on each universe. This is important as
+  // xCluster which operates at the physical layer does not enforce YSQL layer constraints like
+  // Foreign keys.
+  //
+  // In order to allow Online Create Index we synchronize the two universe but only at the Backfill
+  // stage. We allow them to diverse by more than 2 stages, since for any given key range each
+  // universe will locally ensures the 2 stage apart policy. Only the backfill stage reads and
+  // writes data across the entire key range, so this alone needs to be synchronized across the two
+  // universe.
+  //
+  // The stream for the new index table has already been created as part of its DocDB table
+  // creation. (See CreateXClusterStreamForBiDirectionalIndexTask) This function performs the
+  // following steps:
+  // 1. Wait for the index and its stream to get created on the other universe.
+  // 2. Wait for the index on the other universe to reach atleast its backfill stage.
+  // 3. Add our index table to the xCluster replication group.
+  // 4. Pick the backfill read time.
+  // 5. Wait for the indexed table to catch up to the backfill time.
+  //
+  // For colocated tables, only the parent table is part of replication, so we skip the steps
+  // related to stream creation, and adding index to replication.
+
+  const auto deadline =
+      CoarseMonoClock::Now() +
+      MonoDelta::FromSeconds(FLAGS_add_new_index_to_bidirectional_xcluster_timeout_secs);
+
+  LOG(INFO) << "Preparing indexes " << yb::ToString(index_table_ids) << " on table "
+            << indexed_table_id << " for bi-directional xCluster replication";
+
+  auto indexed_table_streams = GetStreamIdsForTable(indexed_table_id);
+  // Complex scenarios like replicating between 3 universes with multiple bi-directional replication
+  // groups A <=> B <=> C <=> A is not supported.
+  SCHECK_EQ(
+      indexed_table_streams.size(), 1, IllegalState,
+      Format("Expected 1 xCluster stream for table $0", indexed_table_id));
+
+  auto& [replication_id, indexed_table_stream_id] = *indexed_table_streams.begin();
+
+  auto replication_group = catalog_manager_.GetUniverseReplication(replication_id);
+  SCHECK_FORMAT(replication_group, NotFound, "Replication group $0 not found", replication_id);
+
+  auto remote_client = VERIFY_RESULT(GetXClusterRemoteClientHolder(*replication_group));
+
+  std::vector<std::shared_ptr<MultiStepMonitoredTask>> tasks;
+  for (const auto& index_table_id : index_table_ids) {
+    auto index_table_info = VERIFY_RESULT(catalog_manager_.GetTableById(index_table_id));
+    tasks.emplace_back(std::make_shared<AddBiDirectionalIndexToXClusterTargetTask>(
+        std::move(index_table_info), replication_group, remote_client, master_, epoch, deadline));
+  }
+
+  Synchronizer sync;
+  RETURN_NOT_OK(MultiStepMonitoredTask::StartTasks(
+      tasks, [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
+  RETURN_NOT_OK(sync.Wait());
+
+  // All indexes have reached the backfill stage on both universes. We can proceed once the indexed
+  // table is caught up.
+  const auto backfill_ht = master_.clock()->Now();
+  const auto backfill_time_micros =
+      backfill_ht.GetPhysicalValueMicros() + (3 * FLAGS_max_clock_skew_usec);
+
+  LOG(INFO) << "Waiting for replication of indexed table " << indexed_table_id << " stream "
+            << indexed_table_stream_id << " to catch up to backfill time " << backfill_ht;
+  RETURN_NOT_OK_PREPEND(
+      remote_client->GetXClusterClient().WaitForReplicationDrain(
+          indexed_table_stream_id, backfill_time_micros, deadline),
+      Format(
+          "Error waiting for replication drain of indexed table $0 stream $1", indexed_table_id,
+          indexed_table_stream_id));
+  LOG(INFO) << "Indexed table " << indexed_table_id << " xCluster stream "
+            << indexed_table_stream_id << " caught up to backfill time " << backfill_ht;
+
+  return backfill_ht;
+}
+
+Status XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
+    const TableId& table_id, const SchemaPB& packed_schema_to_insert,
+    uint32_t current_schema_version, const LeaderEpoch& epoch) {
+  // Lookup the table and verify if it exists.
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
+  {
+    auto l = table->LockForWrite();
+    auto& table_pb = l.mutable_data()->pb;
+
+    // Compare the current schema version with the one in the request to avoid repeated updates.
+    if (table_pb.version() != current_schema_version) {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1)
+          << __func__ << ": Table " << table->ToString() << " has schema version "
+          << table_pb.version() << " but request has version " << current_schema_version
+          << ". Skipping update of packed schema.";
+      return Status::OK();
+    }
+
+    // Just bump the version up by two. We will insert the packed schema in as version + 1, and then
+    // revert back to the original version, but now with version + 2.
+    table_pb.set_version(table_pb.version() + 2);
+    RETURN_NOT_OK(sys_catalog_.Upsert(epoch, table));
+    l.Commit();
+  }
+
+  for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
+    auto call = std::make_shared<AsyncInsertPackedSchemaForXClusterTarget>(
+        &master_, catalog_manager_.AsyncTaskPool(), tablet, table, packed_schema_to_insert, epoch);
+    table->AddTask(call);
+    RETURN_NOT_OK(catalog_manager_.ScheduleTask(call));
+  }
+
+  LOG(INFO) << "Successfully initiated InsertPackedSchemaForXClusterTarget "
+            << "(pending tablet schema updates) for " << table->ToString();
+
+  return Status::OK();
+}
+
+Status XClusterTargetManager::SetReplicationGroupEnabled(
+    const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled,
+    const LeaderEpoch& epoch, CoarseTimePoint deadline) {
+  auto cluster_config = catalog_manager_.ClusterConfig();
+  auto l = cluster_config->LockForWrite();
+
+  auto replication_group_map =
+      l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+  auto replication_group = FindOrNull(*replication_group_map, replication_group_id.ToString());
+  SCHECK(
+      replication_group, NotFound,
+      Format("Replication group $0 not found in Consumer Registry", replication_group_id));
+
+  if (replication_group->disable_stream() == !is_enabled) {
+    // Dont update the config version unnecessarily.
+    return Status::OK();
+  }
+
+  replication_group->set_disable_stream(!is_enabled);
+
+  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
+  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, cluster_config.get()));
+  l.Commit();
+
+  if (!is_enabled) {
+    return Wait(
+        std::bind(
+            &XClusterTargetManager::IsReplicationGroupFullyPaused, this, replication_group_id),
+        deadline, Format("Wait for replication group $0 to pause", replication_group_id));
+  }
+
+  CreateXClusterSafeTimeTableAndStartService();
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

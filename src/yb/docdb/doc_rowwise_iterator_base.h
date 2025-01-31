@@ -94,6 +94,8 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // Retrieves the next key to read after the iterator finishes for the given page.
   Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) override;
 
+  Slice GetRowKey() const override;
+
   void set_debug_dump(bool value) { debug_dump_ = value; }
 
   const Schema& schema() const {
@@ -104,8 +106,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
  private:
   virtual void InitIterator(
-      BloomFilterMode bloom_filter_mode = BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      const boost::optional<const Slice>& user_key_for_filter = boost::none,
+      const BloomFilterOptions& bloom_filter = BloomFilterOptions::Inactive(),
       const rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr) = 0;
 

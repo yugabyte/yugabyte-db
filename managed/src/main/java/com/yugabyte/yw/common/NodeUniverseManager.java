@@ -12,7 +12,6 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -27,22 +26,24 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -136,7 +137,7 @@ public class NodeUniverseManager extends DevopsBase {
       List<String> sourceNodeFiles,
       String targetLocalFile) {
     universeLock.acquireLock(universe.getUniverseUUID());
-    String filesListFilePath = "";
+    String filesListFilePath = "", remoteFilesListPath = "";
     try {
       filesListFilePath = createTempFileWithSourceFiles(sourceNodeFiles);
       if (filesListFilePath == null) {
@@ -144,10 +145,20 @@ public class NodeUniverseManager extends DevopsBase {
             "Could not create temp file while downloading node file for universe "
                 + universe.getUniverseUUID());
       }
+      remoteFilesListPath =
+          getRemoteTmpDir(node, universe)
+              + "/"
+              + Paths.get(filesListFilePath).getFileName().toString();
       Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
       if (optional.isPresent()) {
         nodeActionRunner.downloadFile(
-            optional.get(), node, ybHomeDir, filesListFilePath, targetLocalFile, DEFAULT_CONTEXT);
+            optional.get(),
+            node,
+            ybHomeDir,
+            filesListFilePath,
+            remoteFilesListPath,
+            targetLocalFile,
+            DEFAULT_CONTEXT);
       } else {
         List<String> actionArgs = new ArrayList<>();
         // yb_home_dir denotes a custom starting directory for the remote file. (Eg: ~/, /mnt/d0,
@@ -156,6 +167,8 @@ public class NodeUniverseManager extends DevopsBase {
         actionArgs.add(ybHomeDir);
         actionArgs.add("--source_node_files_path");
         actionArgs.add(filesListFilePath);
+        actionArgs.add("--remote_node_files_path");
+        actionArgs.add(remoteFilesListPath);
         actionArgs.add("--target_local_file");
         actionArgs.add(targetLocalFile);
         executeNodeAction(
@@ -385,10 +398,55 @@ public class NodeUniverseManager extends DevopsBase {
       String ysqlCommand,
       long timeoutSec,
       boolean authEnabled) {
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        timeoutSec,
+        authEnabled,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node, Universe universe, String dbName, String ysqlCommand, boolean cpEnabled) {
+    boolean authEnabled =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
+        authEnabled,
+        cpEnabled);
+  }
+
+  /**
+   * Runs a YSQL command on the given node Note: Ensure, this function is in sync with {@link
+   * #localNodeUniverseManager.runYsqlCommand}
+   *
+   * @param node Node on which to run the command
+   * @param universe Universe in which the node exists
+   * @param dbName Database name to run the command on
+   * @param ysqlCommand Command to run
+   * @param timeoutSec Timeout in seconds
+   * @param authEnabled Whether to use authentication
+   * @param cpEnabled Whether to use connection pooling
+   * @return ShellResponse object
+   */
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled) {
     Cluster curCluster = universe.getCluster(node.placementUuid);
     if (curCluster.userIntent.providerType == CloudType.local) {
       return localNodeUniverseManager.runYsqlCommand(
-          node, universe, dbName, ysqlCommand, timeoutSec, authEnabled);
+          node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled);
     }
     List<String> command = new ArrayList<>();
     command.add("bash");
@@ -409,7 +467,11 @@ public class NodeUniverseManager extends DevopsBase {
       bashCommand.add(node.cloudInfo.private_ip);
     }
     bashCommand.add("-p");
-    bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
+    if (cpEnabled) {
+      bashCommand.add(String.valueOf(node.internalYsqlServerRpcPort));
+    } else {
+      bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
+    }
     bashCommand.add("-U");
     bashCommand.add("yugabyte");
     if (StringUtils.isNotEmpty(dbName)) {
@@ -483,10 +545,12 @@ public class NodeUniverseManager extends DevopsBase {
     UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
     Provider provider = Provider.getOrBadRequest(providerUUID);
     Optional<NodeAgent> optional =
-        getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
+        getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider, universe);
     if (!optional.isPresent()) {
       log.debug(
-          "Node agent is not enabled for provider {}({})", provider.getName(), provider.getUuid());
+          "Node agent is not enabled for node {} with provider {}",
+          node.getNodeName(),
+          provider.getUuid());
       return optional;
     }
     NodeAgent nodeAgent = optional.get();
@@ -533,10 +597,7 @@ public class NodeUniverseManager extends DevopsBase {
         String sshPort = provider.getDetails().sshPort.toString();
         UUID imageBundleUUID =
             Util.retreiveImageBundleUUID(
-                universe.getUniverseDetails().arch,
-                cluster.userIntent,
-                provider,
-                confGetter.getStaticConf().getBoolean("yb.cloud.enabled"));
+                universe.getUniverseDetails().arch, cluster.userIntent, provider);
         if (imageBundleUUID != null) {
           ImageBundle.NodeProperties toOverwriteNodeProperties =
               imageBundleUtil.getNodePropertiesOrFail(
@@ -667,16 +728,16 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   /**
-   * Gets a list of all the absolute file paths at a given remote directory
+   * Gets a map of all the absolute file paths to sizes at a given remote directory
    *
    * @param node
    * @param universe
    * @param remoteDirPath
    * @param maxDepth
    * @param fileType
-   * @return list of strings of all the absolute file paths
+   * @return map of absolute file paths to file sizes
    */
-  public List<Path> getNodeFilePaths(
+  public Map<String, Long> getNodeFilePathAndSizes(
       NodeDetails node, Universe universe, String remoteDirPath, int maxDepth, String fileType) {
     String localTempFilePath =
         getLocalTmpDir() + "/" + UUID.randomUUID().toString() + "-source-files-unfiltered.txt";
@@ -687,7 +748,7 @@ public class NodeUniverseManager extends DevopsBase {
             + "-source-files-unfiltered.txt";
 
     List<String> findCommandParams = new ArrayList<>();
-    findCommandParams.add("find_paths_in_dir");
+    findCommandParams.add("get_paths_and_sizes");
     findCommandParams.add(remoteDirPath);
     findCommandParams.add(String.valueOf(maxDepth));
     findCommandParams.add(fileType);
@@ -705,18 +766,27 @@ public class NodeUniverseManager extends DevopsBase {
 
     // Populate the text file into array.
     List<String> nodeFilePathStrings = Arrays.asList();
+    // LinkedHashMap to maintain insertion order.
+    // Files are ordered most recent to least.
+    Map<String, Long> nodeFilePathSizeMap = new LinkedHashMap<>();
     try {
       nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
+      for (String outputLine : nodeFilePathStrings) {
+        String[] outputLineSplit = outputLine.split("\\s+", 2);
+        if (!StringUtils.isBlank(outputLine) && outputLineSplit.length == 2) {
+          nodeFilePathSizeMap.put(outputLineSplit[1], Long.valueOf(outputLineSplit[0]));
+        }
+      }
     } catch (IOException e) {
       log.error("Error occurred", e);
     } finally {
       FileUtils.deleteQuietly(new File(localTempFilePath));
     }
-    return nodeFilePathStrings.stream().map(Paths::get).collect(Collectors.toList());
+    return nodeFilePathSizeMap;
   }
 
   /**
-   * Returns a list of file sizes (in bytes) and their names present in a remote directory on the
+   * Returns a map of file names to their sizes (in bytes) present in a remote directory on the
    * node. This function creates a temp file with these sizes and names and copies the temp file
    * from remote to local. Then reads and processes this info from the local temp file. This is done
    * so that this operation is scalable for large number of files present on the node.
@@ -724,20 +794,23 @@ public class NodeUniverseManager extends DevopsBase {
    * @param node
    * @param universe
    * @param remoteDirPath
-   * @return the list of pairs (size, name)
+   * @return a map of filenames to filesizes
    */
-  public List<Pair<Long, String>> getNodeFilePathsAndSize(
-      NodeDetails node, Universe universe, String remoteDirPath) {
+  public Map<String, Long> getNodeFilePathsAndSizeWithinDates(
+      NodeDetails node, Universe universe, String remoteDirPath, Date startDate, Date endDate) {
     String randomUUIDStr = UUID.randomUUID().toString();
     String localTempFilePath =
         getLocalTmpDir() + "/" + randomUUIDStr + "-source-files-and-sizes.txt";
     String remoteTempFilePath =
         getRemoteTmpDir(node, universe) + "/" + randomUUIDStr + "-source-files-and-sizes.txt";
 
+    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
     List<String> findCommandParams = new ArrayList<>();
-    findCommandParams.add("get_paths_and_sizes");
+    findCommandParams.add("get_paths_and_sizes_within_dates");
     findCommandParams.add(remoteDirPath);
     findCommandParams.add(remoteTempFilePath);
+    findCommandParams.add(formatter.format(startDate));
+    findCommandParams.add(formatter.format(DateUtils.addDays(endDate, 1)));
 
     runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams).processErrors();
     // Download the files list.
@@ -751,15 +824,16 @@ public class NodeUniverseManager extends DevopsBase {
 
     // Populate the text file into array.
     List<String> nodeFilePathStrings = Arrays.asList();
-    List<Pair<Long, String>> nodeFileSizePathStrings = new ArrayList<>();
+    // LinkedHashMap to maintain insertion order.
+    // Files are ordered most recent to least.
+    Map<String, Long> nodeFilePathSizeMap = new LinkedHashMap<>();
     try {
       nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
       log.debug("List of files found on the node '{}': '{}'", node.nodeName, nodeFilePathStrings);
       for (String outputLine : nodeFilePathStrings) {
         String[] outputLineSplit = outputLine.split("\\s+", 2);
         if (!StringUtils.isBlank(outputLine) && outputLineSplit.length == 2) {
-          nodeFileSizePathStrings.add(
-              new Pair<>(Long.valueOf(outputLineSplit[0]), outputLineSplit[1]));
+          nodeFilePathSizeMap.put(outputLineSplit[1], Long.valueOf(outputLineSplit[0]));
         }
       }
     } catch (IOException e) {
@@ -767,7 +841,7 @@ public class NodeUniverseManager extends DevopsBase {
     } finally {
       FileUtils.deleteQuietly(new File(localTempFilePath));
     }
-    return nodeFileSizePathStrings;
+    return nodeFilePathSizeMap;
   }
 
   public enum UniverseNodeAction {

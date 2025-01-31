@@ -63,6 +63,16 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
   }
 
   @Override
+  public String getName() {
+    return super.getName()
+        + "("
+        + taskParams().universeUUID
+        + ", type: "
+        + taskParams().softwareType
+        + ")";
+  }
+
+  @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     SoftwareUpgradeType softwareType = taskParams().softwareType;

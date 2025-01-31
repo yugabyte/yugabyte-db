@@ -16,6 +16,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/version.hpp>
@@ -41,6 +44,7 @@
 #include "yb/util/ref_cnt_buffer.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
@@ -56,7 +60,8 @@ struct DdlMode {
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable) \
     (CreateDatabase)(CreateTable)(CreateTablegroup) \
-    (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable)
+    (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable) \
+    (AcquireAdvisoryLock)(ReleaseAdvisoryLock)
 
 struct PerformResult {
   Status status;
@@ -69,10 +74,7 @@ struct PerformResult {
   }
 };
 
-struct TableKeyRangesWithHt {
-  boost::container::small_vector<RefCntSlice, 2> encoded_range_end_keys;
-  HybridTime current_ht;
-};
+using TableKeyRanges = boost::container::small_vector<RefCntSlice, 2>;
 
 struct PerformData;
 
@@ -105,6 +107,7 @@ class PerformExchangeFuture {
 };
 
 using PerformResultFuture = std::variant<std::future<PerformResult>, PerformExchangeFuture>;
+using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC)>;
 
 void Wait(const PerformResultFuture& future);
 bool Ready(const std::future<PerformResult>& future);
@@ -115,14 +118,14 @@ PerformResult Get(PerformResultFuture* future);
 
 class PgClient {
  public:
-  PgClient();
+  PgClient(const YbcPgAshConfig& ash_config,
+           std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
   ~PgClient();
 
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedObject& tserver_shared_object,
-               std::optional<uint64_t> session_id,
-               const YBCPgAshConfig* ash_config);
+               std::optional<uint64_t> session_id);
 
   void Shutdown();
 
@@ -132,13 +135,17 @@ class PgClient {
 
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
-      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
+      master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode = {});
 
+  Result<tserver::PgListClonesResponsePB> ListDatabaseClones();
+
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
+
+  Result<bool> PollVectorIndexReady(const PgObjectId& table_id);
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
 
@@ -171,7 +178,7 @@ class PgClient {
       SubTransactionId id, tserver::PgPerformOptionsPB* options);
   Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options);
 
-  Status ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
+  Status ValidatePlacement(tserver::PgValidatePlacementRequestPB* req);
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
@@ -201,27 +208,23 @@ class PgClient {
                                                          int64_t max_value,
                                                          bool cycle);
 
-  Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
-                                                     int64_t seq_oid,
-                                                     uint64_t ysql_catalog_version,
-                                                     bool is_db_catalog_version_mode);
+  Result<std::pair<int64_t, bool>> ReadSequenceTuple(
+      int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
+      bool is_db_catalog_version_mode, std::optional<uint64_t> read_time = std::nullopt);
 
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
   Status DeleteDBSequences(int64_t db_oid);
 
-  PerformResultFuture PerformAsync(
-      tserver::PgPerformOptionsPB* options,
-      PgsqlOps* operations);
+  PerformResultFuture PerformAsync(tserver::PgPerformOptionsPB* options, PgsqlOps&& operations);
 
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
-  Result<TableKeyRangesWithHt> GetTableKeyRanges(
+  Result<TableKeyRanges> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
-      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
-      uint64_t read_time_serial_no);
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
@@ -248,9 +251,19 @@ class PgClient {
       const std::string& stream_id);
 
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
-      const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush);
+      const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
+
+  Status SetCronLastMinute(int64_t last_minute);
+  Result<int64_t> GetCronLastMinute();
+
+  Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req);
+  Result<tserver::PgImportTxnSnapshotResponsePB> ImportTxnSnapshot(
+      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options);
+  Status ClearExportedTxnSnapshots();
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

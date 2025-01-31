@@ -44,11 +44,19 @@ public class CreatePitrConfig extends UniverseTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s(universeUuid=%s,tableType=%s,keyspaceName=%s)",
+        "%s(universeUuid=%s, customerUuid=%s, name=%s, keyspaceName=%s, tableType=%s,"
+            + " retentionPeriodInSeconds=%s, intervalInSeconds=%d, xClusterConfig=%s,"
+            + " createdForDr=%s)",
         super.getName(),
         taskParams().getUniverseUUID(),
+        taskParams().customerUUID,
+        taskParams().name,
+        taskParams().keyspaceName,
         taskParams().tableType,
-        taskParams().keyspaceName);
+        taskParams().retentionPeriodInSeconds,
+        taskParams().intervalInSeconds,
+        taskParams().xClusterConfig,
+        taskParams().createdForDr);
   }
 
   @Override

@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
@@ -101,6 +103,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock CustomerTaskManager customerTaskManager;
   @Mock UpgradeUniverseHandler upgradeUniverseHandler;
   @Mock KubernetesOperatorStatusUpdater kubernetesStatusUpdator;
+  @Mock ReleaseManager releaseManager;
+  @Mock UniverseActionsHandler universeActionsHandler;
 
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
@@ -127,7 +131,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     envVars = Mockito.mockStatic(KubernetesEnvironmentVariables.class);
     envVars.when(KubernetesEnvironmentVariables::getServiceHost).thenReturn("host");
     envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
-    operatorUtils = new OperatorUtils(confGetterForOperatorUtils);
+    operatorUtils = new OperatorUtils(confGetterForOperatorUtils, releaseManager);
     // Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
     Mockito.when(
             confGetterForOperatorUtils.getGlobalConf(GlobalConfKeys.KubernetesOperatorCustomerUUID))
@@ -145,7 +149,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             kubernetesStatusUpdator,
             confGetter,
             customerTaskManager,
-            operatorUtils);
+            operatorUtils,
+            universeActionsHandler);
     // reconcilerFactory.getYBUniverseReconciler(client);
 
     // Setup Defaults
@@ -269,14 +274,13 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     taskInfo.refresh();
 
     UniverseDefinitionTaskParams uTaskParams = universe.getUniverseDetails();
-    uTaskParams.placementModificationTaskUuid = taskInfo.getTaskUUID();
+    uTaskParams.placementModificationTaskUuid = taskInfo.getUuid();
     universe.setUniverseDetails(uTaskParams);
     universe.save();
     ybUniverseReconciler.reconcile(ybUniverseOriginal, OperatorWorkQueue.ResourceAction.CREATE);
 
     Mockito.verify(customerTaskManager, Mockito.times(1))
-        .retryCustomerTask(
-            Mockito.eq(defaultCustomer.getUuid()), Mockito.eq(taskInfo.getTaskUUID()));
+        .retryCustomerTask(Mockito.eq(defaultCustomer.getUuid()), Mockito.eq(taskInfo.getUuid()));
   }
 
   @Test
@@ -296,14 +300,13 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     taskInfo.refresh();
 
     UniverseDefinitionTaskParams uTaskParams = universe.getUniverseDetails();
-    uTaskParams.placementModificationTaskUuid = taskInfo.getTaskUUID();
+    uTaskParams.placementModificationTaskUuid = taskInfo.getUuid();
     universe.setUniverseDetails(uTaskParams);
     universe.save();
     ybUniverseReconciler.reconcile(ybUniverseOriginal, OperatorWorkQueue.ResourceAction.UPDATE);
 
     Mockito.verify(customerTaskManager, Mockito.times(1))
-        .retryCustomerTask(
-            Mockito.eq(defaultCustomer.getUuid()), Mockito.eq(taskInfo.getTaskUUID()));
+        .retryCustomerTask(Mockito.eq(defaultCustomer.getUuid()), Mockito.eq(taskInfo.getUuid()));
   }
 
   @Test
@@ -350,7 +353,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     CustomerTask.create(
         defaultCustomer,
         oldUniverse.getUniverseUUID(),
-        taskInfo.getTaskUUID(),
+        taskInfo.getUuid(),
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Create,
         oldUniverse.getName());

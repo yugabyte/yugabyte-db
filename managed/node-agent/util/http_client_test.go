@@ -3,7 +3,7 @@ package util
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 )
@@ -46,7 +46,7 @@ func TestHttpClientSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error while calling the request - %s", err.Error())
 	}
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	defer res.Body.Close()
 	if err != nil {
 		t.Fatalf("Error reading the respone - %s", err.Error())

@@ -38,6 +38,8 @@ import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -80,6 +82,7 @@ public class CloudProviderHandler {
   @Inject private CloudQueryHelper queryHelper;
   @Inject private AccessKeyRotationUtil accessKeyRotationUtil;
   @Inject private CloudProviderHelper cloudProviderHelper;
+  @Inject private RuntimeConfGetter runtimeConfGetter;
 
   @Inject private AWSInitializer awsInitializer;
   @Inject private GCPInitializer gcpInitializer;
@@ -136,8 +139,8 @@ public class CloudProviderHandler {
         }
       }
     }
-    if (reqProvider.getCloudCode() != kubernetes && !config.getBoolean("yb.cloud.enabled")) {
-      // Always enable for non-k8s providers.
+    if (reqProvider.getCloudCode() != kubernetes
+        && !runtimeConfGetter.getGlobalConf(GlobalConfKeys.disableNodeAgentOnProviderCreation)) {
       reqProvider.getDetails().setEnableNodeAgent(true);
     }
     Provider provider =
@@ -472,6 +475,7 @@ public class CloudProviderHandler {
         TaskType.CreateAndRotateAccessKey,
         schedulingFrequency,
         null,
+        true /* useLocalTimezone */,
         frequencyTimeUnit,
         null);
   }

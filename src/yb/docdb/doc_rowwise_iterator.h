@@ -21,12 +21,12 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
+#include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_rowwise_iterator_base.h"
-#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
@@ -58,16 +58,14 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      const ReadOperationData& read_operation_data,
-                     std::reference_wrapper<const ScopedRWOperation> pending_op,
-                     const DocDBStatistics* statistics = nullptr);
+                     std::reference_wrapper<const ScopedRWOperation> pending_op);
 
   DocRowwiseIterator(const dockv::ReaderProjection& projection,
                      std::shared_ptr<DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      const ReadOperationData& read_operation_data,
-                     ScopedRWOperation&& pending_op,
-                     const DocDBStatistics* statistics = nullptr);
+                     ScopedRWOperation&& pending_op);
 
   ~DocRowwiseIterator() override;
 
@@ -80,6 +78,12 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   Result<HybridTime> RestartReadHt() override;
 
   void Seek(Slice key) override;
+
+  void SeekToDocKeyPrefix(Slice doc_key_prefix) override;
+
+  // Refreshes the iterator if it was in finished state.
+  // filter - filter mode that should be used with refreshed iterator.
+  void Refresh(SeekFilter filter);
 
   HybridTime TEST_MaxSeenHt() override;
 
@@ -96,10 +100,15 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
     doc_mode_ = DocMode::kAny;
   }
 
+  bool TEST_use_fast_backward_scan() const {
+    return use_fast_backward_scan_;
+  }
+
+  Result<Slice> FetchDirect(Slice key) override;
+
  private:
   void InitIterator(
-      BloomFilterMode bloom_filter_mode = BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      const boost::optional<const Slice>& user_key_for_filter = boost::none,
+      const BloomFilterOptions& bloom_filter = BloomFilterOptions::Inactive(),
       const rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr) override;
 
@@ -161,7 +170,9 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   bool use_fast_backward_scan_ = false;
 
-  const DocDBStatistics* statistics_;
+  DeadlineInfo deadline_info_;
+
+  SeekFilter seek_filter_ = SeekFilter::kAll;
 };
 
 }  // namespace docdb

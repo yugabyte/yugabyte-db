@@ -48,7 +48,7 @@ The project definition includes the following dependencies:
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.3.5-yb-5</version>
+  <version>42.7.3-yb-1</version>
 </dependency>
 ```
 
@@ -62,7 +62,7 @@ The following tutorial illustrates how to build a Java application with Spring D
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
+- YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/).
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 

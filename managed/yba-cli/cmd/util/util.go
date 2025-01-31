@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/sirupsen/logrus"
@@ -123,7 +124,7 @@ func GetFloat64Pointer(in float64) *float64 {
 	return &in
 }
 
-// GetStringArrayPointer returns the pointer to a string array
+// GetArrayPointer returns the pointer to a string array
 func GetArrayPointer(in []interface{}) *[]interface{} {
 	return &in
 }
@@ -131,6 +132,42 @@ func GetArrayPointer(in []interface{}) *[]interface{} {
 // CreateSingletonList returns a list of single entry from an interface
 func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
+}
+
+// FindCommonStringElements finds common elements in two string slices
+func FindCommonStringElements(list1, list2 []string) []string {
+	// Create a map to store elements from list1
+	elementMap := make(map[string]bool)
+	for _, val := range list1 {
+		elementMap[val] = true
+	}
+
+	// Find common elements
+	var common []string
+	for _, val := range list2 {
+		if elementMap[val] {
+			common = append(common, val)
+		}
+	}
+	return common
+}
+
+// GetFloat64SliceFromString returns a slice of float64 from a string
+func GetFloat64SliceFromString(in string) ([]float64, error) {
+	if in == "" {
+		return nil, nil
+	}
+	in = strings.Trim(in, "[ ]")
+	s := strings.Split(in, ",")
+	var out []float64
+	for _, v := range s {
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, nil
 }
 
 // YbaStructuredError is a structure mimicking YBPError, with error being an interface{}
@@ -181,10 +218,16 @@ func ErrorFromResponseBody(errorBlock YbaStructuredError) string {
 			errorString = fmt.Sprintf("Field: %s, Error:", k)
 		}
 		var checkType []interface{}
+		var checkTypeMap map[string]interface{}
 		if reflect.TypeOf(v) == reflect.TypeOf(checkType) {
 			for _, s := range *StringSlice(v.([]interface{})) {
 				errorString = fmt.Sprintf("%s %s", errorString, s)
 			}
+		} else if reflect.TypeOf(v) == reflect.TypeOf(checkTypeMap) {
+			for _, s := range *StringMap(v.(map[string]interface{})) {
+				errorString = fmt.Sprintf("%s %s", errorString, s)
+			}
+			errorString = fmt.Sprintf("%s %v", errorString, v)
 		} else {
 			errorString = fmt.Sprintf("%s %s", errorString, v.(string))
 		}
@@ -282,6 +325,9 @@ func CompareYbVersions(v1 string, v2 string) (int, error) {
 	return 0, errors.New("Unable to parse YB version strings")
 }
 
+// IsVersionStable returns true if the version string is stable
+// A stable version is a version with an even minor number
+// or a version with a 4 digit major version
 func IsVersionStable(version string) bool {
 	v := strings.Split(version, ".")
 	v1, err := strconv.Atoi(v[1])
@@ -342,4 +388,82 @@ func YAMLtoString(filePath string) string {
 // IsOutputType check if the output type is t
 func IsOutputType(t string) bool {
 	return viper.GetString("output") == t
+}
+
+// RemoveComponentFromSlice removes the component from the slice
+func RemoveComponentFromSlice(sliceInterface interface{}, index int) interface{} {
+	slice := sliceInterface.([]interface{})
+	length := len(slice)
+	for i := range slice {
+		if i == index && i != length-1 {
+			return append(slice[:i], slice[i+1:]...)
+		} else if i == length-1 {
+			return slice[:i]
+		}
+	}
+	return slice
+}
+
+// ConvertMsToUnit converts time from milliseconds to unit
+func ConvertMsToUnit(value int64, unit string) float64 {
+	var v float64
+	if strings.Compare(unit, "YEARS") == 0 {
+		v = (float64(value) / 12 / 30 / 24 / 60 / 60 / 1000)
+	} else if strings.Compare(unit, "MONTHS") == 0 {
+		v = (float64(value) / 30 / 24 / 60 / 60 / 1000)
+	} else if strings.Compare(unit, "DAYS") == 0 {
+		v = (float64(value) / 24 / 60 / 60 / 1000)
+	} else if strings.Compare(unit, "HOURS") == 0 {
+		v = (float64(value) / 60 / 60 / 1000)
+	} else if strings.Compare(unit, "MINUTES") == 0 {
+		v = (float64(value) / 60 / 1000)
+	} else if strings.Compare(unit, "SECONDS") == 0 {
+		v = (float64(value) / 1000)
+	}
+	return v
+}
+
+// GetUnitOfTimeFromDuration takes time.Duration as input and caluclates the unit specified in
+// that duration
+func GetUnitOfTimeFromDuration(duration time.Duration) string {
+	if duration.Hours() >= float64(24*30*365) {
+		return "YEARS"
+	} else if duration.Hours() >= float64(24*30) {
+		return "MONTHS"
+	} else if duration.Hours() >= float64(24) {
+		return "DAYS"
+	} else if duration.Hours() >= float64(1) {
+		return "HOURS"
+	} else if duration.Minutes() >= float64(1) {
+		return "MINUTES"
+	} else if duration.Seconds() >= float64(1) {
+		return "SECONDS"
+	} else if duration.Milliseconds() > int64(0) {
+		return "MILLISECONDS"
+	} else if duration.Microseconds() > int64(0) {
+		return "MICROSECONDS"
+	} else if duration.Nanoseconds() > int64(0) {
+		return "NANOSECONDS"
+	}
+	return ""
+}
+
+// GetMsFromDurationString retrieves the ms notation of the duration mentioned in the input string
+// return value string holds the unit calculated from time.Duration
+// Throws error on improper duration format
+func GetMsFromDurationString(duration string) (int64, string, bool, error) {
+	number, err := time.ParseDuration(duration)
+	if err != nil {
+		return 0, "", false, err
+	}
+	unitFromDuration := GetUnitOfTimeFromDuration(number)
+	return number.Milliseconds(), unitFromDuration, true, err
+}
+
+// FromEpochMilli converts epoch in milliseconds to time.Time
+func FromEpochMilli(millis int64) time.Time {
+	// Convert milliseconds to seconds and nanoseconds
+	seconds := millis / 1000
+	nanos := (millis % 1000) * int64(time.Millisecond)
+	return time.Unix(seconds, nanos)
 }

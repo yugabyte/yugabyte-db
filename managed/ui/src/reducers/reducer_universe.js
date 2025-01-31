@@ -4,6 +4,8 @@ import {
   FETCH_UNIVERSE_INFO,
   RESET_UNIVERSE_INFO,
   FETCH_UNIVERSE_INFO_RESPONSE,
+  FETCH_UNIVERSE_LB_STATE,
+  FETCH_UNIVERSE_LB_STATE_RESPONSE,
   CREATE_UNIVERSE,
   CREATE_UNIVERSE_RESPONSE,
   EDIT_UNIVERSE,
@@ -96,6 +98,7 @@ const INITIAL_STATE = {
   universeMasterInfo: getInitialState([]),
   universeResourceTemplate: getInitialState({}),
   currentPlacementStatus: null,
+  universeLbState: getInitialState({}),
   fetchUniverseMetadata: false,
   addReadReplica: getInitialState([]),
   editReadReplica: getInitialState([]),
@@ -165,6 +168,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'currentUniverse', {});
     case FETCH_UNIVERSE_INFO_RESPONSE:
       return setPromiseResponse(state, 'currentUniverse', action);
+    case FETCH_UNIVERSE_LB_STATE:
+      return setLoadingState(state, 'universeLbState', {});
+    case FETCH_UNIVERSE_LB_STATE_RESPONSE:
+      return setPromiseResponse(state, 'universeLbState', action);
     case FETCH_SUPPORTED_RELEASES:
       return setLoadingState(state, 'supportedReleases', []);
     case FETCH_SUPPORTED_RELEASES_RESPONSE:

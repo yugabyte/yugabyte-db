@@ -18,7 +18,6 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
-#include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -40,6 +39,7 @@
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pggate/pg_column.h"
+#include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
@@ -59,7 +59,7 @@ using DataHolder = std::shared_ptr<std::remove_const_t<PrefetchedDataHolder::ele
 
 struct OperationInfo {
   OperationInfo(
-    const PgsqlReadOpPtr& operation_, const PgTableDescPtr& table_, const PgTableDescPtr& index_)
+      const PgsqlReadOpPtr& operation_, const PgTableDescPtr& table_, const PgTableDescPtr& index_)
       : operation(operation_), table(table_), index(index_) {
   }
 
@@ -109,42 +109,24 @@ void InsertData(DataContainer* container,
 // Instead of this current function reimplements the logic of ybcSetupTargets
 // with respect to the following assumptions:
 // - scans from sys tables reads all of the columns from postgres table
+//   plus YBTupleIdAttributeNumber
 // - all the attributes in sys table are requested in asc order
-// - special attributes ObjectIdAttributeNumber and YBTupleIdAttributeNumber
-//   are added after the table attributes
 //
 // As far as in future the list of targets columns in sys table scan (including the column order)
 // produced by the ybcSetupTargets function may be changed request targets preload targets are
 // checked at runtime in the PgSysTablePrefetcher::GetData method
-std::vector<const PgColumn*> OrderColumns(const std::vector<PgColumn>& cols) {
-  const PgColumn* objCol = nullptr;
-  const PgColumn* ybctidCol = nullptr;
+[[nodiscard]] std::vector<const PgColumn*> OrderColumns(
+    const std::vector<PgColumn>& cols, bool fetch_ybctid) {
   std::vector<const PgColumn*> result;
   result.reserve(cols.size());
   for (const auto& c : cols) {
     const auto attr = c.attr_num();
-    switch(attr) {
-      case to_underlying(PgSystemAttrNum::kYBTupleId):
-        ybctidCol = &c;
-        break;
-      case to_underlying(PgSystemAttrNum::kObjectId):
-        objCol = &c;
-        break;
-      default:
-        if (attr > 0) {
-          result.push_back(&c);
-        }
-        break;
+    if (attr > 0 || (fetch_ybctid && attr == to_underlying(PgSystemAttrNum::kYBTupleId))) {
+      result.push_back(&c);
     }
   }
   std::sort(result.begin(), result.end(), [](auto lhs, auto rhs) {
       return lhs->attr_num() < rhs->attr_num(); });
-  if (objCol) {
-    result.push_back(objCol);
-  }
-  if (ybctidCol) {
-    result.push_back(ybctidCol);
-  }
   return result;
 }
 
@@ -333,21 +315,25 @@ auto MakeGenerator(const std::vector<OperationInfo>& ops) {
 Result<rpc::CallResponsePtr> Run(
     yb::ThreadSafeArena* arena, PgSession* session,
     const std::vector<OperationInfo>& ops, const PrefetcherOptions& options) {
-  auto result = VERIFY_RESULT(options.caching_info
+  PgDocResponse response(VERIFY_RESULT(options.caching_info
       ? session->RunAsync(
           make_lw_function(MakeGenerator(ops)),
           BuildCacheOptions(arena, session->catalog_read_time(), ops, *options.caching_info))
-      : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime()));
-  return VERIFY_RESULT(result.Get()).response;
+      : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime())),
+      {TableType::SYSTEM, IsForWritePgDoc::kFalse});
+  return VERIFY_RESULT(response.Get(*session)).response;
 }
 
 struct RegisteredItem {
-  RegisteredItem(PgObjectId table_id_, PgObjectId index_id_, int row_oid_filtering_attr_)
-      : table_id(table_id_), index_id(index_id_), row_oid_filtering_attr(row_oid_filtering_attr_) {}
+  RegisteredItem(
+      PgObjectId table_id_, PgObjectId index_id_, int row_oid_filtering_attr_, bool fetch_ybctid_)
+      : table_id(table_id_), index_id(index_id_), row_oid_filtering_attr(row_oid_filtering_attr_),
+        fetch_ybctid(fetch_ybctid_) {}
 
   PgObjectId table_id;
   PgObjectId index_id;
   int row_oid_filtering_attr;
+  bool fetch_ybctid;
 };
 
 void ApplySystemItemsFilter(LWPgsqlReadRequestPB* req, int oid_column_id) {
@@ -391,7 +377,7 @@ class Loader {
     auto& req = info.operation->read_request();
     SetupPaging(&req);
     PgTable target(table);
-    auto ordered_columns = OrderColumns(target.columns());
+    auto ordered_columns = OrderColumns(target.columns(), item.fetch_ybctid);
     info.targets.reserve(ordered_columns.size());
     const PgColumn* oid_filtering_column = nullptr;
     for (const auto& column : ordered_columns) {
@@ -480,11 +466,13 @@ class PgSysTablePrefetcher::Impl {
   }
 
   void Register(
-      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr) {
+      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
+      bool fetch_ybctid) {
     VLOG(1) << "Register table_id=" << table_id
             << " index_id=" << index_id
-            << " row_oid_filtering_attr=" << row_oid_filtering_attr;
-    registered_for_loading_.emplace_back(table_id, index_id, row_oid_filtering_attr);
+            << " row_oid_filtering_attr=" << row_oid_filtering_attr
+            << " fetch_ybctid=" << fetch_ybctid;
+    registered_for_loading_.emplace_back(table_id, index_id, row_oid_filtering_attr, fetch_ybctid);
   }
 
   PrefetchedDataHolder GetData(const LWPgsqlReadRequestPB& read_req, bool index_check_required) {
@@ -542,8 +530,9 @@ PgSysTablePrefetcher::PgSysTablePrefetcher(const PrefetcherOptions& options)
 PgSysTablePrefetcher::~PgSysTablePrefetcher() = default;
 
 void PgSysTablePrefetcher::Register(
-    const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr) {
-  impl_->Register(table_id, index_id, row_oid_filtering_attr);
+    const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
+    bool fetch_ybctid) {
+  impl_->Register(table_id, index_id, row_oid_filtering_attr, fetch_ybctid);
 }
 
 Status PgSysTablePrefetcher::Prefetch(PgSession* session) {

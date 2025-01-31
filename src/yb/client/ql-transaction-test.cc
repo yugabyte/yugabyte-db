@@ -36,6 +36,7 @@
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_coordinator.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/server_main_util.h"
@@ -83,6 +84,7 @@ DECLARE_bool(TEST_load_transactions_sync);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_skip_remove_intent);
+DECLARE_uint64(log_segment_size_bytes);
 
 namespace yb {
 namespace client {
@@ -1784,6 +1786,132 @@ TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTe
   }
 
   thread_holder.Stop();
+}
+
+class QLTransactionTestWithSegmentRollover : public QLTransactionTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 1_KB;
+    QLTransactionTest::SetUp();
+  }
+
+  int NumTablets() override { return 1; }
+};
+
+Result<std::unordered_map<std::string, log::SegmentSequence>> GetLogSegmentsForTable(
+    const std::unique_ptr<yb::MiniCluster>& cluster, const std::string& table_id) {
+  std::unordered_map<std::string, log::SegmentSequence> result;
+  auto peers = ListTableTabletPeers(cluster.get(), table_id);
+  for (const auto& peer : peers) {
+    log::SegmentSequence segments;
+    RETURN_NOT_OK(peer->log()->GetSegmentsSnapshot(&segments));
+    CHECK(result.emplace(peer->permanent_uuid(), std::move(segments)).second);
+  }
+  return result;
+}
+
+Status VerifyMinStartTimeInLogSegmentFooter(
+    const std::unique_ptr<yb::MiniCluster>& cluster, const std::string& table_id,
+    const std::optional<uint64_t> expected_min_start_time) {
+  auto tablet_peer_log_segments = VERIFY_RESULT(GetLogSegmentsForTable(cluster, table_id));
+  for (const auto& [peer_id, segments] : tablet_peer_log_segments) {
+    SCHECK_GT(
+        segments.size(), 1, IllegalState,
+        Format("Expected more than 1 segment for peer $0", peer_id));
+    LOG(INFO) << "Verifying " << segments.size() << " segments for peer: " << peer_id;
+    const log::ReadableLogSegmentPtr& last_segment = VERIFY_RESULT(segments.back());
+    for (const auto& segment : segments) {
+      // All segments except for the last should have a footer.
+      if (&segment == &last_segment) {
+        continue;
+      }
+      SCHECK_EQ(
+          segment->HasFooter(), true, IllegalState,
+          Format("Footer of segment $0 not found", segment->header().sequence_number()));
+      SCHECK_EQ(
+          segment->footer().has_min_start_time_running_txns(), true, IllegalState,
+          Format(
+              "Min start time of running txns not found in footer of segment $0",
+              segment->header().sequence_number()));
+      SCHECK_NE(
+          segment->footer().min_start_time_running_txns(), kInvalidHybridTimeValue, IllegalState,
+          Format(
+              "Min start time of running txns == Invalid HT for segment $0",
+              segment->header().sequence_number()));
+      SCHECK_GE(
+          segment->footer().min_start_time_running_txns(), kInitialHybridTimeValue, IllegalState,
+          Format(
+              "Min start time of running txns < Initial HT for segment $0",
+              segment->header().sequence_number()));
+      if (expected_min_start_time) {
+        SCHECK_EQ(
+            segment->footer().min_start_time_running_txns(), *expected_min_start_time, IllegalState,
+            Format(
+                "Min start time of running txns != Expected HT for segment $0",
+                segment->header().sequence_number()));
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+TEST_F_EX(
+    QLTransactionTest, LogSegmentRolloverWithSingleRunningTxn,
+    QLTransactionTestWithSegmentRollover) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = true;
+
+  auto& table_name = table_->name();
+
+  auto txn = CreateTransaction();
+  auto session = CreateSession(txn);
+  int num_writes = 1000;
+  for (int i = 0; i < num_writes; i++) {
+    ASSERT_OK(WriteRow(session, /* key */ i, /* value */ i, WriteOpType::INSERT));
+  }
+  ASSERT_OK(txn->CommitFuture().get());
+
+  // Verify min_start_time_running_txns in the closed segment's footer matches with the start time
+  // of the above txn.
+  const auto& table_id = table_name.table_id();
+  HybridTime curr_min_start_ht_running_txns = HybridTime::kInvalid;
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto& peer : peers) {
+    if (peer->tablet_metadata()->table_id() == table_id) {
+      curr_min_start_ht_running_txns =
+          peer->shared_tablet()->GetMinStartHTRunningTxnsForCDCLogCallback();
+      ASSERT_NE(curr_min_start_ht_running_txns, HybridTime::kInvalid);
+      break;
+    }
+  }
+
+  ASSERT_OK(VerifyMinStartTimeInLogSegmentFooter(
+      cluster_, table_id, curr_min_start_ht_running_txns.ToUint64()));
+}
+
+TEST_F_EX(
+    QLTransactionTest, LogSegmentRolloverWithMultipleTxns, QLTransactionTestWithSegmentRollover) {
+  constexpr int kMinTransactions = 10;
+  for (int i = 0;; i++) {
+    auto txn = CreateTransaction();
+    ASSERT_OK(WriteRows(CreateSession(txn)));
+    ASSERT_OK(txn->CommitFuture().get());
+    if (i >= kMinTransactions) {
+      auto tablet_peer_log_segments = ASSERT_RESULT(GetLogSegmentsForTable(
+          cluster_, table_->name().table_id()));
+      auto count = std::ranges::count_if(tablet_peer_log_segments, [](const auto& p) {
+        return p.second.size() <= 1;
+      });
+      if (count == 0) {
+        break;
+      }
+    }
+  }
+
+  // Verify min_start_time_running_txns in the closed segment's footer is always >= kInitial and
+  // never Invalid.
+  ASSERT_OK(VerifyMinStartTimeInLogSegmentFooter(
+      cluster_, table_->name().table_id(), std::nullopt));
 }
 
 class QLTransactionTestSingleTS : public QLTransactionTest {

@@ -46,13 +46,18 @@ export const SyncXClusterConfigModal = (props: SyncXClusterConfigModalProps) => 
     ({ targetUniverseUuid }: { targetUniverseUuid: string }) => {
       return props.isDrInterface
         ? api.syncDrConfig(props.drConfigUuid)
-        : syncXClusterConfigWithDB(xClusterConfig.replicationGroupName, targetUniverseUuid);
+        : syncXClusterConfigWithDB(
+            xClusterConfig.uuid,
+            xClusterConfig.replicationGroupName,
+            targetUniverseUuid
+          );
     },
     {
       onSuccess: (data) => {
         const invalidateQueries = () => {
           if (props.isDrInterface) {
             queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           }
           queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
         };

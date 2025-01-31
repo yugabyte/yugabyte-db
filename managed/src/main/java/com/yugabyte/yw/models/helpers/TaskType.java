@@ -83,6 +83,16 @@ public enum TaskType {
       CustomerTask.TaskType.Resume,
       CustomerTask.TargetType.Universe),
 
+  PauseKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.upgrade.PauseKubernetesUniverse.class,
+      CustomerTask.TaskType.Pause,
+      CustomerTask.TargetType.Universe),
+
+  ResumeKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ResumeKubernetesUniverse.class,
+      CustomerTask.TaskType.Resume,
+      CustomerTask.TargetType.Universe),
+
   DestroyKubernetesUniverse(
       com.yugabyte.yw.commissioner.tasks.DestroyKubernetesUniverse.class,
       CustomerTask.TaskType.Delete,
@@ -126,6 +136,11 @@ public enum TaskType {
   CreatePitrConfig(
       com.yugabyte.yw.commissioner.tasks.CreatePitrConfig.class,
       CustomerTask.TaskType.CreatePitrConfig,
+      CustomerTask.TargetType.Universe),
+
+  UpdatePitrConfig(
+      com.yugabyte.yw.commissioner.tasks.UpdatePitrConfig.class,
+      CustomerTask.TaskType.UpdatePitrConfig,
       CustomerTask.TargetType.Universe),
 
   DeletePitrConfig(
@@ -406,9 +421,29 @@ public enum TaskType {
       CustomerTask.TaskType.Switchover,
       CustomerTask.TargetType.DrConfig),
 
+  SwitchoverDrConfigRollback(
+      com.yugabyte.yw.commissioner.tasks.SwitchoverDrConfigRollback.class,
+      CustomerTask.TaskType.Switchover,
+      CustomerTask.TargetType.DrConfig),
+
   EditDrConfig(
       com.yugabyte.yw.commissioner.tasks.EditDrConfig.class,
       CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.DrConfig),
+
+  EditDrConfigParams(
+      com.yugabyte.yw.commissioner.tasks.EditDrConfigParams.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.DrConfig),
+
+  PauseXClusterUniverses(
+      com.yugabyte.yw.commissioner.tasks.PauseXClusterUniverses.class,
+      CustomerTask.TaskType.Pause,
+      CustomerTask.TargetType.DrConfig),
+
+  ResumeXClusterUniverses(
+      com.yugabyte.yw.commissioner.tasks.ResumeXClusterUniverses.class,
+      CustomerTask.TaskType.Resume,
       CustomerTask.TargetType.DrConfig),
 
   ReinstallNodeAgent(
@@ -479,6 +514,31 @@ public enum TaskType {
       CustomerTask.TaskType.Create,
       CustomerTask.TargetType.Schedule),
 
+  CreateBackupScheduleKubernetes(
+      com.yugabyte.yw.commissioner.tasks.CreateBackupScheduleKubernetes.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Schedule),
+
+  DeleteBackupSchedule(
+      com.yugabyte.yw.commissioner.tasks.DeleteBackupSchedule.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Schedule),
+
+  DeleteBackupScheduleKubernetes(
+      com.yugabyte.yw.commissioner.tasks.DeleteBackupScheduleKubernetes.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Schedule),
+
+  EditBackupSchedule(
+      com.yugabyte.yw.commissioner.tasks.EditBackupSchedule.class,
+      CustomerTask.TaskType.Update,
+      CustomerTask.TargetType.Schedule),
+
+  EditBackupScheduleKubernetes(
+      com.yugabyte.yw.commissioner.tasks.EditBackupScheduleKubernetes.class,
+      CustomerTask.TaskType.Update,
+      CustomerTask.TargetType.Schedule),
+
   CloudProviderEdit(
       com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class,
       CustomerTask.TaskType.Edit,
@@ -534,6 +594,11 @@ public enum TaskType {
       CustomerTask.TaskType.Update,
       CustomerTask.TargetType.Node),
 
+  DecommissionNodeInstance(
+      com.yugabyte.yw.commissioner.tasks.DecommissionNodeInstance.class,
+      CustomerTask.TaskType.Update,
+      CustomerTask.TargetType.Node),
+
   MasterFailover(
       com.yugabyte.yw.commissioner.tasks.MasterFailover.class,
       CustomerTask.TaskType.MasterFailover,
@@ -542,6 +607,36 @@ public enum TaskType {
   SyncMasterAddresses(
       com.yugabyte.yw.commissioner.tasks.SyncMasterAddresses.class,
       CustomerTask.TaskType.SyncMasterAddresses,
+      CustomerTask.TargetType.Universe),
+
+  CreateYbaBackup(
+      com.yugabyte.yw.commissioner.tasks.CreateYbaBackup.class,
+      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TargetType.Yba),
+
+  RestoreYbaBackup(
+      com.yugabyte.yw.commissioner.tasks.RestoreYbaBackup.class,
+      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TargetType.Yba),
+
+  RestoreContinuousBackup(
+      com.yugabyte.yw.commissioner.tasks.RestoreContinuousBackup.class,
+      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TargetType.Yba),
+
+  EnableNodeAgentInUniverse(
+      com.yugabyte.yw.commissioner.tasks.EnableNodeAgentInUniverse.class,
+      CustomerTask.TaskType.EnableNodeAgent,
+      CustomerTask.TargetType.Universe),
+
+  DecommissionNode(
+      com.yugabyte.yw.commissioner.tasks.DecommissionNode.class,
+      CustomerTask.TaskType.Decommission,
+      CustomerTask.TargetType.Node),
+
+  CloneNamespace(
+      com.yugabyte.yw.commissioner.tasks.CloneNamespace.class,
+      CustomerTask.TaskType.CloneNamespace,
       CustomerTask.TargetType.Universe),
 
   /* Subtasks start here */
@@ -599,6 +694,8 @@ public enum TaskType {
 
   ChangeAdminPassword(com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword.class),
 
+  DropTable(com.yugabyte.yw.commissioner.tasks.subtasks.DropTable.class),
+
   CreateTable(com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable.class),
 
   DeleteNode(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode.class),
@@ -648,6 +745,9 @@ public enum TaskType {
 
   UpdateAndPersistKubernetesOverrides(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesOverrides.class),
+
+  HandleKubernetesNamespacedServices(
+      com.yugabyte.yw.commissioner.tasks.subtasks.HandleKubernetesNamespacedServices.class),
 
   UpdatePlacementInfo(com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.class),
 
@@ -710,6 +810,9 @@ public enum TaskType {
 
   DeleteBootstrapIds(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds.class),
 
+  XClusterNetworkConnectivityCheck(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterNetworkConnectivityCheck.class),
+
   DeleteReplication(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication.class),
 
   DeleteXClusterConfigEntry(
@@ -732,6 +835,9 @@ public enum TaskType {
   ChangeXClusterRole(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole.class),
 
   SetDrStates(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetDrStates.class),
+
+  UpdateDrConfigParams(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.UpdateDrConfigParams.class),
 
   XClusterAddNamespaceToOutboundReplicationGroup(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster
@@ -758,6 +864,10 @@ public enum TaskType {
 
   XClusterConfigSetStatusForTables(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables.class),
+
+  XClusterConfigSetStatusForNamespaces(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForNamespaces
+          .class),
 
   XClusterConfigModifyTables(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables.class),
@@ -796,6 +906,15 @@ public enum TaskType {
   DeleteReplicationOnSource(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplicationOnSource.class),
 
+  DeleteXClusterBackupRestoreEntries(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterBackupRestoreEntries
+          .class),
+
+  AddExistingPitrToXClusterConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddExistingPitrToXClusterConfig.class),
+
+  SetRestoreState(com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreState.class),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup(
       com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeyCleanup.class),
@@ -831,6 +950,10 @@ public enum TaskType {
 
   RestoreUniverseKeysYbc(com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc.class),
 
+  SetBackupHiddenState(com.yugabyte.yw.commissioner.tasks.subtasks.SetBackupHiddenState.class),
+
+  SetRestoreHiddenState(com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreHiddenState.class),
+
   RestorePreflightValidate(
       com.yugabyte.yw.commissioner.tasks.subtasks.RestorePreflightValidate.class),
 
@@ -855,6 +978,9 @@ public enum TaskType {
 
   KubernetesCheckNumPod(com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod.class),
 
+  PodDisruptionBudgetPolicy(
+      com.yugabyte.yw.commissioner.tasks.subtasks.PodDisruptionBudgetPolicy.class),
+
   SetActiveUniverseKeys(com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys.class),
 
   WaitForEncryptionKeyInMemory(
@@ -865,6 +991,11 @@ public enum TaskType {
   CreateAlertDefinitions(com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions.class),
 
   ManageAlertDefinitions(com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions.class),
+
+  ManageCatalogUpgradeSuperUser(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.class),
+
+  MarkSourceMetric(com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric.class),
 
   UniverseSetTlsParams(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams.class),
 
@@ -900,11 +1031,26 @@ public enum TaskType {
 
   CheckUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade.class),
 
+  CheckCertificateConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig.class),
+
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
 
   CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),
 
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
+
+  PGUpgradeTServerCheck(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.PGUpgradeTServerCheck.class),
+
+  RunYsqlMajorVersionCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlMajorVersionCatalogUpgrade.class),
+
+  RollbackYsqlMajorVersionCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RollbackYsqlMajorVersionCatalogUpgrade.class),
+
+  FinalizeYsqlMajorCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.FinalizeYsqlMajorCatalogUpgrade.class),
 
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),
@@ -964,6 +1110,8 @@ public enum TaskType {
 
   UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class),
 
+  UpdateConsistencyCheck(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateConsistencyCheck.class),
+
   FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class),
 
   QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),
@@ -980,13 +1128,22 @@ public enum TaskType {
 
   CheckNodeReachable(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable.class),
 
+  SupportBundleComponentDownload(
+      com.yugabyte.yw.commissioner.tasks.subtasks.SupportBundleComponentDownload.class),
+
   WaitStartingFromTime(WaitStartingFromTime.class),
 
   RemoveNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent.class),
 
   UpdateUniverseFields(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseFields.class),
 
-  RunNodeCommand(com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand.class);
+  RunNodeCommand(com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand.class),
+
+  MasterLeaderStepdown(com.yugabyte.yw.commissioner.tasks.subtasks.MasterLeaderStepdown.class),
+
+  SetupYNP(com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP.class),
+
+  YNPProvisioning(com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1014,6 +1171,8 @@ public enum TaskType {
           .put(ReadOnlyKubernetesClusterCreate, 12)
           .put(ReadOnlyKubernetesClusterDelete, 13)
           .put(ResumeUniverse, 14)
+          .put(PauseKubernetesUniverse, 15) // You may want to assign a different code
+          .put(ResumeKubernetesUniverse, 16) // You may want to assign a different code
           // Upgrade/Maintenance (30-69):
           .put(CertsRotate, 30)
           .put(ConfigureDBApis, 31)
@@ -1063,6 +1222,12 @@ public enum TaskType {
           .put(MultiTableBackup, 97)
           .put(RestoreBackup, 98)
           .put(RestoreSnapshotSchedule, 99)
+          .put(DeleteBackupSchedule, 100)
+          .put(DeleteBackupScheduleKubernetes, 100)
+          .put(EditBackupSchedule, 101)
+          .put(EditBackupScheduleKubernetes, 101)
+          .put(CloneNamespace, 102)
+          .put(UpdatePitrConfig, 103)
           // Table ops (110-119):
           .put(CreateCassandraTable, 110)
           .put(CreateTableSpacesInUniverse, 111)

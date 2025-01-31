@@ -116,6 +116,7 @@ class Slice {
   // Return true iff the length of the referenced data is zero
   bool empty() const { return begin_ == end_; }
 
+  // GreaterOrEqual and Less compare this slice with concatenation of slices arg0 + args.
   template <class... Args>
   bool GreaterOrEqual(const Slice& arg0, Args&&... args) const {
     return !Less(arg0, std::forward<Args>(args)...);
@@ -131,13 +132,21 @@ class Slice {
   uint8_t operator[](size_t n) const;
 
   // Change this slice to refer to an empty array
-  void clear() {
+  void Clear() {
     begin_ = to_uchar_ptr("");
     end_ = begin_;
   }
 
+  [[deprecated]] void clear() {
+    Clear();
+  }
+
   // Drop the first "n" bytes from this slice.
-  void remove_prefix(size_t n);
+  void RemovePrefix(size_t n);
+
+  [[deprecated]] void remove_prefix(size_t n) {
+    RemovePrefix(n);
+  }
 
   Slice Prefix(size_t n) const;
 
@@ -147,7 +156,11 @@ class Slice {
   Slice WithoutPrefix(size_t n) const;
 
   // Drop the last "n" bytes from this slice.
-  void remove_suffix(size_t n);
+  void RemoveSuffix(size_t n);
+
+  [[deprecated]] void remove_suffix(size_t n) {
+    RemoveSuffix(n);
+  }
 
   Slice Suffix(size_t n) const;
 
@@ -170,6 +183,8 @@ class Slice {
   void MakeNoLongerThan(size_t n);
 
   char consume_byte();
+
+  char consume_byte_back();
 
   bool FirstByteIs(char c) const {
     return !empty() && *begin_ == c;
@@ -285,10 +300,6 @@ class Slice {
  private:
   friend bool operator==(const Slice& x, const Slice& y);
 
-  bool DoLess() const {
-    return !empty();
-  }
-
   template <class... Args>
   bool DoLess(const Slice& arg0, Args&&... args) const {
     auto arg0_size = arg0.size();
@@ -301,7 +312,12 @@ class Slice {
       return cmp < 0;
     }
 
-    return Slice(begin_ + arg0_size, end_).DoLess(std::forward<Args>(args)...);
+    if constexpr (sizeof...(Args)) {
+      return Slice(begin_ + arg0_size, end_).DoLess(std::forward<Args>(args)...);
+    }
+
+    // args is absent and this.starts_with(arg0) => definitely not less than arg0.
+    return false;
   }
 
   static bool MemEqual(const void* a, const void* b, size_t n) {

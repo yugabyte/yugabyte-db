@@ -10,6 +10,12 @@ List Kubernetes YugabyteDB Anywhere providers
 yba provider kubernetes list [flags]
 ```
 
+### Examples
+
+```
+yba provider kubernetes list
+```
+
 ### Options
 
 ```

@@ -12,6 +12,7 @@ const IP = 'ip';
 interface NodeAgentAssignedNodesProps {
   isNodeAgentDebugPage: boolean;
   nodeIPs: string[];
+  isErrorFilterChecked: boolean;
   // In case universe selected is 'All Universes', we use string data type
   selectedUniverse?: Universe | typeof MetricConsts.ALL;
 }
@@ -19,6 +20,7 @@ interface NodeAgentAssignedNodesProps {
 export const NodeAgentAssignedNodes: FC<NodeAgentAssignedNodesProps> = ({
   isNodeAgentDebugPage,
   nodeIPs,
+  isErrorFilterChecked,
   selectedUniverse
 }) => {
   const [nodeAgentData, setNodeAgentData] = useState<NodeAgentEntities[]>([]);
@@ -78,6 +80,7 @@ export const NodeAgentAssignedNodes: FC<NodeAgentAssignedNodesProps> = ({
     <NodeAgentData
       isAssignedNodes={true}
       nodeAgentData={nodeAgentData}
+      isErrorFilterChecked={isErrorFilterChecked}
       isNodeAgentDebugPage={isNodeAgentDebugPage}
     />
   );

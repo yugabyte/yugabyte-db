@@ -114,6 +114,7 @@ import org.bouncycastle.util.io.pem.PemReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonNet;
+import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.YQLDatabase;
 import org.yb.Schema;
@@ -121,7 +122,6 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
 import org.yb.master.MasterClientOuterClass;
 import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
@@ -1013,6 +1013,18 @@ public class AsyncYBClient implements AutoCloseable {
    *
    * @return a deferred object that yields a list of masters
    */
+  public Deferred<ListMasterRaftPeersResponse> listMastersRaftPeers() {
+    checkIsClosed();
+    ListMasterRaftPeersRequest rpc = new ListMasterRaftPeersRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Get the list of all the masters.
+   *
+   * @return a deferred object that yields a list of masters
+   */
   public Deferred<ListMastersResponse> listMasters() {
     checkIsClosed();
     ListMastersRequest rpc = new ListMastersRequest(this.masterTable);
@@ -1055,6 +1067,19 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     ChangeLoadBalancerStateRequest rpc =
         new ChangeLoadBalancerStateRequest(this.masterTable, isEnable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Get the load balancer state on master.
+   *
+   * @return a deferred object that yields the response to the config change.
+   */
+  public Deferred<GetLoadBalancerStateResponse> getLoadBalancerState() {
+    checkIsClosed();
+    GetLoadBalancerStateRequest rpc =
+        new GetLoadBalancerStateRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -1124,6 +1149,72 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<IsInitDbDoneResponse> getIsInitDbDone() {
     checkIsClosed();
     IsInitDbDoneRequest rpc = new IsInitDbDoneRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Initiates a major catalog upgrade for YSQL.
+   *
+   * @return a Deferred object that will contain the response of the upgrade request.
+   */
+  public Deferred<StartYsqlMajorCatalogUpgradeResponse> startYsqlMajorCatalogUpgrade() {
+    checkIsClosed();
+    StartYsqlMajorCatalogUpgradeRequest rpc =
+        new StartYsqlMajorCatalogUpgradeRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Checks if the YSQL major catalog upgrade is done.
+   *
+   * @return a Deferred object that will be called back with the response indicating whether the
+   *     YSQL major catalog upgrade is done.
+   */
+  public Deferred<IsYsqlMajorCatalogUpgradeDoneResponse> isYsqlMajorCatalogUpgradeDone() {
+    checkIsClosed();
+    IsYsqlMajorCatalogUpgradeDoneRequest rpc =
+        new IsYsqlMajorCatalogUpgradeDoneRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Finalizes the YSQL major catalog upgrade.
+   *
+   * @return a Deferred object that will contain the response of the finalize operation.
+   */
+  public Deferred<FinalizeYsqlMajorCatalogUpgradeResponse> finalizeYsqlMajorCatalogUpgrade() {
+    checkIsClosed();
+    FinalizeYsqlMajorCatalogUpgradeRequest rpc =
+        new FinalizeYsqlMajorCatalogUpgradeRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Initiates a rollback of the YSQL major catalog version.
+   *
+   * @return a Deferred object that will contain the response of the rollback operation.
+   */
+  public Deferred<RollbackYsqlMajorCatalogVersionResponse> rollbackYsqlMajorCatalogVersion() {
+    checkIsClosed();
+    RollbackYsqlMajorCatalogVersionRequest rpc =
+        new RollbackYsqlMajorCatalogVersionRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Retrieves the YSQL major catalog upgrade state.
+   *
+   * @return a Deferred object containing the response of the YSQL major catalog upgrade state.
+   */
+  public Deferred<GetYsqlMajorCatalogUpgradeStateResponse> getYsqlMajorCatalogUpgradeState() {
+    checkIsClosed();
+    GetYsqlMajorCatalogUpgradeStateRequest rpc =
+        new GetYsqlMajorCatalogUpgradeStateRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -1449,6 +1540,42 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     GetUniverseReplicationRequest request =
         new GetUniverseReplicationRequest(this.masterTable, replicationGroupName);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Gets xCluster replication info between the source and target universes (replication scope,
+   * tables/dbs being replicated).
+   *
+   * <p>Prerequisites: AsyncYBClient must be created with target universe as the context.
+   *
+   * @param replicationGroupName Replication group name
+   * @return a deferred object that yields a get xCluster replication info response.
+   */
+  public Deferred<GetUniverseReplicationInfoResponse> getUniverseReplicationInfo(
+    String replicationGroupName) {
+    checkIsClosed();
+    GetUniverseReplicationInfoRequest request =
+      new GetUniverseReplicationInfoRequest(masterTable, replicationGroupName);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Gets xCluster outbound replication group info (namespace IDs and their maps of
+   * source table ID -> stream ID)
+   *
+   * <p>Prerequisites: AsyncYBClient must be created with the source universe as context.
+   *
+   * @param replicationGroupName Replication group name
+   * @return a deferred object that yields a get xCluster replication info response.
+   */
+  public Deferred<GetXClusterOutboundReplicationGroupInfoResponse>
+      getXClusterOutboundReplicationGroupInfo(String replicationGroupName) {
+    checkIsClosed();
+    GetXClusterOutboundReplicationGroupInfoRequest request =
+        new GetXClusterOutboundReplicationGroupInfoRequest(masterTable, replicationGroupName);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -1835,16 +1962,16 @@ public class AsyncYBClient implements AutoCloseable {
    *
    * @param tabletIds the list of tablet ids to find the locations of its peers.
    * @param tableId (optional) table we would like this table's partition list version to return.
-   * @param includeInactive (optional) whether to include hidden tablets.
+   * @param includeHidden (optional) whether to include hidden tablets.
    * @param includeDeleted (optional) whether to include deleted tablets.
    * @return A deferred object containing the schema for the locations of tablet peers.
    */
   public Deferred<GetTabletLocationsResponse> getTabletLocations(
-      List<String> tabletIds, String tableId, boolean includeInactive, boolean includeDeleted) {
+      List<String> tabletIds, String tableId, boolean includeHidden, boolean includeDeleted) {
     checkIsClosed();
     GetTabletLocationsRequest request =
         new GetTabletLocationsRequest(
-            this.masterTable, tabletIds, tableId, includeInactive, includeDeleted);
+            this.masterTable, tabletIds, tableId, includeHidden, includeDeleted);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -1875,6 +2002,21 @@ public class AsyncYBClient implements AutoCloseable {
             databaseType,
             keyspaceName,
             keyspaceId,
+            retentionInSecs,
+            timeIntervalInSecs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<EditSnapshotScheduleResponse> editSnapshotSchedule(
+      UUID snapshotScheduleUUID,
+      long retentionInSecs,
+      long timeIntervalInSecs) {
+    checkIsClosed();
+    EditSnapshotScheduleRequest request =
+        new EditSnapshotScheduleRequest(
+            this.masterTable,
+            snapshotScheduleUUID,
             retentionInSecs,
             timeIntervalInSecs);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -1934,6 +2076,51 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<DeleteSnapshotResponse> deleteSnapshot(UUID snapshotUUID) {
     checkIsClosed();
     DeleteSnapshotRequest request = new DeleteSnapshotRequest(this.masterTable, snapshotUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<CloneNamespaceResponse> cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String targetKeyspaceName,
+      long cloneTimeInMillis) {
+    checkIsClosed();
+    CloneNamespaceRequest request =
+        new CloneNamespaceRequest(
+            this.masterTable,
+            databaseType,
+            sourceKeyspaceName,
+            targetKeyspaceName,
+            cloneTimeInMillis);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<CloneNamespaceResponse> cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String keyspaceId,
+      String targetKeyspaceName,
+      long cloneTimeInMillis) {
+    checkIsClosed();
+    CloneNamespaceRequest request =
+        new CloneNamespaceRequest(
+            this.masterTable,
+            databaseType,
+            sourceKeyspaceName,
+            keyspaceId,
+            targetKeyspaceName,
+            cloneTimeInMillis);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListClonesResponse> listClones(
+      String keyspaceId, Integer cloneSeqNo) {
+    checkIsClosed();
+    ListClonesRequest request =
+        new ListClonesRequest(this.masterTable, keyspaceId, cloneSeqNo);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -3660,22 +3847,34 @@ public class AsyncYBClient implements AutoCloseable {
    *     couldn't be resolved.
    */
   private static String getIP(final String host) {
-    final long start = System.nanoTime();
-    try {
-      final String ip = InetAddress.getByName(host).getHostAddress();
-      final long latency = System.nanoTime() - start;
-      if (latency > 500000 /*ns*/ && LOG.isDebugEnabled()) {
-        LOG.debug("Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
-      } else if (latency >= 3000000 /*ns*/) {
-        LOG.warn(
-            "Slow DNS lookup!  Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
-      }
-      return ip;
-    } catch (UnknownHostException e) {
-      LOG.error(
-          "Failed to resolve the IP of `" + host + "' in " + (System.nanoTime() - start) + "ns");
+    // We have seen rare instances where DNS won't resolve, but a retry will resolve the issue.
+    for (int i = 0; i < 3; i++) {
+     final long start = System.nanoTime();
+     try {
+       final String ip = InetAddress.getByName(host).getHostAddress();
+       final long latency = System.nanoTime() - start;
+       if (latency > 500000 /*ns*/ && LOG.isDebugEnabled()) {
+         LOG.debug("Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
+       } else if (latency >= 3000000 /*ns*/) {
+         LOG.warn(
+             "Slow DNS lookup!  Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
+       }
+       return ip;
+     } catch (UnknownHostException e) {
+       LOG.warn(
+           "Failed to resolve the IP of `" + host + "' in " + (System.nanoTime() - start) + "ns. " +
+           "Retrying.");
+     }
+     // Sleep for 1 second before retry.
+     try {
+      Thread.sleep(1000);
+     } catch (InterruptedException e) {
+      LOG.error("sleep interrupted while retrying getIP", e);
       return null;
+     }
     }
+    LOG.error("Failed to resolve the IP of `" + host + "' after retries.");
+    return null;
   }
 
   /**

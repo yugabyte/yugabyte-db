@@ -57,13 +57,23 @@ std::optional<dockv::PackedRowVersion> PackedRowVersion(TableType table_type, bo
 struct HistoryCutoff {
   // Set only on the master and applies to cotables.
   HybridTime cotables_cutoff_ht;
+
   // Used everywhere else i.e. for the sys catalog table on the master,
   // colocated tables on tservers and non-colocated tables on tservers.
   HybridTime primary_cutoff_ht;
 
+  void MakeAtLeast(const HistoryCutoff& rhs) {
+    cotables_cutoff_ht.MakeAtLeast(rhs.cotables_cutoff_ht);
+    primary_cutoff_ht.MakeAtLeast(rhs.primary_cutoff_ht);
+  }
+
+  void MakeAtMost(const HistoryCutoff& rhs) {
+    cotables_cutoff_ht.MakeAtMost(rhs.cotables_cutoff_ht);
+    primary_cutoff_ht.MakeAtMost(rhs.primary_cutoff_ht);
+  }
+
   std::string ToString() const {
-    return Format("{ cotables cutoff: $0, primary cutoff: $1 }",
-                  cotables_cutoff_ht, primary_cutoff_ht);
+    return YB_STRUCT_TO_STRING(cotables_cutoff_ht, primary_cutoff_ht);
   }
 };
 
@@ -132,6 +142,20 @@ class SchemaPackingProvider {
   // Thread safety may be required depending on the usage.
   virtual Result<CompactionSchemaInfo> ColocationPacking(
       ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) = 0;
+
+  // Check if the schema packing for provided cotable_id and schema version is existing,
+  // this check will be skipped if the table has already been dropped.
+  virtual Status CheckCotablePacking(
+      const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) {
+    return Status::OK();
+  }
+
+  // Check if the schema packing for provided colocation_id and schema version is existing,
+  // this check will be skipped if the table has already been dropped.
+  virtual Status CheckColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) {
+    return Status::OK();
+  }
 
   virtual ~SchemaPackingProvider() = default;
 };

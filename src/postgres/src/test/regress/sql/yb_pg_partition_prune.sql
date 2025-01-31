@@ -273,7 +273,7 @@ drop table lp, rlp, mc3p, mc2p, boolpart, rp, like_op_noprune, lparted_by_int2, 
 -- Test Partition pruning for HASH partitioning
 --
 -- Use hand-rolled hash functions and operator classes to get predictable
--- result on different matchines.  See the definitions of
+-- result on different machines.  See the definitions of
 -- part_part_test_int4_ops and part_test_text_ops in insert.sql.
 --
 
@@ -728,8 +728,7 @@ explain (analyze, costs off, summary off, timing off)  execute q1 (1,1);
 
 explain (analyze, costs off, summary off, timing off)  execute q1 (2,2);
 
--- Try with no matching partitions. One subplan should remain in this case,
--- but it shouldn't be executed.
+-- Try with no matching partitions.
 explain (analyze, costs off, summary off, timing off)  execute q1 (0,0);
 
 deallocate q1;
@@ -747,7 +746,6 @@ execute q1 (1,2,3,4);
 explain (analyze, costs off, summary off, timing off)  execute q1 (1,2,2,0);
 
 -- Both partitions allowed by IN clause, then both excluded again by <> clauses.
--- One subplan will remain in this case, but it should not be executed.
 explain (analyze, costs off, summary off, timing off)  execute q1 (1,2,2,1);
 
 -- Ensure Params that evaluate to NULL properly prune away all partitions
@@ -925,6 +923,23 @@ from (
      ) s(a, b, c)
 where s.a = 1 and s.b = 1 and s.c = (select 1);
 
+prepare q (int, int) as
+select *
+from (
+      select * from p
+      union all
+      select * from q1
+      union all
+      select 1, 1, 1
+     ) s(a, b, c)
+where s.a = $1 and s.b = $2 and s.c = (select 1);
+
+set plan_cache_mode to force_generic_plan;
+
+explain (costs off) execute q (1, 1);
+execute q (1, 1);
+
+reset plan_cache_mode;
 drop table p, q;
 
 -- Ensure run-time pruning works correctly when we match a partitioned table

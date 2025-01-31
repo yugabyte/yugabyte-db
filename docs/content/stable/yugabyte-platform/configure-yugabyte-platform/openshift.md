@@ -1,9 +1,9 @@
 ---
-title: Configure the OpenShift cloud provider
+title: Configure the OpenShift provider configuration
 headerTitle: Create Kubernetes provider configuration
 linkTitle: Kubernetes
 description: Configure the OpenShift provider configuration
-headContent: For deploying universes on OpenShift
+headContent: For deploying universes on Kubernetes
 menu:
   stable_yugabyte-platform:
     identifier: set-up-kubernetes-provider-3
@@ -120,7 +120,7 @@ The `kubeconfig` file needs to be generated for each OpenShift cluster if you ar
 
 ## Configure OpenShift
 
-Navigate to **Configs > Infrastructure > Red Hat OpenShift** to see a list of all currently configured Kubernetes providers.
+Navigate to **Integrations > Infrastructure > Red Hat OpenShift** to see a list of all currently configured Kubernetes providers.
 
 This lists all currently configured OpenShift providers.
 

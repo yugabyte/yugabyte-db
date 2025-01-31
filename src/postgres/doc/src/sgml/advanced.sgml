@@ -46,7 +46,7 @@
 
 <programlisting>
 CREATE VIEW myview AS
-    SELECT city, temp_lo, temp_hi, prcp, date, location
+    SELECT name, temp_lo, temp_hi, prcp, date, location
         FROM weather, cities
         WHERE city = name;
 
@@ -101,12 +101,12 @@ SELECT * FROM myview;
 
 <programlisting>
 CREATE TABLE cities (
-        city     varchar(80) primary key,
+        name     varchar(80) primary key,
         location point
 );
 
 CREATE TABLE weather (
-        city      varchar(80) references cities(city),
+        city      varchar(80) references cities(name),
         temp_lo   int,
         temp_hi   int,
         prcp      real,
@@ -344,7 +344,7 @@ SELECT depname, empno, salary, avg(salary) OVER (PARTITION BY depname) FROM emps
 </programlisting>
 
 <screen>
-  depname  | empno | salary |          avg          
+  depname  | empno | salary |          avg
 -----------+-------+--------+-----------------------
  develop   |    11 |   5200 | 5020.0000000000000000
  develop   |     7 |   4200 | 5020.0000000000000000
@@ -394,7 +394,7 @@ FROM empsalary;
 </programlisting>
 
 <screen>
-  depname  | empno | salary | rank 
+  depname  | empno | salary | rank
 -----------+-------+--------+------
  develop   |     8 |   6000 |    1
  develop   |    10 |   5200 |    2
@@ -458,7 +458,7 @@ SELECT salary, sum(salary) OVER () FROM empsalary;
 </programlisting>
 
 <screen>
- salary |  sum  
+ salary |  sum
 --------+-------
    5200 | 47100
    5000 | 47100
@@ -487,7 +487,7 @@ SELECT salary, sum(salary) OVER (ORDER BY salary) FROM empsalary;
 </programlisting>
 
 <screen>
- salary |  sum  
+ salary |  sum
 --------+-------
    3500 |  3500
    3900 |  7400
@@ -585,20 +585,20 @@ SELECT sum(salary) OVER w, avg(salary) OVER w
 CREATE TABLE capitals (
   name       text,
   population real,
-  altitude   int,    -- (in ft)
+  elevation  int,    -- (in ft)
   state      char(2)
 );
 
 CREATE TABLE non_capitals (
   name       text,
   population real,
-  altitude   int     -- (in ft)
+  elevation  int     -- (in ft)
 );
 
 CREATE VIEW cities AS
-  SELECT name, population, altitude FROM capitals
+  SELECT name, population, elevation FROM capitals
     UNION
-  SELECT name, population, altitude FROM non_capitals;
+  SELECT name, population, elevation FROM non_capitals;
 </programlisting>
 
     This works OK as far as querying goes, but it gets ugly when you
@@ -612,11 +612,11 @@ CREATE VIEW cities AS
 CREATE TABLE cities (
   name       text,
   population real,
-  altitude   int     -- (in ft)
+  elevation  int     -- (in ft)
 );
 
 CREATE TABLE capitals (
-  state      char(2)
+  state      char(2) UNIQUE NOT NULL
 ) INHERITS (cities);
 </programlisting>
    </para>
@@ -624,35 +624,37 @@ CREATE TABLE capitals (
    <para>
     In this case, a row of <classname>capitals</classname>
     <firstterm>inherits</firstterm> all columns (<structfield>name</structfield>,
-    <structfield>population</structfield>, and <structfield>altitude</structfield>) from its
+    <structfield>population</structfield>, and <structfield>elevation</structfield>) from its
     <firstterm>parent</firstterm>, <classname>cities</classname>.  The
     type of the column <structfield>name</structfield> is
     <type>text</type>, a native <productname>PostgreSQL</productname>
-    type for variable length character strings.  State capitals have
-    an extra column, <structfield>state</structfield>, that shows their state.  In
+    type for variable length character strings.  The
+    <classname>capitals</classname> table has
+    an additional column, <structfield>state</structfield>, which shows its
+    state abbreviation.  In
     <productname>PostgreSQL</productname>, a table can inherit from
     zero or more other tables.
    </para>
 
    <para>
     For example, the  following  query finds the  names  of  all  cities,
-    including  state capitals, that are located at an altitude
+    including  state capitals, that are located at an elevation
     over 500 feet:
 
 <programlisting>
-SELECT name, altitude
+SELECT name, elevation
   FROM cities
-  WHERE altitude &gt; 500;
+  WHERE elevation &gt; 500;
 </programlisting>
 
     which returns:
 
 <screen>
-   name    | altitude
------------+----------
- Las Vegas |     2174
- Mariposa  |     1953
- Madison   |      845
+   name    | elevation
+-----------+-----------
+ Las Vegas |      2174
+ Mariposa  |      1953
+ Madison   |       845
 (3 rows)
 </screen>
    </para>
@@ -660,19 +662,19 @@ SELECT name, altitude
    <para>
     On the other hand, the  following  query  finds
     all  the cities that are not state capitals and
-    are situated at an altitude over 500 feet:
+    are situated at an elevation over 500 feet:
 
 <programlisting>
-SELECT name, altitude
+SELECT name, elevation
     FROM ONLY cities
-    WHERE altitude &gt; 500;
+    WHERE elevation &gt; 500;
 </programlisting>
 
 <screen>
-   name    | altitude
------------+----------
- Las Vegas |     2174
- Mariposa  |     1953
+   name    | elevation
+-----------+-----------
+ Las Vegas |      2174
+ Mariposa  |      1953
 (2 rows)
 </screen>
    </para>

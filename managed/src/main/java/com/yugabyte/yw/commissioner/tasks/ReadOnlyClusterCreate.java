@@ -62,6 +62,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
                 setCloudNodeUuids(u);
                 // Update on-prem node UUIDs.
                 updateOnPremNodeUuidsOnTaskParams(true);
+                setCommunicationPortsForNodes(false);
                 // Set the prepared data to universe in-memory.
                 updateUniverseNodesAndSettings(u, taskParams(), true);
                 u.getUniverseDetails()
@@ -94,6 +95,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, Collections.singletonList(cluster));
 
+      createCheckCertificateConfigTask(universe, Collections.singletonList(cluster));
+
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
       createProvisionNodeTasks(
@@ -102,6 +105,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
           false /* ignore node status check */,
           setupServerParams -> {
             setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+            setupServerParams.rebootNodeAllowed = true;
           },
           installSoftwareParams -> {
             installSoftwareParams.isMasterInShellMode = true;

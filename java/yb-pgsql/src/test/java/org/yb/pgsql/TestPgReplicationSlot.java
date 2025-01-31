@@ -33,8 +33,10 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized.Parameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
@@ -69,20 +71,14 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     if (isTestRunningWithConnectionManager()) {
-      String preview_flags = "enable_ysql_conn_mgr," +
-        "cdcsdk_enable_dynamic_table_support";
-      flagMap.put("allowed_preview_flags_csv",preview_flags);
       flagMap.put("ysql_conn_mgr_stats_interval", "1");
-    } else {
-      flagMap.put("allowed_preview_flags_csv",
-          "cdcsdk_enable_dynamic_table_support");
     }
     flagMap.put(
         "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
     flagMap.put("ysql_log_min_messages", "DEBUG2");
     flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
-    flagMap.put("cdcsdk_enable_dynamic_table_support", "true");
+    flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
     return flagMap;
   }
 
@@ -116,16 +112,25 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionCreateDrop() throws Exception {
-    Connection conn =
-        getConnectionBuilder().withTServer(0).replicationConnect();
-    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    markClusterNeedsRecreation();
 
-    replConnection.createReplicationSlot()
-        .logical()
-        .withSlotName("test_slot_repl_conn")
-        .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
-        .make();
-    replConnection.dropReplicationSlot("test_slot_repl_conn");
+    String[] wal_levels = {"minimal", "replica", "logical"};
+    for (String wal_level : wal_levels) {
+      LOG.info("Testing replicationConnectionCreateDrop with wal_level = {}", wal_level);
+      Map<String, String> tserverFlags = super.getTServerFlags();
+      tserverFlags.put("ysql_pg_conf", String.format("wal_level=%s", wal_level));
+      restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+      Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+      PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+      replConnection.createReplicationSlot()
+          .logical()
+          .withSlotName("test_slot_repl_conn")
+          .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
+          .make();
+      replConnection.dropReplicationSlot("test_slot_repl_conn");
+    }
   }
 
   @Test
@@ -270,6 +275,26 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       if (pluginName.equals(YB_OUTPUT_PLUGIN_NAME)) {
         stmt.execute("DELETE FROM t1 WHERE a = 2");
       }
+
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t2 VALUES (3, 'ghij', true)");
+      stmt.execute("UPDATE t2 SET b = 'updated_ghij', c = false WHERE a = 3");
+      stmt.execute("COMMIT");
+
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t2 VALUES (4, 'jklm', true)");
+      stmt.execute("DELETE FROM t2 WHERE a = 4");
+      stmt.execute("COMMIT");
+
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t3 VALUES (3, 'ghij', true)");
+      stmt.execute("UPDATE t3 SET b = 'updated_ghij', c = false WHERE a = 3");
+      stmt.execute("COMMIT");
+
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t3 VALUES (4, 'jklm', true)");
+      stmt.execute("DELETE FROM t3 WHERE a = 4");
+      stmt.execute("COMMIT");
     }
 
     PGReplicationStream stream = replConnection.replicationStream()
@@ -284,9 +309,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     // 3 Relation, 7 * 3 (begin, insert and commit), 3 * 3 * 2 (begin, update and commit), 1 * 3
     // (begin, delete, commit).
     if (pluginName.equals(YB_OUTPUT_PLUGIN_NAME)) {
-      result.addAll(receiveMessage(stream, 45));
+      result.addAll(receiveMessage(stream, 61));
     } else {
-      result.addAll(receiveMessage(stream, 26));
+      result.addAll(receiveMessage(stream, 42));
     }
 
 
@@ -376,12 +401,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/19"), 9));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in CHANGE, so all columns come as Toasted.
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted())),
+            // No before image in CHANGE, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("1"),
@@ -393,12 +414,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1C"), 10));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in CHANGE, so all columns come as Toasted.
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted())),
+            // No before image in CHANGE, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("2"),
@@ -410,12 +427,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1F"), 11));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in DEFAULT, so all columns come as NULL, same as in PG.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+            // No before image in DEFAULT, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("1"),
@@ -427,12 +440,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/22"), 12));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in DEFAULT, so all columns come as NULL, same as in PG.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+            // No before image in DEFAULT, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("2"),
@@ -482,6 +491,74 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnNull()))));
           add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/2B"), LogSequenceNumber.valueOf("0/2C")));
+
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/2F"), 16));
+          add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("3"),
+              new PgOutputMessageTupleColumnValue("ghij"),
+              new PgOutputMessageTupleColumnValue("t")))));
+          add(PgOutputUpdateMessage.CreateForComparison(
+            // No before image in DEFAULT, so old tuple comes out as null.
+            null,
+            new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("updated_ghij"),
+                new PgOutputMessageTupleColumnValue("f")))));
+          add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/2F"), LogSequenceNumber.valueOf("0/30")));
+
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/33"), 17));
+          add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("4"),
+              new PgOutputMessageTupleColumnValue("jklm"),
+              new PgOutputMessageTupleColumnValue("t")))));
+          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+            new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                new PgOutputMessageTupleColumnValue("4"),
+                new PgOutputMessageTupleColumnNull(),
+                new PgOutputMessageTupleColumnNull()))));
+          add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/33"), LogSequenceNumber.valueOf("0/34")));
+
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/37"), 18));
+          add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("3"),
+              new PgOutputMessageTupleColumnValue("ghij"),
+              new PgOutputMessageTupleColumnValue("t")))));
+          add(PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                // All columns for before image in FULL come out as null.
+                new PgOutputMessageTupleColumnNull(),
+                new PgOutputMessageTupleColumnNull(),
+                new PgOutputMessageTupleColumnNull())),
+            new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("updated_ghij"),
+                new PgOutputMessageTupleColumnValue("f")))));
+          add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/37"), LogSequenceNumber.valueOf("0/38")));
+
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/3B"), 19));
+          add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("4"),
+              new PgOutputMessageTupleColumnValue("jklm"),
+              new PgOutputMessageTupleColumnValue("t")))));
+          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+            new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                new PgOutputMessageTupleColumnValue("4"),
+                new PgOutputMessageTupleColumnNull(),
+                new PgOutputMessageTupleColumnNull()))));
+          add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/3B"), LogSequenceNumber.valueOf("0/3C")));
         }
       };
     } else {
@@ -533,12 +610,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 6));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in DEFAULT, so all columns come as NULL, same as in PG.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+            // No before image in DEFAULT, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("1"),
@@ -550,12 +623,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 7));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in DEFAULT, so all columns come as NULL, same as in PG.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+            // No before image in DEFAULT, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("2"),
@@ -595,6 +664,74 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("f")))));
           add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/19"), LogSequenceNumber.valueOf("0/1A")));
+
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1D"), 10));
+          add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("3"),
+              new PgOutputMessageTupleColumnValue("ghij"),
+              new PgOutputMessageTupleColumnValue("t")))));
+          add(PgOutputUpdateMessage.CreateForComparison(
+            // No before image in DEFAULT, so old tuple comes out as null.
+            null,
+            new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("updated_ghij"),
+                new PgOutputMessageTupleColumnValue("f")))));
+          add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/1D"), LogSequenceNumber.valueOf("0/1E")));
+
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/21"), 11));
+          add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("4"),
+              new PgOutputMessageTupleColumnValue("jklm"),
+              new PgOutputMessageTupleColumnValue("t")))));
+          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+            new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                new PgOutputMessageTupleColumnValue("4"),
+                new PgOutputMessageTupleColumnNull(),
+                new PgOutputMessageTupleColumnNull()))));
+          add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/21"), LogSequenceNumber.valueOf("0/22")));
+
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/25"), 12));
+          add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("3"),
+              new PgOutputMessageTupleColumnValue("ghij"),
+              new PgOutputMessageTupleColumnValue("t")))));
+          add(PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                // All columns for before image in FULL come out as null.
+                new PgOutputMessageTupleColumnNull(),
+                new PgOutputMessageTupleColumnNull(),
+                new PgOutputMessageTupleColumnNull())),
+            new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("updated_ghij"),
+                new PgOutputMessageTupleColumnValue("f")))));
+          add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/25"), LogSequenceNumber.valueOf("0/26")));
+
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/29"), 13));
+          add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("4"),
+              new PgOutputMessageTupleColumnValue("jklm"),
+              new PgOutputMessageTupleColumnValue("t")))));
+          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+            new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                new PgOutputMessageTupleColumnValue("4"),
+                new PgOutputMessageTupleColumnNull(),
+                new PgOutputMessageTupleColumnNull()))));
+          add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/29"), LogSequenceNumber.valueOf("0/2A")));
         }
       };
     }
@@ -919,9 +1056,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         + "col_tsrange TSRANGE, "
         + "col_tstzrange TSTZRANGE, "
         + "col_daterange DATERANGE, "
-        + "col_discount coupon_discount_type)";
+        + "col_hstore HSTORE, "
+        + "col_discount coupon_discount_type, "
+        +" col_discount_array coupon_discount_type[])";
 
     try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS hstore;");
       stmt.execute("CREATE TYPE coupon_discount_type AS ENUM ('FIXED', 'PERCENTAGE');");
       stmt.execute(create_stmt);
       if (pluginName.equals(PG_OUTPUT_PLUGIN_NAME)) {
@@ -947,7 +1087,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           + "'550e8400-e29b-41d4-a716-446655440000', B'101010', '2024-02-01 12:34:56+00:00', "
           + "'[1,10)', '[100,1000)', '[2024-01-01, 2024-12-31)', "
           + "'[2024-01-01 00:00:00+00:00, 2024-12-31 15:59:59+00:00)', "
-          + "'[2024-01-01, 2024-12-31)', 'FIXED');");
+          + "'[2024-01-01, 2024-12-31)','key1 => value1, key2 => value2'::hstore, 'FIXED', "
+          + "array['FIXED', 'PERCENTAGE']::coupon_discount_type[]);");
     }
 
     PGReplicationStream stream = replConnection.replicationStream()
@@ -960,12 +1101,14 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
     // 1 Relation, begin, type, insert and commit record.
-    result.addAll(receiveMessage(stream, 5));
+    result.addAll(receiveMessage(stream, 7));
 
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+        add(PgOutputTypeMessage.CreateForComparison("public", "hstore"));
         add(PgOutputTypeMessage.CreateForComparison("public", "coupon_discount_type"));
+        add(PgOutputTypeMessage.CreateForComparison("public", "_coupon_discount_type"));
         if (pluginName.equals(YB_OUTPUT_PLUGIN_NAME)) {
           add(PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
@@ -1003,8 +1146,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               PgOutputRelationMessageColumn.CreateForComparison("col_tsrange", 3908),
               PgOutputRelationMessageColumn.CreateForComparison("col_tstzrange", 3910),
               PgOutputRelationMessageColumn.CreateForComparison("col_daterange", 3912),
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_discount", /* IGNORED */ 0, /* compareDataType */ false))));
+              // The Oids for columns below are not fixed. Changing the order of creation of
+              // objects (extensions, tables etc.) in the test will change these Oids. Hence,
+              // skip comparing the Oids of these types.
+              PgOutputRelationMessageColumn.CreateForComparison("col_hstore"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount_array"))));
         } else {
           // The replica identity for test_table in case of pgoutput is DEFAULT.
           add(PgOutputRelationMessage.CreateForComparison("public", "test_table", 'd',
@@ -1043,10 +1190,14 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               PgOutputRelationMessageColumn.CreateForComparison("col_tsrange", 3908),
               PgOutputRelationMessageColumn.CreateForComparison("col_tstzrange", 3910),
               PgOutputRelationMessageColumn.CreateForComparison("col_daterange", 3912),
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_discount", /* IGNORED */ 0, /* compareDataType */ false))));
+              // The Oids for columns below are not fixed. Changing the order of creation of
+              // objects (extensions, tables etc.) in the test will change these Oids. Hence,
+              // skip comparing the Oids of these types.
+              PgOutputRelationMessageColumn.CreateForComparison("col_hstore"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount_array"))));
         }
-        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 36,
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 38,
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("110110"),
                 new PgOutputMessageTupleColumnValue("t"),
@@ -1055,8 +1206,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("127.0.0.1/32"),
                 new PgOutputMessageTupleColumnValue("<(0,0),1>"),
                 new PgOutputMessageTupleColumnValue("2024-02-01"),
-                new PgOutputMessageTupleColumnValue("1.20100000000000007"),
-                new PgOutputMessageTupleColumnValue("3.14000000000000012"),
+                new PgOutputMessageTupleColumnValue("1.201"),
+                new PgOutputMessageTupleColumnValue("3.14"),
                 new PgOutputMessageTupleColumnValue("127.0.0.1"),
                 new PgOutputMessageTupleColumnValue("42"),
                 new PgOutputMessageTupleColumnValue("{\"key\": \"value\"}"),
@@ -1086,7 +1237,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                     convertTimestampToSystemTimezone("2024-01-01T00:00:00.00Z"),
                     convertTimestampToSystemTimezone("2024-12-31T15:59:59.00Z"))),
                 new PgOutputMessageTupleColumnValue("[2024-01-01,2024-12-31)"),
-                new PgOutputMessageTupleColumnValue("FIXED")))));
+                new PgOutputMessageTupleColumnValue("\"key1\"=>\"value1\", \"key2\"=>\"value2\""),
+                new PgOutputMessageTupleColumnValue("FIXED"),
+                new PgOutputMessageTupleColumnValue("{FIXED,PERCENTAGE}")))));
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
       }
@@ -1148,9 +1301,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
     // 2 Relation (t1 & t2) + 3 records/txn (B+I+C) * 2 txns (performed on t1 & t2
-    // respectively) + 2 records/txn (B+C) * 1 txn (performed on t3) + 4 records/txn
-    // (B+I1+I2+C) * 1 multi-shard txn.
-    result.addAll(receiveMessage(stream, 14));
+    // respectively) + 4 records/txn (B+I1+I2+C) * 1 multi-shard txn.
+    // Note that empty transactions are skipped by pgoutput.
+    result.addAll(receiveMessage(stream, 12));
     for (PgOutputMessage res : result) {
       LOG.info("Row = {}", res);
     }
@@ -1178,10 +1331,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("def")))));
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
-
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
-        add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 5));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
@@ -2093,11 +2242,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                   new PgOutputMessageTupleColumnValue("t")))));
     }
     expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
-        new PgOutputMessageTuple((short) 3,
-            Arrays.asList(
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted())),
+        null,
         new PgOutputMessageTuple((short) 3,
             Arrays.asList(
                 new PgOutputMessageTupleColumnValue("1"),
@@ -2213,10 +2358,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                   new PgOutputMessageTupleColumnValue(String.format("text_%d", i))))));
     }
     expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
-        new PgOutputMessageTuple((short) 2,
-            Arrays.asList(
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted())),
+        null,
         new PgOutputMessageTuple((short) 2,
             Arrays.asList(
                 new PgOutputMessageTupleColumnValue("1"),
@@ -2379,12 +2521,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add("COMMIT 4");
 
         add("BEGIN 5");
-        add("table public.t1: UPDATE: old-key: new-tuple: a[integer]:1 b[text]:'updated_abcd'" +
+        add("table public.t1: UPDATE: a[integer]:1 b[text]:'updated_abcd'" +
                 " c[boolean]:unchanged-toast-datum");
         add("COMMIT 5");
 
         add("BEGIN 6");
-        add("table public.t1: UPDATE: old-key: new-tuple: a[integer]:2 b[text]:null " +
+        add("table public.t1: UPDATE: a[integer]:2 b[text]:null " +
                 "c[boolean]:false");
         add("COMMIT 6");
 
@@ -2410,7 +2552,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add("COMMIT 11");
 
         add("BEGIN 12");
-        add("table public.t3: UPDATE: old-key: new-tuple: a[integer]:1 b[text]:'updated_abcd' " +
+        add("table public.t3: UPDATE: a[integer]:1 b[text]:'updated_abcd' " +
                 "c[boolean]:true");
         add("COMMIT 12");
 
@@ -2773,14 +2915,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add(
           "{\"xid\":5,\"change\":[{\"kind\":\"update\",\"schema\":\"public\",\"table\":\"t1\","
           +"\"columnnames\":[\"a\",\"b\"],\"columntypes\":[\"integer\",\"text\"],"
-          +"\"columnvalues\":[1,\"updated_abcd\"],\"oldkeys\":{\"keynames\":[],\"keytypes\":[],"
-          +"\"keyvalues\":[]}}]}"
+          +"\"columnvalues\":[1,\"updated_abcd\"]}]}"
         );
         add(
           "{\"xid\":6,\"change\":[{\"kind\":\"update\",\"schema\":\"public\",\"table\":\"t1\","
           +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
-          +"\"columnvalues\":[2,null,false],\"oldkeys\":{\"keynames\":[],\"keytypes\":[],"
-          +"\"keyvalues\":[]}}]}"
+          +"\"columnvalues\":[2,null,false]}]}"
         );
         add(
           "{\"xid\":7,\"change\":[{\"kind\":\"delete\",\"schema\":\"public\",\"table\":\"t1\","
@@ -2814,7 +2954,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           "{\"xid\":12,\"change\":[{\"kind\":\"update\",\"schema\":\"public\",\"table\":\"t3\","
           +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
           +"\"columnvalues\":[1,\"updated_abcd\",true],"
-          +"\"oldkeys\":{\"keynames\":[],\"keytypes\":[],\"keyvalues\":[]}}]}"
+          +"\"oldkeys\":{\"keynames\":[\"a\"],\"keytypes\":[\"integer\"],\"keyvalues\":[1]}}]}"
         );
         add(
           "{\"xid\":13,\"change\":[{\"kind\":\"delete\",\"schema\":\"public\",\"table\":\"t3\","
@@ -2896,8 +3036,365 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     try {
       result.addAll(receiveMessage(stream, 12));
     } catch (PSQLException e) {
-      assertTrue(e.getMessage().contains("Replica identity CHANGE is not supported for output"
-        + " plugin pgoutput. Consider using output plugin yboutput instead."));
+      assertTrue(e.getMessage().contains("replica identity CHANGE is not supported for output"
+        + " plugin pgoutput"));
+    }
+  }
+
+  @Test
+  public void testDefaultWalLevel() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      Row row = getSingleRow(stmt, "SHOW wal_level");
+      assertEquals("logical", row.getString(0));
+    }
+  }
+
+  @Test
+  public void testWithAlterType() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test");
+      stmt.execute("CREATE TABLE test (a int primary key, b int)");
+      stmt.execute("ALTER TABLE test ALTER COLUMN b TYPE text");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    String slotName = "test_with_alter_type";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
+      stmt.execute("INSERT INTO test VALUES(2, 'defg')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+
+    result.addAll(receiveMessage(stream, 5));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/5"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("abcd")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("defg")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+  }
+  @Test
+  public void testWithDropAddPk() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test");
+      stmt.execute("CREATE TABLE test (a int primary key, b int)");
+      stmt.execute("ALTER TABLE test DROP CONSTRAINT test_pkey");
+      stmt.execute("ALTER TABLE test ADD CONSTRAINT test_b_pkey PRIMARY KEY (b)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    String slotName = "test_with_add_drop_pk";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO test VALUES(1, 3)");
+      stmt.execute("INSERT INTO test VALUES(1, 4)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+
+    result.addAll(receiveMessage(stream, 5));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/5"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("3")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("4")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+  }
+
+  @Test
+  public void testWithTruncate() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test");
+      stmt.execute("CREATE TABLE test (a int primary key, b int)");
+      stmt.execute("INSERT INTO test VALUES(101, 103)");
+      stmt.execute("INSERT INTO test VALUES(102, 104)");
+      stmt.execute("TRUNCATE TABLE test");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    String slotName = "test_with_truncate";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO test VALUES(1, 3)");
+      stmt.execute("INSERT INTO test VALUES(2, 4)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+
+    result.addAll(receiveMessage(stream, 5));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/5"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("3")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("4")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+  }
+
+  // Added with the fix for #24308.
+  @Test
+  public void testWithDropTable() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_1");
+      stmt.execute("DROP TABLE IF EXISTS test_2");
+      stmt.execute("CREATE TABLE test_1 (a int primary key, b int)");
+      stmt.execute("CREATE TABLE test_2 (a int primary key, b int)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_1");
+    }
+
+    String slotName = "test_with_drop_table";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE test_2");
+      stmt.execute("INSERT INTO test_1 VALUES(1, 1)");
+    }
+
+    // Sleep for some time so that master background thread removes dropped table from the
+    // replica identity map.
+    Thread.sleep(3000 * kMultiplier);
+    PGReplicationStream stream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+
+    result.addAll(receiveMessage(stream, 4));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_1", 'c',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+          Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+            new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+  }
+
+  @Test
+  public void testNullValueUpdates() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_1");
+      stmt.execute("DROP TABLE IF EXISTS test_2");
+      stmt.execute("CREATE TABLE test_1 (a INT PRIMARY KEY, b BIGINT, c text)");
+      stmt.execute("CREATE TABLE test_2 (a INT PRIMARY KEY, b BIGINT, c text)");
+      stmt.execute("ALTER TABLE test_1 REPLICA IDENTITY FULL");
+      stmt.execute("ALTER TABLE test_2 REPLICA IDENTITY DEFAULT");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    String slotName = "test_null_value_update";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_1 (a, c) VALUES (1, 'abc')");
+      stmt.execute("INSERT INTO test_2 (a, c) VALUES (1, 'abc')");
+
+      stmt.execute("UPDATE test_1 SET b = NULL WHERE a = 1");
+      stmt.execute("UPDATE test_2 SET b = NULL WHERE a = 1");
+
+      stmt.execute("DELETE FROM test_1 WHERE a = 1");
+      stmt.execute("DELETE FROM test_2 WHERE a = 1");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+
+    result.addAll(receiveMessage(stream, 20));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_1", 'f',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 20),
+            PgOutputRelationMessageColumn.CreateForComparison("c", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+          Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+            new PgOutputMessageTupleColumnNull(),
+            new PgOutputMessageTupleColumnValue("abc")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_2", 'd',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 20),
+            PgOutputRelationMessageColumn.CreateForComparison("c", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+          Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+            new PgOutputMessageTupleColumnNull(),
+            new PgOutputMessageTupleColumnValue("abc")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
+        add(PgOutputUpdateMessage.CreateForComparison(
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              // All columns for before image in FULL, same as in PG.
+              new PgOutputMessageTupleColumnValue("1"),
+              new PgOutputMessageTupleColumnNull(),
+              new PgOutputMessageTupleColumnValue("abc"))),
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("1"),
+              new PgOutputMessageTupleColumnNull(),
+              new PgOutputMessageTupleColumnValue("abc")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/D"), 5));
+        add(PgOutputUpdateMessage.CreateForComparison(
+          null,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("1"),
+              new PgOutputMessageTupleColumnNull(),
+              new PgOutputMessageTupleColumnValue("abc")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/D"), LogSequenceNumber.valueOf("0/E")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 6));
+        add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ false,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("1"),
+              new PgOutputMessageTupleColumnNull(),
+              new PgOutputMessageTupleColumnValue("abc")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 7));
+        add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("1"),
+              new PgOutputMessageTupleColumnNull(),
+              new PgOutputMessageTupleColumnNull()))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+  }
+
+  @Test
+  public void testYbGetCurrentHybridTimeLsn() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet rs = stmt.executeQuery("SELECT yb_get_current_hybrid_time_lsn()");
+
+      assertTrue(rs.next());
+      assertEquals(1, rs.getMetaData().getColumnCount());
+      assertEquals("int8", rs.getMetaData().getColumnTypeName(1));
     }
   }
 }

@@ -16,6 +16,8 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction_priority.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/pg_client.messages.h"
@@ -44,6 +46,14 @@ DEFINE_NON_RUNTIME_bool(ysql_rc_force_pick_read_time_on_pg_client, false,
                         " pick read time on the PgClientService instead of allowing the tserver to"
                         " pick one.");
 TAG_FLAG(ysql_rc_force_pick_read_time_on_pg_client, advanced);
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_follower_reads_behavior_before_fixing_20482, false,
+    "Controls whether ysql follower reads that is enabled inside a transaction block "
+    "should take effect in the same transaction or not. Prior to fixing #20482 the "
+    "behavior was that the change does not affect the current transaction but only "
+    "affects subsequent transactions. The flag is intended to be used if there is "
+    "a customer who relies on the old behavior.");
+TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
 
 // A macro for logging the function name and the state of the current transaction.
 // This macro is not enclosed in do { ... } while (true) because we want to be able to write
@@ -153,10 +163,40 @@ tserver::ReadTimeManipulation GetActualReadTimeManipulator(
 
 DEPRECATE_FLAG(int32, pg_yb_session_timeout_ms, "02_2024");
 
+PgTxnManager::SerialNo::SerialNo()
+    : SerialNo(0, 0) {}
+
+PgTxnManager::SerialNo::SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no)
+    : txn_(txn_serial_no),
+      read_time_(read_time_serial_no),
+      min_read_time_(read_time_),
+      max_read_time_(read_time_) {
+}
+
+void PgTxnManager::SerialNo::IncTxn() {
+  VLOG_WITH_FUNC(4) << "old txn_: " << txn_;
+  ++txn_;
+  IncReadTime();
+  min_read_time_ = read_time_;
+}
+
+void PgTxnManager::SerialNo::IncReadTime() {
+  read_time_ = ++max_read_time_;
+}
+
+Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
+  RSTATUS_DCHECK(
+      read_time_serial_no <= max_read_time_ && read_time_serial_no >= min_read_time_,
+      IllegalState, "Bad read time serial no $0 while [$1, $2] is expected",
+      read_time_serial_no, min_read_time_, max_read_time_);
+  read_time_ = read_time_serial_no;
+  return Status::OK();
+}
+
 PgTxnManager::PgTxnManager(
     PgClient* client,
     scoped_refptr<ClockBase> clock,
-    PgCallbacks pg_callbacks)
+    YbcPgCallbacks pg_callbacks)
     : client_(client),
       clock_(std::move(clock)),
       pg_callbacks_(pg_callbacks) {
@@ -215,7 +255,8 @@ Status PgTxnManager::SetEnableTracing(bool tracing) {
   return Status::OK();
 }
 
-Status PgTxnManager::EnableFollowerReads(bool enable_follower_reads, int32_t session_staleness) {
+Status PgTxnManager::UpdateFollowerReadsConfig(
+    bool enable_follower_reads, int32_t session_staleness) {
   VLOG_TXN_STATE(2) << (enable_follower_reads ? "Enabling follower reads "
                                               : "Disabling follower reads ")
                     << " with staleness " << session_staleness << " ms";
@@ -225,7 +266,7 @@ Status PgTxnManager::EnableFollowerReads(bool enable_follower_reads, int32_t ses
 }
 
 Status PgTxnManager::UpdateReadTimeForFollowerReadsIfRequired() {
-  if (enable_follower_reads_ && read_only_ && !read_time_for_follower_reads_) {
+  if (enable_follower_reads_ && read_only_) {
     constexpr uint64_t kMargin = 2;
     RSTATUS_DCHECK(
         follower_read_staleness_ms_ * 1000 > kMargin * GetAtomicFlag(&FLAGS_max_clock_skew_usec),
@@ -237,10 +278,11 @@ Status PgTxnManager::UpdateReadTimeForFollowerReadsIfRequired() {
                       << follower_read_staleness_ms_ << " to "
                       << read_time_for_follower_reads_;
   } else {
-    VLOG(2) << " Not updating read-time " << yb::ToString(pg_isolation_level_)
-            << read_time_for_follower_reads_
-            << (enable_follower_reads_ ? " Follower reads allowed." : " Follower reads DISallowed.")
-            << (read_only_ ? " Is read-only" : " Is NOT read-only");
+    read_time_for_follower_reads_ = HybridTime();
+    VLOG_TXN_STATE(2) << "Resetting read-time."
+                      << (enable_follower_reads_ ? " Follower reads allowed."
+                                                 : " Follower reads DISallowed.")
+                      << (read_only_ ? " Is read-only" : " Is NOT read-only");
   }
   return Status::OK();
 }
@@ -264,7 +306,7 @@ Status PgTxnManager::SetReadOnlyStmt(bool read_only_stmt) {
   return Status::OK();
 }
 
-uint64_t PgTxnManager::NewPriority(TxnPriorityRequirement txn_priority_requirement) {
+uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requirement) {
   if (txn_priority_requirement == kHighestPriority) {
     return yb::kHighPriTxnUpperBound;
   }
@@ -279,7 +321,7 @@ uint64_t PgTxnManager::NewPriority(TxnPriorityRequirement txn_priority_requireme
 }
 
 Status PgTxnManager::CalculateIsolation(
-    bool read_only_op, TxnPriorityRequirement txn_priority_requirement) {
+    bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement) {
   if (IsDdlMode()) {
     VLOG_TXN_STATE(2);
     return Status::OK();
@@ -354,13 +396,19 @@ Status PgTxnManager::RestartTransaction() {
 Status PgTxnManager::ResetTransactionReadPoint() {
   RSTATUS_DCHECK(
       !IsDdlMode(), IllegalState, "READ COMMITTED semantics don't apply to DDL transactions");
-  ++read_time_serial_no_;
+  serial_no_.IncReadTime();
   const auto& pick_read_time_alias = FLAGS_ysql_rc_force_pick_read_time_on_pg_client;
   read_time_manipulation_ =
       PREDICT_FALSE(pick_read_time_alias) ? tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET
                                           : tserver::ReadTimeManipulation::NONE;
   read_time_for_follower_reads_ = HybridTime();
   RETURN_NOT_OK(UpdateReadTimeForFollowerReadsIfRequired());
+  return Status::OK();
+}
+
+Status PgTxnManager::EnsureReadPoint() {
+  DCHECK(read_time_manipulation_ != tserver::ReadTimeManipulation::RESTART);
+  read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
   return Status::OK();
 }
 
@@ -428,6 +476,7 @@ void PgTxnManager::ResetTxnAndSession() {
   read_only_ = false;
   enable_tracing_ = false;
   read_time_for_follower_reads_ = HybridTime();
+  snapshot_read_time_is_set_ = false;
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   read_only_stmt_ = false;
 }
@@ -436,7 +485,7 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   RSTATUS_DCHECK(!IsDdlMode(), IllegalState,
                  "EnterSeparateDdlTxnMode called when already in a DDL transaction");
   VLOG_TXN_STATE(2);
-  ddl_mode_.emplace();
+  ddl_state_.emplace();
   VLOG_TXN_STATE(2);
   return Status::OK();
 }
@@ -457,42 +506,57 @@ Status PgTxnManager::ExitSeparateDdlTxnMode(const std::optional<DdlCommitInfo>& 
         !commit_info, IllegalState, "Commit ddl txn called when not in a DDL transaction");
     return Status::OK();
   }
-  decltype(ddl_mode_) ddl_mode;
-  ddl_mode = ddl_mode_;
-  if (commit_info && commit_info->is_silent_altering) {
-    ddl_mode->silently_altered_db = commit_info->db_oid;
-  }
 
-  Commit commit = commit_info ? Commit::kTrue : Commit::kFalse;
-  Status status = client_->FinishTransaction(commit, ddl_mode);
+  const auto commit = commit_info ? Commit::kTrue : Commit::kFalse;
+  const auto status = client_->FinishTransaction(
+      commit,
+      DdlMode {
+          .has_docdb_schema_changes = ddl_state_->has_docdb_schema_changes,
+          .silently_altered_db =
+              commit_info && commit_info->is_silent_altering
+                  ? std::optional(commit_info->db_oid) : std::nullopt
+          });
   WARN_NOT_OK(status, Format("Failed to $0 DDL transaction", commit ? "commit" : "abort"));
   if (PREDICT_TRUE(status.ok() || !commit)) {
     // In case of an abort, reset the DDL mode here as we may later re-enter this function and retry
     // the abort as part of transaction error recovery if the status is not ok.
-    ddl_mode_.reset();
+    ddl_state_.reset();
   }
 
   return status;
 }
 
-void PgTxnManager::SetDdlHasSyscatalogChanges() {
-  if (IsDdlMode()) {
-    ddl_mode_->has_docdb_schema_changes = true;
+void PgTxnManager::DdlEnableForceCatalogModification() {
+  if (PREDICT_FALSE(!ddl_state_)) {
+    LOG(DFATAL) << "Unexpected call of " << __PRETTY_FUNCTION__ << " outside DDL";
     return;
   }
-  // There are only 2 cases where we may be performing DocDB schema changes outside of DDL mode:
-  // 1. During initdb, when we do not use a transaction at all.
-  // 2. When yb_non_ddl_txn_for_sys_tables_allowed is set. Here we would use a regular transaction.
-  // has_docdb_schema_changes is mainly used for DDL atomicity, which is disabled for the PG
-  // system catalog tables. Both cases above are primarily used for modifying the system catalog,
-  // so there is no need to set this flag here.
-  DCHECK(YBCIsInitDbModeEnvVarSet() ||
-         (IsTxnInProgress() && yb_non_ddl_txn_for_sys_tables_allowed));
+
+  ddl_state_->force_catalog_modification = true;
+}
+
+void PgTxnManager::SetDdlHasSyscatalogChanges() {
+  if (PREDICT_FALSE(!ddl_state_)) {
+    // There are only 2 cases where we may be performing DocDB schema changes outside of DDL mode:
+    // 1. During initdb, when we do not use a transaction at all.
+    // 2. When yb_non_ddl_txn_for_sys_tables_allowed is set. We would use a regular transaction.
+    // has_docdb_schema_changes is mainly used for DDL atomicity, which is disabled for the PG
+    // system catalog tables. Both cases above are primarily used for modifying the system catalog,
+    // so there is no need to set this flag here.
+    LOG_IF(
+        DFATAL,
+        !(YBCIsInitDbModeEnvVarSet() ||
+          (IsTxnInProgress() && yb_non_ddl_txn_for_sys_tables_allowed)))
+        << "Unexpected call of " << __PRETTY_FUNCTION__ << " outside DDL";
+    return;
+  }
+
+  ddl_state_->has_docdb_schema_changes = true;
 }
 
 std::string PgTxnManager::TxnStateDebugStr() const {
   return YB_CLASS_TO_STRING(
-      ddl_mode,
+      ddl_state,
       read_only,
       deferrable,
       txn_in_progress,
@@ -500,7 +564,7 @@ std::string PgTxnManager::TxnStateDebugStr() const {
       isolation_level);
 }
 
-void PgTxnManager::SetupPerformOptions(
+Status PgTxnManager::SetupPerformOptions(
     tserver::PgPerformOptionsPB* options, EnsureReadTimeIsSet ensure_read_time) {
   if (!IsDdlMode() && !txn_in_progress_) {
     IncTxnSerialNo();
@@ -509,8 +573,8 @@ void PgTxnManager::SetupPerformOptions(
   options->set_ddl_mode(IsDdlMode());
   options->set_yb_non_ddl_txn_for_sys_tables_allowed(yb_non_ddl_txn_for_sys_tables_allowed);
   options->set_trace_requested(enable_tracing_);
-  options->set_txn_serial_no(txn_serial_no_);
-  options->set_read_time_serial_no(read_time_serial_no_);
+  options->set_txn_serial_no(serial_no_.txn());
+  options->set_read_time_serial_no(serial_no_.read_time());
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
 
   if (use_saved_priority_) {
@@ -548,11 +612,16 @@ void PgTxnManager::SetupPerformOptions(
       //   i.e. no txn block and a pure SELECT stmt.
       options->set_clamp_uncertainty_window(
         read_only_ || (!in_txn_blk_ && read_only_stmt_));
+
+    if (snapshot_read_time_is_set_) {
+      RETURN_NOT_OK(CheckSnapshotTimeConflict());
+    }
   }
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());
     options->set_read_from_followers(true);
   }
+  return Status::OK();
 }
 
 double PgTxnManager::GetTransactionPriority() const {
@@ -567,7 +636,7 @@ double PgTxnManager::GetTransactionPriority() const {
                        yb::kHighPriTxnUpperBound);
 }
 
-TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
+YbcTxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
   if (priority_ <= yb::kRegularTxnUpperBound) {
     return kLowerPriorityRange;
   }
@@ -578,17 +647,97 @@ TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
 }
 
 void PgTxnManager::IncTxnSerialNo() {
-  VLOG_WITH_FUNC(4) << "old txn_serial_no_: " << txn_serial_no_;
-  ++txn_serial_no_;
+  serial_no_.IncTxn();
   active_sub_transaction_id_ = kMinSubTransactionId;
-  ++read_time_serial_no_;
 }
 
-void PgTxnManager::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
-  txn_serial_no_ = session_data->txn_serial_no;
-  read_time_serial_no_ = session_data->read_time_serial_no;
-  active_sub_transaction_id_ = session_data->active_sub_transaction_id;
+void PgTxnManager::DumpSessionState(YbcPgSessionState* session_data) {
+  session_data->txn_serial_no = serial_no_.txn();
+  session_data->read_time_serial_no = serial_no_.read_time();
+  session_data->active_sub_transaction_id = active_sub_transaction_id_;
+}
+
+void PgTxnManager::RestoreSessionState(const YbcPgSessionState& session_data) {
+  read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
+  serial_no_ =
+      SerialNo(session_data.txn_serial_no, session_data.read_time_serial_no);
+  active_sub_transaction_id_ = session_data.active_sub_transaction_id;
   VLOG_TXN_STATE(2);
+}
+
+uint64_t PgTxnManager::GetCurrentReadTimePoint() const {
+  return serial_no_.read_time();
+}
+
+Status PgTxnManager::RestoreReadTimePoint(uint64_t read_time_point_handle) {
+  return serial_no_.RestoreReadTime(read_time_point_handle);
+}
+
+Result<std::string> PgTxnManager::ExportSnapshot(const YbcPgTxnSnapshot& snapshot) {
+  tserver::PgExportTxnSnapshotRequestPB req;
+  auto& snapshot_pb = *req.mutable_snapshot();
+  snapshot_pb.set_db_oid(snapshot.db_id);
+  snapshot_pb.set_isolation_level(snapshot.iso_level);
+  snapshot_pb.set_read_only(snapshot.read_only);
+  auto& options = *req.mutable_options();
+  RETURN_NOT_OK(SetupPerformOptions(&options, EnsureReadTimeIsSet::kTrue));
+  RETURN_NOT_OK(CheckTxnSnapshotOptions(options));
+  auto res = client_->ExportTxnSnapshot(&req);
+  if (res.ok()) {
+    has_exported_snapshots_ = true;
+  }
+  return res;
+}
+
+Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(std::string_view snapshot_id) {
+  RETURN_NOT_OK(CheckSnapshotTimeConflict());
+  tserver::PgPerformOptionsPB options;
+  RETURN_NOT_OK(SetupPerformOptions(&options));
+  RETURN_NOT_OK(CheckTxnSnapshotOptions(options));
+  const auto resp = VERIFY_RESULT(client_->ImportTxnSnapshot(snapshot_id, std::move(options)));
+  snapshot_read_time_is_set_ = true;
+  const auto& snapshot = resp.snapshot();
+  return YbcPgTxnSnapshot{
+      .db_id = snapshot.db_oid(),
+      .iso_level = implicit_cast<int>(snapshot.isolation_level()),
+      .read_only = snapshot.read_only()};
+}
+
+Status PgTxnManager::CheckSnapshotTimeConflict() const {
+  SCHECK(
+      !read_time_for_follower_reads_, NotSupported,
+      "Cannot set both 'transaction snapshot' and 'yb_read_from_followers' in the same "
+      "transaction.");
+  SCHECK(
+      yb_read_time == 0, NotSupported,
+      "Cannot set both 'transaction snapshot' and 'yb_read_time' in the same transaction.");
+  SCHECK(
+      yb_read_after_commit_visibility != YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, NotSupported,
+      "Cannot set both 'transaction snapshot' and 'yb_read_after_commit_visibility' in the same "
+      "transaction.");
+  return Status::OK();
+}
+
+Status PgTxnManager::CheckTxnSnapshotOptions(const tserver::PgPerformOptionsPB& options) const {
+  RSTATUS_DCHECK(!options.ddl_mode(), NotSupported, "Cannot export/import snapshot in DDL mode.");
+  RSTATUS_DCHECK(
+      !options.use_catalog_session(), NotSupported,
+      "Cannot export/import snapshot in catalog session.");
+  RSTATUS_DCHECK(
+      !options.defer_read_point(), NotSupported,
+      "Cannot export/import snapshot with deferred read point.");
+  return Status::OK();
+}
+
+bool PgTxnManager::HasExportedSnapshots() const { return has_exported_snapshots_; }
+
+void PgTxnManager::ClearExportedTxnSnapshots() {
+  if (!has_exported_snapshots_) {
+    return;
+  }
+  has_exported_snapshots_ = false;
+  const auto s = client_->ClearExportedTxnSnapshots();
+  LOG_IF(DFATAL, !s.ok()) << "Faced error while deleting exported snapshots. Error Details: " << s;
 }
 
 }  // namespace yb::pggate

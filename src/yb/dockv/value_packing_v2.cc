@@ -73,6 +73,10 @@ struct PackQLValueVisitor {
     auto primitive_value = GetPrimitive<T>(value);
     out->append(pointer_cast<const char*>(&primitive_value), sizeof(T));
   }
+
+  void Vector() const {
+    Binary();
+  }
 };
 
 template <class Value>
@@ -95,6 +99,10 @@ struct PackedQLValueSizeVisitor {
   ssize_t Primitive() const {
     return sizeof(T);
   }
+
+  ssize_t Vector() const {
+    return Binary();
+  }
 };
 
 struct PackedAsVarlenVisitor {
@@ -113,6 +121,10 @@ struct PackedAsVarlenVisitor {
   template <class T>
   bool Primitive() const {
     return false;
+  }
+
+  bool Vector() const {
+    return true;
   }
 };
 
@@ -149,6 +161,10 @@ struct UnpackQLValueVisitor {
 #endif
     SetPrimitive(primitive_value, &result);
     return result;
+  }
+
+  Result<QLValuePB> Vector() const {
+    return Binary();
   }
 };
 

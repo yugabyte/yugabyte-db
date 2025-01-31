@@ -7,6 +7,7 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -24,6 +25,7 @@ import static play.inject.Bindings.bind;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.typesafe.config.Config;
@@ -39,13 +41,14 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.TaskExecutionException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskErrorCode;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.YBAError;
+import com.yugabyte.yw.models.helpers.YBAError.Code;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -128,7 +131,16 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ModifyAuditLoggingConfig,
           TaskType.StartMasterOnNode,
           TaskType.MasterFailover,
-          TaskType.SyncMasterAddresses);
+          TaskType.SyncMasterAddresses,
+          TaskType.ReprovisionNode,
+          TaskType.CloudProviderEdit,
+          TaskType.SwitchoverDrConfig,
+          TaskType.SwitchoverDrConfigRollback,
+          TaskType.FailoverDrConfig,
+          TaskType.ResumeKubernetesUniverse,
+          TaskType.PauseKubernetesUniverse,
+          TaskType.FailoverDrConfig,
+          TaskType.DecommissionNode);
 
   @Override
   protected Application provideApplication() {
@@ -152,13 +164,16 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   private TaskInfo waitForTask(UUID taskUUID) {
-    long elapsedTimeMs = 0;
-    while (taskExecutor.isTaskRunning(taskUUID) && elapsedTimeMs < 20000) {
+    return waitForTask(taskUUID, Duration.ofSeconds(10));
+  }
+
+  private TaskInfo waitForTask(UUID taskUUID, Duration waitTime) {
+    Stopwatch watch = Stopwatch.createStarted();
+    while (taskExecutor.isTaskRunning(taskUUID) && watch.elapsed().compareTo(waitTime) < 0) {
       try {
         Thread.sleep(100);
       } catch (InterruptedException e) {
       }
-      elapsedTimeMs += 100;
     }
     if (taskExecutor.isTaskRunning(taskUUID)) {
       fail("Task " + taskUUID + " did not complete in time");
@@ -209,6 +224,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
               taskInfo.setTaskParams(
                   RedactingService.filterSecretFields(task.getTaskParams(), RedactionTarget.APIS));
               taskInfo.setOwner("test-owner");
+              taskInfo.setVersion(Util.getYbaVersion());
               return taskInfo;
             })
         .when(taskExecutor)
@@ -238,6 +254,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     String errMsg = taskInfo.getTaskError().getMessage();
     assertTrue("Found " + errMsg, errMsg.contains("Error occurred in task"));
+    assertNotNull(taskInfo.getVersion());
+    assertEquals(Util.getYbaVersion(), taskInfo.getVersion());
   }
 
   @Test
@@ -390,6 +408,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
     assertEquals(TaskInfo.State.Success, subTaskInfos.get(0).getTaskState());
     assertEquals(TaskInfo.State.Aborted, subTaskInfos.get(1).getTaskState());
+    assertNotNull(taskInfo.getVersion());
+    assertEquals(Util.getYbaVersion(), taskInfo.getVersion());
   }
 
   @Test
@@ -530,8 +550,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task, null);
     // This should get rejected as the executor is already shutdown.
     assertThrows(
-        IllegalStateException.class,
+        PlatformServiceException.class,
         () -> taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1)));
+    taskInfo = TaskInfo.getOrBadRequest(taskRunner2.getTaskUUID());
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -556,7 +578,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
             inv -> {
               latch.countDown();
               while (true) {
-                taskExecutor.getRunnableTask(taskUUIDRef.get()).waitFor(Duration.ofMillis(200));
+                taskExecutor.getRunnableTask(taskUUIDRef.get()).waitFor(Duration.ofSeconds(1));
               }
             })
         .when(subTask)
@@ -653,7 +675,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void testTaskValidationFailure() {
     ITask task = mockTaskCommon(false);
     doThrow(new RuntimeException("Validation failed")).when(task).validateParams(true);
-    assertThrows(PlatformServiceException.class, () -> taskExecutor.createRunnableTask(task, null));
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
+    assertThrows(
+        PlatformServiceException.class,
+        () -> taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1)));
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskRunner.getTaskUUID());
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -707,8 +734,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     params.put("param1", "value1");
     doAnswer(
             inv -> {
-              throw new TaskExecutionException(
-                  TaskErrorCode.PLATFORM_RESTARTED, "Platform restarted");
+              throw new TaskExecutionException(Code.PLATFORM_RESTARTED, "Platform restarted");
             })
         .when(task)
         .run();
@@ -717,8 +743,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     waitForTask(taskUUID);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    TaskError taskError = taskInfo.getTaskError();
-    assertEquals(TaskErrorCode.PLATFORM_RESTARTED, taskError.getCode());
+    YBAError taskError = taskInfo.getTaskError();
+    assertEquals(Code.PLATFORM_RESTARTED, taskError.getCode());
     assertEquals("Platform restarted", taskError.getMessage());
     JsonNode taskParams = taskInfo.getTaskParams();
     assertEquals(params, taskParams);
@@ -838,5 +864,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         subTasksByPosition.get(1).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
     assertEquals(1, subTaskStates.size());
     assertTrue(subTaskStates.contains(TaskInfo.State.Success));
+    assertNotNull(taskInfo.getVersion());
+    assertEquals(Util.getYbaVersion(), taskInfo.getVersion());
   }
 }

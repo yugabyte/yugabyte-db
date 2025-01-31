@@ -37,8 +37,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
@@ -65,15 +63,13 @@
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
 
 extern const int64 kNoDurableMemStore;
-extern const std::string kIntentsSubdir;
-extern const std::string kIntentsDBSuffix;
-extern const std::string kSnapshotsDirSuffix;
+extern const std::string kIntentsDirName;
+extern const std::string kSnapshotsDirName;
 
 const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 
@@ -137,7 +133,7 @@ struct TableInfo {
             TableType table_type,
             const Schema& schema,
             const qlexpr::IndexMap& index_map,
-            const boost::optional<qlexpr::IndexInfo>& index_info,
+            const std::optional<qlexpr::IndexInfo>& index_info,
             SchemaVersion schema_version,
             dockv::PartitionSchema partition_schema,
             TableId pg_table_id,
@@ -180,6 +176,8 @@ struct TableInfo {
   bool primary() const {
     return cotable_id.IsNil();
   }
+
+  bool NeedVectorIndex() const;
 
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
@@ -275,6 +273,7 @@ struct RaftGroupMetadataData {
   bool colocated = false;
   std::vector<SnapshotScheduleId> snapshot_schedules;
   std::unordered_set<StatefulServiceKind> hosted_services;
+  std::vector<TableInfoPtr> colocated_tables_infos = {};
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
@@ -313,6 +312,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(ColocationId colocation_id) const REQUIRES(data_mutex_);
 
+  std::vector<TableInfoPtr> GetColocatedTableInfos() const;
+
   const RaftGroupId& raft_group_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
     return raft_group_id_;
@@ -348,8 +349,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   std::shared_ptr<qlexpr::IndexMap> index_map(const TableId& table_id = "") const;
 
+  SchemaVersion primary_table_schema_version() const;
+
+  // Non-colocated tables should use primary_table_schema_version().
   [[deprecated]]
-  SchemaVersion schema_version(const TableId& table_id = "") const;
+  SchemaVersion schema_version(const TableId& table_id) const;
 
   Result<SchemaVersion> schema_version(ColocationId colocation_id) const;
 
@@ -376,11 +380,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const TableId& table_id = "") const;
 
   const std::string& rocksdb_dir() const { return kv_store_.rocksdb_dir; }
-  std::string intents_rocksdb_dir() const { return kv_store_.rocksdb_dir + kIntentsDBSuffix; }
-  std::string snapshots_dir() const { return kv_store_.rocksdb_dir + kSnapshotsDirSuffix; }
+  std::string intents_rocksdb_dir() const;
+  std::string snapshots_dir() const;
 
   const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
+
+  docdb::KeyBounds MakeKeyBounds() const;
 
   const std::string& wal_dir() const { return wal_dir_; }
 
@@ -397,6 +403,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id);
 
   Status set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
+
+  Status set_all_cdc_retention_barriers(int64 cdc_min_replicated_index,
+                                        bool set_cdc_min_replicated_index_check,
+                                        const OpId& cdc_min_checkpoint_op_id,
+                                        bool set_cdc_min_checkpoint_op_id_check,
+                                        const HybridTime& cdc_sdk_safe_time,
+                                        bool set_cdc_sdk_safe_time_check);
 
   int64_t cdc_min_replicated_index() const;
 
@@ -484,6 +497,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                  const OpId& op_id,
                  const TableId& table_id = "") REQUIRES(data_mutex_);
 
+  void InsertPackedSchemaForXClusterTarget(
+      const Schema& schema, const qlexpr::IndexMap& index_map, const SchemaVersion version,
+      const OpId& op_id, const TableId& table_id);
+
   void SetPartitionSchema(const dockv::PartitionSchema& partition_schema);
 
   void SetTableName(
@@ -500,25 +517,25 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const SchemaVersion version, const std::string& namespace_name,
       const std::string& table_name, const OpId& op_id, const TableId& table_id = "");
 
-  void AddTable(const std::string& table_id,
-                const std::string& namespace_name,
-                const std::string& table_name,
-                const TableType table_type,
-                const Schema& schema,
-                const qlexpr::IndexMap& index_map,
-                const dockv::PartitionSchema& partition_schema,
-                const boost::optional<qlexpr::IndexInfo>& index_info,
-                const SchemaVersion schema_version,
-                const OpId& op_id,
-                const TableId& pg_table_id,
-                const SkipTableTombstoneCheck skip_table_tombstone_check) EXCLUDES(data_mutex_);
+  Result<TableInfoPtr> AddTable(
+      const std::string& table_id,
+      const std::string& namespace_name,
+      const std::string& table_name,
+      const TableType table_type,
+      const Schema& schema,
+      const qlexpr::IndexMap& index_map,
+      const dockv::PartitionSchema& partition_schema,
+      const std::optional<qlexpr::IndexInfo>& index_info,
+      const SchemaVersion schema_version,
+      const OpId& op_id,
+      const TableId& pg_table_id,
+      const SkipTableTombstoneCheck skip_table_tombstone_check) EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
 
   // Returns a list of all tables colocated on this tablet.
   std::vector<TableId> GetAllColocatedTables() const;
-
-  std::vector<TableId> GetAllColocatedTablesUnlocked() const REQUIRES(data_mutex_);
+  std::vector<TableInfoPtr> GetAllColocatedTableInfos() const;
 
   // Returns the number of tables colocated on this tablet, returns 1 for non-colocated case.
   size_t GetColocatedTablesCount() const EXCLUDES(data_mutex_);
@@ -665,7 +682,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   bool UsePartialRangeKeyIntents() const;
 
   // versions is a map from table id to min schema version that should be kept for this table.
-  Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions);
+  Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion>& versions);
   void DisableSchemaGC();
   void EnableSchemaGC();
 
@@ -673,6 +690,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
   Result<docdb::CompactionSchemaInfo> ColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
+
+  Status CheckCotablePacking(
+      const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;
+
+  Status CheckColocationPacking(
       ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
   std::unordered_set<StatefulServiceKind> GetHostedServiceList() const;
@@ -753,6 +776,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Status SetTableInfoUnlocked(const TableInfoMap::iterator& it,
                               const TableInfoPtr& new_table_info) REQUIRES(data_mutex_);
+
+  std::vector<TableId> GetAllColocatedTablesUnlocked() const REQUIRES(data_mutex_);
 
   enum State {
     kNotLoadedYet,
@@ -872,5 +897,4 @@ inline bool CanServeTabletData(TabletDataState state) {
 
 Status CheckCanServeTabletData(const RaftGroupMetadata& metadata);
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet

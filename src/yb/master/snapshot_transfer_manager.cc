@@ -67,8 +67,7 @@ Status SnapshotTransferManager::TransferSnapshot(
         auto l = consumer_tablet->LockForRead();
 
         auto locs = consumer_tablet->GetReplicaLocations();
-        for (const auto& replica : *locs) {
-          const auto& ts_uuid = replica.second.ts_desc->permanent_uuid();
+        for (const auto& [ts_uuid, _] : *locs) {
           ts_tablet_map_[ts_uuid].push_back(consumer_tablet_id);
         }
       }

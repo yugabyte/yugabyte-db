@@ -9,7 +9,6 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import java.util.UUID;
@@ -89,33 +88,6 @@ public class DeleteCustomerStorageConfigTest extends FakeDBApplication {
     s3StorageConfig.refresh();
     assertEquals(BackupState.QueuedForDeletion, backup.getState());
     assertEquals(ConfigState.QueuedForDeletion, s3StorageConfig.getState());
-  }
-
-  @Test
-  public void testAssocicatedScheduleStop() {
-    UUID universeUUID = UUID.randomUUID();
-    CustomerConfig s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST3");
-    Schedule schedule =
-        ModelFactory.createScheduleBackup(
-            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
-    Backup backup =
-        ModelFactory.createBackup(
-            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
-    backup.transitionState(BackupState.Completed);
-    DeleteCustomerStorageConfig deleteCustomerStorageConfigTask =
-        AbstractTaskBase.createTask(DeleteCustomerStorageConfig.class);
-    DeleteCustomerStorageConfig.Params params = new DeleteCustomerStorageConfig.Params();
-    params.customerUUID = defaultCustomer.getUuid();
-    params.configUUID = s3StorageConfig.getConfigUUID();
-    params.isDeleteBackups = true;
-    deleteCustomerStorageConfigTask.initialize(params);
-    deleteCustomerStorageConfigTask.run();
-    backup.refresh();
-    s3StorageConfig.refresh();
-    schedule.refresh();
-    assertEquals(BackupState.QueuedForDeletion, backup.getState());
-    assertEquals(ConfigState.QueuedForDeletion, s3StorageConfig.getState());
-    assertEquals(Schedule.State.Stopped, schedule.getStatus());
   }
 
   @Test

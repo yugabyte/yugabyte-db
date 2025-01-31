@@ -13,7 +13,6 @@ import { YBButton } from '../../common/forms/fields';
 import clsx from 'clsx';
 
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 import './BackupEmpty.scss';
 
@@ -114,7 +113,7 @@ const RBAC_DISABLED_MSG = (
   />
 );
 
-const BackupDisabledTooltip = ({
+export const BackupDisabledTooltip = ({
   disabled,
   children,
   hasPerm = true

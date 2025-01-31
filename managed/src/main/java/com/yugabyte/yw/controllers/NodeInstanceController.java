@@ -11,12 +11,14 @@ import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
@@ -87,10 +89,12 @@ public class NodeInstanceController extends AuthenticatedController {
   @Inject private KubernetesManagerFactory kubernetesManagerFactory;
 
   private NodeInstanceHandler nodeInstanceHandler;
+  private YbcManager ybcManager;
 
   @Inject
-  public NodeInstanceController(NodeInstanceHandler nodeInstanceHandler) {
+  public NodeInstanceController(NodeInstanceHandler nodeInstanceHandler, YbcManager ybcManager) {
     this.nodeInstanceHandler = nodeInstanceHandler;
+    this.ybcManager = ybcManager;
   }
 
   /**
@@ -444,11 +448,13 @@ public class NodeInstanceController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
-  @ApiOperation(value = "Update a node", response = YBPTask.class)
+  @ApiOperation(
+      value = "Perform the specified action on the universe node",
+      response = YBPTask.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Node action",
-        value = "Node action data to be updated",
+        value = "Details of the node action to be performed",
         required = true,
         dataType = "com.yugabyte.yw.forms.NodeActionFormData",
         paramType = "body")
@@ -491,6 +497,9 @@ public class NodeInstanceController extends AuthenticatedController {
 
     taskParams.nodeName = nodeName;
     taskParams.creatingUser = CommonUtils.getUserFromContext();
+    if (universe.isYbcEnabled()) {
+      taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
+    }
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
@@ -498,7 +507,8 @@ public class NodeInstanceController extends AuthenticatedController {
             || nodeAction == NodeActionType.REMOVE
             || nodeAction == NodeActionType.DELETE
             || nodeAction == NodeActionType.REBOOT
-            || nodeAction == NodeActionType.HARD_REBOOT)
+            || nodeAction == NodeActionType.HARD_REBOOT
+            || nodeAction == NodeActionType.DECOMMISSION)
         && !force) {
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
@@ -539,7 +549,8 @@ public class NodeInstanceController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Node,
         nodeAction.getCustomerTask(),
-        nodeName);
+        nodeName,
+        CustomerTaskManager.getCustomTaskName(nodeAction.getCustomerTask(), taskParams, null));
     log.info(
         "Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
         taskUUID,
@@ -584,15 +595,7 @@ public class NodeInstanceController extends AuthenticatedController {
       throw new PlatformServiceException(
           CONFLICT, "Node " + node.getNodeUuid() + " has incomplete tasks");
     }
-    UUID taskUUID = nodeInstanceHandler.updateState(payload, node, provider);
-
-    CustomerTask.create(
-        c,
-        node.getNodeUuid(),
-        taskUUID,
-        CustomerTask.TargetType.Node,
-        CustomerTask.TaskType.Update,
-        node.getNodeName());
+    UUID taskUUID = nodeInstanceHandler.updateState(payload, node, provider, c);
 
     auditService()
         .createAuditEntryWithReqBody(

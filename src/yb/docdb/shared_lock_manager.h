@@ -17,26 +17,42 @@
 #include <vector>
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
+#include "yb/docdb/lock_manager_traits.h"
+#include "yb/docdb/object_lock_data.h"
+
 #include "yb/dockv/intent.h"
 
 #include "yb/util/monotime.h"
+#include "yb/util/ref_cnt_buffer.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
-// Lock state stores the number of locks acquired for each intent type.
-// The count for each intent type resides in sequential bits (block) in lock state.
-// For example the count of locks on a particular intent type could be received as:
-// (lock_state >> (to_underlying(intent_type) * kIntentTypeBits)) & kFirstIntentTypeMask.
-typedef uint64_t LockState;
+// Helper struct used for keying table/object locks of a transaction.
+template <typename LockManager>
+struct TrackedLockEntryKey {
+  using KeyType = LockManagerTraits<LockManager>::KeyType;
 
-// This class manages six types of locks on string keys. On each key, the possibilities are:
-// - No locks
-// - A single kStrongSnapshotWrite
-// - Multiple kStrongSerializableRead and kWeakSerializableRead
-// - Multiple kStrongSerializableWrite and kWeakSerializableWrite
-// - Multiple kWeakSnapshotWrite, kWeakSerializableRead, and kWeakSerializableWrite
+  TrackedLockEntryKey(const ObjectLockOwner& object_lock_owner_, KeyType object_id_)
+      : object_lock_owner(object_lock_owner_), object_id(object_id_) {}
+
+  const ObjectLockOwner object_lock_owner;
+  const KeyType object_id;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(object_lock_owner, object_id);
+  }
+
+  bool operator==(const TrackedLockEntryKey& other) const = default;
+};
+
+template<typename LockManager>
+struct LockManagerInternalTraits;
+
+// This class manages locks on keys of type RefCntPrefix. On each key, the possibilities arise
+// from a combination of kWeak/kStrong Read/Write intent types.
+//
+// Every tablet maintains its own SharedLockManager and uses it to acquire required in-memory locks
+// for the scope of the read/write request being served.
 class SharedLockManager {
  public:
   SharedLockManager();
@@ -47,17 +63,54 @@ class SharedLockManager {
   // this lock manager, which makes it auto-unlock on destruction.
   //
   // Returns false if was not able to acquire lock until deadline.
-  MUST_USE_RESULT bool Lock(LockBatchEntries* key_to_intent_type, CoarseTimePoint deadline);
+  MUST_USE_RESULT bool Lock(
+      LockBatchEntries<SharedLockManager>& key_to_intent_type, CoarseTimePoint deadline);
 
   // Release the batch of locks. Requires that the locks are held.
-  void Unlock(const LockBatchEntries& key_to_intent_type);
-
-  // Whether or not the state is possible
-  static std::string ToString(const LockState& state);
+  void Unlock(const LockBatchEntries<SharedLockManager>& key_to_intent_type);
 
   void DumpStatusHtml(std::ostream& out);
 
  private:
+  friend struct LockManagerInternalTraits<SharedLockManager>;
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+// This class manages locks on keys of type ObjectLockPrefix. On each key, the possibilities arise
+// from a combination of kWeak/kStrong Read/Write intent types.
+//
+// Currently, this class is only being used for object/table level locks codepath. Each tablet
+// server maintains an instance of the ObjectLockManager.
+class ObjectLockManager {
+ public:
+  ObjectLockManager();
+
+  ~ObjectLockManager();
+
+  // Attempt to lock a batch of keys and track the lock against the given object_lock_owner key. The
+  // call may be blocked waiting for other conflicting locks to be released. If the entries don't
+  // exist, they are created. On success, the lock state is exists in-memory until an explicit
+  // release is called (or the process restarts).
+  //
+  // Returns false if was not able to acquire lock until deadline.
+  MUST_USE_RESULT bool Lock(
+      const ObjectLockOwner& object_lock_owner,
+      LockBatchEntries<ObjectLockManager>& key_to_intent_type, CoarseTimePoint deadline);
+
+  // Release the batch of locks, if they were acquired at the first place.
+  void Unlock(const std::vector<TrackedLockEntryKey<ObjectLockManager>>& lock_entry_keys);
+
+  // Release all locks held against the given object_lock_owner.
+  void Unlock(const ObjectLockOwner& object_lock_owner);
+
+  void DumpStatusHtml(std::ostream& out);
+
+  size_t TEST_GrantedLocksSize() const;
+  size_t TEST_WaitingLocksSize() const;
+
+ private:
+  friend struct LockManagerInternalTraits<ObjectLockManager>;
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
@@ -70,5 +123,4 @@ extern const std::array<LockState, dockv::kIntentTypeSetMapSize> kIntentTypeSetC
 
 bool IntentTypeSetsConflict(dockv::IntentTypeSet lhs, dockv::IntentTypeSet rhs);
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

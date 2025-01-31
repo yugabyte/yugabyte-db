@@ -63,10 +63,13 @@ You configure OIDC as follows:
 
         [Google OIDC discovery endpoint](https://developers.google.com/identity/protocols/oauth2/openid-connect#an-id-tokens-payload) is an example of such file. For most identity providers, `/.well-known/openid-configuration` is appended to the issuer to generate the metadata URL for OIDC specifications.
 
-    - In the **Scope** field, enter your identity provider OIDC scope that is allowed to be requested. This field accepts a space-separated list of values. If left blank, all scopes will be considered.
-    - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. This field accepts a case-sensitive custom configuration. Typically, this field is left blank.
-    - If you have an airgapped installation, where YBA cannot access the Discovery URL, provide the OIDC configuration for the identity provider directly.
+        If you have an airgapped installation, where YugabyteDB Anywhere cannot access the Discovery URL, provide the OIDC configuration for the identity provider directly.
 
         To do this, click **Configure OIDC Provider Metadata** and paste the OIDC configuration document from your identity provider (in JSON format) into the field.
+
+    - In the **Scope** field, enter your identity provider OIDC scope that is allowed to be requested. This field accepts a space-separated list of values. If left blank, all scopes will be considered.
+    - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. This field accepts a case-sensitive custom configuration. Typically, this field is left blank.
+    - If you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
+    - If you have configured [OIDC enhancements](../../security/authentication/oidc-authentication-aad/#enable-oidc-enhancements), you can select the **Display JWT token on login** option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. See [Set up OIDC with Azure AD on YugabyteDB Anywhere](../../security/authentication/oidc-authentication-aad/#set-up-oidc-with-azure-ad-on-yugabytedb-anywhere).
 
 1. Click **Save**.

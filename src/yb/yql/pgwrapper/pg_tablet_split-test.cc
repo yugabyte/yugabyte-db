@@ -92,8 +92,8 @@ namespace yb::pgwrapper {
 // SQL helpers
 namespace {
 
-// Another name as YbTableProperties is a pointer in ybc_pg_typedefs.h, it may be confusing.
-using PgYbTableProperties = YbTablePropertiesData;
+// Another name as YbcTableProperties is a pointer in ybc_pg_typedefs.h, it may be confusing.
+using PgYbTableProperties = YbcTablePropertiesData;
 
 // Fetches rows count with a simple request.
 GetValueResult<PGUint64> FetchTableRowsCount(
@@ -199,7 +199,7 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
     auto deadline = ToCoarse(MonoTime::Now() + MonoDelta::FromSeconds(3 * kTimeMultiplier));
     auto remote_tablet_future = MakeFuture<Result<RemoteTabletPtr>>([&](auto callback) {
       client_->LookupTabletById(
-          tablet_id, table, master::IncludeInactive::kFalse, master::IncludeDeleted::kFalse,
+          tablet_id, table, master::IncludeHidden::kFalse, master::IncludeDeleted::kFalse,
           deadline, [callback] (const auto& lookup_result) {
             callback(lookup_result);
           }, use_cache);

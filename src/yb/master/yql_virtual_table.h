@@ -57,8 +57,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const docdb::ReadOperationData& read_operation_data,
       const qlexpr::QLScanSpec& spec,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter,
-      const docdb::DocDBStatistics* statistics = nullptr) const override;
+      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override;
 
   Status BuildYQLScanSpec(
       const QLReadRequestPB& request,
@@ -78,8 +77,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       const docdb::ReadOperationData& read_operation_data,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter,
-      const docdb::DocDBStatistics* statistics = nullptr) const override {
+      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
@@ -100,26 +98,29 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const docdb::ReadOperationData& read_operation_data,
       const dockv::DocKey& start_doc_key,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      docdb::YQLRowwiseIteratorIf::UniPtr* iter,
-      const docdb::DocDBStatistics* statistics = nullptr) const override {
+      docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 
-  Status GetIteratorForYbctid(
+  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> GetIteratorForYbctid(
       uint64 stmt_id,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const docdb::ReadOperationData& read_operation_data,
-      const QLValuePB& min_ybctid,
-      const QLValuePB& max_ybctid,
+      const docdb::YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      docdb::YQLRowwiseIteratorIf::UniPtr* iter,
-      const docdb::DocDBStatistics* statistics = nullptr,
       docdb::SkipSeek skip_seek = docdb::SkipSeek::kFalse) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
-    return Status::OK();
+    return nullptr;
+  }
+
+  Result<SampleBlocksData> GetSampleBlocks(
+      std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
+      DocDbBlocksSamplingMethod blocks_sampling_method,
+      size_t num_blocks_for_sample) const override {
+    return STATUS(NotSupported, "GetSampleBlocks is not implemented for virtual tables");
   }
 
   std::string ToString() const override { return Format("YQLVirtualTable $0", table_name_); }

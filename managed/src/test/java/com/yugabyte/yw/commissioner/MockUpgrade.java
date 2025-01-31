@@ -169,8 +169,15 @@ public class MockUpgrade extends UpgradeTaskBase {
   }
 
   public MockUpgrade precheckTasks(TaskType... taskTypes) {
+    return precheckTasks(true, taskTypes);
+  }
+
+  public MockUpgrade precheckTasks(boolean enableYSQL, TaskType... taskTypes) {
     for (TaskType taskType : taskTypes) {
       addTask(taskType, null);
+    }
+    if (enableYSQL) {
+      addTask(TaskType.UpdateConsistencyCheck, null);
     }
     addTask(TaskType.FreezeUniverse, null);
     addHookTasks(true);

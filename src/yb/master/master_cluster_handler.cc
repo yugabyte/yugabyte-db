@@ -15,6 +15,7 @@
 
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_util.h"
 
 DEFINE_RUNTIME_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
@@ -102,7 +103,9 @@ Status MasterClusterHandler::SetClusterConfig(
   // Bump the config version, to indicate an update.
   l.mutable_data()->pb.set_version(config.version() + 1);
 
-  LOG(INFO) << "Updating cluster config to " << config.version() + 1;
+  LOG(INFO) << Format(
+      "Updating cluster config to version $0, new config: $1", config.version() + 1,
+      config.ShortDebugString());
 
   RETURN_NOT_OK(catalog_manager_->sys_catalog()->Upsert(epoch.leader_term, cluster_config.get()));
 
@@ -177,12 +180,18 @@ Status MasterClusterHandler::SetPreferredZones(
   return Status::OK();
 }
 
+Status MasterClusterHandler::RemoveTabletServer(
+    const RemoveTabletServerRequestPB* req, RemoveTabletServerResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  auto blacklist = VERIFY_RESULT(catalog_manager_->BlacklistSetFromPB());
+  auto tables = catalog_manager_->GetTables(GetTablesMode::kAll, PrimaryTablesOnly::kTrue);
+  return ts_manager_->RemoveTabletServer(req->permanent_uuid(), blacklist, tables, epoch);
+}
+
 Status MasterClusterHandler::GetLoadMoveCompletionPercent(
     GetLoadMovePercentResponsePB* resp, bool blacklist_leader) {
-  auto l = catalog_manager_->ClusterConfig()->LockForRead();
-
   // Fine to pass in empty defaults if server_blacklist or leader_blacklist is not filled.
-  const auto& state = GetBlacklist(l->pb, blacklist_leader);
+  auto state = GetBlacklist(catalog_manager_->ClusterConfig()->LockForRead()->pb, blacklist_leader);
   int64_t blacklist_replicas = catalog_manager_->GetNumRelevantReplicas(state, blacklist_leader);
   int64_t initial_load =
       (blacklist_leader) ? state.initial_leader_load() : state.initial_replica_load();
@@ -231,4 +240,5 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
 
   return Status::OK();
 }
+
 }  // namespace yb::master

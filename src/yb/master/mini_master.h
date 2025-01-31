@@ -34,6 +34,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
@@ -82,7 +84,7 @@ class MiniMaster {
 
   // Restart the master on the same ports as it was previously bound.
   // Requires that the master is currently started.
-  Status Restart();
+  Status Restart(bool wait_until_catalog_manager_is_leader = false);
 
   // Use custom master_addresses, rpc_bind_addresses, and broadcast_addresses.
   // Warning: this can be used only when starting a master on its own.
@@ -116,6 +118,10 @@ class MiniMaster {
   std::string bound_rpc_addr_str() const;
 
   FsManager& fs_manager() const;
+
+  std::string ToString() const;
+
+  HybridTime Now() const;
 
  private:
   Status StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,

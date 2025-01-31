@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -50,6 +51,12 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
           // by the tasks below.
           syncTaskParamsToUserIntent();
 
+          // Drop system_platform.write_read_table while disabling YSQL.
+          if (!taskParams().enableYSQL
+              && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {
+            createDropSystemPlatformDBTablesTask(universe, getTaskSubGroupType());
+          }
+
           // Reset password to default before disable.
           createResetAPIPasswordTask(taskParams(), getTaskSubGroupType());
 
@@ -59,7 +66,7 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
               true /* isMasterChanged */,
               true /* isTserverChanged */,
               universe.isYbcEnabled(),
-              universe.getUniverseDetails().getYbcSoftwareVersion());
+              confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion));
 
           // Now update Universe state in DB.
           // Update custom communication ports in universe and node details
@@ -75,6 +82,7 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
           createUpdateDBApiDetailsTask(
                   taskParams().enableYSQL,
                   taskParams().enableYSQLAuth,
+                  taskParams().enableConnectionPooling,
                   taskParams().enableYCQL,
                   taskParams().enableYCQLAuth)
               .setSubTaskGroupType(getTaskSubGroupType());
@@ -110,6 +118,7 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
               cluster -> {
                 cluster.userIntent.enableYSQL = taskParams().enableYSQL;
                 cluster.userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
+                cluster.userIntent.enableConnectionPooling = taskParams().enableConnectionPooling;
                 cluster.userIntent.enableYCQL = taskParams().enableYCQL;
                 cluster.userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;
               });

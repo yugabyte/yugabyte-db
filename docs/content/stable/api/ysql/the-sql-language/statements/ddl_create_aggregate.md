@@ -4,7 +4,7 @@ headerTitle: CREATE AGGREGATE
 linkTitle: CREATE AGGREGATE
 description: Use the CREATE AGGREGATE statement to create an aggregate function.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_create_aggregate
     parent: statements
 type: docs
@@ -30,7 +30,7 @@ create aggregates.
 
 ## Semantics
 
-The order of options does not matter.  Even the mandatory options `BASETYPE`, `SFUNC`, and `STYPE`
+The order of options does not matter.  Even the mandatory options BASETYPE, SFUNC, and STYPE
 may appear in any order.
 
 See the semantics of each option in the [PostgreSQL docs][postgresql-docs-create-aggregate].
@@ -98,5 +98,6 @@ yugabyte=# SELECT newcnt(*) FROM pg_aggregate;
 
 ## See also
 
-- [`DROP AGGREGATE`](../ddl_drop_aggregate)
-- [postgresql-docs-create-aggregate](https://www.postgresql.org/docs/current/sql-createaggregate.html)
+- [DROP AGGREGATE](../ddl_drop_aggregate)
+
+[postgresql-docs-create-aggregate]: https://www.postgresql.org/docs/11/sql-createaggregate.html

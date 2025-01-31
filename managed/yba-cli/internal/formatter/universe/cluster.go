@@ -21,7 +21,7 @@ import (
 
 const (
 	defaultCluster = "table {{.UUID}}\t{{.ClusterNodes}}\t{{.ClusterRF}}" +
-		"\t{{.ClusterDedicatedMasters}}"
+		"\t{{.ClusterDedicatedMasters}}\t{{.LinuxVersion}}"
 	instanceTable1 = "table {{.InstanceType}}\t{{.VolumeSize}}\t{{.NumVolumes}}" +
 		"\t{{.DiskIops}}"
 	instanceTable2       = "table {{.Throughput}}\t{{.StorageClass}}\t{{.StorageType}}"
@@ -29,19 +29,22 @@ const (
 		"\t{{.MasterNumVolumes}}\t{{.MasterDiskIops}}"
 	masterInstanceTable2 = "table {{.MasterThroughput}}\t{{.MasterStorageClass}}" +
 		"\t{{.MasterStorageType}}"
-	masterGFlagsTable   = "table {{.MasterGFlags}}"
-	tserverGFlagsTable  = "table {{.TServerGFlags}}"
-	userTagsTable       = "table {{.UserTags}}"
-	userTagsHeader      = "User Tags"
-	masterGFlagsHeader  = "Master GFlags"
-	tserverGFlagsHeader = "TServer GFlags"
-	instanceTypeHeader  = "Instance Type"
-	volumeSizeHeader    = "Volume Size"
-	numVolumesHeader    = "Number of Volumes"
-	diskIopsHeader      = "Disk IOPS"
-	throughputHeader    = "Throughput"
-	storageClassHeader  = "Storage Class"
-	storageTypeHeader   = "Storage Type"
+	masterGFlagsTable    = "table {{.MasterGFlags}}"
+	tserverGFlagsTable   = "table {{.TServerGFlags}}"
+	specificGFlagsTable  = "table {{.SpecificGFlags}}"
+	userTagsTable        = "table {{.UserTags}}"
+	userTagsHeader       = "User Tags"
+	masterGFlagsHeader   = "Master GFlags"
+	tserverGFlagsHeader  = "TServer GFlags"
+	specificGFlagsHeader = "Specific GFlags (in json)"
+	instanceTypeHeader   = "Instance Type"
+	volumeSizeHeader     = "Volume Size"
+	numVolumesHeader     = "Number of Volumes"
+	diskIopsHeader       = "Disk IOPS"
+	throughputHeader     = "Throughput"
+	storageClassHeader   = "Storage Class"
+	storageTypeHeader    = "Storage Type"
+	linuxVersionHeader   = "Linux Version"
 )
 
 // ClusterContext for cluster outputs
@@ -54,7 +57,7 @@ type ClusterContext struct {
 // NewClusterFormat for formatting output
 func NewClusterFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultCluster
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -189,6 +192,18 @@ func (c *ClusterContext) Write(index int) error {
 		return err
 	}
 	c.PostFormat(tmpl, NewClusterContext())
+	c.Output.Write([]byte("\n"))
+
+	tmpl, err = c.startSubsection(specificGFlagsTable)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	if err := c.ContextFormat(tmpl, cc.Cluster); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	c.PostFormat(tmpl, NewClusterContext())
 
 	// Regions Subsection
 	placementInfo := c.c.GetPlacementInfo()
@@ -234,6 +249,7 @@ func NewClusterContext() *ClusterContext {
 		"UUID":                    formatter.UUIDHeader,
 		"ClusterNodes":            nodeHeader,
 		"ClusterRF":               rfHeader,
+		"LinuxVersion":            linuxVersionHeader,
 		"ClusterDedicatedMasters": dedicatedMastersHeader,
 		"MasterGFlags":            masterGFlagsHeader,
 		"TServerGFlags":           tserverGFlagsHeader,
@@ -252,6 +268,7 @@ func NewClusterContext() *ClusterContext {
 		"MasterThroughput":        throughputHeader,
 		"MasterStorageClass":      storageClassHeader,
 		"MasterStorageType":       storageTypeHeader,
+		"SpecificGFlags":          specificGFlagsHeader,
 	}
 	return &clusterCtx
 }
@@ -271,6 +288,24 @@ func (c *ClusterContext) ClusterNodes() string {
 func (c *ClusterContext) ClusterRF() string {
 	userIntent := c.c.GetUserIntent()
 	return fmt.Sprintf("%d", userIntent.GetReplicationFactor())
+}
+
+// LinuxVersion fetches linux version
+func (c *ClusterContext) LinuxVersion() string {
+	userIntent := c.c.GetUserIntent()
+	imageBundleUUID := userIntent.GetImageBundleUUID()
+	providerUUID := userIntent.GetProvider()
+	for _, p := range Providers {
+		if strings.Compare(p.GetUuid(), providerUUID) == 0 {
+			for _, imageBundle := range p.GetImageBundles() {
+				if strings.Compare(imageBundle.GetUuid(), imageBundleUUID) == 0 {
+					return fmt.Sprintf("%s(%s)", imageBundle.GetName(), imageBundle.GetUuid())
+				}
+			}
+		}
+	}
+
+	return imageBundleUUID
 }
 
 // ClusterDedicatedMasters fetches boolean
@@ -308,6 +343,17 @@ func (c *ClusterContext) TServerGFlags() string {
 	gflags = gflags[0 : len(gflags)-1]
 
 	return gflags
+}
+
+// SpecificGFlags for formatting output
+func (c *ClusterContext) SpecificGFlags() string {
+	userIntent := c.c.GetUserIntent()
+	jsonBytes, err := json.MarshalIndent(userIntent.GetSpecificGFlags(), "", "  ")
+	if err != nil {
+		fmt.Println("Error converting JSON to string:", err)
+		return ""
+	}
+	return string(jsonBytes)
 }
 
 // UserTags fetches map as string

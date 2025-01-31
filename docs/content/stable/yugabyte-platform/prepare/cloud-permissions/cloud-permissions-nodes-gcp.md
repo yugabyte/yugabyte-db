@@ -70,7 +70,7 @@ Then use one of the following methods:
 
 | Save for later | To configure |
 | :--- | :--- |
-| Service account JSON | [GCP cloud provider](../../../configure-yugabyte-platform/gcp/) |
+| Service account JSON | [GCP provider configuration](../../../configure-yugabyte-platform/gcp/) |
 
 ## Managing SSH keys for VMs
 
@@ -79,8 +79,8 @@ When creating VMs on the public cloud, YugabyteDB requires SSH keys to access th
 - YBA managed keys. When YBA creates VMs, it will generate and manage the SSH key pair.
 - Provide a custom key pair. Create your own custom SSH keys and upload the SSH keys when you create the provider.
 
-If you will be using your own custom SSH keys, then ensure that you have them when installing YBA and creating your public cloud provider.
+If you will be using your own custom SSH keys, then ensure that you have them when installing YBA and creating your public cloud provider configuration.
 
 | Save for later | To configure |
 | :--- | :--- |
-| Custom SSH keys | [GCP provider](../../../configure-yugabyte-platform/gcp/) |
+| Custom SSH keys | [GCP provider configuration](../../../configure-yugabyte-platform/gcp/) |

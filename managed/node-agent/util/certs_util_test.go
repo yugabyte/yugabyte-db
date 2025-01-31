@@ -5,7 +5,6 @@ package util
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -25,7 +24,7 @@ func TestSaveCerts(t *testing.T) {
 	//Check if the certs are saved and check the value of the files.
 	path := dir + "/test1/" + NodeAgentCertFile
 	if _, err := os.Stat(path); err == nil {
-		privateKey, err := ioutil.ReadFile(path)
+		privateKey, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("Unable to read certs - %s", err.Error())
 		}

@@ -62,4 +62,6 @@ extern int64 NextRunId(void);
 extern void MarkPendingRunsAsFailed(void);
 extern char *GetCronStatus(CronStatus cronstatus);
 
+extern void InvalidateJobCacheCallback(Datum argument, Oid relationId);
+
 #endif

@@ -20,7 +20,10 @@
 #include "yb/util/atomic.h"
 
 DEFINE_RUNTIME_bool(enforce_tablet_replica_limits, false,
-                    "Whether to enforce the tablet replica limits.");
+    "When set, create table and split tablet operations will be blocked if they would cause the "
+    "total number of tablet replicas running in the universe to be too large. The limit for the "
+    "maximum number of tablet replicas the universe can support is set by the flags "
+    "tablet_replicas_per_gib_limit and tablet_replicas_per_core_limit.");
 TAG_FLAG(enforce_tablet_replica_limits, advanced);
 
 namespace yb::master {
@@ -59,7 +62,7 @@ AggregatedClusterInfo ComputeAggregatedClusterInfo(
     if (ts->placement_uuid() != placement_uuid) {
       continue;
     }
-    const auto resources = ts->GetRegistration().resources();
+    const auto resources = ts->GetResources();
     cores_aggregator.Add(resources.has_core_count(), resources.core_count());
     memory_aggregator.Add(
         resources.has_tablet_overhead_ram_in_bytes(), resources.tablet_overhead_ram_in_bytes());

@@ -48,7 +48,7 @@ extern void ybgincostestimate(struct PlannerInfo *root,
 							  double *indexPages);
 extern bytea *ybginoptions(Datum reloptions, bool validate);
 extern bool ybginvalidate(Oid opclassoid);
-extern void ybginbindschema(YBCPgStatement handle,
+extern void ybginbindschema(YbcPgStatement handle,
 							struct IndexInfo *indexInfo,
 							TupleDesc indexTupleDesc,
 							int16 *coloptions);

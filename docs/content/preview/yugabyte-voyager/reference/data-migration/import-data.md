@@ -52,11 +52,13 @@ The valid *arguments* for import data are described in the following table:
 | :------- | :------------------------ |
 | --batch-size | Size of batches in the number of rows generated for ingestion during import data. <br>Default: 20000 rows<br>Example: `yb-voyager import data ... --batch-size 20000` |
 | --disable-pb |Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --enable&#8209;upsert | Enable UPSERT mode on target tables while importing data. <br>Default: true<br> Usage for disabling the mode: `yb-voyager import data ... --enable-upsert false`<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --enable&#8209;upsert | Enable UPSERT mode on target tables while importing data. <br> Note: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, setting this flag to true may lead to corruption of the indexes. <br>Default: false<br> Usage for disabling the mode: `yb-voyager import data ... --enable-upsert false`<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --table-list | Comma-separated list of names of source database tables whose data is to be imported. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`.<br> For example, `--table-list '"Products", order*'`.<br> This argument is unsupported for live migration.|
 | --exclude&#8209;table&#8209;list | Comma-separated list of names of source database tables for which data needs to be excluded during import. Table names follow the same convention as `--table-list`. <br> This argument is unsupported for live migration. |
 | --table-list-file&#8209;path | Path of the file containing the list of names of source database tables (comma separated or line separated) to import.  Table names use the same convention as `--table-list`. |
 | &#8209;&#8209;exclude&#8209;table&#8209;list&#8209;file&#8209;path |  Path of the file containing the list of names of source database tables (comma separated or line separated) to exclude while importing data of those exported tables. Table names follow the same convention as `--table-list`. |
+| &#8209;&#8209;enable&#8209;adaptive&#8209;parallelism | Adapt parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --adaptive-parallelism-max | Number of maximum parallel jobs to use while importing data when adaptive parallelism is enabled. By default, voyager tries to determine the total number of cores `N` and use `N/2` as the maximum parallel jobs. |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
 | -h, --help | Command line help. |
 | --parallel-jobs | Number of parallel jobs to use while importing data. Depending on the YugabyteDB database configuration, the value of `--parallel-jobs` should be tweaked such that at most 50% of target cores are utilised. <br>Default: If yb-voyager can determine the total number of cores N in the YugabyteDB database cluster, it uses N/2 as the default for `import data` and N/4 for `import data to target`. Otherwise, it defaults to twice the number of nodes in the cluster.|
@@ -75,6 +77,7 @@ The valid *arguments* for import data are described in the following table:
 | [--target-ssl-crl](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing the SSL certificate revocation list (CRL).|
 | --target-ssl-mode | Specify the SSL mode for the target database as one of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| --truncate-tables | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
 ### Example
@@ -235,6 +238,7 @@ The valid *arguments* for import data to source-replica are described in the fol
 | --parallel-jobs | The number of parallel batches issued to the source-replica database. <br> Default: 16 (Oracle); or, if yb-voyager can determine the total number of cores N, then N/2, otherwise 8 (PostgreSQL) |
 | --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If the target YugabyteDB database has any non-empty tables, you are prompted to continue the import without truncating those tables; if you proceed without truncating, then yb-voyager starts ingesting the data present in the data files in non-upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, duplicate data may be inserted. You can avoid duplication by excluding the table using `--exclude-table-list`, or by truncating those tables manually before using the `start-clean` flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --truncate-tables | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
 | -y, --yes | Answer yes to all prompts during the migration. <br>Default: false |
 
 ### Example

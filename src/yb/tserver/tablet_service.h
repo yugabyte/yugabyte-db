@@ -184,13 +184,17 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                          ListMasterServersResponsePB* resp,
                          rpc::RpcContext context) override;
 
-void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
-                       ClearUniverseUuidResponsePB* resp,
-                       rpc::RpcContext context) override;
+  void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
+                         ClearUniverseUuidResponsePB* resp,
+                         rpc::RpcContext context) override;
 
   void GetLockStatus(const GetLockStatusRequestPB* req,
                      GetLockStatusResponsePB* resp,
                      rpc::RpcContext context) override;
+
+  void GetMetrics(const GetMetricsRequestPB* req,
+                  GetMetricsResponsePB* resp,
+                  rpc::RpcContext context) override;
 
   // Method to cancel a given transaction. If the passed in request has a status tablet id, a cancel
   // transaction request is sent to that status tablet alone. Else, the request is broadcast to all
@@ -213,6 +217,26 @@ void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
 
   void ClearAllMetaCachesOnServer(
       const ClearAllMetaCachesOnServerRequestPB* req, ClearAllMetaCachesOnServerResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void ClearMetacache(
+      const ClearMetacacheRequestPB* req, ClearMetacacheResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void AcquireObjectLocks(
+      const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void ReleaseObjectLocks(
+      const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void AdminExecutePgsql(
+      const AdminExecutePgsqlRequestPB* req, AdminExecutePgsqlResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void GetLocalPgTxnSnapshot(
+      const GetLocalPgTxnSnapshotRequestPB* req, GetLocalPgTxnSnapshotResponsePB* resp,
       rpc::RpcContext context) override;
 
   void Shutdown() override;
@@ -322,6 +346,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void EnableDbConns(
+      const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void TestRetry(
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
 
@@ -331,7 +359,12 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   Status DoCreateTablet(
       const CreateTabletRequestPB* req, CreateTabletResponsePB* resp, const MonoDelta& timeout);
 
+  Result<HostPort> GetLocalPgHostPort();
+
   Status DoClonePgSchema(const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp);
+
+  Status DoEnableDbConns(
+      const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp);
 
   Status SetupCDCSDKRetention(
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,

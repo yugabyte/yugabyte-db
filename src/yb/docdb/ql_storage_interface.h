@@ -17,21 +17,30 @@
 #include <string>
 #include <type_traits>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
+#include "yb/util/kv_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/operation_counter.h"
 
 namespace yb::docdb {
 
+using YbctidBounds = std::pair<Slice, Slice>;
+
 // An interface to support various different storage backends for a QL table.
 class YQLStorageIf {
  public:
+  struct SampleBlocksData {
+    std::vector<std::pair<KeyBuffer, KeyBuffer>> boundaries;
+    size_t num_total_blocks;
+  };
+
   typedef std::unique_ptr<YQLStorageIf> UniPtr;
   typedef std::shared_ptr<YQLStorageIf> SharedPtr;
 
@@ -47,8 +56,7 @@ class YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const qlexpr::QLScanSpec& spec,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
-      const DocDBStatistics* statistics = nullptr) const = 0;
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   virtual Status BuildYQLScanSpec(
       const QLReadRequestPB& request,
@@ -76,8 +84,7 @@ class YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       const ReadOperationData& read_operation_data,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
-      const DocDBStatistics* statistics = nullptr) const = 0;
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   virtual Status InitIterator(
       DocRowwiseIterator* doc_iter,
@@ -94,22 +101,26 @@ class YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const dockv::DocKey& start_doc_key,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
-      const DocDBStatistics* statistics = nullptr) const = 0;
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   // Create iterator for querying by ybctid.
-  virtual Status GetIteratorForYbctid(
+  virtual Result<std::unique_ptr<YQLRowwiseIteratorIf>> GetIteratorForYbctid(
       uint64 stmt_id,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const ReadOperationData& read_operation_data,
-      const QLValuePB& min_ybctid,
-      const QLValuePB& max_ybctid,
+      const YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
-      const DocDBStatistics* statistics = nullptr,
       SkipSeek skip_seek = SkipSeek::kFalse) const = 0;
+
+  // Returns up to num_blocks_for_sample number of sample blocks boundaries.
+  // Each boundary is an encoded doc key or its prefix.
+  // Lower bound is exclusive, upper bound is inclusive.
+  virtual Result<SampleBlocksData> GetSampleBlocks(
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      DocDbBlocksSamplingMethod blocks_sampling_method,
+      size_t num_blocks_for_sample) const = 0;
 
   virtual std::string ToString() const = 0;
 };

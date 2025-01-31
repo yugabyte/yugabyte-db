@@ -24,7 +24,7 @@
                 {{- end -}}
                 {{- block "main" . -}}{{- end -}}
               </main>
-             {{- if ne .Params.showRightNav false -}}
+              {{- if ne .Params.showRightNav false -}}
                 <aside class="d-none d-xl-block td-sidebar-toc d-print-none">
                   {{- partial "toc.html" . -}}
                 </aside>

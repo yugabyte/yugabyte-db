@@ -4,8 +4,8 @@ import static play.mvc.Results.forbidden;
 import static play.mvc.Results.unauthorized;
 
 import org.pac4j.core.context.HttpConstants;
+import org.pac4j.core.context.WebContext;
 import org.pac4j.core.exception.http.HttpAction;
-import org.pac4j.play.PlayWebContext;
 import org.pac4j.play.http.PlayHttpActionAdapter;
 import play.mvc.Result;
 
@@ -14,7 +14,7 @@ import play.mvc.Result;
 public class PlatformHttpActionAdapter extends PlayHttpActionAdapter {
 
   @Override
-  public Result adapt(final HttpAction action, PlayWebContext context) {
+  public Result adapt(final HttpAction action, WebContext context) {
     if (action.getCode() == HttpConstants.UNAUTHORIZED) {
       return unauthorized();
     } else if (action.getCode() == HttpConstants.FORBIDDEN) {

@@ -14,9 +14,11 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.TablesMetadata;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -68,6 +70,7 @@ public class BackupTableYbc extends YbcTaskBase {
     @JsonIgnore public Backup previousBackup = null;
     public String nodeIp = null;
     public String taskID = null;
+    public Duration scheduleRetention;
     @JsonIgnore public YbcBackupNodeRetriever nodeRetriever;
     @JsonIgnore Universe universe;
   }
@@ -94,6 +97,9 @@ public class BackupTableYbc extends YbcTaskBase {
               taskParams().backupUuid,
               taskParams().getKeyspace(),
               taskParams().backupParamsIdentifier);
+
+      // Initialise node-pool for backups
+      taskParams().nodeRetriever.initializeNodePoolForBackups();
 
       // Wait on node-ip
       if (StringUtils.isBlank(taskParams().nodeIp)) {
@@ -199,7 +205,7 @@ public class BackupTableYbc extends YbcTaskBase {
 
       // Poll create backup progress on yb-controller and handle result
       try {
-        pollTaskProgress(ybcClient, taskParams().taskID);
+        pollTaskProgress(ybcClient, taskParams().taskID, taskParams().nodeIp);
         handleBackupResult();
         ybcManager.deleteYbcBackupTask(taskParams().taskID, ybcClient);
         taskParams().nodeRetriever.putNodeIPBackToPool(taskParams().nodeIp);
@@ -285,6 +291,12 @@ public class BackupTableYbc extends YbcTaskBase {
                         response.responseCloudStoreSpec.regionLocations, taskParams());
               }
               tableParams.setTablespacesList(response.tablespaceInfos);
+              // Set restorable windows
+              if (response.restorableWindow != null) {
+                tableParams.setBackupPointInTimeRestoreWindow(
+                    new BackupPointInTimeRestoreWindow(
+                        response.restorableWindow, taskParams().scheduleRetention.toMillis()));
+              }
               BackupTableParams parentParams = b.getBackupInfo();
               parentParams
                   .backupDBStates

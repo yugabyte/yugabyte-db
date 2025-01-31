@@ -15,13 +15,18 @@
 
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
+#include "yb/common/pg_types.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_output_client.h"
+#include "yb/util/scope_exit.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
@@ -35,6 +40,10 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_at_end, false,
     "Whether the ddl_queue handler should fail at the end of processing (this will cause it "
     "to reprocess the current batch in a loop).");
 
+DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_at_start, false,
+    "Whether the ddl_queue handler should fail at the start of processing (this will cause it "
+    "to reprocess the current batch in a loop).");
+
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
   SCHECK( \
       doc.HasMember(member_name), NotFound, \
@@ -45,9 +54,6 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_at_end, false,
 
 #define HAS_MEMBER_OF_TYPE(doc, member_name, is_type) \
   (doc.HasMember(member_name) && doc[member_name].is_type())
-
-#define LOG_QUERY(query) \
-  LOG_IF(INFO, FLAGS_TEST_xcluster_ddl_queue_handler_log_queries) << "Running query: " << query;
 
 namespace yb::tserver {
 
@@ -68,11 +74,102 @@ const char* kDDLJsonQuery = "query";
 const char* kDDLJsonVersion = "version";
 const char* kDDLJsonSchema = "schema";
 const char* kDDLJsonUser = "user";
+const char* kDDLJsonNewRelMap = "new_rel_map";
+const char* kDDLJsonRelName = "rel_name";
+const char* kDDLJsonRelFileOid = "relfile_oid";
+const char* kDDLJsonEnumLabelInfo = "enum_label_info";
 const char* kDDLJsonManualReplication = "manual_replication";
 const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
 
-const std::unordered_set<std::string> kSupportedCommandTags{"CREATE TABLE", "CREATE INDEX"};
+const std::unordered_set<std::string> kSupportedCommandTags {
+    // Relations
+    "CREATE TABLE",
+    "CREATE INDEX",
+    "CREATE TYPE",
+    "DROP TABLE",
+    "DROP INDEX",
+    "DROP TYPE",
+    "ALTER TABLE",
+    "ALTER INDEX",
+    "ALTER TYPE",
+    // Pass thru DDLs
+    "CREATE ACCESS METHOD",
+    "CREATE AGGREGATE",
+    "CREATE CAST",
+    "CREATE COLLATION",
+    "CREATE DOMAIN",
+    "CREATE EXTENSION",
+    "CREATE FOREIGN DATA WRAPPER",
+    "CREATE FOREIGN TABLE",
+    "CREATE FUNCTION",
+    "CREATE OPERATOR",
+    "CREATE OPERATOR CLASS",
+    "CREATE OPERATOR FAMILY",
+    "CREATE POLICY",
+    "CREATE PROCEDURE",
+    "CREATE ROUTINE",
+    "CREATE RULE",
+    "CREATE SCHEMA",
+    "CREATE SERVER",
+    "CREATE STATISTICS",
+    "CREATE TEXT SEARCH CONFIGURATION",
+    "CREATE TEXT SEARCH DICTIONARY",
+    "CREATE TEXT SEARCH PARSER",
+    "CREATE TEXT SEARCH TEMPLATE",
+    "CREATE TRIGGER",
+    "CREATE USER MAPPING",
+    "CREATE VIEW",
+    "COMMENT",
+    "ALTER AGGREGATE",
+    "ALTER CAST",
+    "ALTER COLLATION",
+    "ALTER DOMAIN",
+    "ALTER FUNCTION",
+    "ALTER OPERATOR",
+    "ALTER OPERATOR CLASS",
+    "ALTER OPERATOR FAMILY",
+    "ALTER POLICY",
+    "ALTER PROCEDURE",
+    "ALTER ROUTINE",
+    "ALTER RULE",
+    "ALTER SCHEMA",
+    "ALTER STATISTICS",
+    "ALTER TEXT SEARCH CONFIGURATION",
+    "ALTER TEXT SEARCH DICTIONARY",
+    "ALTER TEXT SEARCH PARSER",
+    "ALTER TEXT SEARCH TEMPLATE",
+    "ALTER TRIGGER",
+    "ALTER VIEW",
+    "DROP ACCESS METHOD",
+    "DROP AGGREGATE",
+    "DROP CAST",
+    "DROP COLLATION",
+    "DROP DOMAIN",
+    "DROP EXTENSION",
+    "DROP FOREIGN DATA WRAPPER",
+    "DROP FOREIGN TABLE",
+    "DROP FUNCTION",
+    "DROP OPERATOR",
+    "DROP OPERATOR CLASS",
+    "DROP OPERATOR FAMILY",
+    "DROP POLICY",
+    "DROP PROCEDURE",
+    "DROP ROUTINE",
+    "DROP RULE",
+    "DROP SCHEMA",
+    "DROP SERVER",
+    "DROP STATISTICS",
+    "DROP TEXT SEARCH CONFIGURATION",
+    "DROP TEXT SEARCH DICTIONARY",
+    "DROP TEXT SEARCH PARSER",
+    "DROP TEXT SEARCH TEMPLATE",
+    "DROP TRIGGER",
+    "DROP USER MAPPING",
+    "DROP VIEW",
+    "IMPORT FOREIGN SCHEMA",
+    "SECURITY LABEL",
+};
 
 Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data) {
   SCHECK(!raw_json_data.empty(), InvalidArgument, "Received empty json to parse.");
@@ -93,10 +190,15 @@ Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data
 
 XClusterDDLQueueHandler::XClusterDDLQueueHandler(
     client::YBClient* local_client, const NamespaceName& namespace_name,
-    const NamespaceId& namespace_id, ConnectToPostgresFunc connect_to_pg_func)
+    const NamespaceId& source_namespace_id, const NamespaceId& target_namespace_id,
+    const std::string& log_prefix, TserverXClusterContextIf& xcluster_context,
+    ConnectToPostgresFunc connect_to_pg_func)
     : local_client_(local_client),
       namespace_name_(namespace_name),
-      namespace_id_(namespace_id),
+      source_namespace_id_(source_namespace_id),
+      target_namespace_id_(target_namespace_id),
+      log_prefix_(log_prefix),
+      xcluster_context_(xcluster_context),
       connect_to_pg_func_(std::move(connect_to_pg_func)) {}
 
 XClusterDDLQueueHandler::~XClusterDDLQueueHandler() {}
@@ -117,15 +219,19 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
   // We don't expect to get an invalid safe time, but it is possible in edge cases (see #21528).
   // Log an error and return for now, wait until a valid safe time does come in so we can continue.
   if (target_safe_ht.is_special()) {
-    LOG(WARNING) << "Received invalid safe time " << target_safe_ht;
+    LOG_WITH_PREFIX(WARNING) << "Received invalid safe time " << target_safe_ht;
     return Status::OK();
   }
+
+  SCHECK(
+      !FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start, InternalError,
+      "Failing due to xcluster_ddl_queue_handler_fail_at_start");
 
   // TODO(#20928): Make these calls async.
   HybridTime safe_time_ht = VERIFY_RESULT(GetXClusterSafeTimeForNamespace());
   SCHECK(
       !safe_time_ht.is_special(), InternalError, "Found invalid safe time $0 for namespace $1",
-      safe_time_ht, namespace_id_);
+      safe_time_ht, target_namespace_id_);
   SCHECK_GE(
       safe_time_ht, target_safe_ht, TryAgain, "Waiting for other pollers to catch up to safe time");
 
@@ -135,44 +241,101 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
   auto rows = VERIFY_RESULT(GetRowsToProcess(target_safe_ht));
   for (const auto& [start_time, query_id, raw_json_data] : rows) {
     rapidjson::Document doc = VERIFY_RESULT(ParseSerializedJson(raw_json_data));
-    VALIDATE_MEMBER(doc, kDDLJsonVersion, Int);
-    const auto& version = doc[kDDLJsonVersion].GetInt();
-    SCHECK_EQ(version, kDDLQueueJsonVersion, InvalidArgument, "Invalid JSON version");
-
-    VALIDATE_MEMBER(doc, kDDLJsonCommandTag, String);
-    VALIDATE_MEMBER(doc, kDDLJsonQuery, String);
-    const std::string& command_tag = doc[kDDLJsonCommandTag].GetString();
-    const std::string& query = doc[kDDLJsonQuery].GetString();
+    const auto query_info = VERIFY_RESULT(GetDDLQueryInfo(doc, start_time, query_id));
 
     // Need to reverify replicated_ddls if this DDL has already been processed.
-    if (VERIFY_RESULT(CheckIfAlreadyProcessed(start_time, query_id))) {
+    if (VERIFY_RESULT(CheckIfAlreadyProcessed(query_info))) {
       continue;
     }
 
     if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonManualReplication, IsBool)) {
       // Just add to the replicated_ddls table.
-      RETURN_NOT_OK(ProcessManualExecutionQuery({query, start_time, query_id}));
+      RETURN_NOT_OK(ProcessManualExecutionQuery(query_info));
       continue;
     }
 
-    const std::string& schema =
-        HAS_MEMBER_OF_TYPE(doc, kDDLJsonSchema, IsString) ? doc[kDDLJsonSchema].GetString() : "";
-    const std::string& user =
-        HAS_MEMBER_OF_TYPE(doc, kDDLJsonUser, IsString) ? doc[kDDLJsonUser].GetString() : "";
-    VLOG(1) << "ProcessDDLQueueTable: Processing entry "
-            << YB_STRUCT_TO_STRING(start_time, query_id, command_tag, query, schema, user);
+    VLOG_WITH_PREFIX(1) << "ProcessDDLQueueTable: Processing entry " << query_info.ToString();
 
     SCHECK(
-        kSupportedCommandTags.contains(command_tag), InvalidArgument,
-        "Found unsupported command tag $0", command_tag);
+        kSupportedCommandTags.contains(query_info.command_tag), InvalidArgument,
+        "Found unsupported command tag $0", query_info.command_tag);
 
-    RETURN_NOT_OK(ProcessDDLQuery({query, start_time, query_id, schema, user}));
+    std::vector<YsqlFullTableName> new_relations;
+    auto se = ScopeExit([this, &new_relations]() {
+      // Ensure that we always clear the xcluster_context.
+      for (const auto& new_rel : new_relations) {
+        xcluster_context_.ClearSourceTableMappingForCreateTable(new_rel);
+      }
+    });
+
+    RETURN_NOT_OK(ProcessNewRelations(doc, query_info.schema, new_relations));
+    RETURN_NOT_OK(ProcessDDLQuery(query_info));
+
+    VLOG_WITH_PREFIX(2) << "ProcessDDLQueueTable: Successfully processed entry "
+                        << query_info.ToString();
   }
 
   if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) {
     return STATUS(InternalError, "Failing due to xcluster_ddl_queue_handler_fail_at_end");
   }
   applied_new_records_ = false;
+  return Status::OK();
+}
+
+Result<XClusterDDLQueueHandler::DDLQueryInfo> XClusterDDLQueueHandler::GetDDLQueryInfo(
+    rapidjson::Document& doc, int64 start_time, int64 query_id) {
+  DDLQueryInfo query_info;
+
+  VALIDATE_MEMBER(doc, kDDLJsonVersion, Int);
+  query_info.version = doc[kDDLJsonVersion].GetInt();
+  SCHECK_EQ(query_info.version, kDDLQueueJsonVersion, InvalidArgument, "Invalid JSON version");
+
+  query_info.start_time = start_time;
+  query_info.query_id = query_id;
+
+  VALIDATE_MEMBER(doc, kDDLJsonCommandTag, String);
+  query_info.command_tag = doc[kDDLJsonCommandTag].GetString();
+  VALIDATE_MEMBER(doc, kDDLJsonQuery, String);
+  query_info.query = doc[kDDLJsonQuery].GetString();
+
+  query_info.schema =
+      HAS_MEMBER_OF_TYPE(doc, kDDLJsonSchema, IsString) ? doc[kDDLJsonSchema].GetString() : "";
+  query_info.user =
+      HAS_MEMBER_OF_TYPE(doc, kDDLJsonUser, IsString) ? doc[kDDLJsonUser].GetString() : "";
+
+  rapidjson::StringBuffer assignment_buffer;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(assignment_buffer);
+  writer.StartObject();
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonEnumLabelInfo, IsArray)) {
+    writer.Key(kDDLJsonEnumLabelInfo);
+    doc[kDDLJsonEnumLabelInfo].Accept(writer);
+  }
+  writer.EndObject();
+  query_info.json_for_oid_assignment = assignment_buffer.GetString();
+  return query_info;
+}
+
+Status XClusterDDLQueueHandler::ProcessNewRelations(
+    rapidjson::Document& doc, const std::string& schema,
+    std::vector<YsqlFullTableName>& new_relations) {
+  const auto& new_rel_map = HAS_MEMBER_OF_TYPE(doc, kDDLJsonNewRelMap, IsArray)
+                                ? std::optional(doc[kDDLJsonNewRelMap].GetArray())
+                                : std::nullopt;
+  if (new_rel_map) {
+    // If there are new relations, need to update the context with the table name -> source
+    // table id mapping. This will be passed to CreateTable and will be used in
+    // add_table_to_xcluster_target task to find the matching source table.
+    for (const auto& new_rel : *new_rel_map) {
+      VALIDATE_MEMBER(new_rel, kDDLJsonRelFileOid, Int);
+      VALIDATE_MEMBER(new_rel, kDDLJsonRelName, String);
+      const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id_));
+      const auto relfile_oid = new_rel[kDDLJsonRelFileOid].GetInt();
+      const auto rel_name = new_rel[kDDLJsonRelName].GetString();
+      RETURN_NOT_OK(xcluster_context_.SetSourceTableMappingForCreateTable(
+          {namespace_name_, schema, rel_name}, PgObjectId(db_oid, relfile_oid)));
+      new_relations.push_back({namespace_name_, schema, rel_name});
+    }
+  }
   return Status::OK();
 }
 
@@ -192,8 +355,19 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
     setup_query << Format("SET ROLE $0;", query_info.user);
   }
 
+  // Pass information needed to assign OIDs that need to be preserved across the universes.
+  setup_query << Format(
+      "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('$0');",
+      query_info.json_for_oid_assignment);
+
+  setup_query << "SET yb_skip_data_insert_for_table_rewrite=true;";
+
   RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
   RETURN_NOT_OK(RunAndLogQuery(query_info.query));
+  RETURN_NOT_OK(
+      // The SELECT here can't be last; otherwise, RunAndLogQuery complains that rows are returned.
+      RunAndLogQuery("SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('{}');"
+                     "SET yb_skip_data_insert_for_table_rewrite=false;"));
   return Status::OK();
 }
 
@@ -212,14 +386,15 @@ Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(const DDLQueryInfo& 
 }
 
 Status XClusterDDLQueueHandler::RunAndLogQuery(const std::string& query) {
-  LOG_IF(INFO, FLAGS_TEST_xcluster_ddl_queue_handler_log_queries)
+  LOG_IF_WITH_PREFIX(INFO, FLAGS_TEST_xcluster_ddl_queue_handler_log_queries)
       << "XClusterDDLQueueHandler: Running query: " << query;
   return pg_conn_->Execute(query);
 }
 
-Result<bool> XClusterDDLQueueHandler::CheckIfAlreadyProcessed(int64 start_time, int64 query_id) {
-  return pg_conn_->FetchRow<bool>(
-      Format("EXECUTE $0($1, $2)", kDDLPrepStmtAlreadyProcessed, start_time, query_id));
+Result<bool> XClusterDDLQueueHandler::CheckIfAlreadyProcessed(const DDLQueryInfo& query_info) {
+  return pg_conn_->FetchRow<bool>(Format(
+      "EXECUTE $0($1, $2)", kDDLPrepStmtAlreadyProcessed, query_info.start_time,
+      query_info.query_id));
 }
 
 Status XClusterDDLQueueHandler::InitPGConnection() {
@@ -253,7 +428,7 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
 
 Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
   return local_client_->GetXClusterSafeTimeForNamespace(
-      namespace_id_, master::XClusterSafeTimeFilter::DDL_QUEUE);
+      target_namespace_id_, master::XClusterSafeTimeFilter::DDL_QUEUE);
 }
 
 Result<std::vector<std::tuple<int64, int64, std::string>>>

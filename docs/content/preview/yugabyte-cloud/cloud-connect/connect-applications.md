@@ -3,6 +3,9 @@ title: Connect applications
 linkTitle: Connect applications
 description: Connect applications to YugabyteDB Aeon clusters
 headcontent: Get the database connection parameters for your application
+aliases:
+  - /preview/yugabyte-cloud/cloud-examples/
+  - /preview/yugabyte-cloud/cloud-examples/connect-application/
 menu:
   preview_yugabyte-cloud:
     identifier: connect-applications
@@ -13,7 +16,7 @@ type: docs
 
 Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. YugabyteDB also supports [smart drivers](../../../drivers-orms/smart-drivers/), which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
-To connect to a YugabyteDB Aeon cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using. For examples of applications that connect to YugabyteDB Aeon using common drivers, refer to [Build an application](../../../tutorials/build-apps/).
+To connect to a YugabyteDB Aeon cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using. For examples of applications that connect to YugabyteDB Aeon using common drivers, refer to [Build an application](/preview/tutorials/build-apps/).
 
 You may want to add a database user specifically for your application. Refer to [Add database users](../../cloud-secure-clusters/add-users/).
 
@@ -46,7 +49,7 @@ Clusters deployed in VPCs don't expose public IP addresses unless you explicitly
 
 #### Using smart drivers
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. If not deployed in a peered VPC, the smart driver falls back to the upstream driver behavior. For more information on smart drivers and using smart drivers with YugabyteDB Aeon, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. If not deployed in a peered VPC, although the smart driver falls back to the upstream driver behavior, it first attempts to connect to the inaccessible nodes, incurring added latency. For more information on smart drivers and using smart drivers with YugabyteDB Aeon, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
 
 ### Cluster certificate
 
@@ -75,10 +78,10 @@ To get the connection parameters for your cluster:
 
 Select **Connection String** to display the string that YSQL applications can use to connect. Select **Parameters** to display the individual parameters.
 
-Here's an example of a generated `ysqlsh` string:
+Here's an example of a generated ysqlsh string:
 
 ```sh
-postgresql://<DB USER>:<DB PASSWORD>@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.ybdb.io:5433/yugabyte? \
+postgresql://<DB USER>:<DB PASSWORD>@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.yugabyte.cloud:5433/yugabyte? \
 ssl=true& \
 sslmode=verify-full& \
 sslrootcert=<ROOT_CERT_PATH>
@@ -94,15 +97,15 @@ To use the string in your application, replace the following:
 For example:
 
 ```sh
-postgresql://admin:qwerty@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.ybdb.io:5433/yugabyte?ssl=true& \
+postgresql://admin:qwerty@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.yugabyte.cloud:5433/yugabyte?ssl=true& \
 sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
-The connection string includes parameters for TLS settings (`ssl`, `sslmode`, and `sslrootcert`). The generated `ysqlsh` connection string uses the `verify-full` SSL mode by default.
+The connection string includes parameters for TLS settings (`ssl`, `sslmode`, and `sslrootcert`). The generated ysqlsh connection string uses the `verify-full` SSL mode by default.
 
 For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
-If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to YugabyteDB Aeon, refer to [Connect Hasura Cloud to YugabyteDB Aeon](../../cloud-examples/hasura-cloud/).
+If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to YugabyteDB Aeon, refer to [Connect Hasura Cloud to YugabyteDB Aeon](../../../integrations/hasura/hasura-cloud/).
 
   {{% /tab %}}
 
@@ -120,13 +123,13 @@ To connect your application, do the following:
 - Add the YCQL java driver to your dependencies.
 - Initialize SSLContext using the downloaded root certificate.
 
-For an example of building a Java application connected to YugabyteDB Aeon using the Yugabyte Java Driver for YCQL v4.6, refer to [Connect a YCQL Java application](../../cloud-examples/connect-ycql-application/).
-
   {{% /tab %}}
 
 {{< /tabpane >}}
 
+For examples of applications you can build and connect to YugabyteDB Aeon using a variety of drivers, refer to [Build an application](/preview/tutorials/build-apps/).
+
 ## Learn more
 
 - [Add database users](../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../tutorials/build-apps/)
+- [Build an application](/preview/tutorials/build-apps/)

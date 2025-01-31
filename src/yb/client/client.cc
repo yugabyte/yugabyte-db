@@ -50,7 +50,6 @@
 #include "yb/cdc/cdc_types.h"
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/callbacks.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client_builder-internal.h"
 #include "yb/client/client_utils.h"
@@ -65,18 +64,20 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/dockv/partition.h"
+#include "yb/common/init.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-#include "yb/common/schema_pbutil.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -100,10 +101,11 @@
 #include "yb/rpc/rpc.h"
 
 #include "yb/tools/yb-admin_util.h"
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/util/atomic.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/logging_callback.h"
 #include "yb/util/mem_tracker.h"
@@ -122,6 +124,7 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 using namespace std::literals;
 
@@ -130,6 +133,8 @@ using google::protobuf::RepeatedPtrField;
 using std::make_pair;
 using std::string;
 using std::vector;
+using yb::master::AcquireObjectLocksGlobalRequestPB;
+using yb::master::AcquireObjectLocksGlobalResponsePB;
 using yb::master::AddTransactionStatusTabletRequestPB;
 using yb::master::AddTransactionStatusTabletResponsePB;
 using yb::master::AlterRoleRequestPB;
@@ -213,12 +218,12 @@ using yb::master::ListTabletServersResponsePB_Entry;
 using yb::master::MasterBackupProxy;
 using yb::master::MasterDdlProxy;
 using yb::master::MasterReplicationProxy;
-using yb::master::PlacementInfoPB;
 using yb::master::RedisConfigGetRequestPB;
 using yb::master::RedisConfigGetResponsePB;
 using yb::master::RedisConfigSetRequestPB;
 using yb::master::RedisConfigSetResponsePB;
-using yb::master::ReplicationInfoPB;
+using yb::master::ReleaseObjectLocksGlobalRequestPB;
+using yb::master::ReleaseObjectLocksGlobalResponsePB;
 using yb::master::ReservePgsqlOidsRequestPB;
 using yb::master::ReservePgsqlOidsResponsePB;
 using yb::master::TableIdentifierPB;
@@ -346,45 +351,8 @@ void FillFromRepeatedTabletLocations(
             BOOST_PP_CAT(method, Async))); \
   } while(0);
 
-// Adapts between the internal LogSeverity and the client's YBLogSeverity.
-static void LoggingAdapterCB(YBLoggingCallback* user_cb,
-                             LogSeverity severity,
-                             const char* filename,
-                             int line_number,
-                             const struct ::tm* time,
-                             const char* message,
-                             size_t message_len) {
-  YBLogSeverity client_severity;
-  switch (severity) {
-    case yb::SEVERITY_INFO:
-      client_severity = SEVERITY_INFO;
-      break;
-    case yb::SEVERITY_WARNING:
-      client_severity = SEVERITY_WARNING;
-      break;
-    case yb::SEVERITY_ERROR:
-      client_severity = SEVERITY_ERROR;
-      break;
-    case yb::SEVERITY_FATAL:
-      client_severity = SEVERITY_FATAL;
-      break;
-    default:
-      LOG(FATAL) << "Unknown YB log severity: " << severity;
-  }
-  user_cb->Run(client_severity, filename, line_number, time,
-               message, message_len);
-}
-
 void InitLogging() {
   InitGoogleLoggingSafeBasic("yb_client");
-}
-
-void InstallLoggingCallback(YBLoggingCallback* cb) {
-  RegisterLoggingCallback(Bind(&LoggingAdapterCB, Unretained(cb)));
-}
-
-void UninstallLoggingCallback() {
-  UnregisterLoggingCallback();
 }
 
 void SetVerboseLogLevel(int level) {
@@ -598,14 +566,7 @@ YBClient::~YBClient() {
 }
 
 void YBClient::Shutdown() {
-  data_->StartShutdown();
-  if (data_->messenger_holder_) {
-    data_->messenger_holder_->Shutdown();
-  }
-  if (data_->threadpool_) {
-    data_->threadpool_->Shutdown();
-  }
-  data_->CompleteShutdown();
+  data_->Shutdown();
 }
 
 std::unique_ptr<YBTableCreator> YBClient::NewTableCreator() {
@@ -686,6 +647,11 @@ Result<master::GetBackfillStatusResponsePB> YBClient::GetBackfillStatus(
     const std::vector<std::string_view>& table_ids) {
   const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->GetBackfillStatus(table_ids, deadline);
+}
+
+Result<bool> YBClient::IsBackfillIndexStarted(
+    const TableId& index_table_id, const TableId& indexed_table_id, CoarseTimePoint deadline) {
+  return data_->IsBackfillIndexStarted(this, index_table_id, indexed_table_id, deadline);
 }
 
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
@@ -795,6 +761,13 @@ Result<YBTableInfo> YBClient::GetYBTableInfo(const YBTableName& table_name) {
   return info;
 }
 
+Result<YBTableInfo> YBClient::GetYBTableInfoById(const TableId& table_id) {
+  YBTableInfo info;
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info));
+  return info;
+}
+
 Status YBClient::GetTableSchema(const YBTableName& table_name,
                                 YBSchema* schema,
                                 dockv::PartitionSchema* partition_schema) {
@@ -834,18 +807,6 @@ Status YBClient::GetTablegroupSchemaById(const TablegroupId& tablegroup_id,
                                         deadline,
                                         info,
                                         callback);
-}
-
-Status YBClient::GetColocatedTabletSchemaByParentTableId(
-    const TableId& parent_colocated_table_id,
-    std::shared_ptr<std::vector<YBTableInfo>> info,
-    StatusCallback callback) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->GetColocatedTabletSchemaByParentTableId(this,
-                                                         parent_colocated_table_id,
-                                                         deadline,
-                                                         info,
-                                                         callback);
 }
 
 Result<IndexPermissions> YBClient::GetIndexPermissions(
@@ -934,7 +895,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const TransactionMetadata* txn,
                                  const bool colocated,
                                  CoarseTimePoint deadline,
-                                 std::optional<YbCloneInfo> yb_clone_info) {
+                                 std::optional<YbcCloneInfo> yb_clone_info) {
   if (yb_clone_info) {
     RETURN_NOT_OK(CloneNamespace(
         namespace_name, database_type ? database_type.value() : YQL_DATABASE_PGSQL,
@@ -977,7 +938,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
 
 Status YBClient::CloneNamespace(const std::string& target_namespace_name,
                                 const YQLDatabase& database_type,
-                                YbCloneInfo& yb_clone_info) {
+                                YbcCloneInfo& yb_clone_info) {
   LOG(INFO) << Format(
       "Creating database $0 as clone of database $1",
       target_namespace_name, yb_clone_info.src_db_name);
@@ -1087,8 +1048,8 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
       deadline, req, &resp, "DeleteNamespace", &MasterDdlProxy::DeleteNamespaceAsync));
 
   // Verify that, once this request returns, the namespace has been successfully marked as deleted.
-  RETURN_NOT_OK(data_->WaitForDeleteNamespaceToFinish(this, namespace_name, database_type,
-      namespace_id, CoarseMonoClock::Now() + default_admin_operation_timeout()));
+  RETURN_NOT_OK(data_->WaitForDeleteNamespaceToFinish(
+      this, namespace_name, database_type, namespace_id, deadline));
 
   return Status::OK();
 }
@@ -1153,6 +1114,12 @@ Status YBClient::GetNamespaceInfo(const std::string& namespace_id,
 
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetNamespaceInfo);
   ret->Swap(&resp);
+  return Status::OK();
+}
+
+Status YBClient::ListClones(master::ListClonesResponsePB* ret) {
+  master::ListClonesRequestPB req;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Backup, req, *ret, ListClones);
   return Status::OK();
 }
 
@@ -1510,7 +1477,9 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     const std::optional<std::string>& replication_slot_plugin_name,
     const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option,
     CoarseTimePoint deadline,
-    uint64_t *consistent_snapshot_time) {
+    const CDCSDKDynamicTablesOption& dynamic_tables_option,
+    uint64_t *consistent_snapshot_time_out,
+    const std::optional<ReplicationSlotLsnType>& lsn_type) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1534,13 +1503,18 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   if (replication_slot_plugin_name.has_value()) {
     req.set_cdcsdk_ysql_replication_slot_plugin_name(*replication_slot_plugin_name);
   }
+  if (lsn_type.has_value()) {
+    req.mutable_cdcsdk_stream_create_options()->set_lsn_type(lsn_type.value());
+  }
+  req.mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
+      dynamic_tables_option);
 
   CreateCDCStreamResponsePB resp;
   deadline = PatchAdminDeadline(deadline);
   CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(Replication, req, resp, deadline, CreateCDCStream);
 
-  if (consistent_snapshot_time && resp.has_cdcsdk_consistent_snapshot_time()) {
-    *consistent_snapshot_time = resp.cdcsdk_consistent_snapshot_time();
+  if (consistent_snapshot_time_out && resp.has_cdcsdk_consistent_snapshot_time()) {
+    *consistent_snapshot_time_out = resp.cdcsdk_consistent_snapshot_time();
   }
   return xrepl::StreamId::FromString(resp.stream_id());
 }
@@ -1555,7 +1529,9 @@ Status YBClient::GetCDCStream(
     std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option,
     std::optional<uint64_t>* stream_creation_time,
     std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map,
-    std::optional<std::string>* replication_slot_name) {
+    std::optional<std::string>* replication_slot_name,
+    std::vector<TableId>* unqualified_table_ids,
+    std::optional<ReplicationSlotLsnType>* lsn_type) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1572,6 +1548,12 @@ Status YBClient::GetCDCStream(
 
   for (auto id : resp.stream().table_id()) {
     object_ids->push_back(id);
+  }
+
+  if (unqualified_table_ids && resp.stream().unqualified_table_id_size() > 0) {
+    for (const auto& unqualified_table_id : resp.stream().unqualified_table_id()) {
+      unqualified_table_ids->push_back(unqualified_table_id);
+    }
   }
 
   options->clear();
@@ -1608,6 +1590,11 @@ Status YBClient::GetCDCStream(
     *replication_slot_name = resp.stream().cdcsdk_ysql_replication_slot_name();
   }
 
+  if (lsn_type && resp.stream().has_cdc_stream_info_options() &&
+      resp.stream().cdc_stream_info_options().has_cdcsdk_ysql_replication_slot_lsn_type()) {
+    *lsn_type = resp.stream().cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type();
+  }
+
   return Status::OK();
 }
 
@@ -1623,7 +1610,12 @@ Result<CDCSDKStreamInfo> YBClient::GetCDCStream(
   if (replica_identities) {
     replica_identities->reserve(resp.stream().replica_identity_map_size());
     for (const auto& entry : resp.stream().replica_identity_map()) {
-      replica_identities->emplace(VERIFY_RESULT(GetPgsqlTableOid(entry.first)), entry.second);
+      auto table_info = VERIFY_RESULT(GetYBTableInfoById(entry.first));
+
+      const auto pg_table_id = table_info.pg_table_id;
+      auto table_oid = VERIFY_RESULT(
+          (!pg_table_id.empty()) ? GetPgsqlTableOid(pg_table_id) : GetPgsqlTableOid(entry.first));
+      replica_identities->emplace(table_oid, entry.second);
     }
   }
 
@@ -1721,21 +1713,33 @@ void YBClient::DeleteCDCStream(const xrepl::StreamId& stream_id, StatusCallback 
 }
 
 Status YBClient::GetCDCDBStreamInfo(
-  const std::string &db_stream_id,
-  std::vector<pair<std::string, std::string>>* db_stream_info) {
+    const std::string& db_stream_id,
+    std::vector<pair<std::string, std::string>>* db_stream_qualified_table_info,
+    std::vector<pair<std::string, std::string>>* db_stream_unqualified_table_info) {
   // Setting up request.
   GetCDCDBStreamInfoRequestPB req;
   req.set_db_stream_id(db_stream_id);
 
   GetCDCDBStreamInfoResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetCDCDBStreamInfo);
-  db_stream_info->clear();
-  db_stream_info->reserve(resp.table_info_size());
+  db_stream_qualified_table_info->clear();
+  db_stream_qualified_table_info->reserve(resp.table_info_size());
   for (const auto& tabinfo : resp.table_info()) {
     std::string stream_id = tabinfo.stream_id();
     std::string table_id = tabinfo.table_id();
 
-    db_stream_info->push_back(std::make_pair(stream_id, table_id));
+    db_stream_qualified_table_info->push_back(std::make_pair(stream_id, table_id));
+  }
+
+  if (resp.unqualified_table_info_size() > 0) {
+    db_stream_unqualified_table_info->clear();
+    db_stream_unqualified_table_info->reserve(resp.unqualified_table_info_size());
+    for (const auto& tabinfo : resp.unqualified_table_info()) {
+      std::string stream_id = tabinfo.stream_id();
+      std::string unqualified_table_id = tabinfo.table_id();
+
+      db_stream_unqualified_table_info->push_back(std::make_pair(stream_id, unqualified_table_id));
+    }
   }
 
   return Status::OK();
@@ -1771,6 +1775,28 @@ Status YBClient::UpdateCDCStream(
 
   UpdateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateCDCStream);
+  return Status::OK();
+}
+
+Status YBClient::RemoveTablesFromCDCSDKStream(
+    const std::vector<TableId>& table_ids,
+    const xrepl::StreamId stream_id) {
+  if (table_ids.empty()) {
+    return STATUS(InvalidArgument, "Table ID should not be empty");
+  }
+  if (!stream_id) {
+     return STATUS(InvalidArgument, "Stream ID should not be empty");
+  }
+
+  master::RemoveTablesFromCDCSDKStreamRequestPB req;
+  master::RemoveTablesFromCDCSDKStreamResponsePB resp;
+  req.set_stream_id(stream_id.ToString());
+  req.mutable_table_ids()->Reserve(narrow_cast<int>(table_ids.size()));
+  for (const auto& table_id : table_ids) {
+    req.add_table_ids(table_id);
+  }
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, RemoveTablesFromCDCSDKStream);
   return Status::OK();
 }
 
@@ -1944,18 +1970,17 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 
 void YBClient::GetTableLocations(
     const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-    PartitionsOnly partitions_only, GetTableLocationsCallback callback,
-    master::IncludeInactive include_inactive) {
+    PartitionsOnly partitions_only, GetTableLocationsCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->GetTableLocations(
       this, table_id, max_tablets, require_tablets_running, partitions_only, deadline,
-      std::move(callback), include_inactive);
+      std::move(callback));
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only,
                                    bool use_cache,
                                    const std::string* tablespace_id,
-                                   const master::ReplicationInfoPB* replication_info) {
+                                   const ReplicationInfoPB* replication_info) {
   // Must make an RPC call if replication info must be fetched
   // (ie. cannot use the tserver count cache)
   bool is_replication_info_required = tablespace_id || replication_info;
@@ -2084,8 +2109,8 @@ Result<bool> YBClient::IsLoadBalancerIdle() {
 }
 
 Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
-                                          master::PlacementInfoPB&& live_replicas) {
-  master::ReplicationInfoPB replication_info;
+                                          PlacementInfoPB&& live_replicas) {
+  ReplicationInfoPB replication_info;
   // Merge the obtained info with the existing table replication info.
   std::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK_PREPEND(OpenTable(table_name, &table), "Fetching table schema failed!");
@@ -2114,7 +2139,7 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
 }
 
 Status YBClient::CreateTransactionsStatusTable(
-    const string& table_name, const master::ReplicationInfoPB* replication_info) {
+    const string& table_name, const ReplicationInfoPB* replication_info) {
   if (table_name.rfind(kTransactionTablePrefix, 0) != 0) {
     return STATUS_FORMAT(
         InvalidArgument, "Name '$0' for transaction table does not start with '$1'", table_name,
@@ -2215,7 +2240,8 @@ Result<TransactionStatusTablets> YBClient::GetTransactionStatusTablets(
 }
 
 Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
-    const std::string& database_name, uint64_t version, const MonoDelta& timeout) {
+    const std::string& database_name, uint64_t version, const MonoDelta& timeout,
+    pid_t requestor_pg_backend_pid) {
   // In order for timeout to approximately determine how much time is spent before responding,
   // incorporate the margin into the deadline because master will subtract the margin for
   // responding.
@@ -2229,19 +2255,23 @@ Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
   } else {
     deadline += timeout;
   }
-  return WaitForYsqlBackendsCatalogVersion(database_name, version, deadline);
+  return WaitForYsqlBackendsCatalogVersion(database_name, version, deadline,
+                                           requestor_pg_backend_pid);
 }
 
 Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
-    const std::string& database_name, uint64_t version, const CoarseTimePoint& deadline) {
+    const std::string& database_name, uint64_t version, const CoarseTimePoint& deadline,
+    pid_t requestor_pg_backend_pid) {
   GetNamespaceInfoResponsePB resp;
   RETURN_NOT_OK(GetNamespaceInfo("", database_name, YQL_DATABASE_PGSQL, &resp));
   PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(resp.namespace_().id()));
-  return WaitForYsqlBackendsCatalogVersion(database_oid, version, deadline);
+  return WaitForYsqlBackendsCatalogVersion(database_oid, version, deadline,
+                                           requestor_pg_backend_pid);
 }
 
 Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
-    PgOid database_oid, uint64_t version, const MonoDelta& timeout) {
+    PgOid database_oid, uint64_t version, const MonoDelta& timeout,
+    pid_t requestor_pg_backend_pid) {
   // In order for timeout to approximately determine how much time is spent before responding,
   // incorporate the margin into the deadline because master will subtract the margin for
   // responding.
@@ -2255,16 +2285,20 @@ Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
   } else {
     deadline += timeout;
   }
-  return WaitForYsqlBackendsCatalogVersion(database_oid, version, deadline);
+  return WaitForYsqlBackendsCatalogVersion(database_oid, version, deadline,
+                                           requestor_pg_backend_pid);
 }
 
 Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
-    PgOid database_oid, uint64_t version, const CoarseTimePoint& deadline) {
+    PgOid database_oid, uint64_t version, const CoarseTimePoint& deadline,
+    pid_t requestor_pg_backend_pid) {
   WaitForYsqlBackendsCatalogVersionRequestPB req;
   WaitForYsqlBackendsCatalogVersionResponsePB resp;
 
   req.set_database_oid(database_oid);
   req.set_catalog_version(version);
+  req.set_requestor_ts_uuid(data_->uuid_);
+  req.set_requestor_pg_backend_pid(requestor_pg_backend_pid);
 
   DCHECK(deadline != CoarseTimePoint()) << ToString(deadline);
 
@@ -2346,7 +2380,7 @@ std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinR
   return std::make_pair(id, *requests.running_requests.begin());
 }
 
-void YBClient::AddMetaCacheInfo(JsonWriter* writer) {
+void YBClient::AddMetaCacheInfo(JsonWriter* writer) const {
   data_->meta_cache_->AddAllTabletInfo(writer);
 }
 
@@ -2376,13 +2410,13 @@ void YBClient::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
 
 void YBClient::LookupTabletById(const std::string& tablet_id,
                                 const std::shared_ptr<const YBTable>& table,
-                                master::IncludeInactive include_inactive,
+                                master::IncludeHidden include_hidden,
                                 master::IncludeDeleted include_deleted,
                                 CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
-      tablet_id, table, include_inactive, include_deleted, deadline, std::move(callback),
+      tablet_id, table, include_hidden, include_deleted, deadline, std::move(callback),
       use_cache);
 }
 
@@ -2536,10 +2570,8 @@ Result<bool> YBClient::CheckIfPitrActive() {
   return data_->CheckIfPitrActive(deadline);
 }
 
-Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
-                                                      bool exclude_ysql,
-                                                      const std::string& ysql_db_filter,
-                                                      bool skip_hidden) {
+Result<master::ListTablesResponsePB> YBClient::ListTables(
+    const std::string& filter, const std::string& ysql_db_filter) {
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
 
@@ -2553,11 +2585,25 @@ Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
   }
 
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return resp;
+}
+
+Result<std::vector<YBTableName>> YBClient::ListTables(
+    const std::string& filter, bool exclude_ysql, const std::string& ysql_db_filter,
+    SkipHidden skip_hidden) {
+  auto resp = VERIFY_RESULT(ListTables(filter, ysql_db_filter));
+
   std::vector<YBTableName> result;
   result.reserve(resp.tables_size());
 
   for (int i = 0; i < resp.tables_size(); i++) {
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
+    VLOG_WITH_FUNC(4) << "Table: " << AsString(table_info);
     DCHECK(table_info.has_namespace_());
     DCHECK(table_info.namespace_().has_name());
     DCHECK(table_info.namespace_().has_id());
@@ -2693,15 +2739,27 @@ Result<pair<Schema, uint32_t>> YBClient::GetTableSchemaFromSysCatalog(
   return make_pair(current_schema, resp.version());
 }
 
-Result<bool> YBClient::TableExists(const YBTableName& table_name, bool skip_hidden) {
-  auto tables = VERIFY_RESULT(ListTables(
-      table_name.table_name(), /*exclude_ysql=*/false, /*ysql_db_filter=*/"", skip_hidden));
-  for (const YBTableName& table : tables) {
-    if (table == table_name) {
+Result<bool> YBClient::TableExists(const YBTableName& table_name) {
+  if (table_name.namespace_type() != YQLDatabase::YQL_DATABASE_PGSQL) {
+    auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+    auto status = data_->GetTableSchema(this, table_name, deadline, nullptr);
+    if (status.ok()) {
       return true;
     }
+    if (status.IsNotFound()) {
+      return false;
+    }
+    return status;
+  } else {
+    auto tables = VERIFY_RESULT(ListTables(
+        table_name.table_name(), /* exclude_ysql =*/ false, /* ysql_db_filter= */ ""));
+    for (const YBTableName& table : tables) {
+      if (table == table_name) {
+        return true;
+      }
+    }
+    return false;
   }
-  return false;
 }
 
 Status YBClient::OpenTable(const YBTableName& table_name, YBTablePtr* table) {
@@ -2709,18 +2767,18 @@ Status YBClient::OpenTable(const YBTableName& table_name, YBTablePtr* table) {
 }
 
 Status YBClient::OpenTable(
-    const TableId& table_id, YBTablePtr* table, master::IncludeInactive include_inactive,
+    const TableId& table_id, YBTablePtr* table, master::IncludeHidden include_hidden,
     master::GetTableSchemaResponsePB* resp) {
-  return DoOpenTable(table_id, table, include_inactive, resp);
+  return DoOpenTable(table_id, table, include_hidden, resp);
 }
 
 template <class Id>
 Status YBClient::DoOpenTable(
-    const Id& id, YBTablePtr* table, master::IncludeInactive include_inactive,
+    const Id& id, YBTablePtr* table, master::IncludeHidden include_hidden,
     master::GetTableSchemaResponsePB* resp) {
   std::promise<Result<YBTablePtr>> result;
   DoOpenTableAsync(
-      id, [&result](const auto& res) { result.set_value(res); }, include_inactive, resp);
+      id, [&result](const auto& res) { result.set_value(res); }, include_hidden, resp);
   *table = VERIFY_RESULT(result.get_future().get());
   return Status::OK();
 }
@@ -2731,13 +2789,14 @@ void YBClient::OpenTableAsync(
 }
 
 void YBClient::OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+                              master::IncludeHidden include_hidden,
                               master::GetTableSchemaResponsePB* resp) {
-  DoOpenTableAsync(table_id, callback, master::IncludeInactive::kFalse, resp);
+  DoOpenTableAsync(table_id, callback, include_hidden, resp);
 }
 
 template <class Id>
 void YBClient::DoOpenTableAsync(
-    const Id& id, const OpenTableAsyncCallback& callback, master::IncludeInactive include_inactive,
+    const Id& id, const OpenTableAsyncCallback& callback, master::IncludeHidden include_hidden,
     master::GetTableSchemaResponsePB* resp) {
   auto info = std::make_shared<YBTableInfo>();
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
@@ -2745,9 +2804,8 @@ void YBClient::DoOpenTableAsync(
   auto s = data_->GetTableSchema(
       this, id, deadline, info,
       Bind(
-          &YBClient::GetTableSchemaCallback, Unretained(this), std::move(info), callback,
-          include_inactive),
-      include_inactive, resp);
+          &YBClient::GetTableSchemaCallback, Unretained(this), std::move(info), callback),
+          include_hidden, resp);
   if (!s.ok()) {
     callback(s);
     return;
@@ -2755,8 +2813,7 @@ void YBClient::DoOpenTableAsync(
 }
 
 void YBClient::GetTableSchemaCallback(
-    std::shared_ptr<YBTableInfo> info, const OpenTableAsyncCallback& callback,
-    master::IncludeInactive include_inactive, const Status& s) {
+    std::shared_ptr<YBTableInfo> info, const OpenTableAsyncCallback& callback, const Status& s) {
   if (!s.ok()) {
     callback(s);
     return;
@@ -2772,8 +2829,7 @@ void YBClient::GetTableSchemaCallback(
           auto table = std::make_shared<YBTable>(*info, *fetch_result);
           callback(table);
         }
-      },
-      include_inactive);
+      });
 }
 
 shared_ptr<YBSession> YBClient::NewSession(MonoDelta delta) {
@@ -2791,7 +2847,7 @@ bool YBClient::IsMultiMaster() const {
 Result<int> YBClient::NumTabletsForUserTable(
     TableType table_type,
     const std::string* tablespace_id,
-    const master::ReplicationInfoPB* replication_info) {
+    const ReplicationInfoPB* replication_info) {
   if (table_type == TableType::PGSQL_TABLE_TYPE &&
         FLAGS_ysql_num_tablets > 0) {
     VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ysql_num_tablets
@@ -2961,6 +3017,10 @@ void YBClient::ClearAllMetaCachesOnServer() {
   data_->meta_cache_->ClearAll();
 }
 
+Status YBClient::ClearMetacache(const std::string& namespace_id) {
+  return data_->meta_cache_->ClearCacheEntries(namespace_id);
+}
+
 bool YBClient::RefreshTabletInfoWithConsensusInfo(
     const tserver::TabletConsensusInfoPB& newly_received_info) {
   auto status = data_->meta_cache_->RefreshTabletInfoWithConsensusInfo(newly_received_info);
@@ -2973,6 +3033,41 @@ bool YBClient::RefreshTabletInfoWithConsensusInfo(
 
 int64_t YBClient::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
   return data_->meta_cache_->GetRaftConfigOpidIndex(tablet_id);
+}
+
+void YBClient::RequestAbortAllRpcs() {
+  data_->rpcs_.RequestAbortAll();
+}
+
+Status YBClient::AcquireObjectLocksGlobal(const tserver::AcquireObjectLockRequestPB& lock_req) {
+  LOG_WITH_FUNC(INFO) << lock_req.ShortDebugString();
+  AcquireObjectLocksGlobalRequestPB req;
+  AcquireObjectLocksGlobalResponsePB resp;
+  req.set_txn_id(lock_req.txn_id());
+  req.set_subtxn_id(lock_req.subtxn_id());
+  req.set_session_host_uuid(lock_req.session_host_uuid());
+  req.mutable_object_locks()->CopyFrom(lock_req.object_locks());
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, AcquireObjectLocksGlobal);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status YBClient::ReleaseObjectLocksGlobal(const tserver::ReleaseObjectLockRequestPB& release_req) {
+  LOG_WITH_FUNC(INFO) << release_req.ShortDebugString();
+  ReleaseObjectLocksGlobalRequestPB req;
+  ReleaseObjectLocksGlobalResponsePB resp;
+  req.set_txn_id(release_req.txn_id());
+  req.set_subtxn_id(release_req.subtxn_id());
+  req.set_session_host_uuid(release_req.session_host_uuid());
+  req.mutable_object_locks()->CopyFrom(release_req.object_locks());
+  req.set_release_all_locks(release_req.release_all_locks());
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ReleaseObjectLocksGlobal);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
 }
 
 }  // namespace client

@@ -24,12 +24,14 @@ func testHandlerFailure(ctx context.Context) (any, error) {
 
 func TestExecutor(t *testing.T) {
 	ctx := context.Background()
+	Init(ctx)
 	instance := GetInstance()
+	t.Logf("Submitting task...")
 	future, err := instance.SubmitTask(ctx, testHandler)
 	if err != nil {
 		t.Fatalf("Submitting task to the executor failed - %s", err.Error())
 	}
-
+	t.Logf("Executed")
 	data, err := future.Get()
 	if err != nil {
 		t.Fatalf("Future.Get() failed - %s", err.Error())
@@ -49,6 +51,7 @@ func TestExecutor(t *testing.T) {
 
 func TestExecutorFailure(t *testing.T) {
 	ctx := context.Background()
+	Init(ctx)
 	instance := GetInstance()
 	future, err := instance.SubmitTask(ctx, testHandlerFailure)
 	if err != nil {
@@ -65,6 +68,7 @@ func TestExecutorFailure(t *testing.T) {
 
 func TestExecutorCancel(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
+	Init(ctx)
 	instance := GetInstance()
 	future, err := instance.SubmitTask(ctx, testHandlerSlowTask)
 	if err != nil {
@@ -86,6 +90,7 @@ func TestExecutorCancel(t *testing.T) {
 
 func TestExecutorPanic(t *testing.T) {
 	ctx := context.Background()
+	Init(ctx)
 	instance := GetInstance()
 	future, err := instance.SubmitTask(ctx, func(ctx context.Context) (any, error) {
 		panic("Panic")

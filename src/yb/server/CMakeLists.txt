@@ -37,6 +37,7 @@ set(YB_PCH_PREFIX server)
 #########################################
 
 set(SERVER_COMMON_SRCS
+  clockbound_clock.cc
   hybrid_clock.cc
   logical_clock.cc
   skewed_clock.cc
@@ -44,6 +45,7 @@ set(SERVER_COMMON_SRCS
 
 add_library(server_common ${SERVER_COMMON_SRCS})
 target_link_libraries(server_common
+  clockbound
   yb_common
   gutil
   yb_fs
@@ -75,8 +77,7 @@ target_link_libraries(server_base_proto
   yrpc
   yb_common_proto
   protobuf
-  rpc_header_proto
-  version_info_proto)
+  rpc_header_proto)
 
 #########################################
 # server_process
@@ -95,6 +96,7 @@ set(SERVER_PROCESS_SRCS
   rpcz-path-handler.cc
   server_base.cc
   server_base_options.cc
+  server_common_flags.cc
   tcmalloc_metrics.cc
   total_mem_watcher.cc
   tracing-path-handlers.cc

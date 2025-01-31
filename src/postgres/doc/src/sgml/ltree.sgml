@@ -13,14 +13,20 @@
   Extensive facilities for searching through label trees are provided.
  </para>
 
+ <para>
+  This module is considered <quote>trusted</quote>, that is, it can be
+  installed by non-superusers who have <literal>CREATE</literal> privilege
+  on the current database.
+ </para>
+
  <sect2>
   <title>Definitions</title>
 
   <para>
    A <firstterm>label</firstterm> is a sequence of alphanumeric characters
    and underscores (for example, in C locale the characters
-   <literal>A-Za-z0-9_</literal> are allowed).  Labels must be less than 256 bytes
-   long.
+   <literal>A-Za-z0-9_</literal> are allowed).
+   Labels must be less than 256 characters long.
   </para>
 
   <para>
@@ -31,8 +37,7 @@
    A <firstterm>label path</firstterm> is a sequence of zero or more
    labels separated by dots, for example <literal>L1.L2.L3</literal>, representing
    a path from the root of a hierarchical tree to a particular node.  The
-   length of a label path must be less than 65kB, but keeping it under 2kB is
-   preferable.
+   length of a label path cannot exceed 65535 labels.
   </para>
 
   <para>
@@ -55,7 +60,8 @@
      <type>lquery</type> represents a regular-expression-like pattern
      for matching <type>ltree</type> values.  A simple word matches that
      label within a path.  A star symbol (<literal>*</literal>) matches zero
-     or more labels.  For example:
+     or more labels.  These can be joined with dots to form a pattern that
+     must match the whole label path.  For example:
 <synopsis>
 foo         <lineannotation>Match the exact label path <literal>foo</literal></lineannotation>
 *.foo.*     <lineannotation>Match any label path containing the label <literal>foo</literal></lineannotation>
@@ -64,19 +70,25 @@ foo         <lineannotation>Match the exact label path <literal>foo</literal></l
     </para>
 
     <para>
-     Star symbols can also be quantified to restrict how many labels
-     they can match:
+     Both star symbols and simple words can be quantified to restrict how many
+     labels they can match:
 <synopsis>
 *{<replaceable>n</replaceable>}        <lineannotation>Match exactly <replaceable>n</replaceable> labels</lineannotation>
 *{<replaceable>n</replaceable>,}       <lineannotation>Match at least <replaceable>n</replaceable> labels</lineannotation>
 *{<replaceable>n</replaceable>,<replaceable>m</replaceable>}      <lineannotation>Match at least <replaceable>n</replaceable> but not more than <replaceable>m</replaceable> labels</lineannotation>
-*{,<replaceable>m</replaceable>}       <lineannotation>Match at most <replaceable>m</replaceable> labels &mdash; same as </lineannotation> *{0,<replaceable>m</replaceable>}
+*{,<replaceable>m</replaceable>}       <lineannotation>Match at most <replaceable>m</replaceable> labels &mdash; same as </lineannotation>*{0,<replaceable>m</replaceable>}
+foo{<replaceable>n</replaceable>,<replaceable>m</replaceable>}    <lineannotation>Match at least <replaceable>n</replaceable> but not more than <replaceable>m</replaceable> occurrences of <literal>foo</literal></lineannotation>
+foo{,}      <lineannotation>Match any number of occurrences of <literal>foo</literal>, including zero</lineannotation>
 </synopsis>
+     In the absence of any explicit quantifier, the default for a star symbol
+     is to match any number of labels (that is, <literal>{,}</literal>) while
+     the default for a non-star item is to match exactly once (that
+     is, <literal>{1}</literal>).
     </para>
 
     <para>
      There are several modifiers that can be put at the end of a non-star
-     label in <type>lquery</type> to make it match more than just the exact match:
+     <type>lquery</type> item to make it match more than just the exact match:
 <synopsis>
 @           <lineannotation>Match case-insensitively, for example <literal>a@</literal> matches <literal>A</literal></lineannotation>
 *           <lineannotation>Match any label with this prefix, for example <literal>foo*</literal> matches <literal>foobar</literal></lineannotation>
@@ -92,17 +104,20 @@ foo         <lineannotation>Match the exact label path <literal>foo</literal></l
     </para>
 
     <para>
-     Also, you can write several possibly-modified labels separated with
-     <literal>|</literal> (OR) to match any of those labels, and you can put
-     <literal>!</literal> (NOT) at the start to match any label that doesn't
-     match any of the alternatives.
+     Also, you can write several possibly-modified non-star items separated with
+     <literal>|</literal> (OR) to match any of those items, and you can put
+     <literal>!</literal> (NOT) at the start of a non-star group to match any
+     label that doesn't match any of the alternatives.  A quantifier, if any,
+     goes at the end of the group; it means some number of matches for the
+     group as a whole (that is, some number of labels matching or not matching
+     any of the alternatives).
     </para>
 
     <para>
      Here's an annotated example of <type>lquery</type>:
 <programlisting>
-Top.*{0,2}.sport*@.!football|tennis.Russ*|Spain
-a.  b.     c.      d.               e.
+Top.*{0,2}.sport*@.!football|tennis{1,}.Russ*|Spain
+a.  b.     c.      d.                   e.
 </programlisting>
      This query will match any label path that:
     </para>
@@ -124,8 +139,8 @@ a.  b.     c.      d.               e.
      </listitem>
      <listitem>
       <para>
-       then a label not matching <literal>football</literal> nor
-       <literal>tennis</literal>
+       then has one or more labels, none of which
+       match <literal>football</literal> nor <literal>tennis</literal>
       </para>
      </listitem>
      <listitem>
@@ -186,169 +201,221 @@ Europe &amp; Russia*@ &amp; !Transportation
 
   <table id="ltree-op-table">
    <title><type>ltree</type> Operators</title>
+    <tgroup cols="1">
+     <thead>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        Operator
+       </para>
+       <para>
+        Description
+       </para></entry>
+      </row>
+     </thead>
 
-   <tgroup cols="3">
-    <thead>
-     <row>
-      <entry>Operator</entry>
-      <entry>Returns</entry>
-      <entry>Description</entry>
-     </row>
-    </thead>
+     <tbody>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree</type> <literal>@&gt;</literal> <type>ltree</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Is left argument an ancestor of right (or equal)?
+       </para></entry>
+      </row>
 
-    <tbody>
-     <row>
-      <entry><type>ltree</type> <literal>@&gt;</literal> <type>ltree</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>is left argument an ancestor of right (or equal)?</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree</type> <literal>&lt;@</literal> <type>ltree</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Is left argument a descendant of right (or equal)?
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>ltree</type> <literal>&lt;@</literal> <type>ltree</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>is left argument a descendant of right (or equal)?</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree</type> <literal>~</literal> <type>lquery</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para role="func_signature">
+        <type>lquery</type> <literal>~</literal> <type>ltree</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Does <type>ltree</type> match <type>lquery</type>?
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>ltree</type> <literal>~</literal> <type>lquery</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does <type>ltree</type> match <type>lquery</type>?</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree</type> <literal>?</literal> <type>lquery[]</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para role="func_signature">
+        <type>lquery[]</type> <literal>?</literal> <type>ltree</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Does <type>ltree</type> match any <type>lquery</type> in array?
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>lquery</type> <literal>~</literal> <type>ltree</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does <type>ltree</type> match <type>lquery</type>?</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree</type> <literal>@</literal> <type>ltxtquery</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para role="func_signature">
+        <type>ltxtquery</type> <literal>@</literal> <type>ltree</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Does <type>ltree</type> match <type>ltxtquery</type>?
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>ltree</type> <literal>?</literal> <type>lquery[]</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does <type>ltree</type> match any <type>lquery</type> in array?</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree</type> <literal>||</literal> <type>ltree</type>
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Concatenates <type>ltree</type> paths.
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>lquery[]</type> <literal>?</literal> <type>ltree</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does <type>ltree</type> match any <type>lquery</type> in array?</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree</type> <literal>||</literal> <type>text</type>
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para role="func_signature">
+        <type>text</type> <literal>||</literal> <type>ltree</type>
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Converts text to <type>ltree</type> and concatenates.
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>ltree</type> <literal>@</literal> <type>ltxtquery</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does <type>ltree</type> match <type>ltxtquery</type>?</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree[]</type> <literal>@&gt;</literal> <type>ltree</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para role="func_signature">
+        <type>ltree</type> <literal>&lt;@</literal> <type>ltree[]</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Does array contain an ancestor of <type>ltree</type>?
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>ltxtquery</type> <literal>@</literal> <type>ltree</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does <type>ltree</type> match <type>ltxtquery</type>?</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree[]</type> <literal>&lt;@</literal> <type>ltree</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para role="func_signature">
+        <type>ltree</type> <literal>@&gt;</literal> <type>ltree[]</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Does array contain a descendant of <type>ltree</type>?
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>ltree</type> <literal>||</literal> <type>ltree</type></entry>
-      <entry><type>ltree</type></entry>
-      <entry>concatenate <type>ltree</type> paths</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree[]</type> <literal>~</literal> <type>lquery</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para role="func_signature">
+        <type>lquery</type> <literal>~</literal> <type>ltree[]</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Does array contain any path matching <type>lquery</type>?
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>ltree</type> <literal>||</literal> <type>text</type></entry>
-      <entry><type>ltree</type></entry>
-      <entry>convert text to <type>ltree</type> and concatenate</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree[]</type> <literal>?</literal> <type>lquery[]</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para role="func_signature">
+        <type>lquery[]</type> <literal>?</literal> <type>ltree[]</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Does <type>ltree</type> array contain any path matching
+        any <type>lquery</type>?
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>text</type> <literal>||</literal> <type>ltree</type></entry>
-      <entry><type>ltree</type></entry>
-      <entry>convert text to <type>ltree</type> and concatenate</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree[]</type> <literal>@</literal> <type>ltxtquery</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para role="func_signature">
+        <type>ltxtquery</type> <literal>@</literal> <type>ltree[]</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Does array contain any path matching <type>ltxtquery</type>?
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>ltree[]</type> <literal>@&gt;</literal> <type>ltree</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does array contain an ancestor of <type>ltree</type>?</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree[]</type> <literal>?@&gt;</literal> <type>ltree</type>
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Returns first array entry that is an ancestor of <type>ltree</type>,
+        or <literal>NULL</literal> if none.
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>ltree</type> <literal>&lt;@</literal> <type>ltree[]</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does array contain an ancestor of <type>ltree</type>?</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree[]</type> <literal>?&lt;@</literal> <type>ltree</type>
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Returns first array entry that is a descendant of <type>ltree</type>,
+        or <literal>NULL</literal> if none.
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>ltree[]</type> <literal>&lt;@</literal> <type>ltree</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does array contain a descendant of <type>ltree</type>?</entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree[]</type> <literal>?~</literal> <type>lquery</type>
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Returns first array entry that matches <type>lquery</type>,
+        or <literal>NULL</literal> if none.
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><type>ltree</type> <literal>@&gt;</literal> <type>ltree[]</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does array contain a descendant of <type>ltree</type>?</entry>
-     </row>
-
-     <row>
-      <entry><type>ltree[]</type> <literal>~</literal> <type>lquery</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does array contain any path matching <type>lquery</type>?</entry>
-     </row>
-
-     <row>
-      <entry><type>lquery</type> <literal>~</literal> <type>ltree[]</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does array contain any path matching <type>lquery</type>?</entry>
-     </row>
-
-     <row>
-      <entry><type>ltree[]</type> <literal>?</literal> <type>lquery[]</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does <type>ltree</type> array contain any path matching any <type>lquery</type>?</entry>
-     </row>
-
-     <row>
-      <entry><type>lquery[]</type> <literal>?</literal> <type>ltree[]</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does <type>ltree</type> array contain any path matching any <type>lquery</type>?</entry>
-     </row>
-
-     <row>
-      <entry><type>ltree[]</type> <literal>@</literal> <type>ltxtquery</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does array contain any path matching <type>ltxtquery</type>?</entry>
-     </row>
-
-     <row>
-      <entry><type>ltxtquery</type> <literal>@</literal> <type>ltree[]</type></entry>
-      <entry><type>boolean</type></entry>
-      <entry>does array contain any path matching <type>ltxtquery</type>?</entry>
-     </row>
-
-     <row>
-      <entry><type>ltree[]</type> <literal>?@&gt;</literal> <type>ltree</type></entry>
-      <entry><type>ltree</type></entry>
-      <entry>first array entry that is an ancestor of <type>ltree</type>; NULL if none</entry>
-     </row>
-
-     <row>
-      <entry><type>ltree[]</type> <literal>?&lt;@</literal> <type>ltree</type></entry>
-      <entry><type>ltree</type></entry>
-      <entry>first array entry that is a descendant of <type>ltree</type>; NULL if none</entry>
-     </row>
-
-     <row>
-      <entry><type>ltree[]</type> <literal>?~</literal> <type>lquery</type></entry>
-      <entry><type>ltree</type></entry>
-      <entry>first array entry that matches <type>lquery</type>; NULL if none</entry>
-     </row>
-
-     <row>
-      <entry><type>ltree[]</type> <literal>?@</literal> <type>ltxtquery</type></entry>
-      <entry><type>ltree</type></entry>
-      <entry>first array entry that matches <type>ltxtquery</type>; NULL if none</entry>
-     </row>
-
-    </tbody>
-   </tgroup>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <type>ltree[]</type> <literal>?@</literal> <type>ltxtquery</type>
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Returns first array entry that matches <type>ltxtquery</type>,
+        or <literal>NULL</literal> if none.
+       </para></entry>
+      </row>
+     </tbody>
+    </tgroup>
   </table>
 
   <para>
@@ -365,114 +432,178 @@ Europe &amp; Russia*@ &amp; !Transportation
 
   <table id="ltree-func-table">
    <title><type>ltree</type> Functions</title>
+    <tgroup cols="1">
+     <thead>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        Function
+       </para>
+       <para>
+        Description
+       </para>
+       <para>
+        Example(s)
+       </para></entry>
+      </row>
+     </thead>
 
-   <tgroup cols="5">
-    <thead>
-     <row>
-      <entry>Function</entry>
-      <entry>Return Type</entry>
-      <entry>Description</entry>
-      <entry>Example</entry>
-      <entry>Result</entry>
-     </row>
-    </thead>
+     <tbody>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm><primary>subltree</primary></indexterm>
+        <function>subltree</function> ( <type>ltree</type>, <parameter>start</parameter> <type>integer</type>, <parameter>end</parameter> <type>integer</type> )
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Returns subpath of <type>ltree</type> from
+        position <parameter>start</parameter> to
+        position <parameter>end</parameter>-1 (counting from 0).
+       </para>
+       <para>
+        <literal>subltree('Top.Child1.Child2', 1, 2)</literal>
+        <returnvalue>Child1</returnvalue>
+       </para></entry>
+      </row>
 
-    <tbody>
-     <row>
-      <entry><function>subltree(ltree, int start, int end)</function><indexterm><primary>subltree</primary></indexterm></entry>
-      <entry><type>ltree</type></entry>
-      <entry>subpath of <type>ltree</type> from position <parameter>start</parameter> to
-       position <parameter>end</parameter>-1 (counting from 0)</entry>
-      <entry><literal>subltree('Top.Child1.Child2',1,2)</literal></entry>
-      <entry><literal>Child1</literal></entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm><primary>subpath</primary></indexterm>
+        <function>subpath</function> ( <type>ltree</type>, <parameter>offset</parameter> <type>integer</type>, <parameter>len</parameter> <type>integer</type> )
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Returns subpath of <type>ltree</type> starting at
+        position <parameter>offset</parameter>, with
+        length <parameter>len</parameter>.  If <parameter>offset</parameter>
+        is negative, subpath starts that far from the end of the path.
+        If <parameter>len</parameter> is negative, leaves that many labels off
+        the end of the path.
+       </para>
+       <para>
+        <literal>subpath('Top.Child1.Child2', 0, 2)</literal>
+        <returnvalue>Top.Child1</returnvalue>
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><function>subpath(ltree, int offset, int len)</function><indexterm><primary>subpath</primary></indexterm></entry>
-      <entry><type>ltree</type></entry>
-      <entry>subpath of <type>ltree</type> starting at position
-       <parameter>offset</parameter>, length <parameter>len</parameter>.
-       If <parameter>offset</parameter> is negative, subpath starts that far from the
-       end of the path.  If <parameter>len</parameter> is negative, leaves that many
-       labels off the end of the path.</entry>
-      <entry><literal>subpath('Top.Child1.Child2',0,2)</literal></entry>
-      <entry><literal>Top.Child1</literal></entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>subpath</function> ( <type>ltree</type>, <parameter>offset</parameter> <type>integer</type> )
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Returns subpath of <type>ltree</type> starting at
+        position <parameter>offset</parameter>, extending to end of path.
+        If <parameter>offset</parameter> is negative, subpath starts that far
+        from the end of the path.
+       </para>
+       <para>
+        <literal>subpath('Top.Child1.Child2', 1)</literal>
+        <returnvalue>Child1.Child2</returnvalue>
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><function>subpath(ltree, int offset)</function></entry>
-      <entry><type>ltree</type></entry>
-      <entry>subpath of <type>ltree</type> starting at position
-       <parameter>offset</parameter>, extending to end of path.
-       If <parameter>offset</parameter> is negative, subpath starts that far from the
-       end of the path.</entry>
-      <entry><literal>subpath('Top.Child1.Child2',1)</literal></entry>
-      <entry><literal>Child1.Child2</literal></entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm><primary>nlevel</primary></indexterm>
+        <function>nlevel</function> ( <type>ltree</type> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Returns number of labels in path.
+       </para>
+       <para>
+        <literal>nlevel('Top.Child1.Child2')</literal>
+        <returnvalue>3</returnvalue>
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><function>nlevel(ltree)</function><indexterm><primary>nlevel</primary></indexterm></entry>
-      <entry><type>integer</type></entry>
-      <entry>number of labels in path</entry>
-      <entry><literal>nlevel('Top.Child1.Child2')</literal></entry>
-      <entry><literal>3</literal></entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm><primary>index</primary></indexterm>
+        <function>index</function> ( <parameter>a</parameter> <type>ltree</type>, <parameter>b</parameter> <type>ltree</type> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Returns position of first occurrence of <parameter>b</parameter> in
+        <parameter>a</parameter>, or -1 if not found.
+       </para>
+       <para>
+        <literal>index('0.1.2.3.5.4.5.6.8.5.6.8', '5.6')</literal>
+        <returnvalue>6</returnvalue>
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><function>index(ltree a, ltree b)</function><indexterm><primary>index</primary></indexterm></entry>
-      <entry><type>integer</type></entry>
-      <entry>position of first occurrence of <parameter>b</parameter> in
-       <parameter>a</parameter>; -1 if not found</entry>
-      <entry><literal>index('0.1.2.3.5.4.5.6.8.5.6.8','5.6')</literal></entry>
-      <entry><literal>6</literal></entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>index</function> ( <parameter>a</parameter> <type>ltree</type>,  <parameter>b</parameter> <type>ltree</type>, <parameter>offset</parameter> <type>integer</type> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Returns position of first occurrence of <parameter>b</parameter>
+        in <parameter>a</parameter>, or -1 if not found.  The search starts at
+        position <parameter>offset</parameter>;
+        negative <parameter>offset</parameter> means
+        start <parameter>-offset</parameter> labels from the end of the path.
+       </para>
+       <para>
+        <literal>index('0.1.2.3.5.4.5.6.8.5.6.8', '5.6', -4)</literal>
+        <returnvalue>9</returnvalue>
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><function>index(ltree a, ltree b, int offset)</function></entry>
-      <entry><type>integer</type></entry>
-      <entry>position of first occurrence of <parameter>b</parameter> in
-       <parameter>a</parameter>, searching starting at <parameter>offset</parameter>;
-       negative <parameter>offset</parameter> means start <parameter>-offset</parameter>
-       labels from the end of the path</entry>
-      <entry><literal>index('0.1.2.3.5.4.5.6.8.5.6.8','5.6',-4)</literal></entry>
-      <entry><literal>9</literal></entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm><primary>text2ltree</primary></indexterm>
+        <function>text2ltree</function> ( <type>text</type> )
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Casts <type>text</type> to <type>ltree</type>.
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><function>text2ltree(text)</function><indexterm><primary>text2ltree</primary></indexterm></entry>
-      <entry><type>ltree</type></entry>
-      <entry>cast <type>text</type> to <type>ltree</type></entry>
-      <entry><literal></literal></entry>
-      <entry><literal></literal></entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm><primary>ltree2text</primary></indexterm>
+        <function>ltree2text</function> ( <type>ltree</type> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Casts <type>ltree</type> to <type>text</type>.
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><function>ltree2text(ltree)</function><indexterm><primary>ltree2text</primary></indexterm></entry>
-      <entry><type>text</type></entry>
-      <entry>cast <type>ltree</type> to <type>text</type></entry>
-      <entry><literal></literal></entry>
-      <entry><literal></literal></entry>
-     </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm><primary>lca</primary></indexterm>
+        <function>lca</function> ( <type>ltree</type> <optional>, <type>ltree</type> <optional>, ... </optional></optional> )
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Computes longest common ancestor of paths
+        (up to 8 arguments are supported).
+       </para>
+       <para>
+        <literal>lca('1.2.3', '1.2.3.4.5.6')</literal>
+        <returnvalue>1.2</returnvalue>
+       </para></entry>
+      </row>
 
-     <row>
-      <entry><function>lca(ltree, ltree, ...)</function><indexterm><primary>lca</primary></indexterm></entry>
-      <entry><type>ltree</type></entry>
-      <entry>longest common ancestor of paths
-       (up to 8 arguments supported)</entry>
-      <entry><literal>lca('1.2.3','1.2.3.4.5.6')</literal></entry>
-      <entry><literal>1.2</literal></entry>
-     </row>
-
-     <row>
-      <entry><function>lca(ltree[])</function></entry>
-      <entry><type>ltree</type></entry>
-      <entry>longest common ancestor of paths in array</entry>
-      <entry><literal>lca(array['1.2.3'::ltree,'1.2.3.4'])</literal></entry>
-      <entry><literal>1.2</literal></entry>
-     </row>
-
-    </tbody>
-   </tgroup>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>lca</function> ( <type>ltree[]</type> )
+        <returnvalue>ltree</returnvalue>
+       </para>
+       <para>
+        Computes longest common ancestor of paths in array.
+       </para>
+       <para>
+        <literal>lca(array['1.2.3'::ltree,'1.2.3.4'])</literal>
+        <returnvalue>1.2</returnvalue>
+       </para></entry>
+      </row>
+     </tbody>
+    </tgroup>
   </table>
  </sect2>
 
@@ -493,30 +624,59 @@ Europe &amp; Russia*@ &amp; !Transportation
    </listitem>
    <listitem>
     <para>
-     GiST index over <type>ltree</type>:
+     GiST index over <type>ltree</type> (<literal>gist_ltree_ops</literal>
+     opclass):
      <literal>&lt;</literal>, <literal>&lt;=</literal>, <literal>=</literal>,
      <literal>&gt;=</literal>, <literal>&gt;</literal>,
      <literal>@&gt;</literal>, <literal>&lt;@</literal>,
      <literal>@</literal>, <literal>~</literal>, <literal>?</literal>
     </para>
     <para>
-     Example of creating such an index:
+     <literal>gist_ltree_ops</literal> GiST opclass approximates a set of
+     path labels as a bitmap signature.  Its optional integer parameter
+     <literal>siglen</literal> determines the
+     signature length in bytes.  The default signature length is 8 bytes.
+     Valid values of signature length are between 1 and 2024 bytes.  Longer
+     signatures lead to a more precise search (scanning a smaller fraction of the index and
+     fewer heap pages), at the cost of a larger index.
+    </para>
+    <para>
+     Example of creating such an index with the default signature length of 8 bytes:
     </para>
 <programlisting>
 CREATE INDEX path_gist_idx ON test USING GIST (path);
 </programlisting>
+    <para>
+     Example of creating such an index with a signature length of 100 bytes:
+    </para>
+<programlisting>
+CREATE INDEX path_gist_idx ON test USING GIST (path gist_ltree_ops(siglen=100));
+</programlisting>
    </listitem>
    <listitem>
     <para>
-     GiST index over <type>ltree[]</type>:
+     GiST index over <type>ltree[]</type> (<literal>gist__ltree_ops</literal>
+     opclass):
      <literal>ltree[] &lt;@ ltree</literal>, <literal>ltree @&gt; ltree[]</literal>,
      <literal>@</literal>, <literal>~</literal>, <literal>?</literal>
     </para>
     <para>
-     Example of creating such an index:
+     <literal>gist__ltree_ops</literal> GiST opclass works similarly to
+     <literal>gist_ltree_ops</literal> and also takes signature length as
+     a parameter.  The default value of <literal>siglen</literal> in
+      <literal>gist__ltree_ops</literal> is 28 bytes.
+    </para>
+    <para>
+     Example of creating such an index with the default signature length of 28 bytes:
     </para>
 <programlisting>
 CREATE INDEX path_gist_idx ON test USING GIST (array_path);
+</programlisting>
+    <para>
+     Example of creating such an index with a signature length of 100 bytes:
+    </para>
+<programlisting>
+CREATE INDEX path_gist_idx ON test USING GIST (array_path gist__ltree_ops(siglen=100));
 </programlisting>
     <para>
      Note: This index type is lossy.
@@ -598,7 +758,7 @@ ltreetest=&gt; SELECT path FROM test WHERE path ~ '*.Astronomy.*';
  Top.Collections.Pictures.Astronomy.Astronauts
 (7 rows)
 
-ltreetest=&gt; SELECT path FROM test WHERE path ~ '*.!pictures@.*.Astronomy.*';
+ltreetest=&gt; SELECT path FROM test WHERE path ~ '*.!pictures@.Astronomy.*';
                 path
 ------------------------------------
  Top.Science.Astronomy
@@ -644,7 +804,7 @@ ltreetest=&gt; SELECT subpath(path,0,2)||'Space'||subpath(path,2) FROM test WHER
   </para>
 
   <para>
-   We could simplify this by creating a SQL function that inserts a label
+   We could simplify this by creating an SQL function that inserts a label
    at a specified position in a path:
 <screen>
 CREATE FUNCTION ins_label(ltree, int, text) RETURNS ltree
@@ -666,19 +826,15 @@ ltreetest=&gt; SELECT ins_label(path,2,'Space') FROM test WHERE path &lt;@ 'Top.
   <title>Transforms</title>
 
   <para>
-   Additional extensions are available that implement transforms for
-   the <type>ltree</type> type for PL/Python.  The extensions are
-   called <literal>ltree_plpythonu</literal>, <literal>ltree_plpython2u</literal>,
-   and <literal>ltree_plpython3u</literal>
-   (see <xref linkend="plpython-python23"/> for the PL/Python naming
-   convention).  If you install these transforms and specify them when
+   The <literal>ltree_plpython3u</literal> extension implements transforms for
+   the <type>ltree</type> type for PL/Python. If installed and specified when
    creating a function, <type>ltree</type> values are mapped to Python lists.
    (The reverse is currently not supported, however.)
   </para>
 
   <caution>
    <para>
-    It is strongly recommended that the transform extensions be installed in
+    It is strongly recommended that the transform extension be installed in
     the same schema as <filename>ltree</filename>.  Otherwise there are
     installation-time security hazards if a transform extension's schema
     contains objects defined by a hostile user.

@@ -36,7 +36,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 DECLARE_bool(TEST_auto_flags_initialized);
 DECLARE_bool(TEST_auto_flags_new_install);
@@ -681,15 +681,15 @@ TEST_F(AutoFlagsMiniClusterTest, AddTserverBeforeApplyDelay) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_flags_apply_delay_ms) = kApplyDelayMs;
 
   ASSERT_OK(RunSetUp());
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
-  auto now_ht = [&leader_master]() { return leader_master->clock()->Now(); };
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto now_ht = [&leader_master]() { return leader_master->Now(); };
   uint32 expected_config_version = 0;
   CHECK_OK(ValidateConfigOnAllProcesses(expected_config_version));
 
   AutoFlagsConfigPB config;
   ASSERT_NO_FATALS(
       config = PromoteFlagsAndValidate(
-          ++expected_config_version, leader_master, AutoFlagClass::kExternal));
+          ++expected_config_version, leader_master->master(), AutoFlagClass::kExternal));
 
   ASSERT_TRUE(config.has_config_apply_time());
   HybridTime config_apply_ht;
@@ -813,11 +813,6 @@ class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
       const std::vector<string>& extra_master_flags = std::vector<string>()) {
     ASSERT_NO_FATALS(
         StartCluster(extra_ts_flags, extra_master_flags, kNumTServers, kNumMasterServers));
-  }
-
-  void SetUpCluster(ExternalMiniClusterOptions* opts) override {
-    ASSERT_NO_FATALS(ExternalMiniClusterITestBase::SetUpCluster(opts));
-    opts_ = *opts;
   }
 
   Status CheckFlagOnNode(
@@ -999,9 +994,6 @@ class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
     CHECK_EQ(expected_config_version, config.config_version());
     return config;
   }
-
- protected:
-  ExternalMiniClusterOptions opts_;
 };
 
 // Validate AutoFlags in new cluster and make sure it handles process restarts, and addition of
@@ -1023,7 +1015,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, NewCluster) {
   ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kTrue, new_master.get()));
 
   ASSERT_OK(cluster_->AddTabletServer());
-  ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers + 1, kTimeout));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers(), kTimeout));
 
   ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kTrue));
   ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsNewInstallFlagName, kTrue));
@@ -1064,7 +1056,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   ASSERT_TRUE(Erase(disable_auto_flag_management, cluster_->mutable_extra_tserver_flags()));
 
   ASSERT_OK(cluster_->AddTabletServer());
-  ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers + 1, kTimeout));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers(), kTimeout));
 
   // Add a new tserver
   auto* new_tserver = cluster_->tablet_server(cluster_->num_tablet_servers() - 1);
@@ -1075,9 +1067,9 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
 
   // Restart the new tserver
   new_tserver->Shutdown();
-  ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers, kTimeout));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers() - 1, kTimeout));
   ASSERT_OK(new_tserver->Restart());
-  ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers + 1, kTimeout));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers(), kTimeout));
   ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_tserver));
   ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_tserver));
   ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kFalse, new_tserver));

@@ -35,6 +35,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -80,16 +81,8 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
   @Override
   public void run() {
-    Universe universe = null;
+    Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
     try {
-
-      // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
-      // to prevent other updates from happening.
-      if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1);
-      } else {
-        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
-      }
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
           params().getKubernetesResourceDetails(),
@@ -135,6 +128,11 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
 
+      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+        createPodDisruptionBudgetPolicyTask(true /* deletePDB */)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingPodDisruptionBudgetPolicy);
+      }
+
       // cleanup the supportBundles if any
       deleteSupportBundle(universe.getUniverseUUID());
 
@@ -148,6 +146,11 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       // Cleanup the kms_history table
       createDestroyEncryptionAtRestTask()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+
+      SubTaskGroup namespacedServicesDelete =
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.NAMESPACED_SVC_DELETE.getSubTaskGroupName(),
+              UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
       // Try to unify this with the edit remove pods/deployments flow. Currently delete is
       // tied down to a different base class which makes params porting not straight-forward.
@@ -177,11 +180,30 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
         boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
+        Set<UUID> namespaceServiceOwners;
+        try {
+          namespaceServiceOwners =
+              KubernetesUtil.getNSScopedServiceOwners(
+                  universe.getUniverseDetails(), universe.getConfig(), cluster.clusterType);
+        } catch (IOException e) {
+          throw new RuntimeException("Parsing overrides failed!", e.getCause());
+        }
+
         for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
           UUID azUUID = entry.getKey();
           String azName = isMultiAz ? AvailabilityZone.getOrBadRequest(azUUID).getCode() : null;
 
           Map<String, String> config = entry.getValue();
+
+          if (namespaceServiceOwners.contains(azUUID)) {
+            namespacedServicesDelete.addSubTask(
+                createDeleteKubernetesNamespacedServiceTask(
+                    universe.getName(),
+                    config,
+                    universe.getUniverseDetails().nodePrefix,
+                    azName,
+                    null /* serviceNames */));
+          }
 
           String namespace = config.get("KUBENAMESPACE");
 
@@ -238,6 +260,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         }
       }
 
+      getRunnableTask().addSubTaskGroup(namespacedServicesDelete);
       getRunnableTask().addSubTaskGroup(helmDeletes);
       getRunnableTask().addSubTaskGroup(volumeDeletes);
       getRunnableTask().addSubTaskGroup(namespaceDeletes);

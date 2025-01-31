@@ -10,15 +10,22 @@ Update an On-premises provider in YugabyteDB Anywhere
 yba provider onprem update [flags]
 ```
 
+### Examples
+
+```
+yba provider onprem update --name <provider-name> \
+	--new-name <new-provider-name>
+```
+
 ### Options
 
 ```
       --new-name string             [Optional] Updating provider name.
-      --add-region stringArray      [Optional] Add region associated with the On-premises provider. Provide the following comma separated fields as key-value pairs:"region-name=<region-name>,latitude=<latitude>,longitude=<longitude>". Region name is a required key-value. Latitude and Longitude are optional. Each region needs to be added using a separate --add-region flag.
-      --add-zone stringArray        [Optional] Zone associated to the On-premises Region defined. Provide the following comma separated fields as key-value pairs:"zone-name=<zone-name>,region-name=<region-name>". Zone name and Region name are required values. Each --add-region definition must have atleast one corresponding --add-zone definition. Multiple --add-zone definitions can be provided per region.Each zone needs to be added using a separate --add-zone flag.
+      --add-region stringArray      [Optional] Add region associated with the On-premises provider. Provide the following double colon (::) separated fields as key-value pairs: "region-name=<region-name>::latitude=<latitude>::longitude=<longitude>". Region name is a required key-value. Latitude and Longitude are optional. Each region needs to be added using a separate --add-region flag.
+      --add-zone stringArray        [Optional] Zone associated to the On-premises Region defined. Provide the following double colon (::) separated fields as key-value pairs: "zone-name=<zone-name>::region-name=<region-name>". Zone name and Region name are required values. Each --add-region definition must have atleast one corresponding --add-zone definition. Multiple --add-zone definitions can be provided per region.Each zone needs to be added using a separate --add-zone flag.
       --remove-region stringArray   [Optional] Region name to be removed from the provider. Each region to be removed needs to be provided using a separate --remove-region definition. Removing a region removes the corresponding zones.
-      --remove-zone stringArray     [Optional] Remove zone associated to the On-premises Region defined. Provide the following comma separated fields as key-value pairs:"zone-name=<zone-name>,region-name=<region-name>". Zone name, Region name are required values. Each zone needs to be removed using a separate --remove-zone flag.
-      --edit-region stringArray     [Optional] Edit region details associated with the On-premises provider. Provide the following comma separated fields as key-value pairs:"region-name=<region-name>,latitude=<latitude>,longitude=<longitude>". Region name is a required key-value. Latitude and Longitude are optional. Each region needs to be modified using a separate --edit-region flag.
+      --remove-zone stringArray     [Optional] Remove zone associated to the On-premises Region defined. Provide the following double colon (::) separated fields as key-value pairs: "zone-name=<zone-name>::region-name=<region-name>". Zone name, Region name are required values. Each zone needs to be removed using a separate --remove-zone flag.
+      --edit-region stringArray     [Optional] Edit region details associated with the On-premises provider. Provide the following double colon (::) separated fields as key-value pairs: "region-name=<region-name>::latitude=<latitude>::longitude=<longitude>". Region name is a required key-value. Latitude and Longitude are optional. Each region needs to be modified using a separate --edit-region flag.
       --ssh-user string             [Optional] Updating SSH User to access the YugabyteDB nodes.
       --ssh-port int                [Optional] Updating SSH Port to access the YugabyteDB nodes.
       --airgap-install              [Optional] Are YugabyteDB nodes installed in an air-gapped environment, lacking access to the public internet for package downloads. (default false)
@@ -41,7 +48,7 @@ yba provider onprem update [flags]
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe, instance-types and nodes.
+  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe, instance-type and node.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)

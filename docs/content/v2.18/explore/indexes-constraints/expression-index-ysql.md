@@ -41,7 +41,7 @@ A common use case of an expression index is to support case-insensitive text to 
 
 For example, suppose you have a `users` table with an `email` column to store login email addresses, and you want to maintain case-insensitive authentication. Using the WHERE clause as WHERE LOWER(email) = '<lower_case_email>' allows you to store the email address as originally entered by the user.
 
-The following example uses the `employees` table from the Secondary indexes [example scenario](../secondary-indexes/#example-scenario-using-ysql) to show how to create an index on an expression that converts the department to lowercase to improve searchability.
+The following example uses the `employees` table from the Secondary indexes [example scenario](../secondary-indexes-ysql/#example-scenario-using-ysql) to show how to create an index on an expression that converts the department to lowercase to improve searchability.
 
 1. Verify the query plan without creating an expression index for the department `Operations`.
 

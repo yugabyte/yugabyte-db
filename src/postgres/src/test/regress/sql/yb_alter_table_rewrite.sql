@@ -105,11 +105,14 @@ DROP USER user1;
 CREATE TABLE test_partitioned(a int, PRIMARY KEY (a ASC), b text) PARTITION BY RANGE (a);
 CREATE TABLE test_partitioned_part1 PARTITION OF test_partitioned FOR VALUES FROM (1) TO (6);
 CREATE TABLE test_partitioned_part2 PARTITION OF test_partitioned FOR VALUES FROM (6) TO (11);
+CREATE INDEX test_partitioned_index ON test_partitioned(b);
 INSERT INTO test_partitioned VALUES(generate_series(1, 10), 'text');
 ALTER TABLE test_partitioned ADD COLUMN c SERIAL, ALTER COLUMN b TYPE int USING length(b);
 ALTER TABLE test_partitioned DROP CONSTRAINT test_partitioned_pkey;
 ALTER TABLE test_partitioned ADD PRIMARY KEY (a ASC);
 SELECT * FROM test_partitioned;
+EXPLAIN (COSTS OFF) SELECT * FROM test_partitioned WHERE b = 4;
+SELECT * FROM test_partitioned WHERE b = 4;
 
 -- Test table rewrite on temp tables.
 CREATE TEMP TABLE temp_table_rewrite_test(a int);
@@ -138,6 +141,11 @@ SELECT col, col2, col4 FROM base ORDER BY col;
 \d+ base;
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
     yb_table_properties('base_idx'::regclass);
+CREATE UNIQUE INDEX base_idx_unique ON base(col);
+ALTER TABLE base ADD PRIMARY KEY USING INDEX base_idx_unique;
+INSERT INTO base VALUES (1, 1); -- should fail.
+INSERT INTO base VALUES (4, 4), (5, 5);
+SELECT col, col2 FROM base;
 CREATE TABLE base2 (col int, col2 int) WITH (COLOCATION=false);
 CREATE INDEX base2_idx ON base2(col2);
 INSERT INTO base2 VALUES (1, 3), (2, 2), (3, 1);
@@ -246,9 +254,29 @@ CREATE TYPE typeid AS (i int);
 CREATE TABLE nopk_udt (id typeid, v int);
 ALTER TABLE nopk_udt ADD PRIMARY KEY (id); -- should fail.
 -- test pk USING INDEX.
-CREATE TABLE nopk_usingindex (id int);
-CREATE UNIQUE INDEX nopk_idx ON nopk_usingindex (id ASC);
+CREATE TABLE nopk_usingindex (id int) SPLIT INTO 5 TABLETS;
+INSERT INTO nopk_usingindex VALUES (1), (2), (3);
+CREATE INDEX nopk_idx ON nopk_usingindex(id);
+CREATE UNIQUE INDEX nopk_idx2 ON nopk_usingindex (id HASH);
+CREATE UNIQUE INDEX nopk_idx3 ON nopk_usingindex (id ASC);
+CREATE UNIQUE INDEX nopk_idx4 ON nopk_usingindex (id DESC);
 ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx; -- should fail.
+INSERT INTO nopk_usingindex VALUES (null);
+ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx2; -- should fail.
+DELETE FROM nopk_usingindex WHERE id IS NULL;
+ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx2;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('nopk_usingindex'::regclass);
+INSERT INTO nopk_usingindex VALUES (4);
+INSERT INTO nopk_usingindex VALUES (1); -- should fail.
+INSERT INTO nopk_usingindex VALUES (null); -- should fail.
+SELECT * FROM nopk_usingindex ORDER BY id;
+DROP INDEX nopk_idx2; -- should fail.
+ALTER TABLE nopk_usingindex DROP CONSTRAINT nopk_idx2;
+ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx3;
+SELECT * FROM nopk_usingindex;
+DROP INDEX nopk_idx3; -- should fail.
+ALTER TABLE nopk_usingindex DROP CONSTRAINT nopk_idx3;
+ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx4; -- should fail (not supported in PG).
 -- test adding/dropping pks on partitioned tables.
 CREATE TABLE nopk_whole (id int) PARTITION BY LIST (id);
 CREATE TABLE nopk_part1 PARTITION OF nopk_whole FOR VALUES IN (1, 2, 3);
@@ -471,3 +499,25 @@ ALTER TABLE test_identity ADD COLUMN id2 int GENERATED ALWAYS AS IDENTITY;
 INSERT INTO test_identity VALUES (4, 4); -- should fail
 INSERT INTO test_identity OVERRIDING SYSTEM VALUE VALUES (4, 4);
 SELECT * FROM test_identity;
+
+--
+-- Test ALTER TABLE ... DROP COLUMN on a primary key column.
+--
+-- basic test
+CREATE TABLE test_drop_pk_column (id int PRIMARY KEY, v int);
+INSERT INTO test_drop_pk_column VALUES (1, 1), (2, 2), (3, 3);
+ALTER TABLE test_drop_pk_column DROP COLUMN id;
+\d test_drop_pk_column;
+INSERT INTO test_drop_pk_column VALUES (1);
+SELECT * FROM test_drop_pk_column ORDER BY v;
+-- test composite PK
+CREATE TABLE test_drop_pk_column_composite (id int, v int, t int, PRIMARY KEY (id HASH, v ASC));
+INSERT INTO test_drop_pk_column_composite VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
+ALTER TABLE test_drop_pk_column_composite DROP COLUMN id;
+\d test_drop_pk_column_composite;
+INSERT INTO test_drop_pk_column_composite VALUES (1, 1);
+SELECT * FROM test_drop_pk_column_composite ORDER BY v;
+-- test partitioned table
+CREATE TABLE test_drop_pk_column_part (id int PRIMARY KEY, v int) PARTITION BY RANGE (id);
+CREATE TABLE test_drop_pk_column_part1 PARTITION OF test_drop_pk_column_part FOR VALUES FROM (1) TO (10);
+ALTER TABLE test_drop_pk_column_part DROP COLUMN id; -- should fail.

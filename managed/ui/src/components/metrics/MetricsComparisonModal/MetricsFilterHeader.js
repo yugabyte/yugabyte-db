@@ -96,6 +96,7 @@ export const MetricsFilterHeader = ({ origin, selectedUniverse }) => {
         setStartMoment={setCustomStartMoment}
         setEndMoment={setCustomEndMoment}
         handleTimeframeChange={handleTimeframeChange}
+        timezone={currentUser.data.timezone}
       />
     ) : null;
 

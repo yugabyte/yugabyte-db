@@ -54,8 +54,10 @@ DEFINE_UNKNOWN_bool(enable_uncovered_index_select, true,
             "Enable executing select statements using uncovered index");
 TAG_FLAG(enable_uncovered_index_select, advanced);
 
-DEFINE_RUNTIME_AUTO_bool(ycql_suppress_group_by_error, kLocalVolatile, true, false,
-            "Enable to suppress the error raised when using GROUP BY clause");
+DEFINE_RUNTIME_bool(ycql_ignore_group_by_error, true,
+    "YCQL currently does not support the GROUP BY clause. Enabling this flag suppresses the error "
+    "and allows the clause to be ignored. If the flag is disabled, an error will be raised "
+    "whenever a GROUP BY clause is encountered.");
 
 namespace yb {
 namespace ql {
@@ -611,18 +613,19 @@ ExplainPlanPB PTSelectStmt::AnalysisResultToPB() {
   ExplainPlanPB explain_plan;
   SelectPlanPB *select_plan = explain_plan.mutable_select_plan();
   // Determines scan_type, child_select_ != null means an index is being used.
+  auto table_name = this->table_name().ToString(false);
   if (child_select_) {
     string index_type = (child_select_->covers_fully() ? "Index Only" : "Index");
     string lookup_type = (child_select_->select_has_primary_keys_set_ ? "Key Lookup" : "Scan");
     select_plan->set_select_type(index_type + " " + lookup_type + " using " +
-      child_select()->table()->name().ToString() + " on " + table_name().ToString());
+      child_select()->table()->name().ToString(false) + " on " + table_name);
   // Index is not being used, query only uses main table.
   } else if (select_has_primary_keys_set_) {
-    select_plan->set_select_type("Primary Key Lookup on " + table_name().ToString());
+    select_plan->set_select_type("Primary Key Lookup on " + table_name);
   } else if (!(key_where_ops().empty() && partition_key_ops().empty())) {
-    select_plan->set_select_type("Range Scan on " + table_name().ToString());
+    select_plan->set_select_type("Range Scan on " + table_name);
   } else {
-    select_plan->set_select_type("Seq Scan on " + table_name().ToString());
+    select_plan->set_select_type("Seq Scan on " + table_name);
   }
   string key_conditions = "  Key Conditions: ";
   string filter = "  Filter: ";

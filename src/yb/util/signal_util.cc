@@ -61,11 +61,20 @@ const std::vector<int> kYsqlHandledSignals{
     SIGUSR1, // procsignal_sigusr1_handler
     SIGFPE, // FloatExceptionHandler
     SIGTERM, // bgworker_die
-    SIGQUIT // bgworker_quickdie
+    SIGQUIT, // bgworker_quickdie
+    SIGALRM // handle_sig_alarm
 };
 
 Result<sigset_t> ThreadYsqlSignalMaskBlock() {
   return ThreadSignalMaskBlock(kYsqlHandledSignals);
+}
+
+Status InstallSignalHandler(int signum, void (*handler)(int)) {
+  struct sigaction sig_action{};
+  sig_action.sa_handler = handler;
+  return STATUS_FROM_ERRNO_IF_NONZERO_RV(
+      Format("InstallSignalHandler failed for signal $0 ($1)", signum, strsignal(signum)),
+      sigaction(signum, &sig_action, nullptr));
 }
 
 } // namespace yb

@@ -18,13 +18,13 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressForeignKey extends BasePgRegressTest {
+public class TestPgRegressForeignKey extends BasePgRegressTestPorted {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    flagMap.putAll(FailOnConflictTestGflags);
+    setFailOnConflictFlags(flagMap);
     return flagMap;
   }
 

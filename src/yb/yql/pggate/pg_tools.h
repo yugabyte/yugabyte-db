@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,20 +17,37 @@
 
 #pragma once
 
+#include <functional>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/pg_types.h"
 #include "yb/common/transaction.pb.h"
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
 
-struct PgExecParameters;
+#include "yb/util/lw_function.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
 
-RowMarkType GetRowMarkType(const PgExecParameters* exec_params);
+class PgSession;
+class PgTypeInfo;
+
+RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params);
 
 struct Bound {
-  uint64_t value;
+  uint16_t value;
   bool is_inclusive;
 };
 
@@ -39,16 +56,141 @@ struct Bound {
 // when it goes out of scope.
 class PgWaitEventWatcher {
  public:
-  using Starter = uint32_t (*)(uint32_t wait_event);
+  using Starter = YbcWaitEventInfo (*)(YbcWaitEventInfo info);
 
-  PgWaitEventWatcher(Starter starter, ash::WaitStateCode wait_event);
+  PgWaitEventWatcher(
+      Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc);
   ~PgWaitEventWatcher();
 
  private:
   const Starter starter_;
-  const uint32_t prev_wait_event_;
+  const YbcWaitEventInfo prev_wait_event_;
 
   DISALLOW_COPY_AND_ASSIGN(PgWaitEventWatcher);
 };
+
+struct EstimatedRowCount {
+  double live;
+  double dead;
+};
+
+struct SampleRandomState {
+  double w;
+  uint64_t s0;
+  uint64_t s1;
+};
+
+struct LightweightTableYbctid {
+  LightweightTableYbctid(PgOid table_id_, const std::string_view& ybctid_)
+      : table_id(table_id_), ybctid(ybctid_) {}
+  LightweightTableYbctid(PgOid table_id_, const Slice& ybctid_)
+      : LightweightTableYbctid(table_id_, static_cast<std::string_view>(ybctid_)) {}
+
+  PgOid table_id;
+  std::string_view ybctid;
+};
+
+struct TableYbctid {
+  TableYbctid(PgOid table_id_, std::string ybctid_)
+      : table_id(table_id_), ybctid(std::move(ybctid_)) {}
+
+  explicit TableYbctid(const LightweightTableYbctid& lightweight)
+      : TableYbctid(lightweight.table_id, std::string(lightweight.ybctid)) {}
+
+  operator LightweightTableYbctid() const {
+    return LightweightTableYbctid(table_id, static_cast<std::string_view>(ybctid));
+  }
+
+  std::string ToString() const {
+    return Format("{ table_id: $0, ybctid: $1 }", table_id, ybctid);
+  }
+
+  PgOid table_id;
+  std::string ybctid;
+};
+
+struct MemoryOptimizedTableYbctid {
+  MemoryOptimizedTableYbctid(PgOid table_id_, std::string_view ybctid_);
+
+  operator LightweightTableYbctid() const;
+
+  PgOid table_id;
+  uint32_t ybctid_size;
+  std::unique_ptr<char[]> ybctid_data;
+};
+
+static_assert(
+    sizeof(MemoryOptimizedTableYbctid) == 16 &&
+    sizeof(MemoryOptimizedTableYbctid) < sizeof(TableYbctid));
+
+struct TableYbctidComparator {
+  using is_transparent = void;
+
+  bool operator()(const LightweightTableYbctid& l, const LightweightTableYbctid& r) const {
+    return l.table_id == r.table_id && l.ybctid == r.ybctid;
+  }
+};
+
+struct TableYbctidHasher {
+  using is_transparent = void;
+
+  size_t operator()(const LightweightTableYbctid& value) const;
+};
+
+using OidSet = std::unordered_set<PgOid>;
+template <class T>
+using TableYbctidSetHelper =
+    std::unordered_set<T, TableYbctidHasher, TableYbctidComparator>;
+using MemoryOptimizedTableYbctidSet = TableYbctidSetHelper<MemoryOptimizedTableYbctid>;
+using TableYbctidSet = TableYbctidSetHelper<TableYbctid>;
+using TableYbctidVector = std::vector<TableYbctid>;
+
+template <class U>
+using TableYbctidMap = std::unordered_map<TableYbctid, U, TableYbctidHasher, TableYbctidComparator>;
+
+class TableYbctidVectorProvider {
+ public:
+  class Accessor {
+   public:
+    ~Accessor() { container_.clear(); }
+    TableYbctidVector* operator->() { return &container_; }
+    TableYbctidVector& operator*() { return container_; }
+    operator TableYbctidVector&() { return container_; }
+
+   private:
+    explicit Accessor(TableYbctidVector* container) : container_(*container) {}
+
+    friend class TableYbctidVectorProvider;
+
+    TableYbctidVector& container_;
+
+    DISALLOW_COPY_AND_ASSIGN(Accessor);
+  };
+
+  [[nodiscard]] Accessor Get() { return Accessor(&container_); }
+
+ private:
+  TableYbctidVector container_;
+};
+
+using ExecParametersMutator = LWFunction<void(YbcPgExecParameters&)>;
+
+using YbctidReader =
+    std::function<Status(PgOid, TableYbctidVector&, const OidSet&, const ExecParametersMutator&)>;
+
+Status FetchExistingYbctids(
+    const scoped_refptr<PgSession>& session, PgOid database_id, TableYbctidVector& ybctids,
+    const OidSet& region_local_tables, const ExecParametersMutator& exec_params_mutator);
+
+
+struct YbctidBatch {
+  YbctidBatch(std::reference_wrapper<const std::vector<Slice>> ybctids_, bool keep_order_)
+      : ybctids(ybctids_), keep_order(keep_order_) {}
+
+  const std::vector<Slice>& ybctids;
+  bool keep_order;
+};
+
+Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid);
 
 } // namespace yb::pggate

@@ -46,6 +46,12 @@ export interface MigrationAssesmentInfo  {
    * @memberof MigrationAssesmentInfo
    */
   complexity_overview?: AssesmentComplexityInfo[];
+  /**
+   * 
+   * @type {string}
+   * @memberof MigrationAssesmentInfo
+   */
+  operating_system?: string;
 }
 
 

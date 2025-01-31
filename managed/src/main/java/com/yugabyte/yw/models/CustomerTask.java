@@ -26,6 +26,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToOne;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
@@ -53,6 +55,7 @@ import play.data.validation.Constraints;
 @Setter
 public class CustomerTask extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTask.class);
+  public static final String BACKGROUND_TASK_USER = "YBA";
 
   public enum TargetType {
     @EnumValue("Universe")
@@ -95,7 +98,10 @@ public class CustomerTask extends Model {
     MasterKey(true),
 
     @EnumValue("Node Agent")
-    NodeAgent(false);
+    NodeAgent(false),
+
+    @EnumValue("Platform")
+    Yba(false);
 
     private final boolean universeTarget;
 
@@ -237,6 +243,9 @@ public class CustomerTask extends Model {
     @EnumValue("CreatePitrConfig")
     CreatePitrConfig,
 
+    @EnumValue("UpdatePitrConfig")
+    UpdatePitrConfig,
+
     @EnumValue("DeletePitrConfig")
     DeletePitrConfig,
 
@@ -305,6 +314,9 @@ public class CustomerTask extends Model {
     @EnumValue("Switchover")
     Switchover,
 
+    @EnumValue("SwitchoverRollback")
+    SwitchoverRollback,
+
     @EnumValue("PrecheckNode")
     PrecheckNode,
 
@@ -369,92 +381,114 @@ public class CustomerTask extends Model {
     UpdateProxyConfig,
 
     @EnumValue("SyncMasterAddresses")
-    SyncMasterAddresses;
+    SyncMasterAddresses,
+
+    @EnumValue("CreateYbaBackup")
+    CreateYbaBackup,
+
+    @EnumValue("RestoreYbaBackup")
+    RestoreYbaBackup,
+
+    @EnumValue("RestoreContinuousBackup")
+    RestoreContinuousBackup,
+
+    @EnumValue("EnableNodeAgent")
+    EnableNodeAgent,
+
+    @EnumValue("Decommission")
+    Decommission,
+
+    @EnumValue("CloneNamespace")
+    CloneNamespace;
 
     public String toString(boolean completed) {
       switch (this) {
         case Add:
-          return completed ? "Added " : "Adding ";
+          return completed ? "Added" : "Adding";
         case Create:
-          return completed ? "Created " : "Creating ";
+          return completed ? "Created" : "Creating";
         case Pause:
-          return completed ? "Paused " : "Pausing ";
+          return completed ? "Paused" : "Pausing";
         case Release:
-          return completed ? "Released " : "Releasing ";
+          return completed ? "Released" : "Releasing";
         case Reboot:
         case HardReboot:
-          return completed ? "Rebooted " : "Rebooting ";
+          return completed ? "Rebooted" : "Rebooting";
         case Remove:
-          return completed ? "Removed " : "Removing ";
+          return completed ? "Removed" : "Removing";
+        case Decommission:
+          return completed ? "Decommissioned" : "Decommissioning";
         case ResizeNode:
-          return completed ? "Resized Node " : "Resizing Node ";
+          return completed ? "Resized Node" : "Resizing Node";
         case Replace:
           return completed ? "Replaced Node" : "Replacing Node";
         case Resume:
-          return completed ? "Resumed " : "Resuming ";
+          return completed ? "Resumed" : "Resuming";
         case Start:
-          return completed ? "Started " : "Starting ";
+          return completed ? "Started" : "Starting";
         case Stop:
-          return completed ? "Stopped " : "Stopping ";
+          return completed ? "Stopped" : "Stopping";
         case Update:
-          return completed ? "Updated " : "Updating ";
+          return completed ? "Updated" : "Updating";
         case Delete:
-          return completed ? "Deleted " : "Deleting ";
+          return completed ? "Deleted" : "Deleting";
         case Edit:
-          return completed ? "Edited " : "Editing ";
+          return completed ? "Edited" : "Editing";
         case Sync:
-          return completed ? "Synchronized " : "Synchronizing ";
+          return completed ? "Synchronized" : "Synchronizing";
         case LdapSync:
-          return completed ? "LDAP Sync Completed on " : "LDAP Sync in Progress on ";
+          return completed ? "LDAP Sync Completed on" : "LDAP Sync in Progress on";
         case RestartUniverse:
-          return completed ? "Restarted " : "Restarting ";
+          return completed ? "Restarted" : "Restarting";
         case SoftwareUpgrade:
-          return completed ? "Upgraded Software " : "Upgrading Software ";
+          return completed ? "Upgraded Software" : "Upgrading Software";
         case SoftwareUpgradeYB:
-          return completed ? "Upgraded Software " : "Upgrading Software ";
+          return completed ? "Upgraded Software" : "Upgrading Software";
         case FinalizeUpgrade:
-          return completed ? "Finalized Upgrade " : "Finalizing Upgrade ";
+          return completed ? "Finalized Upgrade" : "Finalizing Upgrade";
         case RollbackUpgrade:
-          return completed ? "Rolled back upgrade " : "Rolling back upgrade ";
+          return completed ? "Rolled back upgrade" : "Rolling back upgrade";
         case SystemdUpgrade:
-          return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
+          return completed ? "Upgraded to Systemd" : "Upgrading to Systemd";
         case GFlagsUpgrade:
-          return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
+          return completed ? "Upgraded GFlags" : "Upgrading GFlags";
         case KubernetesOverridesUpgrade:
-          return completed ? "Upgraded Kubernetes Overrides " : "Upgrading Kubernetes Overrides ";
+          return completed ? "Upgraded Kubernetes Overrides" : "Upgrading Kubernetes Overrides";
         case EditKubernetesUniverse:
-          return completed ? "Edited Kubernetes Universe  " : "Editing Kubernetes Universe";
+          return completed ? "Edited Kubernetes Universe" : "Editing Kubernetes Universe";
         case CertsRotate:
-          return completed ? "Updated Certificates " : "Updating Certificates ";
+          return completed ? "Updated Certificates" : "Updating Certificates";
         case TlsToggle:
-          return completed ? "Toggled TLS " : "Toggling TLS ";
+          return completed ? "Toggled TLS" : "Toggling TLS";
         case VMImageUpgrade:
         case UpgradeVMImage:
-          return completed ? "Upgraded VM Image " : "Upgrading VM Image ";
+          return completed ? "Upgraded VM Image" : "Upgrading VM Image";
         case UpgradeSoftware:
-          return completed ? "Upgraded Software " : "Upgrading Software ";
+          return completed ? "Upgraded Software" : "Upgrading Software";
         case UpdateDiskSize:
-          return completed ? "Updated Disk Size " : "Updating Disk Size ";
+          return completed ? "Updated Disk Size" : "Updating Disk Size";
         case UpdateLoadBalancerConfig:
-          return completed ? "Updated Load Balancer Config " : "Updating Load Balancer Config ";
+          return completed ? "Updated Load Balancer Config" : "Updating Load Balancer Config";
         case UpdateCert:
-          return completed ? "Updated Cert " : "Updating Cert ";
+          return completed ? "Updated Cert" : "Updating Cert";
         case UpgradeGflags:
-          return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
+          return completed ? "Upgraded GFlags" : "Upgrading GFlags";
         case BulkImportData:
           return completed ? "Bulk imported data" : "Bulk importing data";
         case Restore:
-          return completed ? "Restored " : "Restoring ";
+          return completed ? "Restored" : "Restoring";
         case CreatePitrConfig:
           return completed ? "Created PITR Config" : "Creating PITR Config";
+        case UpdatePitrConfig:
+          return completed ? "Updated PITR Config" : "Updating PITR Config";
         case DeletePitrConfig:
           return completed ? "Deleted PITR Config" : "Deleting PITR Config";
         case RestoreSnapshotSchedule:
           return completed ? "Restored Snapshot Schedule" : "Restoring Snapshot Schedule";
         case Restart:
-          return completed ? "Restarted " : "Restarting ";
+          return completed ? "Restarted" : "Restarting";
         case Backup:
-          return completed ? "Backed up " : "Backing up ";
+          return completed ? "Backed up" : "Backing up";
         case SetEncryptionKey:
           return completed ? "Set encryption key" : "Setting encryption key";
         case EnableEncryptionAtRest:
@@ -466,45 +500,49 @@ public class CustomerTask extends Model {
         case DisableEncryptionAtRest:
           return completed ? "Disabled encryption at rest" : "Disabling encryption at rest";
         case StartMaster:
-          return completed ? "Started Master process on " : "Starting Master process on ";
+          return completed ? "Started Master process on" : "Starting Master process on";
         case CreateAlertDefinitions:
-          return completed ? "Created alert definitions " : "Creating alert definitions ";
+          return completed ? "Created alert definitions" : "Creating alert definitions";
         case ManageAlertDefinitions:
-          return completed ? "Managed alert definitions " : "Managing alert definitions ";
+          return completed ? "Managed alert definitions" : "Managing alert definitions";
         case ExternalScript:
-          return completed ? "Script execution completed " : "Script execution is running";
+          return completed ? "Script execution completed" : "Script execution is running";
         case CreateXClusterConfig:
-          return completed ? "Created xcluster config " : "Creating xcluster config ";
+          return completed ? "Created xcluster config" : "Creating xcluster config";
         case DeleteXClusterConfig:
-          return completed ? "Deleted xcluster config " : "Deleting xcluster config ";
+          return completed ? "Deleted xcluster config" : "Deleting xcluster config";
         case EditXClusterConfig:
-          return completed ? "Edited xcluster config " : "Editing xcluster config ";
+          return completed ? "Edited xcluster config" : "Editing xcluster config";
         case SyncXClusterConfig:
-          return completed ? "Synchronized xcluster config " : "Synchronizing xcluster config ";
+          return completed ? "Synchronized xcluster config" : "Synchronizing xcluster config";
         case Failover:
-          return completed ? "Failed over dr config " : "Failing over dr config ";
+          return completed ? "Failed over dr config" : "Failing over dr config";
         case Switchover:
-          return completed ? "Switched over dr config " : "Switching over dr config ";
+          return completed ? "Switched over dr config" : "Switching over dr config";
+        case SwitchoverRollback:
+          return completed
+              ? "Rolled back the latest switchover dr config task"
+              : "Rolling back the latest switchover dr config task";
         case PrecheckNode:
-          return completed ? "Performed preflight check on " : "Performing preflight check on ";
+          return completed ? "Performed preflight check on" : "Performing preflight check on";
         case Abort:
-          return completed ? "Task aborted " : "Aborting task ";
+          return completed ? "Task aborted" : "Aborting task";
         case CreateSupportBundle:
-          return completed ? "Created Support Bundle in " : "Creating Support Bundle in ";
+          return completed ? "Created Support Bundle in" : "Creating Support Bundle in";
         case ThirdpartySoftwareUpgrade:
           return completed
-              ? "Upgraded third-party software for "
-              : "Upgrading third-party software for ";
+              ? "Upgraded third-party software for"
+              : "Upgrading third-party software for";
         case ModifyAuditLoggingConfig:
           return completed
-              ? "Modified audit logging config for "
-              : "Modifying audit logging config for ";
+              ? "Modified audit logging config for"
+              : "Modifying audit logging config for";
         case CreateTableSpaces:
-          return completed ? "Created tablespaces in " : "Creating tablespaces in ";
+          return completed ? "Created tablespaces in" : "Creating tablespaces in";
         case RotateAccessKey:
           return completed ? "Rotated Access Key" : "Rotating Access Key";
         case RebootUniverse:
-          return completed ? "Rebooted " : "Rebooting ";
+          return completed ? "Rebooted" : "Rebooting";
         case CreateAndRotateAccessKey:
           return completed
               ? "Creating Access Key and Rotation Tasks"
@@ -533,9 +571,19 @@ public class CustomerTask extends Model {
         case UpdateProxyConfig:
           return completed ? "Updated Proxy Config" : "Updating Proxy Config";
         case MasterFailover:
-          return completed ? "Started master on new node" : "Starting master on new node";
+          return completed ? "Started master on new node in" : "Starting master on new node in";
         case SyncMasterAddresses:
-          return completed ? "Synced master addresses" : "Syncing master addresses";
+          return completed ? "Synced master addresses in" : "Syncing master addresses in";
+        case CreateYbaBackup:
+          return completed ? "Created YBA backup" : "Creating YBA backup";
+        case RestoreYbaBackup:
+          return completed ? "Restored YBA backup" : "Restoring YBA backup";
+        case RestoreContinuousBackup:
+          return completed ? "Restored continuous YBA backup" : "Restoring continuous YBA backup";
+        case EnableNodeAgent:
+          return completed ? "Enabled node agent on" : "Enabling node agent on";
+        case CloneNamespace:
+          return completed ? "Cloned Namespace" : "Cloning Namespace";
         default:
           return null;
       }
@@ -660,6 +708,11 @@ public class CustomerTask extends Model {
       example = "shagarwal@yugabyte.com")
   private String userEmail;
 
+  @OneToOne(optional = false)
+  @JoinColumn(name = "task_uuid", insertable = false, updatable = false)
+  @JsonIgnore
+  private TaskInfo taskInfo;
+
   public void markAsCompleted() {
     markAsCompleted(new Date());
   }
@@ -699,21 +752,20 @@ public class CustomerTask extends Model {
     th.targetName = targetName;
     th.createTime = new Date();
     th.customTypeName = customTypeName;
-    String emailFromContext = Util.maybeGetEmailFromContext();
-    if (emailFromContext.equals("Unknown")) {
-      // When task is not created as a part of user action get email of the scheduler.
-      String emailFromSchedule = maybeGetEmailFromSchedule();
-      if (emailFromSchedule.equals("Unknown")) {
-        if (!StringUtils.isEmpty(userEmail)) {
-          th.userEmail = userEmail;
-        } else {
+    if (StringUtils.isEmpty(userEmail)) {
+      String emailFromContext = Util.maybeGetEmailFromContext();
+      if (emailFromContext.equals("Unknown")) {
+        String emailFromSchedule = maybeGetEmailFromSchedule();
+        if (emailFromSchedule.equals("Unknown")) {
           th.userEmail = "Unknown";
+        } else {
+          th.userEmail = emailFromSchedule;
         }
       } else {
-        th.userEmail = emailFromSchedule;
+        th.userEmail = emailFromContext;
       }
     } else {
-      th.userEmail = emailFromContext;
+      th.userEmail = userEmail;
     }
     String correlationId = (String) MDC.get(LogUtil.CORRELATION_ID);
     if (!Strings.isNullOrEmpty(correlationId)) th.correlationId = correlationId;
@@ -743,6 +795,17 @@ public class CustomerTask extends Model {
         customer, targetUUID, taskUUID, targetType, type, targetName, customTypeName, null);
   }
 
+  public static CustomerTask createWithBackgroundUser(
+      Customer customer,
+      UUID targetUUID,
+      UUID taskUUID,
+      TargetType targetType,
+      TaskType type,
+      String targetName) {
+    return create(
+        customer, targetUUID, taskUUID, targetType, type, targetName, null, BACKGROUND_TASK_USER);
+  }
+
   public static CustomerTask get(Long id) {
     return CustomerTask.find.query().where().idEq(id).findOne();
   }
@@ -769,9 +832,20 @@ public class CustomerTask extends Model {
     return customerTask;
   }
 
+  public static Optional<CustomerTask> maybeGet(UUID taskUUID) {
+    return CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOneOrEmpty();
+  }
+
+  public CustomerTask updateWithBackgroundUser() {
+    setUserEmail(BACKGROUND_TASK_USER);
+    update();
+    return this;
+  }
+
   public String getFriendlyDescription() {
     StringBuilder sb = new StringBuilder();
-    sb.append(type.toString(completionTime != null));
+    sb.append(type.toString(completionTime != null).trim());
+    sb.append(" ");
     sb.append(targetType.name());
     sb.append(" : ").append(targetName);
     return sb.toString();
@@ -831,6 +905,15 @@ public class CustomerTask extends Model {
         .findList();
   }
 
+  public static List<CustomerTask> findNewerThan(Customer customer, Duration duration) {
+    Date cutoffDate = new Date(Instant.now().minus(duration).toEpochMilli());
+    return find.query()
+        .where()
+        .eq("customerUUID", customer.getUuid())
+        .ge("completion_time", cutoffDate)
+        .findList();
+  }
+
   public static Optional<CustomerTask> maybeGetByTargetUUIDTaskTypeTargetType(
       UUID customerUUID, UUID targetUUID, TaskType taskType, TargetType targetType) {
     List<CustomerTask> cTaskList =
@@ -874,6 +957,18 @@ public class CustomerTask extends Model {
     } else {
       return null;
     }
+  }
+
+  public static Optional<CustomerTask> maybeGetLastTaskByTargetUuidTaskType(
+      UUID targetUUID, TaskType taskType) {
+    return find.query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("type", taskType)
+        .isNotNull("completion_time")
+        .orderBy("completion_time desc")
+        .setMaxRows(1)
+        .findOneOrEmpty();
   }
 
   @JsonIgnore

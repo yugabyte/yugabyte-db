@@ -175,7 +175,8 @@ public class RestoreBackupYbc extends YbcTaskBase {
                   backupStorageInfo,
                   taskId,
                   taskParams().getSuccessMarker(),
-                  taskParams().getUniverseUUID());
+                  taskParams().getUniverseUUID(),
+                  taskParams().restoreToPointInTimeMillis);
           BackupServiceTaskCreateResponse response =
               ybcClient.restoreNamespace(restoreTaskCreateRequest);
           if (response.getStatus().getCode().equals(ControllerStatus.OK)) {
@@ -208,7 +209,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
       }
 
       try {
-        pollTaskProgress(ybcClient, taskId);
+        pollTaskProgress(ybcClient, taskId, nodeIp);
         handleBackupResult(taskId);
         if (isResumable) {
           restoreBackupParams.currentYbcTaskId = null;

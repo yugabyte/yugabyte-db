@@ -36,6 +36,8 @@ After the free trial begins, you can use your credits to create dedicated cluste
 
 Choose a plan any time. You won't be charged until your credits are used.
 
+## Limitations
+
 - Only one free trial can be applied to an account.
 - The free trial features the Professional plan. Enterprise plan features are not included.
 - Not all regions are available during free trials.

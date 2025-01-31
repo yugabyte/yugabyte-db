@@ -22,7 +22,7 @@ type: docs
 A foreign key represents one or more columns in a table referencing the following:
 
 - A primary key in another table.
-- A [unique index](../indexes-1#using-a-unique-index) or columns restricted with a [unique constraint](../other-constraints/#unique-constraint) in another table.
+- A [unique index](../unique-index-ysql/) or columns restricted with a [unique constraint](../other-constraints/#unique-constraint) in another table.
 
 Tables can have multiple foreign keys.
 
@@ -40,7 +40,7 @@ Define the foreign key constraint using the following syntax:
     [ON UPDATE update_action]
 ```
 
-Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you omit it, an auto-generated name is provided by YSQL. The `REFERENCES` clause specifies the parent table and its columns referenced by the *fk_columns*. Defining actions is also optional; if defined, they determine the behaviors when the primary key in the parent table is deleted or updated. YSQL allows you to perform the following actions:
+Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you omit it, an automatically generated name is provided by YSQL. The `REFERENCES` clause specifies the parent table and its columns referenced by the *fk_columns*. Defining actions is also optional; if defined, they determine the behaviors when the primary key in the parent table is deleted or updated. YSQL allows you to perform the following actions:
 
 - `SET NULL` - when the referenced rows in the parent table are deleted or updated, foreign key columns in the referencing rows of the child table are automatically set to `NULL`.
 - `SET DEFAULT` - when the referenced rows of the parent table are deleted or updated, the default value is set to the foreign key column of the referencing rows in the child table.
@@ -50,7 +50,7 @@ Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you 
 
 ## Examples
 
-Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
+Create a cluster [locally](/preview/tutorials/quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
 
 The following example creates two tables:
 

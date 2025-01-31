@@ -2,9 +2,8 @@
 title: Configure database authentication in YugabyteDB Anywhere
 headerTitle: Database authentication
 linkTitle: Database authentication
-headcontent: Secure your YugabyteDB universes
+headcontent: Manage authentication in YugabyteDB Anywhere using LDAP or OIDC
 description: Database authentication in YugabyteDB Anywhere.
-image: /images/section_icons/index/secure.png
 menu:
   stable_yugabyte-platform:
     parent: security
@@ -31,8 +30,8 @@ YugabyteDB supports LDAP and OIDC for database authentication.
     icon="/images/section_icons/secure/authentication.png">}}
 
   {{<index/item
-    title="OIDC with Azure AD"
-    body="Authenticate database users using SSO via Azure AD."
+    title="OIDC authentication"
+    body="Use an identity provider to authenticate database users."
     href="oidc-authentication-aad/"
     icon="/images/section_icons/secure/authorization.png">}}
 

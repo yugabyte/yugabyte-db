@@ -19,9 +19,10 @@ const useStyles = makeStyles((theme) => ({
 
 interface AccessKeysFieldProps {
   disabled?: boolean;
+  isEditMode?: boolean;
 }
 
-export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElement => {
+export const AccessKeysField = ({ disabled, isEditMode }: AccessKeysFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
   const classes = useFormFieldStyles();
@@ -43,14 +44,24 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
     const accessKeys = allAccessKeys.data.filter(
       (item: AccessKey) => item?.idKey?.providerUUID === provider?.uuid
     );
-    if (accessKeys?.length)
-      setValue(ACCESS_KEY_FIELD, accessKeys[0]?.idKey.keyCode, { shouldValidate: true });
+    if (!isEditMode) {
+      if (accessKeys?.length) {
+        setValue(ACCESS_KEY_FIELD, accessKeys[0]?.idKey.keyCode, { shouldValidate: true });
+      } else {
+        setValue(ACCESS_KEY_FIELD, null, { shouldValidate: true });
+      }
+    }
   }, [provider]);
 
   //only first time
   useEffectOnce(() => {
-    if (accessKeysList?.length && provider?.uuid)
-      setValue(ACCESS_KEY_FIELD, accessKeysList[0]?.idKey.keyCode, { shouldValidate: true });
+    if (!isEditMode) {
+      if (accessKeysList?.length && provider?.uuid) {
+        setValue(ACCESS_KEY_FIELD, accessKeysList[0]?.idKey.keyCode, { shouldValidate: true });
+      } else {
+        setValue(ACCESS_KEY_FIELD, null, { shouldValidate: true });
+      }
+    }
   });
 
   return (
@@ -62,11 +73,12 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
         <YBSelectField
           className={`${classes.defaultTextBox} ${helperClasses.overrideMuiSelectMenu}`}
           rules={{
-            required: !disabled
-              ? (t('universeForm.validation.required', {
-                  field: t('universeForm.advancedConfig.accessKey')
-                }) as string)
-              : ''
+            required:
+              !disabled && !provider.isOnPremManuallyProvisioned
+                ? (t('universeForm.validation.required', {
+                    field: t('universeForm.advancedConfig.accessKey')
+                  }) as string)
+                : ''
           }}
           inputProps={{
             'data-testid': 'AccessKeysField-Select'

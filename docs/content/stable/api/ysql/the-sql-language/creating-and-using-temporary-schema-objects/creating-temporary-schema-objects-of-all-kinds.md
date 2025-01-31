@@ -4,7 +4,7 @@ headerTitle: Creating temporary schema-objects of all kinds
 linkTitle: Temp schema-objects of all kinds
 description: Describes how to create temporary schema-objects of all kinds by using a schema-qualified identifier for the target object that starts with the alias 'pg_temp' [YSQL]
 menu:
-  stable:
+  stable_api:
     identifier: creating-temporary-schema-objects-of-all-kinds
     parent: creating-and-using-temporary-schema-objects
     weight: 200
@@ -201,7 +201,7 @@ select * from pg_temp.tab;
 This works—and produces this result:
 
 ```output
- k  | v  
+ k  | v
 ----+----
  10 | 42
 ```
@@ -217,7 +217,7 @@ select name, kind from pg_temp.my_temporary_schema_objects order by name;
 This is the result:
 
 ```output
-            name             |      kind      
+            name             |      kind
 -----------------------------+----------------
  =                           | operator
  cmplx_equals                | function

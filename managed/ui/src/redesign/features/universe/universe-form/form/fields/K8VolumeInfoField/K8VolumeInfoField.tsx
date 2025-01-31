@@ -29,7 +29,6 @@ const useStyles = makeStyles((theme) => ({
 interface K8VolumeInfoFieldProps {
   isDedicatedMasterField: boolean;
   disableVolumeSize: boolean;
-  disableNumVolumes: boolean;
   isEditMode: boolean;
   maxVolumeCount: number;
 }
@@ -37,7 +36,6 @@ interface K8VolumeInfoFieldProps {
 export const K8VolumeInfoField = ({
   isDedicatedMasterField,
   disableVolumeSize,
-  disableNumVolumes,
   isEditMode,
   maxVolumeCount
 }: K8VolumeInfoFieldProps): ReactElement => {
@@ -114,7 +112,7 @@ export const K8VolumeInfoField = ({
                       <YBInput
                         type="number"
                         fullWidth
-                        disabled={disableNumVolumes}
+                        disabled={nodeTypeTag === NodeType.Master && isEditMode}
                         inputProps={{
                           min: 1,
                           'data-testid': `K8VolumeInfoField-${nodeTypeTag}-VolumeInput`

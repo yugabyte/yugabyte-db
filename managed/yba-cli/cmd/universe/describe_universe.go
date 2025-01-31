@@ -22,6 +22,7 @@ var describeUniverseCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe a YugabyteDB Anywhere universe",
 	Long:    "Describe a universe in YugabyteDB Anywhere",
+	Example: `yba universe describe --name <universe-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -37,7 +38,10 @@ var describeUniverseCmd = &cobra.Command{
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 		universeListRequest := authAPI.ListUniverses()
-		universeName, _ := cmd.Flags().GetString("name")
+		universeName, err := cmd.Flags().GetString("name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 		universeListRequest = universeListRequest.Name(universeName)
 
 		r, response, err := universeListRequest.Execute()
@@ -53,14 +57,30 @@ var describeUniverseCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		universe.KMSConfigs, response, err = authAPI.ListKMSConfigs().Execute()
+		universe.Providers, response, err = authAPI.GetListOfProviders().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Universe", "Describe - Get Providers")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		universe.KMSConfigs = make([]util.KMSConfig, 0)
+		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err,
 				"Universe", "Describe - Get KMS Configurations")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(r) > 0 && util.IsOutputType("table") {
+		for _, k := range kmsConfigs {
+			kmsConfig, err := util.ConvertToKMSConfig(k)
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			universe.KMSConfigs = append(universe.KMSConfigs, kmsConfig)
+		}
+
+		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullUniverseContext := *universe.NewFullUniverseContext()
 			fullUniverseContext.Output = os.Stdout
 			fullUniverseContext.Format = universe.NewFullUniverseFormat(viper.GetString("output"))
@@ -78,8 +98,9 @@ var describeUniverseCmd = &cobra.Command{
 		}
 
 		universeCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: universe.NewUniverseFormat(viper.GetString("output")),
+			Command: "describe",
+			Output:  os.Stdout,
+			Format:  universe.NewUniverseFormat(viper.GetString("output")),
 		}
 		universe.Write(universeCtx, r)
 

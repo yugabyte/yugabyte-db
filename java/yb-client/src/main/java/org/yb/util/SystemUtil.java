@@ -6,6 +6,8 @@ import java.util.concurrent.ExecutorService;
 public class SystemUtil {
   public static final boolean IS_LINUX =
     System.getProperty("os.name").equalsIgnoreCase("linux");
+  public static final boolean IS_MAC =
+    System.getProperty("os.name").equalsIgnoreCase("mac os x");
 
   /**
    * Netty 3 had logic to shutdown executors in releaseExternalResources call.

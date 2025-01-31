@@ -92,6 +92,8 @@ class TypeInfo {
   }
 
   bool is_collection() const;
+
+  bool is_vector() const;
 };
 
 template<DataType Type> struct DataTypeTraits {};
@@ -487,6 +489,12 @@ struct DataTypeTraits<DataType::VARINT> : public DerivedTypeTraits<DataType::BIN
   }
 };
 
+template<>
+struct DataTypeTraits<DataType::VECTOR> : public DerivedTypeTraits<DataType::BINARY>{
+  static const char *name() {
+    return "vector";
+  }
+};
 
 static const char* kDateFormat = "%Y-%m-%d %H:%M:%S";
 static const char* kDateMicrosAndTzFormat = "%s.%06d GMT";

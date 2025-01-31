@@ -180,7 +180,7 @@ Status FsTool::ListLogSegmentsForTablet(const string& tablet_id) {
 Status FsTool::ListAllTablets() {
   DCHECK(initialized_);
 
-  vector<string> tablets = VERIFY_RESULT(fs_manager_->ListTabletIds());
+  auto tablets = VERIFY_RESULT(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kFalse));
   for (const string& tablet : tablets) {
     if (detail_level_ >= HEADERS_ONLY) {
       std::cout << "Tablet: " << tablet << std::endl;
@@ -248,7 +248,8 @@ Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
             << std::endl;
   std::cout << Indent(indent) << "Table name: " << meta->table_name()
             << " Table id: " << meta->table_id() << std::endl;
-  std::cout << Indent(indent) << "Schema (version=" << meta->schema_version() << "): "
+  std::cout << Indent(indent)
+            << Format("Schema (primary table version=$0)", meta->primary_table_schema_version())
             << schema->ToString() << std::endl;
 
   tablet::RaftGroupReplicaSuperBlockPB pb;

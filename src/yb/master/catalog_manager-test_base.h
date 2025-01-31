@@ -21,8 +21,10 @@
 
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_descriptor_test_util.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
@@ -93,10 +95,11 @@ void SetupRaftPeer(consensus::PeerMemberType member_type, std::string az,
   cloud_info->set_placement_zone(az);
 }
 
-void SetupClusterConfig(std::vector<std::string> azs, ReplicationInfoPB* replication_info) {
-
+void SetupClusterConfig(
+    std::vector<std::string> azs, ReplicationInfoPB* replication_info,
+    int num_replicas = kDefaultNumReplicas) {
   PlacementInfoPB* placement_info = replication_info->mutable_live_replicas();
-  placement_info->set_num_replicas(kDefaultNumReplicas);
+  placement_info->set_num_replicas(num_replicas);
   for (const std::string& az : azs) {
     auto pb = placement_info->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
@@ -169,7 +172,8 @@ void SetupClusterConfig(
 }
 
 void NewReplica(
-    TSDescriptor* ts_desc, tablet::RaftGroupStatePB state, PeerRole role, TabletReplica* replica) {
+    const TSDescriptorPtr& ts_desc, tablet::RaftGroupStatePB state, PeerRole role,
+    TabletReplica* replica) {
   replica->ts_desc = ts_desc;
   replica->state = state;
   replica->role = role;
@@ -189,9 +193,10 @@ std::shared_ptr<TSDescriptor> SetupTS(const std::string& uuid, const std::string
   ci->set_placement_region(default_region);
   ci->set_placement_zone(az);
 
-  std::shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
-  CHECK_OK(ts->Register(node, reg, CloudInfoPB(), nullptr));
-  return ts;
+  auto result = TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), nullptr, RegisteredThroughHeartbeat::kTrue);
+  CHECK(result.ok()) << result.status();
+  return *result;
 }
 
 std::shared_ptr<TSDescriptor> SetupTS(
@@ -211,10 +216,10 @@ std::shared_ptr<TSDescriptor> SetupTS(
   ci->set_placement_region(default_region);
   ci->set_placement_zone(az);
 
-  std::shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
-  CHECK_OK(ts->Register(node, reg, CloudInfoPB(), nullptr));
-
-  return ts;
+  auto result = TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), nullptr, RegisteredThroughHeartbeat::kTrue);
+  CHECK(result.ok()) << result.status();
+  return *result;
 }
 
 void SimulateSetLeaderReplicas(
@@ -227,7 +232,7 @@ void SimulateSetLeaderReplicas(
       auto replicas = std::make_shared<TabletReplicaMap>();
       TabletReplica new_leader_replica;
       NewReplica(
-          ts_descs[i].get(), tablet::RaftGroupStatePB::RUNNING, PeerRole::LEADER,
+          ts_descs[i], tablet::RaftGroupStatePB::RUNNING, PeerRole::LEADER,
           &new_leader_replica);
       InsertOrDie(replicas.get(), ts_descs[i]->permanent_uuid(), new_leader_replica);
       tablets[tablet_idx++]->SetReplicaLocations(replicas);

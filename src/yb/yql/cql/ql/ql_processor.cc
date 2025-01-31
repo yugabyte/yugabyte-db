@@ -30,6 +30,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/util/trace.h"
 
 #include "yb/yql/cql/ql/parser/parser.h"
 
@@ -94,6 +95,12 @@ METRIC_DEFINE_histogram(
     "Size of the returned response blob (in bytes)", yb::MetricUnit::kBytes,
     "Size of the returned response blob (in bytes)", 60000000LU, 2);
 
+METRIC_DEFINE_counter(
+    server, cql_microseconds_timestamps_used,
+    "Number of times a timestamp with non-zero microseconds precision is used.",
+    yb::MetricUnit::kUnits,
+    "Number of times a timestamp with non-zero microseconds precision is used");
+
 namespace yb {
 namespace ql {
 
@@ -138,6 +145,9 @@ QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
 
   ql_response_size_bytes_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_ResponseSize.Instantiate(metric_entity);
+
+  microseconds_timestamps_used_ =
+      METRIC_cql_microseconds_timestamps_used.Instantiate(metric_entity);
 }
 
 QLMetrics::~QLMetrics() = default;
@@ -193,7 +203,7 @@ Status QLProcessor::Analyze(ParseTree::UniPtr* parse_tree) {
   SCOPED_WAIT_STATUS(YCQL_Analyze);
   // Semantic analysis - traverse, error-check, and decorate the parse tree nodes with datatypes.
   const MonoTime begin_time = MonoTime::Now();
-  const Status s = analyzer_.Analyze(std::move(*parse_tree));
+  const Status s = analyzer_.Analyze(std::move(*parse_tree), ql_metrics_);
   const MonoTime end_time = MonoTime::Now();
   if (ql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
@@ -463,6 +473,7 @@ void QLProcessor::RunAsyncDone(const string& stmt, const StatementParameters& pa
   // callback may not be executed in the RPC worker thread. Also, rescheduling gives other calls a
   // chance to execute first before we do.
   if (s.IsQLError() && GetErrorCode(s) == ErrorCode::STALE_METADATA && !parse_tree->reparsed()) {
+    TRACE("Rescheduling the task due to $0", s.ToString());
     return Reschedule(&run_async_task_.Bind(this, stmt, params, std::move(cb)));
   }
   cb.Run(s, result);

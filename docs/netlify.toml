@@ -11,22 +11,25 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 # all api_keys were generated from btoa(orig_key)
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
+  RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
+  RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
+  RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
 
 ################ REDIRECTS ################
 #
@@ -352,6 +355,10 @@
   from = "/preview/architecture/concepts"
   to = "/preview/architecture/key-concepts"
 
+[[redirects]]
+  from = "/preview/explore/sql-nosql*"
+  to = "/preview/faq/general/#how-is-yugabytedb-different-from-nosql-databases"
+
 # from 404 report (referrer: ycombinator)
 [[redirects]]
   from = "/preview/architecture/concepts/acknowledgements"
@@ -402,6 +409,10 @@
 [[redirects]]
   from = "/preview/develop/learn/data-types/"
   to = "/preview/develop/learn/data-types-ysql/"
+
+[[redirects]]
+  from = "/preview/develop/client-drivers/*"
+  to = "/preview/drivers-orms/:splat"
 
 [[redirects]]
   from = "/preview/explore/cloud-native/"
@@ -740,7 +751,7 @@
 
 [[redirects]]
   from = "/:version/reference/connectors/*"
-  to = "/preview/integrations/apache-kafka/"
+  to = "/preview/explore/change-data-capture/"
 
 # Redirect for troubleshoot
 
@@ -761,18 +772,10 @@
   to = "/preview/tutorials/azure/"
   force = true
 [[redirects]]
-  from = "/v2.16/tutorials/*"
-  to = "/preview/tutorials/azure/"
-  force = true
-[[redirects]]
   from = "/v2.18/tutorials/*"
   to = "/preview/tutorials/azure/"
   force = true
 
-[[redirects]]
-  from = "/v2.16/explore/ysql-language-features/indexes-constraints/*"
-  to = "/v2.16/explore/indexes-constraints/"
-  force = true
 [[redirects]]
   from = "/v2.18/explore/ysql-language-features/indexes-constraints/*"
   to = "/v2.18/explore/indexes-constraints/"
@@ -780,16 +783,6 @@
 [[redirects]]
   from = "/v2.14/explore/ysql-language-features/indexes-constraints/*"
   to = "/v2.14/explore/indexes-constraints/"
-  force = true
-
-[[redirects]]
-  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/"
-  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
-  force = true
-
-[[redirects]]
-  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
-  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
   force = true
 
 [[redirects]]
@@ -807,12 +800,33 @@
   to = "/v2.18/deploy/checklist/"
   force = true
 [[redirects]]
-  from = "/v2.16/reference/configuration/operating-systems/"
-  to = "/v2.16/deploy/checklist/"
-  force = true
-[[redirects]]
   from = "/v2.14/reference/configuration/operating-systems/"
   to = "/v2.14/deploy/checklist/"
+  force = true
+
+[[redirects]]
+  from = "/v2.20/api/ysqlsh/*"
+  to = "/v2.20/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.18/api/ysqlsh/*"
+  to = "/v2.18/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.14/api/ysqlsh/*"
+  to = "/v2.14/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.20/api/ycqlsh/*"
+  to = "/v2.20/admin/ycqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.18/api/ycqlsh/*"
+  to = "/v2.18/admin/ycqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.14/api/ycqlsh/*"
+  to = "/v2.14/admin/ycqlsh/:splat"
   force = true
 
 
@@ -827,15 +841,11 @@
   to = "/stable/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   force = true
 [[redirects]]
-  from = "/v2.16/yugabyte-platform/manage-deployments/high-availability/"
-  to = "/v2.16/yugabyte-platform/administer-yugabyte-platform/high-availability/"
-  force = true
-[[redirects]]
   from = "/v2.14/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   to = "/v2.14/yugabyte-platform/manage-deployments/high-availability/"
   force = true
 
-# Build an app was in quick-start, now in develop
+# Build an app was in quick-start, then develop, now in tutorials
 
 [[redirects]]
   from = "/preview/develop/build-apps/*"
@@ -975,6 +985,11 @@
   force = true
 
 [[redirects]]
+  from = "/v2.16/*"
+  to = "https://docs-archive.yugabyte.com/v2.16/"
+  force = true
+
+[[redirects]]
   from = "/preview/develop/build-apps/java/ysql-hibernate/"
   to = "/preview/drivers-orms/orms/ysql-hibernate/"
   force = true
@@ -1110,8 +1125,13 @@
   to = "/stable/manage/data-migration/bulk-export-ysql/"
   force = true
 
-# CDC tutorials was in explore, now in Tutorials
+# Moving Drivers from reference to Develop
+[[redirects]]
+  from = "/preview/reference/drivers/"
+  to = "/preview/drivers-orms/"
+  force = true
 
+# CDC tutorials was in explore, now in Tutorials
 [[redirects]]
   from = "/preview/explore/change-data-capture/cdc-tutorials/*"
   to = "/preview/tutorials/cdc-tutorials/:splat"
@@ -1355,10 +1375,15 @@
         ;
 
         connect-src 'self'
-            https://app.clearbit.com
+            https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
+            https://api.rudderstack.com/
+            https://app.clearbit.com/
+            https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://ka-f.fontawesome.com/releases/
             https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
+            https://metrics.kapa.ai/
             https://raw.githubusercontent.com/
+            https://sessions.bugsnag.com/
             https://stats.g.doubleclick.net/
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
@@ -1366,23 +1391,45 @@
             https://umbcujcbe8-dsn.algolia.net/
             https://www.google-analytics.com/
             https://www.yugabyte.com
-            https://api.segment.io/
-            https://cdn.segment.com/
-            https://c.6sc.co/
-            https://ipv6.6sc.co/
-            https://ingesteer.services-prod.nsvcs.net/rum_collection
+            https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
+            https://via.intercom.io
+            https://api.intercom.io
+            https://api.au.intercom.io
+            https://api.eu.intercom.io
+            https://api-iam.intercom.io
+            https://api-iam.eu.intercom.io
+            https://api-iam.au.intercom.io
+            https://api-ping.intercom.io
+            https://nexus-websocket-a.intercom.io
+            wss://nexus-websocket-a.intercom.io
+            https://nexus-websocket-b.intercom.io
+            wss://nexus-websocket-b.intercom.io
+            https://nexus-europe-websocket.intercom.io
+            wss://nexus-europe-websocket.intercom.io
+            https://nexus-australia-websocket.intercom.io
+            wss://nexus-australia-websocket.intercom.io
+            https://uploads.intercomcdn.com
+            https://uploads.intercomcdn.eu
+            https://uploads.au.intercomcdn.com
+            https://uploads.eu.intercomcdn.com
+            https://uploads.intercomusercontent.com
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
-            https://app.clearbit.com
-            https://cdn.jsdelivr.net
+            https://app.clearbit.com/
+            https://cdn.jsdelivr.net/
+            https://cdn.madkudu.com/
+            https://cdn.rudderlabs.com/
             https://cdnjs.cloudflare.com
-            https://code.jquery.com/jquery-3.6.0.min.js
+            https://code.jquery.com/jquery-3.7.1.min.js
+            https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
+            https://j.6sc.co/
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
+            https://metrics.kapa.ai/
             https://netlify-cdp-loader.netlify.app/
             https://netlify-rum.netlify.app
-            https://tag.clearbitscripts.com
+            https://tag.clearbitscripts.com/
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
@@ -1392,10 +1439,10 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
-            https://x.clearbitjs.com
-            https://js.driftt.com/
-            https://cdn.segment.com/
-            https://j.6sc.co/
+            https://x.clearbitjs.com/
+            https://app.intercom.io
+            https://widget.intercom.io
+            https://js.intercomcdn.com
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1416,6 +1463,8 @@
             https://fonts.gstatic.com
             https://ka-f.fontawesome.com/releases/
             https://use.fontawesome.com
+            https://js.intercomcdn.com
+            https://fonts.intercomcdn.com
         ;
 
         object-src 'none'
@@ -1435,6 +1484,30 @@
             https://t2.gstatic.com/faviconV2
             https://t3.gstatic.com/faviconV2
             https://b.6sc.co/
+            https://js.intercomcdn.com
+            https://static.intercomassets.com
+            https://downloads.intercomcdn.com
+            https://downloads.intercomcdn.eu
+            https://downloads.au.intercomcdn.com
+            https://uploads.intercomusercontent.com
+            https://gifs.intercomcdn.com
+            https://video-messages.intercomcdn.com
+            https://messenger-apps.intercom.io
+            https://messenger-apps.eu.intercom.io
+            https://messenger-apps.au.intercom.io
+            https://*.intercom-attachments-1.com
+            https://*.intercom-attachments.eu
+            https://*.au.intercom-attachments.com
+            https://*.intercom-attachments-2.com
+            https://*.intercom-attachments-3.com
+            https://*.intercom-attachments-4.com
+            https://*.intercom-attachments-5.com
+            https://*.intercom-attachments-6.com
+            https://*.intercom-attachments-7.com
+            https://*.intercom-attachments-8.com
+            https://*.intercom-attachments-9.com
+            https://static.intercomassets.eu
+            https://static.au.intercomassets.com
         ;
 
         child-src 'self' 'unsafe-inline'
@@ -1442,17 +1515,16 @@
             https://app.supademo.com/
             https://www.google.com/
             https://www.youtube.com/
-            https://js.driftt.com/
+            https://intercom-sheets.com
+            https://www.intercom-reporting.com
         ;
 
         frame-ancestors 'self'
             https://*.yugabyte.com/
-            https://deploy-preview-12849--infallible-bardeen-164bc9.netlify.app/
             https://yugabyte.thinkific.com/
         ;
 
         media-src 'self' 'unsafe-inline'
-        https://js.driftt.com/conductor/assets/
         ;
 '''
     X-Content-Type-Options = "nosniff"

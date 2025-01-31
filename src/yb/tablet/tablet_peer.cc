@@ -129,7 +129,7 @@ DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 
-DECLARE_int64(cdc_intent_retention_ms);
+DECLARE_uint64(cdc_intent_retention_ms);
 
 DECLARE_bool(enable_flush_retryable_requests);
 
@@ -320,7 +320,7 @@ Status TabletPeer::InitTabletPeer(
     auto flush_bootstrap_state_pool_token = flush_bootstrap_state_pool
         ? flush_bootstrap_state_pool->NewToken(ThreadPool::ExecutionMode::SERIAL) : nullptr;
     bootstrap_state_flusher_ = std::make_shared<TabletBootstrapStateFlusher>(
-        tablet_id_, consensus_, bootstrap_state_manager_,
+        tablet_id_, tablet_weak_, consensus_, bootstrap_state_manager_,
         std::move(flush_bootstrap_state_pool_token));
 
     tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));
@@ -331,8 +331,8 @@ Status TabletPeer::InitTabletPeer(
 
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
-      txn_participant->SetMinRunningHybridTimeUpdateCallback(
-          std::bind_front(&TabletPeer::MinRunningHybridTimeUpdated, this));
+      txn_participant->SetMinReplayTxnStartTimeUpdateCallback(
+          std::bind_front(&TabletPeer::MinReplayTxnStartTimeUpdated, this));
     }
 
     // "Publish" the tablet object right before releasing the lock.
@@ -726,7 +726,7 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
 }
 
 Status TabletPeer::SubmitUpdateTransaction(
-    std::unique_ptr<UpdateTxnOperation> operation, int64_t term) {
+    std::unique_ptr<UpdateTxnOperation>& operation, int64_t term) {
   if (!operation->tablet_is_set()) {
     auto tablet = VERIFY_RESULT(shared_tablet_safe());
     operation->SetTablet(tablet);
@@ -798,6 +798,11 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   auto tablet = tablet_;
   if (tablet) {
     status_pb_out->set_table_type(tablet->table_type());
+    auto vector_index_finished_backfills = tablet->VectorIndexFinishedBackfills();
+    if (vector_index_finished_backfills) {
+      *status_pb_out->mutable_vector_index_finished_backfills() =
+          std::move(*vector_index_finished_backfills);
+    }
   }
   disk_size_info.ToPB(status_pb_out);
   // Set hide status of the tablet.
@@ -940,6 +945,20 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
     }
     out->push_back(status_pb);
   }
+}
+
+Result<OpId> TabletPeer::MaxPersistentOpId() const {
+  auto tablet = shared_tablet();
+  if (!tablet) {
+    // Tablet peer not yet initialized -- we could be doing tablet bootstrap still.
+    return OpId::Min();
+  }
+  auto flush_op_ids = VERIFY_RESULT(tablet->MaxPersistentOpId());
+  auto result = OpId::MinValid(flush_op_ids.intents, flush_op_ids.regular);
+  for (const auto& op_id : flush_op_ids.vector_indexes) {
+    result = OpId::MinValid(result, op_id);
+  }
+  return result;
 }
 
 Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {
@@ -1231,6 +1250,16 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
   return namespace_id;
 }
 
+HybridTime TabletPeer::GetMinStartHTRunningTxnsOrLeaderSafeTime() {
+  auto tablet_result = shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    LOG_WITH_PREFIX(WARNING)
+        << "Tablet not found, so setting minimum start hybrid time for running txns to kInitial.";
+    return HybridTime::kInitial;
+  }
+  return (*tablet_result)->GetMinStartHTRunningTxnsForCDCLogCallback();
+}
+
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
     const HybridTime& cdc_sdk_safe_time) {
@@ -1242,7 +1271,15 @@ Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     RETURN_NOT_OK(CheckRunning());
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
-      txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+      auto log = log_atomic_.load(std::memory_order_acquire);
+      auto min_start_ht_cdc_unstreamed_txns = tablet_->GetMinStartHTCDCUnstreamedTxns(log);
+      VLOG_WITH_PREFIX_AND_FUNC(1)
+          << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
+          << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
+          << min_start_ht_cdc_unstreamed_txns;
+
+      txn_participant->SetIntentRetainOpIdAndTime(
+          cdc_sdk_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
       if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
         tablet_->CleanupIntentFiles();
       }
@@ -1822,10 +1859,10 @@ TabletBootstrapFlushState TabletPeer::TEST_TabletBootstrapStateFlusherState() co
       : TabletBootstrapFlushState::kFlushIdle;
 }
 
-void TabletPeer::MinRunningHybridTimeUpdated(HybridTime min_running_ht) {
-  if (min_running_ht && min_running_ht != HybridTime::kMax) {
-    VLOG_WITH_PREFIX(2) << "Min running hybrid time updated: " << min_running_ht;
-    bootstrap_state_manager_->bootstrap_state().SetMinRunningHybridTime(min_running_ht);
+void TabletPeer::MinReplayTxnStartTimeUpdated(HybridTime start_ht) {
+  if (start_ht && start_ht != HybridTime::kMax) {
+    VLOG_WITH_PREFIX(2) << "min_replay_txn_start_ht updated: " << start_ht;
+    bootstrap_state_manager_->bootstrap_state().SetMinReplayTxnStartTime(start_ht);
   }
 }
 

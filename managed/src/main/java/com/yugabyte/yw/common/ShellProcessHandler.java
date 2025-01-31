@@ -19,6 +19,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -54,10 +55,10 @@ public class ShellProcessHandler {
 
   static final Pattern ANSIBLE_FAIL_PAT =
       Pattern.compile(
-          "(ybops.common.exceptions.YBOpsRuntimeError: Runtime error: "
-              + "Playbook run.* )with args.* (failed with.*? [0-9]+)");
+          "(ybops\\.common\\.exceptions\\.YB[^\\s]+Error:.*? Playbook run.*?)with args.* (failed"
+              + " with.*? [0-9]+)");
   static final Pattern ANSIBLE_FAILED_TASK_PAT =
-      Pattern.compile("TASK.*?fatal.*?FAILED.*", Pattern.DOTALL);
+      Pattern.compile("TASK\\s+\\[.+\\].*?(fatal:.*?FAILED.*|failed: (?!false).*)", Pattern.DOTALL);
   static final Pattern PYTHON_ERROR_PAT =
       Pattern.compile("(<yb-python-error>)(.*?)(</yb-python-error>)", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
@@ -82,10 +83,25 @@ public class ShellProcessHandler {
       String description) {
     return run(
         command,
+        extraEnvVars,
+        logCmdOutput,
+        description,
+        RedactionTarget.QUERY_PARAMS /*shellOutputRedactionTarget*/);
+  }
+
+  public ShellResponse run(
+      List<String> command,
+      Map<String, String> extraEnvVars,
+      boolean logCmdOutput,
+      String description,
+      RedactionTarget shellOutputRedactionTarget) {
+    return run(
+        command,
         ShellProcessContext.builder()
             .extraEnvVars(extraEnvVars)
             .logCmdOutput(logCmdOutput)
             .description(description)
+            .shellOutputRedactionTarget(shellOutputRedactionTarget)
             .build());
   }
 
@@ -166,8 +182,10 @@ public class ShellProcessHandler {
         if (logCmdOutput) {
           log.debug("Proc stdout for '{}' :", response.description);
         }
-        String processOutput = getOutputLines(outputStream, logCmdOutput);
-        String processError = getOutputLines(errorStream, logCmdOutput);
+        String processOutput =
+            getOutputLines(outputStream, logCmdOutput, context.getShellOutputRedactionTarget());
+        String processError =
+            getOutputLines(errorStream, logCmdOutput, context.getShellOutputRedactionTarget());
         try {
           response.code = process.exitValue();
         } catch (IllegalThreadStateException itse) {
@@ -178,11 +196,12 @@ public class ShellProcessHandler {
               itse);
         }
         response.message = (response.code == ERROR_CODE_SUCCESS) ? processOutput : processError;
-        String specificErrMsg = getAnsibleErrMsg(response.code, processOutput, processError);
-        if (specificErrMsg == null) {
-          specificErrMsg = getPythonErrMsg(response.code, processOutput);
-        }
+        String specificErrMsg = getPythonErrMsg(response.code, processOutput);
         if (specificErrMsg != null) {
+          String ansibleErrMsg = getAnsibleErrMsg(response.code, specificErrMsg, processError);
+          if (ansibleErrMsg != null) {
+            specificErrMsg = ansibleErrMsg;
+          }
           response.message = specificErrMsg;
         }
       }
@@ -230,7 +249,7 @@ public class ShellProcessHandler {
     return response;
   }
 
-  private String getOutputLines(BufferedReader reader, boolean logOutput) {
+  private String getOutputLines(BufferedReader reader, boolean logOutput, RedactionTarget target) {
     Marker fileMarker = MarkerFactory.getMarker("fileOnly");
     Marker consoleMarker = MarkerFactory.getMarker("consoleOnly");
     String lines =
@@ -239,13 +258,13 @@ public class ShellProcessHandler {
             .peek(
                 line -> {
                   if (logOutput) {
-                    log.debug(fileMarker, line);
+                    log.debug(fileMarker, RedactingService.redactShellProcessOutput(line, target));
                   }
                 })
             .collect(Collectors.joining("\n"))
             .trim();
     if (logOutput && cloudLoggingEnabled && lines.length() > 0) {
-      log.debug(consoleMarker, lines);
+      log.debug(consoleMarker, RedactingService.redactShellProcessOutput(lines, target));
     }
     return lines;
   }
@@ -390,20 +409,21 @@ public class ShellProcessHandler {
     }
   }
 
-  private static String getAnsibleErrMsg(int code, String stdout, String stderr) {
+  private static String getAnsibleErrMsg(int code, String pythonErrMsg, String stderr) {
 
-    if (stderr == null || code == ERROR_CODE_SUCCESS) return null;
+    if (pythonErrMsg == null || stderr == null || code == ERROR_CODE_SUCCESS) return null;
 
     String result = null;
 
-    Matcher ansibleFailMatch = ANSIBLE_FAIL_PAT.matcher(stderr);
+    Matcher ansibleFailMatch = ANSIBLE_FAIL_PAT.matcher(pythonErrMsg);
     if (ansibleFailMatch.find()) {
       result = ansibleFailMatch.group(1) + ansibleFailMatch.group(2);
 
-      // Attempt to find a line in ansible stdout for the failed task.
+      // By default, python logging module writes to stderr.
+      // Attempt to find a line in ansible stderr for the failed task.
       // Logs for each task are separated by empty lines.
-      // Some fatal failures are ignored by ansible, so skip them
-      for (String s : stdout.split("\\R\\R")) {
+      // Some fatal failures are ignored by ansible, so skip them.
+      for (String s : stderr.split("\\R\\R")) {
         if (s.contains(ANSIBLE_IGNORING)) {
           continue;
         }

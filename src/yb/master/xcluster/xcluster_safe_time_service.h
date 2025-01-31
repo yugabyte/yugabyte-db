@@ -32,15 +32,24 @@
 
 #pragma once
 
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/strand.hpp>
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/hybrid_time.h"
+#include "yb/common/xcluster_util.h"
+
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster/xcluster_consumer_metrics.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/rpc/scheduler.h"
+
+#include "yb/rpc/poller.h"
+
 #include "yb/util/threadpool.h"
-#include "yb/gutil/thread_annotations.h"
 
 namespace yb {
 namespace master {
@@ -54,12 +63,11 @@ class XClusterSafeTimeService {
       Master* master, CatalogManager* catalog_manager, MetricRegistry* metric_registry);
   virtual ~XClusterSafeTimeService();
 
-  Status Init();
   void Shutdown();
 
   Status CreateXClusterSafeTimeTableIfNotFound();
 
-  void ScheduleTaskIfNeeded() EXCLUDES(shutdown_cond_lock_, task_enqueue_lock_);
+  void ScheduleTaskIfNeeded();
 
   // Calculate the max_safe_time - min_safe_time for each namespace.
   Result<std::unordered_map<NamespaceId, uint64_t>> GetEstimatedDataLossMicroSec(
@@ -83,27 +91,9 @@ class XClusterSafeTimeService {
   friend class XClusterSafeTimeServiceMocked;
   friend class XClusterSafeTimeServiceTest;
 
-  struct ProducerTabletInfo {
-    xcluster::ReplicationGroupId replication_group_id;
-    TabletId tablet_id;
+  void ProcessTaskPeriodically();
 
-    bool operator==(const ProducerTabletInfo& rhs) const {
-      return replication_group_id == rhs.replication_group_id && tablet_id == rhs.tablet_id;
-    }
-
-    bool operator<(const ProducerTabletInfo& rhs) const {
-      if (replication_group_id == rhs.replication_group_id) {
-        return tablet_id < rhs.tablet_id;
-      }
-      return replication_group_id < rhs.replication_group_id;
-    }
-
-    std::string ToString() const { return YB_STRUCT_TO_STRING(replication_group_id, tablet_id); }
-  };
-
-  void ProcessTaskPeriodically() EXCLUDES(task_enqueue_lock_);
-
-  typedef std::map<ProducerTabletInfo, HybridTime> ProducerTabletToSafeTimeMap;
+  typedef std::map<xcluster::SafeTimeTablePK, HybridTime> ProducerTabletToSafeTimeMap;
 
   virtual Result<ProducerTabletToSafeTimeMap> GetSafeTimeFromTable() REQUIRES(mutex_);
 
@@ -116,13 +106,13 @@ class XClusterSafeTimeService {
 
   virtual Result<bool> CreateTableRequired() REQUIRES(mutex_);
 
-  virtual Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
+  virtual XClusterNamespaceToSafeTimeMap GetXClusterNamespaceToSafeTimeMap();
 
   virtual Status SetXClusterSafeTime(
       const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& new_safe_time_map);
 
-  virtual Status CleanupEntriesFromTable(const std::vector<ProducerTabletInfo>& entries_to_delete)
-      REQUIRES(mutex_);
+  virtual Status CleanupEntriesFromTable(
+      const std::vector<xcluster::SafeTimeTablePK>& entries_to_delete) REQUIRES(mutex_);
 
   Result<int64_t> GetLeaderTermFromCatalogManager();
 
@@ -140,23 +130,17 @@ class XClusterSafeTimeService {
   Master* const master_;
   CatalogManager* const catalog_manager_;
 
-  std::atomic<bool> shutdown_;
-  Mutex shutdown_cond_lock_;
-  ConditionVariable shutdown_cond_;
-
-  std::mutex task_enqueue_lock_;
-  bool task_enqueued_ GUARDED_BY(task_enqueue_lock_);
-  std::unique_ptr<ThreadPool> thread_pool_;
-  std::unique_ptr<ThreadPoolToken> thread_pool_token_;
+  rpc::Poller poller_;
+  std::optional<boost::asio::io_context::strand> poll_strand_;
 
   std::shared_mutex mutex_;
-  bool safe_time_table_ready_ GUARDED_BY(mutex_);
+  bool safe_time_table_ready_ GUARDED_BY(mutex_) = false;
 
   std::unique_ptr<client::TableHandle> safe_time_table_;
 
-  int64_t leader_term_ GUARDED_BY(mutex_);
-  int32_t cluster_config_version_ GUARDED_BY(mutex_);
-  std::map<ProducerTabletInfo, NamespaceId> producer_tablet_namespace_map_ GUARDED_BY(mutex_);
+  int32_t cluster_config_version_ GUARDED_BY(mutex_) = kInvalidClusterConfigVersion;
+  std::map<xcluster::SafeTimeTablePK, NamespaceId> producer_tablet_namespace_map_
+      GUARDED_BY(mutex_);
 
   // List of tablet ids for ddl_queue tables, used to find safe times without this stream.
   std::unordered_set<TabletId> ddl_queue_tablet_ids_ GUARDED_BY(mutex_);

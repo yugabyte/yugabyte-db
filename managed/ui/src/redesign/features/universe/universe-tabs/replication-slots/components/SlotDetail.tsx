@@ -16,7 +16,7 @@ import { MetricsPanelOverview } from '../../../../../../components/metrics';
 import { YBButtonLink } from '../../../../../../components/common/forms/fields';
 import { CustomDatePicker } from '../../../../../../components/metrics/CustomDatePicker/CustomDatePicker';
 import { QUERY_KEY, api } from '../../../../../utils/api';
-import { getPrometheusUrls } from '../../../../../../components/metrics/utils';
+import { getPrometheusUrls } from '../../../../../components/YBMetrics/utils';
 import {
   fetchCDCAllMetrics,
   CDC_METRIC_ARRAY,
@@ -49,6 +49,8 @@ export const SlotDetail: FC<RouteComponentProps<{}, SlotDetailProps>> = ({ locat
   const [startMoment, setStartMoment] = useState<any>(moment().subtract('1', 'hour'));
   const [endMoment, setEndMoment] = useState<any>(moment());
   const { t } = useTranslation();
+
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   //fetch Universe details to get nodePrefix details
   const { data: universeData, isLoading: isUniverseDataLoading } = useQuery([uuid], () =>
     api.fetchUniverse(uuid)
@@ -344,6 +346,7 @@ export const SlotDetail: FC<RouteComponentProps<{}, SlotDetailProps>> = ({ locat
                   handleTimeframeChange={applyCustomFilter}
                   setStartMoment={handleStartDateChange}
                   setEndMoment={handleEndDateChange}
+                  timezone={currentUserTimezone}
                 />
               )}
               <Dropdown id="graphFilterDropdown" pullRight>

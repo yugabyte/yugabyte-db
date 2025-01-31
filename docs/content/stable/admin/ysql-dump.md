@@ -18,7 +18,7 @@ ysql_dump is a utility for backing up a YugabyteDB database into a plain-text, S
 
 ysql_dump only dumps a single database. To backup global objects that are common to all databases in a cluster, such as roles, use [ysql_dumpall](../ysql-dumpall/).
 
-Dumps are output in plain-text, SQL script files. Script dumps are plain-text files containing the SQL statements required to reconstruct the database to the state it was in at the time it was saved. To restore from such a script, import it using the [`ysqlsh \i`](../ysqlsh-meta-commands/#i-filename-include-filename) meta-command. Script files can be used to reconstruct the database even on other machines and other architectures; with some modifications, even on other SQL database products.
+Dumps are output in plain-text, SQL script files. Script dumps are plain-text files containing the SQL statements required to reconstruct the database to the state it was in at the time it was saved. To restore from such a script, import it using the [ysqlsh \i](../../api/ysqlsh-meta-commands/#i-filename-include-filename) meta-command. Script files can be used to reconstruct the database even on other machines and other architectures; with some modifications, even on other SQL database products.
 
 While running ysql_dump, you should examine the output for any warnings (printed on standard error).
 
@@ -48,7 +48,7 @@ The following command line options control the content and format of the output.
 
 #### *dbname*
 
-Specifies the name of the database to be dumped. If this is not specified, the environment variable `PGDATABASE` is used. If that is not set, the user name specified for the connection is used.
+Specifies the name of the database to be dumped. If this is not specified, the environment variable PGDATABASE is used. If that is not set, the user name specified for the connection is used.
 
 #### -a, --data-only
 
@@ -74,7 +74,7 @@ Begin the output with a statement to create the database itself and reconnect to
 
 #### -E *encoding*, --encoding=*encoding*
 
-Create the dump in the specified character set encoding. By default, the dump is created in the database encoding. (Another way to get the same result is to set the `PGCLIENTENCODING` environment variable to the desired dump encoding.)
+Create the dump in the specified character set encoding. By default, the dump is created in the database encoding. (Another way to get the same result is to set the PGCLIENTENCODING environment variable to the desired dump encoding.)
 
 #### -f *file*, --file=*file*
 
@@ -112,7 +112,7 @@ Dump object identifiers (OIDs) as part of the data for every table. Use this opt
 
 #### -O, --no-owner
 
-Do not output statements to set ownership of objects to match the original database. By default, ysql_dump issues `ALTER OWNER` or `SET SESSION AUTHORIZATION` statements to set ownership of created database objects. These statements will fail when the script is run unless it is started by a superuser (or the same user that owns all of the objects in the script). To make a script that can be restored by any user, but will give that user ownership of all the objects, specify `-O|--no-owner`.
+Do not output statements to set ownership of objects to match the original database. By default, ysql_dump issues ALTER OWNER or SET SESSION AUTHORIZATION statements to set ownership of created database objects. These statements will fail when the script is run unless it is started by a superuser (or the same user that owns all of the objects in the script). To make a script that can be restored by any user, but will give that user ownership of all the objects, specify `-O|--no-owner`.
 
 #### -s, --schema-only
 
@@ -156,7 +156,7 @@ Print the ysql_dump version and exit.
 
 #### -x, --no-privileges, --no-acl
 
-Prevent dumping of access privileges (`GRANT` and `REVOKE` statements).
+Prevent dumping of access privileges (GRANT and REVOKE statements).
 
 #### -Z *0..9*, --compress=*0..9*
 
@@ -164,7 +164,7 @@ Specify the compression level to use. Zero (`0`) means no compression. For plain
 
 #### --column-inserts, --attribute-inserts
 
-Dump data as `INSERT` statements with explicit column names (`INSERT INTO table (column, ...) VALUES ...`). This makes restoration very slow; it is mainly helpful for making dumps that can be loaded into non-YugabyteDB databases. However, as this option generates a separate statement for each row, an error in reloading a row causes only that row to be lost rather than the entire table contents.
+Dump data as INSERT statements with explicit column names (`INSERT INTO table (column, ...) VALUES ...`). This makes restoration very slow; it is mainly helpful for making dumps that can be loaded into non-YugabyteDB databases. However, as this option generates a separate statement for each row, an error in reloading a row causes only that row to be lost rather than the entire table contents.
 
 #### --disable-dollar-quoting
 
@@ -180,7 +180,7 @@ Presently, the statements emitted for `--disable-triggers` must be done as super
 
 This option is relevant only when dumping the contents of a table which has row security. By default, ysql_dump sets `row_security` to `off`, to ensure that all data is dumped from the table. If the user does not have sufficient privileges to bypass row security, then an error is thrown. This parameter instructs ysql_dump to set `row_security` to `on` instead, allowing the user to dump the parts of the contents of the table that they have access to.
 
-Note that if you use this option currently, you probably also want the dump be in `INSERT` format, as the `COPY FROM` during restore does not support row security.
+Note that if you use this option currently, you probably also want the dump be in INSERT format, as the COPY FROM during restore does not support row security.
 
 #### --exclude-table-data=*table*
 
@@ -190,11 +190,11 @@ To exclude data for all tables in the database, see [`-s|--schema-only`](#s-sche
 
 #### --if-exists
 
-Use conditional statements (that is, add an `IF EXISTS` clause) when cleaning database objects. This option is not valid unless `-c|--clean` is also specified.
+Use conditional statements (that is, add an IF EXISTS clause) when cleaning database objects. This option is not valid unless `-c|--clean` is also specified.
 
 #### --inserts
 
-Dump data as `INSERT` statements (rather than `COPY` statements). This will make restoration very slow; it is mainly helpful for making dumps that can be loaded into non-YugabyteDB databases. However, as this option generates a separate statement for each row, an error in reloading a row causes only that row to be lost rather than the entire table contents. Note that the restore might fail altogether if you have rearranged column order. The `--column-inserts` option is safe against column order changes, though even slower.
+Dump data as INSERT statements (rather than COPY statements). This will make restoration very slow; it is mainly helpful for making dumps that can be loaded into non-YugabyteDB databases. However, as this option generates a separate statement for each row, an error in reloading a row causes only that row to be lost rather than the entire table contents. Note that the restore might fail altogether if you have rearranged column order. The `--column-inserts` option is safe against column order changes, though even slower.
 
 #### --lock-wait-timeout=*timeout*
 
@@ -248,7 +248,7 @@ This option has no effect on [`-N|--exclude-schema`](#n-schema-exclude-schema-sc
 
 #### --use-set-session-authorization
 
-Output SQL-standard `SET SESSION AUTHORIZATION` statements instead of `ALTER OWNER` statements to determine object ownership. This makes the dump more standards-compatible, but depending on the history of the objects in the dump, might not restore properly. Also, a dump using `SET SESSION AUTHORIZATION` statements will certainly require superuser privileges to restore correctly, whereas `ALTER OWNER` statements requires lesser privileges.
+Output SQL-standard SET SESSION AUTHORIZATION statements instead of ALTER OWNER statements to determine object ownership. This makes the dump more standards-compatible, but depending on the history of the objects in the dump, might not restore properly. Also, a dump using SET SESSION AUTHORIZATION statements will certainly require superuser privileges to restore correctly, whereas ALTER OWNER statements requires lesser privileges.
 
 #### -?, --help
 
@@ -305,9 +305,9 @@ This utility also uses the environment variables supported by `libpq`.
 
 ## Diagnostics
 
-ysql_dump internally executes `SELECT` statements. If you have problems running ysql_dump, make sure you are able to select information from the database using, for example, [`ysqlsh`](../ysqlsh/). Also, any default connection settings and environment variables used by the `libpq` front-end library will apply.
+ysql_dump internally executes SELECT statements. If you have problems running ysql_dump, make sure you are able to select information from the database using, for example, [ysqlsh](../../api/ysqlsh/). Also, any default connection settings and environment variables used by the `libpq` front-end library will apply.
 
-The database activity of ysql_dump is normally collected by the statistics collector. If this is undesirable, you can set parameter `track_counts` to `false` using `PGOPTIONS` or the [`ALTER USER`](../../api/ysql/the-sql-language/statements/dcl_alter_user) statement.
+The database activity of ysql_dump is normally collected by the statistics collector. If this is undesirable, you can set parameter `track_counts` to `false` using PGOPTIONS or the [ALTER USER](../../api/ysql/the-sql-language/statements/dcl_alter_user) statement.
 
 ## Notes
 
@@ -319,7 +319,7 @@ CREATE DATABASE foo WITH TEMPLATE template0;
 
 When a data-only dump is chosen and the option [`--disable-triggers`](#disable-triggers) is used, ysql_dump emits statements to disable triggers on user tables before inserting the data, and then statements to re-enable them after the data has been inserted. If the restore is stopped in the middle, the system catalogs might be left in the wrong state.
 
-The dump file produced by ysql_dump does not contain the statistics used by the optimizer to make query planning decisions. Therefore, running `ANALYZE` after restoring from a dump file can ensure optimal performance.
+The dump file produced by ysql_dump does not contain the statistics used by the optimizer to make query planning decisions. Therefore, running ANALYZE after restoring from a dump file can ensure optimal performance.
 
 Because ysql_dump is used to transfer data to newer versions of YugabyteDB, the output of ysql_dump can be expected to load into YugabyteDB versions newer than the ysql_dump version. ysql_dump can also dump from YugabyteDB servers older than its own version. However, ysql_dump cannot dump from YugabyteDB servers newer than its own major version; it will refuse to even try, rather than risk making an invalid dump. Also, it is not guaranteed that the ysql_dump output can be loaded into a server of an older major version — not even if the dump was taken from a server of that version. Loading a dump file into an older server may require manual editing of the dump file to remove syntax not understood by the older server. Use of the [`--quote-all-identifiers`](#quote-all-identifiers) option is recommended in cross-version cases, as it can prevent problems arising from varying reserved-word lists in different YugabyteDB versions.
 
@@ -362,4 +362,4 @@ $ ysql_dump -T 'ts_*' mydb > objects_mydb.sql
 ## See also
 
 - [ysql_dumpall](../ysql-dumpall/)
-- [ysqlsh](../ysqlsh/)
+- [ysqlsh](../../api/ysqlsh/)

@@ -27,8 +27,8 @@
 namespace yb {
 namespace pggate {
 
-Status PgValueToDatum(const YBCPgTypeEntity *type_entity,
-                      YBCPgTypeAttrs type_attrs,
+Status PgValueToDatum(const YbcPgTypeEntity *type_entity,
+                      YbcPgTypeAttrs type_attrs,
                       const dockv::PgValue& value,
                       uint64_t* datum) {
   switch (type_entity->yb_type) {
@@ -71,6 +71,7 @@ Status PgValueToDatum(const YBCPgTypeEntity *type_entity,
       break;
     }
 
+    case YB_YQL_DATA_TYPE_VECTOR: FALLTHROUGH_INTENDED;
     case YB_YQL_DATA_TYPE_BINARY: {
       auto str = value.binary_value();
       *datum = type_entity->yb_to_datum(str.data(), str.size(), &type_attrs);
@@ -100,8 +101,8 @@ Status PgValueToDatum(const YBCPgTypeEntity *type_entity,
   return Status::OK();
 }
 
-Status PBToDatum(const YBCPgTypeEntity *type_entity,
-                 YBCPgTypeAttrs type_attrs,
+Status PBToDatum(const YbcPgTypeEntity *type_entity,
+                 YbcPgTypeAttrs type_attrs,
                  const QLValuePB& value,
                  uint64_t* datum,
                  bool* is_null) {
@@ -172,6 +173,7 @@ Status PBToDatum(const YBCPgTypeEntity *type_entity,
       break;
     }
 
+    case YB_YQL_DATA_TYPE_VECTOR: FALLTHROUGH_INTENDED;
     case YB_YQL_DATA_TYPE_BINARY: {
       auto str = value.binary_value();
       *datum = type_entity->yb_to_datum(str.data(), str.size(), &type_attrs);
@@ -213,7 +215,7 @@ Status PBToDatum(const YBCPgTypeEntity *type_entity,
   return Status::OK();
 }
 
-Status PgValueToPB(const YBCPgTypeEntity *type_entity,
+Status PgValueToPB(const YbcPgTypeEntity *type_entity,
                    uint64_t datum,
                    bool is_null,
                    QLValuePB* ql_value) {
@@ -284,6 +286,7 @@ Status PgValueToPB(const YBCPgTypeEntity *type_entity,
       ql_value->set_double_value(value);
       break;
     }
+    case YB_YQL_DATA_TYPE_VECTOR: FALLTHROUGH_INTENDED;
     case YB_YQL_DATA_TYPE_BINARY: {
       uint8_t *value;
       int64_t bytes = type_entity->datum_fixed_size;

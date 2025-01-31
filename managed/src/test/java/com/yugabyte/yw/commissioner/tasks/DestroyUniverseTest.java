@@ -161,10 +161,10 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
       mockLocaleCheckResponse(mockNodeUniverseManager);
       doAnswer(inv -> Json.newObject())
           .when(mockYsqlQueryExecutor)
-          .executeQueryInNodeShell(any(), any(), any(), anyBoolean());
+          .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
       ShellResponse successResponse = new ShellResponse();
       successResponse.message = "Command output:\nCREATE TABLE";
-      when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), (any())))
+      when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), (any()), anyBoolean()))
           .thenReturn(successResponse);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
@@ -277,7 +277,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
-    b.setTaskUUID(taskInfo.getTaskUUID());
+    b.setTaskUUID(taskInfo.getUuid());
     b.save();
 
     Backup backup = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
@@ -329,7 +329,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     doNothing().when(mockBackupHelper).validateStorageConfigOnBackup(any());
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
-    b.setTaskUUID(taskInfo.getTaskUUID());
+    b.setTaskUUID(taskInfo.getUuid());
     b.save();
 
     Backup backup = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
@@ -394,13 +394,13 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isDeleteAssociatedCerts = true;
     UUID destroyTaskUuid = commissioner.submit(TaskType.DestroyUniverse, taskParams);
     try {
+      // Resume the create universe task.
+      MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
+      commissioner.resumeTask(createTaskUuid);
       // Wait for the destroy task to start running.
       waitForTaskRunning(destroyTaskUuid);
     } catch (InterruptedException e) {
       fail();
-    } finally {
-      MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
-      commissioner.resumeTask(createTaskUuid);
     }
     try {
       waitForTask(createTaskUuid);

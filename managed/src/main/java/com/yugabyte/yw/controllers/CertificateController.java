@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
@@ -179,7 +180,9 @@ public class CertificateController extends AuthenticatedController {
             keyContent,
             certType,
             customCertInfo,
-            customServerCertData);
+            customServerCertData,
+            runtimeConfGetter.getConfForScope(
+                Customer.get(customerUUID), CustomerConfKeys.CheckCertificateConfig));
     auditService()
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.Certificate, certUUID.toString(), Audit.ActionType.Create);
@@ -229,10 +232,7 @@ public class CertificateController extends AuthenticatedController {
     return PlatformResults.withData(certUUID);
   }
 
-  @ApiOperation(
-      notes = "YbaApi Internal.",
-      value = "Add a client certificate",
-      response = CertificateDetails.class)
+  @ApiOperation(value = "Add a client certificate", response = CertificateDetails.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "certificate",
@@ -246,7 +246,6 @@ public class CertificateController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result getClientCert(UUID customerUUID, UUID rootCA, Http.Request request) {
     Form<ClientCertParams> formData =
         formFactory.getFormDataOrBadRequest(request, ClientCertParams.class);
@@ -372,6 +371,13 @@ public class CertificateController extends AuthenticatedController {
       value = "Edit TLS certificate config details",
       response = YBPSuccess.class,
       nickname = "editCertificate")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "certificate",
+          value = "certificate params to edit",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.CertificateParams",
+          required = true))
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

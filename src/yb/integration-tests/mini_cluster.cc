@@ -171,7 +171,15 @@ bool IsActive(const tablet::TabletPeer& peer) {
 }
 
 bool IsForTable(const tablet::TabletPeer& peer, const TableId& table_id) {
-  return peer.tablet_metadata()->table_id() == table_id;
+  if (table_id.empty()) {
+    return true;
+  }
+  for (const auto& table : peer.tablet_metadata()->GetAllColocatedTables()) {
+    if (table == table_id) {
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace
@@ -235,16 +243,6 @@ Status MiniCluster::StartAsync(
       RETURN_NOT_OK(tablet_server->Start());
     }
   }
-
-  string ts_data_dirs;
-  for (const shared_ptr<MiniTabletServer>& ts : mini_tablet_servers_) {
-    for (const string& dir : ts->options()->fs_opts.data_paths) {
-      ts_data_dirs += string(ts_data_dirs.empty() ? "" : ",") +  dir;
-    }
-  }
-  // All TSes have the same following g-flags, because this is all-in-one-process MiniCluster.
-  // Use ExternalMiniCluster if you need independent values.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) = ts_data_dirs;
 
   running_ = true;
   rpc::MessengerBuilder builder("minicluster-messenger");
@@ -735,6 +733,14 @@ Status MiniCluster::WaitForAllTabletServers() {
 
 Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForTabletServerCount(
     size_t count, bool live_only) {
+  // Put the mini tservers into a map to simplify checking whether the master leader knows about
+  // them.
+  std::unordered_map<std::string, int64_t> mini_cluster_tservers;
+  for (const auto& mini_ts : mini_tablet_servers_) {
+    const auto& ts = mini_ts->server();
+    mini_cluster_tservers.emplace(std::make_pair(ts->instance_pb().permanent_uuid(),
+                                            ts->instance_pb().instance_seqno()));
+  }
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < FLAGS_TEST_mini_cluster_registration_wait_time_sec) {
@@ -745,19 +751,12 @@ Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForT
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
         // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
-        size_t match_count = 0;
-        for (const shared_ptr<TSDescriptor>& desc : descs) {
-          for (auto mini_tablet_server : mini_tablet_servers_) {
-            auto ts = mini_tablet_server->server();
-            if (ts->instance_pb().permanent_uuid() == desc->permanent_uuid() &&
-                ts->instance_pb().instance_seqno() == desc->latest_seqno()) {
-              if (!live_only || desc->IsLive()) {
-                match_count++;
-              }
-              break;
-            }
-          }
-        }
+        size_t match_count =
+            std::ranges::count_if(descs, [&mini_cluster_tservers, &live_only](const auto& desc) {
+              auto it = mini_cluster_tservers.find(desc->permanent_uuid());
+              return it != mini_cluster_tservers.end() && it->second == desc->latest_seqno() &&
+                     desc->has_tablet_report() && (!live_only || desc->IsLive());
+            });
 
         if (match_count == count) {
           LOG(INFO) << count << " TS(s) registered with Master after "
@@ -1135,13 +1134,20 @@ Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
 }
 
 Status WaitUntilTabletHasLeader(
-    MiniCluster* cluster, const TabletId& tablet_id, CoarseTimePoint deadline) {
+    MiniCluster* cluster, const TabletId& tablet_id, CoarseTimePoint deadline,
+    RequireLeaderIsReady require_leader_is_ready) {
   return Wait(
-      [cluster, &tablet_id] {
-        auto tablet_peers = ListTabletPeers(cluster, [&tablet_id](auto peer) {
+      [cluster, &tablet_id, require_leader_is_ready] {
+        auto tablet_peers = ListTabletPeers(
+            cluster, [&tablet_id, require_leader_is_ready](auto peer) {
           auto consensus_result = peer->GetConsensus();
-          return peer->tablet_id() == tablet_id && consensus_result &&
-                 consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+          if (peer->tablet_id() == tablet_id && consensus_result) {
+            const auto leader_status = consensus_result.get()->GetLeaderStatus();
+            return require_leader_is_ready
+                ? leader_status == consensus::LeaderStatus::LEADER_AND_READY
+                : leader_status != consensus::LeaderStatus::NOT_LEADER;
+          }
+          return false;
         });
         return tablet_peers.size() == 1;
       },
@@ -1583,6 +1589,22 @@ std::vector<std::string> DumpDocDBToStrings(MiniCluster* cluster, ListPeersFilte
     result.push_back(peer->shared_tablet()->TEST_DocDBDumpStr());
   }
   return result;
+}
+
+void DisableFlushOnShutdown(MiniCluster& cluster, bool disable) {
+  for (const auto& peer : ListTabletPeers(&cluster, ListPeersFilter::kAll)) {
+    auto tablet = peer->shared_tablet();
+    if (!tablet) {
+      continue;
+    }
+    auto doc_db = tablet->doc_db();
+    if (doc_db.regular) {
+      doc_db.regular->SetDisableFlushOnShutdown(disable);
+    }
+    if (doc_db.intents) {
+      doc_db.intents->SetDisableFlushOnShutdown(disable);
+    }
+  }
 }
 
 }  // namespace yb

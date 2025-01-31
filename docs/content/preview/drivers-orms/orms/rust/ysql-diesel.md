@@ -30,7 +30,7 @@ The source for the application can be found in the [Using ORMs with YugabyteDB](
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/).
 - [Rust](https://www.rust-lang.org/tools/install) 1.31 or later.
 
 ## Clone the "orm-examples" repository
@@ -45,7 +45,7 @@ Build the REST API server (written using Diesel and Rocket) as follows:
 $ cargo build --release
 ```
 
-If you encounter a build failure, install [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq) and try again.
+If you encounter a build failure, install [libpq](../../../ysql-client-drivers/#libpq) and try again.
 
 ## Set up the database connection
 
@@ -65,14 +65,14 @@ DATABASE_URL=postgres://<username>:<password>@<host>:<port>/<database>
 
 The default values are valid for a local YugabyteDB installation. If you are using a different configuration, change these values in the URL as required.
 
-From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../../api/ysqlsh/) shell using:
 
 ```sh
 $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

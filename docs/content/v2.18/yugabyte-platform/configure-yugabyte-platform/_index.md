@@ -3,7 +3,6 @@ title: Configure YugabyteDB Anywhere
 headerTitle: Configure YugabyteDB Anywhere
 linkTitle: Configure
 description: Configure YugabyteDB Anywhere.
-image: /images/section_icons/deploy/manual-deployment.png
 menu:
   v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere

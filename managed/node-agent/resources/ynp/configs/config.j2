@@ -1,28 +1,52 @@
 {# Start of the configuration file #}
 # This is an auto-generated file. Do not edit manually.
 
+{% macro render_section(section, prefix="") -%}
+{%- for key, value in section.items() if value != '' -%}
+    {%- if value is mapping -%}
+        {{ render_section(value, prefix + key + "_") -}}
+    {%- else -%}
+        {{- prefix + key }} = {{ value }}{{ "\n" -}}
+    {%- endif -%}
+{%- endfor -%}
+{%- endmacro %}
+
 [DEFAULT]
-loglevel = DEBUG
-logfile = app.log
-is_airgap = {{ ynp.is_airgap }}
+version = 1.0.0
+# Keep this as debug level for printing the shell file output.
+{% for section_key, section_value in ynp_config.items() %}
+    {% if section_key not in ['ynp', 'yba', 'logging'] %}
+        {{ render_section(section_value) }}
+    {% endif %}
+{% endfor %}
+loglevel = {{ ynp_config['logging'].level }}
+logdir = {{ ynp_config['logging'].directory }}
+logfile = {{ ynp_config['logging'].file }}
+is_airgap = {{ ynp_config['ynp'].is_airgap }}
 ynp_dir = {{ ynp_dir }}
 execution_start_time = {{ start_time }}
+yb_home_dir = {{ ynp_config['ynp'].yb_home_dir }}
+yb_user = yugabyte
+is_install_node_agent = {{ ynp_config['ynp'].is_install_node_agent }}
+tmp_directory = {{ ynp_config['ynp'].tmp_directory }}
+
+[Preprovision]
+
+[MountEpemeralDrive]
+
+[InstallPackages]
 
 [ConfigureChrony]
-chrony_servers = "{{ ynp.chrony_servers | join(', ') }}"
+chrony_servers = "{{ ynp_config['ynp'].chrony_servers | join(', ') }}"
 
 [CreateYugabyteUser]
-yb_home_dir = {{ ynp.yb_home_dir }}
-yb_user = {{ ynp.yb_user }}
-yb_user_id = {{ ynp.yb_user_id }}
-yb_user_password = {{ ynp.yb_user_password }}
-public_key_filepath = {{ ynp.public_key_filepath }}
+yb_user_id = {{ ynp_config['ynp'].yb_user_id }}
+yb_user_password =
+mount_points = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 
 [ConfigureSystemd]
-yb_home_dir = {{ ynp.yb_home_dir }}
-yb_user = {{ ynp.yb_user }}
-user_name = {{ ynp.yb_user }}
-use_system_level_systemd = {{ ynp.use_system_level_systemd }}
+user_name = yugabyte
+use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd }}
 service_files = "yb-tserver.service, yb-master.service, clock-sync.sh.j2, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer"
 
 [ConfigureOs]
@@ -30,8 +54,9 @@ message = "Configure limits and sysctl parameters"
 fd_limit = 1048576
 nproc_limit = 12000
 vm_swappiness = 0
-kernel_core_pattern = {{ ynp.yb_home_dir }}/cores/core_%%p_%%t_%%E
+kernel_core_pattern = {{ ynp_config['ynp'].yb_home_dir }}/cores/core_%%p_%%t_%%E
 vm_max_map_count = 262144
+mount_points = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 
 [ConfigureOs.limits]
 core = unlimited
@@ -47,20 +72,18 @@ cpu = unlimited
 nproc = 12000
 locks = unlimited
 
-{% macro render_section(section, prefix="") -%}
-{%- for key, value in section.items() if value != '' -%}
-    {%- if value is mapping -%}
-        {{ render_section(value, prefix + key + "_") -}}
-    {%- else -%}
-        {{- prefix + key }} = {{ value }}{{ "\n" -}}
-    {%- endif -%}
-{%- endfor -%}
-{%- endmacro %}
-
-[InstallNodeAgent]
-{{ render_section(yba) -}}
-yb_user = {{ ynp.yb_user }}
+[BackupUtils]
 
 [ConfigureNodeExporter]
 prometheus_user = prometheus
-yb_home_dir = {{ ynp.yb_home_dir }}
+
+[ConfigureNetwork]
+ip_address={{ ynp_config['ynp'].node_ip }}
+ports = 7000 7100 9000 9100 18018 22 5433 9042 9070 9300 12000 13000
+
+[InstallNodeAgent]
+{{ render_section(ynp_config['yba']) -}}
+node_ip = {{ ynp_config['yba'].node_external_fqdn }}
+bind_ip = {{ ynp_config['ynp'].node_ip }}
+
+[RebootNode]

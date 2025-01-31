@@ -60,6 +60,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -110,13 +111,6 @@ DEFINE_RUNTIME_int32(consensus_lagging_follower_threshold, 10,
     "-1 disables the feature.");
 TAG_FLAG(consensus_lagging_follower_threshold, advanced);
 
-DEFINE_RUNTIME_int64(cdc_intent_retention_ms, 4 * 3600 * 1000,
-    "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
-    "If we haven't received an updated checkpoint from CDC consumer within the interval "
-    "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
-    "consumer while determining which op IDs to delete from the intent.");
-TAG_FLAG(cdc_intent_retention_ms, advanced);
-
 DEFINE_test_flag(bool, disallow_lmp_failures, false,
                  "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
 
@@ -135,6 +129,13 @@ DEFINE_RUNTIME_uint32(max_remote_bootstrap_attempts_from_non_leader, 5,
 
 DEFINE_test_flag(bool, assert_remote_bootstrap_happens_from_same_zone, false,
     "Assert that remote bootstrap is served by a peer in the same zone as the new peer.");
+
+DEFINE_test_flag(bool, stop_committed_op_id_updation, false,
+    "Test flag to stop the updation of committed_op_id");
+
+DEFINE_RUNTIME_uint32(cdcsdk_wal_reads_deadline_buffer_secs, 5,
+    "This flag determines the buffer time from the deadline at which we must stop reading the WAL "
+    "messages and start processing the records we have read till now.");
 
 namespace yb {
 namespace consensus {
@@ -731,6 +732,35 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
   return result;
 }
 
+std::pair<int64_t, int64_t> PeerMessageQueue::GetCommittedAndMajorityReplicatedIndex() {
+  LockGuard lock(queue_lock_);
+  return {queue_state_.committed_op_id.index, queue_state_.majority_replicated_op_id.index};
+}
+
+int64_t PeerMessageQueue::GetStartOpIdIndex(int64_t start_index) {
+  return start_index == 0 ? max<int64_t>(log_cache_.earliest_op_index(), 0)
+                          : start_index;
+}
+
+Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForCDC(
+    int64_t last_op_id_index, int64_t to_index, CoarseTimePoint deadline, bool fetch_single_entry) {
+  // If an empty OpID is only sent on the first read request, start at the earliest known entry.
+  int64_t after_op_index = GetStartOpIdIndex(last_op_id_index);
+
+  auto result = ReadFromLogCache(
+      after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_, deadline,
+      fetch_single_entry);
+  if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
+    const std::string premature_gc_warning = Format(
+        "The logs from index $0 have been garbage collected and cannot be read ", after_op_index);
+    LOG_WITH_PREFIX(WARNING) << premature_gc_warning;
+    return result.status()
+        .CloneAndPrepend(premature_gc_warning)
+        .CloneAndAddErrorCode(cdc::CDCError(cdc::CDCErrorPB::CHECKPOINT_TOO_OLD));
+  }
+  return result;
+}
+
 // Read majority replicated messages from cache for CDC.
 // CDC producer will use this to get the messages to send in response to cdc::GetChanges RPC.
 Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
@@ -753,30 +783,211 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
 
   if (last_op_id.index >= to_index && !fetch_single_entry) {
     // Nothing to read.
-    return ReadOpsResult();
+    return ReadOpsResult {
+      .messages = ReplicateMsgs(),
+      .preceding_op = OpId(),
+      .have_more_messages = HaveMoreMessages(pending_messages)
+    };
   }
 
-  // If an empty OpID is only sent on the first read request, start at the earliest known entry.
-  int64_t after_op_index = last_op_id.empty() ?
-                             max(log_cache_.earliest_op_index(), last_op_id.index) :
-                             last_op_id.index;
+  auto result = VERIFY_RESULT(
+      ReadFromLogCacheForCDC(last_op_id.index, to_index, deadline, fetch_single_entry));
 
-  auto result = ReadFromLogCache(
-      after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_, deadline,
-      fetch_single_entry);
-  if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
-    const std::string premature_gc_warning =
-      Format("The logs from index $0 have been garbage collected and cannot be read ($1)",
-             after_op_index, result.status());
-    LOG_WITH_PREFIX(INFO) << premature_gc_warning;
-    return STATUS(NotFound, premature_gc_warning,
-                  cdc::CDCError(cdc::CDCErrorPB::CHECKPOINT_TOO_OLD));
-  }
-  if (result.ok()) {
-    result->have_more_messages = HaveMoreMessages(result->have_more_messages.get() ||
-                                                  pending_messages);
-  }
+  result.have_more_messages =
+      HaveMoreMessages(result.have_more_messages.get() || pending_messages);
+
   return result;
+}
+
+// Read all the commited messages from cache for CDC.
+// CDC producer will use these to get the messages to send in response to cdc::GetChanges RPC.
+Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
+    OpId last_op_id, uint64_t stream_safe_time, CoarseTimePoint deadline, bool fetch_single_entry,
+    int64_t* repl_index) {
+  auto res = ReadOpsResult();
+  res.have_more_messages = HaveMoreMessages(false);
+  int64_t committed_op_id_index;
+  int64_t last_replicated_op_id_index;
+  bool pending_messages = false;
+  uint64_t last_read_hybrid_time = 0;
+
+  do {
+    // Return if we reach close to the deadline, providing time for cdc producer and virtual WAL
+    // to process the records.
+    if (deadline - CoarseMonoClock::Now() <= FLAGS_cdcsdk_wal_reads_deadline_buffer_secs * 1s) {
+      return res;
+    }
+
+    std::tie(committed_op_id_index, last_replicated_op_id_index) =
+        GetCommittedAndMajorityReplicatedIndex();
+
+    // Determine if there are pending operations in RAFT but not yet LogCache.
+    pending_messages = committed_op_id_index != last_replicated_op_id_index;
+
+    if (repl_index) {
+      *repl_index = committed_op_id_index;
+    }
+
+    if (last_op_id.index >= committed_op_id_index && !fetch_single_entry) {
+      if (pending_messages) {
+        // Wait for committed_op_id to match majority_replicated_op_id.
+        res.have_more_messages = HaveMoreMessages(pending_messages);
+        continue;
+      } else {
+        // Nothing to read.
+        return ReadOpsResult{
+            .messages = ReplicateMsgs(),
+            .preceding_op = last_op_id,
+            .have_more_messages = HaveMoreMessages::kFalse};
+      }
+    }
+
+    auto result = VERIFY_RESULT(ReadFromLogCacheForCDC(
+        last_op_id.index, committed_op_id_index, deadline, fetch_single_entry));
+
+    res.messages.insert(res.messages.end(), result.messages.begin(), result.messages.end());
+    res.read_from_disk_size += result.read_from_disk_size;
+    pending_messages |= result.have_more_messages.get();
+    res.have_more_messages = HaveMoreMessages(pending_messages);
+
+    if (res.messages.size() > 0) {
+      auto msg = res.messages.back();
+      last_op_id = OpId::FromPB(msg->id());
+      last_read_hybrid_time = msg->hybrid_time();
+    } else {
+      // If an empty last_op_id is sent in the first read request, then ReadFromLogCacheForCDC reads
+      // from the earliest known OpId. If this earliest known OpId turns out to be same as
+      // committed_op_id then we receive an empty message list in the result. The earliest known
+      // OpId is present in the preceding_op of the result. We update the last_op_id with this to
+      // prevent unncessary looping.
+      last_op_id = result.preceding_op;
+    }
+
+  } while ((last_op_id.index < committed_op_id_index || pending_messages) &&
+           last_read_hybrid_time <= stream_safe_time);
+
+  return res;
+}
+
+Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
+    const OpId& from_op_id, CoarseTimePoint deadline, bool fetch_single_entry,
+    int64_t* last_committed_index, HybridTime* consistent_stream_safe_time_footer,
+    bool* read_entire_wal) {
+  auto read_ops = ReadOpsResult();
+  int64_t start_op_id_index = -1;
+  int64_t current_segment_num = -1;
+  int64_t segment_last_index = -1;
+  int64_t committed_op_id_index = -1;
+  int64_t last_replicated_op_id_index = -1;
+  bool pending_messages;
+
+  do {
+    // We wait till committed_op_id_index becomes >= last index of the segment that contains the
+    // from_op_id. If we reach deadline, then return have_more_messages as true to wait for wal
+    // update.
+    if (deadline - CoarseMonoClock::Now() <= FLAGS_cdcsdk_wal_reads_deadline_buffer_secs * 1s) {
+      LOG(INFO) << "Deadline reached on tablet: " << tablet_id_
+                << " while waiting for committed_op_id_index: " << committed_op_id_index
+                << " to become >= segment's last index: " << segment_last_index
+                << ", current_segment_num: " << current_segment_num
+                << ", start_op_id_index: " << start_op_id_index
+                << ", last_replicated_op_id_index: " << last_replicated_op_id_index;
+      read_ops.have_more_messages = HaveMoreMessages(true);
+      return read_ops;
+    }
+
+    std::tie(committed_op_id_index, last_replicated_op_id_index) =
+        GetCommittedAndMajorityReplicatedIndex();
+
+    // Determine if there are pending operations in RAFT but not yet LogCache.
+    pending_messages = committed_op_id_index != last_replicated_op_id_index;
+
+    if (last_committed_index) {
+      *last_committed_index = committed_op_id_index;
+    }
+
+    if (from_op_id.index >= committed_op_id_index && !fetch_single_entry) {
+      // Nothing to read.
+      return ReadOpsResult{
+          .messages = ReplicateMsgs(),
+          .preceding_op = OpId(),
+          .have_more_messages = HaveMoreMessages(pending_messages)};
+    }
+
+    start_op_id_index = GetStartOpIdIndex(from_op_id.index);
+
+    VLOG(1) << "Will read Ops from a WAL segment for tablet: " << tablet_id_
+            << " start_op_id_index = " << start_op_id_index
+            << " committed_op_id_index = " << committed_op_id_index
+            << " last_replicated_op_id_index = " << last_replicated_op_id_index;
+
+    auto current_segment_num_result = log_cache_.LookupOpWalSegmentNumber(start_op_id_index);
+    if (!current_segment_num_result.ok() ||
+        (*current_segment_num_result == log_cache_.GetActiveSegmentNumber())) {
+      // Read entire WAL.
+      *read_entire_wal = true;
+      return ReadReplicatedMessagesForConsistentCDC(
+          from_op_id, HybridTime::kInvalid.ToUint64(), deadline, fetch_single_entry);
+    }
+
+    current_segment_num = *current_segment_num_result;
+    segment_last_index =
+        VERIFY_RESULT(log_cache_.GetMaxReplicateIndexFromSegmentFooter(current_segment_num));
+
+    // Nothing to read in this segment, read the next segment.
+    if (start_op_id_index == segment_last_index) {
+      current_segment_num =
+          VERIFY_RESULT(log_cache_.LookupOpWalSegmentNumber(start_op_id_index + 1));
+      if (current_segment_num == log_cache_.GetActiveSegmentNumber()) {
+        // Read entire WAL.
+        *read_entire_wal = true;
+        return ReadReplicatedMessagesForConsistentCDC(
+            from_op_id, HybridTime::kInvalid.ToUint64(), deadline, fetch_single_entry);
+      }
+      segment_last_index =
+          VERIFY_RESULT(log_cache_.GetMaxReplicateIndexFromSegmentFooter(current_segment_num));
+    }
+  } while (segment_last_index > committed_op_id_index);
+
+  auto consistent_stream_safe_time =
+      VERIFY_RESULT(log_cache_.GetMinStartTimeRunningTxnsFromSegmentFooter(current_segment_num));
+
+  if (consistent_stream_safe_time_footer) {
+    *consistent_stream_safe_time_footer = consistent_stream_safe_time;
+  }
+
+  VLOG(1) << "Reading a new WAL segment for tablet: " << tablet_id_ << " Segment info:"
+          << " current_segment_num = " << current_segment_num
+          << " active_segment_num = " << log_cache_.GetActiveSegmentNumber()
+          << " segment_last_index = " << segment_last_index
+          << " consistent_stream_safe_time = " << consistent_stream_safe_time
+          << " start_op_id_index = " << start_op_id_index;
+
+  auto current_index = start_op_id_index;
+
+  // Read the ops from the segment starting from current_index + 1.
+  while (current_index < segment_last_index) {
+    auto result = VERIFY_RESULT(
+        ReadFromLogCacheForCDC(current_index, segment_last_index, deadline, fetch_single_entry));
+
+    read_ops.read_from_disk_size += result.read_from_disk_size;
+    read_ops.messages.insert(
+        read_ops.messages.end(), result.messages.begin(), result.messages.end());
+
+    if (!result.messages.empty()) {
+      current_index = result.messages.back()->id().index();
+    }
+  }
+
+  // In addition to actually reading the active segment, the following condition also indicates that
+  // we have read the entire WAL. This can happen if a new segment has been allocated but there are
+  // no more writes on the tablet. Hence, last replicated op id falls in the last closed segment and
+  // active segment is essentially empty.
+  if(!pending_messages && current_index == last_replicated_op_id_index) {
+    *read_entire_wal = true;
+  }
+
+  return read_ops;
 }
 
 const PeerMessageQueue::TrackedPeer* PeerMessageQueue::FindClosestPeerForBootstrap(
@@ -784,7 +995,7 @@ const PeerMessageQueue::TrackedPeer* PeerMessageQueue::FindClosestPeerForBootstr
   const CloudInfoPB& src_cloud_info = remote_tracked_peer->cloud_info.value();
   // initializing rbs_source as the leader itself.
   LocalityLevel best_locality_level =
-      PlacementInfoConverter::GetLocalityLevel(src_cloud_info, local_peer_pb_.cloud_info());
+      TablespaceParser::GetLocalityLevel(src_cloud_info, local_peer_pb_.cloud_info());
   PeerMessageQueue::TrackedPeer* rbs_source = local_peer_;
   for (auto it = peers_map_.begin(); it != peers_map_.end(); it++) {
     // don't consider locality of remote_tracked_peer with itself
@@ -807,7 +1018,7 @@ const PeerMessageQueue::TrackedPeer* PeerMessageQueue::FindClosestPeerForBootstr
     }
 
     auto cur_locality_level =
-        PlacementInfoConverter::GetLocalityLevel(src_cloud_info, it->second->cloud_info.value());
+        TablespaceParser::GetLocalityLevel(src_cloud_info, it->second->cloud_info.value());
     if (cur_locality_level > best_locality_level) {
       best_locality_level = cur_locality_level;
       rbs_source = it->second;
@@ -856,7 +1067,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
     peer->needs_remote_bootstrap = false;
     if (PREDICT_FALSE(FLAGS_TEST_assert_remote_bootstrap_happens_from_same_zone)) {
       CHECK_EQ(
-          PlacementInfoConverter::GetLocalityLevel(
+          TablespaceParser::GetLocalityLevel(
               rbs_source->cloud_info.value(), peer->cloud_info.value()),
           LocalityLevel::kZone)
           << "Expected rbs source to be in same zone as new peer";
@@ -1110,7 +1321,7 @@ MicrosTime PeerMessageQueue::HybridTimeLeaseExpirationWatermark() {
     }
 
     static result_type InfiniteWatermarkForLocalPeer() {
-      return HybridTime::kMax.GetPhysicalValueMicros();
+      return kInfiniteHybridTimeLeaseExpiration;
     }
 
     static result_type ExtractValue(const TrackedPeer& peer) {
@@ -1605,7 +1816,8 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
   {
     LockGuard lock(queue_lock_);
     if (!new_committed_op_id.empty() &&
-        new_committed_op_id.index > queue_state_.committed_op_id.index) {
+        new_committed_op_id.index > queue_state_.committed_op_id.index &&
+        !GetAtomicFlag(&FLAGS_TEST_stop_committed_op_id_updation)) {
       queue_state_.committed_op_id = new_committed_op_id;
     }
     queue_state_.last_applied_op_id.MakeAtLeast(last_applied_op_id);

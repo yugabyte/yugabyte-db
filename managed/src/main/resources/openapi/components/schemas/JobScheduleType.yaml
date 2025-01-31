@@ -1,0 +1,7 @@
+title: JobScheduleType
+description: |
+  Job schedule type which is a part of JobScheduleConfigSpec. Fixed delay keeps a fixed interval between the end and start of previous and next job executions respectively. Fixed rate tries to keep a fixed interval between the job execution start times. If a previous job is still running, the next job waits.
+type: string
+enum:
+  - FIXED_DELAY
+  - FIXED_RATE

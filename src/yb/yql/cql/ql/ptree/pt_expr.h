@@ -30,6 +30,7 @@
 #include "yb/yql/cql/ql/ptree/pt_expr_types.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/yql/cql/ql/ql_processor.h"
 
 namespace yb {
 
@@ -854,7 +855,7 @@ class PTLiteralString : public PTLiteral<MCSharedPtr<MCString>> {
   std::string ToString() const;
 
   Status ToString(std::string *value) const;
-  Status ToTimestamp(int64_t *value) const;
+  Status ToTimestamp(int64_t *value, const QLMetrics *ql_metrics) const;
   Status ToDate(uint32_t *value) const;
   Status ToTime(int64_t *value) const;
 
@@ -1358,7 +1359,8 @@ class PTBindVar : public PTExpr {
 
   std::string QLName(
       qlexpr::QLNameOption option = qlexpr::QLNameOption::kUserOriginalName) const override {
-    std::string qlname = (user_pos_) ? user_pos_->ToString() : name()->c_str();
+    std::string qlname = (user_pos_) ? user_pos_->ToString()
+                                     : (name() ? name()->c_str() : default_bindvar_name().c_str());
     return ":" +  qlname;
   }
 

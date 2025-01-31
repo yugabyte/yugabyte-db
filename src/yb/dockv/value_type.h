@@ -28,6 +28,8 @@ namespace yb::dockv {
 #define DOCDB_KEY_ENTRY_TYPES \
     /* This ValueType is used as -infinity for scanning purposes only. */\
     ((kLowest, 0)) \
+    /* Prefix for vector index related metadata */ \
+    ((kVectorIndexMetadata, 6)) \
     /* Prefix for transaction apply state records. */ \
     ((kTransactionApplyState, 7)) \
     /* Externally received transaction id */ \
@@ -75,6 +77,8 @@ namespace yb::dockv {
     ((kInetaddress, '-'))  /* ASCII code 45 */ \
     ((kInetaddressDescending, '.'))  /* ASCII code 46 */ \
     ((kColocationId, '0')) /* ASCII code 48 */ \
+    ((kWeakObjectLock, '3')) /* ASCII code 51 */ \
+    ((kStrongObjectLock, '4')) /* ASCII code 52 */ \
     ((kFrozen, '<')) /* ASCII code 60 */ \
     ((kFrozenDescending, '>')) /* ASCII code 62 */ \
     ((kVarInt, 'B')) /* ASCII code 66 */ \
@@ -93,6 +97,7 @@ namespace yb::dockv {
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \
+    ((kVectorId, 'V')) /* ASCII code 86 */ \
     ((kExternalIntents, 'Z')) /* ASCII code 90 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
     ((kCollString, '\\'))  /* ASCII code 92 */ \
@@ -126,7 +131,7 @@ namespace yb::dockv {
     ((kGinNull, 'v')) /* ASCII code 118 */ \
     ((kTransactionId, 'x')) /* ASCII code 120 */ \
     ((kTableId, 'y')) /* ASCII code 121 */ \
-    \
+    ((kObject, '{'))  /* ASCII code 123 */ \
     /* Null desc must be higher than the other descending primitive types so that it compares */ \
     /* as bigger than them. It is used for frozen CQL user-defined types (which can contain */ \
     /* null elements) on DESC columns. */ \
@@ -173,6 +178,7 @@ namespace yb::dockv {
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \
+    ((kVectorId, 'V')) /* ASCII code 86 */ \
     ((kTombstone, 'X'))  /* ASCII code 88 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
     ((kCollString, '\\'))  /* ASCII code 92 */ \
@@ -238,7 +244,8 @@ constexpr inline bool IsCollectionType(const ValueEntryType value_type) {
 constexpr inline bool IsRegulaDBInternalRecordKeyType(const KeyEntryType value_type) {
   // For regular db:
   // - transaction apply state records.
-  return value_type == KeyEntryType::kTransactionApplyState;
+  return value_type == KeyEntryType::kVectorIndexMetadata ||
+         value_type == KeyEntryType::kTransactionApplyState;
 }
 
 constexpr inline bool IsIntentsDBInternalRecordKeyType(const KeyEntryType value_type) {
@@ -278,6 +285,10 @@ constexpr inline ValueEntryType DecodeValueEntryType(char value_type_byte) {
 inline ValueEntryType ConsumeValueEntryType(Slice* slice) {
   return slice->empty() ? ValueEntryType::kInvalid
                         : DecodeValueEntryType(slice->consume_byte());
+}
+
+inline ValueEntryType ConsumeValueEntryType(Slice& slice) {
+  return ConsumeValueEntryType(&slice);
 }
 
 inline KeyEntryType DecodeKeyEntryType(const Slice& value) {

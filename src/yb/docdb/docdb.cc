@@ -46,6 +46,8 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/rocksdb/options.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -76,6 +78,9 @@ using namespace std::placeholders;
 DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1680,
              "Max number of intent records allowed in single cdc batch. ");
 
+DEFINE_RUNTIME_bool(cdc_enable_caching_db_block, true,
+                    "When set to true, cache the DB block read for CDC in block cache.");
+
 namespace yb {
 namespace docdb {
 
@@ -87,32 +92,25 @@ namespace {
 
 // key should be valid prefix of doc key, ending with some complete primitive value or group end.
 Status ApplyIntent(
-    RefCntPrefix key, dockv::IntentTypeSet intent_types, LockBatchEntries* keys_locked) {
+    RefCntPrefix key, dockv::IntentTypeSet intent_types,
+    LockBatchEntries<SharedLockManager>* keys_locked) {
   RSTATUS_DCHECK(!intent_types.None(), InternalError, "Empty intent types is not allowed");
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
   // get two kGroupEnd at end of strong intent.
   RETURN_NOT_OK(dockv::RemoveGroupEndSuffix(&key));
-  keys_locked->push_back({std::move(key), intent_types});
+  keys_locked->push_back(
+      LockBatchEntry<SharedLockManager> {std::move(key), intent_types});
   return Status::OK();
 }
 
-struct DetermineKeysToLockResult {
-  LockBatchEntries lock_batch;
-  bool need_read_snapshot;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(lock_batch, need_read_snapshot);
-  }
-};
-
-Result<DetermineKeysToLockResult> DetermineKeysToLock(
+Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
     dockv::PartialRangeKeyIntents partial_range_key_intents) {
-  DetermineKeysToLockResult result;
+  DetermineKeysToLockResult<SharedLockManager> result;
   boost::container::small_vector<RefCntPrefix, 8> doc_paths;
   boost::container::small_vector<size_t, 32> key_prefix_lengths;
   result.need_read_snapshot = false;
@@ -125,9 +123,11 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     }
     const auto require_read_snapshot = doc_op->RequireReadSnapshot();
     result.need_read_snapshot |= require_read_snapshot;
-    auto intent_types = dockv::GetIntentTypesForWrite(level);
+    auto intent_types = doc_op->GetIntentTypes(level);
     if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
         require_read_snapshot) {
+      SCHECK_NE(doc_op->OpType(), DocOperationType::PGSQL_LOCK_OPERATION,
+                IllegalState, "LOCK operations shouldn't require read snapshot");
       intent_types = dockv::IntentTypeSet(
           {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite});
     }
@@ -186,47 +186,7 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   return result;
 }
 
-// Collapse keys_locked into a unique set of keys with intent_types representing the union of
-// intent_types originally present. In other words, suppose keys_locked is originally the following:
-// [
-//   (k1, {kWeakRead, kWeakWrite}),
-//   (k1, {kStrongRead}),
-//   (k2, {kWeakRead}),
-//   (k3, {kStrongRead}),
-//   (k2, {kStrongWrite}),
-// ]
-// Then after calling FilterKeysToLock we will have:
-// [
-//   (k1, {kWeakRead, kWeakWrite, kStrongRead}),
-//   (k2, {kWeakRead}),
-//   (k3, {kStrongRead, kStrongWrite}),
-// ]
-// Note that only keys which appear in order in keys_locked will be collapsed in this manner.
-void FilterKeysToLock(LockBatchEntries *keys_locked) {
-  if (keys_locked->empty()) {
-    return;
-  }
-
-  std::sort(keys_locked->begin(), keys_locked->end(),
-            [](const auto& lhs, const auto& rhs) {
-              return lhs.key < rhs.key;
-            });
-
-  auto w = keys_locked->begin();
-  for (auto it = keys_locked->begin(); ++it != keys_locked->end();) {
-    if (it->key == w->key) {
-      w->intent_types |= it->intent_types;
-    } else {
-      ++w;
-      *w = *it;
-    }
-  }
-
-  ++w;
-  keys_locked->erase(w, keys_locked->end());
-}
-
-}  // namespace
+} // namespace
 
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
@@ -252,7 +212,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   }
   result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
 
-  FilterKeysToLock(&determine_keys_to_lock_result.lock_batch);
+  FilterKeysToLock<SharedLockManager>(&determine_keys_to_lock_result.lock_batch);
   VLOG_WITH_FUNC(4) << "filtered determine_keys_to_lock_result="
                     << determine_keys_to_lock_result.ToString();
   const MonoTime start_time = (tablet_metrics != nullptr) ? MonoTime::Now() : MonoTime();
@@ -370,12 +330,16 @@ Result<ApplyTransactionState> GetIntentsBatch(
   const Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
 
   auto reverse_index_iter = CreateRocksDBIterator(
-      intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound);
+      intents_db, &KeyBounds::kNoBounds, BloomFilterOptions::Inactive(),
+      !FLAGS_cdc_enable_caching_db_block ? rocksdb::kNoCacheQueryId : rocksdb::kDefaultQueryId,
+      /* file_filter = */ nullptr, &reverse_index_upperbound,
+      rocksdb::CacheRestartBlockKeys::kFalse);
 
   BoundedRocksDbIterator intent_iter = CreateRocksDBIterator(
-      intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      rocksdb::kDefaultQueryId);
+      intents_db, key_bounds, BloomFilterOptions::Inactive(),
+      !FLAGS_cdc_enable_caching_db_block ? rocksdb::kNoCacheQueryId : rocksdb::kDefaultQueryId,
+      /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
+      rocksdb::CacheRestartBlockKeys::kFalse);
 
   reverse_index_iter.Seek(key_prefix);
 
@@ -420,7 +384,8 @@ Result<ApplyTransactionState> GetIntentsBatch(
             return ApplyTransactionState{};
           }
 
-          auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter.key(), transaction_id_slice));
+          auto intent = VERIFY_RESULT(dockv::ParseIntentKey(
+              intent_iter.key(), transaction_id_slice));
 
           if (intent.types.Test(dockv::IntentType::kStrongWrite)) {
             auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(

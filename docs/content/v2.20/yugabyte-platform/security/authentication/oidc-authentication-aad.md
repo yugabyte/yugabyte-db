@@ -4,7 +4,8 @@ headerTitle: OIDC authentication with Azure AD
 linkTitle: OIDC with Azure AD
 description: Configuring YugabyteDB Anywhere universe to use OIDC with Microsoft Entra.
 headcontent: Use Azure AD to authenticate accounts for database access
-earlyAccess: /preview/releases/versioning/#feature-availability
+tags:
+  feature: early-access
 menu:
   v2.20_yugabyte-platform:
     identifier: oidc-authentication-platform
@@ -114,7 +115,11 @@ To register an application, do the following:
 
 1. Select the tenant for the application.
 
-1. Set the redirect URI. This is where the IdP redirects after authentication.
+1. Set the redirect URI. This is where the IdP redirects after authentication. The URI is in the following form:
+
+    ```sh
+    https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient
+    ```
 
 1. Click **Register**.
 
@@ -181,13 +186,15 @@ For information on configuring flags in YugabyteDB Anywhere, refer to [Edit conf
 
 #### ysql_hba_conf_csv
 
-The `ysql_hba_conf_csv` flag must be set to support using JWTs for authentication. The parameters to include in the configuration file record are as follows:
+The `ysql_hba_conf_csv` flag must be set to support using JWTs for authentication. The parameters to include in the configuration file record are described in the following table:
 
-- `jwt_map` - the user-name map used to translate claim values to database roles. Optional if you aren't using the default Subject claim values.
-- `jwt_issuers` - the first part of the discovery URL (`login.microsoftonline.com/<tenant_id>/v2.0`)
-- `jwt_audiences` - the audience or target app for the token, which in this case is the client ID of the application you registered.
-- `jwt_matching_claim_key` - the email attribute you set (for example, `preferred_username`). Optional if you aren't using the default Subject claim values.
-- `jwt_jwks_path` - The JSON Web Key Set (JWKS) is a set of keys containing the public keys used to verify any JWT. These can be uploaded as entries in a single file. When configuring the flag in YugabyteDB Anywhere, click **Add JSON web key set (JWKS)** to upload the JWKS.
+| Parameter | Description |
+| :-------- | :---------- |
+| `jwt_map` | The user-name map used to translate claim values to database roles. Optional if you aren't using the default Subject claim values. |
+| `jwt_issuers` | The first part of the discovery URL (`login.microsoftonline.com/<tenant_id>/v2.0`) |
+| `jwt_audiences` | The audience or target app for the token, which in this case is the client ID of the application you registered. |
+| `jwt_matching_claim_key` | The email attribute you set (for example, `preferred_username`). Optional if you aren't using the default Subject claim values. |
+| `jwt_jwks_path` | The JSON Web Key Set (JWKS) is a set of keys containing the public keys used to verify any JWT. These can be uploaded as entries in a single file. When configuring the flag in YugabyteDB Anywhere, click **Add JSON web key set (JWKS)** to upload the JWKS. |
 
 The following illustration shows an example of setting the `ysql_hba_conf_csv` flag in YugabyteDB Anywhere:
 

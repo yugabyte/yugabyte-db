@@ -76,11 +76,14 @@ struct IsPGNonNegImpl<T> : std::true_type {};
 template<class T>
 inline constexpr bool IsPGNonNeg = IsPGNonNegImpl<T>::value;
 
+class RowAsString;
+
 template<class T>
 concept BasePGType =
     IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
     std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, char> ||
-    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid> || std::is_same_v<T, MonoDelta>;
+    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid> || std::is_same_v<T, MonoDelta> ||
+    std::is_same_v<T, std::vector<float>> || std::is_same_v<T, RowAsString>;
 
 template<class T>
 concept OptionalPGType = StdOptionalType<T> && BasePGType<typename T::value_type>;
@@ -234,6 +237,15 @@ class FetchHelper {
     }
     return source;
   }
+};
+
+template <>
+class FetchHelper<RowAsString> {
+  using RowsType = std::vector<std::string>;
+  using RowsResult = Result<RowsType>;
+
+ public:
+  static RowsResult FetchRows(Result<PGResultPtr>&& source);
 };
 
 } // namespace libpq_utils::internal

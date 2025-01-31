@@ -19,7 +19,6 @@
 #include "yb/common/transaction.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb_statistics.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -70,8 +69,7 @@ class AbstractTablet {
       const docdb::YQLStorageIf& ql_storage,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       QLReadRequestResult* result,
-      WriteBuffer* rows_data,
-      const docdb::DocDBStatistics* statistics);
+      WriteBuffer* rows_data);
 
   virtual Status CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                                   const size_t row_count,
@@ -118,15 +116,9 @@ class AbstractTablet {
                                                   const size_t row_count,
                                                   PgsqlResponsePB* response) const = 0;
 
-  Status ProcessPgsqlReadRequest(const docdb::ReadOperationData& read_operation_data,
-                                 bool is_explicit_request_read_time,
-                                 const PgsqlReadRequestPB& pgsql_read_request,
-                                 const std::shared_ptr<TableInfo>& table_info,
-                                 const TransactionOperationContext& txn_op_context,
-                                 const docdb::YQLStorageIf& ql_storage,
-                                 const docdb::DocDBStatistics* statistics,
-                                 std::reference_wrapper<const ScopedRWOperation> pending_op,
-                                 PgsqlReadRequestResult* result);
+  Status ProcessPgsqlReadRequest(
+      const docdb::PgsqlReadOperationData& op_data,
+      PgsqlReadRequestResult* result);
 
   virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;
 

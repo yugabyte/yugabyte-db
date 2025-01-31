@@ -75,8 +75,8 @@ SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
  nonkey | text    |           |          |                                                   | extended |              |
 Indexes:
     "test_replica_identity_pkey" PRIMARY KEY, lsm (id HASH)
-    "test_replica_identity_unique_nondefer" UNIQUE CONSTRAINT, lsm (keya HASH, keyb ASC)
     "test_replica_identity_keyab" lsm (keya HASH, keyb ASC)
+    "test_replica_identity_unique_nondefer" UNIQUE CONSTRAINT, lsm (keya HASH, keyb ASC)
 Replica Identity: FULL
 
 ALTER TABLE test_replica_identity REPLICA IDENTITY NOTHING;

@@ -131,12 +131,12 @@ const std::unordered_map<string, PgExpr::Opcode> kOperatorNames = {
 };
 
 PgExpr::PgExpr(Opcode opcode,
-               const YBCPgTypeEntity *type_entity,
+               const YbcPgTypeEntity *type_entity,
                bool collate_is_valid_non_c,
-               const PgTypeAttrs *type_attrs)
+               const YbcPgTypeAttrs *type_attrs)
     : opcode_(opcode), type_entity_(type_entity),
       collate_is_valid_non_c_(collate_is_valid_non_c),
-      type_attrs_(type_attrs ? *type_attrs : PgTypeAttrs({0})) {
+      type_attrs_(type_attrs ? *type_attrs : YbcPgTypeAttrs({0})) {
   DCHECK(type_entity_) << "Datatype of result must be specified for expression";
   DCHECK(type_entity_->yb_type != YB_YQL_DATA_TYPE_NOT_SUPPORTED &&
          type_entity_->yb_type != YB_YQL_DATA_TYPE_UNKNOWN_DATA &&
@@ -305,8 +305,6 @@ class PgSysColumnRefFactory {
     switch (attr_num) {
       case PgSystemAttrNum::kSelfItemPointer:
         return PgColumn([](auto* syscols) { return &syscols->ctid; });
-      case PgSystemAttrNum::kObjectId:
-        return PgColumn([](auto* syscols) { return &syscols->oid; });
       case PgSystemAttrNum::kMinTransactionId:
         return PgColumn([](auto* syscols) { return &syscols->xmin; });
       case PgSystemAttrNum::kMinCommandId:
@@ -322,7 +320,8 @@ class PgSysColumnRefFactory {
       case PgSystemAttrNum::kYBIdxBaseTupleId:
         return YbColumn([](auto* syscols) { return &syscols->ybbasectid; });
       case PgSystemAttrNum::kYBUniqueIdxKeySuffix: [[fallthrough]];
-      case PgSystemAttrNum::kYBRowId:
+      case PgSystemAttrNum::kYBRowId: [[fallthrough]];
+      case PgSystemAttrNum::kPGInternalYBTupleId:
         break;
     }
     FATAL_INVALID_ENUM_VALUE(PgSystemAttrNum, attr_num);
@@ -479,7 +478,7 @@ struct PgColumnRefFactory {
   PgColumnRefFactory(Base*, ThreadSafeArena* arena, Args... args)
       : arena_(arena), args_(args...) {}
 
-  Base* operator()(PgDataType type, bool direct, bool collate_is_valid_non_c) {
+  Base* operator()(YbcPgDataType type, bool direct, bool collate_is_valid_non_c) {
     switch (type) {
       case YB_YQL_DATA_TYPE_INT8:
         return ApplyNumeric<int8_t>(direct);
@@ -513,6 +512,7 @@ struct PgColumnRefFactory {
       case YB_YQL_DATA_TYPE_DOUBLE:
         return ApplyNumeric<double>(direct);
 
+      case YB_YQL_DATA_TYPE_VECTOR: [[fallthrough]];
       case YB_YQL_DATA_TYPE_BINARY:
         return Apply<PgBinaryColumnRef<Base>>();
 
@@ -578,7 +578,7 @@ std::string PgExpr::ToString() const {
 //--------------------------------------------------------------------------------------------------
 
 void DatumToQLValue(
-    const YBCPgTypeEntity* type_entity,
+    const YbcPgTypeEntity* type_entity,
     bool collate_is_valid_non_c,
     const char *collation_sortkey,
     uint64_t datum,
@@ -681,6 +681,7 @@ void DatumToQLValue(
       }
       break;
 
+    case YB_YQL_DATA_TYPE_VECTOR: [[fallthrough]];
     case YB_YQL_DATA_TYPE_BINARY: {
         uint8_t *value;
         int64_t bytes = type_entity->datum_fixed_size;
@@ -713,7 +714,7 @@ void DatumToQLValue(
 }
 
 PgConstant::PgConstant(ThreadSafeArena* arena,
-                       const YBCPgTypeEntity *type_entity,
+                       const YbcPgTypeEntity *type_entity,
                        bool collate_is_valid_non_c,
                        const char *collation_sortkey,
                        uint64_t datum,
@@ -725,19 +726,19 @@ PgConstant::PgConstant(ThreadSafeArena* arena,
 }
 
 PgConstant::PgConstant(ThreadSafeArena* arena,
-                       const YBCPgTypeEntity *type_entity,
+                       const YbcPgTypeEntity *type_entity,
                        bool collate_is_valid_non_c,
-                       PgDatumKind datum_kind,
+                       YbcPgDatumKind datum_kind,
                        PgExpr::Opcode opcode)
     : PgExpr(opcode, type_entity, collate_is_valid_non_c), ql_value_(arena) {
   switch (datum_kind) {
-    case PgDatumKind::YB_YQL_DATUM_STANDARD_VALUE:
+    case YbcPgDatumKind::YB_YQL_DATUM_STANDARD_VALUE:
       // Leave the result as NULL.
       break;
-    case PgDatumKind::YB_YQL_DATUM_LIMIT_MAX:
+    case YbcPgDatumKind::YB_YQL_DATUM_LIMIT_MAX:
       ql_value_.set_virtual_value(QLVirtualValuePB::LIMIT_MAX);
       break;
-    case PgDatumKind::YB_YQL_DATUM_LIMIT_MIN:
+    case YbcPgDatumKind::YB_YQL_DATUM_LIMIT_MIN:
       ql_value_.set_virtual_value(QLVirtualValuePB::LIMIT_MIN);
       break;
   }
@@ -826,10 +827,14 @@ std::string PgConstant::ToString() const {
 PgColumnRef* PgColumnRef::Create(
     ThreadSafeArena* arena,
     int attr_num,
-    const PgTypeEntity *type_entity,
+    const YbcPgTypeEntity *type_entity,
     bool collate_is_valid_non_c,
-    const PgTypeAttrs *type_attrs) {
+    const YbcPgTypeAttrs *type_attrs) {
   if (attr_num < 0) {
+    // Convert to wire protocol. See explanation in pg_system_attr.h.
+    if (attr_num == static_cast<int>(PgSystemAttrNum::kPGInternalYBTupleId)) {
+      attr_num = static_cast<int>(PgSystemAttrNum::kYBTupleId);
+    }
     auto factory = PgSysColumnRefFactory(
         arena, attr_num, type_entity, collate_is_valid_non_c, type_attrs);
     return factory(static_cast<PgSystemAttrNum>(attr_num));
@@ -865,13 +870,13 @@ PgColumnRef::GetColumns(PgTable *pg_table) const {
 
 PgOperator::PgOperator(ThreadSafeArena* arena,
                        Opcode opcode,
-                       const YBCPgTypeEntity *type_entity,
+                       const YbcPgTypeEntity *type_entity,
                        bool collate_is_valid_non_c)
     : PgExpr(opcode, type_entity, collate_is_valid_non_c), args_(arena) {
 }
 
 PgOperator* PgOperator::Create(
-    ThreadSafeArena* arena, const char* name, const YBCPgTypeEntity* type_entity,
+    ThreadSafeArena* arena, const char* name, const YbcPgTypeEntity* type_entity,
     bool collate_is_valid_non_c) {
   auto opcode = NameToOpcode(name);
   if (!is_aggregate(opcode)) {
@@ -914,8 +919,8 @@ void PgAggregateOperator::DoSetDatum(PgTuple* tuple, uint64_t datum) {
 //--------------------------------------------------------------------------------------------------
 
 PgTupleExpr::PgTupleExpr(ThreadSafeArena* arena,
-                         const YBCPgTypeEntity* type_entity,
-                         const PgTypeAttrs *type_attrs,
+                         const YbcPgTypeEntity* type_entity,
+                         const YbcPgTypeAttrs *type_attrs,
                          int num_elems,
                          PgExpr *const *elems)
   : PgExpr(Opcode::PG_EXPR_TUPLE_EXPR, type_entity, false, type_attrs),

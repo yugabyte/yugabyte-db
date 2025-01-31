@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -107,7 +108,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
       Universe universe =
           lockAndFreezeUniverseForUpdate(
-              taskParams().expectedUniverseVersion, null /* Txn callback */);
+              taskParams().expectedUniverseVersion,
+              u -> setCommunicationPortsForNodes(true) /* Txn callback */);
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
           taskParams().getKubernetesResourceDetails(),
@@ -217,27 +219,53 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Install YBC on the pods
+      String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
       if (taskParams().isEnableYbc()) {
         installYbcOnThePods(
-            universe.getName(),
             tserversAdded,
             false,
-            taskParams().getYbcSoftwareVersion(),
+            stableYbcVersion,
             taskParams().getPrimaryCluster().userIntent.ybcFlags);
         if (readClusters.size() == 1) {
           installYbcOnThePods(
-              universe.getName(),
               readOnlyTserversAdded,
               true,
-              taskParams().getYbcSoftwareVersion(),
+              stableYbcVersion,
               taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
         }
         createWaitForYbcServerTask(allTserversAdded);
-        createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
+        createUpdateYbcTask(stableYbcVersion)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      createConfigureUniverseTasks(primaryCluster, null);
+      // Params for master_join_existing_universe gflag update
+      Runnable nonRestartMasterGflagUpgrade = null;
+      if (KubernetesUtil.isNonRestartGflagsUpgradeSupported(
+          primaryCluster.userIntent.ybSoftwareVersion)) {
+        KubernetesGflagsUpgradeCommonParams gflagsParams =
+            new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster, confGetter);
+        nonRestartMasterGflagUpgrade =
+            () ->
+                upgradePodsNonRestart(
+                    universe.getName(),
+                    // Use generated placement since gflagsParams placement will not have masters
+                    // populated.
+                    placement,
+                    masterAddresses,
+                    ServerType.MASTER,
+                    gflagsParams.getYbSoftwareVersion(),
+                    gflagsParams.getUniverseOverrides(),
+                    gflagsParams.getAzOverrides(),
+                    gflagsParams.isNewNamingStyle(),
+                    false /* isReadOnlyCluster */,
+                    // Use taskParams here since updated universe details are not available
+                    // during subtasks creation.
+                    taskParams().isEnableYbc(),
+                    stableYbcVersion);
+      }
+
+      createConfigureUniverseTasks(
+          primaryCluster, null /* masterNodes */, nonRestartMasterGflagUpgrade);
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {

@@ -69,10 +69,29 @@ Building Psycopg2 requires a few prerequisites (a C compiler and some developmen
 
 The YugabyteDB Psycopg2 requires PostgreSQL version 12 or later (preferably 14).
 
-After you've installed the prerequisites, install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
+After you've installed the prerequisites, install psycopg2-yugabytedb like any other Python package, using pip to download it from PyPI.
+
+| PyPI Project | Type | Files |
+| :--- | :--- | :--- |
+| [psycopg2-yugabytedb](https://pypi.org/project/psycopg2-yugabytedb/) | Source | [Download](https://pypi.org/project/psycopg2-yugabytedb/#files) |
+| [psycopg2-yugabytedb-binary](https://pypi.org/project/psycopg2-yugabytedb-binary/) | Binary | [Download](https://pypi.org/project/psycopg2-yugabytedb-binary/#files) |
+
+Install source using pip:
 
 ```sh
 $ pip install psycopg2-yugabytedb
+```
+
+Install binary using pip:
+
+```sh
+$ pip install psycopg2-yugabytedb-binary
+```
+
+If you downloaded the binary locally, install using:
+
+```sh
+$ pip install /path/to/file.whi
 ```
 
 Or, you can use the setup.py script if you've downloaded the source package locally:
@@ -81,6 +100,22 @@ Or, you can use the setup.py script if you've downloaded the source package loca
 $ python setup.py build
 $ sudo python setup.py install
 ```
+
+To verify that the installation was successful:
+
+1. Create a test Python script:
+
+    ```sh
+    echo -e "import psycopg2\nprint(psycopg2.__version__)" > test_psycopg2.py
+    ```
+
+1. Run the test script:
+
+    ```sh
+    python test_psycopg2.py
+    ```
+
+If you see the version number, the installation was successful.
 
 ### Step 2: Set up the database connection
 
@@ -93,8 +128,10 @@ The following table describes the connection parameters required to connect, inc
 | database/dbname | Database name | yugabyte |
 | user | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
-| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
-| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| load_balance | Enables [uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | false |
+| topology_keys | Enables [topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing). Specify comma-separated geo-locations in the form `cloud.region.zone:priority`. Ignored if `load_balance` is false | Empty |
+| fallback_to_topology_keys_only | If set to true and `topology_keys` are specified, the driver only tries to connect to nodes specified in `topology_keys` | false |
+| failed_host_ttl_seconds | Time, in seconds, to wait before trying to connect to failed nodes. When the driver is unable to connect to a node, it marks the node as failed using a timestamp, and ignores the node when trying new connections until this time elapses. | 5 |
 
 You can provide the connection details in one of the following ways:
 

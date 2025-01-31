@@ -6,12 +6,20 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.PathNotFoundException;
 import com.yugabyte.yw.common.audit.AuditService;
+import java.util.Base64;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
+@Slf4j
 public class RedactingService {
 
   public static final String SECRET_REPLACEMENT = "REDACTED";
@@ -29,6 +37,9 @@ public class RedactingService {
           "$..ysqlCurrentPassword",
           "$..sshPrivateKeyContent");
 
+  public static final List<String> SECRET_QUERY_PARAMS_FOR_LOGS =
+      ImmutableList.of(/* SAS Token */ "sig");
+
   public static final List<String> SECRET_PATHS_FOR_LOGS =
       ImmutableList.<String>builder()
           .addAll(SECRET_PATHS_FOR_APIS)
@@ -43,6 +54,8 @@ public class RedactingService {
           // GCP private key
           .add("$..['config.config_file_contents.private_key_id']")
           .add("$..['config.config_file_contents.private_key']")
+          .add("$..config_file_contents.private_key")
+          .add("$..config_file_contents.private_key_id")
           .add("$..config.private_key_id")
           .add("$..config.private_key")
           .add("$..credentials.private_key_id")
@@ -92,6 +105,8 @@ public class RedactingService {
           // LDAP - DB Universe Sync
           .add("$..dbuserPassword")
           .add("$..ldapBindPassword")
+          // HA Config
+          .add("$..cluster_key")
           .build();
 
   // List of json paths to any secret fields we want to redact.
@@ -99,8 +114,14 @@ public class RedactingService {
   public static final List<JsonPath> SECRET_JSON_PATHS_APIS =
       SECRET_PATHS_FOR_APIS.stream().map(JsonPath::compile).collect(Collectors.toList());
 
-  public static final List<JsonPath> SECRET_JSON_PATHS_LOGS =
-      SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList());
+  public static Set<JsonPath> SECRET_JSON_PATHS_LOGS =
+      new CopyOnWriteArraySet<>(
+          SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList()));
+
+  // Used to redact root CA keys in the helm values
+  // Regex pattern to match "<Any_String>key: <Base64_encoded_string>"
+  private static final String KEY_REGEX = "(.*key):\\s+(\\S+)";
+  private static final Pattern KEY_SEARCH_PATTERN = Pattern.compile(KEY_REGEX);
 
   public static JsonNode filterSecretFields(JsonNode input, RedactionTarget target) {
     if (input == null) {
@@ -111,10 +132,24 @@ public class RedactingService {
 
     switch (target) {
       case APIS:
-        SECRET_JSON_PATHS_APIS.forEach(path -> context.set(path, SECRET_REPLACEMENT));
+        SECRET_JSON_PATHS_APIS.forEach(
+            path -> {
+              try {
+                context.set(path, SECRET_REPLACEMENT);
+              } catch (PathNotFoundException e) {
+                log.trace("skip redacting secret path {} - not present", path.getPath());
+              }
+            });
         break;
       case LOGS:
-        SECRET_JSON_PATHS_LOGS.forEach(path -> context.set(path, SECRET_REPLACEMENT));
+        SECRET_JSON_PATHS_LOGS.forEach(
+            path -> {
+              try {
+                context.set(path, SECRET_REPLACEMENT);
+              } catch (PathNotFoundException e) {
+                log.trace("skip redacting secret path {} - not present", path.getPath());
+              }
+            });
         break;
       default:
         throw new IllegalArgumentException("Target " + target.name() + " is not supported");
@@ -130,8 +165,63 @@ public class RedactingService {
     return output;
   }
 
+  public static String redactQueryParams(String input) {
+    String output = input;
+    for (String param : SECRET_QUERY_PARAMS_FOR_LOGS) {
+      String regex = "([?&]" + param + "=)([^&]+)";
+      String replacement = "$1" + SECRET_REPLACEMENT;
+      output = output.replaceAll(regex, replacement);
+    }
+    return output;
+  }
+
+  public static String redactrootCAKeys(String input) {
+    String output = input;
+    Matcher matcher = KEY_SEARCH_PATTERN.matcher(input);
+    if (matcher.find()) {
+      String base64String = matcher.group(2);
+      if (isBase64Encoded(base64String)) {
+        String redactedString = "$1: " + SECRET_REPLACEMENT;
+        output = output.replaceAll(KEY_REGEX, redactedString);
+      }
+    }
+    return output;
+  }
+
+  public static String redactShellProcessOutput(String input, RedactionTarget target) {
+    String output = input;
+    try {
+      // Redact based on target
+      switch (target) {
+        case QUERY_PARAMS:
+          output = redactQueryParams(output);
+          break;
+        case HELM_VALUES:
+          output = redactrootCAKeys(output);
+          break;
+        default:
+          break;
+      }
+      return output;
+    } catch (Exception e) {
+      log.error("Error redacting shell process output", e);
+      return input;
+    }
+  }
+
+  private static boolean isBase64Encoded(String str) {
+    try {
+      Base64.getDecoder().decode(str);
+      return true;
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
+  }
+
   public enum RedactionTarget {
     LOGS,
-    APIS;
+    APIS,
+    QUERY_PARAMS,
+    HELM_VALUES;
   }
 }

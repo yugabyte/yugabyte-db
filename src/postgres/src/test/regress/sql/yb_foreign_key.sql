@@ -9,6 +9,7 @@
 -- First test, check and cascade
 --
 
+SET yb_explain_hide_non_deterministic_fields = true;
 
 CREATE TABLE ITABLE ( ptest1 int, ptest2 text );
 CREATE UNIQUE INDEX ITABLE_IDX ON ITABLE(ptest1);
@@ -369,6 +370,11 @@ SELECT * FROM p3 ORDER BY k;
 SELECT * FROM p4 ORDER BY k;
 SELECT * FROM c ORDER BY k;
 
+-- check distributed storage counters in case of multiple foreign keys
+TRUNCATE c;
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
+INSERT INTO c VALUES(1, 1, 1, 1, 1);
+
 CREATE TABLE parent(k INT PRIMARY KEY, v INT UNIQUE);
 CREATE TABLE child_1(k INT PRIMARY KEY, v INT REFERENCES parent(k));
 CREATE TABLE child_2(k INT PRIMARY KEY, v INT REFERENCES parent(k));
@@ -413,3 +419,133 @@ UPDATE child_2 SET v = (v - 1000000) * 2 + 1000000 WHERE k <= 5001; -- should fa
 
 UPDATE child_1 SET v = v * 2 WHERE k < 5001;
 UPDATE child_2 SET v = (v - 1000000) * 2 + 1000000 WHERE k < 5001;
+
+-- UNIQUE NULLS NOT DISTINCT
+CREATE TABLE pk(a INT PRIMARY KEY, b INT, c INT, UNIQUE NULLS NOT DISTINCT (b, c));
+
+CREATE TABLE fk_simple(b INT, c INT, FOREIGN KEY (b,c) REFERENCES pk(b, c) MATCH SIMPLE);
+INSERT INTO fk_simple VALUES (NULL, 1);
+INSERT INTO fk_simple VALUES (1, 1);
+INSERT INTO fk_simple VALUES (NULL, NULL);
+
+CREATE TABLE fk_full(b INT, c INT, FOREIGN KEY (b,c) REFERENCES pk(b, c) MATCH FULL);
+INSERT INTO fk_full VALUES (NULL, 1);
+INSERT INTO fk_full VALUES (1, 1);
+INSERT INTO fk_full VALUES (NULL, NULL);
+
+DROP TABLE pk, fk_simple, fk_full;
+
+-- Test foreign key on unique index such that column orders in fk and unique constraints differ.
+CREATE TABLE pk(id INT, name INT, add INT, PRIMARY KEY (id, name, add), UNIQUE (name, id));
+CREATE TABLE fk(id INT, name INT, FOREIGN KEY(id, name) REFERENCES pk(id, name));
+INSERT INTO pk VALUES (1, 500, 1000);
+INSERT INTO fk VALUES (1, 500);
+INSERT INTO fk VALUES (500, 1); -- should fail
+SELECT * from fk;
+DROP TABLE pk, fk;
+
+-- Test foreign key referencing partitioned table
+
+-- Base case
+CREATE TABLE pk(id INT PRIMARY KEY) PARTITION BY RANGE(id);
+CREATE TABLE pk_1_100 PARTITION OF pk FOR VALUES FROM (1) TO (100);
+CREATE TABLE pk_101_200 PARTITION OF pk FOR VALUES FROM (101) TO (200);
+CREATE TABLE fk(id INT REFERENCES pk(id));
+
+INSERT INTO pk VALUES (1), (105);
+INSERT INTO fk VALUES (1);
+INSERT INTO fk VALUES (105);
+INSERT INTO fk VALUES (110); -- should fail
+INSERT INTO fk VALUES (200); -- should fail
+SELECT * FROM fk;
+
+DROP TABLE pk, fk;
+
+-- Foreign key constraint on unique index
+CREATE TABLE pk(a INT, b INT UNIQUE, PRIMARY KEY (a, b)) PARTITION BY RANGE(b);
+CREATE TABLE pk_1_100 PARTITION OF pk FOR VALUES FROM (1) TO (100);
+CREATE TABLE pk_101_200 PARTITION OF pk FOR VALUES FROM (101) TO (200);
+CREATE TABLE fk(b INT REFERENCES pk(b));
+
+INSERT INTO pk VALUES (1, 1), (105, 105);
+INSERT INTO fk VALUES (1);
+INSERT INTO fk VALUES (105);
+INSERT INTO fk VALUES (110); -- should fail
+INSERT INTO fk VALUES (200); -- should fail
+SELECT * FROM fk;
+
+DROP TABLE pk, fk;
+
+-- PK root and leaf partition have different column orders
+CREATE TABLE pk(a INT, b INT, c INT, d INT, PRIMARY KEY(a, c)) PARTITION BY RANGE(a);
+CREATE TABLE pk_1_100(a INT NOT NULL, c INT NOT NULL, d INT, b INT);
+ALTER TABLE pk ATTACH PARTITION pk_1_100 FOR VALUES FROM (1) TO (100);
+CREATE TABLE fk(a INT, c INT, FOREIGN KEY (a, c) REFERENCES pk(a, c));
+
+INSERT INTO pk VALUES (1, 100, 20, 150);
+INSERT INTO fk VALUES (1, 20);
+INSERT INTO fk VALUES (150, 20); -- should fail
+SELECT * FROM fk;
+
+DROP TABLE pk, fk;
+
+-- Using index, PK root and leaf partition have different column orders
+CREATE TABLE pk(a INT, b INT, c INT, d INT, PRIMARY KEY(a, b), UNIQUE(a, c)) PARTITION BY RANGE(a);
+CREATE TABLE pk_1_100(a INT NOT NULL, c INT NOT NULL, d INT, b INT NOT NULL);
+ALTER TABLE pk ATTACH PARTITION pk_1_100 FOR VALUES FROM (1) TO (100);
+CREATE TABLE fk(b INT, d INT, a INT, c INT, FOREIGN KEY (a, c) REFERENCES pk(a, c));
+
+INSERT INTO pk VALUES (1, 100, 20, 150);
+INSERT INTO fk(a, c) VALUES (1, 20);
+INSERT INTO fk(a, c) VALUES (1, 100); -- should fail
+INSERT INTO fk(a, c) VALUES (150, 20); -- should fail
+SELECT * FROM fk;
+
+DROP TABLE pk, fk;
+
+-- Both PK and FK are partitioned
+CREATE TABLE pk (a int PRIMARY KEY) PARTITION BY RANGE (a);
+CREATE TABLE pk1 PARTITION OF pk FOR VALUES FROM (0) TO (1000) PARTITION BY RANGE (a);
+CREATE TABLE pk11 PARTITION OF pk1 FOR VALUES FROM (0) TO (10);
+CREATE TABLE fk (a int) PARTITION BY RANGE (a);
+CREATE TABLE fk1 PARTITION OF fk FOR VALUES FROM (0) TO (750) PARTITION BY RANGE (a);
+CREATE TABLE fk11 PARTITION OF fk1 FOR VALUES FROM (0) TO (10);
+ALTER TABLE fk ADD FOREIGN KEY (a) REFERENCES pk;
+INSERT into fk VALUES (1); -- should fail
+INSERT into fk VALUES (20); -- should fail
+INSERT into pk values (5);
+INSERT into fk values (5);
+SELECT * FROM fk;
+
+DROP TABLE pk, fk;
+
+-- Multiple partitioned PKs referenced
+CREATE TABLE pk(a INT, b INT UNIQUE, PRIMARY KEY (a, b)) PARTITION BY RANGE(b);
+CREATE TABLE pk_1_100 PARTITION OF pk FOR VALUES FROM (1) TO (100);
+CREATE TABLE pk_101_200 PARTITION OF pk FOR VALUES FROM (101) TO (200);
+
+CREATE TABLE pk2(a INT, b INT UNIQUE, PRIMARY KEY (a, b)) PARTITION BY RANGE(b);
+CREATE TABLE pk2_1_100 PARTITION OF pk2 FOR VALUES FROM (1) TO (100);
+CREATE TABLE pk2_101_200 PARTITION OF pk2 FOR VALUES FROM (101) TO (200);
+
+CREATE TABLE fk(b INT REFERENCES pk(b), b2 INT REFERENCES pk2(b));
+
+INSERT INTO pk VALUES (1, 1);
+INSERT INTO pk2 VALUES (1, 1);
+INSERT INTO fk VALUES (1, 1);
+INSERT INTO fk VALUES (10, 1); -- should fail
+INSERT INTO fk VALUES (1, 10); -- should fail
+SELECT * from fk;
+
+DROP TABLE pk, pk2, fk;
+
+-- test updating a subset of foreign constraint keys.
+CREATE TABLE pk(a INT, b INT, PRIMARY KEY (a, b));
+CREATE TABLE fk(a INT, b INT, FOREIGN KEY(a, b) REFERENCES pk);
+INSERT INTO pk VALUES (1, 1);
+INSERT INTO fk VALUES (1, 1);
+UPDATE fk set a = a + 1; -- should fail
+INSERT INTO pk VALUES (5, 1);
+UPDATE fk set a = a + 4; -- should pass
+SELECT * from fk;
+DROP TABLE pk, fk;

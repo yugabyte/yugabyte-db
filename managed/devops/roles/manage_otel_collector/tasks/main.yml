@@ -4,14 +4,14 @@
       - mount_points is defined
 
 - name: Install OpenTelemetry collector
-  include: install-otel-col.yml
+  import_tasks: install-otel-col.yml
   become_user: "{{ user_name }}"
   when: install_otel_collector is defined and install_otel_collector|bool
 
 - name: Create OpenTelemetry collector service
-  include: otel-col-service.yml
+  import_tasks: otel-col-service.yml
   when: install_otel_collector is defined and install_otel_collector|bool
 
 - name: Control OpenTelemetry collector service
+  import_tasks: otel-col-control.yml
   become_user: "{{ user_name }}"
-  include: otel-col-control.yml

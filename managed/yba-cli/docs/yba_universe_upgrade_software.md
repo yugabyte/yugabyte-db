@@ -10,6 +10,13 @@ Software upgrade for a YugabyteDB Anywhere Universe
 yba universe upgrade software [flags]
 ```
 
+### Examples
+
+```
+yba universe upgrade software --name <universe-name> \
+	--yb-db-version <software-version>
+```
+
 ### Options
 
 ```
@@ -31,7 +38,7 @@ yba universe upgrade software [flags]
   -f, --force              [Optional] Bypass the prompt for non-interactive usage.
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Required] The name of the universe to be ugraded.
+  -n, --name string        [Required] The name of the universe to be upgraded.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
   -s, --skip-validations   [Optional] Skip validations before running the CLI command.
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)

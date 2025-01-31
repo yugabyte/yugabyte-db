@@ -10,6 +10,8 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
@@ -17,6 +19,8 @@ import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.YBAError;
+import com.yugabyte.yw.models.helpers.YBAError.Code;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -35,6 +39,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
+  private final RuntimeConfGetter confGetter;
   private ShellProcessContext shellContext =
       ShellProcessContext.builder().logCmdOutput(true).build();
 
@@ -42,19 +47,22 @@ public class InstallNodeAgent extends AbstractTaskBase {
   protected InstallNodeAgent(
       BaseTaskDependencies baseTaskDependencies,
       NodeUniverseManager nodeUniverseManager,
-      NodeAgentManager nodeAgentManager) {
+      NodeAgentManager nodeAgentManager,
+      RuntimeConfGetter confGetter) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
     this.nodeAgentManager = nodeAgentManager;
+    this.confGetter = confGetter;
   }
 
   public static class Params extends NodeTaskParams {
     public int nodeAgentPort = DEFAULT_NODE_AGENT_PORT;
     public String nodeAgentInstallDir;
+    public String sshUser;
     public UUID customerUuid;
     public boolean reinstall;
     public boolean airgap;
-    public String sshUser;
+    public boolean sudoAccess;
   }
 
   @Override
@@ -89,17 +97,19 @@ public class InstallNodeAgent extends AbstractTaskBase {
     return nodeAgentManager.create(nodeAgent, false);
   }
 
-  @Override
-  public void run() {
+  public NodeAgent install() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
+    NodeAgent nodeAgent = null;
+    InstallerFiles installerFiles = null;
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
     if (optional.isPresent()) {
-      NodeAgent nodeAgent = optional.get();
+      nodeAgent = optional.get();
       if (!taskParams().reinstall && nodeAgent.getState() == State.READY) {
-        return;
+        return nodeAgent;
+      } else if (!confGetter.getGlobalConf(GlobalConfKeys.enableYNPProvisioning)) {
+        nodeAgentManager.purge(nodeAgent);
       }
-      nodeAgentManager.purge(nodeAgent);
     }
     if (taskParams().sshUser != null) {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
@@ -107,44 +117,79 @@ public class InstallNodeAgent extends AbstractTaskBase {
     String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
     Path stagingDir = Paths.get(customTmpDirectory, "node-agent-" + System.currentTimeMillis());
     Path nodeAgentSourcePath = stagingDir.resolve(NodeAgent.NODE_AGENT_DIR);
-    NodeAgent nodeAgent = createNodeAgent(universe, node);
-    InstallerFiles installerFiles =
-        nodeAgentManager.getInstallerFiles(nodeAgent, nodeAgentSourcePath);
-    Set<String> dirs =
-        installerFiles.getCreateDirs().stream()
-            .map(dir -> dir.toString())
-            .collect(Collectors.toSet());
-    // Create the staging directory with sudo first, make it writable for all users.
-    // This is done because some on-prem nodes may not have write permission to /tmp.
-    List<String> command =
-        ImmutableList.of("sudo", "mkdir", "-m", "777", "-p", stagingDir.toString());
+    List<String> command = getCommand("mkdir", "-m", "777", "-p", stagingDir.toString());
     log.info("Creating staging directory: {}", command);
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
 
-    // Create the child folders as the current SSH user so that the files can be uploaded.
-    command = ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
-    log.info("Creating directories {} for node agent {}", dirs, nodeAgent.getUuid());
-    nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
-    installerFiles.getCopyFileInfos().stream()
-        .forEach(
-            f -> {
-              log.info(
-                  "Uploading {} to {} on node agent {}",
-                  f.getSourcePath(),
-                  f.getTargetPath(),
-                  nodeAgent.getUuid());
-              String filePerm = StringUtils.isBlank(f.getPermission()) ? "755" : f.getPermission();
-              nodeUniverseManager.uploadFileToNode(
-                  node,
-                  universe,
-                  f.getSourcePath().toString(),
-                  f.getTargetPath().toString(),
-                  filePerm,
-                  shellContext);
-            });
+    if (!confGetter.getGlobalConf(GlobalConfKeys.enableYNPProvisioning)) {
+      nodeAgent = createNodeAgent(universe, node);
+      final NodeAgent nAgent = nodeAgent;
+      installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, nodeAgentSourcePath);
+      Set<String> dirs =
+          installerFiles.getCreateDirs().stream()
+              .map(dir -> dir.toString())
+              .collect(Collectors.toSet());
+
+      // Create the child folders as the current SSH user so that the files can be uploaded.
+      command = ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
+      log.info("Creating directories {} for node agent {}", dirs, nodeAgent.getUuid());
+      nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+      installerFiles.getCopyFileInfos().stream()
+          .forEach(
+              f -> {
+                log.info(
+                    "Uploading {} to {} on node agent {}",
+                    f.getSourcePath(),
+                    f.getTargetPath(),
+                    nAgent.getUuid());
+                String filePerm =
+                    StringUtils.isBlank(f.getPermission()) ? "755" : f.getPermission();
+                nodeUniverseManager.uploadFileToNode(
+                    node,
+                    universe,
+                    f.getSourcePath().toString(),
+                    f.getTargetPath().toString(),
+                    filePerm,
+                    shellContext);
+              });
+    } else {
+      Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
+      installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, nodeAgentSourcePath);
+      command = getCommand("mkdir", "-m", "777", "-p", nodeAgentSourcePath.toString());
+      log.info("Creating staging directory: {}", command);
+      nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+
+      command = getCommand("mv", ynpStagingDir.toString() + "/*", nodeAgentSourcePath.toString());
+      log.info("Moving node-agent files to relevant location: {}", command);
+      nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+    }
+
     Path nodeAgentHomePath = Paths.get(nodeAgent.getHome());
     Path nodeAgentInstallPath = nodeAgentHomePath.getParent();
     Path nodeAgentInstallerPath = nodeAgentHomePath.resolve("node-agent-installer.sh");
+    String certDirectoryPath = nodeAgentSourcePath.toString() + "/cert/";
+
+    command =
+        getCommand(
+            "find",
+            certDirectoryPath,
+            "-mindepth",
+            "1",
+            "-maxdepth",
+            "1",
+            "-type",
+            "d",
+            "-exec",
+            "basename",
+            "{}",
+            "\\;");
+    log.info("Retreiving cert Directory: {}", command);
+    String certDirectory =
+        nodeUniverseManager
+            .runCommand(node, universe, command, shellContext)
+            .processErrors()
+            .extractRunCommandOutput();
+
     StringBuilder sb = new StringBuilder();
     // Remove existing node agent folder.
     sb.append("rm -rf ").append(nodeAgentHomePath);
@@ -169,15 +214,55 @@ public class InstallNodeAgent extends AbstractTaskBase {
     sb.append(" --install_path ").append(nodeAgentInstallPath);
     sb.append(" --id ").append(nodeAgent.getUuid());
     sb.append(" --customer_id ").append(nodeAgent.getCustomerUuid());
-    sb.append(" --cert_dir ").append(installerFiles.getCertDir());
+    sb.append(" --cert_dir ").append(certDirectory);
     sb.append(" --node_name ").append(node.getNodeName());
     sb.append(" --node_ip ").append(node.cloudInfo.private_ip);
     sb.append(" --node_port ").append(String.valueOf(taskParams().nodeAgentPort));
     if (taskParams().airgap) {
       sb.append(" --airgap");
     }
-    command = ImmutableList.of("sudo", "-H", "/bin/bash", "-c", sb.toString());
+    command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running node agent installation command: {}", command);
-    nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+
+    try {
+      nodeUniverseManager
+          .runCommand(node, universe, command, shellContext)
+          .processErrors("Installation failed");
+    } catch (RuntimeException e) {
+      nodeAgent.updateLastError(new YBAError(Code.INSTALLATION_ERROR, e.getMessage()));
+      throw e;
+    }
+    nodeAgent.saveState(State.REGISTERED);
+    sb.setLength(0);
+    sb.append("systemctl");
+    if (!taskParams().sudoAccess) {
+      sb.append(" --user");
+    }
+    sb.append(" is-active --quiet yb-node-agent");
+    command = getCommand("/bin/bash", "-c", sb.toString());
+    log.debug("Waiting for node agent service to be running");
+    log.debug("Running systemd command: {}", command);
+    try {
+      nodeUniverseManager
+          .runCommand(node, universe, command, shellContext)
+          .processErrors("Service startup failed");
+    } catch (RuntimeException e) {
+      nodeAgent.updateLastError(new YBAError(Code.SERVICE_START_ERROR, e.getMessage()));
+      throw e;
+    }
+    return nodeAgent;
+  }
+
+  @Override
+  public void run() {
+    install();
+  }
+
+  private List<String> getCommand(String... args) {
+    ImmutableList.Builder<String> commandBuilder = ImmutableList.builder();
+    if (taskParams().sudoAccess) {
+      commandBuilder.add("sudo", "-H");
+    }
+    return commandBuilder.add(args).build();
   }
 }

@@ -51,9 +51,9 @@ namespace yb {
 namespace pggate {
 namespace {
 
-YBCPgMemctx global_test_memctx = nullptr;
+YbcPgMemctx global_test_memctx = nullptr;
 
-YBCPgMemctx GetCurrentTestYbMemctx() {
+YbcPgMemctx GetCurrentTestYbMemctx() {
   if (!global_test_memctx) {
     global_test_memctx = YBCPgCreateMemctx();
   }
@@ -73,8 +73,8 @@ const char* GetDebugQueryStringStub() {
   return "GetDebugQueryString not implemented in test";
 }
 
-uint32_t PgstatReportWaitStartNoOp(uint32_t wait_event) {
-  return wait_event;
+YbcWaitEventInfo PgstatReportWaitStartNoOp(YbcWaitEventInfo info) {
+  return info;
 }
 
 // Not defined locally in PggateTest::Init to avoid asan use-after-return error
@@ -91,7 +91,7 @@ PggateTest::~PggateTest() {
 
 //--------------------------------------------------------------------------------------------------
 // Error handling routines.
-void PggateTest::CheckYBCStatus(YBCStatus status, const char* file_name, int line_number) {
+void PggateTest::CheckYBCStatus(YbcStatus status, const char* file_name, int line_number) {
   CHECK_OK(Status(status, AddRef::kTrue));
 }
 
@@ -136,25 +136,20 @@ void PggateTest::TearDown() {
   YBTest::TearDown();
 }
 
-Status PggateTest::Init(const char *test_name,
-                        int num_tablet_servers,
-                        int replication_factor,
-                        const std::string& use_existing_db) {
+Status PggateTest::Init(
+    const char *test_name, int num_tablet_servers, int replication_factor, bool should_create_db) {
   // Create cluster before setting client API.
   RETURN_NOT_OK(CreateCluster(num_tablet_servers, replication_factor));
 
   // Init PgGate API.
   CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
 
-  const YBCPgTypeEntity *type_table = nullptr;
-  int count = 0;
-  YBCTestGetTypeTable(&type_table, &count);
-  YBCPgCallbacks callbacks;
-  YBCPgAshConfig ash_config;
+  YbcPgCallbacks callbacks;
+  YbcPgAshConfig ash_config;
 
   auto* session_stats =
-      static_cast<YBCPgExecStatsState*>(PggateTestAlloc(sizeof(YBCPgExecStatsState)));
-  memset(session_stats, 0, sizeof(YBCPgExecStatsState));
+      static_cast<YbcPgExecStatsState*>(PggateTestAlloc(sizeof(YbcPgExecStatsState)));
+  memset(session_stats, 0, sizeof(YbcPgExecStatsState));
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
@@ -173,17 +168,13 @@ Status PggateTest::Init(const char *test_name,
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shm_fd) = tserver_shared_object_.GetFd();
 
-  YBCInitPgGate(type_table, count, callbacks, nullptr, &ash_config);
+  YBCInitPgGate(YBCTestGetTypeTable(), &callbacks, nullptr /* session_id */, &ash_config);
 
-  // Setup session.
-  CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* database_name */, session_stats));
-
-  if (use_existing_db.empty()) {
-    // Setup database
-    SetupDB();
-  } else {
-    ConnectDB(use_existing_db);
+  CHECK_YBC_STATUS(YBCPgInitSession(session_stats, false /* is_binary_upgrade */));
+  if (should_create_db) {
+    CreateDB();
   }
+
   return Status::OK();
 }
 
@@ -209,21 +200,13 @@ Status PggateTest::CreateCluster(int num_tablet_servers, int replication_factor)
 
 //--------------------------------------------------------------------------------------------------
 
-void PggateTest::SetupDB(const string& db_name, const YBCPgOid db_oid) {
-  CreateDB(db_name, db_oid);
-  ConnectDB(db_name);
-}
 
-void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
-  YBCPgStatement pg_stmt;
+void PggateTest::CreateDB() {
+  YbcPgStatement pg_stmt;
   CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
-      db_name.c_str(), db_oid, 0 /* source_database_oid */,
+      kDefaultDatabase, kDefaultDatabaseOid, 0 /* source_database_oid */,
       0 /* next_oid */, false /* colocated */, NULL /* yb_clone_info */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
-}
-
-void PggateTest::ConnectDB(const string& db_name) {
-  CHECK_YBC_STATUS(YBCPgConnectDatabase(db_name.c_str()));
 }
 
 void PggateTest::BeginDDLTransaction() {
@@ -242,139 +225,143 @@ void PggateTest::CommitTransaction() {
   CHECK_YBC_STATUS(YBCPgCommitPlainTransaction());
 }
 
-void PggateTest::ExecCreateTableTransaction(YBCPgStatement pg_stmt) {
+void PggateTest::ExecCreateTableTransaction(YbcPgStatement pg_stmt) {
   BeginDDLTransaction();
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
   CommitDDLTransaction();
 }
 
 // ------------------------------------------------------------------------------------------------
-// Make sure that DataType in common.proto matches the YBCPgDataType enum
+// Make sure that DataType in common.proto matches the YbcPgDataType enum
 // TODO: find a better way to generate these enums.
 
 static_assert(static_cast<int>(PersistentDataType::UNKNOWN_DATA) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_UNKNOWN_DATA),
-              "DataType::UNKNOWN_DATA does not match YBCPgDataType::UNKNOWN_DATA");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_UNKNOWN_DATA),
+              "DataType::UNKNOWN_DATA does not match YbcPgDataType::UNKNOWN_DATA");
 
 static_assert(static_cast<int>(PersistentDataType::NULL_VALUE_TYPE) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_NULL_VALUE_TYPE),
-              "DataType::NULL_VALUE_TYPE does not match YBCPgDataType::NULL_VALUE_TYPE");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_NULL_VALUE_TYPE),
+              "DataType::NULL_VALUE_TYPE does not match YbcPgDataType::NULL_VALUE_TYPE");
 
 static_assert(static_cast<int>(PersistentDataType::INT8) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_INT8),
-              "DataType::INT8 does not match YBCPgDataType::INT8");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_INT8),
+              "DataType::INT8 does not match YbcPgDataType::INT8");
 
 static_assert(static_cast<int>(PersistentDataType::INT16) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_INT16),
-              "DataType::INT16 does not match YBCPgDataType::INT16");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_INT16),
+              "DataType::INT16 does not match YbcPgDataType::INT16");
 
 static_assert(static_cast<int>(PersistentDataType::INT32) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_INT32),
-              "DataType::INT32 does not match YBCPgDataType::INT32");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_INT32),
+              "DataType::INT32 does not match YbcPgDataType::INT32");
 
 static_assert(static_cast<int>(PersistentDataType::INT64) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_INT64),
-              "DataType::INT64 does not match YBCPgDataType::INT64");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_INT64),
+              "DataType::INT64 does not match YbcPgDataType::INT64");
 
 static_assert(static_cast<int>(PersistentDataType::STRING) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_STRING),
-              "DataType::STRING does not match YBCPgDataType::STRING");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_STRING),
+              "DataType::STRING does not match YbcPgDataType::STRING");
 
 static_assert(static_cast<int>(PersistentDataType::BOOL) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_BOOL),
-              "DataType::BOOL does not match YBCPgDataType::BOOL");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_BOOL),
+              "DataType::BOOL does not match YbcPgDataType::BOOL");
 
 static_assert(static_cast<int>(PersistentDataType::FLOAT) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_FLOAT),
-              "DataType::FLOAT does not match YBCPgDataType::FLOAT");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_FLOAT),
+              "DataType::FLOAT does not match YbcPgDataType::FLOAT");
 
 static_assert(static_cast<int>(PersistentDataType::DOUBLE) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_DOUBLE),
-              "DataType::DOUBLE does not match YBCPgDataType::DOUBLE");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_DOUBLE),
+              "DataType::DOUBLE does not match YbcPgDataType::DOUBLE");
 
 static_assert(static_cast<int>(PersistentDataType::BINARY) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_BINARY),
-              "DataType::BINARY does not match YBCPgDataType::BINARY");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_BINARY),
+              "DataType::BINARY does not match YbcPgDataType::BINARY");
 
 static_assert(static_cast<int>(PersistentDataType::TIMESTAMP) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_TIMESTAMP),
-              "DataType::TIMESTAMP does not match YBCPgDataType::TIMESTAMP");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_TIMESTAMP),
+              "DataType::TIMESTAMP does not match YbcPgDataType::TIMESTAMP");
 
 static_assert(static_cast<int>(PersistentDataType::DECIMAL) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_DECIMAL),
-              "DataType::DECIMAL does not match YBCPgDataType::DECIMAL");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_DECIMAL),
+              "DataType::DECIMAL does not match YbcPgDataType::DECIMAL");
 
 static_assert(static_cast<int>(PersistentDataType::VARINT) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_VARINT),
-              "DataType::VARINT does not match YBCPgDataType::VARINT");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_VARINT),
+              "DataType::VARINT does not match YbcPgDataType::VARINT");
 
 static_assert(static_cast<int>(PersistentDataType::INET) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_INET),
-              "DataType::INET does not match YBCPgDataType::INET");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_INET),
+              "DataType::INET does not match YbcPgDataType::INET");
 
 static_assert(static_cast<int>(PersistentDataType::LIST) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_LIST),
-              "DataType::LIST does not match YBCPgDataType::LIST");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_LIST),
+              "DataType::LIST does not match YbcPgDataType::LIST");
 
 static_assert(static_cast<int>(PersistentDataType::MAP) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_MAP),
-              "DataType::MAP does not match YBCPgDataType::MAP");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_MAP),
+              "DataType::MAP does not match YbcPgDataType::MAP");
 
 static_assert(static_cast<int>(PersistentDataType::SET) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_SET),
-              "DataType::SET does not match YBCPgDataType::SET");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_SET),
+              "DataType::SET does not match YbcPgDataType::SET");
 
 static_assert(static_cast<int>(PersistentDataType::UUID) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_UUID),
-              "DataType::UUID does not match YBCPgDataType::UUID");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_UUID),
+              "DataType::UUID does not match YbcPgDataType::UUID");
 
 static_assert(static_cast<int>(PersistentDataType::TIMEUUID) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_TIMEUUID),
-              "DataType::TIMEUUID does not match YBCPgDataType::TIMEUUID");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_TIMEUUID),
+              "DataType::TIMEUUID does not match YbcPgDataType::TIMEUUID");
 
 static_assert(static_cast<int>(PersistentDataType::TUPLE) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_TUPLE),
-              "DataType::TUPLE does not match YBCPgDataType::TUPLE");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_TUPLE),
+              "DataType::TUPLE does not match YbcPgDataType::TUPLE");
 
 static_assert(static_cast<int>(PersistentDataType::TYPEARGS) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_TYPEARGS),
-              "DataType::TYPEARGS does not match YBCPgDataType::TYPEARGS");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_TYPEARGS),
+              "DataType::TYPEARGS does not match YbcPgDataType::TYPEARGS");
 
 static_assert(static_cast<int>(PersistentDataType::USER_DEFINED_TYPE) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_USER_DEFINED_TYPE),
-              "DataType::USER_DEFINED_TYPE does not match YBCPgDataType::USER_DEFINED_TYPE");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_USER_DEFINED_TYPE),
+              "DataType::USER_DEFINED_TYPE does not match YbcPgDataType::USER_DEFINED_TYPE");
 
 static_assert(static_cast<int>(PersistentDataType::FROZEN) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_FROZEN),
-              "DataType::FROZEN does not match YBCPgDataType::FROZEN");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_FROZEN),
+              "DataType::FROZEN does not match YbcPgDataType::FROZEN");
 
 static_assert(static_cast<int>(PersistentDataType::DATE) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_DATE),
-              "DataType::DATE does not match YBCPgDataType::DATE");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_DATE),
+              "DataType::DATE does not match YbcPgDataType::DATE");
 
 static_assert(static_cast<int>(PersistentDataType::TIME) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_TIME),
-              "DataType::TIME does not match YBCPgDataType::TIME");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_TIME),
+              "DataType::TIME does not match YbcPgDataType::TIME");
 
 static_assert(static_cast<int>(PersistentDataType::JSONB) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_JSONB),
-              "DataType::JSONB does not match YBCPgDataType::JSONB");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_JSONB),
+              "DataType::JSONB does not match YbcPgDataType::JSONB");
 
 static_assert(static_cast<int>(PersistentDataType::UINT8) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_UINT8),
-              "DataType::UINT8 does not match YBCPgDataType::UINT8");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_UINT8),
+              "DataType::UINT8 does not match YbcPgDataType::UINT8");
 
 static_assert(static_cast<int>(PersistentDataType::UINT16) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_UINT16),
-              "DataType::UINT16 does not match YBCPgDataType::UINT16");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_UINT16),
+              "DataType::UINT16 does not match YbcPgDataType::UINT16");
 
 static_assert(static_cast<int>(PersistentDataType::UINT32) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_UINT32),
-              "DataType::UINT32 does not match YBCPgDataType::UINT32");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_UINT32),
+              "DataType::UINT32 does not match YbcPgDataType::UINT32");
 
 static_assert(static_cast<int>(PersistentDataType::UINT64) ==
-                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_UINT64),
-              "DataType::UINT64 does not match YBCPgDataType::UINT64");
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_UINT64),
+              "DataType::UINT64 does not match YbcPgDataType::UINT64");
+
+static_assert(static_cast<int>(PersistentDataType::VECTOR) ==
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_VECTOR),
+              "DataType::VECTOR does not match YbcPgDataType::VECTOR");
 
 // End of data type enum consistency checking
 // ------------------------------------------------------------------------------------------------

@@ -38,6 +38,9 @@
 #include <thread>
 #include <utility>
 
+#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_service_context.h"
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/transaction_manager.h"
@@ -49,7 +52,6 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/encryption/encrypted_file_factory.h"
-#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/universe_key_manager.h"
 
@@ -58,57 +60,56 @@
 #include "yb/gutil/hash/city.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
+
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/secure.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/yb_rpc.h"
-#include "yb/rpc/secure_stream.h"
 
 #include "yb/server/async_client_initializer.h"
-#include "yb/server/rpc_server.h"
-#include "yb/rpc/secure.h"
-#include "yb/server/webserver.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/server/rpc_server.h"
+#include "yb/server/webserver.h"
 #include "yb/server/ycql_stat_provider.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/backup_service.h"
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/heartbeater_factory.h"
 #include "yb/tserver/metrics_snapshotter.h"
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client_service.h"
-#include "yb/tserver/remote_bootstrap_service.h"
-#include "yb/tserver/stateful_services/pg_cron_leader_service.h"
-#include "yb/tserver/tablet_service.h"
 #include "yb/tserver/pg_table_mutation_count_sender.h"
+#include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
-#include "yb/tserver/backup_service.h"
-#include "yb/tserver/pg_client.pb.h"
-
-#include "yb/cdc/cdc_service.h"
-#include "yb/cdc/cdc_service_context.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
+#include "yb/tserver/stateful_services/pg_cron_leader_service.h"
 #include "yb/tserver/stateful_services/test_echo_service.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
+#include "yb/util/ntp_clock.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
-#include "yb/util/ntp_clock.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
@@ -165,7 +166,7 @@ DEFINE_UNKNOWN_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy"
 DEFINE_NON_RUNTIME_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
 DECLARE_int32(pgsql_proxy_webserver_port);
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(enable_ysql_conn_mgr, false,
+DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr, false,
     "Enable Ysql Connection Manager for the cluster. Tablet Server will start a "
     "Ysql Connection Manager process as a child process.");
 
@@ -231,7 +232,17 @@ DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
     "Minimum consecutive number of times that a tserver is allowed to ignore an older catalog "
     "version that is retrieved from a tserver-master heartbeat response.");
 
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+
 DECLARE_bool(enable_pg_cron);
+
+DEFINE_test_flag(bool, enable_pg_client_mock, false, "Enable mocking of PgClient service in tests");
+
+DEFINE_NON_RUNTIME_int32(stateful_svc_default_queue_length, 50,
+    "Default RPC queue length used for stateful services.");
+
+DEFINE_RUNTIME_bool(tserver_heartbeat_add_replication_status, true,
+    "Add replication status to heartbeats tserver sends to master");
 
 namespace yb::tserver {
 
@@ -312,7 +323,16 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
  private:
   TabletServer& tablet_server_;
 };
+
 }  // namespace
+
+struct TabletServer::PgClientServiceHolder {
+  template <class... Args>
+  explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}
+
+  PgClientServiceImpl impl;
+  std::optional<PgClientServiceMockImpl> mock;
+};
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
     : DbServerBase("TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
@@ -330,6 +350,9 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     ysql_db_catalog_version_index_used_ =
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
     ysql_db_catalog_version_index_used_->fill(false);
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    ts_local_lock_manager_ = std::make_unique<tablet::TSLocalLockManager>();
   }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
@@ -520,10 +543,10 @@ Status TabletServer::Init() {
   return Status::OK();
 }
 
-Status TabletServer::InitAutoFlags(rpc::Messenger* messenger) {
+Status TabletServer::InitFlags(rpc::Messenger* messenger) {
   RETURN_NOT_OK(auto_flags_manager_->Init(messenger, *opts_.GetMasterAddresses()));
 
-  return RpcAndWebServerBase::InitAutoFlags(messenger);
+  return RpcAndWebServerBase::InitFlags(messenger);
 }
 
 Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForServer() const {
@@ -532,6 +555,10 @@ Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForSe
 
 uint32_t TabletServer::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
+}
+
+Result<std::unordered_set<std::string>> TabletServer::GetFlagsForServer() const {
+  return yb::GetFlagNamesFromXmlFile("tserver_flags.xml");
 }
 
 void TabletServer::HandleMasterHeartbeatResponse(
@@ -615,13 +642,25 @@ Status TabletServer::RegisterServices() {
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RegisterService(
       FLAGS_ts_remote_bootstrap_svc_queue_length, std::move(remote_bootstrap_service)));
-  auto pg_client_service = std::make_shared<PgClientServiceImpl>(
-      *this, tablet_manager_->client_future(), clock(),
-      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
-      permanent_uuid(), &options(), xcluster_context_.get(), &pg_node_level_mutation_counter_);
-  pg_client_service_ = pg_client_service;
-  LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
-  RETURN_NOT_OK(RegisterService(FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
+
+  auto pg_client_service_holder = std::make_shared<PgClientServiceHolder>(
+        *this, tablet_manager_->client_future(), clock(),
+        std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
+        messenger(), permanent_uuid(), &options(), xcluster_context_.get(),
+        &pg_node_level_mutation_counter_);
+  PgClientServiceIf* pg_client_service_if = &pg_client_service_holder->impl;
+  LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service_if;
+
+  if (PREDICT_FALSE(FLAGS_TEST_enable_pg_client_mock)) {
+    pg_client_service_holder->mock.emplace(metric_entity(), pg_client_service_if);
+    pg_client_service_if = &pg_client_service_holder->mock.value();
+    LOG(INFO) << "Mock created for yb::tserver::PgClientServiceImpl";
+  }
+
+  pg_client_service_ = pg_client_service_holder;
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_pg_client_svc_queue_length, std::shared_ptr<PgClientServiceIf>(
+          std::move(pg_client_service_holder), pg_client_service_if)));
 
   if (FLAGS_TEST_echo_service_enabled) {
     auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
@@ -629,23 +668,34 @@ Status TabletServer::RegisterServices() {
     LOG(INFO) << "yb::tserver::stateful_service::TestEchoService created at "
               << test_echo_service.get();
     RETURN_NOT_OK(test_echo_service->Init(tablet_manager_.get()));
-    RETURN_NOT_OK(RegisterService(FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
+    RETURN_NOT_OK(
+        RegisterService(FLAGS_stateful_svc_default_queue_length, std::move(test_echo_service)));
   }
 
+  auto connect_to_pg = [this](const std::string& database_name,
+                              const std::optional<CoarseTimePoint>& deadline) {
+    return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
+                                                  GetSharedMemoryPostgresAuthKey(),
+                                                  deadline).Connect();
+  };
   auto pg_auto_analyze_service =
-      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future());
+      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
+                                                               connect_to_pg);
   LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
             << pg_auto_analyze_service.get();
   RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
-  RETURN_NOT_OK(RegisterService(
-      FLAGS_TEST_echo_svc_queue_length, std::move(pg_auto_analyze_service)));
+  RETURN_NOT_OK(
+      RegisterService(FLAGS_stateful_svc_default_queue_length, std::move(pg_auto_analyze_service)));
 
   if (FLAGS_enable_pg_cron) {
-    pg_cron_leader_service_ = std::make_unique<stateful_service::PgCronLeaderService>(
-        std::bind(&TabletServer::SetCronLeaderLease, this, _1), client_future());
+    auto pg_cron_leader_service = std::make_unique<stateful_service::PgCronLeaderService>(
+        std::bind(&TabletServer::SetCronLeaderLease, this, _1), metric_entity(), client_future());
     LOG(INFO) << "yb::tserver::stateful_service::PgCronLeaderService created at "
-              << pg_cron_leader_service_.get();
-    RETURN_NOT_OK(pg_cron_leader_service_->Init(tablet_manager_.get()));
+              << pg_cron_leader_service.get();
+    RETURN_NOT_OK(pg_cron_leader_service->Init(tablet_manager_.get()));
+
+    RETURN_NOT_OK(RegisterService(
+        FLAGS_stateful_svc_default_queue_length, std::move(pg_cron_leader_service)));
   }
 
   return Status::OK();
@@ -682,34 +732,45 @@ void TabletServer::Shutdown() {
   LOG(INFO) << "TabletServer shutting down...";
 
   bool expected = true;
-  if (initted_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
-    if (pg_cron_leader_service_) {
-      pg_cron_leader_service_->Shutdown();
-    }
-
-    auto xcluster_consumer = GetXClusterConsumer();
-    if (xcluster_consumer) {
-      xcluster_consumer->Shutdown();
-    }
-
-    maintenance_manager_->Shutdown();
-    WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
-
-    if (FLAGS_tserver_enable_metrics_snapshotter) {
-      WARN_NOT_OK(metrics_snapshotter_->Stop(), "Failed to stop TS Metrics Snapshotter thread");
-    }
-
-    if (pg_table_mutation_count_sender_) {
-      WARN_NOT_OK(pg_table_mutation_count_sender_->Stop(),
-          "Failed to stop table mutation count sender thread");
-    }
-
-    tablet_manager_->StartShutdown();
-    RpcAndWebServerBase::Shutdown();
-    tablet_manager_->CompleteShutdown();
+  if (!initted_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
+    return;
   }
 
+  auto xcluster_consumer = GetXClusterConsumer();
+  if (xcluster_consumer) {
+    xcluster_consumer->Shutdown();
+  }
+
+  maintenance_manager_->Shutdown();
+  WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
+
+  if (FLAGS_tserver_enable_metrics_snapshotter) {
+    WARN_NOT_OK(metrics_snapshotter_->Stop(), "Failed to stop TS Metrics Snapshotter thread");
+  }
+
+  if (pg_table_mutation_count_sender_) {
+    WARN_NOT_OK(pg_table_mutation_count_sender_->Stop(),
+        "Failed to stop table mutation count sender thread");
+  }
+
+  client()->RequestAbortAllRpcs();
+
+  tablet_manager_->StartShutdown();
+  RpcAndWebServerBase::Shutdown();
+  tablet_manager_->CompleteShutdown();
+
   LOG(INFO) << "TabletServer shut down complete. Bye!";
+}
+
+Status TabletServer::BootstrapDdlObjectLocks(
+    const master::ClientOperationLeaseUpdatePB& lease_update) {
+  VLOG(2) << __func__;
+  // todo(zdrudi):
+  // Need to track the lease. Process the other fields of ClientOperationLeaseUpdatePB.
+  if (!lease_update.has_ddl_lock_entries() || !ts_local_lock_manager_) {
+    return Status::OK();
+  }
+  return ts_local_lock_manager_->BootstrapDdlObjectLocks(lease_update.ddl_lock_entries());
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
@@ -925,6 +986,14 @@ void TabletServer::SetYsqlDBCatalogVersions(
     const uint32_t db_oid = db_catalog_version.db_oid();
     const uint64_t new_version = db_catalog_version.current_version();
     const uint64_t new_breaking_version = db_catalog_version.last_breaking_version();
+    if (FLAGS_TEST_check_catalog_version_overflow) {
+      CHECK_GE(static_cast<int64_t>(new_version), 0)
+          << new_version << " db_oid: " << db_oid
+          << " db_catalog_version_data: " << db_catalog_version_data.ShortDebugString();
+      CHECK_GE(static_cast<int64_t>(new_breaking_version), 0)
+          << new_breaking_version << " db_oid: " << db_oid
+          << " db_catalog_version_data: " << db_catalog_version_data.ShortDebugString();
+    }
     if (!db_oid_set.insert(db_oid).second) {
       LOG(DFATAL) << "Ignoring duplicate db oid " << db_oid;
       continue;
@@ -1117,14 +1186,12 @@ void TabletServer::SetYsqlDBCatalogVersions(
 
 void TabletServer::WriteServerMetaCacheAsJson(JsonWriter* writer) {
   writer->StartObject();
+
   DbServerBase::WriteMainMetaCacheAsJson(writer);
   if (auto xcluster_consumer = GetXClusterConsumer()) {
-    auto clients = xcluster_consumer->GetYbClientsList();
-    for (auto client : clients) {
-      writer->String(client->client_name());
-      client->AddMetaCacheInfo(writer);
-    }
+    xcluster_consumer->WriteServerMetaCacheAsJson(*writer);
   }
+
   writer->EndObject();
 }
 
@@ -1220,10 +1287,12 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
 
 void TabletServer::InvalidatePgTableCache() {
   auto pg_client_service = pg_client_service_.lock();
-  if (pg_client_service) {
-    LOG(INFO) << "Invalidating all PgTableCache caches since catalog version incremented";
-    pg_client_service->InvalidateTableCache();
+  if (!pg_client_service) {
+    return;
   }
+
+  LOG(INFO) << "Invalidating the entire PgTableCache cache since catalog version incremented";
+  pg_client_service->impl.InvalidateTableCache();
 }
 
 void TabletServer::InvalidatePgTableCache(
@@ -1239,7 +1308,7 @@ void TabletServer::InvalidatePgTableCache(
       msg += Format("databases $0 are removed", yb::ToString(db_oids_deleted));
     }
     LOG(INFO) << msg;
-    pg_client_service->InvalidateTableCache(db_oids_updated, db_oids_deleted);
+    pg_client_service->impl.InvalidateTableCache(db_oids_updated, db_oids_deleted);
   }
 }
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
@@ -1300,9 +1369,22 @@ Status TabletServer::CreateXClusterConsumer() {
   return Status::OK();
 }
 
+Status TabletServer::XClusterPopulateMasterHeartbeatRequest(
+    master::TSHeartbeatRequestPB& req, bool needs_full_tablet_report) {
+  // If a full report is needed, we will populate it via the metric data provider.
+  if (!needs_full_tablet_report && FLAGS_tserver_heartbeat_add_replication_status) {
+    auto xcluster_consumer = GetXClusterConsumer();
+    if (xcluster_consumer) {
+      xcluster_consumer->PopulateMasterHeartbeatRequest(&req, needs_full_tablet_report);
+    }
+  }
+
+  return Status::OK();
+}
+
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     const master::TSHeartbeatResponsePB& resp) {
-  xcluster_context_->UpdateSafeTime(resp.xcluster_namespace_to_safe_time());
+  xcluster_context_->UpdateSafeTimeMap(resp.xcluster_namespace_to_safe_time());
 
   auto* xcluster_consumer = GetXClusterConsumer();
 
@@ -1319,10 +1401,7 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
 
   if (xcluster_consumer) {
     int32_t cluster_config_version = -1;
-    if (!resp.has_cluster_config_version()) {
-      YB_LOG_EVERY_N_SECS(WARNING, 30)
-          << "Invalid heartbeat response without a cluster config version";
-    } else {
+    if (resp.has_cluster_config_version()) {
       cluster_config_version = resp.cluster_config_version();
     }
 
@@ -1444,7 +1523,7 @@ Status TabletServer::SetCDCServiceEnabled() {
   return Status::OK();
 }
 
-const TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
+TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
   return *xcluster_context_;
 }
 
@@ -1486,6 +1565,10 @@ void TabletServer::ClearAllMetaCachesOnServer() {
   client()->ClearAllMetaCachesOnServer();
 }
 
+Status TabletServer::ClearMetacache(const std::string& namespace_id) {
+  return client()->ClearMetacache(namespace_id);
+}
+
 Result<std::vector<tablet::TabletStatusPB>> TabletServer::GetLocalTabletsMetadata() const {
   std::vector<tablet::TabletStatusPB> result;
   auto peers = tablet_manager_.get()->GetTabletPeers();
@@ -1498,8 +1581,79 @@ Result<std::vector<tablet::TabletStatusPB>> TabletServer::GetLocalTabletsMetadat
   return result;
 }
 
+Result<std::vector<TserverMetricsInfoPB>> TabletServer::GetMetrics() const {
+  std::vector<TserverMetricsInfoPB> result;
+
+  std::vector<double> cpu_usage = VERIFY_RESULT(MetricsSnapshotter::GetCpuUsageInInterval(500));
+  TserverMetricsInfoPB cpu_usage_user;
+  cpu_usage_user.set_name("cpu_usage_user");
+  TserverMetricsInfoPB cpu_usage_system;
+  cpu_usage_system.set_name("cpu_usage_system");
+  cpu_usage_user.set_value(std::to_string(cpu_usage[0]));
+  cpu_usage_system.set_value(std::to_string(cpu_usage[1]));
+  result.emplace_back(std::move(cpu_usage_user));
+  result.emplace_back(std::move(cpu_usage_system));
+
+  std::vector<uint64_t> memory_usage = VERIFY_RESULT(MetricsSnapshotter::GetMemoryUsage());
+  TserverMetricsInfoPB node_memory_total;
+  node_memory_total.set_name("memory_total");
+  node_memory_total.set_value(std::to_string(memory_usage[0]));
+  result.emplace_back(std::move(node_memory_total));
+  TserverMetricsInfoPB  node_memory_free;
+  node_memory_free.set_name("memory_free");
+  node_memory_free.set_value(std::to_string(memory_usage[1]));
+  result.emplace_back(std::move(node_memory_free));
+  TserverMetricsInfoPB  node_memory_available;
+  node_memory_available.set_name("memory_available");
+  node_memory_available.set_value(std::to_string(memory_usage[2]));
+  result.emplace_back(std::move(node_memory_available));
+
+  auto root_mem_tracker = MemTracker::GetRootTracker();
+  int64_t tserver_root_memory_consumption = root_mem_tracker->consumption();
+  int64_t tserver_root_memory_limit = root_mem_tracker->limit();
+  int64_t tserver_root_memory_soft_limit = root_mem_tracker->soft_limit();
+  TserverMetricsInfoPB tserver_root_memory_consumption_metric;
+  tserver_root_memory_consumption_metric.set_name("tserver_root_memory_consumption");
+  tserver_root_memory_consumption_metric.set_value(
+    std::to_string(tserver_root_memory_consumption));
+  result.emplace_back(std::move(tserver_root_memory_consumption_metric));
+  TserverMetricsInfoPB tserver_root_memory_limit_metric;
+  tserver_root_memory_limit_metric.set_name("tserver_root_memory_limit");
+  tserver_root_memory_limit_metric.set_value(std::to_string(tserver_root_memory_limit));
+  result.emplace_back(std::move(tserver_root_memory_limit_metric));
+  TserverMetricsInfoPB tserver_root_memory_soft_limit_metric;
+  tserver_root_memory_soft_limit_metric.set_name("tserver_root_memory_soft_limit");
+  tserver_root_memory_soft_limit_metric.set_value(std::to_string(tserver_root_memory_soft_limit));
+  result.emplace_back(std::move(tserver_root_memory_soft_limit_metric));
+
+  return result;
+}
+
 void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
   SharedObject().SetCronLeaderLease(cron_leader_lease_end);
+}
+
+Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
+    const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) {
+  return pgwrapper::CreateInternalPGConnBuilder(
+             pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(), deadline)
+      .Connect();
+}
+
+Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) {
+  auto pg_client_service = pg_client_service_.lock();
+  RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
+  return pg_client_service->impl.GetLocalPgTxnSnapshot(snapshot_id);
+}
+
+PgClientServiceImpl* TabletServer::TEST_GetPgClientService() {
+  auto holder = pg_client_service_.lock();
+  return holder ? &holder->impl : nullptr;
+}
+
+PgClientServiceMockImpl* TabletServer::TEST_GetPgClientServiceMock() {
+  auto holder = pg_client_service_.lock();
+  return holder && holder->mock.has_value() ? &holder->mock.value() : nullptr;
 }
 
 }  // namespace yb::tserver

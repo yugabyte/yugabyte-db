@@ -35,26 +35,34 @@
 #include <string>
 
 #include "yb/cdc/xcluster_types.h"
+
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_consensus_util.h"
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/dockv/partition.h"
+#include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/xcluster/master_xcluster_util.h"
-#include "yb/master/xcluster_rpc_tasks.h"
+#include "yb/consensus/opid_util.h"
+
+#include "yb/dockv/partition.h"
+
+#include "yb/gutil/map-util.h"
+
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/xcluster_rpc_tasks.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 
-#include "yb/gutil/map-util.h"
 #include "yb/util/atomic.h"
-#include "yb/util/flags/auto_flags.h"
 #include "yb/util/format.h"
+#include "yb/util/oid_generator.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
+#include "yb/util/flags/auto_flags.h"
 
 using std::string;
 
@@ -68,14 +76,30 @@ DEFINE_RUNTIME_AUTO_bool(
     "Whether to use the new schema for colocated tables based on the parent_table_id field.");
 TAG_FLAG(use_parent_table_id_field, advanced);
 
-namespace yb {
-namespace master {
+namespace yb::master {
+
+namespace {
+
+Result<TabletInfoPtr> PromoteTabletPointer(const std::weak_ptr<TabletInfo>& tablet) {
+  if (auto p = tablet.lock()) {
+    return p;
+  } else {
+    return STATUS(
+        IllegalState,
+        "Tablet objects backing this table have been freed. This table object is possibly stale, "
+        "from a previous load of the sys catalog.");
+  }
+}
+
+} // namespace
 
 // ================================================================================================
 // TabletReplica
 // ================================================================================================
 
 string TabletReplica::ToString() const {
+  auto shared_desc_p = ts_desc.lock();
+  const auto& ts_uuid = shared_desc_p ? shared_desc_p->id() : "<TS_REMOVED>";
   return Format(
       "{ ts_desc: $0, "
       "state: $1, "
@@ -87,7 +111,7 @@ string TabletReplica::ToString() const {
       "full_compaction_state: $7, "
       "last_full_compaction_time: $8, "
       "time since update: $9ms }",
-      ts_desc->permanent_uuid(),
+      ts_uuid,
       tablet::RaftGroupStatePB_Name(state),
       PeerRole_Name(role),
       consensus::PeerMemberType_Name(member_type),
@@ -117,10 +141,18 @@ void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
   const bool initialized = leader_lease_info.initialized;
   const auto old_lease_exp = leader_lease_info.ht_lease_expiration;
   leader_lease_info = info;
-  leader_lease_info.ht_lease_expiration =
-      info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE
-          ? std::max(info.ht_lease_expiration, old_lease_exp)
-          : 0;
+  leader_lease_info.ht_lease_expiration = 0;
+  if (info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) {
+    if (old_lease_exp == consensus::kInfiniteHybridTimeLeaseExpiration) {
+      // It's originally RF-1, so there are two possibilities:
+      // 1. It's still RF-1, and the new lease expiration is the same as the old one.
+      // 2. It's changed to RF>1, and the new lease expiration is less than the old one.
+      // In both cases, we can accept the new lease expiration.
+      leader_lease_info.ht_lease_expiration = info.ht_lease_expiration;
+    } else {
+      leader_lease_info.ht_lease_expiration = std::max(info.ht_lease_expiration, old_lease_exp);
+    }
+  }
   leader_lease_info.initialized = initialized || info.initialized;
 }
 
@@ -149,28 +181,36 @@ class TabletInfo::LeaderChangeReporter {
 
   ~LeaderChangeReporter() {
     auto new_leader = info_->GetLeaderUnlocked();
-    if (old_leader_ != new_leader) {
-      LOG(INFO) << "T " << info_->tablet_id() << ": Leader changed from "
-                << yb::ToString(old_leader_) << " to " << yb::ToString(new_leader);
+    if (new_leader && old_leader_) {
+      if (old_leader_.get()->id() != new_leader.get()->id()) {
+        LOG(INFO) << "T " << info_->tablet_id() << ": Leader changed from "
+                  << yb::ToString(old_leader_) << " to " << yb::ToString(new_leader);
+      }
+    } else {
+      auto old_leader_freed = !old_leader_.ok() && old_leader_.status().IsIllegalState();
+      auto new_leader_freed = !new_leader.ok() && new_leader.status().IsIllegalState();
+      if (old_leader_freed || new_leader_freed) {
+        LOG(WARNING) << Format(
+                            "TSDescriptor object freed but references to this TS remain in tablet "
+                            "$0 ($1 leader of this tablet)",
+                            info_->id(), old_leader_freed ? "old" : "new");
+      }
     }
   }
+
  private:
   TabletInfo* info_;
-  TSDescriptor* old_leader_;
+  Result<TSDescriptorPtr> old_leader_;
 };
 
-TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id)
+TabletInfo::TabletInfo(const TableInfoPtr& table, TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
       table_(table),
       last_update_time_(MonoTime::Now()),
-      last_time_with_valid_leader_(MonoTime::Now()),
-      reported_schema_version_({}) {
-  // Have to pre-initialize to an empty map, in case of access before the first setter is called.
-  replica_locations_ = std::make_shared<TabletReplicaMap>();
+      last_time_with_valid_leader_(last_update_time_) {
 }
 
-TabletInfo::~TabletInfo() {
-}
+TabletInfo::~TabletInfo() = default;
 
 void TabletInfo::SetReplicaLocations(
     std::shared_ptr<TabletReplicaMap> replica_locations) {
@@ -225,13 +265,9 @@ Status TabletInfo::GetLeaderNotFoundStatus() const {
       ToString(), replica_locations_->size(), *replica_locations_);
 }
 
-Result<TSDescriptor*> TabletInfo::GetLeader() const {
+Result<TSDescriptorPtr> TabletInfo::GetLeader() const {
   std::lock_guard l(lock_);
-  auto result = GetLeaderUnlocked();
-  if (result) {
-    return result;
-  }
-  return GetLeaderNotFoundStatus();
+  return GetLeaderUnlocked();
 }
 
 Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
@@ -256,13 +292,19 @@ Result<TabletLeaderLeaseInfo> TabletInfo::GetLeaderLeaseInfoIfLeader(
   return it->second.leader_lease_info;
 }
 
-TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
+Result<TSDescriptorPtr> TabletInfo::GetLeaderUnlocked() const {
   for (const auto& pair : *replica_locations_) {
     if (pair.second.role == PeerRole::LEADER) {
-      return pair.second.ts_desc;
+      auto desc = pair.second.ts_desc.lock();
+      if (desc) {
+        return desc;
+      }
+      return STATUS_FORMAT(
+          IllegalState, "TSDescriptor for ts $0, currently leader of tablet $1, has been freed",
+          pair.first, id());
     }
   }
-  return nullptr;
+  return GetLeaderNotFoundStatus();
 }
 
 std::shared_ptr<const TabletReplicaMap> TabletInfo::GetReplicaLocations() const {
@@ -270,18 +312,18 @@ std::shared_ptr<const TabletReplicaMap> TabletInfo::GetReplicaLocations() const 
   return replica_locations_;
 }
 
-void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
+void TabletInfo::UpdateReplicaLocations(const std::string& ts_uuid, const TabletReplica& replica) {
   std::lock_guard l(lock_);
   LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
   // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
   // clients that already have the old shared_ptr.
   replica_locations_ = std::make_shared<TabletReplicaMap>(*replica_locations_);
-  auto it = replica_locations_->find(replica.ts_desc->permanent_uuid());
+  auto it = replica_locations_->find(ts_uuid);
   if (it == replica_locations_->end()) {
     LOG(INFO) << Format("TS $0 reported replica $1 but it does not exist in the replica map. "
         "Adding it to the map. Replica map before adding new replica: $2",
-        replica.ts_desc->permanent_uuid(), replica, replica_locations_);
+        ts_uuid, replica, replica_locations_);
     return;
   }
   it->second.UpdateFrom(replica);
@@ -298,6 +340,7 @@ void TabletInfo::UpdateReplicaInfo(const std::string& ts_uuid,
   if (it == replica_locations_->end()) {
     return;
   }
+  VLOG_WITH_FUNC(3) << "T " << id() << " P " << ts_uuid << ": " << drive_info.ToString();
   it->second.UpdateDriveInfo(drive_info);
   it->second.UpdateLeaderLeaseInfo(leader_lease_info);
 }
@@ -431,6 +474,14 @@ bool TableInfo::is_deleted() const {
   return LockForRead()->is_deleted();
 }
 
+bool TableInfo::is_hidden() const {
+  return LockForRead()->is_hidden();
+}
+
+HybridTime TableInfo::hide_hybrid_time() const {
+  return LockForRead()->hide_hybrid_time();
+}
+
 bool TableInfo::IsPreparing() const {
   return LockForRead()->IsPreparing();
 }
@@ -445,13 +496,13 @@ string TableInfo::ToStringWithState() const {
       l->pb.name(), table_id_, SysTablesEntryPB::State_Name(l->pb.state()));
 }
 
-const NamespaceId TableInfo::namespace_id() const {
+NamespaceId TableInfo::namespace_id() const {
   return LockForRead()->namespace_id();
 }
 
 // namespace_name can be null if table was created on version < 2.3.0 (see GH17713/GH17712 for more
 // details)
-const NamespaceName TableInfo::namespace_name() const {
+NamespaceName TableInfo::namespace_name() const {
   return LockForRead()->namespace_name();
 }
 
@@ -459,8 +510,8 @@ ColocationId TableInfo::GetColocationId() const {
   return LockForRead()->schema().colocated_table_id().colocation_id();
 }
 
-const Status TableInfo::GetSchema(Schema* schema) const {
-  return SchemaFromPB(LockForRead()->schema(), schema);
+Result<Schema> TableInfo::GetSchema() const {
+  return LockForRead()->GetSchema();
 }
 
 bool TableInfo::has_pgschema_name() const {
@@ -472,13 +523,7 @@ const string TableInfo::pgschema_name() const {
 }
 
 bool TableInfo::has_pg_type_oid() const {
-  const auto lock = LockForRead();
-  for (const auto& col : lock->schema().columns()) {
-    if (!col.has_pg_type_oid()) {
-      return false;
-    }
-  }
-  return true;
+  return LockForRead()->has_pg_type_oid();
 }
 
 TableId TableInfo::pg_table_id() const {
@@ -510,9 +555,7 @@ Result<uint32_t> TableInfo::GetPgRelfilenodeOid() const {
 }
 
 Result<uint32_t> TableInfo::GetPgTableOid() const {
-  const auto pg_table_id = LockForRead()->pb.pg_table_id();
-  return pg_table_id.empty() ? GetPgsqlTableOid(id()) :
-                               GetPgsqlTableOid(pg_table_id);
+  return LockForRead()->GetPgTableOid(id());
 }
 
 TableType TableInfo::GetTableType() const {
@@ -581,8 +624,6 @@ Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatu
 
 void TableInfo::AddStatusTabletViaSplitPartition(
     TabletInfoPtr old_tablet, const dockv::Partition& partition, const TabletInfoPtr& new_tablet) {
-  std::lock_guard l(lock_);
-
   const auto& new_dirty = new_tablet->metadata().dirty();
   if (new_dirty.is_deleted()) {
     return;
@@ -593,6 +634,7 @@ void TableInfo::AddStatusTabletViaSplitPartition(
   partition.ToPB(old_partition);
   old_lock.Commit();
 
+  std::lock_guard l(lock_);
   tablets_.emplace(new_tablet->id(), new_tablet);
 
   if (!new_dirty.is_hidden()) {
@@ -616,9 +658,29 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.
-    return Status::OK();
+
+    // Hidden tablets of live tables should not be included in partitions_
+    // as they are either split parents or children that are inactive.
+    // Including them will result in overlapping partition ranges
+    if (!is_hidden()) {
+      VLOG(1) << Format("Tablet $0 is hidden but table $1 is not, skip add to partitions_",
+          tablet->id(), id());
+      return Status::OK();
+    }
+
+    // If a table is hidden, don't process any tablets that were hidden before the table was hidden
+    // as these are inactive tablets left behind from a split operation.
+    // Only tablets that were active at the time of the table being dropped should be included
+    // in partitions_ structure to support SELECT AS-OF, CLONE, PITR operations.
+    if (dirty.hide_hybrid_time() < hide_hybrid_time()) {
+      VLOG(1) << Format("Tablet $0 hide time is < table $1 hide time, skip add to partitions_",
+          tablet->id(), id());
+      return Status::OK();
+    }
   }
 
+  // Include hidden tablets in partitions_ only for hidden tables to support features
+  // such as CLONE, PITR, and SELECT AS-OF that query previously dropped tables.
   const auto& partition_key_start = tablet_meta.partition().partition_key_start();
   auto [it, inserted] = partitions_.emplace(partition_key_start, tablet);
   if (inserted) {
@@ -639,7 +701,8 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
 
   if (tablet_meta.split_depth() == old_split_depth) {
     std::string msg = Format(
-        "Two tablets with the same partition key start and split depth: $0 and $1",
+        "Two tablets $0, $1 with the same partition key start and split depth: $2 and $3",
+        tablet->id(), old_tablet->tablet_id(),
         tablet_meta.ShortDebugString(), old_tablet_lock->pb.ShortDebugString());
     LOG(DFATAL) << msg;
     return STATUS(IllegalState, msg);
@@ -863,19 +926,29 @@ bool TableInfo::HasPartitions(const std::vector<PartitionKey> other) const {
   return true;
 }
 
-Result<TabletInfos> TableInfo::GetTablets(IncludeInactive include_inactive) const {
+Result<TabletInfos> TableInfo::GetTabletsIncludeInactive() const {
   TabletInfos result;
   SharedLock<decltype(lock_)> l(lock_);
-  if (include_inactive) {
-    result.reserve(tablets_.size());
-    for (const auto& [_, tablet_weak_ptr] : tablets_) {
-      result.push_back(VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr)));
-    }
-  } else {
+  result.reserve(tablets_.size());
+  for (const auto& [_, tablet_weak_ptr] : tablets_) {
+    result.push_back(VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr)));
+  }
+  return result;
+}
+
+Result<TabletInfos> TableInfo::GetTablets(GetTabletsMode mode) const {
+  TabletInfos result;
+  {
+    SharedLock<decltype(lock_)> l(lock_);
     result.reserve(partitions_.size());
     for (const auto& [_, tablet_weak_ptr] : partitions_) {
       result.push_back(VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr)));
     }
+  }
+  if (mode == GetTabletsMode::kOrderByTabletId) {
+    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) {
+      return lhs->id() < rhs->id();
+    });
   }
   return result;
 }
@@ -931,8 +1004,17 @@ TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
   if (!tablets_.empty()) {
     return tablets_.begin()->second.lock();
   }
-  LOG(INFO) << "Colocated Tablet not found for table " << name();
   return nullptr;
+}
+
+std::vector<qlexpr::IndexInfo> TableInfo::GetIndexInfos() const {
+  std::vector<qlexpr::IndexInfo> result;
+  auto l = LockForRead();
+  result.reserve(l->pb.indexes().size());
+  for (const auto& index_info_pb : l->pb.indexes()) {
+    result.emplace_back(index_info_pb);
+  }
+  return result;
 }
 
 qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
@@ -978,37 +1060,40 @@ bool TableInfo::IsColocatedUserTable() const {
 }
 
 bool TableInfo::IsSequencesSystemTable() const {
-  if (GetTableType() == PGSQL_TABLE_TYPE && !IsColocationParentTable()) {
-    // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
-    if (!IsPgsqlId(namespace_id()) || !IsPgsqlId(id())) {
-      LOG(WARNING) << "Not PGSQL IDs " << namespace_id() << ", " << id();
-      return false;
-    }
-    Result<uint32_t> database_oid = GetPgsqlDatabaseOid(namespace_id());
-    if (!database_oid.ok()) {
-      LOG(WARNING) << "Invalid Namespace ID " << namespace_id();
-      return false;
-    }
-    Result<uint32_t> table_oid = GetPgsqlTableOid(id());
-    if (!table_oid.ok()) {
-      LOG(WARNING) << "Invalid Table ID " << id();
-      return false;
-    }
-    if (*database_oid == kPgSequencesDataDatabaseOid && *table_oid == kPgSequencesDataTableOid) {
-      return true;
-    }
+  return IsSequencesSystemTable(LockForRead());
+}
+
+bool TableInfo::IsSequencesSystemTable(const ReadLock& lock) const {
+  if (lock->pb.table_type() != PGSQL_TABLE_TYPE || IsColocationParentTable()) {
+    return false;
   }
-  return false;
+  // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
+  if (!IsPgsqlId(lock->namespace_id()) || !IsPgsqlId(id())) {
+    LOG(WARNING) << "Not PGSQL IDs " << namespace_id() << ", " << id();
+    return false;
+  }
+  Result<uint32_t> database_oid = GetPgsqlDatabaseOid(lock->namespace_id());
+  if (!database_oid.ok()) {
+    LOG(WARNING) << "Invalid Namespace ID " << lock->namespace_id();
+    return false;
+  }
+  if (*database_oid != kPgSequencesDataDatabaseOid) {
+    return false;
+  }
+  Result<uint32_t> table_oid = GetPgsqlTableOid(id());
+  if (!table_oid.ok()) {
+    LOG(WARNING) << "Invalid Table ID " << id();
+    return false;
+  }
+  return *table_oid == kPgSequencesDataTableOid;
 }
 
 bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
-  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
-         name() == xcluster::kDDLQueueTableName;
+  return LockForRead()->IsXClusterDDLReplicationDDLQueueTable();
 }
 
 bool TableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
-  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
-         name() == xcluster::kDDLReplicatedTableName;
+  return LockForRead()->IsXClusterDDLReplicationReplicatedDDLsTable();
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
@@ -1070,15 +1155,34 @@ std::vector<TransactionId> TableInfo::EraseDdlTxnsWaitingForSchemaVersion(int sc
   return txns;
 }
 
-Result<TabletInfoPtr> TableInfo::PromoteTabletPointer(const std::weak_ptr<TabletInfo>& tablet) {
-  if (auto p = tablet.lock()) {
-    return p;
-  } else {
-    return STATUS(
-        IllegalState,
-        "Tablet objects backing this table have been freed. This table object is possibly stale, "
-        "from a previous load of the sys catalog.");
+bool TableInfo::IsUserCreated() const {
+  return IsUserCreated(LockForRead());
+}
+
+bool TableInfo::IsUserTable() const {
+  return IsUserTable(LockForRead());
+}
+
+bool TableInfo::IsUserIndex() const {
+  return IsUserIndex(LockForRead());
+}
+
+bool TableInfo::IsUserCreated(const ReadLock& lock) const {
+  if (lock->pb.table_type() != PGSQL_TABLE_TYPE && lock->pb.table_type() != YQL_TABLE_TYPE) {
+    return false;
   }
+  return !is_system() && !IsSequencesSystemTable(lock) &&
+         !lock->IsXClusterDDLReplicationTable() &&
+         lock->namespace_id() != kSystemNamespaceId &&
+         !IsColocationParentTable();
+}
+
+bool TableInfo::IsUserTable(const ReadLock& lock) const {
+  return IsUserCreated(lock) && lock->indexed_table_id().empty();
+}
+
+bool TableInfo::IsUserIndex(const ReadLock& lock) const {
+  return IsUserCreated(lock) && !lock->indexed_table_id().empty();
 }
 
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
@@ -1090,6 +1194,10 @@ void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string&
 
 bool PersistentTableInfo::is_index() const {
   return !indexed_table_id().empty();
+}
+
+bool PersistentTableInfo::is_vector_index() const {
+  return pb.index_info().has_vector_idx_options();
 }
 
 const std::string& PersistentTableInfo::indexed_table_id() const {
@@ -1114,6 +1222,39 @@ Result<TransactionId> PersistentTableInfo::GetCurrentDdlTransactionId() const {
     txn = VERIFY_RESULT(FullyDecodeTransactionId(pb_txn_id));
   }
   return txn;
+}
+
+bool PersistentTableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
+  return pb.table_type() == PGSQL_TABLE_TYPE &&
+         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLQueueTableName;
+}
+
+bool PersistentTableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
+  return pb.table_type() == PGSQL_TABLE_TYPE &&
+         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLReplicatedTableName;
+}
+
+Result<uint32_t> PersistentTableInfo::GetPgTableOid(const std::string& id) const {
+  const auto& pg_table_id = pb.pg_table_id();
+  return pg_table_id.empty() ? GetPgsqlTableOid(id) :
+                               GetPgsqlTableOid(pg_table_id);
+}
+
+bool PersistentTableInfo::has_pg_type_oid() const {
+  for (const auto& col : schema().columns()) {
+    if (!col.has_pg_type_oid()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Result<Schema> PersistentTableInfo::GetSchema() const {
+  Schema schema;
+  RETURN_NOT_OK(SchemaFromPB(pb.schema(), &schema));
+  return schema;
 }
 
 bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
@@ -1151,16 +1292,13 @@ bool NamespaceInfo::colocated() const {
   return LockForRead()->pb.state();
 }
 
-string NamespaceInfo::ToString() const {
-  return Substitute("$0 [id=$1]", name(), namespace_id_);
+::yb::master::SysNamespaceEntryPB_YsqlNextMajorVersionState
+    NamespaceInfo::ysql_next_major_version_state() const {
+  return LockForRead()->pb.ysql_next_major_version_state();
 }
 
-uint32_t NamespaceInfo::FetchAndIncrementCloneSeqNo() {
-  auto lock = LockForWrite();
-  uint32_t new_clone_request_seq_no = lock->pb.clone_request_seq_no() + 1;
-  lock.mutable_data()->pb.set_clone_request_seq_no(new_clone_request_seq_no);
-  lock.Commit();
-  return new_clone_request_seq_no;
+string NamespaceInfo::ToString() const {
+  return Substitute("$0 [id=$1]", name(), namespace_id_);
 }
 
 // ================================================================================================
@@ -1281,6 +1419,9 @@ std::string CDCStreamInfo::ToString() const {
     return Format(
         "$0 [namespace=$1] {metadata=$2} ", id(), l->pb.namespace_id(), l->pb.ShortDebugString());
   }
+  if (l->pb.table_id().empty()) {
+    return Format("$0 {metadata=$2} ", id(), l->pb.ShortDebugString());
+  }
   return Format("$0 [table=$1] {metadata=$2} ", id(), l->pb.table_id(0), l->pb.ShortDebugString());
 }
 
@@ -1316,6 +1457,10 @@ Result<std::shared_ptr<XClusterRpcTasks>> UniverseReplicationInfoBase::GetOrCrea
 
 bool PersistentUniverseReplicationInfo::IsDbScoped() const { return yb::master::IsDbScoped(pb); }
 
+bool PersistentUniverseReplicationInfo::IsAutomaticDdlMode() const {
+  return yb::master::IsAutomaticDdlMode(pb);
+}
+
 // ================================================================================================
 // UniverseReplicationInfo
 // ================================================================================================
@@ -1337,6 +1482,10 @@ Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
 }
 
 bool UniverseReplicationInfo::IsDbScoped() const { return LockForRead()->IsDbScoped(); }
+
+bool UniverseReplicationInfo::IsAutomaticDdlMode() const {
+  return LockForRead()->IsAutomaticDdlMode();
+}
 
 // ================================================================================================
 // PersistentUniverseReplicationBootstrapInfo
@@ -1476,5 +1625,49 @@ bool SnapshotInfo::IsDeleteInProgress() const {
   return LockForRead()->is_deleting();
 }
 
-}  // namespace master
-}  // namespace yb
+TabletInfoPtr MakeTabletInfo(
+    const TableInfoPtr& table,
+    const TabletId& tablet_id) {
+  auto tablet = std::make_shared<TabletInfo>(
+      table, tablet_id.empty() ? GenerateObjectId() : tablet_id);
+
+  VLOG_WITH_FUNC(2)
+      << "Table: " << table->ToString() << ", tablet: " << tablet->ToString();
+
+  tablet->mutable_metadata()->StartMutation();
+
+  return tablet;
+}
+
+void SetupTabletInfo(
+    TabletInfo& tablet,
+    const TableInfo& table,
+    const PartitionPB& partition,
+    SysTabletsEntryPB::State state) {
+  auto& metadata = tablet.mutable_metadata()->mutable_dirty()->pb;
+  metadata.set_state(state);
+  metadata.mutable_partition()->CopyFrom(partition);
+  metadata.set_table_id(table.id());
+  if (FLAGS_use_parent_table_id_field && !table.is_system()) {
+    tablet.SetTableIds({table.id()});
+    metadata.set_hosted_tables_mapped_by_parent_id(true);
+  } else {
+    // This is important: we are setting the first table id in the table_ids list
+    // to be the id of the original table that creates the tablet.
+    metadata.add_table_ids(table.id());
+  }
+
+  auto& cstate = *metadata.mutable_committed_consensus_state();
+  cstate.set_current_term(consensus::kMinimumTerm);
+  cstate.mutable_config()->set_opid_index(consensus::kInvalidOpIdIndex);
+}
+
+TabletInfoPtr CreateTabletInfo(
+    const TableInfoPtr& table, const PartitionPB& partition, SysTabletsEntryPB::State state,
+    const TabletId& tablet_id) {
+  auto tablet = MakeTabletInfo(table, tablet_id);
+  SetupTabletInfo(*tablet, *table, partition, state);
+  return tablet;
+}
+
+}  // namespace yb::master

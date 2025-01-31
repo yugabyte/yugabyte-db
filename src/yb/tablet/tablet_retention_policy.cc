@@ -93,29 +93,10 @@ TabletRetentionPolicy::TabletRetentionPolicy(
     }
 }
 
-void TabletRetentionPolicy::MakeAtLeast(HistoryCutoff value) {
-  if (value.cotables_cutoff_ht) {
-    committed_history_cutoff_information_.cotables_cutoff_ht = std::max(
-        committed_history_cutoff_information_.cotables_cutoff_ht,
-        value.cotables_cutoff_ht);
-  }
-  if (value.primary_cutoff_ht) {
-    committed_history_cutoff_information_.primary_cutoff_ht = std::max(
-        committed_history_cutoff_information_.primary_cutoff_ht,
-        value.primary_cutoff_ht);
-  }
-}
-
-HistoryCutoff TabletRetentionPolicy::UpdateCommittedHistoryCutoff(
-    HistoryCutoff value) {
+HistoryCutoff TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HistoryCutoff value) {
   std::lock_guard lock(mutex_);
-  if (!value.cotables_cutoff_ht && !value.primary_cutoff_ht) {
-    return committed_history_cutoff_information_;
-  }
-
   VLOG_WITH_PREFIX(4) << __func__ << "(" << value << ")";
-
-  MakeAtLeast(value);
+  committed_history_cutoff_information_.MakeAtLeast(value);
   return committed_history_cutoff_information_;
 }
 
@@ -129,7 +110,7 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     } else {
       history_cutoff = EffectiveHistoryCutoff();
       VLOG(4) << "Effective history cutoff " << history_cutoff;
-      MakeAtLeast(history_cutoff);
+      committed_history_cutoff_information_.MakeAtLeast(history_cutoff);
     }
   }
 
@@ -185,14 +166,14 @@ HybridTime TabletRetentionPolicy::GetEarliestAllowedReadHt() {
       committed_history_cutoff_information_.primary_cutoff_ht);
 }
 
-HistoryCutoff TabletRetentionPolicy::HistoryCutoffToPropagate(
-    HybridTime last_write_ht) {
+HistoryCutoff TabletRetentionPolicy::HistoryCutoffToPropagate(HybridTime last_write_ht) {
   std::lock_guard lock(mutex_);
 
   auto now = CoarseMonoClock::now();
 
-  VLOG_WITH_PREFIX(4) << __func__ << "(" << last_write_ht << "), left to wait: "
-                      << MonoDelta(next_history_cutoff_propagation_ - now);
+  VLOG_WITH_PREFIX_AND_FUNC(4)
+      << ", last_write_ht: " << last_write_ht << ", left to wait: "
+      << MonoDelta(next_history_cutoff_propagation_ - now);
   HybridTime earliest_ht = GetEarliestAllowedReadHt();
   if (disable_counter_ != 0 || !FLAGS_enable_history_cutoff_propagation ||
       now < next_history_cutoff_propagation_ || last_write_ht <= earliest_ht) {

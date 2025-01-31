@@ -7,6 +7,8 @@ menu:
     identifier: apache-beam
     parent: data-integration
     weight: 571
+alises:
+  - /preview/integrations/apache-spark/
 type: docs
 ---
 
@@ -14,7 +16,7 @@ type: docs
 
 ## Prerequisite
 
-To use Apache Beam, ensure that you have YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/).
+To use Apache Beam, ensure that you have YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/).
 
 ## Setup
 
@@ -86,7 +88,7 @@ To run Apache Beam with YugabyteDB, do the following:
     demo code ran successful
     ```
 
-1. You can also verify the changes from a [ysql shell](../../admin/ysqlsh/#starting-ysqlsh) as follows:
+1. You can also verify the changes from a [ysql shell](../../api/ysqlsh/#starting-ysqlsh) as follows:
 
     ```sql
     select * from month_col01;

@@ -21,7 +21,6 @@ show_usage() {
 # Function to handle errors
 err_msg() {
     echo "Error: $1" >&2
-    show_usage
     exit 1
 }
 

@@ -31,6 +31,7 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/storage_set.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -76,6 +77,8 @@ struct TransactionApplyData {
   HybridTime log_ht;
   bool sealed = false;
   TabletId status_tablet;
+  docdb::StorageSet apply_to_storages = docdb::StorageSet::All();
+
   // Owned by running transaction if non-null.
   const docdb::ApplyTransactionState* apply_state = nullptr;
 
@@ -159,7 +162,7 @@ class TransactionParticipant : public TransactionStatusManager {
     const OpId& op_id;
     HybridTime hybrid_time;
     bool sealed = false;
-    AlreadyAppliedToRegularDB already_applied_to_regular_db;
+    docdb::StorageSet apply_to_storages;
 
     std::string ToString() const;
   };
@@ -185,7 +188,9 @@ class TransactionParticipant : public TransactionStatusManager {
 
   TransactionParticipantContext* context() const;
 
-  void SetMinRunningHybridTimeLowerBound(HybridTime lower_bound);
+  void SetMinReplayTxnStartTimeLowerBound(HybridTime start_ht);
+
+  HybridTime MinReplayTxnStartTime() const;
 
   HybridTime MinRunningHybridTime() const override;
 
@@ -215,12 +220,14 @@ class TransactionParticipant : public TransactionStatusManager {
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
 
   // Update transaction metadata to change the status tablet for the given transaction.
-  Result<TransactionMetadata> UpdateTransactionStatusLocation(
+  Status UpdateTransactionStatusLocation(
       const TransactionId& transaction_id, const TabletId& new_status_tablet);
 
   std::string DumpTransactions() const;
 
-  void SetIntentRetainOpIdAndTime(const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration);
+  void SetIntentRetainOpIdAndTime(
+      const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration,
+      HybridTime min_start_ht_cdc_unstreamed_txns);
 
   OpId GetRetainOpId() const;
 
@@ -228,7 +235,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   OpId GetLatestCheckPoint() const;
 
-  HybridTime GetMinStartTimeAmongAllRunningTransactions() const;
+  HybridTime GetMinStartHTCDCUnstreamedTxns() const;
 
   OpId GetHistoricalMaxOpId() const;
 
@@ -240,7 +247,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   size_t GetNumRunningTransactions() const;
 
-  void SetMinRunningHybridTimeUpdateCallback(std::function<void(HybridTime)> callback);
+  void SetMinReplayTxnStartTimeUpdateCallback(std::function<void(HybridTime)> callback);
 
   struct CountIntentsResult {
     size_t num_intents;
@@ -253,12 +260,21 @@ class TransactionParticipant : public TransactionStatusManager {
 
   OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) const;
 
+  Result<HybridTime> SimulateProcessRecentlyAppliedTransactions(
+      const OpId& retryable_requests_flushed_op_id);
+
+  void SetRetryableRequestsFlushedOpId(const OpId& flushed_op_id);
+
+  Status ProcessRecentlyAppliedTransactions();
+
+  void ForceRefreshWaitersForBlocker(const TransactionId& txn_id);
+
  private:
   Result<int64_t> RegisterRequest() override;
   void UnregisterRequest(int64_t request) override;
 
   class Impl;
-  std::unique_ptr<Impl> impl_;
+  std::shared_ptr<Impl> impl_;
 };
 
 } // namespace tablet

@@ -7,10 +7,14 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -19,8 +23,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -30,16 +32,24 @@ import java.util.Set;
 import java.util.UUID;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
+import play.mvc.Http.Status;
 
 @Slf4j
 public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
-  private final OperatorStatusUpdater kubernetesStatus;
+  protected final OperatorStatusUpdater kubernetesStatus;
 
   protected KubernetesUpgradeTaskBase(
       BaseTaskDependencies baseTaskDependencies,
       OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
-    super(baseTaskDependencies);
+    this(baseTaskDependencies, operatorStatusUpdaterFactory, null);
+  }
+
+  protected KubernetesUpgradeTaskBase(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory,
+      KubernetesManagerFactory kubernetesManagerFactory) {
+    super(baseTaskDependencies, kubernetesManagerFactory);
     this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
@@ -54,38 +64,41 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   }
 
   @Override
+  protected boolean isSkipPrechecks() {
+    return taskParams().skipNodeChecks;
+  }
+
+  @Override
   protected void createPrecheckTasks(Universe universe) {
     MastersAndTservers nodesToBeRestarted = getNodesToBeRestarted();
     log.debug("Nodes to be restarted {}", nodesToBeRestarted);
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
         && nodesToBeRestarted != null
-        && !nodesToBeRestarted.isEmpty()) {
+        && !nodesToBeRestarted.isEmpty()
+        && !isSkipPrechecks()) {
       Optional<NodeDetails> nonLive =
           nodesToBeRestarted.getAllNodes().stream()
               .filter(n -> n.state != NodeDetails.NodeState.Live)
               .findFirst();
       if (nonLive.isEmpty()) {
-        List<MastersAndTservers> split = new ArrayList<>();
-        nodesToBeRestarted.mastersList.stream()
-            .forEach(
-                n ->
-                    split.add(
-                        new MastersAndTservers(
-                            Collections.singletonList(n), Collections.emptyList())));
-        nodesToBeRestarted.tserversList.stream()
-            .forEach(
-                n ->
-                    split.add(
-                        new MastersAndTservers(
-                            Collections.emptyList(), Collections.singletonList(n))));
-        createCheckNodesAreSafeToTakeDownTask(split, getTargetSoftwareVersion());
+        RollMaxBatchSize rollMaxBatchSize = getCurrentRollBatchSize(universe);
+        // Use only primary nodes
+        MastersAndTservers forCluster =
+            nodesToBeRestarted.getForCluster(
+                universe.getUniverseDetails().getPrimaryCluster().uuid);
+
+        if (!forCluster.isEmpty()) {
+          List<MastersAndTservers> split =
+              UpgradeTaskBase.split(universe, forCluster, rollMaxBatchSize);
+          createCheckNodesAreSafeToTakeDownTask(split, getTargetSoftwareVersion(), true);
+        }
       }
     }
   }
 
   @Override
   protected void addBasicPrecheckTasks() {
-    if (isFirstTry()) {
+    if (isFirstTry() && !isSkipPrechecks()) {
       verifyClustersConsistency();
     }
   }
@@ -132,6 +145,10 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   }
 
   public abstract SubTaskGroupType getTaskSubGroupType();
+
+  private RollMaxBatchSize getCurrentRollBatchSize(Universe universe) {
+    return getCurrentRollBatchSize(universe, taskParams().rollMaxBatchSize);
+  }
 
   // Wrapper that takes care of common pre and post upgrade tasks and user has
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
@@ -328,7 +345,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           softwareVersion,
-          taskParams().sleepAfterMasterRestartMillis,
           universeOverrides,
           azOverrides,
           isMasterChanged,
@@ -338,7 +354,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           commandType,
           enableYbc,
           ybcSoftwareVersion,
-          /* addDelayAfterStartup */ true);
+          PodUpgradeParams.builder()
+              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .build());
     }
 
     if (isTServerChanged) {
@@ -353,7 +371,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           null,
           ServerType.TSERVER,
           softwareVersion,
-          taskParams().sleepAfterTServerRestartMillis,
           universeOverrides,
           azOverrides,
           false, // master change is false since it has already been upgraded.
@@ -363,12 +380,14 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           commandType,
           enableYbc,
           ybcSoftwareVersion,
-          /* addDelayAfterStartup */ true);
+          PodUpgradeParams.builder()
+              .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+              .rollMaxBatchSize(getCurrentRollBatchSize(universe))
+              .build());
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
         installYbcOnThePods(
-            universe.getName(),
             primaryTservers,
             false,
             ybcSoftwareVersion,
@@ -397,7 +416,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             null,
             ServerType.TSERVER,
             softwareVersion,
-            taskParams().sleepAfterTServerRestartMillis,
             universeOverrides,
             azOverrides,
             false, // master change is false since it has already been upgraded.
@@ -407,17 +425,16 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             commandType,
             enableYbc,
             ybcSoftwareVersion,
-            /* addDelayAfterStartup */ true);
+            PodUpgradeParams.builder()
+                .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+                .rollMaxBatchSize(getCurrentRollBatchSize(universe))
+                .build());
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
               new HashSet<NodeDetails>(universe.getNodesInCluster(asyncCluster.uuid));
           installYbcOnThePods(
-              universe.getName(),
-              replicaTservers,
-              true,
-              ybcSoftwareVersion,
-              asyncCluster.userIntent.ybcFlags);
+              replicaTservers, true, ybcSoftwareVersion, asyncCluster.userIntent.ybcFlags);
           performYbcAction(replicaTservers, true, "stop");
           createWaitForYbcServerTask(replicaTservers);
         }
@@ -433,7 +450,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           softwareVersion,
-          taskParams().sleepAfterMasterRestartMillis,
           universeOverrides,
           azOverrides,
           isMasterChanged,
@@ -443,7 +459,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           commandType,
           enableYbc,
           ybcSoftwareVersion,
-          true);
+          PodUpgradeParams.builder()
+              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .build());
     }
   }
 
@@ -507,7 +525,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         Set<NodeDetails> primaryTservers =
             new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
         installYbcOnThePods(
-            universe.getName(),
             primaryTservers,
             false,
             ybcSoftwareVersion,
@@ -548,7 +565,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
                   universe.getNodesInCluster(
                       universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
           installYbcOnThePods(
-              universe.getName(),
               replicaTservers,
               true,
               ybcSoftwareVersion,
@@ -560,7 +576,101 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     }
   }
 
+  protected void createNonRestartGflagsUpgradeTask(Universe universe) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    Cluster primaryCluster = universeDetails.getPrimaryCluster();
+    KubernetesGflagsUpgradeCommonParams upgradeParamsPrimary =
+        new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster, confGetter);
+    createSingleKubernetesExecutorTask(
+        universe.getName(),
+        CommandType.POD_INFO,
+        primaryCluster.placementInfo,
+        false /*isReadOnlyCluster*/);
+    upgradePodsNonRestart(
+        universe.getName(),
+        upgradeParamsPrimary.getPlacement(),
+        upgradeParamsPrimary.getMasterAddresses(),
+        ServerType.EITHER,
+        upgradeParamsPrimary.getYbSoftwareVersion(),
+        upgradeParamsPrimary.getUniverseOverrides(),
+        upgradeParamsPrimary.getAzOverrides(),
+        upgradeParamsPrimary.isNewNamingStyle(),
+        false /* isReadOnlyCluster */,
+        upgradeParamsPrimary.isEnableYbc(),
+        upgradeParamsPrimary.getYbcSoftwareVersion());
+
+    MastersAndTservers mastersAndTservers = fetchNodes(UpgradeOption.NON_RESTART_UPGRADE);
+    MastersAndTservers primaryClusterMastersAndTservers =
+        mastersAndTservers.getForCluster(universe.getUniverseDetails().getPrimaryCluster().uuid);
+    List<Cluster> newClusters = taskParams().clusters;
+    Cluster newPrimaryCluster = taskParams().getPrimaryCluster();
+
+    createSetFlagInMemoryTasks(
+        primaryClusterMastersAndTservers.mastersList,
+        ServerType.MASTER,
+        (node, params) -> {
+          params.force = true;
+          params.gflags =
+              GFlagsUtil.getGFlagsForNode(node, ServerType.MASTER, newPrimaryCluster, newClusters);
+        });
+    createSetFlagInMemoryTasks(
+        primaryClusterMastersAndTservers.tserversList,
+        ServerType.TSERVER,
+        (node, params) -> {
+          params.force = true;
+          params.gflags =
+              GFlagsUtil.getGFlagsForNode(node, ServerType.TSERVER, newPrimaryCluster, newClusters);
+        });
+
+    if (universeDetails.getReadOnlyClusters().size() != 0) {
+      Cluster readOnlyCluster = universeDetails.getReadOnlyClusters().get(0);
+      KubernetesGflagsUpgradeCommonParams upgradeParamsReadOnly =
+          new KubernetesGflagsUpgradeCommonParams(universe, readOnlyCluster, confGetter);
+      PlacementInfo readClusterPlacementInfo = readOnlyCluster.placementInfo;
+      createSingleKubernetesExecutorTask(
+          universe.getName(),
+          CommandType.POD_INFO,
+          readClusterPlacementInfo,
+          true /*isReadOnlyCluster*/);
+
+      upgradePodsNonRestart(
+          universe.getName(),
+          upgradeParamsReadOnly.getPlacement(),
+          upgradeParamsReadOnly.getMasterAddresses(),
+          ServerType.TSERVER,
+          upgradeParamsReadOnly.getYbSoftwareVersion(),
+          upgradeParamsReadOnly.getUniverseOverrides(),
+          upgradeParamsReadOnly.getAzOverrides(),
+          upgradeParamsReadOnly.isNewNamingStyle(),
+          true /* isReadOnlyCluster */,
+          upgradeParamsReadOnly.isEnableYbc(),
+          upgradeParamsReadOnly.getYbcSoftwareVersion());
+
+      Cluster newReadOnlyCluster = taskParams().getReadOnlyClusters().get(0);
+      createSetFlagInMemoryTasks(
+          mastersAndTservers.getForCluster(newReadOnlyCluster.uuid).tserversList,
+          ServerType.TSERVER,
+          (node, params) -> {
+            params.force = true;
+            params.gflags =
+                GFlagsUtil.getGFlagsForNode(
+                    node, ServerType.TSERVER, newReadOnlyCluster, newClusters);
+          });
+    }
+  }
+
   protected void createSoftwareUpgradePrecheckTasks(String ybSoftwareVersion) {
     createCheckUpgradeTask(ybSoftwareVersion).setSubTaskGroupType(getTaskSubGroupType());
+    String currentVersion =
+        getUniverse().getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    Universe universe = getUniverse();
+    boolean ysqlMajorVersionUpgrade =
+        gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, ybSoftwareVersion)
+            && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+
+    if (ysqlMajorVersionUpgrade) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Cannot upgrade to this version with PG15 upgrade enabled");
+    }
   }
 }

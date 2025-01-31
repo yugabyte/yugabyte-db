@@ -4,6 +4,8 @@ headerTitle: Latency histogram and P99 latencies
 linkTitle: Latency histogram
 description: View histogram and P99 latency metrics for slow queries
 headcontent: Measure query performance against service level objectives
+aliases:
+  - /preview/yugabyteplatform/alerts-monitoring/latency-histogram/
 menu:
   preview_yugabyte-platform:
     parent: alerts-monitoring
@@ -30,7 +32,7 @@ To view the latency histogram and P99 metrics, access the Slow Queries dashboard
 
     ![latency-histogram1](/images/yp/alerts-monitoring/slow-queries/latency-histogram1.png)
 
-To discard latency statistics gathered so far, click the  **Reset stats** button on the **Slow Queries** dashboard to run [pg_stat_statements_reset()](https://www.postgresql.org/docs/current/pgstatstatements.html) on each node.
+To discard latency statistics gathered so far, click the  **Reset stats** button on the **Slow Queries** dashboard to run [pg_stat_statements_reset()](https://www.postgresql.org/docs/15/pgstatstatements.html) on each node.
 
 {{< note title="Note" >}}
 

@@ -4,7 +4,6 @@ headerTitle: Explore YugabyteDB
 linkTitle: Explore
 headcontent: Learn about YugabyteDB features, with examples
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
-image: fa-sharp fa-thin fa-magnifying-glass-waveform
 aliases:
   - /preview/explore/high-performance/
   - /preview/explore/planet-scale/
@@ -29,6 +28,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 | [Resiliency](fault-tolerance/) | Learn how YugabyteDB achieves resiliency when a node fails. | Multi-node<br/>local |
 | [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi-node<br/>local |
 | [Transactions](transactions/) | Understand how distributed transactions and isolation levels work in YugabyteDB. | Single-node<br/>local/cloud |
+| [Colocation](colocation/) | YugabyteDB allows for closely related data to reside together via colocation. Learn how to co-locate tables. | Single-node<br/>local/cloud |
 | [Multi-region deployments](multi-region-deployments/) | Learn about the different multi-region topologies that you can deploy using YugabyteDB. | Multi-node<br/>local |
 | [Query tuning](query-1-performance/) | Learn about the tools available to identify and optimize queries in YSQL. | Single-node<br/>local/cloud |
 | [Cluster management](cluster-management/) | Learn how to roll back database changes to a specific point in time using point in time recovery. | Single-node<br/>local |
@@ -40,27 +40,27 @@ The following table describes the YugabyteDB features you can explore, along wit
 
 You can run examples using a universe set up on your local machine or in a cloud, assuming you have performed one of the following:
 
-- [Installed](../quick-start/linux/) YugabyteDB.
+- [Installed](/preview/tutorials/quick-start/linux/) YugabyteDB.
 - [Created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Aeon.
 - [Installed](../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configured](../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#local" class="nav-link active" id="local-tab" data-toggle="tab"
+    <a href="#local" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li >
-    <a href="#cloud" class="nav-link" id="cloud-tab" data-toggle="tab"
+    <a href="#cloud" class="nav-link" id="cloud-tab" data-bs-toggle="tab"
       role="tab" aria-controls="cloud" aria-selected="false">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
       YugabyteDB Aeon
     </a>
   </li>
   <li>
-    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-toggle="tab"
+    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
@@ -101,7 +101,7 @@ To check the status of a running single-node universe, run the following command
 ./bin/yugabyted status
 ```
 
-For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
+For more information, refer to [Quick Start](/preview/tutorials/quick-start/linux/#create-a-local-cluster).
 
   {{% /tab %}}
 
@@ -124,7 +124,7 @@ You can start ysqlsh as follows:
 ```
 
 ```output
-ysqlsh (11.2-YB-2.0.0.0-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -216,21 +216,21 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#localworkload" class="nav-link active" id="local-tab" data-toggle="tab"
+    <a href="#localworkload" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li >
-    <a href="#cloudworkload" class="nav-link" id="cloud-tab" data-toggle="tab"
+    <a href="#cloudworkload" class="nav-link" id="cloud-tab" data-bs-toggle="tab"
       role="tab" aria-controls="cloud" aria-selected="false">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
       YugabyteDB Aeon
     </a>
   </li>
   <li>
-    <a href="#anywhereworkload" class="nav-link" id="anywhere-tab" data-toggle="tab"
+    <a href="#anywhereworkload" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
@@ -241,7 +241,7 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
 <div class="tab-content">
   <div id="cloudworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
 
-To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](../tutorials/build-apps/cloud-add-ip/).
+To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
 
 To start the application against a running YugabyteDB Aeon cluster, use the following command:
 
@@ -259,7 +259,7 @@ java -Dnode=<host name> \
 - `<host name>` - The host name of your YugabyteDB cluster. For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
 - `<dbname>` - The name of the database you are connecting to (the default is `yugabyte`).
 - `<dbuser>` and `<dbpassword>` - The username and password for the YugabyteDB database. Use the credentials in the credentials file you downloaded when you created your cluster.
-<!-- `<cloud.region.zone>` - The zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed on the cluster **Nodes** tab. For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:
+<!-- `<cloud.region.zone>` - The zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-load-balancing). Node details are displayed on the cluster **Nodes** tab. For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:
 
     ```sh
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-2a,aws.us-east-1.us-east-3a
@@ -281,7 +281,7 @@ java -jar \
 
 The `-Dnode` flag specifies the IP address of the node to which to connect.
 
-The `-Dspring.datasource` flag enables [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) for the application connections. If you created a universe using different zones, replace the zones with the corresponding zones in your universe, comma-separated, in the format `cloud.region.zone`.
+The `-Dspring.datasource` flag enables [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-load-balancing) for the application connections. If you created a universe using different zones, replace the zones with the corresponding zones in your universe, comma-separated, in the format `cloud.region.zone`.
 
   </div>
 
@@ -329,7 +329,7 @@ Replace the following:
 
 - `<dbuser>` and `<dbpassword>` - The user name and password for the YugabyteDB database. <!-- - `<port>` - 5433. -->
 
-- `<cloud.region.zone>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName > Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
+- `<cloud.region.zone>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-load-balancing). Node details are displayed in **Universes > UniverseName > Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
 
     ```sh
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c

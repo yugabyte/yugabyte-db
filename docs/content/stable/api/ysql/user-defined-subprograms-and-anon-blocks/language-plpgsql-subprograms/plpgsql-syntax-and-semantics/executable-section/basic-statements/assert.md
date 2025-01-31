@@ -5,7 +5,7 @@ linkTitle: >
   "assert" statement
 description: Describes the syntax and semantics of the PL/pgSQL "assert" statement. [YSQL].
 menu:
-  stable:
+  stable_api:
     identifier: assert
     parent: basic-statements
     weight: 10

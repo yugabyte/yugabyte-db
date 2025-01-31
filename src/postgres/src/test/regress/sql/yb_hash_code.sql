@@ -113,6 +113,8 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT tj FROM text_table 
 SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;
 SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
+SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
 DROP TABLE text_table;
 
 -- testing on a table with multiple hash key columns on
@@ -208,3 +210,162 @@ CREATE INDEX t_x_hash_y_asc_idx ON t (x HASH, y ASC);
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
 SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
 DROP TABLE t;
+
+-- Issue #18360 (yb_hash_code compared to constant out of the range [0..65535])
+CREATE TABLE tt (i int, j int);
+CREATE INDEX ON tt (i, j);
+INSERT INTO tt VALUES (1, 2);
+-- Negative values
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -3;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -3;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -4;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -4;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -5;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -5;
+
+-- Higher than upper bound values
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 65536;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 65536;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 65537;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 65537;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 65538;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 65538;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 65539;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 65539;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 65540;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 65540;
+
+-- Values other than int4
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -2147483649;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -2147483649;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2147483650;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2147483650;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -2147483651;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -2147483651;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -2147483652;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -2147483652;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -2147483653;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -2147483653;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 9223372036854775808;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 9223372036854775808;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 9223372036854775809;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 9223372036854775809;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 9223372036854775810;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 9223372036854775810;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 9223372036854775811;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 9223372036854775811;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 9223372036854775812;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 9223372036854775812;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -0.01;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -0.01;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 123456.78;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 123456.78;
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 3.14;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 3.14;
+
+DROP TABLE tt;
+
+-- GH18347 : yb_hash_code() in row constructor in predicate with an inequality fails
+
+set client_min_messages = warning;
+drop table if exists GH18347;
+reset client_min_messages;
+
+CREATE TABLE GH18347 (i int, j int);
+CREATE INDEX ON GH18347 (i, j);
+
+INSERT INTO GH18347 VALUES(0, 0);
+INSERT INTO GH18347 VALUES(0, 1);
+INSERT INTO GH18347 VALUES(0, 2);
+INSERT INTO GH18347 VALUES(0, 3);
+INSERT INTO GH18347 VALUES(1, 0);
+INSERT INTO GH18347 VALUES(1, 1);
+INSERT INTO GH18347 VALUES(2, 2);
+INSERT INTO GH18347 VALUES(3, 3);
+INSERT INTO GH18347 VALUES(2147483647, 0);
+INSERT INTO GH18347 VALUES(2147483647, 1);
+INSERT INTO GH18347 VALUES(2147483647, 2);
+INSERT INTO GH18347 VALUES(2147483647, 3);
+INSERT INTO GH18347 VALUES(-2147483648, 0);
+INSERT INTO GH18347 VALUES(-2147483648, 1);
+INSERT INTO GH18347 VALUES(-2147483648, 2);
+INSERT INTO GH18347 VALUES(-2147483648, 3);
+
+-- Failing query pattern.
+
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2;
+
+/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2;
+
+-- Verify sequential and index scans give the same answer.
+
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1 
+UNION ALL 
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+
+/*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1 
+UNION ALL 
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+
+-- Try variation.
+
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2;
+
+/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2;
+
+-- Verify sequential and index scans give the same answer.
+
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1 
+UNION ALL 
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+
+/*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1 
+UNION ALL 
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+
+-- Try a 1 element IN with row constructor. Should get an index scan since this turns into an equality.
+
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2;
+
+/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2;
+
+-- Verify sequential and index scans give the same answer.
+
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1 
+UNION ALL 
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+
+/*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+union all
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+
+-- Try an IN with yb_hash_code(). Cannot do an index scan since the query execution code does not support this
+-- so plan will have a sequantial scan. (This was hitting an assert before this issue was fixed.) 
+
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;
+
+/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;
+
+drop table GH18347;

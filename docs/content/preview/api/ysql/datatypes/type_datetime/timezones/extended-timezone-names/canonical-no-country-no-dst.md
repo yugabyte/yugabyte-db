@@ -4,7 +4,7 @@ headerTitle: Synthetic timezones (do not observe Daylight Savings Time)
 linkTitle: Synthetic timezones no DST
 description: Synthetic timezones no DST table. [YSQL]
 menu:
-  preview:
+  preview_api:
     identifier: canonical-no-country-no-dst
     parent: extended-timezone-names
     weight: 40
@@ -134,6 +134,6 @@ Here is the result:
 | Etc/GMT-13                       |  13:00     |
 | Etc/GMT-14                       |  14:00     |
 
-Notice that these timezones are named in accordance with the [POSIX](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html) convention. This defines locations to the west of Greenwich UK to have a _positive_ offset. But the value of the offset in _pg_timezone_names_ for such a location is shown as a _negative_ value.
+Notice that these timezones are named in accordance with the [POSIX](https://www.postgresql.org/docs/15/datetime-posix-timezone-specs.html) convention. This defines locations to the west of Greenwich UK to have a _positive_ offset. But the value of the offset in _pg_timezone_names_ for such a location is shown as a _negative_ value.
 
 You must be very careful to type correctly when you type these names. Because, for example, _Etc/GMT-99_ is not found in _pg_timezone_names_, it is interpreted at a POSIX-syntax specification of the offset—in this example _positive_ ninety-nine hours.

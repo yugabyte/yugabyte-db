@@ -19,9 +19,11 @@ import (
 
 // listNodesCmd represents the provider command
 var listNodesCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List node instances of a YugabyteDB Anywhere on-premises provider",
-	Long:  "List node instance of a YugabyteDB Anywhere on-premises provider",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List node instances of a YugabyteDB Anywhere on-premises provider",
+	Long:    "List node instance of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem node list --name <provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -42,7 +44,7 @@ var listNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		providerListRequest := authAPI.GetListOfProviders()
-		providerListRequest = providerListRequest.Name(providerName)
+		providerListRequest = providerListRequest.Name(providerName).ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err,
@@ -52,14 +54,9 @@ var listNodesCmd = &cobra.Command{
 		if len(r) < 1 {
 			logrus.Fatalf(
 				formatter.Colorize(
-					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					fmt.Sprintf("No on premises providers with name: %s found\n", providerName),
 					formatter.RedColor,
 				))
-		}
-
-		if r[0].GetCode() != util.OnpremProviderType {
-			errMessage := "Operation only supported for On-premises providers."
-			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}
 
 		providerUUID := r[0].GetUuid()
@@ -70,14 +67,15 @@ var listNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		nodeInstancesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: onprem.NewNodesFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  onprem.NewNodesFormat(viper.GetString("output")),
 		}
 		if len(rList) < 1 {
-			if util.IsOutputType("table") {
-				logrus.Infoln("No node instances found\n")
+			if util.IsOutputType(formatter.TableFormatKey) {
+				logrus.Info("No node instances found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Info("[]\n")
 			}
 			return
 		}

@@ -180,8 +180,17 @@ public class Audit extends Model {
     @EnumValue("RoleBinding")
     RoleBinding,
 
-    @EnumValue("OIDC Group Mapping")
-    OIDCGroupMapping
+    @EnumValue("Group Mapping")
+    GroupMapping,
+
+    @EnumValue("JobSchedule")
+    JobSchedule,
+
+    @EnumValue("ContinuousBackup")
+    ContinuousBackup,
+
+    @EnumValue("IsolatedBackup")
+    IsolatedBackup
   }
 
   public enum ActionType {
@@ -229,6 +238,9 @@ public class Audit extends Model {
 
     @EnumValue("Retry")
     Retry,
+
+    @EnumValue("Rollback")
+    Rollback,
 
     @EnumValue("Restore")
     Restore,
@@ -452,6 +464,9 @@ public class Audit extends Model {
     @EnumValue("Create PITR Config")
     CreatePitrConfig,
 
+    @EnumValue("Update PITR Config")
+    UpdatePitrConfig,
+
     @EnumValue("Restore Snapshot Schedule")
     RestoreSnapshotSchedule,
 
@@ -594,7 +609,10 @@ public class Audit extends Model {
     LdapUniverseSync,
 
     @EnumValue("Update Universe's Proxy Configuration")
-    UpdateProxyConfig
+    UpdateProxyConfig,
+
+    @EnumValue("Clone Namespace")
+    CloneNamespace
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

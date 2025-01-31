@@ -64,7 +64,8 @@ import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListLiveTabletServersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
@@ -75,6 +76,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
@@ -89,11 +91,13 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
@@ -124,6 +128,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
           TaskType.PreflightNodeCheck,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
@@ -138,11 +143,13 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
@@ -206,15 +213,18 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
           .thenReturn(Boolean.TRUE);
       when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
-      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
-      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+      when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
-
       when(mockClient.getLoadMoveCompletion())
           .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+      ListLiveTabletServersResponse mockListLiveTabletServersResponse =
+          mock(ListLiveTabletServersResponse.class);
+      when(mockListLiveTabletServersResponse.getTabletServers()).thenReturn(new ArrayList<>());
+      when(mockClient.listLiveTabletServers()).thenReturn(mockListLiveTabletServersResponse);
     } catch (Exception e) {
       fail();
     }
@@ -258,7 +268,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
-    List<TaskInfo> instanceActions = subTasksByPosition.get(2);
+    List<TaskInfo> instanceActions = subTasksByPosition.get(3);
     assertEquals(
         new ArrayList<>(
             Arrays.asList(

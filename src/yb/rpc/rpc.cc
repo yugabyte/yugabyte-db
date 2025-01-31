@@ -215,8 +215,8 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
     if (deadline_ != CoarseTimePoint::max()) {
       auto now = CoarseMonoClock::Now();
       if (deadline_ < now) {
-        string err_str = Format(
-          "$0 passed its deadline $1 (passed: $2)", *rpc, deadline_, now - start_);
+        string err_str = Format("$0 passed its deadline $1 (passed $2 of $3)",
+                                *rpc, deadline_, now - start_, deadline_ - start_);
         if (!last_error_.ok()) {
           SubstituteAndAppend(&err_str, ": $0", last_error_.ToString());
         }
@@ -229,8 +229,8 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
     VTRACE_TO(1, rpc->trace(), "Sending Rpc");
     rpc->SendRpc();
   } else {
-    // Service unavailable here means that we failed to to schedule delayed task, i.e. reactor
-    // is shutted down.
+    // Service unavailable here means that we failed to schedule delayed task, i.e. reactor
+    // is shut down.
     if (new_status.IsServiceUnavailable()) {
       new_status = STATUS_FORMAT(Aborted, "Aborted because of $0", new_status);
     }
@@ -274,10 +274,10 @@ void RpcRetrier::Abort() {
 }
 
 std::string RpcRetrier::ToString() const {
-  return Format("{ task_id: $0 state: $1 deadline: $2 }",
+  return Format("{ task_id: $0 state: $1 deadline: $2 (passed $3 of $4) }",
                 task_id_.load(std::memory_order_acquire),
                 state_.load(std::memory_order_acquire),
-                deadline_);
+                deadline_, CoarseMonoClock::Now() - start_, deadline_ - start_);
 }
 
 RpcController* RpcRetrier::PrepareController() {
@@ -309,8 +309,9 @@ CoarseTimePoint Rpcs::DoRequestAbortAll(RequestShutdown shutdown) {
     std::lock_guard lock(*mutex_);
     if (!shutdown_) {
       shutdown_ = shutdown;
-      calls.reserve(calls_.size());
       calls.assign(calls_.begin(), calls_.end());
+    } else if (shutdown) {
+      CHECK(calls_.empty());
     }
   }
   auto deadline = CoarseMonoClock::now() + FLAGS_rpcs_shutdown_timeout_ms * 1ms;

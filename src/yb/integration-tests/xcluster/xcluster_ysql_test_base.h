@@ -16,7 +16,10 @@
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 
 namespace yb {
+
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
+
+YB_STRONGLY_TYPED_BOOL(ExpectNoRecords);
 
 class XClusterYsqlTestBase : public XClusterTestBase {
  public:
@@ -27,9 +30,29 @@ class XClusterYsqlTestBase : public XClusterTestBase {
     uint32_t num_masters = 1;
     bool ranged_partitioned = false;
     bool is_colocated = false;
+    // Should setup ensure that the DBs with the same names on the source and target universes have
+    // different OIDs?
+    bool use_different_database_oids = false;
+    bool start_yb_controller_servers = false;
   };
 
   void SetUp() override;
+
+  virtual bool UseAutomaticMode() {
+    // Except for parameterized tests, we currently default to semi-automatic mode.
+    return false;
+  }
+
+  // How many extra streams/tables a namespace has in DB-scoped replication
+  int OverheadStreamsCount() {
+    if (!UseAutomaticMode()) {
+      return 0;
+    }
+    // Automatic DDL mode involves 2 extra tables: sequences_data and
+    // yb_xcluster_ddl_replication.dd_queue.
+    return 2;
+  }
+
   Status InitClusters(const MiniClusterOptions& opts) override;
 
   Status SetUpWithParams(
@@ -50,6 +73,9 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Result<NamespaceId> GetNamespaceId(YBClient* client, const NamespaceName& ns_name);
   Result<std::string> GetUniverseId(Cluster* cluster);
   Result<master::SysClusterConfigEntryPB> GetClusterConfig(Cluster& cluster);
+
+  Result<std::pair<NamespaceId, NamespaceId>> CreateDatabaseOnBothClusters(
+      const NamespaceName& db_name);
 
   Result<client::YBTableName> CreateYsqlTable(
       Cluster* cluster,
@@ -109,7 +135,12 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   Status VerifyWrittenRecords(
       const client::YBTableName& producer_table_name,
-      const client::YBTableName& consumer_table_name);
+      const client::YBTableName& consumer_table_name,
+      ExpectNoRecords expect_no_records = ExpectNoRecords::kFalse);
+
+  Status VerifyWrittenRecords(
+      ExpectNoRecords expect_no_records);
+
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
       XClusterTestBase::Cluster* cluster);
@@ -135,17 +166,26 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
       bool delete_op = false, bool use_transaction = false);
 
-  Status CheckpointReplicationGroup(
+  virtual Status CheckpointReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
   Result<bool> IsXClusterBootstrapRequired(
       const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& source_namespace_id);
   Status AddNamespaceToXClusterReplication(
       const NamespaceId& source_namespace_id, const NamespaceId& target_namespace_id);
+  // A empty list for namespace_names (the default) means just the namespace namespace_name.
   Status CreateReplicationFromCheckpoint(
       const std::string& target_master_addresses = {},
-      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
-  Status WaitForCreateReplicationToFinish(const std::string& target_master_addresses);
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      std::vector<NamespaceName> namespace_names = {});
+  // A empty list for namespace_names (the default) means just the namespace namespace_name.
+  Status WaitForCreateReplicationToFinish(
+      const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names = {});
+
+  Status VerifyDDLExtensionTablesCreation(const NamespaceName& db_name, bool only_source = false);
+  Status VerifyDDLExtensionTablesDeletion(const NamespaceName& db_name, bool only_source = false);
+
+  Status EnablePITROnClusters();
 
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);

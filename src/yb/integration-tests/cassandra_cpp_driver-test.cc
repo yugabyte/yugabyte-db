@@ -126,11 +126,11 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
     ASSERT_OK(admin_client_->Init());
   }
 
-  void SetUpCluster(ExternalMiniClusterOptions* opts) override {
-    ASSERT_NO_FATALS(ExternalMiniClusterITestBase::SetUpCluster(opts));
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    ASSERT_NO_FATALS(ExternalMiniClusterITestBase::SetUpOptions(opts));
 
-    opts->bind_to_unique_loopback_addresses = true;
-    opts->use_same_ts_ports = true;
+    opts.bind_to_unique_loopback_addresses = true;
+    opts.use_same_ts_ports = true;
   }
 
   void TearDown() override {
@@ -260,7 +260,6 @@ class CppCassandraDriverTestIndexSlower : public CppCassandraDriverTestIndex {
   std::vector<std::string> ExtraMasterFlags() override {
     auto flags = CppCassandraDriverTestIndex::ExtraMasterFlags();
     flags.push_back("--TEST_slowdown_backfill_alter_table_rpcs_ms=3000");
-    flags.push_back("--vmodule=backfill_index=3");
     return flags;
   }
 };
@@ -2015,10 +2014,10 @@ class CppCassandraDriverTestSlowTServer : public CppCassandraDriverTest {
   }
 
  protected:
-  void testBackfillBatching(bool batching_enabled);
+  void TestBackfillBatching(bool batching_enabled);
 };
 
-void CppCassandraDriverTestSlowTServer::testBackfillBatching(bool batching_enabled) {
+void CppCassandraDriverTestSlowTServer::TestBackfillBatching(bool batching_enabled) {
   ASSERT_OK(cluster_->SetFlagOnMasters(
       "allow_batching_non_deferred_indexes", ToString(batching_enabled)));
   constexpr int64_t kNumTabletsPerTable = 1;
@@ -2034,14 +2033,21 @@ void CppCassandraDriverTestSlowTServer::testBackfillBatching(bool batching_enabl
   int num_deferred_indexes = 0;
   BackfillMetrics before(*cluster_);
   std::vector<YBTableName> indexes;
+  std::vector<CassandraFuture> futures;
   for (int i = 0; i < kNumIndexes; ++i) {
     const YBTableName index_name(YQL_DATABASE_CQL, kNamespace, Format("idx$0", i));
     const bool defer = i % 2 == 0;
-    ASSERT_OK(session_.ExecuteQueryFormat(
-        "CREATE $0 INDEX $1 ON test_table (v)", (defer ? "DEFERRED" : ""),
-        index_name.table_name()));
+    futures.push_back(session_.ExecuteGetFuture(
+        Format("CREATE $0 INDEX $1 ON test_table (v)",
+               (defer ? "DEFERRED" : ""), index_name.table_name())));
     indexes.push_back(std::move(index_name));
     num_deferred_indexes += defer;
+  }
+
+  auto deadline = CoarseMonoClock::Now() + 20s * kTimeMultiplier;
+  for (int i = 0; i < kNumIndexes; ++i) {
+    SCOPED_TRACE(Format("Index: $0", i));
+    ASSERT_OK(futures[i].WaitFor(deadline - CoarseMonoClock::Now()));
   }
 
   for (const auto& index_name : indexes) {
@@ -2052,11 +2058,8 @@ void CppCassandraDriverTestSlowTServer::testBackfillBatching(bool batching_enabl
   }
 
   BackfillMetrics after(*cluster_);
-  // CppCassandraDriverTestSlowTServer slows the BackfillIndex rpc at the TServer, but not
-  // the Alters at the master/tserver. Thus, by the time the first index backfill is done,
-  // all other indexes should be at DO_BACKFILL.
-  // Thus, when batching of non-deferred index backfills is allowed, we expect to see 2 batches.
-  const int64_t kNumBatchesExpected = (batching_enabled ? 2 : kNumIndexes - num_deferred_indexes);
+  // When batching of non-deferred index backfills is allowed, we expect to see 1 batche.
+  const int64_t kNumBatchesExpected = batching_enabled ? 1 : kNumIndexes - num_deferred_indexes;
   const int64_t kNumApiCallsExpected = kNumBatchesExpected * kNumTabletsPerTable;
   ASSERT_EQ(0, before.get("backfill_index"));
   ASSERT_EQ(kNumApiCallsExpected, after.get("backfill_index"));
@@ -2065,11 +2068,11 @@ void CppCassandraDriverTestSlowTServer::testBackfillBatching(bool batching_enabl
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestBackfillBatchingEnabled, CppCassandraDriverTestSlowTServer) {
-  testBackfillBatching(true);
+  TestBackfillBatching(true);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestBackfillBatchingDisabled, CppCassandraDriverTestSlowTServer) {
-  testBackfillBatching(false);
+  TestBackfillBatching(false);
 }
 
 TEST_F_EX(CppCassandraDriverTest, ConcurrentBackfillIndexFailures, CppCassandraDriverTest) {
@@ -2427,7 +2430,6 @@ class CppCassandraDriverTestWithMasterFailover : public CppCassandraDriverTestIn
   virtual std::vector<std::string> ExtraMasterFlags() {
     auto flags = CppCassandraDriverTest::ExtraMasterFlags();
     flags.push_back("--TEST_slowdown_backfill_alter_table_rpcs_ms=200");
-    flags.push_back("--vmodule=backfill_index=3,async_rpc_tasks=3");
     return flags;
   }
 

@@ -19,6 +19,7 @@ import { YBLoadingCircleIcon } from '../../../../../../components/common/indicat
 import { YBButton } from '../../../../../components';
 import { YBEditor } from '../../../../../components/YBEditor';
 import {
+  BR_TAG,
   clearEditor,
   DefaultJSONElement,
   isEditorDirty,
@@ -283,7 +284,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
                       const bodyText = new HTMLSerializer(bodyEditorRef.current).serialize();
 
                       createTemplate.mutate({
-                        textTemplate: convertHTMLToText(bodyText)
+                        textTemplate: convertHTMLToText(bodyText, true).replace(BR_TAG, '\n')
                       });
                     }
                   }}

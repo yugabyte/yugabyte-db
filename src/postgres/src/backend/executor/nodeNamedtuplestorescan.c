@@ -3,7 +3,7 @@
  * nodeNamedtuplestorescan.c
  *	  routines to handle NamedTuplestoreScan nodes.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -137,7 +137,8 @@ ExecInitNamedTuplestoreScan(NamedTuplestoreScan *node, EState *estate, int eflag
 	/*
 	 * The scan tuple type is specified for the tuplestore.
 	 */
-	ExecInitScanTupleSlot(estate, &scanstate->ss, scanstate->tupdesc);
+	ExecInitScanTupleSlot(estate, &scanstate->ss, scanstate->tupdesc,
+						  &TTSOpsMinimalTuple);
 
 	/*
 	 * Initialize result type and projection.

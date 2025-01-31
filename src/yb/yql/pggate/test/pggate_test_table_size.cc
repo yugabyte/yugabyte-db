@@ -60,7 +60,7 @@ Result<int64> GetWalAndSstSizeForTable(ExternalMiniCluster* cluster, const Table
 
 class PggateTestTableSize : public PggateTest {
  public:
-  Status VerifyTableSize(YBCPgOid table_oid, const std::string& table_name, int64_t disk_size) {
+  Status VerifyTableSize(YbcPgOid table_oid, const std::string& table_name, int64_t disk_size) {
     const auto table_id = PgObjectId(kDefaultDatabaseOid, table_oid).GetYbTableId();
     const auto file_size = VERIFY_RESULT(GetWalAndSstSizeForTable(cluster_.get(), table_id));
     if (disk_size != file_size) {
@@ -75,8 +75,8 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
   CHECK_OK(Init("SimpleTable", 1 /* num_tablet_servers */, 1 /* replication_factor*/));
 
   const char *kTabname = "basic_table";
-  constexpr YBCPgOid kTabOid = 2;
-  YBCPgStatement pg_stmt;
+  constexpr YbcPgOid kTabOid = 2;
+  YbcPgStatement pg_stmt;
 
   // Create table in the connected database.
   int col_count = 0;
@@ -129,22 +129,22 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, kTabOid, false /* is_region_local */, &pg_stmt,
-      YBCPgTransactionSetting::YB_TRANSACTIONAL));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
   int seed = 1;
-  YBCPgExpr expr_hash;
+  YbcPgExpr expr_hash;
   CHECK_YBC_STATUS(YBCTestNewConstantInt8(pg_stmt, seed, false, &expr_hash));
 
-  YBCPgExpr expr_id;
+  YbcPgExpr expr_id;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, seed, false, &expr_id));
-  YBCPgExpr expr_depcnt;
+  YbcPgExpr expr_depcnt;
   CHECK_YBC_STATUS(YBCTestNewConstantInt2(pg_stmt, seed, false, &expr_depcnt));
-  YBCPgExpr expr_projcnt;
+  YbcPgExpr expr_projcnt;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, 100 + seed, false, &expr_projcnt));
-  YBCPgExpr expr_salary;
+  YbcPgExpr expr_salary;
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
-  YBCPgExpr expr_job;
+  YbcPgExpr expr_job;
   std::string job = strings::Substitute("Job_title_$0", seed);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
@@ -199,8 +199,8 @@ TEST_F(PggateTestTableSize, TestMissingTablets) {
   CHECK_OK(Init("MissingTablet"));
 
   const char *kTabname = "missing_tablet_table";
-  constexpr YBCPgOid kTabOid = 3;
-  YBCPgStatement pg_stmt;
+  constexpr YbcPgOid kTabOid = 3;
+  YbcPgStatement pg_stmt;
 
   // Create table in the connected database.
   int col_count = 0;
@@ -233,14 +233,14 @@ TEST_F(PggateTestTableSize, TestMissingTablets) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, kTabOid, false /* is_region_local */, &pg_stmt,
-      YBCPgTransactionSetting::YB_TRANSACTIONAL));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
   int seed = 1;
-  YBCPgExpr expr_hash;
+  YbcPgExpr expr_hash;
   CHECK_YBC_STATUS(YBCTestNewConstantInt8(pg_stmt, seed, false, &expr_hash));
 
-  YBCPgExpr expr_id;
+  YbcPgExpr expr_id;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, seed, false, &expr_id));
 
   // Set column value to be inserted.
@@ -286,7 +286,7 @@ TEST_F(PggateTestTableSize, TestTableNotExists) {
   int table_oid = 10; // an oid that doesn't exist
   int64_t disk_size = 0;
   int32_t num_missing_tablets = 0;
-  YBCStatus status = YBCPgGetTableDiskSize(table_oid,
+  YbcStatus status = YBCPgGetTableDiskSize(table_oid,
                                           kDefaultDatabaseOid,
                                           &disk_size,
                                           &num_missing_tablets);

@@ -76,7 +76,7 @@ class PollTransactionStatusBase {
  protected:
   Status VerifyTransaction();
   virtual void TransactionPending() = 0;
-  virtual void FinishPollTransaction(Status s) = 0;
+  virtual void FinishPollTransaction() = 0;
   void Shutdown();
 
   TransactionMetadata transaction_;
@@ -133,8 +133,8 @@ class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
   Status FirstStep() override;
   void TransactionPending() override;
   Status ValidateRunnable() override;
-  void FinishPollTransaction(Status s) override;
-  Status CheckNsExists(Status status);
+  void FinishPollTransaction() override;
+  Status CheckNsExists();
   void TaskCompleted(const Status& status) override;
   void PerformAbort() override;
 
@@ -149,7 +149,7 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
     CatalogManager& catalog_manager,
     scoped_refptr<TableInfo> table,
     const TransactionMetadata& transaction,
-    std::function<void(Result<bool>)> complete_callback,
+    std::function<void(Result<std::optional<bool>>)> complete_callback,
     SysCatalogTable* sys_catalog,
     std::shared_future<client::YBClient*> client_future,
     rpc::Messenger& messenger,
@@ -172,7 +172,7 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
     CatalogManager& catalog_manager,
     scoped_refptr<TableInfo> table,
     const TransactionMetadata& transaction,
-    std::function<void(Result<bool>)> complete_callback,
+    std::function<void(Result<std::optional<bool>>)> complete_callback,
     SysCatalogTable* sys_catalog,
     std::shared_future<client::YBClient*> client_future,
     rpc::Messenger& messenger,
@@ -183,16 +183,16 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
   Status FirstStep() override;
   void TransactionPending() override;
   Status ValidateRunnable() override;
-  Status CheckTableExists(Status s);
-  Status CompareSchema(Status s);
-  Status FinishTask(Result<bool> is_committed);
-  void FinishPollTransaction(Status s) override;
+  Status CheckTableExists();
+  Status CompareSchema();
+  Status FinishTask(Result<std::optional<bool>> is_committed);
+  void FinishPollTransaction() override;
   void TaskCompleted(const Status& status) override;
   void PerformAbort() override;
 
   SysCatalogTable& sys_catalog_;
   bool ddl_atomicity_enabled_;
-  bool is_committed_ = false;
+  std::optional<bool> is_committed_{std::nullopt};
 };
 
 }  // namespace master

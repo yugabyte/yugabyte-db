@@ -101,7 +101,7 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
   private void forceCatalogCacheRefresh() throws Exception {
     Connection connection = getConnectionBuilder().withTServer(0).connect();
     Statement stmt = connection.createStatement();
-    stmt.execute("ALTER ROLE yugabyte SUPERUSER");
+    getSystemTableRowsList(stmt, "SELECT yb_increment_all_db_catalog_versions(true)");
     waitForTServerHeartbeat();
   }
 
@@ -109,6 +109,7 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
   public void testSetMemoryTracking() throws Exception {
     forceCatalogCacheRefresh();
     try (Statement stmt = connection.createStatement()) {
+      consumeMem(stmt);
       int beid = getPgBackendBeid(stmt);
 
       // Verify that the allocated_mem_bytes and rss_mem_bytes are successfully retrieved

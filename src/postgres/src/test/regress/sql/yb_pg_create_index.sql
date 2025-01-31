@@ -3,6 +3,9 @@
 -- Create ancillary data structures (i.e. indices)
 --
 
+-- directory paths are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
+
 --
 -- BTREE
 --
@@ -50,12 +53,38 @@ CREATE INDEX onek2_u2_prtl ON onek2 USING btree(unique2 int4_ops ASC)
 CREATE INDEX onek2_stu1_prtl ON onek2 USING btree(stringu1 name_ops ASC)
 	where onek2.stringu1 >= 'J' and onek2.stringu1 < 'K';
 
+CREATE TABLE slow_emp4000 (
+	home_base	 box
+);
+
+CREATE TABLE fast_emp4000 (
+	home_base	 box
+);
+
+\set filename :abs_srcdir '/data/rect.data'
+COPY slow_emp4000 FROM :'filename';
+
+INSERT INTO fast_emp4000 SELECT * FROM slow_emp4000;
+
+ANALYZE slow_emp4000;
+ANALYZE fast_emp4000;
+
 --
 -- GIN over int[] and text[]
 --
 -- Note: GIN currently supports only bitmap scans, not plain indexscans
 -- YB Note: ybgin uses plain indexscans, not bitmap scans
 --
+
+CREATE TABLE array_index_op_test (
+	seqno		int4,
+	i			int4[],
+	t			text[]
+);
+
+\set filename :abs_srcdir '/data/array.data'
+COPY array_index_op_test FROM :'filename';
+ANALYZE array_index_op_test;
 
 SET enable_seqscan = OFF;
 SET enable_indexscan = OFF;
@@ -103,6 +132,45 @@ CREATE INDEX gin_relopts_test ON array_index_op_test USING gin (i)
 \d+ gin_relopts_test
 
 --
+-- Test unique null behavior
+--
+CREATE TABLE unique_tbl (i int, t text);
+
+CREATE UNIQUE INDEX unique_idx1 ON unique_tbl (i) NULLS DISTINCT;
+CREATE UNIQUE INDEX unique_idx2 ON unique_tbl (i) NULLS NOT DISTINCT;
+
+INSERT INTO unique_tbl VALUES (1, 'one');
+INSERT INTO unique_tbl VALUES (2, 'two');
+INSERT INTO unique_tbl VALUES (3, 'three');
+INSERT INTO unique_tbl VALUES (4, 'four');
+INSERT INTO unique_tbl VALUES (5, 'one');
+INSERT INTO unique_tbl (t) VALUES ('six');
+INSERT INTO unique_tbl (t) VALUES ('seven');  -- error from unique_idx2
+
+DROP INDEX unique_idx1, unique_idx2;
+DROP INDEX unique_idx1;
+DROP INDEX unique_idx2;
+
+INSERT INTO unique_tbl (t) VALUES ('seven');
+
+-- build indexes on filled table
+CREATE UNIQUE INDEX unique_idx3 ON unique_tbl (i) NULLS DISTINCT;  -- ok
+CREATE UNIQUE INDEX unique_idx4 ON unique_tbl (i) NULLS NOT DISTINCT;  -- error
+DROP INDEX unique_idx4;
+
+DELETE FROM unique_tbl WHERE t = 'seven';
+
+CREATE UNIQUE INDEX unique_idx4 ON unique_tbl (i) NULLS NOT DISTINCT;  -- ok now
+
+\d unique_tbl
+\d unique_idx3
+\d unique_idx4
+SELECT pg_get_indexdef('unique_idx3'::regclass);
+SELECT pg_get_indexdef('unique_idx4'::regclass);
+
+DROP TABLE unique_tbl;
+
+--
 -- Try some concurrent index builds
 --
 -- Unfortunately this only tests about half the code paths because there are
@@ -141,6 +209,40 @@ COMMIT;
 -- YB note: VACUUM and REINDEX TABLE are not yet supported
 VACUUM FULL concur_heap;
 REINDEX TABLE concur_heap;
+
+--
+-- Test ADD CONSTRAINT USING INDEX
+--
+
+CREATE TABLE cwi_test( a int , b varchar(10), c char);
+
+-- add some data so that all tests have something to work with.
+
+INSERT INTO cwi_test VALUES(1, 2), (3, 4), (5, 6);
+
+CREATE UNIQUE INDEX cwi_uniq_idx ON cwi_test(a , b);
+ALTER TABLE cwi_test ADD primary key USING INDEX cwi_uniq_idx;
+
+\d cwi_test
+\d cwi_uniq_idx
+
+CREATE UNIQUE INDEX cwi_uniq2_idx ON cwi_test(b , a);
+ALTER TABLE cwi_test DROP CONSTRAINT cwi_uniq_idx,
+	ADD CONSTRAINT cwi_replaced_pkey PRIMARY KEY
+		USING INDEX cwi_uniq2_idx;
+
+\d cwi_test
+\d cwi_replaced_pkey
+
+DROP INDEX cwi_replaced_pkey;	-- Should fail; a constraint depends on it
+
+DROP TABLE cwi_test;
+
+-- ADD CONSTRAINT USING INDEX is forbidden on partitioned tables
+CREATE TABLE cwi_test(a int) PARTITION BY hash (a);
+create unique index on cwi_test (a);
+alter table cwi_test add primary key using index cwi_test_a_idx ;
+DROP TABLE cwi_test;
 
 --
 -- REINDEX (VERBOSE)

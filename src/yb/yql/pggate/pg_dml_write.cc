@@ -15,6 +15,10 @@
 
 #include "yb/yql/pggate/pg_dml_write.h"
 
+#include <limits>
+#include <string>
+#include <utility>
+
 #include "yb/dockv/packed_row.h"
 
 #include "yb/gutil/casts.h"
@@ -24,32 +28,31 @@
 
 #include "catalog/pg_type_d.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
-//--------------------------------------------------------------------------------------------------
-// PgDmlWrite
-//--------------------------------------------------------------------------------------------------
-
-PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
-                       const PgObjectId& table_id,
-                       bool is_region_local,
-                       YBCPgTransactionSetting transaction_setting,
-                       bool packed)
-    : PgDml(std::move(pg_session), table_id, is_region_local),
-      transaction_setting_(transaction_setting),
-      packed_(packed) {
+PgDmlWrite::PgDmlWrite(
+    const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting,
+    bool packed)
+    : PgDml(pg_session), transaction_setting_(transaction_setting), packed_(packed) {
 }
 
-PgDmlWrite::~PgDmlWrite() {
-}
-
-Status PgDmlWrite::Prepare() {
+Status PgDmlWrite::Prepare(const PgObjectId& table_id, bool is_region_local) {
   // Setup descriptors for target and bind columns.
-  target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
+  target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
 
-  // Allocate either INSERT, UPDATE, DELETE, or TRUNCATE_COLOCATED request.
-  AllocWriteRequest();
+  auto write_op = ArenaMakeShared<PgsqlWriteOp>(
+      arena_ptr(), &arena(),
+      /* need_transaction= */ transaction_setting_ == YbcPgTransactionSetting::YB_TRANSACTIONAL,
+      is_region_local);
+
+  write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
+  write_req_->set_stmt_type(stmt_type());
+  write_req_->set_client(YQL_CLIENT_PGSQL);
+  write_req_->dup_table_id(table_id.GetYbTableId());
+  write_req_->set_schema_version(target_->schema_version());
+  write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
+
+  doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
   PrepareColumns();
   return Status::OK();
 }
@@ -150,50 +153,24 @@ Status PgDmlWrite::SetWriteTime(const HybridTime& write_time) {
   return Status::OK();
 }
 
-void PgDmlWrite::AllocWriteRequest() {
-  auto write_op = ArenaMakeShared<PgsqlWriteOp>(
-      arena_ptr(), &arena(),
-      /* need_transaction */
-      (transaction_setting_ == YBCPgTransactionSetting::YB_TRANSACTIONAL),
-      is_region_local_);
-
-  write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
-  write_req_->set_stmt_type(stmt_type());
-  write_req_->set_client(YQL_CLIENT_PGSQL);
-  write_req_->dup_table_id(table_id_.GetYbTableId());
-  write_req_->set_schema_version(target_->schema_version());
-  write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
-
-  doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
-}
-
 Result<LWPgsqlExpressionPB*> PgDmlWrite::AllocColumnBindPB(PgColumn* col, PgExpr* expr) {
   return col->AllocBindPB(write_req_.get(), expr);
 }
 
-LWPgsqlExpressionPB *PgDmlWrite::AllocColumnAssignPB(PgColumn *col) {
+LWPgsqlExpressionPB* PgDmlWrite::AllocColumnAssignPB(PgColumn* col) {
   return col->AllocAssignPB(write_req_.get());
 }
 
-LWPgsqlExpressionPB *PgDmlWrite::AllocTargetPB() {
+LWPgsqlExpressionPB* PgDmlWrite::AllocTargetPB() {
   return write_req_->add_targets();
 }
 
-LWPgsqlExpressionPB *PgDmlWrite::AllocQualPB() {
-  LOG(FATAL) << "Pure virtual function is being called";
-  return nullptr;
-}
-
-LWPgsqlColRefPB *PgDmlWrite::AllocColRefPB() {
-  return write_req_->add_col_refs();
-}
-
-void PgDmlWrite::ClearColRefPBs() {
-  write_req_->mutable_col_refs()->clear();
+ArenaList<LWPgsqlColRefPB>& PgDmlWrite::ColRefPBs() {
+  return *write_req_->mutable_col_refs();
 }
 
 template <class T>
-T DatumToYb(const YBCPgTypeEntity* type_entity, uint64_t datum) {
+T DatumToYb(const YbcPgTypeEntity* type_entity, uint64_t datum) {
   T value;
   type_entity->datum_to_yb(datum, &value, nullptr);
   return value;
@@ -201,7 +178,7 @@ T DatumToYb(const YBCPgTypeEntity* type_entity, uint64_t datum) {
 
 template <class T>
 void PackAsUInt32(
-    const YBCPgTypeEntity* type_entity, uint64_t datum, dockv::ValueEntryType type,
+    const YbcPgTypeEntity* type_entity, uint64_t datum, dockv::ValueEntryType type,
     ValueBuffer* out) {
   char* buf = out->GrowByAtLeast(1 + sizeof(uint32_t));
   *buf++ = static_cast<char>(type);
@@ -210,7 +187,7 @@ void PackAsUInt32(
 
 template <class T>
 void PackAsUInt64(
-    const YBCPgTypeEntity* type_entity, uint64_t datum, dockv::ValueEntryType type,
+    const YbcPgTypeEntity* type_entity, uint64_t datum, dockv::ValueEntryType type,
     ValueBuffer* out) {
   char* buf = out->GrowByAtLeast(1 + sizeof(uint64_t));
   *buf++ = static_cast<char>(type);
@@ -219,7 +196,7 @@ void PackAsUInt64(
 
 class PackableBindColumn final : public dockv::PackableValue {
  public:
-  explicit PackableBindColumn(YBCBindColumn* column) : column_(column) {}
+  explicit PackableBindColumn(YbcBindColumn* column) : column_(column) {}
 
   void PackToV1(ValueBuffer* out) const override {
     using dockv::ValueEntryType;
@@ -266,6 +243,7 @@ class PackableBindColumn final : public dockv::PackableValue {
         PackAsUInt64<uint64_t>(type_entity, datum, ValueEntryType::kUInt64, out);
         return;
 
+      case YB_YQL_DATA_TYPE_VECTOR: [[fallthrough]];
       case YB_YQL_DATA_TYPE_BINARY: {
         char *value;
         int64_t bytes = type_entity->datum_fixed_size;
@@ -333,6 +311,7 @@ class PackableBindColumn final : public dockv::PackableValue {
       case YB_YQL_DATA_TYPE_UINT64:
         return 9;
 
+      case YB_YQL_DATA_TYPE_VECTOR: [[fallthrough]];
       case YB_YQL_DATA_TYPE_BINARY: {
         char *value;
         int64_t bytes = type_entity->datum_fixed_size;
@@ -391,7 +370,7 @@ class PackableBindColumn final : public dockv::PackableValue {
     return DatumToYb<T>(column_->type_entity, column_->datum);
   }
 
-  YBCBindColumn* column_;
+  YbcBindColumn* column_;
 };
 
 class EmptyMissingValueProvider : public MissingValueProvider {
@@ -402,7 +381,7 @@ class EmptyMissingValueProvider : public MissingValueProvider {
   }
 };
 
-Status PgDmlWrite::BindRow(uint64_t ybctid, YBCBindColumn* columns, int count) {
+Status PgDmlWrite::BindRow(uint64_t ybctid, YbcBindColumn* columns, int count) {
   if (packed_) {
     return BindPackedRow(ybctid, columns, count);
   }
@@ -426,7 +405,7 @@ Status PgDmlWrite::BindRow(uint64_t ybctid, YBCBindColumn* columns, int count) {
   return Status::OK();
 }
 
-Status PgDmlWrite::BindPackedRow(uint64_t ybctid, YBCBindColumn* columns, int count) {
+Status PgDmlWrite::BindPackedRow(uint64_t ybctid, YbcBindColumn* columns, int count) {
   {
     const auto* type_entity = YBCPgFindTypeEntity(BYTEAOID);
     uint8_t *value;
@@ -451,5 +430,4 @@ Status PgDmlWrite::BindPackedRow(uint64_t ybctid, YBCBindColumn* columns, int co
   return Status::OK();
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

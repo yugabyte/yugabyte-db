@@ -10,6 +10,12 @@ Describe an Azure storage configuration in YugabyteDB Anywhere
 yba storage-config azure describe [flags]
 ```
 
+### Examples
+
+```
+yba storage-config azure describe --name <storage-configuration-name>
+```
+
 ### Options
 
 ```

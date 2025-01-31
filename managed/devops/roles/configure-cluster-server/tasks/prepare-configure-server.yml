@@ -24,11 +24,16 @@
 - name: Configure | Add yb server ctl script
   vars:
     mount_paths: "{{ _mount_points | join(' ') }}"
+    systemd_option: "{{ systemd_option }}"  # Pass systemd_option to the template
   template:
     src: yb-server-ctl.sh.j2
     dest: "{{ yb_bin_dir }}/yb-server-ctl.sh"
     owner: "{{ user_name }}"
     mode: 0755
+  tags:
+    - install-software
+    - systemd_upgrade
+
 
 - name: Configure | Add clock sync script
   vars:
@@ -38,6 +43,9 @@
     dest: "{{ yb_bin_dir }}/clock-sync.sh"
     owner: "{{ user_name }}"
     mode: 0755
+  tags:
+    - install-software
+    - systemd_upgrade
 
 - name: Setup | Create directory to land core dumps
   file:
@@ -65,7 +73,9 @@
     dest: "{{ yb_bin_dir }}/clean_cores.sh"
     owner: "{{ user_name }}"
     mode: 0755
-  tags: yb-prebuilt-ami
+  tags:
+    - yb-prebuilt-ami
+    - systemd_upgrade
 
 - name: Configure | Add purge logs script
   template:
@@ -73,6 +83,19 @@
     dest: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
     owner: "{{ user_name }}"
     mode: 0755
+  tags:
+    - yb-prebuilt-ami
+    - systemd_upgrade
+
+- name: Configure | Find current yb_metrics_dir
+  shell: "systemctl show node_exporter | grep -oE \"collector.textfile.directory={{ yb_metrics_dir_old }}\" | if [ $(wc -c) -eq \"0\" ]; then echo {{ yb_metrics_dir_new }}; else echo {{ yb_metrics_dir_old }}; fi"
+  register: yb_metrics_dir_out
+  tags:
+    - yb-prebuilt-ami
+    - systemd_upgrade
+
+- set_fact:
+    yb_metrics_dir: "{{ yb_metrics_dir_out.stdout }}"
   tags: yb-prebuilt-ami
 
 - name: Configure | Add collect metrics wrapper script
@@ -81,7 +104,9 @@
     dest: "{{ yb_bin_dir }}/collect_metrics_wrapper.sh"
     owner: "{{ user_name }}"
     mode: 0755
-  tags: yb-prebuilt-ami
+  tags:
+    - yb-prebuilt-ami
+    - systemd_upgrade
 
 - set_fact:
     cron_result: {}
@@ -171,10 +196,6 @@
   - name: Configure | Enable linger for {{ user_name }} user
     shell:
         cmd: "loginctl enable-linger {{ user_name }}"
-
-  - name: Configure | setup-postgres-cgroups
-    include_role:
-      name: setup-cgroup
 
   - name: Configure | Setup OpenTelemetry Collector
     include_role:
@@ -282,9 +303,16 @@
       state: present
       mode: 0644
 
-  tags: systemd_upgrade
+  tags:
+  - systemd_upgrade
+  - install-software
   when: (systemd_option and not ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
         or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')))
+
+- name: Configure | setup-postgres-cgroups
+  include_role:
+    name: setup-cgroup
+  when: systemd_option and ansible_distribution_major_version >= "9"
 
 - block:
   # Remove old cron jobs that clean cores, purge logs and collect metrics

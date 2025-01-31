@@ -2,16 +2,17 @@ author = "Team Yugabyte"
 description = "YugabyteDB, the transactional, high-performance database for building internet-scale, globally-distributed apps."
 copyright = "Yugabyte, Inc."
 privacy_policy = "https://www.yugabyte.com/privacy-policy/"
-algolia_docsearch = true
-algolia_sequence_expressions = true
 kapa_ai = true
-drift_snippet = true
-search_banner = true
+search_banner = false
 version_menu = "Releases"
 
 # Change version_menu_pagelinks to true to go to the same page when you switch
 # versions from the dropdown menu.
 version_menu_pagelinks = true
+
+[search]
+  algolia_docsearch = true
+  algolia_sequence_expressions = true
 
 [path_base_for_github_subdir]
   from = "content/en/(.*?)/"
@@ -19,7 +20,7 @@ version_menu_pagelinks = true
 
 [[links.developer]]
   name = "Slack"
-  url = "https://communityinviter.com/apps/yugabyte-db/register"
+  url = "https://inviter.co/yugabytedb"
   icon = "fab fa-slack"
 
 [[links.developer]]
@@ -52,9 +53,12 @@ version_menu_pagelinks = true
 
 [[versions]]
   url = "/preview"
-  version = "v2.21 (Preview)"
+  version = "v2.25 (Preview)"
 [[versions]]
   url = "/stable"
+  version = "v2024.2 (LTS)"
+[[versions]]
+  url = "/v2024.1"
   version = "v2024.1 (STS)"
 [[versions]]
   url = "/v2.20"
@@ -63,21 +67,18 @@ version_menu_pagelinks = true
   url = "/v2.18"
   version = "v2.18 (STS)"
 [[versions]]
-  url = "/v2.16"
-  version = "v2.16 (STS)"
-[[versions]]
   url = "/v2.14"
   version = "v2.14 (LTS)"
 [[versions]]
-  url = "https://docs-archive.yugabyte.com/v2.12"
+  url = "https://docs-archive.yugabyte.com/v2.16"
   version = "Unsupported versions"
   newTab = true
 
 # Custom params, regardless of theme
 [yb]
   terms_of_service = "https://www.yugabyte.com/terms-of-service/"
-  preview_version = "v2.21"
-  preview_version_slug = "stable"
+  preview_version = "v2.25"
+  preview_version_slug = "preview"
   # To disable heading/title icons for particular page, define `hideHeadingIcon: true` on that page params.
   heading_icons = true
 

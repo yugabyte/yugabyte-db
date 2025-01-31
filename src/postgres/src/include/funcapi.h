@@ -8,7 +8,7 @@
  * or call FUNCAPI-callable functions or macros.
  *
  *
- * Copyright (c) 2002-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2022, PostgreSQL Global Development Group
  *
  * src/include/funcapi.h
  *
@@ -17,11 +17,10 @@
 #ifndef FUNCAPI_H
 #define FUNCAPI_H
 
-#include "fmgr.h"
 #include "access/tupdesc.h"
 #include "executor/executor.h"
 #include "executor/tuptable.h"
-
+#include "fmgr.h"
 
 /*-------------------------------------------------------------------------
  *	Support to ease writing Functions returning composite types
@@ -50,41 +49,50 @@ typedef struct AttInMetadata
 
 /* This struct holds the info required to decode the values corresponding to various data types
  * using the pg out functions*/
-typedef struct DatumDecodeOptions
+typedef struct YbDatumDecodeOptions
 {
-  /* if the info is needed for decoding array types */
-  bool         is_array;
+	/* if the info is needed for decoding array types */
+	bool		is_array;
 
-  /* if the elem is passed by val, used by pg out function */
-  bool         elem_by_val;
+	/* if the elem is passed by val, used by pg out function */
+	bool		elem_by_val;
 
-  /* used to make sure that the call is from yb layer. As of now it is true always */
-  bool         from_YB;
+	/*
+	 * used to make sure that the call is from yb layer. As of now it is true
+	 * always
+	 */
+	bool		from_YB;
 
-  /* Alignment info used by pg out function */
-  char         elem_align;
+	/* Alignment info used by pg out function */
+	char		elem_align;
 
-  /* Delimiter info used by pg out function */
-  char         elem_delim;
+	/* Delimiter info used by pg out function */
+	char		elem_delim;
 
-  /* indicates if it is decoding is associated with range datatype */
-  char         option;
+	/* indicates if it is decoding is associated with range datatype */
+	char		option;
 
-  /* element length used by pg out function */
-  int16_t      elem_len;
+	/* element length used by pg out function */
+	int16_t		elem_len;
 
-  /* data type corresponding to range */
-  int          range_type;
+	/* data type corresponding to range */
+	int			range_type;
 
-  /* Fmgr info needed by the pg out function */
-  FmgrInfo*    elem_finfo;
+	/* Fmgr info needed by the pg out function */
+	FmgrInfo   *elem_finfo;
 
-  /* Timezone info needed by pg out function in case of timezone associated data types */
-  const char*  timezone;
+	/*
+	 * Timezone info needed by pg out function in case of timezone associated
+	 * data types
+	 */
+	const char *timezone;
 
-  /* Used in case of range arrays to get pass the info needed to decode range data types*/
-  struct DatumDecodeOptions* range_datum_decode_options;
-} DatumDecodeOptions;
+	/*
+	 * Used in case of range arrays to get pass the info needed to decode
+	 * range data types
+	 */
+	struct YbDatumDecodeOptions *range_datum_decode_options;
+} YbDatumDecodeOptions;
 
 /*-------------------------------------------------------------------------
  *		Support struct to ease writing Set Returning Functions (SRFs)
@@ -111,14 +119,6 @@ typedef struct FuncCallContext
 	 * is done.
 	 */
 	uint64		max_calls;
-
-	/*
-	 * OPTIONAL pointer to result slot
-	 *
-	 * This is obsolete and only present for backwards compatibility, viz,
-	 * user-defined SRFs that use the deprecated TupleDescGetSlot().
-	 */
-	TupleTableSlot *slot;
 
 	/*
 	 * OPTIONAL pointer to miscellaneous user-provided context information
@@ -200,35 +200,35 @@ typedef enum TypeFuncClass
 } TypeFuncClass;
 
 extern TypeFuncClass get_call_result_type(FunctionCallInfo fcinfo,
-					 Oid *resultTypeId,
-					 TupleDesc *resultTupleDesc);
+										  Oid *resultTypeId,
+										  TupleDesc *resultTupleDesc);
 extern TypeFuncClass get_expr_result_type(Node *expr,
-					 Oid *resultTypeId,
-					 TupleDesc *resultTupleDesc);
+										  Oid *resultTypeId,
+										  TupleDesc *resultTupleDesc);
 extern TypeFuncClass get_func_result_type(Oid functionId,
-					 Oid *resultTypeId,
-					 TupleDesc *resultTupleDesc);
+										  Oid *resultTypeId,
+										  TupleDesc *resultTupleDesc);
 
 extern TupleDesc get_expr_result_tupdesc(Node *expr, bool noError);
 
 extern bool resolve_polymorphic_argtypes(int numargs, Oid *argtypes,
-							 char *argmodes,
-							 Node *call_expr);
+										 char *argmodes,
+										 Node *call_expr);
 
-extern int get_func_arg_info(HeapTuple procTup,
-				  Oid **p_argtypes, char ***p_argnames,
-				  char **p_argmodes);
+extern int	get_func_arg_info(HeapTuple procTup,
+							  Oid **p_argtypes, char ***p_argnames,
+							  char **p_argmodes);
 
-extern int get_func_input_arg_names(Datum proargnames, Datum proargmodes,
-						 char ***arg_names);
+extern int	get_func_input_arg_names(Datum proargnames, Datum proargmodes,
+									 char ***arg_names);
 
 extern int	get_func_trftypes(HeapTuple procTup, Oid **p_trftypes);
 extern char *get_func_result_name(Oid functionId);
 
 extern TupleDesc build_function_result_tupdesc_d(char prokind,
-								Datum proallargtypes,
-								Datum proargmodes,
-								Datum proargnames);
+												 Datum proallargtypes,
+												 Datum proargmodes,
+												 Datum proargnames);
 extern TupleDesc build_function_result_tupdesc_t(HeapTuple procTuple);
 
 
@@ -259,8 +259,6 @@ extern TupleDesc build_function_result_tupdesc_t(HeapTuple procTuple);
  *		TupleDesc based on a named relation.
  * TupleDesc TypeGetTupleDesc(Oid typeoid, List *colaliases) - Use to get a
  *		TupleDesc based on a type OID.
- * TupleTableSlot *TupleDescGetSlot(TupleDesc tupdesc) - Builds a
- *		TupleTableSlot, which is not needed anymore.
  * TupleGetDatum(TupleTableSlot *slot, HeapTuple tuple) - get a Datum
  *		given a tuple and a slot.
  *----------
@@ -278,13 +276,12 @@ extern TupleDesc BlessTupleDesc(TupleDesc tupdesc);
 extern AttInMetadata *TupleDescGetAttInMetadata(TupleDesc tupdesc);
 extern HeapTuple BuildTupleFromCStrings(AttInMetadata *attinmeta, char **values);
 extern Datum HeapTupleHeaderGetDatum(HeapTupleHeader tuple);
-extern TupleTableSlot *TupleDescGetSlot(TupleDesc tupdesc);
 
 
 /*----------
  *		Support for Set Returning Functions (SRFs)
  *
- * The basic API for SRFs looks something like:
+ * The basic API for SRFs using ValuePerCall mode looks something like this:
  *
  * Datum
  * my_Set_Returning_Function(PG_FUNCTION_ARGS)
@@ -301,7 +298,7 @@ extern TupleTableSlot *TupleDescGetSlot(TupleDesc tupdesc);
  *		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
  *		<user defined code>
  *		<if returning composite>
- *			<build TupleDesc, and perhaps AttInMetaData>
+ *			<build TupleDesc, and perhaps AttInMetadata>
  *		<endif returning composite>
  *		<user defined code>
  *		// return to original context when allocating transient memory
@@ -321,10 +318,33 @@ extern TupleTableSlot *TupleDescGetSlot(TupleDesc tupdesc);
  *		SRF_RETURN_DONE(funcctx);
  * }
  *
+ * NOTE: there is no guarantee that a SRF using ValuePerCall mode will be
+ * run to completion; for example, a query with LIMIT might stop short of
+ * fetching all the rows.  Therefore, do not expect that you can do resource
+ * cleanup just before SRF_RETURN_DONE().  You need not worry about releasing
+ * memory allocated in multi_call_memory_ctx, but holding file descriptors or
+ * other non-memory resources open across calls is a bug.  SRFs that need
+ * such resources should not use these macros, but instead populate a
+ * tuplestore during a single call, as set up by InitMaterializedSRF() (see
+ * fmgr/README).  Alternatively, set up a callback to release resources
+ * at query shutdown, using RegisterExprContextCallback().
+ *
  *----------
  */
 
 /* from funcapi.c */
+
+/* flag bits for InitMaterializedSRF() */
+#define MAT_SRF_USE_EXPECTED_DESC	0x01	/* use expectedDesc as tupdesc. */
+#define MAT_SRF_BLESS				0x02	/* "Bless" a tuple descriptor with
+											 * BlessTupleDesc(). */
+extern void InitMaterializedSRF(FunctionCallInfo fcinfo, bits32 flags);
+
+/* Compatibility declarations, for v15 */
+#define SRF_SINGLE_USE_EXPECTED MAT_SRF_USE_EXPECTED_DESC
+#define SRF_SINGLE_BLESS		MAT_SRF_BLESS
+extern void SetSingleFuncCall(FunctionCallInfo fcinfo, bits32 flags);
+
 extern FuncCallContext *init_MultiFuncCall(PG_FUNCTION_ARGS);
 extern FuncCallContext *per_MultiFuncCall(PG_FUNCTION_ARGS);
 extern void end_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext *funcctx);
@@ -380,8 +400,8 @@ extern void end_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext *funcctx);
  * The return result is the number of elements stored, or -1 in the case of
  * "VARIADIC NULL".
  */
-extern int extract_variadic_args(FunctionCallInfo fcinfo, int variadic_start,
-					  bool convert_unknown, Datum **values,
-					  Oid **types, bool **nulls);
+extern int	extract_variadic_args(FunctionCallInfo fcinfo, int variadic_start,
+								  bool convert_unknown, Datum **values,
+								  Oid **types, bool **nulls);
 
 #endif							/* FUNCAPI_H */

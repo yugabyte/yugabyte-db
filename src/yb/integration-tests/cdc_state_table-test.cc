@@ -72,7 +72,7 @@ TEST_F(CDCStateTableTest, TestUpdateEntriesWithReplaceMapFalse) {
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
@@ -126,7 +126,7 @@ TEST_F(CDCStateTableTest, TestUpdateEntriesWithReplaceMapTrue) {
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
@@ -179,7 +179,7 @@ TEST_F(CDCStateTableTest, TestUpsertEntriesWithReplaceMapFalse) {
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
@@ -234,7 +234,7 @@ TEST_F(CDCStateTableTest, TestUpsertEntriesWithReplaceMapTrue) {
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
@@ -288,7 +288,7 @@ TEST_F(CDCStateTableTest, TestUpdateEntriesWithUpdateAndRemoveKeyInSingleBatch) 
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
@@ -349,7 +349,7 @@ TEST_F(CDCStateTableTest, TestRemovingNonExistentKeyFromMap) {
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
@@ -404,7 +404,7 @@ TEST_F(CDCStateTableTest, TestInsertEntriesWithSameKeyTwice) {
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
@@ -459,7 +459,7 @@ TEST_F(CDCStateTableTest, TestInsertAndUpsertEntriesWithSameKey) {
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
@@ -514,7 +514,7 @@ TEST_F(CDCStateTableTest, TestUpdateEntriesWithNoExistingEntry) {
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
@@ -551,7 +551,7 @@ TEST_F(CDCStateTableTest, TestUpsertEntriesWithNoExistingEntry) {
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
@@ -591,7 +591,7 @@ TEST_F(CDCStateTableTest, TestUpsertEntriesWithRemoveKey) {
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));

@@ -1,0 +1,144 @@
+CREATE TABLE with_a (i int, PRIMARY KEY (i DESC));
+CREATE TABLE with_b (i int, PRIMARY KEY (i ASC));
+INSERT INTO with_a VALUES (generate_series(1, 10));
+INSERT INTO with_b VALUES (generate_series(11, 20));
+BEGIN;
+WITH w(i) AS (
+    INSERT INTO with_a VALUES (generate_series(1, 11)) ON CONFLICT (i) DO NOTHING RETURNING i
+) INSERT INTO with_b VALUES (generate_series(1, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
+TABLE with_a;
+ i
+----
+ 11
+ 10
+  9
+  8
+  7
+  6
+  5
+  4
+  3
+  2
+  1
+(11 rows)
+
+TABLE with_b;
+ i
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+ 16
+ 17
+ 18
+ 19
+ 20
+ 22
+ 23
+ 24
+ 25
+ 26
+(20 rows)
+
+ABORT;
+BEGIN;
+WITH w(i) AS (
+    INSERT INTO with_a VALUES (generate_series(1, 11)) ON CONFLICT (i) DO NOTHING RETURNING i
+) INSERT INTO with_a VALUES (generate_series(1, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+TABLE with_a;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+BEGIN;
+WITH w(i) AS (
+    INSERT INTO with_a VALUES (generate_series(6, 11)) ON CONFLICT (i) DO NOTHING RETURNING i
+) INSERT INTO with_a VALUES (generate_series(10, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+TABLE with_a;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+BEGIN;
+WITH w(i) AS (
+    INSERT INTO with_a VALUES (11) RETURNING i
+) INSERT INTO with_a VALUES (generate_series(10, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
+ERROR:  duplicate key value violates unique constraint "with_a_pkey"
+TABLE with_a;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+BEGIN;
+WITH w(i) AS (
+    DELETE FROM with_a WHERE i = 10 RETURNING i
+) INSERT INTO with_a VALUES (generate_series(9, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
+TABLE with_a;
+ i
+----
+ 20
+ 19
+ 15
+ 14
+ 13
+ 12
+ 11
+  8
+  7
+  6
+  5
+  4
+  3
+  2
+  1
+(15 rows)
+
+ABORT;
+BEGIN;
+WITH w(i) AS (
+    INSERT INTO with_a VALUES (generate_series(6, 11)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 100 RETURNING i
+) INSERT INTO with_a SELECT CASE
+    WHEN u < 12 THEN u
+    WHEN u < 14 THEN -(u + (SELECT max(i) FROM w))
+    ELSE u
+    END FROM generate_series(9, 15) u ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 10;
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+TABLE with_a;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+BEGIN;
+WITH w(i) AS (
+    INSERT INTO with_a VALUES (generate_series(6, 10)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 100 RETURNING i
+) INSERT INTO with_a SELECT CASE
+    WHEN u < 11 THEN u
+    WHEN u < 13 THEN -(u + (SELECT max(i) FROM w))
+    ELSE u
+    END FROM generate_series(10, 15) u ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 10;
+TABLE with_a;
+  i
+------
+  110
+  109
+  108
+  107
+  106
+   15
+   14
+   13
+   10
+    5
+    4
+    3
+    2
+    1
+ -121
+ -122
+(16 rows)
+
+ABORT;

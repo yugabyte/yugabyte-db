@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
@@ -90,6 +91,8 @@ struct DocReadContext {
     return Slice(shared_key_prefix_buffer_.data(), table_key_prefix_len_);
   }
 
+  Index is_index() const { return is_index_; }
+
   void TEST_SetDefaultTimeToLive(uint64_t ttl_msec) {
     schema_.SetDefaultTimeToLive(ttl_msec);
   }
@@ -106,6 +109,8 @@ struct DocReadContext {
   }
 
   dockv::SchemaPackingStorage schema_packing_storage;
+
+  std::optional<PgVectorIdxOptionsPB> vector_idx_options;
 
  private:
   void LogAfterLoad();

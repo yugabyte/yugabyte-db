@@ -54,5 +54,8 @@ Result<std::shared_ptr<xrepl::XClusterTabletMetrics>> GetXClusterTabletMetrics(
 Result<std::shared_ptr<xrepl::CDCSDKTabletMetrics>> GetCDCSDKTabletMetrics(
     cdc::CDCServiceImpl& cdc_service, const TabletId& tablet_id, const xrepl::StreamId stream_id,
     cdc::CreateMetricsEntityIfNotFound create = cdc::CreateMetricsEntityIfNotFound::kTrue);
+
+CDCStateTable MakeCDCStateTable(client::YBClient* client);
+
 } // namespace cdc
 } // namespace yb

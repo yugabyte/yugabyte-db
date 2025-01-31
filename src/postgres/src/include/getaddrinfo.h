@@ -13,7 +13,7 @@
  * This code will also work on platforms where struct addrinfo is defined
  * in the system headers but no getaddrinfo() can be located.
  *
- * Copyright (c) 2003-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2022, PostgreSQL Global Development Group
  *
  * src/include/getaddrinfo.h
  *
@@ -150,13 +150,13 @@ struct addrinfo
 #endif
 #define getnameinfo pg_getnameinfo
 
-extern int getaddrinfo(const char *node, const char *service,
-			const struct addrinfo *hints, struct addrinfo **res);
+extern int	getaddrinfo(const char *node, const char *service,
+						const struct addrinfo *hints, struct addrinfo **res);
 extern void freeaddrinfo(struct addrinfo *res);
 extern const char *gai_strerror(int errcode);
-extern int getnameinfo(const struct sockaddr *sa, int salen,
-			char *node, int nodelen,
-			char *service, int servicelen, int flags);
+extern int	getnameinfo(const struct sockaddr *sa, int salen,
+						char *node, int nodelen,
+						char *service, int servicelen, int flags);
 #endif							/* HAVE_GETADDRINFO */
 
 #endif							/* GETADDRINFO_H */

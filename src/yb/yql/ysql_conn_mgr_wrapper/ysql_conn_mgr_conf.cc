@@ -22,6 +22,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/pg_util.h"
 
@@ -29,6 +30,8 @@
 
 DECLARE_bool(logtostderr);
 DECLARE_bool(ysql_conn_mgr_use_unix_conn);
+DECLARE_bool(ysql_conn_mgr_use_auth_backend);
+DECLARE_bool(ysql_conn_mgr_enable_multi_route_pool);
 DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_uint32(ysql_conn_mgr_max_client_connections);
 DECLARE_uint32(ysql_conn_mgr_max_conns_per_db);
@@ -40,6 +43,18 @@ DECLARE_uint32(ysql_conn_mgr_num_workers);
 DECLARE_uint32(ysql_conn_mgr_stats_interval);
 DECLARE_uint32(ysql_conn_mgr_min_conns_per_db);
 DECLARE_int32(ysql_max_connections);
+DECLARE_string(ysql_conn_mgr_log_settings);
+DECLARE_uint32(ysql_conn_mgr_server_lifetime);
+DECLARE_uint64(ysql_conn_mgr_log_max_size);
+DECLARE_uint64(ysql_conn_mgr_log_rotate_interval);
+DECLARE_uint32(ysql_conn_mgr_readahead_buffer_size);
+DECLARE_uint32(ysql_conn_mgr_tcp_keepalive);
+DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval);
+DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_probes);
+DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout);
+DECLARE_uint32(ysql_conn_mgr_control_connection_pool_size);
+DECLARE_uint32(ysql_conn_mgr_pool_timeout);
+DECLARE_bool(ysql_conn_mgr_optimized_extended_query_protocol);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -138,12 +153,37 @@ void YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>* ysql_conn
   (*ysql_conn_mgr_configs)["{%tls_cert_file%}"] = tls_cert_file;
 }
 
+void YsqlConnMgrConf::UpdateLogSettings(std::string& log_settings_str) {
+  std::stringstream ss(log_settings_str);
+  std::string setting;
+
+  while (std::getline(ss, setting, ',')) {
+    util::TrimStr(setting);
+    if (!setting.empty()) {
+      if (setting == "log_debug") {
+        log_debug_ = true;
+      } else if (setting == "log_config") {
+        log_config_ = true;
+      } else if (setting == "log_session") {
+        log_session_ = true;
+      } else if (setting == "log_query") {
+        log_query_ = true;
+      } else if (setting == "log_stats") {
+        log_stats_ = true;
+      }
+    }
+  }
+}
+
 std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
   const auto conf_file_path = JoinPathSegments(data_dir_, conf_file_name_);
+  UpdateLogSettings(FLAGS_ysql_conn_mgr_log_settings);
 
   // Config map
   std::map<std::string, std::string> ysql_conn_mgr_configs = {
-    {"{%log_file%}", log_file_},
+    {"{%log_dir%}", FLAGS_log_dir},
+    {"{%log_max_size%}", std::to_string(FLAGS_ysql_conn_mgr_log_max_size)},
+    {"{%log_rotate_interval%}", std::to_string(FLAGS_ysql_conn_mgr_log_rotate_interval)},
     {"{%pid_file%}", pid_file_},
     {"{%quantiles%}", quantiles_},
     {"{%control_conn_db%}", FLAGS_ysql_conn_mgr_internal_conn_db},
@@ -158,10 +198,29 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
      std::to_string(FLAGS_ysql_conn_mgr_max_client_connections)},
     {"{%ysql_port%}", std::to_string(postgres_address_.port())},
     {"{%log_debug%}", BoolToString(log_debug_)},
+    {"{%log_config%}", BoolToString(log_config_)},
+    {"{%log_session%}", BoolToString(log_session_)},
+    {"{%log_query%}", BoolToString(log_query_)},
+    {"{%log_stats%}", BoolToString(log_stats_)},
+    {"{%logtostderr%}", FLAGS_logtostderr ? "yes" : "no"},
     {"{%stats_interval%}", std::to_string(FLAGS_ysql_conn_mgr_stats_interval)},
+    {"{%server_lifetime%}", std::to_string(FLAGS_ysql_conn_mgr_server_lifetime)},
     {"{%min_pool_size%}", std::to_string(FLAGS_ysql_conn_mgr_min_conns_per_db)},
     {"{%yb_use_unix_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "" : "#"},
     {"{%yb_use_tcp_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "#" : ""},
+    {"{%yb_use_auth_backend%}", BoolToString(FLAGS_ysql_conn_mgr_use_auth_backend)},
+    {"{%readahead_buffer_size%}", std::to_string(FLAGS_ysql_conn_mgr_readahead_buffer_size)},
+    {"{%tcp_keepalive%}", std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive)},
+    {"{%tcp_keepalive_keep_interval%}",
+     std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_keep_interval)},
+    {"{%tcp_keepalive_probes%}", std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_probes)},
+    {"{%tcp_keepalive_usr_timeout%}",
+     std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_usr_timeout)},
+    {"{%pool_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_pool_timeout)},
+    {"{%yb_optimized_extended_query_protocol%}",
+      BoolToString(FLAGS_ysql_conn_mgr_optimized_extended_query_protocol)},
+    {"{%yb_enable_multi_route_pool%}", BoolToString(FLAGS_ysql_conn_mgr_enable_multi_route_pool)},
+    {"{%yb_ysql_max_connections%}", std::to_string(ysql_max_connections_)},
     {"{%unix_socket_dir%}",
       PgDeriveSocketDir(postgres_address_)}}; // Return unix socket
             //  file path = "/tmp/.yb.host_ip:port"
@@ -222,21 +281,20 @@ void YsqlConnMgrConf::UpdateConfigFromGFlags() {
   if (global_pool_size_ == 0) {
     global_pool_size_ = maxConnections * 9 / 10;
   }
-  control_connection_pool_size_ = (maxConnections) / 10;
+  control_connection_pool_size_ = FLAGS_ysql_conn_mgr_control_connection_pool_size;
+  if (control_connection_pool_size_ == 0) {
+    control_connection_pool_size_ = (maxConnections) / 10;
+  }
+  ysql_max_connections_ = maxConnections;
 
   CHECK_OK(postgres_address_.ParseString(
       FLAGS_pgsql_proxy_bind_address, pgwrapper::PgProcessConf().kDefaultPort));
-
-  // Use the log level of tserver flag `minloglevel`.
-  log_debug_ = (GetAtomicFlag(&FLAGS_minloglevel) <= 2) ? true : false;
 }
 
 YsqlConnMgrConf::YsqlConnMgrConf(const std::string& data_path) {
   data_dir_ = JoinPathSegments(data_path, "yb-data", "tserver");
-  log_file_ = JoinPathSegments(FLAGS_log_dir, "ysql-conn-mgr.log");
   pid_file_ = JoinPathSegments(data_path, "yb-data", "tserver", "ysql-conn-mgr.pid");
   ysql_pgconf_file_ = JoinPathSegments(data_path, "pg_data", "ysql_pg.conf");
-
 
   UpdateConfigFromGFlags();
 

@@ -38,6 +38,8 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     public boolean checkVolumesAttached = false;
     // Set it to deconfigure the server like deleting the conf file.
     public boolean deconfigure = false;
+    // Skip stopping processes if VM is paused.
+    public boolean skipStopForPausedVM = false;
   }
 
   @Override
@@ -60,13 +62,6 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
   @Override
   public void run() {
     try {
-      if (ServerType.MASTER.name().equalsIgnoreCase(taskParams().process)
-          && "start".equalsIgnoreCase(taskParams().command)) {
-        // Master is fully configured and ready to start.
-        // TODO This is not the right place but this comes after AnsibleConfigureServer
-        // which does too many things.
-        setNodeStatus(NodeStatus.builder().masterState(MasterState.Configured).build());
-      }
       NodeDetails nodeDetails = null;
       Optional<Universe> universeOpt = Universe.maybeGet(taskParams().getUniverseUUID());
       if (!universeOpt.isPresent()
@@ -76,6 +71,15 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
             taskParams().nodeName,
             taskParams().command);
         return;
+      }
+      if (ServerType.MASTER.name().equalsIgnoreCase(taskParams().process)
+          && "start".equalsIgnoreCase(taskParams().command)
+          && nodeDetails.masterState != null) {
+        // Master is fully configured and ready to start. Set this only if masterState was
+        // previously set. Some tasks may just start/stop master without changing master state.
+        // TODO This is not the right place but this comes after AnsibleConfigureServer
+        // which does too many things.
+        setNodeStatus(NodeStatus.builder().masterState(MasterState.Configured).build());
       }
       if (nodeDetails.isSoftwareDeleted()) {
         // This is to ensure that the command is not issued after the software is uninstalled.

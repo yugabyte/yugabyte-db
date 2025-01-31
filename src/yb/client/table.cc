@@ -14,12 +14,15 @@
 #include "yb/client/table.h"
 
 #include "yb/client/client.h"
+#include "yb/client/client-internal.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/gutil/casts.h"
 
 #include "yb/master/master_client.pb.h"
+
+#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory_usage.h"
@@ -125,14 +128,19 @@ bool YBTable::colocated() const {
   return info_->colocated;
 }
 
-const boost::optional<master::ReplicationInfoPB>& YBTable::replication_info() const {
+const boost::optional<ReplicationInfoPB>& YBTable::replication_info() const {
   return info_->replication_info;
 }
 
 std::string YBTable::ToString() const {
-  return Format(
-      "$0 $1 IndexInfo: $2 IndexMap $3", (IsIndex() ? "Index Table" : "Normal Table"), id(),
-      yb::ToString(index_info()), yb::ToString(index_map()));
+  std::string result = Format("$0 $1", (IsIndex() ? "Index" : "Table"), name());
+  if (info_->index_info) {
+    result += " index info: " + AsString(*info_->index_info);
+  }
+  if (!info_->index_map.empty()) {
+    result += " index map: " + AsString(info_->index_map);
+  }
+  return result;
 }
 
 const dockv::PartitionSchema& YBTable::partition_schema() const {
@@ -280,8 +288,7 @@ bool YBTable::ArePartitionsStale() const {
 }
 
 void YBTable::FetchPartitions(
-    YBClient* client, const TableId& table_id, FetchPartitionsCallback callback,
-    master::IncludeInactive include_inactive) {
+    YBClient* client, const TableId& table_id, FetchPartitionsCallback callback) {
   // TODO: fetch the schema from the master here once catalog is available.
   // TODO(tsplit): consider optimizing this to not wait for all tablets to be running in case
   // of some tablet has been split and post-split tablets are not yet running.
@@ -300,6 +307,14 @@ void YBTable::FetchPartitions(
             "Fetched partitions for table $0, found $1 tablets",
             table_id, resp.tablet_locations_size());
 
+        // Check the validity of the partitions list
+        auto status = CheckTabletLocations(resp.tablet_locations(),
+                                           tserver::AllowSplitTablet::kFalse);
+        if (!status.ok()) {
+          callback(status);
+          return;
+        }
+
         auto partitions = std::make_shared<VersionedTablePartitionList>();
         partitions->version = resp.partition_list_version();
         partitions->keys.reserve(resp.tablet_locations().size());
@@ -309,8 +324,7 @@ void YBTable::FetchPartitions(
         std::sort(partitions->keys.begin(), partitions->keys.end());
 
         callback(partitions);
-      },
-      include_inactive);
+      });
 }
 
 size_t YBTable::DynamicMemoryUsage() const {

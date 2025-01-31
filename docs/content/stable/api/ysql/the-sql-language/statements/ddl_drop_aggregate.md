@@ -4,7 +4,7 @@ headerTitle: DROP AGGREGATE
 linkTitle: DROP AGGREGATE
 description: Use the DROP AGGREGATE statement to remove an aggregate.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_drop_aggregate
     parent: statements
 type: docs
@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP AGGREGATE` statement to remove an aggregate.
+Use the DROP AGGREGATE statement to remove an aggregate.
 
 ## Syntax
 
@@ -72,5 +72,6 @@ yugabyte=# DROP AGGREGATE newcnt(*) CASCADE;
 
 ## See also
 
-- [`CREATE AGGREGATE`](../ddl_create_aggregate)
-- [postgresql-docs-drop-aggregate](https://www.postgresql.org/docs/current/sql-dropaggregate.html)
+- [CREATE AGGREGATE](../ddl_create_aggregate)
+
+[postgresql-docs-drop-aggregate]: https://www.postgresql.org/docs/11/sql-dropaggregate.html

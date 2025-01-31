@@ -4,7 +4,7 @@
  * repl_scanner.l
  *	  a lexical scanner for the replication commands
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -108,16 +108,9 @@ identifier		{ident_start}{ident_cont}*
 %}
 
 BASE_BACKUP			{ return K_BASE_BACKUP; }
-FAST			{ return K_FAST; }
 IDENTIFY_SYSTEM		{ return K_IDENTIFY_SYSTEM; }
+READ_REPLICATION_SLOT	{ return K_READ_REPLICATION_SLOT; }
 SHOW		{ return K_SHOW; }
-LABEL			{ return K_LABEL; }
-NOWAIT			{ return K_NOWAIT; }
-PROGRESS			{ return K_PROGRESS; }
-MAX_RATE		{ return K_MAX_RATE; }
-WAL			{ return K_WAL; }
-TABLESPACE_MAP			{ return K_TABLESPACE_MAP; }
-NOVERIFY_CHECKSUMS	{ return K_NOVERIFY_CHECKSUMS; }
 TIMELINE			{ return K_TIMELINE; }
 START_REPLICATION	{ return K_START_REPLICATION; }
 CREATE_REPLICATION_SLOT		{ return K_CREATE_REPLICATION_SLOT; }
@@ -128,10 +121,14 @@ RESERVE_WAL			{ return K_RESERVE_WAL; }
 LOGICAL				{ return K_LOGICAL; }
 SLOT				{ return K_SLOT; }
 TEMPORARY			{ return K_TEMPORARY; }
+TWO_PHASE			{ return K_TWO_PHASE; }
 EXPORT_SNAPSHOT		{ return K_EXPORT_SNAPSHOT; }
 NOEXPORT_SNAPSHOT	{ return K_NOEXPORT_SNAPSHOT; }
 USE_SNAPSHOT		{ return K_USE_SNAPSHOT; }
 WAIT				{ return K_WAIT; }
+
+SEQUENCE			{ return K_YB_SEQUENCE; }
+HYBRID_TIME			{ return K_YB_HYBRID_TIME; }
 
 {space}+		{ /* do nothing */ }
 
@@ -175,7 +172,8 @@ WAIT				{ return K_WAIT; }
 				}
 
 <xd>{xdstop}	{
-					int len;
+					int			len;
+
 					yyless(1);
 					BEGIN(INITIAL);
 					yylval.str = litbufdup();
@@ -189,7 +187,7 @@ WAIT				{ return K_WAIT; }
 				}
 
 {identifier}	{
-					int len = strlen(yytext);
+					int			len = strlen(yytext);
 
 					yylval.str = downcase_truncate_identifier(yytext, len, true);
 					return IDENT;
@@ -296,6 +294,7 @@ replication_scanner_is_replication_command(void)
 		case K_START_REPLICATION:
 		case K_CREATE_REPLICATION_SLOT:
 		case K_DROP_REPLICATION_SLOT:
+		case K_READ_REPLICATION_SLOT:
 		case K_TIMELINE_HISTORY:
 		case K_SHOW:
 			/* Yes; push back the first token so we can parse later. */

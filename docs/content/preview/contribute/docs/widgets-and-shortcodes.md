@@ -84,9 +84,9 @@ This is a warning with a [link](https://www.yugabyte.com).
 
 You can add a link to a url with an icon using the `link` shortcode which takes url as a string argument. Internal and external links will have different icons. You can use the `:version` variable to expand to all versions.
 
-- {{<link "https://www.google.com">}} : _External link_ `{{</*link "https://www.google.com"*/>}}`
-- {{<link "../syntax-diagrams">}} : _Relative internal link_ `{{</*link "../syntax-diagrams"*/>}}`
-- {{<link "/:version/explore">}} : _Full path internal link_ `{{</*link "/:version/explore"*/>}}`
+- {{<link dest="https://www.google.com">}} : _External link_ `{{</*link "https://www.google.com"*/>}}`
+- {{<link dest="../syntax-diagrams">}} : _Relative internal link_ `{{</*link "../syntax-diagrams"*/>}}`
+- {{<link dest="/:version/explore">}} : _Full path internal link_ `{{</*link "/:version/explore"*/>}}`
 
 ## Tables
 
@@ -106,6 +106,13 @@ Markdown supports [tables](https://www.markdownguide.org/extended-syntax/#tables
 ---+---
  1 | 2
 (1 row)
+```|
+|
+```sql
+insert
+```|
+```sql
+update
 ```|
 <!-- row with tip block -->
 | {{</*warning title="Beware" */>}} start and end rows with the pipe symbol {{</*/warning*/>}} |
@@ -129,6 +136,13 @@ The above markdown should render a table as follows:
  1 | 2
 (1 row)
 ```|
+|
+```sql
+insert
+```|
+```sql
+update
+```|
 <!-- row with tip block -->
 | {{< warning title="Beware" >}} start and end rows with the pipe symbol {{</warning>}} |
 {{< tip title="Awesome tip" >}} Use 3 ticks for code blocks with pipe symbols {{</tip>}} |
@@ -146,28 +160,28 @@ The corresponding code for this widget is as follows. Note that the actual conte
 ```html
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab"
+    <a href="#macos" class="nav-link active" id="macos-tab" data-bs-toggle="tab"
        role="tab" aria-controls="macos" aria-selected="true">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab"
+    <a href="#linux" class="nav-link" id="linux-tab" data-bs-toggle="tab"
        role="tab" aria-controls="linux" aria-selected="false">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
   <li>
-    <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab"
+    <a href="#docker" class="nav-link" id="docker-tab" data-bs-toggle="tab"
        role="tab" aria-controls="docker" aria-selected="false">
       <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li >
-    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab"
+    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-bs-toggle="tab"
        role="tab" aria-controls="kubernetes" aria-selected="false">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
@@ -292,7 +306,7 @@ The corresponding code for this widget is as follows.
   title="Learn through examples"
   description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
   buttonText="Get started"
-  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  buttonUrl="/preview/tutorials/quick-start-yugabytedb-managed/"
   imageAlt="Yugabyte cloud"
   imageUrl="/images/homepage/learn-through-examples.svg"
 */>}}
@@ -305,7 +319,7 @@ To change image background to transparent, add `imageTransparent=true` in the co
   title="Learn through examples"
   description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
   buttonText="Get started"
-  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  buttonUrl="/preview/tutorials/quick-start-yugabytedb-managed/"
   imageAlt="Yugabyte cloud"
   imageTransparent=true
   imageUrl="/images/homepage/learn-through-examples.svg"

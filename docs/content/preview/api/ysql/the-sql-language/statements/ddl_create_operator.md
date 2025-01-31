@@ -4,7 +4,7 @@ headerTitle: CREATE OPERATOR
 linkTitle: CREATE OPERATOR
 description: Use the CREATE OPERATOR statement to create an operator.
 menu:
-  preview:
+  preview_api:
     identifier: ddl_create_operator
     parent: statements
 aliases:
@@ -14,7 +14,7 @@ type: docs
 
 ## Synopsis
 
-Use the `CREATE OPERATOR` statement to create an operator.
+Use the CREATE OPERATOR statement to create an operator.
 
 ## Syntax
 
@@ -25,7 +25,7 @@ Use the `CREATE OPERATOR` statement to create an operator.
 
 ## Semantics
 
-See the semantics of each option in the [PostgreSQL docs][postgresql-docs-create-operator].
+See the semantics of each option in the [PostgreSQL documentation][postgresql-docs-create-operator].
 
 ## Examples
 
@@ -39,7 +39,7 @@ yugabyte=# CREATE OPERATOR @#@ (
 yugabyte=# SELECT @#@ 5;
 ```
 
-```
+```output
  ?column?
 ----------
       120
@@ -47,5 +47,6 @@ yugabyte=# SELECT @#@ 5;
 
 ## See also
 
-- [`DROP OPERATOR`](../ddl_drop_operator)
-- [postgresql-docs-create-operator](https://www.postgresql.org/docs/current/sql-createoperator.html)
+- [DROP OPERATOR](../ddl_drop_operator)
+
+[postgresql-docs-create-operator]: https://www.postgresql.org/docs/15/sql-createoperator.html

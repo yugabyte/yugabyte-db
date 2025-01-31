@@ -42,7 +42,7 @@ type RegionContext struct {
 // NewRegionFormat for formatting output
 func NewRegionFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultRegion
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -271,12 +271,12 @@ func (r *RegionContext) Code() string {
 
 // Latitude fetches Region Latitude
 func (r *RegionContext) Latitude() string {
-	return fmt.Sprintf("%f", r.r.GetLatitude())
+	return fmt.Sprintf("%0.2f", r.r.GetLatitude())
 }
 
 // Longitude fetches Region Longitude
 func (r *RegionContext) Longitude() string {
-	return fmt.Sprintf("%f", r.r.GetLongitude())
+	return fmt.Sprintf("%0.2f", r.r.GetLongitude())
 }
 
 // MarshalJSON function

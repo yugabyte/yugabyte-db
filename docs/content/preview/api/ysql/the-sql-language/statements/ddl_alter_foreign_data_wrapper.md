@@ -4,7 +4,7 @@ headerTitle: ALTER FOREIGN DATA WRAPPER
 linkTitle: ALTER FOREIGN DATA WRAPPER
 description: Use the ALTER FOREIGN DATA WRAPPER statement to alter a foreign-data wrapper.
 menu:
-  preview:
+  preview_api:
     identifier: ddl_alter_foreign_data_wrapper
     parent: statements
 type: docs

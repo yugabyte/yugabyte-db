@@ -1,0 +1,8 @@
+title: UniverseSystemdEnableStart
+description: |
+  UniverseSystemdEnableStart
+
+  Payload to move the universe to use systemd to manage the YugabyteDB services
+type: object
+allOf:
+  - $ref: "./SleepAfterRestartSchema.yaml"

@@ -40,7 +40,7 @@
 
   <groupId>org.yb</groupId>
   <artifactId>yb-parent</artifactId>
-  <version>0.8.91-SNAPSHOT</version>
+  <version>0.8.98-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>Yugabyte</name>
@@ -87,7 +87,7 @@
     <cassandra-driver-core.version>3.10.3-yb-2</cassandra-driver-core.version>
     <spark-cassandra-connector.version>2.4-yb-4</spark-cassandra-connector.version>
     <lz4.version>1.8.0</lz4.version>
-    <snappy.version>1.1.4</snappy.version>
+    <snappy.version>1.1.8.4</snappy.version>
     <commons-cli.version>1.2</commons-cli.version>
     <commons-io.version>2.15.1</commons-io.version>
     <commons-lang3.version>3.6</commons-lang3.version>
@@ -100,7 +100,7 @@
     <jsr305.version>3.0.1</jsr305.version>
 
     <junit.groupId>junit</junit.groupId>
-    <junit.version>4.12</junit.version>
+    <junit.version>4.13</junit.version>
 
     <mockito-inline.version>4.7.0</mockito-inline.version>
     <murmur.version>1.0.0</murmur.version>
@@ -139,6 +139,7 @@
     <module>yb-multiapi</module>
     <module>yb-sample</module>
     <module>yb-ysql-conn-mgr</module>
+    <module>yb-yugabyted</module>
   </modules>
 
   <build>
@@ -355,7 +356,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.91-SNAPSHOT</version>
+        <version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
@@ -526,7 +527,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.91-SNAPSHOT</version>
+        <version>${project.version}</version>
         <type>test-jar</type>
       </dependency>
       <dependency>

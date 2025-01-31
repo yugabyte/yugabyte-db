@@ -22,7 +22,7 @@ const useStyles = makeStyles((theme) => ({
 
 interface MigrationVerifyProps {
   heading: string;
-  migration: Migration;
+  migration: Migration | undefined;
   step: number;
 }
 

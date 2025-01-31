@@ -10,10 +10,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/util/env_util.h"
-#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
-
 #include "yb/yql/process_wrapper/process_wrapper.h"
+
+#include "yb/rpc/secure.h"
+
+#include "yb/server/server_base_options.h"
+
+#include "yb/util/scope_exit.h"
+
+DECLARE_string(certs_dir);
+DECLARE_string(certs_for_client_dir);
+DECLARE_string(cert_node_filename);
+DECLARE_bool(use_client_to_server_encryption);
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -34,15 +44,11 @@ Result<int> ProcessWrapper::Wait() {
   return proc_->Wait();
 }
 
-void ProcessWrapper::Kill() {
-  int signal = SIGINT;
-  // TODO(fizaa): Use SIGQUIT in asan build until GH #15168 is fixed.
-#ifdef ADDRESS_SANITIZER
-  signal = SIGQUIT;
-#endif
+void ProcessWrapper::Kill() { Kill(SIGQUIT); }
+
+void ProcessWrapper::Kill(int signal) {
   WARN_NOT_OK(proc_->Kill(signal), "Kill process failed");
 }
-
 
 // ------------------------------------------------------------------------------------------------
 // ProcessWrapper: managing one instance of a child process
@@ -58,6 +64,9 @@ Status ProcessSupervisor::ExpectStateUnlocked(YbSubProcessState expected_state) 
 }
 
 void ProcessSupervisor::RunThread() {
+  auto se = ScopeExit([this] {
+    thread_finished_latch_.CountDown();
+  });
   std::string process_name = GetProcessName();
   while (true) {
     Result<int> wait_result = process_wrapper_->Wait();
@@ -133,6 +142,7 @@ Status ProcessSupervisor::Start() {
 }
 
 void ProcessSupervisor::Stop() {
+  LOG(INFO) << "Stopping " << GetProcessName();
   {
     std::lock_guard lock(mtx_);
     state_ = YbSubProcessState::kStopping;
@@ -141,7 +151,51 @@ void ProcessSupervisor::Stop() {
       process_wrapper_->Kill();
     }
   }
+  auto start = CoarseMonoClock::now();
+  for (;;) {
+    if (thread_finished_latch_.WaitFor(10s)) {
+      break;
+    }
+    const auto passed = MonoDelta(CoarseMonoClock::now() - start);
+    if (passed >= 1min) {
+      LOG(DFATAL) << GetProcessName() << " did not gracefully exit after " << passed
+                  << ". Force killing it with SIGKILL";
+      std::lock_guard lock(mtx_);
+      if (process_wrapper_) {
+        process_wrapper_->Kill(SIGKILL);
+      }
+      break;
+    } else {
+      LOG(WARNING) << GetProcessName() << " did not gracefully exist after " << passed;
+    }
+  }
   supervisor_thread_->Join();
+}
+
+Status ProcessWrapperCommonConfig::SetSslConf(
+    const server::ServerBaseOptions& options, FsManager& fs_manager) {
+  this->certs_dir =
+      FLAGS_certs_dir.empty() ? rpc::GetCertsDir(fs_manager.GetDefaultRootDir()) : FLAGS_certs_dir;
+  this->certs_for_client_dir =
+      FLAGS_certs_for_client_dir.empty() ? this->certs_dir : FLAGS_certs_for_client_dir;
+  this->enable_tls = FLAGS_use_client_to_server_encryption;
+
+  // Follow the same logic as elsewhere, check FLAGS_cert_node_filename then
+  // server_broadcast_addresses then rpc_bind_addresses.
+  if (!FLAGS_cert_node_filename.empty()) {
+    this->cert_base_name = FLAGS_cert_node_filename;
+  } else {
+    const auto server_broadcast_addresses =
+        HostPort::ParseStrings(options.server_broadcast_addresses, 0);
+    RETURN_NOT_OK(server_broadcast_addresses);
+    const auto rpc_bind_addresses = HostPort::ParseStrings(options.rpc_opts.rpc_bind_addresses, 0);
+    RETURN_NOT_OK(rpc_bind_addresses);
+    this->cert_base_name = !server_broadcast_addresses->empty()
+                               ? server_broadcast_addresses->front().host()
+                               : rpc_bind_addresses->front().host();
+  }
+
+  return Status::OK();
 }
 
 }  // namespace yb

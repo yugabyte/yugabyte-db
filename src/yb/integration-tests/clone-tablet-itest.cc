@@ -188,7 +188,7 @@ TEST_P(CloneTabletExternalCrashItest, CrashDuringApply) {
       {{GetParam(), "false"}}));
 
   auto apply_complete_lw = LogWaiter(ts, Format(
-      "Clone operation for tablet $0 with seq_no $1 has been applied", source_tablet_id,
+      "Clone operation for tablet $0 with seq_no $1 has been marked as attempted", source_tablet_id,
       clone_request_seq_no));
   ASSERT_OK(apply_complete_lw.WaitFor(10s));
 

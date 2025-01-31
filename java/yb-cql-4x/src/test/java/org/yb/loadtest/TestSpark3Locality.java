@@ -12,33 +12,30 @@
 //
 package org.yb.loadtest;
 
-import com.datastax.oss.driver.api.core.cql.Row;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+
 import com.datastax.oss.driver.api.core.CqlSession;
-import com.yugabyte.sample.apps.CassandraSparkKeyValueCopy;
-import com.yugabyte.sample.common.CmdLineOpts;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.yb.YBTestRunner;
-import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.minicluster.IOMetrics;
-import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.minicluster.MiniYBDaemon;
+import com.datastax.oss.driver.api.core.cql.Row;
 import com.yugabyte.oss.driver.api.core.DefaultPartitionMetadata;
 import com.yugabyte.oss.driver.api.core.TableSplitMetadata;
-import com.yugabyte.sample.apps.CassandraSparkWordCount;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.yugabyte.sample.apps.CassandraSparkKeyValueCopy;
+import com.yugabyte.sample.common.CmdLineOpts;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.minicluster.BaseMiniClusterTest;
+import org.yb.minicluster.IOMetrics;
+import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.minicluster.MiniYBDaemon;
+import org.yb.util.YBTestRunnerNonMac;
 
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertTrue;
-
-@RunWith(value=YBTestRunner.class)
+@RunWith(value = YBTestRunnerNonMac.class)
 public class TestSpark3Locality extends BaseMiniClusterTest {
   private Logger logger = LoggerFactory.getLogger(TestSpark3Locality.class);
 

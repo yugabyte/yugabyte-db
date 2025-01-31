@@ -23,6 +23,8 @@ var describeInstanceTypesCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe instance type of a YugabyteDB Anywhere on-premises provider",
 	Long:    "Describe instance types of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem instance-type describe \
+	--name <provider-name> --instance-type-name <instance-type-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -55,7 +57,7 @@ var describeInstanceTypesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		providerListRequest = providerListRequest.Name(providerName)
+		providerListRequest = providerListRequest.Name(providerName).ProviderCode(util.OnpremProviderType)
 
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
@@ -67,14 +69,9 @@ var describeInstanceTypesCmd = &cobra.Command{
 		if len(r) < 1 {
 			logrus.Fatalf(
 				formatter.Colorize(
-					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					fmt.Sprintf("No on premises providers with name: %s found\n", providerName),
 					formatter.RedColor,
 				))
-		}
-
-		if r[0].GetCode() != util.OnpremProviderType {
-			errMessage := "Operation only supported for On-premises providers."
-			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}
 
 		providerUUID := r[0].GetUuid()
@@ -95,7 +92,7 @@ var describeInstanceTypesCmd = &cobra.Command{
 		instanceTypeList = append(instanceTypeList, rDescribe)
 
 		if rDescribe.GetActive() {
-			if len(instanceTypeList) > 0 && util.IsOutputType("table") {
+			if len(instanceTypeList) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 				fullInstanceTypesContext := *instancetypes.NewFullInstanceTypesContext()
 				fullInstanceTypesContext.Output = os.Stdout
 				fullInstanceTypesContext.Format = instancetypes.NewFullInstanceTypesFormat(
@@ -106,8 +103,9 @@ var describeInstanceTypesCmd = &cobra.Command{
 			}
 
 			instanceTypesCtx := formatter.Context{
-				Output: os.Stdout,
-				Format: instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
+				Command: "describe",
+				Output:  os.Stdout,
+				Format:  instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
 			}
 			instancetypes.Write(instanceTypesCtx, instanceTypeList)
 		} else {

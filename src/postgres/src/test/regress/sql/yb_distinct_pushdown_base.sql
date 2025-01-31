@@ -7,6 +7,7 @@ INSERT INTO t (SELECT 2, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 
 -- Test the flag.
 SET yb_enable_distinct_pushdown TO off;
+SET yb_explain_hide_non_deterministic_fields = true;
 
 -- Do not pick Distinct Index Scan since the flag is off.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t;
@@ -65,7 +66,6 @@ CREATE INDEX NONCONCURRENTLY igin ON vectors USING ybgin (v);
 
 -- Avoid fetching primary key and fetch secondary key instead since
 --   there is already an LSM index on the primary key and LSM supports distinct index scan.
-SET yb_explain_hide_non_deterministic_fields = true;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM vectors;
 SELECT DISTINCT v FROM vectors;
 
@@ -125,3 +125,22 @@ SELECT DISTINCT r1 FROM t WHERE r1 = 1 AND r2 IN (0, 1);
 SELECT DISTINCT ON (r1) r1, r2 FROM t ORDER BY r1, r2;
 
 DROP TABLE t;
+
+-- #22822: Include columns of an index are not sorted.
+CREATE TABLE kv(k INT, v1 INT, v2 INT);
+CREATE INDEX kv_idx ON kv (k ASC) INCLUDE (v1, v2);
+INSERT INTO kv (SELECT i%10, i%10, i%10 FROM GENERATE_SERIES(1, 100) AS i);
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT DISTINCT k, v1, v2 FROM kv;
+
+SELECT DISTINCT k, v1, v2 FROM kv ORDER BY k;
+
+DROP TABLE kv;
+-- Test #22923
+CREATE TABLE demo(k INT, x INT, v INT, a INT, d DATE, PRIMARY KEY(k,x,v,d));
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT v FROM (SELECT DISTINCT v FROM demo WHERE k=1 AND x=1) foo;
+
+DROP TABLE demo;

@@ -23,14 +23,17 @@
 #include "postgres.h"
 
 #include "access/relscan.h"
+#include "access/tableam.h"
+#include "access/yb_scan.h"
 #include "executor/executor.h"
 #include "executor/nodeYbBitmapTablescan.h"
+#include "nodes/nodeFuncs.h"
 #include "utils/rel.h"
-#include "utils/tqual.h"
+#include "utils/snapmgr.h"
 
 
 static TupleTableSlot *YbBitmapTableNext(YbBitmapTableScanState *node);
-static HeapScanDesc CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate);
+static TableScanDesc CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate);
 
 /* ----------------------------------------------------------------
  *		YbBitmapTableNext
@@ -41,12 +44,12 @@ static HeapScanDesc CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstat
 static TupleTableSlot *
 YbBitmapTableNext(YbBitmapTableScanState *node)
 {
-	YbTIDBitmap  *ybtbm;
+	YbTIDBitmap *ybtbm;
+	TableScanDesc tsdesc;
 	TupleTableSlot *slot;
 	YbTBMIterateResult *ybtbmres;
-	HeapScanDesc scandesc;
 	ExprContext *econtext;
-	YbScanDesc ybScan;
+	YbScanDesc	ybScan;
 
 	/*
 	 * extract necessary information from index scan node
@@ -73,15 +76,34 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 		node->initialized = true;
 		node->work_mem_exceeded = ybtbm->work_mem_exceeded;
 		node->average_ybctid_bytes = yb_tbm_get_average_bytes(ybtbm);
-		node->recheck_required |= ybtbm->recheck;
 		node->skipped_tuples = 0;
+		node->recheck_required =
+			YbGetBitmapScanRecheckRequired(outerPlanState(node));
+
+		if (node->aggrefs)
+		{
+			/*
+			 * For aggregate pushdown, we read just the aggregates from DocDB
+			 * and pass that up to the aggregate node (agg pushdown wouldn't be
+			 * enabled if we needed to read more than that).  Set up a dummy
+			 * scan slot to hold as many attributes as there are pushed
+			 * aggregates.
+			 */
+			TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->aggrefs));
+
+			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc,
+								  &TTSOpsVirtual);
+
+			/* Refresh the local pointer. */
+			slot = node->ss.ss_ScanTupleSlot;
+		}
 	}
 
 	if (!node->ss.ss_currentScanDesc)
 		node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(node);
 
-	scandesc = node->ss.ss_currentScanDesc;
-	ybScan = scandesc->ybscan;
+	tsdesc = node->ss.ss_currentScanDesc;
+	ybScan = (YbScanDesc) tsdesc;
 
 	/*
 	 * If the bitmaps have exceeded work_mem just select everything from the
@@ -108,14 +130,16 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 			if (ybtbmres)
 				yb_tbm_free_iter_result(ybtbmres);
 
-			const int ybctid_size = node->average_ybctid_bytes > 0
-				? node->average_ybctid_bytes : 26;
-			const int row_limit = ybScan->exec_params->yb_fetch_row_limit;
-			const int size_limit = ybScan->exec_params->yb_fetch_size_limit /
-								   ybctid_size;
+			const int	ybctid_size = (node->average_ybctid_bytes > 0 ?
+									   node->average_ybctid_bytes :
+									   26);
+			const int	row_limit = ybScan->exec_params->yb_fetch_row_limit;
+			const int	size_limit = (ybScan->exec_params->yb_fetch_size_limit /
+									  ybctid_size);
 
-			const int count = Min(row_limit > 0 ? row_limit : INT_MAX,
-								  size_limit > 0 ? size_limit : INT_MAX);
+			const int	count = Min(row_limit > 0 ? row_limit : INT_MAX,
+									size_limit > 0 ? size_limit : INT_MAX);
+
 			node->ybtbmres = ybtbmres = yb_tbm_iterate(node->ybtbmiterator,
 													   count);
 			if (!ybtbmres)
@@ -123,7 +147,7 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 
 			/* Fetch the next yb_fetch_row_limit ybctids */
 			HandleYBStatus(YBCPgFetchRequestedYbctids(ybScan->handle,
-										   			  ybScan->exec_params,
+													  ybScan->exec_params,
 													  ybtbmres->ybctid_vector));
 		}
 
@@ -220,12 +244,12 @@ ExecYbBitmapTableScan(PlanState *pstate)
 					(ExecScanRecheckMtd) YbBitmapTableRecheck);
 }
 
-static HeapScanDesc
+static TableScanDesc
 CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 {
-	YbScanDesc		ybScan;
-	PushdownExprs  *yb_pushdown;
-	HeapScanDesc	scandesc;
+	YbScanDesc	ybScan;
+	YbPushdownExprs *yb_pushdown;
+	TableScanDesc tsdesc;
 
 	/* Make a copy so it can be modified */
 	YbBitmapTableScan plan = *(YbBitmapTableScan *) scanstate->ss.ps.plan;
@@ -239,53 +263,48 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 	if (!scanstate->recheck_local_quals)
 		plan.recheck_local_quals = NULL;
 
-	yb_pushdown = YbInstantiatePushdownParams(
-			scanstate->work_mem_exceeded ? &plan.fallback_pushdown
-										 : &plan.rel_pushdown,
-			scanstate->ss.ps.state);
+	yb_pushdown = YbInstantiatePushdownParams((scanstate->work_mem_exceeded ?
+											   &plan.fallback_pushdown :
+											   &plan.rel_pushdown),
+											  scanstate->ss.ps.state);
 
 
 	ybScan = ybcBeginScan(scanstate->ss.ss_currentRelation,
-						  NULL /* index */,
-						  false /* xs_want_itup */,
-						  0 /* nkeys */,
-						  NULL /* keys */,
-						  (Scan *) &plan /* pg_scan_plan */,
-						  yb_pushdown /* rel_pushdown */,
-						  NULL /* idx_pushdown */,
-						  NULL /* aggrefs */,
-						  0 /* distinct_prefixlen */,
+						  NULL /* index */ ,
+						  false /* xs_want_itup */ ,
+						  0 /* nkeys */ ,
+						  NULL /* keys */ ,
+						  (Scan *) &plan /* pg_scan_plan */ ,
+						  yb_pushdown /* rel_pushdown */ ,
+						  NULL /* idx_pushdown */ ,
+						  scanstate->aggrefs /* aggrefs */ ,
+						  0 /* distinct_prefixlen */ ,
 						  &scanstate->ss.ps.state->yb_exec_params,
-						  true /* is_internal_scan */,
-						  false /* fetch_ybctids_only */);
+						  true /* is_internal_scan */ ,
+						  false /* fetch_ybctids_only */ );
 
 	if (yb_pushdown)
 		pfree(yb_pushdown);
 
 	/* Set up Postgres sys table scan description */
-	scandesc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
-	scandesc->rs_rd        = scanstate->ss.ss_currentRelation;
-	scandesc->rs_snapshot  = scanstate->ss.ps.state->es_snapshot;
-	scandesc->rs_temp_snap = false;
-	scandesc->rs_cblock    = InvalidBlockNumber;
-	scandesc->ybscan       = ybScan;
+	tsdesc = (TableScanDesc) ybScan;
+	tsdesc->rs_rd = scanstate->ss.ss_currentRelation;
+	tsdesc->rs_snapshot = scanstate->ss.ps.state->es_snapshot;
+	tsdesc->rs_flags = SO_TYPE_BITMAPSCAN;
 
 	if (scanstate->recheck_required && !scanstate->work_mem_exceeded)
 	{
-		PushdownExprs *recheck_pushdown = YbInstantiatePushdownParams(
-			&plan.recheck_pushdown,
-			scanstate->ss.ps.state);
+		YbPushdownExprs *recheck_pushdown = YbInstantiatePushdownParams(&plan.recheck_pushdown,
+																		scanstate->ss.ps.state);
+
 		if (recheck_pushdown)
 		{
-			YbDmlAppendQuals(recheck_pushdown->quals,
-							 true /* is_primary */, ybScan->handle);
-			YbDmlAppendColumnRefs(recheck_pushdown->colrefs,
-								  true /* is_primary */, ybScan->handle);
+			YbApplyPrimaryPushdown(ybScan->handle, recheck_pushdown);
 			pfree(recheck_pushdown);
 		}
 	}
 
-	return scandesc;
+	return tsdesc;
 }
 
 /* ----------------------------------------------------------------
@@ -297,16 +316,21 @@ ExecReScanYbBitmapTableScan(YbBitmapTableScanState *node)
 {
 	PlanState  *outerPlan = outerPlanState(node);
 
-	if (node->ss.ss_currentScanDesc)
+	TableScanDesc tsdesc;
+
+	/* rescan to release any page pin */
+	tsdesc = node->ss.ss_currentScanDesc;
+	/*
+	 * YB initializes ss_currentScanDesc in YbBitmapTableNext rather than
+	 * ExecInitYbBitmapTableScan, so the following if condition is needed.
+	 */
+	if (tsdesc)
 	{
-		YbScanDesc ybScan = (YbScanDesc) node->ss.ss_currentScanDesc->ybscan;
 		/*
 		 * For rescan, end the previous scan. Set the old scan to null so we
 		 * recreate it when we need to.
 		 */
-		ybc_free_ybscan(ybScan);
-		node->ss.ss_currentScanDesc->ybscan = NULL;
-		pfree(node->ss.ss_currentScanDesc);
+		ybc_heap_endscan(tsdesc);
 		node->ss.ss_currentScanDesc = NULL;
 	}
 
@@ -340,14 +364,12 @@ ExecReScanYbBitmapTableScan(YbBitmapTableScanState *node)
 void
 ExecEndYbBitmapTableScan(YbBitmapTableScanState *node)
 {
-	Relation	relation;
-	HeapScanDesc scanDesc;
+	TableScanDesc tsdesc;
 
 	/*
 	 * extract information from the node
 	 */
-	relation = node->ss.ss_currentRelation;
-	scanDesc = node->ss.ss_currentScanDesc;
+	tsdesc = node->ss.ss_currentScanDesc;
 
 	/*
 	 * Free the exprcontext
@@ -379,13 +401,8 @@ ExecEndYbBitmapTableScan(YbBitmapTableScanState *node)
 	/*
 	 * close heap scan
 	 */
-	if (scanDesc)
-		heap_endscan(scanDesc);
-
-	/*
-	 * close the heap relation.
-	 */
-	ExecCloseScanRelation(relation);
+	if (tsdesc != NULL)
+		ybc_heap_endscan(tsdesc);
 }
 
 /* ----------------------------------------------------------------
@@ -398,7 +415,7 @@ YbBitmapTableScanState *
 ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 {
 	YbBitmapTableScanState *scanstate;
-	Relation				currentRelation;
+	Relation	currentRelation;
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
@@ -451,7 +468,8 @@ ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 	 * get the scan type from the relation descriptor.
 	 */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
-						  RelationGetDescr(currentRelation));
+						  RelationGetDescr(currentRelation),
+						  &TTSOpsVirtual);
 
 	/*
 	 * Initialize result type and projection.
@@ -470,6 +488,11 @@ ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 		ExecInitQual(node->fallback_local_quals, (PlanState *) scanstate);
 
 	scanstate->ss.ss_currentRelation = currentRelation;
+
+	/*
+	 * We can already tell if we need to recheck index qual conditions.
+	 */
+	scanstate->recheck_required = YbGetBitmapScanRecheckRequired(outerPlanState(scanstate));
 
 	/*
 	 * all done.

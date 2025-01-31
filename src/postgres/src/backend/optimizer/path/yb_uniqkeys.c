@@ -1,9 +1,9 @@
 /*--------------------------------------------------------------------------------------------------
  *
  * yb_uniqkeys.c
- *	  YugaByteDB distinct pushdown API
+ *	  YugabyteDB distinct pushdown API
  *
- * Copyright (c) YugaByteDB, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -26,10 +26,9 @@
 #include "access/sysattr.h"
 #include "nodes/nodes.h"
 #include "nodes/nodeFuncs.h"
-#include "optimizer/clauses.h"
+#include "optimizer/optimizer.h"
 #include "optimizer/paths.h"
 #include "optimizer/tlist.h"
-#include "optimizer/var.h"
 #include "utils/lsyscache.h"
 
 /*
@@ -50,7 +49,7 @@ yb_reject_distinct_pushdown_walker(Node *node)
 	if (node == NULL)
 		return false;
 
-	switch(nodeTag(node))
+	switch (nodeTag(node))
 	{
 		case T_Var:
 		case T_Const:
@@ -90,8 +89,8 @@ yb_reject_distinct_pushdown_walker(Node *node)
 bool
 yb_reject_distinct_pushdown(Node *expr)
 {
-	return yb_reject_distinct_pushdown_walker(expr) ||
-		   contain_volatile_functions(expr);
+	return (yb_reject_distinct_pushdown_walker(expr) ||
+			contain_volatile_functions(expr));
 }
 
 /*
@@ -148,8 +147,8 @@ static bool
 yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
 									 Bitmapset **colrefs)
 {
-	ListCell *lc;
-	List	 *exprs;
+	ListCell   *lc;
+	List	   *exprs;
 
 	/*
 	 * Collect all exprs that need to be DISTINCT.
@@ -170,9 +169,9 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
 	 */
 	foreach(lc, index->indrestrictinfo)
 	{
-		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
 
-		if (!list_member_ptr(index_clauses, rinfo))
+		if (!is_redundant_with_indexclauses(rinfo, index_clauses))
 			exprs = lappend(exprs, rinfo->clause);
 	}
 
@@ -180,7 +179,9 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
 	 * Pull Var references from collected exprs.
 	 */
 	return yb_pull_varattnos_for_distinct_pushdown((Node *) exprs,
-		index->rel->relid, colrefs, YBFirstLowInvalidAttributeNumber+1);
+												   index->rel->relid,
+												   colrefs,
+												   YBFirstLowInvalidAttributeNumber + 1);
 }
 
 /*
@@ -202,27 +203,32 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
  * change in the future when we start supporting storage filters for DISTINCT.
  */
 static bool
-yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
+yb_is_const_clause_for_distinct_pushdown(PlannerInfo *root,
+										 IndexOptInfo *index,
 										 List *index_clauses,
 										 int indexcol,
-				   						 Expr *indexkey)
+										 Expr *indexkey)
 {
-	ListCell *lc;
-
-	/* Boolean clauses. */
-	if (indexcol_is_bool_constant_for_query(index, indexcol))
-		return true;
+	ListCell   *lc;
 
 	foreach(lc, index_clauses)
 	{
-		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
-		Expr		 *clause = rinfo->clause;
-		Node		 *left_op,
-					 *right_op;
-		int			  op_strategy;
+		IndexClause *ic = lfirst_node(IndexClause, lc);
+		RestrictInfo *rinfo;
+		Expr	   *clause;
+		Node	   *left_op,
+				   *right_op;
+		int			op_strategy;
+
+		if (ic->lossy || list_length(ic->indexquals) != 1)
+			continue;
+
+		rinfo = linitial_node(RestrictInfo, ic->indexquals);
+		clause = rinfo->clause;
 
 		/* Must be a binary operation. */
-		if (!is_opclause(clause))
+		if (!is_opclause(clause)
+			|| list_length(((OpExpr *) clause)->args) != 2)
 			continue;
 
 		left_op = get_leftop(clause);
@@ -236,13 +242,7 @@ yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
 			continue;
 
 		/* Check whether the clause is of the form indexkey = constant. */
-		if (equal(indexkey, left_op) &&
-			rinfo->right_ec && EC_MUST_BE_REDUNDANT(rinfo->right_ec))
-			return true;
-
-		/* Check whether the indexkey is on the right. */
-		if (equal(indexkey, right_op) &&
-			rinfo->left_ec && EC_MUST_BE_REDUNDANT(rinfo->left_ec))
+		if (equal(indexkey, left_op) && IsA(right_op, Const))
 			return true;
 	}
 
@@ -269,12 +269,13 @@ yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
  * 'index_clauses' as the truth source.
  */
 static Bitmapset *
-yb_get_const_colrefs_for_distinct_pushdown(IndexOptInfo *index,
+yb_get_const_colrefs_for_distinct_pushdown(PlannerInfo *root,
+										   IndexOptInfo *index,
 										   List *index_clauses)
 {
-	Bitmapset *const_colrefs;
-	ListCell  *lc;
-	int		   indexcol;
+	Bitmapset  *const_colrefs;
+	ListCell   *lc;
+	int			indexcol;
 
 	const_colrefs = NULL;
 	indexcol = 0;
@@ -291,11 +292,11 @@ yb_get_const_colrefs_for_distinct_pushdown(IndexOptInfo *index,
 		 */
 		if (indexcol >= index->nhashcolumns &&
 			IsA(tle->expr, Var) &&
-			yb_is_const_clause_for_distinct_pushdown(
-				index, index_clauses, indexcol, tle->expr))
+			yb_is_const_clause_for_distinct_pushdown(root, index, index_clauses,
+													 indexcol, tle->expr))
 			const_colrefs = bms_add_member(const_colrefs,
-				((Var *) tle->expr)->varattno -
-				YBFirstLowInvalidAttributeNumber);
+										   ((Var *) tle->expr)->varattno -
+										   YBFirstLowInvalidAttributeNumber);
 		indexcol++;
 	}
 
@@ -312,22 +313,22 @@ yb_get_const_colrefs_for_distinct_pushdown(IndexOptInfo *index,
 static int
 yb_find_colref_in_index(IndexOptInfo *index, int target_colref)
 {
-	ListCell *lc;
-	int		  ordpos;
+	ListCell   *lc;
+	int			ordpos;
 
-	ordpos = 0; /* Ordinal position. */
+	ordpos = 0;					/* Ordinal position. */
 	foreach(lc, index->indextlist)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(lc);
-		int			 colref;
+		int			colref;
 
 		ordpos++;
 
 		if (!IsA(tle->expr, Var))
 			continue;
 
-		colref = ((Var *) tle->expr)->varattno -
-					YBFirstLowInvalidAttributeNumber;
+		colref = (((Var *) tle->expr)->varattno -
+				  YBFirstLowInvalidAttributeNumber);
 
 		/* Found a matching index column. */
 		if (colref == target_colref)
@@ -350,17 +351,18 @@ yb_find_colref_in_index(IndexOptInfo *index, int target_colref)
  * Returns -1 when 'colrefs' cannot be satisfied by the 'index'.
  */
 int
-yb_calculate_distinct_prefixlen(IndexOptInfo *index, List *index_clauses)
+yb_calculate_distinct_prefixlen(PlannerInfo *root, IndexOptInfo *index,
+								List *index_clauses)
 {
-	Bitmapset *colrefs;
-	Bitmapset *const_colrefs;
-	int		   prefixlen;
-	int		   target_colref;
+	Bitmapset  *colrefs;
+	Bitmapset  *const_colrefs;
+	int			prefixlen;
+	int			target_colref;
 
 	if (!yb_get_colrefs_for_distinct_pushdown(index, index_clauses, &colrefs))
 		return -1;
 
-	const_colrefs = yb_get_const_colrefs_for_distinct_pushdown(index,
+	const_colrefs = yb_get_const_colrefs_for_distinct_pushdown(root, index,
 															   index_clauses);
 
 	prefixlen = 0;
@@ -370,8 +372,16 @@ yb_calculate_distinct_prefixlen(IndexOptInfo *index, List *index_clauses)
 		/*
 		 * ordpos represents the 1-based position of target_colref in the index.
 		 */
-		int ordpos = yb_find_colref_in_index(index, target_colref);
+		int			ordpos = yb_find_colref_in_index(index, target_colref);
+
 		if (ordpos < 0)
+			return -1;
+
+		/*
+		 * Return -1 when an include column is referenced.
+		 * Because include columns of an index are not sorted.
+		 */
+		if (ordpos > index->nkeycolumns)
 			return -1;
 
 		/*
@@ -408,7 +418,7 @@ yb_is_index_expr_referenced(Node *expr, Bitmapset *colrefs)
 
 	if (IsA(expr, Var))
 	{
-		Var *var = (Var *) expr;
+		Var		   *var = (Var *) expr;
 
 		return bms_is_member(var->varattno - YBFirstLowInvalidAttributeNumber,
 							 colrefs);
@@ -471,12 +481,12 @@ yb_get_uniqkeys(IndexOptInfo *index, int prefixlen)
 static int
 yb_find_expr_in_uniqkeys(Node *expr, List *uniqkeys)
 {
-	ListCell  *lc;
-	int		   pos = 0;
+	ListCell   *lc;
+	int			pos = 0;
 
 	foreach(lc, uniqkeys)
 	{
-		Node *uniqkey = (Node *) lfirst(lc);
+		Node	   *uniqkey = (Node *) lfirst(lc);
 
 		if (exprCollation(expr) == exprCollation(uniqkey) &&
 			exprType(expr) == exprType(uniqkey) &&
@@ -497,12 +507,12 @@ yb_find_expr_in_uniqkeys(Node *expr, List *uniqkeys)
 static bool
 yb_uniqkey_matches_ec(Node *uniqkey, EquivalenceClass *ec)
 {
-	ListCell *lc;
+	ListCell   *lc;
 
 	foreach(lc, ec->ec_members)
 	{
 		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc);
-		Node			  *em_expr;
+		Node	   *em_expr;
 
 		if (em->em_is_child)
 			continue;
@@ -526,7 +536,7 @@ yb_uniqkey_matches_ec(Node *uniqkey, EquivalenceClass *ec)
 static bool
 yb_uniqkey_is_const(PlannerInfo *root, Node *uniqkey)
 {
-	ListCell *lc;
+	ListCell   *lc;
 
 	foreach(lc, root->eq_classes)
 	{
@@ -553,7 +563,7 @@ yb_uniqkey_is_const(PlannerInfo *root, Node *uniqkey)
 static bool
 yb_does_uniqkey_equal_any_distinctkey(Node *uniqkey, List *query_ecs)
 {
-	ListCell *lc;
+	ListCell   *lc;
 
 	foreach(lc, query_ecs)
 	{
@@ -676,8 +686,8 @@ yb_has_sufficient_uniqkeys(PlannerInfo *root, Path *pathnode)
 	matched_uniqkeys = NULL;
 	foreach(lc, query_uniqkeys)
 	{
-		Node *query_uniqkey = (Node *) lfirst(lc);
-		int  path_pos;
+		Node	   *query_uniqkey = (Node *) lfirst(lc);
+		int			path_pos;
 
 		path_pos = yb_find_expr_in_uniqkeys(query_uniqkey, path_uniqkeys);
 		if (path_pos == -1)
@@ -697,7 +707,7 @@ yb_has_sufficient_uniqkeys(PlannerInfo *root, Path *pathnode)
 	{
 		if (!bms_is_member(pos, matched_uniqkeys))
 		{
-			Node *path_uniqkey = (Node *) lfirst(lc);
+			Node	   *path_uniqkey = (Node *) lfirst(lc);
 
 			/*
 			 * path_uniqkey is not required for the query but still alright if

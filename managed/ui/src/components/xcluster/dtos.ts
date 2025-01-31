@@ -1,5 +1,5 @@
 import { XClusterConfigStatus, XClusterConfigType, XClusterTableStatus } from './constants';
-import { PitrConfig } from '../../redesign/helpers/dtos';
+import { PitrConfig, YBTable } from '../../redesign/helpers/dtos';
 import { SourceUniverseDrState, TargetUniverseDrState } from './disasterRecovery/dtos';
 
 /**
@@ -12,7 +12,10 @@ export interface XClusterTableDetails {
   status: XClusterTableStatus;
   streamId: string;
   tableId: string;
-  replicationStatusErrors: string[];
+  replicationStatusErrors: XClusterReplicationStatusError[];
+
+  sourceTableInfo?: YBTable;
+  targetTableInfo?: YBTable;
   bootstrapCreateTime?: string;
   restoreTime?: string;
 }
@@ -47,4 +50,42 @@ export interface XClusterConfig {
 
   // `imported` is dropped from the model defined in XClusterConfig.java.
   // This is intended for backend usage and API users shouldn't need to use this field.
+}
+
+/**
+ * Source: src/main/java/com/yugabyte/yw/models/XClusterTableConfig.java
+ */
+export const XClusterReplicationStatusError = {
+  MISSING_OP: 'Missing op ID',
+  SCHEMA_MISMATCH: 'Schema mismatch',
+  MISSING_TABLE: 'Missing table'
+} as const;
+export type XClusterReplicationStatusError = typeof XClusterReplicationStatusError[keyof typeof XClusterReplicationStatusError];
+
+/**
+ * Source: managed/src/main/java/com/yugabyte/yw/forms/XClusterConfigNeedBootstrapPerTableResponse.java
+ */
+export const XClusterNeedBootstrapReason = {
+  TABLE_MISSING_ON_TARGET: 'TABLE_MISSING_ON_TARGET',
+  TABLE_HAS_DATA: 'TABLE_HAS_DATA',
+  BIDIRECTIONAL_REPLICATION: 'BIDIRECTIONAL_REPLICATION'
+} as const;
+export type XClusterNeedBootstrapReason = typeof XClusterNeedBootstrapReason[keyof typeof XClusterNeedBootstrapReason];
+
+/**
+ * Source: managed/src/main/java/com/yugabyte/yw/forms/XClusterConfigNeedBootstrapPerTableResponse.java
+ */
+export interface XClusterConfigNeedBootstrapPerTableResponse {
+  [tableUuid: string]: {
+    description: string;
+    reasons: XClusterNeedBootstrapReason[];
+    bootstrapRequired: boolean;
+  };
+}
+
+/**
+ * Source: managed/src/main/java/com/yugabyte/yw/controllers/XClusterConfigController.java
+ */
+export interface XClusterConfigNeedBootstrapPerTableSimpleResponse {
+  [tableUuid: string]: boolean;
 }

@@ -1,8 +1,7 @@
 ---
 title: Distributed Data modeling
 linkTitle: Data modeling
-description: Learn to develop YugabyteDB applications
-image: fa-sharp fa-light fa-objects-column
+description: Data modeling in a distributed database
 aliases:
   - /preview/develop/learn/data-modeling-ysql/
   - /preview/develop/learn/data-modeling-ycql/

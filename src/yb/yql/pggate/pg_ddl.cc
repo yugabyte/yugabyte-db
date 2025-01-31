@@ -35,8 +35,7 @@ DEFINE_test_flag(int32, user_ddl_operation_timeout_sec, 0,
 DECLARE_int32(max_num_tablets_for_table);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 using namespace std::literals;  // NOLINT
 
@@ -69,19 +68,21 @@ CoarseTimePoint CreateDatabaseDeadline() {
 // PgCreateDatabase
 //--------------------------------------------------------------------------------------------------
 
-PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session,
+PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
                                    const char *database_name,
-                                   const PgOid database_oid,
-                                   const PgOid source_database_oid,
-                                   const PgOid next_oid,
-                                   YbCloneInfo *yb_clone_info,
-                                   const bool colocated)
-    : PgDdl(std::move(pg_session)) {
+                                   PgOid database_oid,
+                                   PgOid source_database_oid,
+                                   PgOid next_oid,
+                                   YbcCloneInfo *yb_clone_info,
+                                   bool colocated,
+                                   bool use_transaction)
+    : BaseType(pg_session) {
   req_.set_database_name(database_name);
   req_.set_database_oid(database_oid);
   req_.set_source_database_oid(source_database_oid);
   req_.set_next_oid(next_oid);
   req_.set_colocated(colocated);
+  req_.set_use_transaction(use_transaction);
   if (yb_clone_info) {
     req_.set_source_database_name(yb_clone_info->src_db_name);
     req_.set_clone_time(yb_clone_info->clone_time);
@@ -90,37 +91,26 @@ PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session,
   }
 }
 
-PgCreateDatabase::~PgCreateDatabase() {
-}
-
 Status PgCreateDatabase::Exec() {
   return pg_session_->pg_client().CreateDatabase(&req_, CreateDatabaseDeadline());
 }
 
-PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
-                               const char *database_name,
-                               PgOid database_oid)
-    : PgDdl(pg_session),
+PgDropDatabase::PgDropDatabase(
+    const PgSession::ScopedRefPtr& pg_session, const char* database_name, PgOid database_oid)
+    : BaseType(pg_session),
       database_name_(database_name),
       database_oid_(database_oid) {
-}
-
-PgDropDatabase::~PgDropDatabase() {
 }
 
 Status PgDropDatabase::Exec() {
   return pg_session_->DropDatabase(database_name_, database_oid_);
 }
 
-PgAlterDatabase::PgAlterDatabase(PgSession::ScopedRefPtr pg_session,
-                                 const char *database_name,
-                                 PgOid database_oid)
-    : PgDdl(pg_session) {
+PgAlterDatabase::PgAlterDatabase(
+    const PgSession::ScopedRefPtr& pg_session, const char* database_name, PgOid database_oid)
+    : BaseType(pg_session) {
   req_.set_database_name(database_name);
   req_.set_database_oid(database_oid);
-}
-
-PgAlterDatabase::~PgAlterDatabase() {
 }
 
 Status PgAlterDatabase::Exec() {
@@ -135,32 +125,23 @@ void PgAlterDatabase::RenameDatabase(const char *newname) {
 // PgCreateTablegroup / PgDropTablegroup
 //--------------------------------------------------------------------------------------------------
 
-PgCreateTablegroup::PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
-                                       const char *database_name,
-                                       const PgOid database_oid,
-                                       const PgOid tablegroup_oid,
-                                       const PgOid tablespace_oid)
-    : PgDdl(pg_session) {
+PgCreateTablegroup::PgCreateTablegroup(
+    const PgSession::ScopedRefPtr& pg_session, const char* database_name, const PgOid database_oid,
+    const PgOid tablegroup_oid, const PgOid tablespace_oid)
+    : BaseType(pg_session) {
   req_.set_database_name(database_name);
   PgObjectId(database_oid, tablegroup_oid).ToPB(req_.mutable_tablegroup_id());
   PgObjectId(database_oid, tablespace_oid).ToPB(req_.mutable_tablespace_id());
-}
-
-PgCreateTablegroup::~PgCreateTablegroup() {
 }
 
 Status PgCreateTablegroup::Exec() {
   return pg_session_->pg_client().CreateTablegroup(&req_, DdlDeadline());
 }
 
-PgDropTablegroup::PgDropTablegroup(PgSession::ScopedRefPtr pg_session,
-                                   const PgOid database_oid,
-                                   const PgOid tablegroup_oid)
-    : PgDdl(pg_session) {
+PgDropTablegroup::PgDropTablegroup(
+    const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid)
+    : BaseType(pg_session) {
   PgObjectId(database_oid, tablegroup_oid).ToPB(req_.mutable_tablegroup_id());
-}
-
-PgDropTablegroup::~PgDropTablegroup() {
 }
 
 Status PgDropTablegroup::Exec() {
@@ -171,23 +152,25 @@ Status PgDropTablegroup::Exec() {
 // PgCreateTable
 //--------------------------------------------------------------------------------------------------
 
-PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
-                             const char *database_name,
-                             const char *schema_name,
-                             const char *table_name,
-                             const PgObjectId& table_id,
-                             bool is_shared_table,
-                             bool is_sys_catalog_table,
-                             bool if_not_exist,
-                             PgYbrowidMode ybrowid_mode,
-                             bool is_colocated_via_database,
-                             const PgObjectId& tablegroup_oid,
-                             const ColocationId colocation_id,
-                             const PgObjectId& tablespace_oid,
-                             bool is_matview,
-                             const PgObjectId& pg_table_oid,
-                             const PgObjectId& old_relfilenode_oid,
-                             bool is_truncate)
+PgCreateTableBase::PgCreateTableBase(
+    const PgSession::ScopedRefPtr& pg_session,
+    const char* database_name,
+    const char* schema_name,
+    const char* table_name,
+    const PgObjectId& table_id,
+    bool is_shared_table,
+    bool is_sys_catalog_table,
+    bool if_not_exist,
+    YbcPgYbrowidMode ybrowid_mode,
+    bool is_colocated_via_database,
+    const PgObjectId& tablegroup_oid,
+    ColocationId colocation_id,
+    const PgObjectId& tablespace_oid,
+    bool is_matview,
+    const PgObjectId& pg_table_oid,
+    const PgObjectId& old_relfilenode_oid,
+    bool is_truncate,
+    bool use_transaction)
     : PgDdl(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
   req_.set_database_name(database_name);
@@ -207,6 +190,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   pg_table_oid.ToPB(req_.mutable_pg_table_oid());
   old_relfilenode_oid.ToPB(req_.mutable_old_relfilenode_oid());
   req_.set_is_truncate(is_truncate);
+  req_.set_use_transaction(use_transaction);
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   switch (ybrowid_mode) {
@@ -221,13 +205,9 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   }
 }
 
-Status PgCreateTable::AddColumnImpl(const char *attr_name,
-                                    int attr_num,
-                                    int attr_ybtype,
-                                    int pg_type_oid,
-                                    bool is_hash,
-                                    bool is_range,
-                                    SortingType sorting_type) {
+Status PgCreateTableBase::AddColumnImpl(
+    const char* attr_name, int attr_num, int attr_ybtype, int pg_type_oid, bool is_hash,
+    bool is_range, SortingType sorting_type) {
   auto& column = *req_.mutable_create_columns()->Add();
   column.set_attr_name(attr_name);
   column.set_attr_num(attr_num);
@@ -239,7 +219,7 @@ Status PgCreateTable::AddColumnImpl(const char *attr_name,
   return Status::OK();
 }
 
-Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
+Status PgCreateTableBase::SetNumTablets(int32_t num_tablets) {
   if (num_tablets < 0) {
     return STATUS(InvalidArgument, "num_tablets cannot be less than zero");
   }
@@ -251,17 +231,25 @@ Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
   return Status::OK();
 }
 
-Status PgCreateTable::SetVectorOptions(YbPgVectorIdxOptions *options) {
+Status PgCreateTableBase::SetVectorOptions(YbcPgVectorIdxOptions* options) {
   auto options_pb = req_.mutable_vector_idx_options();
   options_pb->set_dist_type(static_cast<PgVectorDistanceType>(options->dist_type));
   options_pb->set_idx_type(static_cast<PgVectorIndexType>(options->idx_type));
   options_pb->set_dimensions(options->dimensions);
 
+  PgTable table(VERIFY_RESULT(pg_session_->LoadTable(PgObjectId::FromPB(req_.base_table_id()))));
+  options_pb->set_column_id(VERIFY_RESULT_REF(table.ColumnForAttr(options->attnum)).id());
+
   req_.set_is_unique_index(false);
+
+  if (options->idx_type == YbcPgVectorIdxType::YB_VEC_DUMMY) {
+    // Disable multi-tablet for this for now.
+    RETURN_NOT_OK(SetNumTablets(1));
+  }
   return Status::OK();
 }
 
-Status PgCreateTable::AddSplitBoundary(PgExpr **exprs, int expr_count) {
+Status PgCreateTableBase::AddSplitBoundary(PgExpr** exprs, int expr_count) {
   auto* values = req_.mutable_split_bounds()->Add()->mutable_values();
   for (int i = 0; i < expr_count; ++i) {
     auto temp_value = VERIFY_RESULT(exprs[i]->Eval());
@@ -273,40 +261,80 @@ Status PgCreateTable::AddSplitBoundary(PgExpr **exprs, int expr_count) {
   return Status::OK();
 }
 
-Status PgCreateTable::Exec() {
+Status PgCreateTableBase::Exec() {
   RETURN_NOT_OK(pg_session_->pg_client().CreateTable(&req_, DdlDeadline()));
-  auto base_table_id = PgObjectId::FromPB(req_.base_table_id());
+
+  const auto base_table_id = PgObjectId::FromPB(req_.base_table_id());
   if (base_table_id.IsValid()) {
     pg_session_->InvalidateTableCache(base_table_id, InvalidateOnPgClient::kFalse);
   }
   return Status::OK();
 }
 
-void PgCreateTable::SetupIndex(
-    const PgObjectId& base_table_id, bool is_unique_index, bool skip_index_backfill) {
+PgCreateTable::PgCreateTable(
+    const PgSession::ScopedRefPtr& pg_session,
+    const char* database_name,
+    const char* schema_name,
+    const char* table_name,
+    const PgObjectId& table_id,
+    bool is_shared_table,
+    bool is_sys_catalog_table,
+    bool if_not_exist,
+    YbcPgYbrowidMode ybrowid_mode,
+    bool is_colocated_via_database,
+    const PgObjectId& tablegroup_oid,
+    ColocationId colocation_id,
+    const PgObjectId& tablespace_oid,
+    bool is_matview,
+    const PgObjectId& pg_table_oid,
+    const PgObjectId& old_relfilenode_oid,
+    bool is_truncate,
+    bool use_transaction)
+    : BaseType(
+          pg_session, database_name, schema_name, table_name, table_id, is_shared_table,
+          is_sys_catalog_table, if_not_exist, ybrowid_mode, is_colocated_via_database,
+          tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
+          old_relfilenode_oid, is_truncate, use_transaction) {}
+
+PgCreateIndex::PgCreateIndex(
+    const PgSession::ScopedRefPtr& pg_session,
+    const char* database_name,
+    const char* schema_name,
+    const char* table_name,
+    const PgObjectId& table_id,
+    bool is_shared_table,
+    bool is_sys_catalog_table,
+    bool if_not_exist,
+    YbcPgYbrowidMode ybrowid_mode,
+    bool is_colocated_via_database,
+    const PgObjectId& tablegroup_oid,
+    ColocationId colocation_id,
+    const PgObjectId& tablespace_oid,
+    bool is_matview,
+    const PgObjectId& pg_table_oid,
+    const PgObjectId& old_relfilenode_oid,
+    bool is_truncate,
+    bool use_transaction,
+    const PgObjectId& base_table_id,
+    bool is_unique_index,
+    bool skip_index_backfill)
+    : BaseType(
+          pg_session, database_name, schema_name, table_name, table_id, is_shared_table,
+          is_sys_catalog_table, if_not_exist, ybrowid_mode, is_colocated_via_database,
+          tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
+          old_relfilenode_oid, is_truncate, use_transaction) {
   base_table_id.ToPB(req_.mutable_base_table_id());
   req_.set_is_unique_index(is_unique_index);
   req_.set_skip_index_backfill(skip_index_backfill);
-}
-
-StmtOp PgCreateTable::stmt_op() const {
-  return PgObjectId::FromPB(req_.base_table_id()).IsValid()
-      ? StmtOp::STMT_CREATE_INDEX : StmtOp::STMT_CREATE_TABLE;
 }
 
 //--------------------------------------------------------------------------------------------------
 // PgDropTable
 //--------------------------------------------------------------------------------------------------
 
-PgDropTable::PgDropTable(PgSession::ScopedRefPtr pg_session,
-                         const PgObjectId& table_id,
-                         bool if_exist)
-    : PgDdl(pg_session),
-      table_id_(table_id),
-      if_exist_(if_exist) {
-}
-
-PgDropTable::~PgDropTable() {
+PgDropTable::PgDropTable(
+    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist)
+    : BaseType(pg_session), table_id_(table_id), if_exist_(if_exist) {
 }
 
 Status PgDropTable::Exec() {
@@ -322,13 +350,10 @@ Status PgDropTable::Exec() {
 // PgTruncateTable
 //--------------------------------------------------------------------------------------------------
 
-PgTruncateTable::PgTruncateTable(PgSession::ScopedRefPtr pg_session,
-                                 const PgObjectId& table_id)
-    : PgDdl(pg_session) {
+PgTruncateTable::PgTruncateTable(
+    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id)
+    : BaseType(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
-}
-
-PgTruncateTable::~PgTruncateTable() {
 }
 
 Status PgTruncateTable::Exec() {
@@ -339,24 +364,21 @@ Status PgTruncateTable::Exec() {
 // PgDropIndex
 //--------------------------------------------------------------------------------------------------
 
-PgDropIndex::PgDropIndex(PgSession::ScopedRefPtr pg_session,
-                         const PgObjectId& index_id,
-                         bool if_exist,
-                         bool ddl_rollback_enabled)
-    : PgDropTable(pg_session, index_id, if_exist), ddl_rollback_enabled_(ddl_rollback_enabled) {
-}
-
-PgDropIndex::~PgDropIndex() {
+PgDropIndex::PgDropIndex(
+    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id, bool if_exist,
+    bool ddl_rollback_enabled)
+    : BaseType(pg_session),
+      index_id_(index_id), if_exist_(if_exist), ddl_rollback_enabled_(ddl_rollback_enabled) {
 }
 
 Status PgDropIndex::Exec() {
   client::YBTableName indexed_table_name;
-  Status s = pg_session_->DropIndex(table_id_, &indexed_table_name);
+  auto s = pg_session_->DropIndex(index_id_, &indexed_table_name);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     RSTATUS_DCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
     PgObjectId indexed_table_id(indexed_table_name.table_id());
 
-    pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
+    pg_session_->InvalidateTableCache(index_id_, InvalidateOnPgClient::kFalse);
     pg_session_->InvalidateTableCache(indexed_table_id,
         ddl_rollback_enabled_ ? InvalidateOnPgClient::kTrue : InvalidateOnPgClient::kFalse);
     return Status::OK();
@@ -368,16 +390,17 @@ Status PgDropIndex::Exec() {
 // PgAlterTable
 //--------------------------------------------------------------------------------------------------
 
-PgAlterTable::PgAlterTable(PgSession::ScopedRefPtr pg_session,
-                           const PgObjectId& table_id)
-    : PgDdl(pg_session) {
+PgAlterTable::PgAlterTable(
+    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool use_transaction)
+    : BaseType(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
+  req_.set_use_transaction(use_transaction);
 }
 
 Status PgAlterTable::AddColumn(const char *name,
-                               const YBCPgTypeEntity *attr_type,
+                               const YbcPgTypeEntity *attr_type,
                                int order,
-                               YBCPgExpr missing_value) {
+                               YbcPgExpr missing_value) {
   auto& col = *req_.mutable_add_columns()->Add();
   col.set_attr_name(name);
   col.set_attr_ybtype(attr_type->yb_type);
@@ -435,6 +458,12 @@ Status PgAlterTable::SetTableId(const PgObjectId& table_id) {
   return Status::OK();
 }
 
+Status PgAlterTable::SetSchema(const char *schema_name) {
+  auto& rename = *req_.mutable_rename_table();
+  rename.set_schema_name(schema_name);
+  return Status::OK();
+}
+
 Status PgAlterTable::Exec() {
   RETURN_NOT_OK(pg_session_->pg_client().AlterTable(&req_, DdlDeadline()));
   pg_session_->InvalidateTableCache(
@@ -447,35 +476,21 @@ void PgAlterTable::InvalidateTableCacheEntry() {
       PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kTrue);
 }
 
-PgAlterTable::~PgAlterTable() {
-}
-
 //--------------------------------------------------------------------------------------------------
 // PgDropSequence
 //--------------------------------------------------------------------------------------------------
 
-PgDropSequence::PgDropSequence(PgSession::ScopedRefPtr pg_session,
-                               PgOid database_oid,
-                               PgOid sequence_oid)
-  : PgDdl(std::move(pg_session)),
-    database_oid_(database_oid),
-    sequence_oid_(sequence_oid) {
-}
-
-PgDropSequence::~PgDropSequence() {
+PgDropSequence::PgDropSequence(
+    const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid sequence_oid)
+    : BaseType(pg_session), database_oid_(database_oid), sequence_oid_(sequence_oid) {
 }
 
 Status PgDropSequence::Exec() {
   return pg_session_->pg_client().DeleteSequenceTuple(database_oid_, sequence_oid_);
 }
 
-PgDropDBSequences::PgDropDBSequences(PgSession::ScopedRefPtr pg_session,
-                                     PgOid database_oid)
-  : PgDdl(std::move(pg_session)),
-    database_oid_(database_oid) {
-}
-
-PgDropDBSequences::~PgDropDBSequences() {
+PgDropDBSequences::PgDropDBSequences(const PgSession::ScopedRefPtr& pg_session,  PgOid database_oid)
+    : BaseType(pg_session), database_oid_(database_oid) {
 }
 
 Status PgDropDBSequences::Exec() {
@@ -485,12 +500,10 @@ Status PgDropDBSequences::Exec() {
 // PgCreateReplicationSlot
 //--------------------------------------------------------------------------------------------------
 
-PgCreateReplicationSlot::PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
-                                                 const char *slot_name,
-                                                 const char *plugin_name,
-                                                 PgOid database_oid,
-                                                 YBCPgReplicationSlotSnapshotAction snapshot_action)
-    : PgDdl(pg_session) {
+PgCreateReplicationSlot::PgCreateReplicationSlot(
+    const PgSession::ScopedRefPtr& pg_session, const char* slot_name, const char* plugin_name,
+    PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type)
+    : BaseType(pg_session) {
   req_.set_database_oid(database_oid);
   req_.set_replication_slot_name(slot_name);
   req_.set_output_plugin_name(plugin_name);
@@ -507,21 +520,31 @@ PgCreateReplicationSlot::PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_sess
     default:
       DCHECK(false) << "Unknown snapshot_action " << snapshot_action;
   }
+
+  if (yb_allow_replication_slot_lsn_types) {
+    switch (lsn_type) {
+      case YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE:
+        req_.set_lsn_type(tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE);
+        break;
+      case YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME:
+        req_.set_lsn_type(tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_HYBRID_TIME);
+        break;
+      default:
+        req_.set_lsn_type(tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE);
+    }
+  }
 }
 
 Result<tserver::PgCreateReplicationSlotResponsePB> PgCreateReplicationSlot::Exec() {
   return pg_session_->pg_client().CreateReplicationSlot(&req_, DdlDeadline());
 }
 
-PgCreateReplicationSlot::~PgCreateReplicationSlot() {
-}
-
 // PgDropReplicationSlot
 //--------------------------------------------------------------------------------------------------
 
-PgDropReplicationSlot::PgDropReplicationSlot(PgSession::ScopedRefPtr pg_session,
-                                             const char *slot_name)
-    : PgDdl(pg_session) {
+PgDropReplicationSlot::PgDropReplicationSlot(
+    const PgSession::ScopedRefPtr& pg_session, const char* slot_name)
+    : BaseType(pg_session) {
   req_.set_replication_slot_name(slot_name);
 }
 
@@ -529,8 +552,4 @@ Status PgDropReplicationSlot::Exec() {
   return pg_session_->pg_client().DropReplicationSlot(&req_, DdlDeadline());
 }
 
-PgDropReplicationSlot::~PgDropReplicationSlot() {
-}
-
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

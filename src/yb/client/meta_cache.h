@@ -46,7 +46,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/dockv/partition.h"
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"
@@ -117,6 +117,8 @@ class RemoteTabletServer {
   // This will involve a DNS lookup if there is not already an active proxy.
   // If there is an active proxy, does nothing.
   Status InitProxy(YBClient* client);
+
+  Result<std::shared_ptr<tserver::TabletServerServiceProxy>> ObtainProxy(YBClient& client);
 
   // Update information from the given pb.
   // Requires that 'pb''s UUID matches this server.
@@ -582,7 +584,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // partitions are stale and returns ClientErrorCode::kTablePartitionListIsStale in that case.
   void LookupTabletById(const TabletId& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
-                        master::IncludeInactive include_inactive,
+                        master::IncludeHidden include_hidden,
                         master::IncludeDeleted include_deleted,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
@@ -621,11 +623,13 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   void InvalidateTableCache(const YBTable& table);
 
-  void AddAllTabletInfo(JsonWriter* writer);
+  void AddAllTabletInfo(JsonWriter* writer) const;
 
   const std::string& LogPrefix() const { return log_prefix_; }
 
   void ClearAll();
+
+  Status ClearCacheEntries(const std::string& namespace_id);
 
   // TabletConsensusInfo is piggybacked from the response of a TServer.
   // Returns Status::OK() if and only if the meta-cache was updated.
@@ -671,7 +675,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void LookupByIdFailed(
       const TabletId& tablet_id,
       const std::shared_ptr<const YBTable>& table,
-      master::IncludeInactive include_inactive,
+      master::IncludeHidden include_hidden,
       master::IncludeDeleted include_deleted,
       const boost::optional<PartitionListVersion>& response_partition_list_version,
       int64_t request_no,
@@ -716,7 +720,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   bool DoLookupTabletById(
       const TabletId& tablet_id,
       const std::shared_ptr<const YBTable>& table,
-      master::IncludeInactive include_inactive,
+      master::IncludeHidden include_hidden,
       master::IncludeDeleted include_deleted,
       CoarseTimePoint deadline,
       UseCache use_cache,
@@ -736,7 +740,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   YBClient* const client_;
 
-  std::shared_timed_mutex mutex_;
+  mutable std::shared_timed_mutex mutex_;
 
   // Cache of Tablet Server locations: TS UUID -> RemoteTabletServer*.
   //

@@ -16,8 +16,13 @@ export const FETCH_FAILED_TASK_DETAIL_RESPONSE = 'FETCH_TASK_DETAIL_RESPONSE';
 export const RETRY_TASK = 'RETRY_TASK';
 export const RETRY_TASK_RESPONSE = 'RETRY_TASK_RESPONSE';
 
+export const ROLLBACK_TASK = 'ROLLBACK_TASK';
+export const ROLLBACK_TASK_RESPONSE = 'ROLLBACK_TASK_RESPONSE';
+
 export const ABORT_TASK = 'ABORT_TASK';
 export const ABORT_TASK_RESPONSE = 'ABORT_TASK_RESPONSE';
+
+export const PATCH_TASKS_FOR_CUSTOMER = 'PATCH_TASKS_FOR_CUSTOMER';
 
 export function fetchTaskProgress(taskUUID) {
   const request = axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
@@ -45,6 +50,19 @@ export function fetchCustomerTasks() {
   return {
     type: FETCH_CUSTOMER_TASKS,
     payload: request
+  };
+}
+
+/**
+ * used to patch a particular universe's tasks to the list of tasks
+ */
+export function patchTasksForCustomer(universeUUID, tasks) {
+  return {
+    type: PATCH_TASKS_FOR_CUSTOMER,
+    payload: {
+      universeUUID,
+      tasks
+    }
   };
 }
 
@@ -94,6 +112,21 @@ export function retryTask(taskUUID) {
 export function retryTaskResponse(response) {
   return {
     type: RETRY_TASK_RESPONSE,
+    payload: response
+  };
+}
+
+export function rollbackTask(taskUUID) {
+  const request = axios.post(`${getCustomerEndpoint()}/tasks/${taskUUID}/rollback`);
+  return {
+    type: ROLLBACK_TASK,
+    payload: request
+  };
+}
+
+export function rollbackTaskResponse(response) {
+  return {
+    type: ROLLBACK_TASK_RESPONSE,
     payload: response
   };
 }

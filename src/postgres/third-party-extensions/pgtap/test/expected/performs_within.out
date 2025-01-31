@@ -1,0 +1,26 @@
+\unset ECHO
+1..24
+ok 1 - simple select should pass
+ok 2 - simple select should have the proper description
+ok 3 - simple select should have the proper diagnostics
+ok 4 - simple select no desc should pass
+ok 5 - simple select no desc should have the proper description
+ok 6 - simple select no desc should have the proper diagnostics
+ok 7 - simple select numeric should pass
+ok 8 - simple select numeric should have the proper description
+ok 9 - simple select numeric should have the proper diagnostics
+ok 10 - simple prepare should pass
+ok 11 - simple prepare should have the proper description
+ok 12 - simple prepare should have the proper diagnostics
+ok 13 - simple execute should pass
+ok 14 - simple execute should have the proper description
+ok 15 - simple execute should have the proper diagnostics
+ok 16 - simple select fail should fail
+ok 17 - simple select fail should have the proper description
+ok 18 - simple select fail should have the proper diagnostics
+ok 19 - simple select no desc fail should fail
+ok 20 - simple select no desc fail should have the proper description
+ok 21 - simple select no desc fail should have the proper diagnostics
+ok 22 - simple select no desc numeric fail should fail
+ok 23 - simple select no desc numeric fail should have the proper description
+ok 24 - simple select no desc numeric fail should have the proper diagnostics

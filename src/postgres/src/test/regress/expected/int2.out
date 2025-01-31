@@ -1,245 +1,243 @@
 --
 -- INT2
 --
-CREATE TABLE INT2_TBL(f1 int2);
-INSERT INTO INT2_TBL(f1) VALUES ('0   ');
-INSERT INTO INT2_TBL(f1) VALUES ('  1234 ');
-INSERT INTO INT2_TBL(f1) VALUES ('    -1234');
+-- int2_tbl was already created and filled in test_setup.sql.
+-- Here we just try to insert bad values.
 INSERT INTO INT2_TBL(f1) VALUES ('34.5');
-ERROR:  invalid input syntax for integer: "34.5"
+ERROR:  invalid input syntax for type smallint: "34.5"
 LINE 1: INSERT INTO INT2_TBL(f1) VALUES ('34.5');
                                          ^
--- largest and smallest values
-INSERT INTO INT2_TBL(f1) VALUES ('32767');
-INSERT INTO INT2_TBL(f1) VALUES ('-32767');
--- bad input values -- should give errors
 INSERT INTO INT2_TBL(f1) VALUES ('100000');
 ERROR:  value "100000" is out of range for type smallint
 LINE 1: INSERT INTO INT2_TBL(f1) VALUES ('100000');
                                          ^
 INSERT INTO INT2_TBL(f1) VALUES ('asdf');
-ERROR:  invalid input syntax for integer: "asdf"
+ERROR:  invalid input syntax for type smallint: "asdf"
 LINE 1: INSERT INTO INT2_TBL(f1) VALUES ('asdf');
                                          ^
 INSERT INTO INT2_TBL(f1) VALUES ('    ');
-ERROR:  invalid input syntax for integer: "    "
+ERROR:  invalid input syntax for type smallint: "    "
 LINE 1: INSERT INTO INT2_TBL(f1) VALUES ('    ');
                                          ^
 INSERT INTO INT2_TBL(f1) VALUES ('- 1234');
-ERROR:  invalid input syntax for integer: "- 1234"
+ERROR:  invalid input syntax for type smallint: "- 1234"
 LINE 1: INSERT INTO INT2_TBL(f1) VALUES ('- 1234');
                                          ^
 INSERT INTO INT2_TBL(f1) VALUES ('4 444');
-ERROR:  invalid input syntax for integer: "4 444"
+ERROR:  invalid input syntax for type smallint: "4 444"
 LINE 1: INSERT INTO INT2_TBL(f1) VALUES ('4 444');
                                          ^
 INSERT INTO INT2_TBL(f1) VALUES ('123 dt');
-ERROR:  invalid input syntax for integer: "123 dt"
+ERROR:  invalid input syntax for type smallint: "123 dt"
 LINE 1: INSERT INTO INT2_TBL(f1) VALUES ('123 dt');
                                          ^
 INSERT INTO INT2_TBL(f1) VALUES ('');
-ERROR:  invalid input syntax for integer: ""
+ERROR:  invalid input syntax for type smallint: ""
 LINE 1: INSERT INTO INT2_TBL(f1) VALUES ('');
                                          ^
-SELECT '' AS five, * FROM INT2_TBL;
- five |   f1   
-------+--------
-      |      0
-      |   1234
-      |  -1234
-      |  32767
-      | -32767
+SELECT * FROM INT2_TBL;
+   f1   
+--------
+      0
+   1234
+  -1234
+  32767
+ -32767
 (5 rows)
 
-SELECT '' AS four, i.* FROM INT2_TBL i WHERE i.f1 <> int2 '0';
- four |   f1   
-------+--------
-      |   1234
-      |  -1234
-      |  32767
-      | -32767
+SELECT * FROM INT2_TBL AS f(a, b);
+ERROR:  table "f" has 1 columns available but 2 columns specified
+SELECT * FROM (TABLE int2_tbl) AS s (a, b);
+ERROR:  table "s" has 1 columns available but 2 columns specified
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <> int2 '0';
+   f1   
+--------
+   1234
+  -1234
+  32767
+ -32767
 (4 rows)
 
-SELECT '' AS four, i.* FROM INT2_TBL i WHERE i.f1 <> int4 '0';
- four |   f1   
-------+--------
-      |   1234
-      |  -1234
-      |  32767
-      | -32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <> int4 '0';
+   f1   
+--------
+   1234
+  -1234
+  32767
+ -32767
 (4 rows)
 
-SELECT '' AS one, i.* FROM INT2_TBL i WHERE i.f1 = int2 '0';
- one | f1 
------+----
-     |  0
+SELECT i.* FROM INT2_TBL i WHERE i.f1 = int2 '0';
+ f1 
+----
+  0
 (1 row)
 
-SELECT '' AS one, i.* FROM INT2_TBL i WHERE i.f1 = int4 '0';
- one | f1 
------+----
-     |  0
+SELECT i.* FROM INT2_TBL i WHERE i.f1 = int4 '0';
+ f1 
+----
+  0
 (1 row)
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 < int2 '0';
- two |   f1   
------+--------
-     |  -1234
-     | -32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 < int2 '0';
+   f1   
+--------
+  -1234
+ -32767
 (2 rows)
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 < int4 '0';
- two |   f1   
------+--------
-     |  -1234
-     | -32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 < int4 '0';
+   f1   
+--------
+  -1234
+ -32767
 (2 rows)
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 <= int2 '0';
- three |   f1   
--------+--------
-       |      0
-       |  -1234
-       | -32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <= int2 '0';
+   f1   
+--------
+      0
+  -1234
+ -32767
 (3 rows)
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 <= int4 '0';
- three |   f1   
--------+--------
-       |      0
-       |  -1234
-       | -32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <= int4 '0';
+   f1   
+--------
+      0
+  -1234
+ -32767
 (3 rows)
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 > int2 '0';
- two |  f1   
------+-------
-     |  1234
-     | 32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 > int2 '0';
+  f1   
+-------
+  1234
+ 32767
 (2 rows)
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 > int4 '0';
- two |  f1   
------+-------
-     |  1234
-     | 32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 > int4 '0';
+  f1   
+-------
+  1234
+ 32767
 (2 rows)
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 >= int2 '0';
- three |  f1   
--------+-------
-       |     0
-       |  1234
-       | 32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 >= int2 '0';
+  f1   
+-------
+     0
+  1234
+ 32767
 (3 rows)
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 >= int4 '0';
- three |  f1   
--------+-------
-       |     0
-       |  1234
-       | 32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 >= int4 '0';
+  f1   
+-------
+     0
+  1234
+ 32767
 (3 rows)
 
 -- positive odds
-SELECT '' AS one, i.* FROM INT2_TBL i WHERE (i.f1 % int2 '2') = int2 '1';
- one |  f1   
------+-------
-     | 32767
+SELECT i.* FROM INT2_TBL i WHERE (i.f1 % int2 '2') = int2 '1';
+  f1   
+-------
+ 32767
 (1 row)
 
 -- any evens
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE (i.f1 % int4 '2') = int2 '0';
- three |  f1   
--------+-------
-       |     0
-       |  1234
-       | -1234
+SELECT i.* FROM INT2_TBL i WHERE (i.f1 % int4 '2') = int2 '0';
+  f1   
+-------
+     0
+  1234
+ -1234
 (3 rows)
 
-SELECT '' AS five, i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i;
+SELECT i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i;
 ERROR:  smallint out of range
-SELECT '' AS five, i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i
+SELECT i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i
 WHERE abs(f1) < 16384;
- five |  f1   |   x   
-------+-------+-------
-      |     0 |     0
-      |  1234 |  2468
-      | -1234 | -2468
+  f1   |   x   
+-------+-------
+     0 |     0
+  1234 |  2468
+ -1234 | -2468
 (3 rows)
 
-SELECT '' AS five, i.f1, i.f1 * int4 '2' AS x FROM INT2_TBL i;
- five |   f1   |   x    
-------+--------+--------
-      |      0 |      0
-      |   1234 |   2468
-      |  -1234 |  -2468
-      |  32767 |  65534
-      | -32767 | -65534
+SELECT i.f1, i.f1 * int4 '2' AS x FROM INT2_TBL i;
+   f1   |   x    
+--------+--------
+      0 |      0
+   1234 |   2468
+  -1234 |  -2468
+  32767 |  65534
+ -32767 | -65534
 (5 rows)
 
-SELECT '' AS five, i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i;
+SELECT i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i;
 ERROR:  smallint out of range
-SELECT '' AS five, i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i
+SELECT i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i
 WHERE f1 < 32766;
- five |   f1   |   x    
-------+--------+--------
-      |      0 |      2
-      |   1234 |   1236
-      |  -1234 |  -1232
-      | -32767 | -32765
+   f1   |   x    
+--------+--------
+      0 |      2
+   1234 |   1236
+  -1234 |  -1232
+ -32767 | -32765
 (4 rows)
 
-SELECT '' AS five, i.f1, i.f1 + int4 '2' AS x FROM INT2_TBL i;
- five |   f1   |   x    
-------+--------+--------
-      |      0 |      2
-      |   1234 |   1236
-      |  -1234 |  -1232
-      |  32767 |  32769
-      | -32767 | -32765
+SELECT i.f1, i.f1 + int4 '2' AS x FROM INT2_TBL i;
+   f1   |   x    
+--------+--------
+      0 |      2
+   1234 |   1236
+  -1234 |  -1232
+  32767 |  32769
+ -32767 | -32765
 (5 rows)
 
-SELECT '' AS five, i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i;
+SELECT i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i;
 ERROR:  smallint out of range
-SELECT '' AS five, i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i
+SELECT i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i
 WHERE f1 > -32767;
- five |  f1   |   x   
-------+-------+-------
-      |     0 |    -2
-      |  1234 |  1232
-      | -1234 | -1236
-      | 32767 | 32765
+  f1   |   x   
+-------+-------
+     0 |    -2
+  1234 |  1232
+ -1234 | -1236
+ 32767 | 32765
 (4 rows)
 
-SELECT '' AS five, i.f1, i.f1 - int4 '2' AS x FROM INT2_TBL i;
- five |   f1   |   x    
-------+--------+--------
-      |      0 |     -2
-      |   1234 |   1232
-      |  -1234 |  -1236
-      |  32767 |  32765
-      | -32767 | -32769
+SELECT i.f1, i.f1 - int4 '2' AS x FROM INT2_TBL i;
+   f1   |   x    
+--------+--------
+      0 |     -2
+   1234 |   1232
+  -1234 |  -1236
+  32767 |  32765
+ -32767 | -32769
 (5 rows)
 
-SELECT '' AS five, i.f1, i.f1 / int2 '2' AS x FROM INT2_TBL i;
- five |   f1   |   x    
-------+--------+--------
-      |      0 |      0
-      |   1234 |    617
-      |  -1234 |   -617
-      |  32767 |  16383
-      | -32767 | -16383
+SELECT i.f1, i.f1 / int2 '2' AS x FROM INT2_TBL i;
+   f1   |   x    
+--------+--------
+      0 |      0
+   1234 |    617
+  -1234 |   -617
+  32767 |  16383
+ -32767 | -16383
 (5 rows)
 
-SELECT '' AS five, i.f1, i.f1 / int4 '2' AS x FROM INT2_TBL i;
- five |   f1   |   x    
-------+--------+--------
-      |      0 |      0
-      |   1234 |    617
-      |  -1234 |   -617
-      |  32767 |  16383
-      | -32767 | -16383
+SELECT i.f1, i.f1 / int4 '2' AS x FROM INT2_TBL i;
+   f1   |   x    
+--------+--------
+      0 |      0
+   1234 |    617
+  -1234 |   -617
+  32767 |  16383
+ -32767 | -16383
 (5 rows)
 
 -- corner cases

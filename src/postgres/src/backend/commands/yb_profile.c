@@ -25,10 +25,13 @@
 
 #include "postgres.h"
 
+#include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/reloptions.h"
 #include "access/sysattr.h"
+#include "access/table.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
@@ -43,7 +46,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 
 static void
@@ -56,7 +59,7 @@ CheckProfileCatalogsExist()
 	if (!YbLoginProfileCatalogsExist)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Login profile system catalogs do not exist.")));
+				 errmsg("login profile system catalogs do not exist")));
 }
 
 /*
@@ -125,7 +128,7 @@ YbCreateProfile(YbCreateProfileStmt *stmt)
 	/*
 	 * Insert tuple into pg_yb_profile.
 	 */
-	rel = heap_open(YbProfileRelationId, RowExclusiveLock);
+	rel = table_open(YbProfileRelationId, RowExclusiveLock);
 
 	MemSet(nulls, false, sizeof(nulls));
 
@@ -136,14 +139,17 @@ YbCreateProfile(YbCreateProfileStmt *stmt)
 	/* Set lock time to 0 as it is not implemented yet. */
 	values[Anum_pg_yb_profile_prfpasswordlocktime - 1] = 0;
 
+	prfid =
+		GetNewOidWithIndex(rel, YbProfileOidIndexId, Anum_pg_yb_profile_oid);
+	values[Anum_pg_yb_profile_oid - 1] = ObjectIdGetDatum(prfid);
 	tuple = heap_form_tuple(rel->rd_att, values, nulls);
 
-	prfid = CatalogTupleInsert(rel, tuple);
+	CatalogTupleInsert(rel, tuple);
 
 	heap_freetuple(tuple);
 
 	/* We keep the lock on pg_yb_profile until commit */
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	return prfid;
 }
@@ -159,30 +165,30 @@ yb_get_profile_oid(const char *prfname, bool missing_ok)
 {
 	Oid			result;
 	Relation	rel;
-	HeapScanDesc scandesc;
+	TableScanDesc scandesc;
 	HeapTuple	tuple;
-	ScanKeyData	entry[1];
+	ScanKeyData entry[1];
 
 	CheckProfileCatalogsExist();
 
 	/*
 	 * Search pg_yb_profile.
 	 */
-	rel = heap_open(YbProfileRelationId, AccessShareLock);
+	rel = table_open(YbProfileRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0], Anum_pg_yb_profile_prfname,
 				BTEqualStrategyNumber, F_NAMEEQ, CStringGetDatum(prfname));
-	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	scandesc = table_beginscan_catalog(rel, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
 	/* We assume that there can be at most one matching tuple */
 	if (HeapTupleIsValid(tuple))
-		result = HeapTupleGetOid(tuple);
+		result = ((Form_pg_yb_profile) GETSTRUCT(tuple))->oid;
 	else
 		result = InvalidOid;
 
 	heap_endscan(scandesc);
-	heap_close(rel, AccessShareLock);
+	table_close(rel, AccessShareLock);
 
 	if (!OidIsValid(result) && !missing_ok)
 		ereport(ERROR,
@@ -196,20 +202,20 @@ HeapTuple
 yb_get_profile_tuple(Oid prfid)
 {
 	Relation	rel;
-	HeapScanDesc scandesc;
+	TableScanDesc scandesc;
 	HeapTuple	tuple;
-	ScanKeyData	entry[1];
+	ScanKeyData entry[1];
 
 	CheckProfileCatalogsExist();
 
 	/*
 	 * Search pg_yb_role_profile.
 	 */
-	rel = heap_open(YbProfileRelationId, AccessShareLock);
+	rel = table_open(YbProfileRelationId, AccessShareLock);
 
-	ScanKeyInit(&entry[0], ObjectIdAttributeNumber,
+	ScanKeyInit(&entry[0], Anum_pg_yb_profile_oid,
 				BTEqualStrategyNumber, F_OIDEQ, prfid);
-	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	scandesc = table_beginscan_catalog(rel, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
 	/* Must copy tuple before releasing buffer */
@@ -217,7 +223,7 @@ yb_get_profile_tuple(Oid prfid)
 		tuple = heap_copytuple(tuple);
 
 	heap_endscan(scandesc);
-	heap_close(rel, AccessShareLock);
+	table_close(rel, AccessShareLock);
 
 	return tuple;
 }
@@ -250,7 +256,7 @@ void
 YbDropProfile(YbDropProfileStmt *stmt)
 {
 	char	   *prfname = stmt->prfname;
-	HeapScanDesc scandesc;
+	TableScanDesc scandesc;
 	Relation	rel;
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
@@ -271,7 +277,7 @@ YbDropProfile(YbDropProfileStmt *stmt)
 	/*
 	 * Find the target tuple
 	 */
-	rel = heap_open(YbProfileRelationId, RowExclusiveLock);
+	rel = table_open(YbProfileRelationId, RowExclusiveLock);
 
 	/*
 	 * Find the profile to delete.
@@ -281,7 +287,7 @@ YbDropProfile(YbDropProfileStmt *stmt)
 				BTEqualStrategyNumber,
 				F_NAMEEQ,
 				CStringGetDatum(prfname));
-	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	scandesc = table_beginscan_catalog(rel, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
 	if (!HeapTupleIsValid(tuple))
@@ -298,12 +304,12 @@ YbDropProfile(YbDropProfileStmt *stmt)
 							prfname)));
 			/* XXX I assume I need one or both of these next two calls */
 			heap_endscan(scandesc);
-			heap_close(rel, NoLock);
+			table_close(rel, NoLock);
 		}
 		return;
 	}
 
-	prfid = HeapTupleGetOid(tuple);
+	prfid = ((Form_pg_yb_profile) GETSTRUCT(tuple))->oid;
 
 	/*
 	 * TODO(profile): disallow drop of the default profile once we introduce a
@@ -329,7 +335,8 @@ YbDropProfile(YbDropProfileStmt *stmt)
 	 * Check if there are snapshot schedules, disallow dropping in such cases.
 	 * TODO(profile): determine if this limitation is really needed.
 	 */
-	bool is_active;
+	bool		is_active;
+
 	HandleYBStatus(YBCPgCheckIfPitrActive(&is_active));
 	if (is_active)
 		ereport(ERROR,
@@ -354,7 +361,7 @@ YbDropProfile(YbDropProfileStmt *stmt)
 	 */
 
 	/* We keep the lock on pg_yb_profile until commit */
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 }
 
 /************************
@@ -378,7 +385,7 @@ yb_create_role_profile_map(Oid roleid, Oid prfid)
 	/*
 	 * Insert tuple into pg_yb_role_profile.
 	 */
-	rel = heap_open(YbRoleProfileRelationId, RowExclusiveLock);
+	rel = table_open(YbRoleProfileRelationId, RowExclusiveLock);
 
 	MemSet(nulls, false, sizeof(nulls));
 
@@ -389,16 +396,19 @@ yb_create_role_profile_map(Oid roleid, Oid prfid)
 
 	nulls[Anum_pg_yb_role_profile_rolprflockeduntil - 1] = true;
 
-	tuple = heap_form_tuple(rel->rd_att, values, nulls);
+	roleprfid = GetNewOidWithIndex(rel, YbRoleProfileOidIndexId,
+								   Anum_pg_yb_role_profile_oid);
+	values[Anum_pg_yb_role_profile_oid - 1] = ObjectIdGetDatum(roleprfid);
 
-	roleprfid = CatalogTupleInsert(rel, tuple);
+	tuple = heap_form_tuple(rel->rd_att, values, nulls);
+	CatalogTupleInsert(rel, tuple);
 
 	ybRecordDependencyOnProfile(AuthIdRelationId, roleid, prfid);
 
 	heap_freetuple(tuple);
 
 	/* We keep the lock on pg_yb_login_profile until commit */
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	return roleprfid;
 }
@@ -407,20 +417,20 @@ HeapTuple
 yb_get_role_profile_tuple_by_role_oid(Oid roleid)
 {
 	Relation	rel;
-	HeapScanDesc scandesc;
+	TableScanDesc scandesc;
 	HeapTuple	tuple;
-	ScanKeyData	entry[1];
+	ScanKeyData entry[1];
 
 	CheckProfileCatalogsExist();
 
 	/*
 	 * Search pg_yb_role_profile.
 	 */
-	rel = heap_open(YbRoleProfileRelationId, AccessShareLock);
+	rel = table_open(YbRoleProfileRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0], Anum_pg_yb_role_profile_rolprfrole,
 				BTEqualStrategyNumber, F_OIDEQ, roleid);
-	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	scandesc = table_beginscan_catalog(rel, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
 	/* Must copy tuple before releasing buffer */
@@ -428,7 +438,7 @@ yb_get_role_profile_tuple_by_role_oid(Oid roleid)
 		tuple = heap_copytuple(tuple);
 
 	heap_endscan(scandesc);
-	heap_close(rel, AccessShareLock);
+	table_close(rel, AccessShareLock);
 
 	return tuple;
 }
@@ -437,20 +447,20 @@ HeapTuple
 yb_get_role_profile_tuple_by_oid(Oid rolprfoid)
 {
 	Relation	rel;
-	HeapScanDesc scandesc;
+	TableScanDesc scandesc;
 	HeapTuple	tuple;
-	ScanKeyData	entry[1];
+	ScanKeyData entry[1];
 
 	CheckProfileCatalogsExist();
 
 	/*
 	 * Search pg_yb_role_profile.
 	 */
-	rel = heap_open(YbRoleProfileRelationId, AccessShareLock);
+	rel = table_open(YbRoleProfileRelationId, AccessShareLock);
 
-	ScanKeyInit(&entry[0], ObjectIdAttributeNumber,
+	ScanKeyInit(&entry[0], Anum_pg_yb_role_profile_oid,
 				BTEqualStrategyNumber, F_OIDEQ, rolprfoid);
-	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	scandesc = table_beginscan_catalog(rel, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
 	/* Must copy tuple before releasing buffer */
@@ -458,7 +468,7 @@ yb_get_role_profile_tuple_by_oid(Oid rolprfoid)
 		tuple = heap_copytuple(tuple);
 
 	heap_endscan(scandesc);
-	heap_close(rel, AccessShareLock);
+	table_close(rel, AccessShareLock);
 
 	return tuple;
 }
@@ -480,12 +490,13 @@ yb_update_role_profile(Oid roleid, const char *rolename, Datum *new_record,
 {
 	Relation	pg_yb_role_profile_rel;
 	TupleDesc	pg_yb_role_profile_dsc;
-	HeapTuple	tuple, new_tuple;
-	Oid 		roleprfid;
+	HeapTuple	tuple,
+				new_tuple;
+	Oid			roleprfid;
 
 	CheckProfileCatalogsExist();
 
-	pg_yb_role_profile_rel = heap_open(YbRoleProfileRelationId, RowExclusiveLock);
+	pg_yb_role_profile_rel = table_open(YbRoleProfileRelationId, RowExclusiveLock);
 	pg_yb_role_profile_dsc = RelationGetDescr(pg_yb_role_profile_rel);
 
 	tuple = yb_get_role_profile_tuple_by_role_oid(roleid);
@@ -493,9 +504,9 @@ yb_update_role_profile(Oid roleid, const char *rolename, Datum *new_record,
 	/* We assume that there can be at most one matching tuple */
 	if (HeapTupleIsValid(tuple))
 	{
-		roleprfid = HeapTupleGetOid(tuple);
+		roleprfid = ((Form_pg_yb_role_profile) GETSTRUCT(tuple))->oid;
 		new_tuple = heap_modify_tuple(tuple, pg_yb_role_profile_dsc, new_record,
-								  new_record_nulls, new_record_repl);
+									  new_record_nulls, new_record_repl);
 		CatalogTupleUpdate(pg_yb_role_profile_rel, &tuple->t_self, new_tuple);
 
 		InvokeObjectPostAlterHook(YbRoleProfileRelationId, roleprfid, 0);
@@ -513,7 +524,7 @@ yb_update_role_profile(Oid roleid, const char *rolename, Datum *new_record,
 	/*
 	 * Close pg_yb_role_login, but keep lock till commit.
 	 */
-	heap_close(pg_yb_role_profile_rel, NoLock);
+	table_close(pg_yb_role_profile_rel, NoLock);
 
 	return;
 }
@@ -538,12 +549,13 @@ YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 				 errmsg("permission denied to attach role \"%s\" to profile \"%s\"",
 						rolename, prfname),
 				 errhint("Must be superuser or a member of the yb_db_admin "
-				 		 "role to attach a profile.")));
+						 "role to attach a profile.")));
 
 	/*
 	 * Check that there is a profile by this name.
 	 */
-	Oid prfid = yb_get_profile_oid(prfname, true);
+	Oid			prfid = yb_get_profile_oid(prfname, true);
+
 	if (!OidIsValid(prfid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -638,7 +650,7 @@ YbSetRoleProfileStatus(Oid roleid, const char *rolename, char status)
 	new_record_repl[Anum_pg_yb_role_profile_rolprffailedloginattempts - 1] = true;
 
 	yb_update_role_profile(roleid, rolename, new_record, new_record_nulls,
-			new_record_repl, false);
+						   new_record_repl, false);
 	return;
 }
 
@@ -731,19 +743,19 @@ YbMaybeIncFailedAttemptsAndDisableProfile(Oid roleid)
 void
 YbRemoveRoleProfileForRoleIfExists(Oid roleid)
 {
-	Relation	 rel;
-	HeapTuple	 tup;
+	Relation	rel;
+	HeapTuple	tup;
 
 	CheckProfileCatalogsExist();
 
-	rel = heap_open(YbRoleProfileRelationId, RowExclusiveLock);
+	rel = table_open(YbRoleProfileRelationId, RowExclusiveLock);
 	tup = yb_get_role_profile_tuple_by_role_oid(roleid);
 
 	/* We assume that there can be at most one matching tuple */
 	if (!HeapTupleIsValid(tup))
 	{
 		/* Role is not associated with a profile. */
-		heap_close(rel, NoLock);
+		table_close(rel, NoLock);
 		return;
 	}
 
@@ -752,7 +764,7 @@ YbRemoveRoleProfileForRoleIfExists(Oid roleid)
 	 */
 	CatalogTupleDelete(rel, tup);
 
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	ybDropDependencyOnProfile(roleid);
 }

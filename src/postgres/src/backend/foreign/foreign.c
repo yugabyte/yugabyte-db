@@ -3,7 +3,7 @@
  * foreign.c
  *		  support for foreign-data wrappers, servers and user mappings.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/backend/foreign/foreign.c
@@ -36,8 +36,10 @@
 #include "catalog/pg_user_mapping.h"
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
+#include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
+#include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
@@ -45,13 +47,25 @@
 
 /*  YB includes. */
 #include "pg_yb_utils.h"
-#include "executor/ybc_fdw.h"
+#include "executor/yb_fdw.h"
 
 /*
  * GetForeignDataWrapper -	look up the foreign-data wrapper by OID.
  */
 ForeignDataWrapper *
 GetForeignDataWrapper(Oid fdwid)
+{
+	return GetForeignDataWrapperExtended(fdwid, 0);
+}
+
+
+/*
+ * GetForeignDataWrapperExtended -	look up the foreign-data wrapper
+ * by OID. If flags uses FDW_MISSING_OK, return NULL if the object cannot
+ * be found instead of raising an error.
+ */
+ForeignDataWrapper *
+GetForeignDataWrapperExtended(Oid fdwid, bits16 flags)
 {
 	Form_pg_foreign_data_wrapper fdwform;
 	ForeignDataWrapper *fdw;
@@ -62,7 +76,11 @@ GetForeignDataWrapper(Oid fdwid)
 	tp = SearchSysCache1(FOREIGNDATAWRAPPEROID, ObjectIdGetDatum(fdwid));
 
 	if (!HeapTupleIsValid(tp))
-		elog(ERROR, "cache lookup failed for foreign-data wrapper %u", fdwid);
+	{
+		if ((flags & FDW_MISSING_OK) == 0)
+			elog(ERROR, "cache lookup failed for foreign-data wrapper %u", fdwid);
+		return NULL;
+	}
 
 	fdwform = (Form_pg_foreign_data_wrapper) GETSTRUCT(tp);
 
@@ -111,6 +129,18 @@ GetForeignDataWrapperByName(const char *fdwname, bool missing_ok)
 ForeignServer *
 GetForeignServer(Oid serverid)
 {
+	return GetForeignServerExtended(serverid, 0);
+}
+
+
+/*
+ * GetForeignServerExtended - look up the foreign server definition. If
+ * flags uses FSV_MISSING_OK, return NULL if the object cannot be found
+ * instead of raising an error.
+ */
+ForeignServer *
+GetForeignServerExtended(Oid serverid, bits16 flags)
+{
 	Form_pg_foreign_server serverform;
 	ForeignServer *server;
 	HeapTuple	tp;
@@ -120,7 +150,11 @@ GetForeignServer(Oid serverid)
 	tp = SearchSysCache1(FOREIGNSERVEROID, ObjectIdGetDatum(serverid));
 
 	if (!HeapTupleIsValid(tp))
-		elog(ERROR, "cache lookup failed for foreign server %u", serverid);
+	{
+		if ((flags & FSV_MISSING_OK) == 0)
+			elog(ERROR, "cache lookup failed for foreign server %u", serverid);
+		return NULL;
+	}
 
 	serverform = (Form_pg_foreign_server) GETSTRUCT(tp);
 
@@ -208,7 +242,7 @@ GetUserMapping(Oid userid, Oid serverid)
 						MappingUserName(userid))));
 
 	um = (UserMapping *) palloc(sizeof(UserMapping));
-	um->umid = HeapTupleGetOid(tp);
+	um->umid = ((Form_pg_user_mapping) GETSTRUCT(tp))->oid;
 	um->userid = userid;
 	um->serverid = serverid;
 
@@ -307,6 +341,15 @@ GetFdwRoutine(Oid fdwhandler)
 {
 	Datum		datum;
 	FdwRoutine *routine;
+
+	/* Check if the access to foreign tables is restricted */
+	if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_FOREIGN_TABLE) != 0))
+	{
+		/* there must not be built-in FDW handler  */
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("access to non-system foreign table is restricted")));
+	}
 
 	datum = OidFunctionCall0(fdwhandler);
 	routine = (FdwRoutine *) DatumGetPointer(datum);
@@ -418,10 +461,13 @@ GetFdwRoutineForRelation(Relation relation, bool makecopy)
 
 	if (relation->rd_fdwroutine == NULL)
 	{
-		if (IsYBRelation(relation)) {
+		if (IsYBRelation(relation))
+		{
 			/* Get the custom YB FDW directly */
-			fdwroutine = (FdwRoutine *) ybc_fdw_handler();
-		} else {
+			fdwroutine = (FdwRoutine *) yb_fdw_handler();
+		}
+		else
+		{
 			/* Get the info by consulting the catalogs and the FDW code */
 			fdwroutine = GetFdwRoutineByRelId(RelationGetRelid(relation));
 		}
@@ -491,52 +537,35 @@ IsImportableForeignTable(const char *tablename,
 
 
 /*
- * deflist_to_tuplestore - Helper function to convert DefElem list to
- * tuplestore usable in SRF.
+ * pg_options_to_table - Convert options array to name/value table
+ *
+ * This is useful to provide details for information_schema and pg_dump.
  */
-static void
-deflist_to_tuplestore(ReturnSetInfo *rsinfo, List *options)
+Datum
+pg_options_to_table(PG_FUNCTION_ARGS)
 {
+	Datum		array = PG_GETARG_DATUM(0);
 	ListCell   *cell;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	Datum		values[2];
-	bool		nulls[2];
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
+	List	   *options;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize) ||
-		rsinfo->expectedDesc == NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not allowed in this context")));
+	options = untransformRelOptions(array);
+	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	/*
-	 * Now prepare the result set.
-	 */
-	tupdesc = CreateTupleDescCopy(rsinfo->expectedDesc);
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
+	/* prepare the result set */
+	InitMaterializedSRF(fcinfo, MAT_SRF_USE_EXPECTED_DESC);
 
 	foreach(cell, options)
 	{
 		DefElem    *def = lfirst(cell);
+		Datum		values[2];
+		bool		nulls[2];
 
 		values[0] = CStringGetTextDatum(def->defname);
 		nulls[0] = false;
 		if (def->arg)
 		{
-			values[1] = CStringGetTextDatum(((Value *) (def->arg))->val.str);
+			values[1] = CStringGetTextDatum(strVal(def->arg));
 			nulls[1] = false;
 		}
 		else
@@ -544,27 +573,9 @@ deflist_to_tuplestore(ReturnSetInfo *rsinfo, List *options)
 			values[1] = (Datum) 0;
 			nulls[1] = true;
 		}
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+							 values, nulls);
 	}
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
-
-	MemoryContextSwitchTo(oldcontext);
-}
-
-
-/*
- * Convert options array to name/value table.  Useful for information
- * schema and pg_dump.
- */
-Datum
-pg_options_to_table(PG_FUNCTION_ARGS)
-{
-	Datum		array = PG_GETARG_DATUM(0);
-
-	deflist_to_tuplestore((ReturnSetInfo *) fcinfo->resultinfo,
-						  untransformRelOptions(array));
 
 	return (Datum) 0;
 }
@@ -584,7 +595,7 @@ struct ConnectionOption
  *
  * The list is small - don't bother with bsearch if it stays so.
  */
-static struct ConnectionOption libpq_conninfo_options[] = {
+static const struct ConnectionOption libpq_conninfo_options[] = {
 	{"authtype", ForeignServerRelationId},
 	{"service", ForeignServerRelationId},
 	{"user", UserMappingRelationId},
@@ -611,7 +622,7 @@ static struct ConnectionOption libpq_conninfo_options[] = {
 static bool
 is_conninfo_option(const char *option, Oid context)
 {
-	struct ConnectionOption *opt;
+	const struct ConnectionOption *opt;
 
 	for (opt = libpq_conninfo_options; opt->optname; opt++)
 		if (context == opt->optcontext && strcmp(opt->optname, option) == 0)
@@ -646,7 +657,7 @@ postgresql_fdw_validator(PG_FUNCTION_ARGS)
 
 		if (!is_conninfo_option(def->defname, catalog))
 		{
-			struct ConnectionOption *opt;
+			const struct ConnectionOption *opt;
 			StringInfoData buf;
 
 			/*
@@ -662,8 +673,10 @@ postgresql_fdw_validator(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("invalid option \"%s\"", def->defname),
-					 errhint("Valid options in this context are: %s",
-							 buf.data)));
+					 buf.len > 0
+					 ? errhint("Valid options in this context are: %s",
+							   buf.data)
+					 : errhint("There are no valid options in this context.")));
 
 			PG_RETURN_BOOL(false);
 		}
@@ -684,7 +697,9 @@ get_foreign_data_wrapper_oid(const char *fdwname, bool missing_ok)
 {
 	Oid			oid;
 
-	oid = GetSysCacheOid1(FOREIGNDATAWRAPPERNAME, CStringGetDatum(fdwname));
+	oid = GetSysCacheOid1(FOREIGNDATAWRAPPERNAME,
+						  Anum_pg_foreign_data_wrapper_oid,
+						  CStringGetDatum(fdwname));
 	if (!OidIsValid(oid) && !missing_ok)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -705,7 +720,8 @@ get_foreign_server_oid(const char *servername, bool missing_ok)
 {
 	Oid			oid;
 
-	oid = GetSysCacheOid1(FOREIGNSERVERNAME, CStringGetDatum(servername));
+	oid = GetSysCacheOid1(FOREIGNSERVERNAME, Anum_pg_foreign_server_oid,
+						  CStringGetDatum(servername));
 	if (!OidIsValid(oid) && !missing_ok)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),

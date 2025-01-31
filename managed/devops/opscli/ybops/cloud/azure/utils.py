@@ -8,6 +8,7 @@
 import time
 
 from azure.core.exceptions import HttpResponseError
+from azure.core.pipeline.policies import RetryPolicy
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
@@ -49,8 +50,10 @@ NETWORK_PROVIDER_BASE_PATH = "/subscriptions/{}/resourceGroups/{}/providers/Micr
 SUBNET_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/virtualNetworks/{}/subnets/{}"
 NSG_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/networkSecurityGroups/{}"
 ULTRASSD_LRS = "ultrassd_lrs"
+PREMIUMV2_LRS = "premiumv2_lrs"
 VNET_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/virtualNetworks/{}"
 AZURE_SKU_FORMAT = {"premium_lrs": "Premium_LRS",
+                    "premiumv2_lrs": "PremiumV2_LRS",
                     "standardssd_lrs": "StandardSSD_LRS",
                     ULTRASSD_LRS: "UltraSSD_LRS"}
 YUGABYTE_VNET_PREFIX = "yugabyte-vnet-{}"
@@ -96,7 +99,11 @@ class GetPriceWorker(Thread):
             for info in price_info.get('Items'):
                 # Azure API doesn't support regex as of 3/08/2021, so manually parse out Windows.
                 # Some VMs also show $0.0 as the price for some reason, so ignore those as well.
-                if not (info['productName'].endswith(' Windows') or info['unitPrice'] == 0):
+                # Also there are separate enties for spot price and low priority,
+                # so filtering them out too.
+                if not (info['productName'].endswith(' Windows') or info['unitPrice'] == 0
+                        or info['skuName'].endswith('Low Priority')
+                        or info['skuName'].endswith('Spot')):
                     self.vm_name_to_price_dict[info['armSkuName']] = info['unitPrice']
             url = price_info.get('NextPageLink')
 
@@ -398,10 +405,15 @@ class AzureCloudAdmin():
     def __init__(self, metadata):
         self.metadata = metadata
         self.credentials = get_credentials()
-        self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID)
-        self.network_client = NetworkManagementClient(self.credentials, NETWORK_SUBSCRIPTION_ID)
+        self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID,
+                                                      retry_policy=self.get_retry_policy())
+        self.network_client = NetworkManagementClient(self.credentials, NETWORK_SUBSCRIPTION_ID,
+                                                      retry_policy=self.get_retry_policy())
 
         self.dns_client = None
+
+    def get_retry_policy(self):
+        return RetryPolicy(retry_backoff_max=60, retry_total=5, retry_backoff_factor=5)
 
     def network(self, per_region_meta={}):
         return AzureBootstrapClient(per_region_meta, self.network_client, self.metadata)
@@ -423,7 +435,7 @@ class AzureCloudAdmin():
         if tags:
             disk_params["tags"] = tags
 
-        if vol_type == ULTRASSD_LRS:
+        if vol_type == ULTRASSD_LRS or vol_type == PREMIUMV2_LRS:
             if disk_iops is not None:
                 disk_params['disk_iops_read_write'] = disk_iops
             if disk_throughput is not None:
@@ -537,6 +549,26 @@ class AzureCloudAdmin():
     # Deletes a disk. Accepts both disk name and full resource id.
     def delete_disk(self, disk_name):
         return self.compute_client.disks.begin_delete(RESOURCE_GROUP, os.path.basename(disk_name))
+
+    def delete_disks(self, tags):
+        if not tags:
+            raise YBOpsRuntimeError('Tags must be specified')
+        universe_uuid = tags.get('universe-uuid')
+        if universe_uuid is None:
+            raise YBOpsRuntimeError('Universe UUID must be specified')
+        node_uuid = tags.get('node-uuid')
+        if node_uuid is None:
+            raise YBOpsRuntimeError('Node UUID must be specified')
+        disk_list = self.compute_client.disks.list_by_resource_group(RESOURCE_GROUP)
+        if disk_list:
+            for disk in disk_list:
+                if (disk.disk_state == "Unattached" and disk.tags
+                        and disk.tags.get('universe-uuid') == universe_uuid
+                        and disk.tags.get('node-uuid') == node_uuid):
+                    logging.info("[app] Deleting disk {}".format(disk.name))
+                    disk_del = self.delete_disk(disk.name)
+                    disk_del.wait()
+                    logging.info("[app] Deleted disk {}".format(disk.name))
 
     def tag_disks(self, vm, tags):
         # Updating requires Disk as input rather than OSDisk. Retrieve Disk class with OSDisk name.
@@ -844,30 +876,56 @@ class AzureCloudAdmin():
                 local_compute_client = ComputeManagementClient(
                     self.credentials, fields['subscription_id'])
 
-            image_identifier = local_compute_client.gallery_images.get(
+            image_name = fields["image_definition_name"] + "/versions/" + fields["version_id"]
+            gallery_image = local_compute_client.gallery_images.get(
                 fields['resource_group'],
                 fields['gallery_name'],
-                fields['image_definition_name']).as_dict().get('identifier')
+                image_name)
+            image_tags = gallery_image.tags
+            logging.info("Gallery Image tags = " + str(image_tags))
 
             # When creating VMs with images that are NOT from the marketplace,
             # the creator of the VM needs to provide the plan information.
-            # We try to extract this info from the publisher, offer, sku fields
-            # of the image definition.
-            logging.info("Image parameters: {}, publisher = {}, offer={}, sku={}".format(
-                image_identifier,
-                image_identifier['publisher'],
-                image_identifier['offer'],
-                image_identifier['sku']))
-
-            if (image_identifier is not None
-                    and image_identifier['publisher'] is not None
-                    and image_identifier['offer'] is not None
-                    and image_identifier['sku'] is not None):
+            # For images created via packer, this info is added to the tags.
+            # Otherwise, we try to extract this info from the purchase plan
+            # or identifier of the image definition.
+            if (image_tags is not None
+                    and image_tags.get('PlanPublisher', None) is not None
+                    and image_tags.get('PlanProduct', None) is not None
+                    and image_tags.get('PlanInfo', None) is not None):
                 plan = {
-                    "publisher": image_identifier['publisher'],
-                    "product": image_identifier['offer'],
-                    "name": image_identifier['sku'],
+                    "publisher": image_tags['PlanPublisher'],
+                    "product": image_tags['PlanProduct'],
+                    "name": image_tags['PlanInfo'],
                 }
+            # Try to use purchase plan if info is absent from tags.
+            if plan is None:
+                image_purchase_plan = gallery_image.purchase_plan
+                logging.info("Gallery Image purchase plan = " + str(image_purchase_plan))
+                if (image_purchase_plan is not None
+                        and image_purchase_plan.publisher is not None
+                        and image_purchase_plan.product is not None
+                        and image_purchase_plan.name is not None):
+                    plan = {
+                        "publisher": image_purchase_plan.publisher,
+                        "product": image_purchase_plan.product,
+                        "name": image_purchase_plan.name,
+                    }
+            # Try to fetch info from identifier.
+            if plan is None:
+                image_identifier = gallery_image.as_dict().get('identifier')
+                logging.info("Gallery Image identifier = " + str(image_identifier))
+                if (image_identifier is not None
+                        and image_identifier.get("publisher", None) is not None
+                        and image_identifier.get("offer", None) is not None
+                        and image_identifier.get("sku", None) is not None):
+                    plan = {
+                        "publisher": image_identifier["publisher"],
+                        "product": image_identifier["offer"],
+                        "name": image_identifier["sku"],
+                    }
+            if plan is None:
+                logging.warn("Plan info absent from the following VM image: " + str(image))
         else:
             # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
             pub, offer, sku, version = image.split(':')
@@ -1108,11 +1166,20 @@ class AzureCloudAdmin():
                 json.dump(vms, writefile)
         return
 
-    def get_host_info(self, vm_name, get_all=False):
+    def get_host_info(self, vm_name, get_all=False, node_uuid=None):
         try:
             vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name, 'instanceView')
         except Exception as e:
             logging.error("Failed to get VM info for {} with error {}".format(vm_name, e))
+            return None
+        host_node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
+        server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
+        universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
+        # Matching tag or no tag for backward compatibility.
+        if host_node_uuid is not None and node_uuid is not None \
+                and host_node_uuid != node_uuid:
+            logging.warning("VM {}({}) with node UUID {} is not found.".
+                            format(vm_name, host_node_uuid, node_uuid))
             return None
         nic_name = id_to_name(vm.network_profile.network_interfaces[0].id)
         nic = self.network_client.network_interfaces.get(NETWORK_RESOURCE_GROUP, nic_name)
@@ -1127,16 +1194,13 @@ class AzureCloudAdmin():
             public_ip = (self.network_client.public_ip_addresses
                          .get(NETWORK_RESOURCE_GROUP, ip_name).ip_address)
         subnet = id_to_name(nic.ip_configurations[0].subnet.id)
-        server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
-        node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
-        universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
         zone_full = "{}-{}".format(region, zone) if zone is not None else region
         instance_state = self.extract_vm_instance_state(vm.instance_view)
         is_running = True if instance_state == "running" else False
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
-                "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": node_uuid,
+                "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": host_node_uuid,
                 "universe_uuid": universe_uuid, "instance_state": instance_state,
                 "is_running": is_running, "root_volume": root_volume}
 

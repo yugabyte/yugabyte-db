@@ -51,6 +51,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
+#include "yb/common/version_info.h"
 
 using namespace std::literals;
 
@@ -155,7 +156,11 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
   // Delete the table
   loader->Reset();
-  ASSERT_OK(sys_catalog_->Delete(epoch, table));
+  {
+    auto l = table->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(epoch, table));
+    l.Commit();
+  }
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
   ASSERT_EQ(kNumSystemTables, loader->tables.size());
 }
@@ -167,7 +172,6 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
   // This leaves all three in StartMutation.
   TabletInfoPtr tablet1(CreateUncommittedTablet(table.get(), "123", "a", "b"));
   TabletInfoPtr tablet2(CreateUncommittedTablet(table.get(), "456", "b", "c"));
-  TabletInfoPtr tablet3(CreateUncommittedTablet(table.get(), "789", "c", "d"));
 
   unique_ptr<TestTabletLoader> loader(new TestTabletLoader());
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
@@ -209,11 +213,11 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
   }
 
   // Add tablet3 and Update tablet1 and tablet2
+  TabletInfoPtr tablet3;
   {
     std::vector<TabletInfo *> to_add;
     std::vector<TabletInfo *> to_update;
 
-    to_add.push_back(tablet3.get());
     to_update.push_back(tablet1.get());
     to_update.push_back(tablet2.get());
 
@@ -221,6 +225,9 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     l1.mutable_data()->pb.set_state(SysTabletsEntryPB::REPLACED);
     auto l2 = tablet2->LockForWrite();
     l2.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+
+    tablet3 = CreateUncommittedTablet(table.get(), "789", "c", "d");
+    to_add.push_back(tablet3.get());
 
     loader->Reset();
     ASSERT_OK(sys_catalog_->Upsert(epoch, to_add, to_update));
@@ -244,7 +251,13 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet3.get());
 
     loader->Reset();
-    ASSERT_OK(sys_catalog_->Delete(epoch, tablets));
+    {
+      auto l1 = tablet1->LockForWrite();
+      auto l3 = tablet3->LockForWrite();
+      ASSERT_OK(sys_catalog_->Delete(epoch, tablets));
+      l1.Commit();
+      l3.Commit();
+    }
     ASSERT_OK(sys_catalog_->Visit(loader.get()));
     ASSERT_EQ(1 + kNumSystemTables, loader->tablets.size());
     ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()].get());
@@ -417,7 +430,11 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
 
   // 4. CHECK DELETE_NAMESPACE
   // Delete the namespace
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, ns));
+  {
+    auto l = ns->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, ns));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -497,7 +514,11 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     ASSERT_METADATA_EQ(rci2.get(), loader->config_entries[1]);
 
     // 2. CHECK DELETE RedisConfig
-    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci2));
+    {
+      auto l = rci2->LockForWrite();
+      ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci2));
+      l.Commit();
+    }
 
     // Verify the result.
     loader->Reset();
@@ -505,7 +526,11 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     ASSERT_EQ(1, loader->config_entries.size());
   }
   // 2. CHECK DELETE RedisConfig
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci));
+  {
+    auto l = rci->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -533,6 +558,10 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
     auto& ysql_catalog_config_pb = *l.mutable_data()->pb.mutable_ysql_catalog_config();
     ysql_catalog_config_pb.set_version(0);
     ysql_catalog_config_pb.set_transactional_sys_catalog_enabled(true);
+    VersionInfoPB version_info;
+    VersionInfo::GetVersionInfoPB(&version_info);
+    ysql_catalog_config_pb.mutable_ysql_major_catalog_upgrade_info()->set_catalog_version(
+        version_info.ysql_major_version());
     l.Commit();
   }
   scoped_refptr<SysConfigInfo> transaction_tables_config =
@@ -569,7 +598,11 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[3]);
 
   // 2. Remove the SysConfigEntry and verify that it got removed.
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, test_config));
+  {
+    auto l = test_config->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, test_config));
+    l.Commit();
+  }
   loader->Reset();
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
   ASSERT_EQ(3, loader->sys_configs.size());
@@ -640,7 +673,11 @@ TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
   ASSERT_METADATA_EQ(rl.get(), loader->roles[1]);
 
   // 2. CHECK DELETE Role
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rl));
+  {
+    auto l = rl->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rl));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -672,7 +709,11 @@ TEST_F(SysCatalogTest, TestSysCatalogUDTypeOperations) {
   ASSERT_METADATA_EQ(tp.get(), loader->udtypes[0]);
 
   // 2. CHECK DELETE_UDTYPE
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, tp));
+  {
+    auto l = tp->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, tp));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -803,7 +844,7 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
   ASSERT_EQ(master_->catalog_manager()->GetRecentTasks().size(), 0);
 
   // Cleanup tasks.
-  table->AbortTasksAndClose();
+  table->AbortTasksAndClose(/* call_task_finisher */ true);
 }
 
 // Test migration of the TableInfo namespace_name field.

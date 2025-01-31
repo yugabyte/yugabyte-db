@@ -39,6 +39,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/common_net.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -46,23 +47,24 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master_call_home.h"
-#include "yb/server/call_home-test-util.h"
-#include "yb/server/call_home.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master-test_base.h"
 #include "yb/master/master.h"
+#include "yb/master/master_call_home.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 
+#include "yb/server/call_home-test-util.h"
+#include "yb/server/call_home.h"
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -109,14 +111,16 @@ class MasterTest : public MasterTestBase {
   void TestRegisterDistBroadcastDupPrivate(string use_private_ip, bool only_check_used_host_port);
 
   Result<TSHeartbeatResponsePB> SendHeartbeat(
-      TSToMasterCommonPB common, TSRegistrationPB registration);
+      TSToMasterCommonPB common, std::optional<TSRegistrationPB> registration = std::nullopt,
+      std::optional<TabletReportPB> report = std::nullopt);
 
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceByName(
       YQLDatabase db_type, const std::string& name);
 };
 
 Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
-    TSToMasterCommonPB common, TSRegistrationPB registration) {
+    TSToMasterCommonPB common, std::optional<TSRegistrationPB> registration,
+    std::optional<TabletReportPB> report) {
   SysClusterConfigEntryPB config =
       VERIFY_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
@@ -124,9 +128,17 @@ Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
   TSHeartbeatRequestPB req;
   TSHeartbeatResponsePB resp;
   req.mutable_common()->Swap(&common);
-  req.mutable_registration()->Swap(&registration);
+  if (registration) {
+    req.mutable_registration()->Swap(&registration.value());
+  }
+  if (report) {
+    req.mutable_tablet_report()->Swap(&report.value());
+  }
   req.set_universe_uuid(universe_uuid);
   RETURN_NOT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
   return resp;
 }
 
@@ -140,19 +152,6 @@ TEST_F(MasterTest, TestPingServer) {
   ASSERT_OK(generic_proxy.Ping(req, &resp, ResetAndGetController()));
 }
 
-static void MakeHostPortPB(const std::string& host, uint32_t port, HostPortPB* pb) {
-  pb->set_host(host);
-  pb->set_port(port);
-}
-
-CloudInfoPB MakeCloudInfoPB(std::string cloud, std::string region, std::string zone) {
-  CloudInfoPB result;
-  *result.mutable_placement_cloud() = std::move(cloud);
-  *result.mutable_placement_region() = std::move(region);
-  *result.mutable_placement_zone() = std::move(zone);
-  return result;
-}
-
 // Test that shutting down a MiniMaster without starting it does not
 // SEGV.
 TEST_F(MasterTest, TestShutdownWithoutStart) {
@@ -164,7 +163,7 @@ TEST_F(MasterTest, TestCallHome) {
   const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHome<Master, MasterCallHome>(
-      webserver_dir, {"version_info", "masters", "tservers", "tables"}, mini_master_->master());
+      webserver_dir, {"masters", "tservers", "tables"}, mini_master_->master());
 }
 
 // This tests whether the enabling/disabling of callhome is happening dynamically
@@ -205,8 +204,7 @@ TEST_F(MasterTestSkipUniverseUuidCheck, TestUniverseUuidUpgrade) {
       ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   ASSERT_EQ(config.universe_uuid(), "");
 
-  ASSERT_OK(mini_master_->Restart());
-  ASSERT_OK(mini_master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(mini_master_->Restart(true));
 
   FLAGS_master_enable_universe_uuid_heartbeat_check = true;
 
@@ -359,13 +357,15 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(0, descs.size()) << "Should not have registered anything";
 
-  shared_ptr<TSDescriptor> ts_desc;
-  ASSERT_FALSE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
+  auto ts_desc_result = mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID);
+  ASSERT_NOK(ts_desc_result);
+  ASSERT_TRUE(ts_desc_result.status().IsNotFound()) << "status is: " << ts_desc_result.status();
 
   // Register the fake TS, without sending any tablet report.
   TSRegistrationPB fake_reg;
-  MakeHostPortPB("localhost", 1000, fake_reg.mutable_common()->add_private_rpc_addresses());
-  MakeHostPortPB("localhost", 2000, fake_reg.mutable_common()->add_http_addresses());
+  *fake_reg.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", 1000);
+  *fake_reg.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", 2000);
+  *fake_reg.mutable_resources() = master::ResourcesPB();
 
   {
     TSHeartbeatRequestPB req;
@@ -382,10 +382,11 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
   descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(1, descs.size()) << "Should have registered the TS";
-  TSRegistrationPB reg = descs[0]->GetRegistration();
-  ASSERT_EQ(fake_reg.DebugString(), reg.DebugString()) << "Master got different registration";
+  auto reg = descs[0]->GetTSRegistrationPB();
+  ASSERT_EQ(fake_reg.DebugString(), reg.DebugString())
+      << "Master got different registration";
 
-  ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
+  auto ts_desc = ASSERT_RESULT(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID));
   ASSERT_EQ(ts_desc, descs[0]);
 
   // If the tablet server somehow lost the response to its registration RPC, it would
@@ -439,14 +440,12 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(1, descs.size()) << "Should still only have one TS registered";
 
-  ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
+  ts_desc = ASSERT_RESULT(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID));
   ASSERT_EQ(ts_desc, descs[0]);
 
   // Ensure that the ListTabletServers shows the faked server.
   {
-    ListTabletServersRequestPB req;
-    ListTabletServersResponsePB resp;
-    ASSERT_OK(proxy_cluster_->ListTabletServers(req, &resp, ResetAndGetController()));
+    auto resp = ASSERT_RESULT(cluster_client_->ListTabletServers());
     LOG(INFO) << resp.DebugString();
     ASSERT_EQ(1, resp.servers_size());
     ASSERT_EQ("my-ts-uuid", resp.servers(0).instance_id().permanent_uuid());
@@ -508,17 +507,18 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
 
   shared_ptr<TSDescriptor> ts_desc;
   for (auto& uuid : tsUUIDs) {
-    ASSERT_FALSE(mini_master_->master()->ts_manager()->LookupTSByUUID(uuid, &ts_desc));
+    auto result = mini_master_->master()->ts_manager()->LookupTSByUUID(uuid);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsNotFound()) << "status is: " << result.status();
   }
 
   // Each tserver will have a distinct broadcast address but the same private_rpc_address.
   std::vector<TSRegistrationPB> fake_regs(tsUUIDs.size());
   for (size_t i = 0; i < tsUUIDs.size(); i++) {
-    MakeHostPortPB("localhost", 1000, fake_regs[i].mutable_common()->add_private_rpc_addresses());
-    MakeHostPortPB(
-        Format("111.111.111.11$0", i), 2000,
-        fake_regs[i].mutable_common()->add_broadcast_addresses());
-    MakeHostPortPB("localhost", 3000, fake_regs[i].mutable_common()->add_http_addresses());
+    *fake_regs[i].mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", 1000);
+    *fake_regs[i].mutable_common()->add_broadcast_addresses() =
+        MakeHostPortPB(Format("111.111.111.11$0", i), 2000);
+    *fake_regs[i].mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", 3000);
     *fake_regs[i].mutable_common()->mutable_cloud_info() = cloud_infos[i];
   }
 
@@ -561,9 +561,7 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
 
   // Ensure that the ListTabletServers shows the faked servers.
   {
-    ListTabletServersRequestPB req;
-    ListTabletServersResponsePB resp;
-    ASSERT_OK(proxy_cluster_->ListTabletServers(req, &resp, ResetAndGetController()));
+    auto resp = ASSERT_RESULT(cluster_client_->ListTabletServers());
     LOG(INFO) << resp.DebugString();
     ASSERT_EQ(expected_registration_uuids.size(), resp.servers_size());
 
@@ -624,9 +622,9 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   TSRegistrationPB registration;
   original_common.mutable_ts_instance()->set_permanent_uuid(first_uuid);
   original_common.mutable_ts_instance()->set_instance_seqno(seqno++);
-  MakeHostPortPB("localhost", 1000, registration.mutable_common()->add_private_rpc_addresses());
-  MakeHostPortPB("localhost", 1000, registration.mutable_common()->add_broadcast_addresses());
-  MakeHostPortPB("localhost", 2000, registration.mutable_common()->add_http_addresses());
+  *registration.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", 1000);
+  *registration.mutable_common()->add_broadcast_addresses() = MakeHostPortPB("localhost", 1000);
+  *registration.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", 2000);
   *registration.mutable_common()->mutable_cloud_info() = MakeCloudInfoPB("cloud", "region", "zone");
   auto resp = ASSERT_RESULT(SendHeartbeat(original_common, registration));
   EXPECT_FALSE(resp.needs_reregister());
@@ -645,7 +643,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   ASSERT_EQ(descs.size(), 1);
   auto new_desc = descs[0];
   EXPECT_EQ(new_desc->permanent_uuid(), second_uuid);
-  EXPECT_TRUE(original_desc->IsRemoved());
+  EXPECT_TRUE(original_desc->IsReplaced());
 
   auto updated_original_common = original_common;
   updated_original_common.mutable_ts_instance()->set_instance_seqno(seqno++);
@@ -655,7 +653,86 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(descs.size(), 1);
   EXPECT_EQ(descs[0]->permanent_uuid(), first_uuid);
-  EXPECT_TRUE(new_desc->IsRemoved());
+  EXPECT_TRUE(new_desc->IsReplaced());
+}
+
+TEST_F(MasterTest, TestRegistrationThroughHeartbeatPersisted) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+  TSToMasterCommonPB common;
+  TSRegistrationPB registration;
+  const std::string kUUID = "uuid";
+  common.mutable_ts_instance()->set_permanent_uuid(kUUID);
+  common.mutable_ts_instance()->set_instance_seqno(0);
+  *registration.mutable_common()->add_broadcast_addresses() = MakeHostPortPB("localhost", 1000);
+  *registration.mutable_common()->mutable_cloud_info() = MakeCloudInfoPB("cloud", "region", "zone");
+  ASSERT_RESULT(SendHeartbeat(common, registration));
+  auto list_resp = ASSERT_RESULT(cluster_client_->ListLiveTabletServers());
+  ASSERT_EQ(list_resp.servers_size(), 1);
+  ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
+
+  // Restart the master to verify the registration was persisted.
+  ASSERT_OK(mini_master_->Restart(true));
+  list_resp = ASSERT_RESULT(cluster_client_->ListLiveTabletServers());
+  ASSERT_EQ(list_resp.servers_size(), 1);
+  ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
+}
+
+TEST_F(MasterTest, TestUnresponsiveMarkingPersisted) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000;
+  TSToMasterCommonPB common;
+  TSRegistrationPB registration;
+  const std::string kUUID = "uuid";
+  common.mutable_ts_instance()->set_permanent_uuid(kUUID);
+  common.mutable_ts_instance()->set_instance_seqno(0);
+  *registration.mutable_common()->add_broadcast_addresses() = MakeHostPortPB("localhost", 1000);
+  *registration.mutable_common()->mutable_cloud_info() = MakeCloudInfoPB("cloud", "region", "zone");
+  ASSERT_RESULT(SendHeartbeat(common, registration));
+  auto list_resp = ASSERT_RESULT(cluster_client_->ListLiveTabletServers());
+  ASSERT_EQ(list_resp.servers_size(), 1);
+  ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto resp = VERIFY_RESULT(cluster_client_->ListLiveTabletServers());
+    return resp.servers_size() == 0;
+  }, MonoDelta::FromSeconds(30), "Tablet server never marked unresponsive"));
+  // Restart the master to verify marking the tserver as unresponsive was persisted.
+  ASSERT_OK(mini_master_->Restart(true));
+  list_resp = ASSERT_RESULT(cluster_client_->ListLiveTabletServers());
+  ASSERT_EQ(list_resp.servers_size(), 0);
+}
+
+TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000;
+  TSToMasterCommonPB common;
+  TSRegistrationPB registration;
+  const std::string kUUID = "uuid";
+  common.mutable_ts_instance()->set_permanent_uuid(kUUID);
+  common.mutable_ts_instance()->set_instance_seqno(0);
+  *registration.mutable_common()->add_broadcast_addresses() = MakeHostPortPB("localhost", 1000);
+  *registration.mutable_common()->mutable_cloud_info() = MakeCloudInfoPB("cloud", "region", "zone");
+  ASSERT_RESULT(SendHeartbeat(common, registration));
+  auto list_resp = ASSERT_RESULT(cluster_client_->ListLiveTabletServers());
+  ASSERT_EQ(list_resp.servers_size(), 1);
+  ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
+
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(cluster_client_->ListLiveTabletServers());
+        return resp.servers_size() == 0;
+      },
+      MonoDelta::FromSeconds(30), "Tablet server never marked unresponsive"));
+
+  // Heartbeat again to update the ts to live.
+  ASSERT_RESULT(SendHeartbeat(common));
+  ASSERT_EQ(list_resp.servers_size(), 1);
+  ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
+  // Restart the master to verify marking the tserver as live was persisted.
+  ASSERT_OK(mini_master_->Restart(true));
+  list_resp = ASSERT_RESULT(cluster_client_->ListLiveTabletServers());
+  ASSERT_EQ(list_resp.servers_size(), 1);
+  ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
 }
 
 TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
@@ -756,8 +833,7 @@ TEST_F(MasterTest, TestCatalog) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
 
   // Restart the master, verify the table still shows up.
-  ASSERT_OK(mini_master_->Restart());
-  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(mini_master_->Restart(true));
 
   ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
@@ -865,7 +941,7 @@ TEST_F(MasterTest, TestListTablesIncludesIndexedTableId) {
   NamespaceName test_name = "test_pgsql";
   CreateNamespaceResponsePB resp;
   NamespaceId nsid;
-  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  ASSERT_OK(CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
   nsid = resp.id();
 
   const Schema kTableSchema({
@@ -928,7 +1004,7 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
 
   auto tables = mini_master_->catalog_manager_impl().GetTables(GetTablesMode::kAll);
   for (const auto& table : tables) {
-    for (const auto& tablet : ASSERT_RESULT(table->GetTablets(IncludeInactive::kTrue))) {
+    for (const auto& tablet : ASSERT_RESULT(table->GetTabletsIncludeInactive())) {
       if (table->is_system() &&
           tablet->LockForRead().data().pb.hosted_tables_mapped_by_parent_id()) {
         FAIL() << Format(
@@ -953,13 +1029,13 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
   };
 
   const auto new_schema_tablets = ASSERT_RESULT(
-      ASSERT_RESULT(find_table(kNewSchemaTableName))->GetTablets(IncludeInactive::kTrue));
+      ASSERT_RESULT(find_table(kNewSchemaTableName))->GetTabletsIncludeInactive());
   EXPECT_TRUE(
       std::all_of(new_schema_tablets.begin(), new_schema_tablets.end(), tablet_uses_new_schema));
   EXPECT_GT(new_schema_tablets.size(), 0);
 
   auto old_schema_tablets = ASSERT_RESULT(
-      ASSERT_RESULT(find_table(kOldSchemaTableName))->GetTablets(IncludeInactive::kTrue));
+      ASSERT_RESULT(find_table(kOldSchemaTableName))->GetTabletsIncludeInactive());
   EXPECT_TRUE(
       std::none_of(old_schema_tablets.begin(), old_schema_tablets.end(), tablet_uses_new_schema));
   EXPECT_GT(old_schema_tablets.size(), 0);
@@ -967,8 +1043,7 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
 
 TEST_F(MasterTest, TestCatalogHasBlockCache) {
   // Restart mini_master
-  ASSERT_OK(mini_master_->Restart());
-  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(mini_master_->Restart(true));
 
   // Check prometheus metrics via webserver to verify block_cache metrics exist
   string addr = AsString(mini_master_->bound_http_addr());
@@ -1042,9 +1117,7 @@ TEST_F(MasterTest, TestTablegroups) {
   }
 
   // Restart the master, verify the tablegroup still shows up
-  ASSERT_OK(mini_master_->Restart());
-  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-
+  ASSERT_OK(mini_master_->Restart(true));
   {
     ListTablegroupsResponsePB resp;
     ASSERT_NO_FATALS(DoListTablegroups(req, &resp));
@@ -1118,20 +1191,14 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
 TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
   const TableName kTableName = "test";
   Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
-  GetMasterClusterConfigRequestPB config_req;
-  GetMasterClusterConfigResponsePB config_resp;
-  ASSERT_OK(
-      proxy_cluster_->GetMasterClusterConfig(config_req, &config_resp, ResetAndGetController()));
-  ASSERT_FALSE(config_resp.has_error());
-  ASSERT_TRUE(config_resp.has_cluster_config());
-  auto cluster_config = config_resp.cluster_config();
+  auto cluster_config = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   auto replication_info = cluster_config.mutable_replication_info();
 
   // update replication info
   int kNumClusterLiveReplicas = 5;
   auto* live_replicas = replication_info->mutable_live_replicas();
   live_replicas->set_num_replicas(kNumClusterLiveReplicas);
-  UpdateMasterClusterConfig(&cluster_config);
+  ASSERT_OK(UpdateMasterClusterConfig(&cluster_config));
 
   // set tablespace replication info to be different than cluster config
   int kNumTableLiveReplicas = 2;
@@ -1172,20 +1239,14 @@ TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
 TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
   const TableName kTableName = "test";
   Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
-  GetMasterClusterConfigRequestPB config_req;
-  GetMasterClusterConfigResponsePB config_resp;
-  ASSERT_OK(
-      proxy_cluster_->GetMasterClusterConfig(config_req, &config_resp, ResetAndGetController()));
-  ASSERT_FALSE(config_resp.has_error());
-  ASSERT_TRUE(config_resp.has_cluster_config());
-  auto cluster_config = config_resp.cluster_config();
+  auto cluster_config = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   auto replication_info = cluster_config.mutable_replication_info();
 
   // update replication info
   int kNumClusterLiveReplicas = 5;
   auto* live_replicas = replication_info->mutable_live_replicas();
   live_replicas->set_num_replicas(kNumClusterLiveReplicas);
-  UpdateMasterClusterConfig(&cluster_config);
+  ASSERT_OK(UpdateMasterClusterConfig(&cluster_config));
 
   CreateTableRequestPB req;
   ASSERT_OK(DoCreateTable(kTableName, schema, &req));
@@ -1220,36 +1281,33 @@ TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
 TEST_F(MasterTest, TestInvalidPlacementInfo) {
   const TableName kTableName = "test";
   Schema schema({ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST)});
-  GetMasterClusterConfigRequestPB config_req;
-  GetMasterClusterConfigResponsePB config_resp;
-  ASSERT_OK(proxy_cluster_->GetMasterClusterConfig(
-      config_req, &config_resp, ResetAndGetController()));
-  ASSERT_FALSE(config_resp.has_error());
-  ASSERT_TRUE(config_resp.has_cluster_config());
-  auto cluster_config = config_resp.cluster_config();
-
+  auto cluster_config = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   CreateTableRequestPB req;
 
   // Fail due to not cloud_info.
   auto* live_replicas = cluster_config.mutable_replication_info()->mutable_live_replicas();
   live_replicas->set_num_replicas(5);
   auto* pb = live_replicas->add_placement_blocks();
-  UpdateMasterClusterConfig(&cluster_config);
+  ASSERT_OK(UpdateMasterClusterConfig(&cluster_config));
   Status s = DoCreateTable(kTableName, schema, &req);
   ASSERT_TRUE(s.IsInvalidArgument());
 
-  // Fail due to min_num_replicas being more than num_replicas.
   auto* cloud_info = pb->mutable_cloud_info();
   pb->set_min_num_replicas(live_replicas->num_replicas() + 1);
-  UpdateMasterClusterConfig(&cluster_config);
-  s = DoCreateTable(kTableName, schema, &req);
-  ASSERT_TRUE(s.IsInvalidArgument());
+  LOG(INFO) << __func__
+            << ": expect update cluster config failed due to min_num_replicas being more than "
+               "num_replicas.";
+  s = UpdateMasterClusterConfig(&cluster_config);
+  ASSERT_TRUE(s.IsIllegalState()) << s;
 
   // Fail because there are no TServers matching the given placement policy.
   pb->set_min_num_replicas(live_replicas->num_replicas());
   cloud_info->set_placement_cloud("fail");
-  UpdateMasterClusterConfig(&cluster_config);
+  ASSERT_OK(UpdateMasterClusterConfig(&cluster_config));
   s = DoCreateTable(kTableName, schema, &req);
+  LOG(INFO) << __func__
+            << ": expect create table failed because there are no tservers matching the given "
+               "placement policy";
   ASSERT_TRUE(s.IsInvalidArgument());
 }
 
@@ -1950,8 +2008,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
   }
 
   // Restart the master (Shutdown kills Namespace BG Thread).
-  ASSERT_OK(mini_master_->Restart());
-  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(mini_master_->Restart(true));
 
   {
     // ListNamespaces should not show the Namespace on restart because it didn't finish.
@@ -1986,8 +2043,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
   }, MonoDelta::FromSeconds(10), "Verify Namespace was DELETED"));
 
   // Restart the master #2, this round should completely remove the Namespace from memory.
-  ASSERT_OK(mini_master_->Restart());
-  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(mini_master_->Restart(true));
 
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
@@ -2011,8 +2067,7 @@ TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
 
   // Restart the master to fail the creation of the first namespace.
   // The loader should enqueue an async deletion task.
-  ASSERT_OK(mini_master_->Restart());
-  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(mini_master_->Restart(true));
 
   // Create the namespace again. The async deletion task for the first namespace shouldn't have run
   // yet due to the test flag.
@@ -2721,6 +2776,82 @@ TEST_F(MasterStartUpTest, JoinExistingClusterUnsetWithoutMasterAddresses) {
   ASSERT_OK(mini_master->Start());
   auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
   ASSERT_TRUE(mini_master->master()->IsShellMode());
+}
+
+TEST_F(MasterTest, TestGetClosestLiveTserver) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
+
+  bool local_ts = false;
+  auto& catalog_manager = mini_master_->catalog_manager();
+  auto result = catalog_manager.GetClosestLiveTserver(&local_ts);
+  // No valid tservers.
+  ASSERT_NOK(result);
+  ASSERT_FALSE(local_ts);
+
+  uint32 tserver_idx = 1;
+  auto add_tserver = [this, &tserver_idx](
+                         const std::string& uuid, std::string&& cloud, std::string&& region,
+                         std::string&& zone, std::string&& host) -> Status {
+    TSToMasterCommonPB common;
+    TSRegistrationPB registration;
+    common.mutable_ts_instance()->set_permanent_uuid(Format(uuid));
+    common.mutable_ts_instance()->set_instance_seqno(0);
+    const auto address = MakeHostPortPB(std::move(host), 1000 + tserver_idx++);
+    *registration.mutable_common()->add_broadcast_addresses() = address;
+    *registration.mutable_common()->add_private_rpc_addresses() = address;
+    *registration.mutable_common()->mutable_cloud_info() =
+        MakeCloudInfoPB(std::move(cloud), std::move(region), std::move(zone));
+    RETURN_NOT_OK(SendHeartbeat(common, registration));
+    return Status::OK();
+  };
+
+  // Default placement is cloud1, rack1, zone.
+  // Add tserver in different cloud.
+  {
+    const auto tserver1_uuid = "uuid-1";
+    ASSERT_OK(add_tserver(tserver1_uuid, "cloud2", "rack1", "zone", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver1_uuid);
+    ASSERT_FALSE(local_ts);
+  }
+
+  // Add tserver in same cloud, different region.
+  {
+    const auto tserver2_uuid = "uuid-2";
+    ASSERT_OK(add_tserver(tserver2_uuid, "cloud1", "rack2", "zone", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver2_uuid);
+    ASSERT_FALSE(local_ts);
+  }
+
+  // Add tserver in same cloud, same region, different zone.
+  {
+    const auto tserver3_uuid = "uuid-3";
+    ASSERT_OK(add_tserver(tserver3_uuid, "cloud1", "rack1", "zone2", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver3_uuid);
+  }
+
+  // Add tserver in same cloud, same region, same zone, different host.
+  {
+    const auto tserver4_uuid = "uuid-4";
+    ASSERT_OK(add_tserver(tserver4_uuid, "cloud1", "rack1", "zone", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver4_uuid);
+    ASSERT_FALSE(local_ts);
+  }
+
+  // Add tserver in same host as master.
+  {
+    ServerRegistrationPB master_registration;
+    ASSERT_OK(mini_master_->master()->GetMasterRegistration(&master_registration));
+    auto master_host = master_registration.private_rpc_addresses().begin()->host();
+    const auto tserver5_uuid = "uuid-5";
+    ASSERT_OK(add_tserver(tserver5_uuid, "cloud1", "rack1", "zone", std::move(master_host)));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver5_uuid);
+    ASSERT_TRUE(local_ts);
+  }
 }
 
 } // namespace master

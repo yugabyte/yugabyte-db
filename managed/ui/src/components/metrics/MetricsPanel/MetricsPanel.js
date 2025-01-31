@@ -52,13 +52,15 @@ export default class MetricsPanel extends Component {
   plotGraph = (metricOperation = null) => {
     const {
       metricKey,
-      currentUser,
       shouldAbbreviateTraceName = true,
       metricMeasure,
       operations = [],
       metricType,
-      isMetricLoading = false
+      isMetricLoading = false,
+      printMode = false,
+      metricsTimezone
     } = this.props;
+    const newMetricKey = printMode ? `${metricKey}-printMode` : metricKey;
     const metric =
       metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES
         ? _.cloneDeep(this.props.metric)
@@ -127,10 +129,10 @@ export default class MetricsPanel extends Component {
           metric.layout.yaxis.ticksuffix = '&nbsp;ms';
         }
       }
-      metric.data = timeFormatXAxis(metric.data, currentUser.data.timezone);
+      metric.data = timeFormatXAxis(metric.data, metricsTimezone);
 
-      metric.layout.xaxis.hoverformat = currentUser.data.timezone
-        ? '%H:%M:%S, %b %d, %Y ' + moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
+      metric.layout.xaxis.hoverformat = metricsTimezone
+        ? '%H:%M:%S, %b %d, %Y ' + moment.tz(metricsTimezone).format('[UTC]ZZ')
         : '%H:%M:%S, %b %d, %Y ' + moment().format('[UTC]ZZ');
 
       // TODO: send this data from backend.
@@ -156,7 +158,7 @@ export default class MetricsPanel extends Component {
       metric.layout.height = layoutHeight;
       metric.layout.showlegend = true;
       metric.layout.title = {
-        text: metric.layout.title,
+        text: metric?.layout?.title?.text ?? metric.layout.title,
         x: 0.05,
         y: 2.2,
         xref: 'container',
@@ -213,7 +215,7 @@ export default class MetricsPanel extends Component {
         metric.layout.xaxis = { range: [0, 2] };
         metric.layout.yaxis = { range: [0, 2] };
       }
-      Plotly.newPlot(metricKey, metric.data, metric.layout, { displayModeBar: false });
+      Plotly.newPlot(newMetricKey, metric.data, metric.layout, { displayModeBar: false });
     }
   };
 
@@ -228,7 +230,7 @@ export default class MetricsPanel extends Component {
   componentDidUpdate(prevProps) {
     // Enables user to view granular data based on selected time range within the graph
     if (this.props.isGranularMetricsEnabled) {
-      const metricKeyContainer = document.getElementById(prevProps.metricKey);
+      const metricKeyContainer = document.getElementById(prevProps.newMetricKey);
       metricKeyContainer?.on('plotly_relayout', function (eventData) {
         const startTime = Math.floor(new Date(eventData['xaxis.range[0]']).getTime() / 1000);
         const endTime = Math.floor(new Date(eventData['xaxis.range[1]']).getTime() / 1000);
@@ -240,7 +242,7 @@ export default class MetricsPanel extends Component {
       this.props.containerWidth !== prevProps.containerWidth ||
       this.props.width !== prevProps.width
     ) {
-      Plotly.relayout(prevProps.metricKey, {
+      Plotly.relayout(prevProps.newMetricKey, {
         width: this.props.width || this.getGraphWidth(this.props.containerWidth)
       });
     } else {
@@ -248,7 +250,12 @@ export default class MetricsPanel extends Component {
       // to avoid re-plotting graph if equal
       const prevData = prevProps.metric.data;
       const currData = this.props.metric.data;
-      if (prevData && currData && !_.isEqual(prevData, currData)) {
+      const prevTimezone = prevProps.metricsTimezone;
+      const currTimezone = this.props.metricsTimezone;
+      if (
+        (prevData && currData && !_.isEqual(prevData, currData)) ||
+        prevTimezone !== currTimezone
+      ) {
         // When user is on a specific tab and when they switch from Overall
         // to Outlier, we need to ensure offsetWidth is maintained
         if (!this.state.outlierButtonsWidth) {
@@ -329,9 +336,11 @@ export default class MetricsPanel extends Component {
       metricOperationsDropdown = operations?.slice(operations.length - numButtonsInDropdown);
     }
     const focusedButton = this.state.focusedButton ? this.state.focusedButton : operations?.[0];
-
+    const newMetricKey = this.props.printMode
+      ? `${this.props.metricKey}-printMode`
+      : this.props.metricKey;
     return (
-      <div id={this.props.metricKey} className={clsx(className, 'metrics-panel')}>
+      <div id={newMetricKey} className={clsx(className, 'metrics-panel')}>
         <span ref={this.outlierButtonsRef} className="outlier-buttons-container">
           {(metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES) &&
             operations.length > 0 &&

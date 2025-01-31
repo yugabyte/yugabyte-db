@@ -3,6 +3,8 @@
 --
 CREATE TABLE test_yb (col int);
 INSERT INTO test_yb VALUES (null);
+CREATE UNLOGGED MATERIALIZED VIEW unlogged_mv_yb AS SELECT * FROM test_yb; -- not supported
+ERROR:  materialized views cannot be unlogged
 CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb;
 CREATE UNIQUE INDEX ON mtest_yb(col);
 REFRESH MATERIALIZED VIEW NONCONCURRENTLY mtest_yb;
@@ -224,18 +226,18 @@ INSERT INTO arrays VALUES
 (null);
 INSERT INTO arrays SELECT '{0}' FROM generate_series(1, 1000);
 CREATE MATERIALIZED VIEW mvtest_tv7 AS SELECT * FROM arrays;
-explain select * from mvtest_tv7 where a @> '{6}';
-                           QUERY PLAN
-----------------------------------------------------------------
- Seq Scan on mvtest_tv7  (cost=0.00..102.50 rows=1000 width=36)
+explain (costs off) select * from mvtest_tv7 where a @> '{6}';
+            QUERY PLAN
+-----------------------------------
+ Seq Scan on mvtest_tv7
    Filter: (a @> '{6}'::integer[])
 (2 rows)
 
 CREATE INDEX NONCONCURRENTLY ON mvtest_tv7 using ybgin (a);
-explain select * from mvtest_tv7 where a @> '{6}';
-                                       QUERY PLAN
-----------------------------------------------------------------------------------------
- Index Scan using mvtest_tv7_a_idx on mvtest_tv7  (cost=4.00..12.05 rows=1000 width=36)
+explain (costs off) select * from mvtest_tv7 where a @> '{6}';
+                   QUERY PLAN
+-------------------------------------------------
+ Index Scan using mvtest_tv7_a_idx on mvtest_tv7
    Index Cond: (a @> '{6}'::integer[])
 (2 rows)
 
@@ -481,8 +483,8 @@ CREATE MATERIALIZED VIEW mv TABLESPACE mv_tblspace1 AS SELECT * FROM test_yb;
 Tablespace: "mv_tblspace1"
 
 ALTER MATERIALIZED VIEW mv SET TABLESPACE mv_tblspace2;
-NOTICE:  Data movement for table mv is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table mv is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 \d mv;
            Materialized view "public.mv"
  Column |  Type   | Collation | Nullable | Default

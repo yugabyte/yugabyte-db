@@ -4,7 +4,6 @@ headerTitle: Manual deployment
 linkTitle: Manual deployment
 description: Deploy YugabyteDB manually in a single region or private data center using basic administration commands.
 headcontent: Deploy YugabyteDB manually in a single region or private data center
-image: /images/section_icons/deploy/manual-deployment.png
 menu:
   v2.20:
     identifier: deploy-manual-deployment

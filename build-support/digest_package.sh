@@ -11,8 +11,8 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
-# This code is sourced from $SRCROOT/build-support/jenkins/build.sh.  The function it provides
-# create md5 and sha files for whatever package is passed in.
+# This code is sourced from $SRCROOT/build-support/jenkins/yb-jenkins-build.sh.  The function it
+# provides create md5 and sha files for whatever package is passed in.
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   fatal "File '${BASH_SOURCE[0]}' must be sourced, not invoked"

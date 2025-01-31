@@ -42,7 +42,7 @@ class AnsibleProcess(object):
         self.connection_type = self.DEFAULT_SSH_CONNECTION_TYPE
         self.connection_target = "localhost"
         self.sensitive_data_keywords = ["KEY", "SECRET", "CREDENTIALS", "API", "POLICY",
-                                        "NODE_AGENT_AUTH_TOKEN"]
+                                        "NODE_AGENT_AUTH_TOKEN", "YCQL_LDAP", "YSQL_HBA_CONF"]
 
     def set_connection_params(self, conn_type, target):
         self.connection_type = conn_type
@@ -61,6 +61,8 @@ class AnsibleProcess(object):
         for key, value in playbook_args.items():
             if self.is_sensitive(key.upper()):
                 playbook_args[key] = self.REDACT_STRING
+            elif isinstance(value, dict):
+                playbook_args[key] = self.redact_sensitive_data(value)
         return playbook_args
 
     def run(self, filename, extra_vars=None, host_info=None, print_output=True,
@@ -91,48 +93,47 @@ class AnsibleProcess(object):
         ask_sudo_pass = vars.pop("ask_sudo_pass", None)
         sudo_pass_file = vars.pop("sudo_pass_file", None)
         ssh_key_file = vars.pop("private_key_file", None)
-        ssh2_enabled = vars.pop("ssh2_enabled", False) and check_ssh2_bin_present()
+        ssh2_enabled = vars.pop("ssh2_enabled", False)
         local_package_path = vars.pop("local_package_path", None)
-        connection_type = vars.pop("connection_type", None)
+        connection_type = vars.pop("connection_type", self.DEFAULT_SSH_CONNECTION_TYPE)
         node_agent_home = vars.pop("node_agent_home", None)
         node_agent_ip = vars.pop("node_agent_ip", None)
         node_agent_port = vars.pop("node_agent_port", None)
         node_agent_cert_path = vars.pop("node_agent_cert_path", None)
         node_agent_auth_token = vars.pop("node_agent_auth_token", None)
         offload = vars.pop("offload_ansible", False) and not disable_offloading
-        ssh_key_type = parse_private_key(ssh_key_file)
         remote_tmp_dir = vars.get("remote_tmp_dir", "/tmp")
         env = os.environ.copy()
         if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
             env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
 
         playbook_args.update(vars)
-        if self.can_ssh:
+        process_args = [os.path.join(ybutils.YB_DEVOPS_HOME, "bin/ansible-playbook.sh")]
+        if self.can_ssh and ssh_key_file is not None and connection_type == 'ssh':
+            ssh2_enabled = ssh2_enabled and check_ssh2_bin_present()
+            ssh_key_type, _ = parse_private_key(ssh_key_file)
             playbook_args.update({
                 "ssh_user": ssh_user,
                 "yb_server_ssh_user": ssh_user,
                 "ssh_version": SSH if ssh_key_type == SSH else SSH2
             })
-
-        process_args = [os.path.join(ybutils.YB_DEVOPS_HOME, "bin/ansible-playbook.sh")]
-
-        if ssh2_enabled:
-            # Will be moved as part of task of license upload api.
-            configure_ssh2_args = process_args + [
-                os.path.join(ybutils.YB_DEVOPS_HOME, "configure_ssh2.yml")
-            ]
-            p = subprocess.Popen(configure_ssh2_args,
-                                 stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE,
-                                 env=env)
-            stdout, stderr = p.communicate()
-            if p.returncode != 0:
-                raise YBOpsRuntimeError("Failed to configure ssh2 on the platform")
+            if ssh2_enabled:
+                # Will be moved as part of task of license upload api.
+                configure_ssh2_args = process_args + [
+                    os.path.join(ybutils.YB_DEVOPS_HOME, "configure_ssh2.yml")
+                ]
+                p = subprocess.Popen(configure_ssh2_args,
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE,
+                                     env=env)
+                stdout, stderr = p.communicate()
+                if p.returncode != 0:
+                    raise YBOpsRuntimeError("Failed to configure ssh2 on the platform")
 
         process_args.extend([os.path.join(ybutils.YB_DEVOPS_HOME, filename)])
         playbook_args["yb_home_dir"] = ybutils.YB_HOME_DIR
 
-        if connection_type is not None and connection_type == 'node_agent_rpc':
+        if connection_type == 'node_agent_rpc':
             playbook_args.update({
                 # Below args are used in the playbooks.
                 # E.g ssh_user as home_dir.
@@ -246,7 +247,8 @@ class AnsibleProcess(object):
             remote_shell_args = {"async": True}
             remote_shell = RemoteShell(extra_vars)
             try:
-                rc, stdout, stderr = remote_shell.exec_command(process_args, **remote_shell_args)
+                rc, stdout_str, stderr_str = remote_shell.exec_command(process_args,
+                                                                       **remote_shell_args)
             finally:
                 delete_files = []
                 if vars_file is not None:
@@ -262,13 +264,16 @@ class AnsibleProcess(object):
                                  env=env)
             stdout, stderr = p.communicate()
             rc = p.returncode
+            stdout_str = stdout.decode('utf-8')
+            stderr_str = stderr.decode('utf-8') if rc != 0 else ""
         if print_output:
-            logging.info(stdout.decode('utf-8'))
+            # Write output to stderr by default.
+            logging.info(stdout_str)
 
         if rc != 0:
             errmsg = f"Playbook run of {filename} against {inventory_target} with args " \
                      f"{redacted_process_args} failed with return code {rc} " \
-                     f"and error '{stderr.decode('utf-8')}'"
+                     f"and error '{stderr_str}'"
 
             if rc == 4:  # host unreachable
                 raise YBOpsRecoverableError(errmsg)

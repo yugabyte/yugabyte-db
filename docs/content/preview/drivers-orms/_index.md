@@ -4,7 +4,6 @@ headerTitle: Drivers and ORMs
 linkTitle: Drivers and ORMs
 description: Connect your applications with supported drivers and ORMs
 headcontent: Connect applications with your database
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /develop/client-drivers/
   - /preview/develop/client-drivers/
@@ -50,6 +49,13 @@ In addition to the compatible upstream PostgreSQL (YSQL) and Cassandra (YCQL) dr
     <a href="nodejs/" class="orange">
       <i class="fa-brands fa-node-js"></i>
       Node.js
+    </a>
+  </li>
+
+  <li>
+    <a href="elixir/" class="orange">
+      <i class="fa-classic fa-droplet"></i>
+      Elixir
     </a>
   </li>
 

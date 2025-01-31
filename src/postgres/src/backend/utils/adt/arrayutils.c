@@ -3,7 +3,7 @@
  * arrayutils.c
  *	  This file contains some support routines required for array functions.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -64,10 +64,6 @@ ArrayGetOffset0(int n, const int *tup, const int *scale)
  * This must do overflow checking, since it is used to validate that a user
  * dimensionality request doesn't overflow what we can handle.
  *
- * We limit array sizes to at most about a quarter billion elements,
- * so that it's not necessary to check for overflow in quite so many
- * places --- for instance when palloc'ing Datum arrays.
- *
  * The multiplication overflow check only works on machines that have int64
  * arithmetic, but that is nearly all platforms these days, and doing check
  * divides for those that don't seems way too expensive.
@@ -77,8 +73,6 @@ ArrayGetNItems(int ndim, const int *dims)
 {
 	int32		ret;
 	int			i;
-
-#define MaxArraySize ((Size) (MaxAllocSize / sizeof(Datum)))
 
 	if (ndim <= 0)
 		return 0;
@@ -251,14 +245,13 @@ ArrayGetIntegerTypmods(ArrayType *arr, int *n)
 
 	/* hardwired knowledge about cstring's representation details here */
 	deconstruct_array(arr, CSTRINGOID,
-					  -2, false, 'c',
+					  -2, false, TYPALIGN_CHAR,
 					  &elem_values, NULL, n);
 
 	result = (int32 *) palloc(*n * sizeof(int32));
 
 	for (i = 0; i < *n; i++)
-		result[i] = pg_atoi(DatumGetCString(elem_values[i]),
-							sizeof(int32), '\0');
+		result[i] = pg_strtoint32(DatumGetCString(elem_values[i]));
 
 	pfree(elem_values);
 

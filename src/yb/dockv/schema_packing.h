@@ -279,14 +279,20 @@ class PackedRowDecoderFactory {
   virtual ~PackedRowDecoderFactory() = default;
 
   virtual PackedColumnDecoderEntry GetColumnDecoderV1(
-      size_t projection_index, ssize_t packed_index, bool last) = 0;
+      size_t projection_index, ssize_t packed_index, bool last) const = 0;
 
   virtual PackedColumnDecoderEntry GetColumnDecoderV2(
-      size_t projection_index, ssize_t packed_index, bool last) = 0;
+      size_t projection_index, ssize_t packed_index, bool last) const = 0;
+};
+
+struct PackedColumnDecoderDataV2 {
+  const uint8_t* header;
+  void* context;
 };
 
 using PackedColumnDecoderV2 = UnsafeStatus(*)(
-    const uint8_t* header, const uint8_t* body, void* context, size_t projection_index,
+    PackedColumnDecoderDataV2* data, const uint8_t* body, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
     const PackedColumnDecoderEntry* chain);
 
 struct PackedColumnDecodersV2 {
@@ -294,9 +300,7 @@ struct PackedColumnDecodersV2 {
   PackedColumnDecoderV2 no_nulls;
 };
 
-struct PackedColumnRouterData {
-  void* context;
-};
+struct PackedColumnRouterData;
 
 using PackedColumnRouter = UnsafeStatus(*)(
     PackedColumnRouterData* data,
@@ -375,7 +379,7 @@ class PackedRowDecoder {
 
   void Init(
       PackedRowVersion version, const ReaderProjection& projection,
-      const SchemaPacking& packing, PackedRowDecoderFactory* factory,
+      const SchemaPacking& packing, const PackedRowDecoderFactory& factory,
       const Schema& schema, PackedRowColumnUpdateTracker* tracker = nullptr);
 
   Status Apply(Slice value, void* context);
@@ -393,7 +397,7 @@ using PackedRowDecoderVariant = std::variant<PackedRowDecoderV1, PackedRowDecode
 
 template <bool kCheckNull, bool kLast, bool kIncrementProjectionIndex = true>
 UnsafeStatus CallNextDecoderV2(
-    const uint8_t* header, const uint8_t* body, void* context, size_t projection_index,
+    PackedColumnDecoderDataV2* data, const uint8_t* body, size_t projection_index,
     const PackedColumnDecoderEntry* chain) {
   if (kLast) {
     return UnsafeStatus();
@@ -403,7 +407,7 @@ UnsafeStatus CallNextDecoderV2(
     ++projection_index;
   }
   auto decoder = kCheckNull ? chain->decoder.v2.with_nulls : chain->decoder.v2.no_nulls;
-  return decoder(header, body, context, projection_index, chain);
+  return decoder(data, body, projection_index, chain->decoder_args, chain);
 }
 
 template <bool kLast>

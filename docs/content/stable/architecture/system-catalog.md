@@ -2,7 +2,6 @@
 title: System catalog tables and views
 linkTitle: System catalog
 headcontent: Tables and views that show information about the database
-image: fa-sharp fa-thin fa-album-collection
 menu:
   stable:
     identifier: architecture-system-catalog
@@ -12,7 +11,7 @@ showRightNav: true
 type: docs
 ---
 
-System catalogs, also known as system tables or system views, play a crucial role in the internal organization and management of the database and serve as the backbone of YugabyteDB's architecture. YugabyteDB builds upon the system catalog of [PostgreSQL](https://www.postgresql.org/docs/current/catalogs.html). These catalogs form a centralized repository that stores metadata about the database itself, such as tables, indexes, columns, constraints, functions, users, privileges, extensions, query statistics, and more. All the system catalog tables and views are organized under the _pg_catalog_ schema.
+System catalogs, also known as system tables or system views, play a crucial role in the internal organization and management of the database and serve as the backbone of YugabyteDB's architecture. YugabyteDB builds upon the system catalog of [PostgreSQL](https://www.postgresql.org/docs/11/catalogs.html). These catalogs form a centralized repository that stores metadata about the database itself, such as tables, indexes, columns, constraints, functions, users, privileges, extensions, query statistics, and more. All the system catalog tables and views are organized under the _pg_catalog_ schema.
 
 To list the tables in the system catalog, you can execute the following command:
 
@@ -75,8 +74,8 @@ The _pg_stat_activity_ view shows detailed information about active sessions, in
 The pg_stat_activity view is not based on any specific tables. Instead, it provides real-time information about the current activity of each session based on internal data structures. This includes information such as the user, current query, state of the query (active, idle, and more), and other session-level information.
 {{</note>}}
 
-{{<lead link="../../explore/observability/pg-stat-activity">}}
-To learn more about how the pg_stat_activity can be used to monitor live queries, see [View live queries](../../explore/observability/pg-stat-activity).
+{{<lead link="../../explore/observability/pg-stat-activity/">}}
+Learn how to use pg_stat_activity to monitor live queries in [View live queries](../../explore/observability/pg-stat-activity/).
 {{</lead>}}
 
 ## Table activity
@@ -92,8 +91,12 @@ The pg_locks view doesn't have a documented view definition that you can directl
 {{</note>}}
 
 {{<tip>}}
-[pg_locks](#pg-locks) view can be joined to [pg_stat_activity](#pg-stat-activity) view on the _pid_ column to get more information on the session holding or awaiting each lock. To learn more about how pg_locks can be used to get insights on transaction locks, see [Lock insights](../../explore/observability/pg-locks).
+[pg_locks](#pg-locks) view can be joined to [pg_stat_activity](#pg-stat-activity) view on the _pid_ column to get more information on the session holding or awaiting each lock.
 {{</tip>}}
+
+{{<lead link="../../explore/observability/pg-locks/">}}
+Learn how pg_locks can be used to get insights on transaction locks in [Lock insights](../../explore/observability/pg-locks/).
+{{</lead>}}
 
 ## Stored procedures
 
@@ -111,12 +114,12 @@ By default, only _min_, _max_, _mean_, and _stddev_ of the execution times are a
 {{</note>}}
 
 {{<lead link="../../explore/query-1-performance/pg-stat-statements/">}}
-To understand how to improve query performance using these stats, see [Query tuning](../../explore/query-1-performance/pg-stat-statements/).
+Learn how to improve query performance using these stats in [Query tuning](../../explore/query-1-performance/pg-stat-statements/).
 {{</lead>}}
 
 ## Data statistics
 
-The statistics about the table data are stored in the _pg_statistics_ table. For efficiency, this data is not updated on the fly so it may not be up to date. This data can be updated by running the `ANALYZE` command. This table stores column-level information about the number of distinct values, most common values, their frequencies, and so on. This data is very useful for query tuning. The _pg_stats_ view provides user-friendly information by joining other tables with the _pg_statistic_ table.
+The statistics about the table data are stored in the _pg_statistic_ table. For efficiency, this data is not updated on the fly so it may not be up to date. This data can be updated by running the `ANALYZE` command. This table stores column-level information about the number of distinct values, most common values, their frequencies, and so on. This data is very useful for query tuning. The _pg_stats_ view provides user-friendly information by joining other tables with the _pg_statistic_ table.
 
 ## Users and roles
 

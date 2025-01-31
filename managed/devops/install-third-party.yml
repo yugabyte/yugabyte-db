@@ -1,14 +1,36 @@
-- name: xxhash | Copy and unarchive xxhash
-  hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
+- name: Check for xxhsum binary locally
+  hosts: localhost
+  connection: local
+  gather_facts: false
   vars:
-    package_path: "{{local_package_path}}"
+    ansible_remote_tmp: /tmp/.ansible/tmp
     xxhsum_package_name: "xxhash.tar.gz"
   tasks:
-    - name: Checking for existence of xxhsum tar file
-      local_action: stat path="{{ local_package_path }}/{{xxhsum_package_name}}"
-      register: xxhsum_bin_present
-    - name: xxhsum | Copy and unarchive {{ xxhsum_package_name }} from {{ package_path }}
-      unarchive:
-        src: "{{ local_package_path }}/{{xxhsum_package_name}}"
-        dest: "{{yb_home_dir}}/bin"
-      when: xxhsum_bin_present.stat.exists
+    - name: Checking for existence of xxhsum binary locally
+      ansible.builtin.stat:
+        path: "{{ local_package_path }}/{{ xxhsum_package_name }}"
+        get_checksum: false
+      delegate_to: localhost
+      register: xxhsum_check
+
+    - name: Set xxhsum_present fact based on presence of binary
+      ansible.builtin.set_fact:
+        xxhsum_present: "{{ xxhsum_check.stat.exists }}"
+
+- name: xxhash | Copy and unarchive xxhash
+  hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
+  gather_facts: yes
+  vars:
+    xxhsum_package_name: "xxhash.tar.gz"
+  vars_files:
+    - "{{ vars_file | default(placeholder_vars_file) }}"
+  tasks:
+    - name: Ensure xxhsum_present is available for remote tasks
+      set_fact:
+        xxhsum_present: "{{ hostvars['localhost'].xxhsum_present }}"
+
+    - name: Copy and unarchive xxhsum package to remote node
+      ansible.builtin.unarchive:
+        src: "{{ local_package_path }}/{{ xxhsum_package_name }}"
+        dest: "{{ yb_home_dir }}/bin"
+      when: xxhsum_present | default(false)

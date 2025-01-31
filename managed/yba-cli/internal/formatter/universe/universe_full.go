@@ -21,20 +21,25 @@ const (
 	defaultFullUniverseGeneral = "table {{.Name}}\t{{.UUID}}\t{{.Version}}\t{{.State}}"
 	universeGeneral1           = "table {{.ProviderCode}}\t{{.RF}}" +
 		"\t{{.NumMasters}}\t{{.NumTservers}}\t{{.LiveNodes}}"
-	universeDetails1 = "table  {{.ProviderUUID}}\t{{.AccessKey}}\t{{.PricePerDay}}"
+	universeDetails1 = "table  {{.ProviderUUID}}\t{{.AccessKey}}\t{{.PricePerDay}}" +
+		"\t{{.CPUArchitecture}}"
 	universeDetails2 = "table {{.EnableYSQL}}\t{{.YSQLAuthEnabled}}\t{{.EnableYCQL}}" +
 		"\t{{.YCQLAuthEnabled}}\t{{.UseSystemd}}"
-	encryptionRestDetails    = "table {{.KMSEnabled}}\t{{.KMSConfigName}}\t{{.EncryptionRestType}}"
-	encryptionTransitDetails = "table {{.NtoNTLS}}\t{{.NtoNCert}}\t{{.CtoNTLS}}\t{{.CtoNCert}}"
-	universeOverridesTable   = "table {{.UniverseOverrides}}"
-	azOverridesTable         = "table {{.AZOverrides}}"
+	encryptionRestDetails     = "table {{.KMSEnabled}}\t{{.KMSConfig}}\t{{.EncryptionRestType}}"
+	encryptionTransitDetails1 = "table {{.NtoNTLS}}\t{{.NtoNCert}}"
+	encryptionTransitDetails2 = "table{{.CtoNTLS}}\t{{.CtoNCert}}"
+	universeOverridesTable    = "table {{.UniverseOverrides}}"
+	azOverridesTable          = "table {{.AZOverrides}}"
 )
 
 // Certificates hold certificates declared under the current customer
 var Certificates []ybaclient.CertificateInfoExt
 
+// Providers hold providers declared under the current customer
+var Providers []ybaclient.Provider
+
 // KMSConfigs hold kms configs declared under the current customer
-var KMSConfigs []map[string]interface{}
+var KMSConfigs []util.KMSConfig
 
 // FullUniverseContext to render Universe Details output
 type FullUniverseContext struct {
@@ -51,7 +56,7 @@ func (fu *FullUniverseContext) SetFullUniverse(universe ybaclient.UniverseResp) 
 // NewFullUniverseFormat for formatting output
 func NewFullUniverseFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultUniverseListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -126,12 +131,24 @@ func (fu *FullUniverseContext) Write() error {
 	fu.Output.Write([]byte("\n"))
 
 	// Section 3: encryption section
-	tmpl, err = fu.startSubsection(encryptionTransitDetails)
+	tmpl, err = fu.startSubsection(encryptionTransitDetails1)
 	if err != nil {
 		logrus.Errorf("%s", err.Error())
 		return err
 	}
 	fu.subSection("Encryption In Transit Details")
+	if err := fu.ContextFormat(tmpl, fuc.Universe); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	fu.PostFormat(tmpl, NewUniverseContext())
+	fu.Output.Write([]byte("\n"))
+
+	tmpl, err = fu.startSubsection(encryptionTransitDetails2)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
 	if err := fu.ContextFormat(tmpl, fuc.Universe); err != nil {
 		logrus.Errorf("%s", err.Error())
 		return err

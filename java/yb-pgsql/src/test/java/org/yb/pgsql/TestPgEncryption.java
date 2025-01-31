@@ -183,7 +183,7 @@ public class TestPgEncryption extends BasePgSQLTest {
     // (see sslkey entry in https://jdbc.postgresql.org/documentation/head/connect.html for details)
     // This is not required for ysqlsh or psql where the PEM format is supported.
     int tserver = spawnTServerWithFlags(ImmutableMap.of(
-        "ysql_hba_conf_csv", "hostssl all all all md5 clientcert=1",
+        "ysql_hba_conf_csv", "hostssl all all all md5 clientcert=verify-ca",
         "ysql_pg_conf_csv", String.format("ssl_cert_file='%s',ssl_key_file='%s',ssl_ca_file='%s'",
             sslcertFile, sslkeyFile, sslrootcertFile)));
 

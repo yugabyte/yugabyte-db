@@ -38,7 +38,6 @@ class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
  private:
   const std::string conf_file_name_ = "ysql_conn_mgr.conf";
   std::string data_dir_;
-  std::string log_file_;
   std::string pid_file_;
   std::string ysql_pgconf_file_;
   std::string quantiles_ = "0.99,0.95,0.5";
@@ -47,12 +46,18 @@ class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
   uint16_t global_pool_size_ = 10;
   uint16_t control_connection_pool_size_;
   uint num_resolver_threads_ = 1;
+  int ysql_max_connections_ = 0;
 
   bool log_debug_ = false;
+  bool log_config_ = false;
+  bool log_session_ = false;
+  bool log_query_ = false;
+  bool log_stats_ = false;
 
   void UpdateConfigFromGFlags();
   std::string GetBindAddress();
   void AddSslConfig(std::map<std::string, std::string>* ysql_conn_mgr_configs);
+  void UpdateLogSettings(std::string& log_settings_str);
 };
 
 class YsqlConnMgrWrapper : public yb::ProcessWrapper {

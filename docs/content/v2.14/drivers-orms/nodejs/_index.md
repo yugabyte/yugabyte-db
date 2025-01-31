@@ -3,7 +3,6 @@ title: Node.js drivers and ORMs
 headerTitle: Node.js
 linkTitle: Node.js
 description: Node.js Drivers and ORMs support for YugabyteDB.
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.14:
     identifier: nodejs-drivers
@@ -49,8 +48,8 @@ To develop Node.js applications for YugabyteDB, you need the following:
   ```
 
 - **YugabyteDB cluster**
-  - Create a free cluster on YugabyteDB Managed. Refer to [Use a cloud cluster](/preview/quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
+  - Create a free cluster on YugabyteDB Managed. Refer to [Use a cloud cluster](/preview/tutorials/quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/).
 
 ## Next steps
 

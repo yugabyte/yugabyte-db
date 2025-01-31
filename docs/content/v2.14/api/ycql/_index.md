@@ -4,7 +4,6 @@ headerTitle: Yugabyte Cloud Query Language (YCQL)
 linkTitle: YCQL
 description: YCQL is a semi-relational API that is best fit for internet-scale OLTP & HTAP applications.
 summary: Reference for the YCQL API
-image: /images/section_icons/api/ycql.png
 headcontent:
 menu:
   v2.14:
@@ -24,10 +23,6 @@ This page covers the following YCQL features.
 - Data manipulation language (DML) statements.
 - Builtin functions and Expression operators.
 - Primitive user-defined data types.
-
-## Quick Start
-
-You can explore the basics of the YCQL API using the [Quick start](quick-start/) steps.
 
 ## DDL statements
 

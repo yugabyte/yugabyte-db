@@ -56,6 +56,7 @@ class Thread;
 class WebCallbackRegistry;
 
 const char* TEST_GetThreadLogPrefix();
+std::string TEST_GetThreadUnformattedLogPrefix();
 
 class TEST_SetThreadPrefixScoped {
  public:
@@ -256,6 +257,8 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // This call is signal-safe.
   static Thread* current_thread() { return tls_; }
 
+  static Status SendSignal(ThreadIdForStack tid, int signal);
+
   // Returns a unique, stable identifier for this thread. Note that this is a static
   // method and thus can be used on any thread, including the main thread of the
   // process.
@@ -396,6 +399,8 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // Invoked when the user-supplied function finishes or in the case of an
   // abrupt exit (i.e. pthread_exit()). Cleans up after SuperviseThread().
   static void FinishThread(void* arg);
+
+  static Status TryStartThread(Thread* t);
 };
 
 typedef scoped_refptr<Thread> ThreadPtr;
@@ -417,5 +422,6 @@ class CDSAttacher {
 };
 
 void RenderAllThreadStacks(std::ostream& output);
+size_t CountManagedThreads();
 
 } // namespace yb

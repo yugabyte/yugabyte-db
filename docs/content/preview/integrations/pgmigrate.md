@@ -23,7 +23,7 @@ Because YugabyteDB's YSQL API is wire-compatible with PostgreSQL, PGmigrate can 
 
 To run the [PGmigrate tutorial](https://github.com/yandex/pgmigrate/blob/master/doc/tutorial.md), do the following:
 
-1. Start a YugabyteDB cluster. Refer to [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
+1. Start a YugabyteDB cluster. Refer to [YugabyteDB Prerequisites](../tools/#yugabytedb-prerequisites).
 1. Use the following configuration file for PGmigrate:
 
     ```properties

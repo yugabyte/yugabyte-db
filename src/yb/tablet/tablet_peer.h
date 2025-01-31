@@ -220,8 +220,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
       std::shared_ptr<LWTransactionStatePB> request) override;
 
+  // `operation` is moved from in the event of success, and left alive in event of failure.
   Status SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperation> operation, int64_t term) override;
+      std::unique_ptr<UpdateTxnOperation>& operation, int64_t term) override;
 
   HybridTime SafeTimeForTransactionParticipant() override;
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
@@ -319,6 +320,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // If details is specified then this function appends explanation of how index was calculated
   // to it.
   Result<int64_t> GetEarliestNeededLogIndex(std::string* details = nullptr) const;
+
+  Result<OpId> MaxPersistentOpId() const override;
 
   // Returns the the minimum log index for transaction tables and latest log index for other tables.
   // Returns the bootstrap_time which is safe_time higher than the time of the returned OpId.
@@ -429,6 +432,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration();
 
   bool is_under_cdc_sdk_replication();
+
+  HybridTime GetMinStartHTRunningTxnsOrLeaderSafeTime();
 
   Status SetCDCSDKRetainOpIdAndTime(
       const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
@@ -600,7 +605,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool FlushBootstrapStateEnabled() const;
 
-  void MinRunningHybridTimeUpdated(HybridTime min_running_ht);
+  void MinReplayTxnStartTimeUpdated(HybridTime start_ht);
 
   MetricRegistry* metric_registry_;
 

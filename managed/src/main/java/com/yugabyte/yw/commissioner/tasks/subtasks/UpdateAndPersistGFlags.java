@@ -48,7 +48,14 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
+    return super.getName()
+        + "(master: "
+        + taskParams().masterGFlags
+        + ", tserver:"
+        + taskParams().tserverGFlags
+        + ", specific:"
+        + taskParams().specificGFlags
+        + ")";
   }
 
   @Override
@@ -98,14 +105,17 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
                   // Updating old maps accordingly
                   cluster.userIntent.masterGFlags = masterGFlags;
                   cluster.userIntent.tserverGFlags = tserverGFlags;
-                  if (cluster.userIntent.specificGFlags != null
-                      && cluster.userIntent.specificGFlags.isInheritFromPrimary()) {
+                  if (cluster.userIntent.specificGFlags != null) {
                     SpecificGFlags primaryGFlags =
                         universeDetails.getPrimaryCluster().userIntent.specificGFlags;
                     if (primaryGFlags != null) {
-                      cluster.userIntent.specificGFlags.setPerProcessFlags(
-                          primaryGFlags.getPerProcessFlags());
-                      cluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+                      if (cluster.userIntent.specificGFlags.isInheritFromPrimary()) {
+                        cluster.userIntent.specificGFlags.setPerProcessFlags(
+                            primaryGFlags.getPerProcessFlags());
+                        cluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+                      }
+                      cluster.userIntent.specificGFlags.setGflagGroups(
+                          primaryGFlags.getGflagGroups());
                     }
                   }
                 }

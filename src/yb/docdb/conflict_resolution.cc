@@ -41,6 +41,8 @@
 
 #include "yb/gutil/stl_util.h"
 
+#include "yb/rocksdb/options.h"
+
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 
@@ -141,6 +143,22 @@ class ConflictResolverContext {
   virtual ConflictManagementPolicy GetConflictManagementPolicy() const = 0;
 
   virtual bool IsSingleShardTransaction() const = 0;
+
+  virtual boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const {
+    return boost::none;
+  }
+
+  virtual TransactionId background_txn_id() const {
+    return TransactionId::Nil();
+  }
+
+  virtual TabletId background_txn_status_tablet() const {
+    return TabletId();
+  }
+
+  virtual bool ShouldWaitAsBackgroundTxn() const {
+    return false;
+  }
 
   std::string LogPrefix() const {
     return ToString() + ": ";
@@ -265,8 +283,8 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
         break;
       }
 
-      auto existing_intent = VERIFY_RESULT(
-          docdb::ParseIntentKey(intent_iter_.key(), existing_value));
+      auto existing_intent = VERIFY_RESULT(dockv::ParseIntentKey(
+          intent_iter_.key(), existing_value));
 
       VLOG_WITH_PREFIX_AND_FUNC(4) << "Found: " << SubDocKey::DebugSliceToString(existing_key)
                                    << ", with value: " << existing_value.ToDebugString()
@@ -322,8 +340,10 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       // the empty doc key - 'DocKey([], []), [])'. The created intent iterator should see existing
       // intent records against the empty doc key to perform conflict resolution correctly. Hence,
       // the iterator should be created with KeyBounds::kNoBounds instead.
+      // The iterator uses forward scan only, that's why restart block keys caching is not required.
       intent_iter_ = CreateIntentsIteratorWithHybridTimeFilter(
-          doc_db_.intents, &status_manager(), &KeyBounds::kNoBounds, &intent_key_upperbound_);
+          doc_db_.intents, &status_manager(), &KeyBounds::kNoBounds,
+          &intent_key_upperbound_, rocksdb::CacheRestartBlockKeys::kFalse);
     }
     return intent_iter_.Initialized();
   }
@@ -408,6 +428,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       return true;
     }
     RETURN_NOT_OK(OnConflictingTransactionsFound());
+    DEBUG_ONLY_TEST_SYNC_POINT("ConflictResolver::OnConflictingTransactionsFound");
     return false;
   }
 
@@ -594,7 +615,8 @@ class FailOnConflictResolver : public ConflictResolver {
         VLOG(4) << self->LogPrefix() << "Abort received: " << AsString(result);
         if (result.ok()) {
           transaction.ProcessStatus(*result);
-        } else if (result.status().IsRemoteError() || result.status().IsAborted()) {
+        } else if (result.status().IsRemoteError() || result.status().IsAborted() ||
+                   result.status().IsShutdownInProgress()) {
           // Non retryable errors. Aborted could be caused by shutdown.
           transaction.failure = result.status();
         } else {
@@ -676,13 +698,18 @@ class WaitOnConflictResolver : public ConflictResolver {
     if (!wait_start_time_.Initialized()) {
       wait_start_time_ = MonoTime::Now();
     }
+    DEBUG_ONLY_TEST_SYNC_POINT("ConflictResolver::MaybeSetWaitStartTime");
   }
 
   void TryPreWait() {
-    DCHECK(!status_tablet_id_.empty());
+    const auto& waiter_txn = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_id() : context_->transaction_id();
+    const auto& waiter_status_tablet = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_status_tablet() : status_tablet_id_;
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
-        context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
-        serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
+        waiter_txn, context_->subtransaction_id(), lock_batch_, waiter_status_tablet,
+        serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_,
+        context_->PgSessionRequestVersion(), deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
@@ -700,13 +727,19 @@ class WaitOnConflictResolver : public ConflictResolver {
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
-    MaybeSetWaitStartTime();
-    return wait_queue_->WaitOn(
-        context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
-        ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
-        context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
+    const auto& waiter_txn = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_id() : context_->transaction_id();
+    const auto& waiter_status_tablet = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_status_tablet() : status_tablet_id_;
+    RETURN_NOT_OK(wait_queue_->WaitOn(
+        waiter_txn, context_->subtransaction_id(), lock_batch_,
+        ConsumeTransactionDataAndReset(), waiter_status_tablet, serial_no_,
+        context_->GetTxnStartUs(), request_start_us_, request_id_,
+        context_->PgSessionRequestVersion(), deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
-        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
+        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2)));
+    MaybeSetWaitStartTime();
+    return Status::OK();
   }
 
   // Note: we must pass in shared_this to keep the WaitOnConflictResolver alive until the wait queue
@@ -840,9 +873,11 @@ class DocPathProcessor {
 Result<IntentTypesContainer> GetWriteRequestIntents(
     const DocOperations& doc_ops, KeyBytes* buffer, PartialRangeKeyIntents partial,
     IsolationLevel isolation_level) {
+  bool is_lock_batch = !doc_ops.empty() &&
+      doc_ops[0]->OpType() == DocOperationType::PGSQL_LOCK_OPERATION;
   static const dockv::IntentTypeSet kStrongReadIntentTypeSet{dockv::IntentType::kStrongRead};
   dockv::IntentTypeSet intent_types;
-  if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
+  if (isolation_level != IsolationLevel::NON_TRANSACTIONAL && !is_lock_batch) {
     intent_types = dockv::GetIntentTypesForWrite(isolation_level);
   }
 
@@ -855,7 +890,7 @@ Result<IntentTypesContainer> GetWriteRequestIntents(
     RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &op_isolation));
     RETURN_NOT_OK(processor(
         &doc_paths,
-        intent_types.None() ? dockv::GetIntentTypesForWrite(op_isolation) : intent_types));
+        intent_types.None() ? doc_op->GetIntentTypes(op_isolation) : intent_types));
 
     RETURN_NOT_OK(
         doc_op->GetDocPaths(GetDocPathsMode::kStrongReadIntents, &doc_paths, &op_isolation));
@@ -880,21 +915,20 @@ class StrongConflictChecker {
 
   Status Check(
       Slice intent_key, bool strong, ConflictManagementPolicy conflict_management_policy) {
-    const auto bloom_filter_prefix = VERIFY_RESULT(ExtractFilterPrefixFromKey(intent_key));
-    if (!value_iter_.Initialized() || bloom_filter_prefix != value_iter_bloom_filter_prefix_) {
+    if (!value_iter_.Initialized()) {
       auto hybrid_time_file_filter =
           FLAGS_docdb_ht_filter_conflict_with_committed ? CreateHybridTimeFileFilter(read_time_)
                                                         : nullptr;
       value_iter_ = CreateRocksDBIterator(
           resolver_.doc_db().regular,
           resolver_.doc_db().key_bounds,
-          BloomFilterMode::USE_BLOOM_FILTER,
-          intent_key,
+          BloomFilterOptions::Variable(),
           rocksdb::kDefaultQueryId,
-          hybrid_time_file_filter);
-      value_iter_bloom_filter_prefix_ = bloom_filter_prefix;
+          hybrid_time_file_filter,
+          /* iterate_upper_bound = */ nullptr,
+          rocksdb::CacheRestartBlockKeys::kFalse);
     }
-    value_iter_.Seek(intent_key);
+    value_iter_.SeekWithNewFilter(intent_key);
 
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
@@ -950,7 +984,8 @@ class StrongConflictChecker {
           return STATUS_EC_FORMAT(
               TryAgain, TransactionError(TransactionErrorCode::kConflict),
               "Conflict with concurrently committed data. Value write after transaction start: "
-              "doc ht ($0) >= read time ($1)", doc_ht.hybrid_time(), read_time_);
+              "doc ht ($0) >= read time ($1), key: $2",
+              doc_ht.hybrid_time(), read_time_, SubDocKey::DebugSliceToString(intent_key));
         }
       }
       buffer_.Reset(existing_key);
@@ -975,7 +1010,6 @@ class StrongConflictChecker {
 
   // RocksDb iterator with bloom filter can be reused in case keys has same hash component.
   BoundedRocksDbIterator value_iter_;
-  Slice value_iter_bloom_filter_prefix_;
 };
 
 class ConflictResolverContextBase : public ConflictResolverContext {
@@ -1044,7 +1078,9 @@ class ConflictResolverContextBase : public ConflictResolverContext {
       //   2. a kConflict is raised even if their_priority equals our_priority.
       if (our_priority <= their_priority) {
         return MakeConflictStatus(
-            our_transaction_id, transaction.id, "higher priority", GetTabletMetrics());
+            our_transaction_id, transaction.id,
+            our_priority == their_priority ? "same priority" : "higher priority",
+            GetTabletMetrics());
       }
     }
     fetched_metadata_for_transactions_ = true;
@@ -1107,7 +1143,26 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   Status InitTxnMetadata(ConflictResolver* resolver) override {
     metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
+    if (write_batch_.has_background_transaction_id()) {
+      background_transaction_id_ =
+          VERIFY_RESULT(FullyDecodeTransactionId(write_batch_.background_transaction_id()));
+      std::string_view status_tablet_string(write_batch_.background_txn_status_tablet());
+      background_txn_status_tablet_.emplace(status_tablet_string);
+      should_wait_as_background_txn_ = PgSessionRequestVersion().value_or(false);
+    }
     return Status::OK();
+  }
+
+  TransactionId background_txn_id() const override {
+    return *background_transaction_id_;
+  }
+
+  TabletId background_txn_status_tablet() const override {
+    return *background_txn_status_tablet_;
+  }
+
+  bool ShouldWaitAsBackgroundTxn() const override {
+    return should_wait_as_background_txn_;
   }
 
  private:
@@ -1231,7 +1286,8 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   }
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
-    return other == *transaction_id_;
+    return other == *transaction_id_ ||
+           (background_transaction_id_ && other == *background_transaction_id_);
   }
 
   TransactionId transaction_id() const override {
@@ -1249,6 +1305,13 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     return false;
   }
 
+  boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const override {
+    if (write_batch_.has_pg_session_req_version() && write_batch_.pg_session_req_version()) {
+      return write_batch_.pg_session_req_version();
+    }
+    return boost::none;
+  }
+
   std::string ToString() const override {
     return yb::ToString(transaction_id_);
   }
@@ -1261,6 +1324,23 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   // Id of transaction when is writing intents, for which we are resolving conflicts.
   Result<TransactionId> transaction_id_;
+
+  // This ensures no conflicts occur between session-level and transaction-level advisory
+  // locks within the same session.
+  // - For session-level advisory lock requests: the below points to
+  //   the in-progress DocDB transaction, if any.
+  // - For transaction-level advisory lock requests: the below points to
+  //   the session-level transaction, if exists.
+  boost::optional<TransactionId> background_transaction_id_ = boost::none;
+  boost::optional<TabletId> background_txn_status_tablet_ = boost::none;
+
+  // When set, indicates that we need to wait as background transaction. Currently, this is used
+  // in the following path alone,
+  // - When a session advisory lock request is issued in an explicit transaction block, we wait
+  //   as the regular/plain transaction as opposed to entering the wait queue with the session
+  //   level transaction. This is necessary for breaking any potential deadlocks spanning session
+  //   advisory locks, transaction advisory locks, and row level locks.
+  bool should_wait_as_background_txn_ = false;
 
   TransactionMetadata metadata_;
 
@@ -1437,42 +1517,8 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
   return Status::OK();
 }
 
-#define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \
-  BOOST_PP_CAT(SCHECK_, op)(lhs, \
-                            rhs, \
-                            Corruption, \
-                            Format("Bad intent key, $0 in $1, transaction from: $2", \
-                                   msg, \
-                                   intent_key.ToDebugHexString(), \
-                                   transaction_id_source.ToDebugHexString()))
-
-// transaction_id_slice used in INTENT_KEY_SCHECK
-Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source) {
-  ParsedIntent result;
-  result.doc_path = intent_key;
-  // Intent is encoded as "DocPath + IntentType + DocHybridTime".
-  size_t doc_ht_size = VERIFY_RESULT(DocHybridTime::GetEncodedSize(result.doc_path));
-  // 3 comes from (ValueType::kIntentType, the actual intent type, ValueType::kHybridTime).
-  INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
-  result.doc_path.remove_suffix(doc_ht_size + 3);
-  auto intent_type_and_doc_ht = result.doc_path.end();
-  if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentType) {
-    result.types = dockv::ObsoleteIntentTypeToSet(intent_type_and_doc_ht[1]);
-  } else if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentTypeSet) {
-    result.types = dockv::ObsoleteIntentTypeSetToNew(intent_type_and_doc_ht[1]);
-  } else {
-    INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, KeyEntryTypeAsChar::kIntentTypeSet,
-        "intent type set type expected");
-    result.types = IntentTypeSet(intent_type_and_doc_ht[1]);
-  }
-  INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, KeyEntryTypeAsChar::kHybridTime,
-                    "hybrid time value type expected");
-  result.doc_ht = Slice(result.doc_path.end() + 2, doc_ht_size + 1);
-  return result;
-}
-
 std::string DebugIntentKeyToString(Slice intent_key) {
-  auto parsed = ParseIntentKey(intent_key, Slice());
+  auto parsed = dockv::ParseIntentKey(intent_key, Slice());
   if (!parsed.ok()) {
     LOG(WARNING) << "Failed to parse: " << intent_key.ToDebugHexString() << ": " << parsed.status();
     return intent_key.ToDebugHexString();
@@ -1489,7 +1535,7 @@ std::string DebugIntentKeyToString(Slice intent_key) {
 }
 
 Status PopulateLockInfoFromParsedIntent(
-    const ParsedIntent& parsed_intent, const dockv::DecodedIntentValue& decoded_value,
+    const dockv::ParsedIntent& parsed_intent, const dockv::DecodedIntentValue& decoded_value,
     const TableInfoProvider& table_info_provider, LockInfoPB* lock_info, bool intent_has_ht) {
   dockv::SubDocKey subdoc_key;
   RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(

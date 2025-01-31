@@ -11,10 +11,13 @@
 // under the License.
 //
 
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/master/master-test_base.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/tablet_split_manager.h"
+
 #include "yb/util/string_case.h"
 
 namespace yb {
@@ -26,6 +29,7 @@ namespace master {
 class StatefulServiceTest : public MasterTestBase {};
 
 TEST_F(StatefulServiceTest, TestCreateStatefulService) {
+  Master* master = mini_master_->master();
   CatalogManager& catalog_manager = mini_master_->catalog_manager_impl();
 
   auto epoch = catalog_manager.GetLeaderEpochInternal();
@@ -48,7 +52,7 @@ TEST_F(StatefulServiceTest, TestCreateStatefulService) {
   ASSERT_EQ(tablets.size(), 1);
 
   // Validate the tablet cannot be split.
-  ASSERT_NOK(catalog_manager.tablet_split_manager()->ValidateSplitCandidateTable(service_table));
+  ASSERT_NOK(master->tablet_split_manager().ValidateSplitCandidateTable(service_table));
 }
 }  // namespace master
 }  // namespace yb

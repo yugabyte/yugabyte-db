@@ -22,7 +22,9 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/vector_index.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/file_util.h"
@@ -42,6 +44,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/stol_utils.h"
 
 using std::string;
 
@@ -55,6 +58,9 @@ DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
                  "How much time in milliseconds to delay before exporting tablet metadata during "
                  "snapshot creation.");
 
+DEFINE_test_flag(double, delay_create_snapshot_probability, 0.0,
+                 "The probability to delay creating snapshot by 1 second");
+
 DEFINE_RUNTIME_int32(max_wait_for_aborting_transactions_during_restore_ms, 200,
                      "How much time in milliseconds to wait for tablet transactions to abort while "
                      "applying the raft restore operation to a tablet.");
@@ -67,9 +73,25 @@ namespace {
 
 const std::string kTempSnapshotDirSuffix = ".tmp";
 const std::string kTabletMetadataFile = "tablet.metadata";
+const std::string kLastSnapshotPrefix = "last_snapshot.";
 
 std::string TabletMetadataFile(const std::string& dir) {
   return JoinPathSegments(dir, kTabletMetadataFile);
+}
+
+std::string LastSnapshotHybridTimePath(
+    const std::string& top_dir, SnapshotScheduleId schedule_id, HybridTime time) {
+  return JoinPathSegments(
+      top_dir, Format("$0$1.$2", kLastSnapshotPrefix, schedule_id, time.ToUint64()));
+}
+
+void CleanupLastSnapshotHybridTime(
+    Env& env, const std::string& top_dir, SnapshotScheduleId schedule_id, HybridTime time) {
+  auto path = LastSnapshotHybridTimePath(top_dir, schedule_id, time);
+  VLOG(2) << "Cleanup snapshot ht: " << path;
+  if (env.FileExists(path)) {
+    WARN_NOT_OK(env.DeleteFile(path), "Failed to cleanup last snapshot time");
+  }
 }
 
 } // namespace
@@ -91,8 +113,54 @@ struct TabletSnapshots::ColocatedTableMetadata {
 
 TabletSnapshots::TabletSnapshots(Tablet* tablet) : TabletComponent(tablet) {}
 
+Status TabletSnapshots::Open() {
+  auto dir = metadata().snapshots_dir();
+  if (!env().DirExists(dir)) {
+    return Status::OK();
+  }
+  std::vector<std::pair<SnapshotScheduleId, HybridTime>> last_snapshot_ht_list;
+  for (const auto& child : VERIFY_RESULT(env().GetChildren(dir, ExcludeDots::kTrue))) {
+    if (!child.starts_with(kLastSnapshotPrefix)) {
+      continue;
+    }
+    auto pos = child.find('.', kLastSnapshotPrefix.size());
+    if (pos == std::string::npos) {
+      LOG_WITH_PREFIX(DFATAL) << "Wrong last snapshot file name: " << child;
+      continue;
+    }
+    auto snapshot_id_str = child.substr(
+        kLastSnapshotPrefix.size(), pos - kLastSnapshotPrefix.size());
+    auto hybrid_time_str = child.substr(pos + 1);
+    auto snapshot_id = SnapshotScheduleIdFromString(snapshot_id_str);
+    if (!snapshot_id.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << "Wrong snapshot id in " << child << ": " << snapshot_id.status();
+      continue;
+    }
+    auto hybrid_time = CheckedStoll(hybrid_time_str);
+    if (!hybrid_time.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << "Wrong hybrid time in " << child << ": " << hybrid_time.status();
+      continue;
+    }
+    last_snapshot_ht_list.emplace_back(*snapshot_id, *hybrid_time);
+  }
+  std::sort(last_snapshot_ht_list.begin(), last_snapshot_ht_list.end());
+  std::lock_guard lock(last_snapshot_ht_mutex_);
+  for (auto it = last_snapshot_ht_list.begin(); it != last_snapshot_ht_list.end();) {
+    auto next = it;
+    ++next;
+    if (next != last_snapshot_ht_list.end() && it->first == next->first) {
+      CleanupLastSnapshotHybridTime(env(), dir, it->first, it->second);
+    } else {
+      last_snapshot_ht_.emplace(it->first, it->second);
+    }
+    it = next;
+  }
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "last snapshot ht: " << AsString(last_snapshot_ht_);
+  return Status::OK();
+}
+
 std::string TabletSnapshots::SnapshotsDirName(const std::string& rocksdb_dir) {
-  return rocksdb_dir + kSnapshotsDirSuffix;
+  return docdb::GetStorageDir(rocksdb_dir, kSnapshotsDirName);
 }
 
 bool TabletSnapshots::IsTempSnapshotDir(const std::string& dir) {
@@ -116,6 +184,11 @@ Status TabletSnapshots::Create(SnapshotOperation* operation) {
 Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   LongOperationTracker long_operation_tracker("Create snapshot", 5s);
 
+  if (RandomActWithProbability(FLAGS_TEST_delay_create_snapshot_probability)) {
+    LOG_WITH_PREFIX_AND_FUNC(INFO) << "TEST: Sleep";
+    std::this_thread::sleep_for(1s);
+  }
+
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -127,7 +200,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
 
   const std::string& snapshot_dir = data.snapshot_dir;
 
-  Env* const env = metadata().fs_manager()->env();
+  Env& env = this->env();
   auto snapshot_hybrid_time = data.snapshot_hybrid_time;
   auto is_transactional_snapshot = snapshot_hybrid_time.is_valid();
 
@@ -145,12 +218,12 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   bool exit_on_failure = true;
   // Delete snapshot (RocksDB checkpoint) directories on exit.
   auto se = ScopeExit(
-      [this, env, &exit_on_failure, &snapshot_dir, &tmp_snapshot_dir, &top_snapshots_dir] {
+      [this, &env, &exit_on_failure, &snapshot_dir, &tmp_snapshot_dir, &top_snapshots_dir] {
     bool do_sync = false;
 
-    if (env->FileExists(tmp_snapshot_dir)) {
+    if (env.FileExists(tmp_snapshot_dir)) {
       do_sync = true;
-      const Status deletion_status = env->DeleteRecursively(tmp_snapshot_dir);
+      const Status deletion_status = env.DeleteRecursively(tmp_snapshot_dir);
       if (PREDICT_FALSE(!deletion_status.ok())) {
         LOG_WITH_PREFIX(WARNING)
             << "Cannot recursively delete temp snapshot dir "
@@ -158,9 +231,9 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
       }
     }
 
-    if (exit_on_failure && env->FileExists(snapshot_dir)) {
+    if (exit_on_failure && env.FileExists(snapshot_dir)) {
       do_sync = true;
-      const Status deletion_status = env->DeleteRecursively(snapshot_dir);
+      const Status deletion_status = env.DeleteRecursively(snapshot_dir);
       if (PREDICT_FALSE(!deletion_status.ok())) {
         LOG_WITH_PREFIX(WARNING)
             << "Cannot recursively delete snapshot dir " << snapshot_dir << ": " << deletion_status;
@@ -168,7 +241,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     }
 
     if (do_sync) {
-      const Status sync_status = env->SyncDir(top_snapshots_dir);
+      const Status sync_status = env.SyncDir(top_snapshots_dir);
       if (PREDICT_FALSE(!sync_status.ok())) {
         LOG_WITH_PREFIX(WARNING)
             << "Cannot sync top snapshots dir " << top_snapshots_dir << ": " << sync_status;
@@ -202,10 +275,10 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   RETURN_NOT_OK(tablet().metadata()->SaveTo(TabletMetadataFile(tmp_snapshot_dir)));
 
   RETURN_NOT_OK_PREPEND(
-      env->RenameFile(tmp_snapshot_dir, snapshot_dir),
+      env.RenameFile(tmp_snapshot_dir, snapshot_dir),
       Format("Cannot rename temp snapshot dir $0 to $1", tmp_snapshot_dir, snapshot_dir));
   RETURN_NOT_OK_PREPEND(
-      env->SyncDir(top_snapshots_dir),
+      env.SyncDir(top_snapshots_dir),
       Format("Cannot sync top snapshots dir $0", top_snapshots_dir));
 
   if (need_flush) {
@@ -215,12 +288,33 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   LOG_WITH_PREFIX(INFO) << "Complete snapshot creation in folder: " << snapshot_dir
                         << ", snapshot hybrid time: " << snapshot_hybrid_time;
 
+  if (data.schedule_id) {
+    auto path = LastSnapshotHybridTimePath(
+        top_snapshots_dir, data.schedule_id, data.snapshot_hybrid_time);
+    RETURN_NOT_OK(WriteStringToFile(&env, Slice(), path));
+    HybridTime previous_last_snapshot_ht;
+    {
+      std::lock_guard lock(last_snapshot_ht_mutex_);
+      auto& existing = last_snapshot_ht_[data.schedule_id];
+      previous_last_snapshot_ht = existing;
+      existing = data.snapshot_hybrid_time;
+    }
+    if (previous_last_snapshot_ht) {
+      CleanupLastSnapshotHybridTime(
+          env, top_snapshots_dir, data.schedule_id, previous_last_snapshot_ht);
+    }
+  }
+
   exit_on_failure = false;
   return Status::OK();
 }
 
 Env& TabletSnapshots::env() {
   return *metadata().fs_manager()->env();
+}
+
+FsManager* TabletSnapshots::fs_manager() {
+  return metadata().fs_manager();
 }
 
 Status TabletSnapshots::CleanupSnapshotDir(const std::string& dir) {
@@ -338,6 +432,7 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
     // Remove ": " to patch suffix.
     log_prefix.erase(log_prefix.size() - 2);
     tablet().InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+    rocksdb_options.compaction_style = rocksdb::kCompactionStyleNone;
     auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
     auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
@@ -361,31 +456,65 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
   }
 }
 
+// Get the map of snapshot cotable ids to the current cotable ids.
+// The restored flushed frontiers can have cotable ids that are different from current cotable ids.
+// This map is used to update the cotable ids in the restored flushed frontiers.
+Result<docdb::CotableIdsMap> TabletSnapshots::GetCotableIdsMap(const std::string& snapshot_dir) {
+  docdb::CotableIdsMap cotable_ids_map;
+  if (snapshot_dir.empty() || !metadata().colocated()) {
+    return cotable_ids_map;
+  }
+  auto snapshot_metadata_file = TabletMetadataFile(snapshot_dir);
+  if (!env().FileExists(snapshot_metadata_file)) {
+    return cotable_ids_map;
+  }
+  auto snapshot_metadata =
+      VERIFY_RESULT(RaftGroupMetadata::LoadFromPath(fs_manager(), snapshot_metadata_file));
+  for (const auto& snapshot_table_info : snapshot_metadata->GetColocatedTableInfos()) {
+    auto current_table_info = metadata().GetTableInfo(
+        snapshot_table_info->schema().colocation_id());
+    if (!current_table_info.ok()) {
+      if (!current_table_info.status().IsNotFound()) {
+        return current_table_info.status();
+      }
+      LOG_WITH_PREFIX(WARNING) << "Table " << snapshot_table_info->table_id
+                                << " not found: " << current_table_info.status();
+    } else if ((*current_table_info)->cotable_id != snapshot_table_info->cotable_id) {
+      cotable_ids_map[snapshot_table_info->cotable_id] = (*current_table_info)->cotable_id;
+    }
+  }
+  if (!cotable_ids_map.empty()) {
+    LOG_WITH_PREFIX(INFO) << "Cotable ids map: " << yb::ToString(cotable_ids_map);
+  }
+  return cotable_ids_map;
+}
+
 Status TabletSnapshots::RestoreCheckpoint(
-    const std::string& dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
+    const std::string& snapshot_dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
     const docdb::ConsensusFrontier& frontier, bool is_pitr_restore, const OpId& op_id) {
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
-  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(!dir.empty()), AbortOps::kTrue);
+  auto op_pauses = StartShutdownStorages(
+      DisableFlushOnShutdown(!snapshot_dir.empty()), AbortOps::kTrue);
 
   std::lock_guard lock(create_checkpoint_lock());
 
   const string db_dir = regular_db().GetName();
   const std::string intents_db_dir = has_intents_db() ? intents_db().GetName() : std::string();
 
-  if (dir.empty()) {
+  if (snapshot_dir.empty()) {
     // Just change rocksdb hybrid time limit, because it should be in retention interval.
     // TODO(pitr) apply transactions and reset intents.
-    CompleteShutdownRocksDBs(op_pauses);
+    CompleteShutdownStorages(op_pauses);
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
-    RETURN_NOT_OK(DeleteRocksDBs(CompleteShutdownRocksDBs(op_pauses)));
+    RETURN_NOT_OK(DeleteStorages(CompleteShutdownStorages(op_pauses)));
 
     auto s = CopyDirectory(
-        &rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
+        &rocksdb_env(), snapshot_dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
     if (PREDICT_FALSE(!s.ok())) {
       LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
@@ -402,7 +531,8 @@ Status TabletSnapshots::RestoreCheckpoint(
     docdb::RocksDBPatcher patcher(db_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
-    RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
+    RETURN_NOT_OK(patcher.ModifyFlushedFrontier(
+        frontier, VERIFY_RESULT(GetCotableIdsMap(snapshot_dir))));
     if (restore_at) {
       RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
     }
@@ -434,14 +564,14 @@ Status TabletSnapshots::RestoreCheckpoint(
     need_flush = true;
   }
 
-  if (!dir.empty()) {
-    auto tablet_metadata_file = TabletMetadataFile(dir);
+  if (!snapshot_dir.empty()) {
+    auto snapshot_metadata_file = TabletMetadataFile(snapshot_dir);
     // Old snapshots could lack tablet metadata, so just do nothing in this case.
-    if (env().FileExists(tablet_metadata_file)) {
-      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file
+    if (env().FileExists(snapshot_metadata_file)) {
+      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << snapshot_metadata_file
                             << " , force overwrite of schema packing " << !is_pitr_restore;
       RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(
-          tablet_metadata_file,
+          snapshot_metadata_file,
           is_pitr_restore ? dockv::OverwriteSchemaPacking::kFalse
               : dockv::OverwriteSchemaPacking::kTrue));
       need_flush = true;
@@ -455,13 +585,13 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   // Reopen database from copied checkpoint.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
-  auto s = OpenRocksDBs();
+  auto s = OpenStorages();
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed tablet db opening from checkpoint: " << s;
     return s;
   }
 
-  LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << dir;
+  LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
   s = tablet().EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start);
   if (!s.ok()) {
@@ -535,34 +665,23 @@ Status TabletSnapshots::CreateCheckpoint(
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
-  auto temp_intents_dir = dir + kIntentsDBSuffix;
-  auto final_intents_dir = JoinPathSegments(dir, kIntentsSubdir);
-
-  std::lock_guard lock(create_checkpoint_lock());
-
-  if (!has_regular_db()) {
-    LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
-    return STATUS(NotSupported,
-                  "Tablet does not have a RocksDB (could be a transaction status tablet)");
-  }
-
-  auto parent_dir = DirName(dir);
-  RETURN_NOT_OK_PREPEND(metadata().fs_manager()->CreateDirIfMissing(parent_dir),
-                        Format("Unable to create checkpoints directory $0", parent_dir));
-
-  // Order does not matter because we flush both DBs and does not have parallel writes.
   Status status;
-  if (has_intents_db()) {
-    status = rocksdb::checkpoint::CreateCheckpoint(&intents_db(), temp_intents_dir);
-  }
-  if (status.ok()) {
-    status = rocksdb::checkpoint::CreateCheckpoint(&regular_db(), dir);
-  }
-  if (status.ok() && has_intents_db() &&
-      create_intents_checkpoint_in == CreateIntentsCheckpointIn::kUseIntentsDbSuffix) {
-    status = Env::Default()->RenameFile(temp_intents_dir, final_intents_dir);
-  }
+  {
+    std::lock_guard lock(create_checkpoint_lock());
 
+    if (!has_regular_db()) {
+      LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
+      return STATUS(NotSupported,
+                    "Tablet does not have a RocksDB (could be a transaction status tablet)");
+    }
+
+    auto parent_dir = DirName(dir);
+    RETURN_NOT_OK_PREPEND(metadata().fs_manager()->CreateDirIfMissing(parent_dir),
+                          Format("Unable to create checkpoints directory $0", parent_dir));
+
+    // Order does not matter because we flush both DBs and does not have parallel writes.
+    status = DoCreateCheckpoint(dir, create_intents_checkpoint_in);
+  }
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Create checkpoint status: " << status;
     return STATUS_FORMAT(IllegalState, "Unable to create checkpoint: $0", status);
@@ -571,6 +690,28 @@ Status TabletSnapshots::CreateCheckpoint(
 
   TEST_last_rocksdb_checkpoint_dir_ = dir;
 
+  return Status::OK();
+}
+
+Status TabletSnapshots::DoCreateCheckpoint(
+    const std::string& dir, CreateIntentsCheckpointIn create_intents_checkpoint_in) {
+  auto temp_intents_dir = docdb::GetStorageDir(dir, kIntentsDirName);
+  auto final_intents_dir = docdb::GetStorageCheckpointDir(dir, kIntentsDirName);
+
+  if (has_intents_db()) {
+    RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&intents_db(), temp_intents_dir));
+  }
+  RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&regular_db(), dir));
+  auto vector_indexes = VectorIndexesList();
+  if (vector_indexes) {
+    for (const auto& vector_index : *vector_indexes) {
+      RETURN_NOT_OK(vector_index->CreateCheckpoint(dir));
+    }
+  }
+  if (has_intents_db() &&
+      create_intents_checkpoint_in == CreateIntentsCheckpointIn::kUseIntentsDbSuffix) {
+    RETURN_NOT_OK(Env::Default()->RenameFile(temp_intents_dir, final_intents_dir));
+  }
   return Status::OK();
 }
 
@@ -585,6 +726,23 @@ Status TabletSnapshots::RestoreFinished(SnapshotOperation* operation) {
   return tablet().RestoreFinished(
       VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(operation->request()->restoration_id())),
       HybridTime::FromPB(operation->request()->restoration_hybrid_time()));
+}
+
+HybridTime TabletSnapshots::AllowedHistoryCutoff() {
+  auto schedules = metadata().SnapshotSchedules();
+  if (schedules.empty()) {
+    return HybridTime::kMax;
+  }
+  auto result = HybridTime::kMax;
+  std::lock_guard lock(last_snapshot_ht_mutex_);
+  VLOG_WITH_PREFIX_AND_FUNC(4)
+      << "schedules: " << AsString(schedules) << ", last snapshot ht: "
+      << AsString(last_snapshot_ht_);
+  for (const auto& schedule : schedules) {
+    auto it = last_snapshot_ht_.find(schedule);
+    result.MakeAtMost(it != last_snapshot_ht_.end() ? it->second : HybridTime::kMin);
+  }
+  return result;
 }
 
 Result<bool> TabletRestorePatch::ShouldSkipEntry(const Slice& key, const Slice& value) {

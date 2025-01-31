@@ -25,6 +25,7 @@ import com.yugabyte.yw.forms.rbac.RoleBindingFormData;
 import com.yugabyte.yw.forms.rbac.RoleFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Principal;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -104,11 +105,11 @@ public class RBACController extends AuthenticatedController {
    * @return list of all permissions info
    */
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "List all the permissions available",
       nickname = "listPermissions",
       response = PermissionInfo.class,
@@ -138,11 +139,11 @@ public class RBACController extends AuthenticatedController {
    * @return the role information
    */
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Get a role's information",
       nickname = "getRole",
       response = Role.class)
@@ -167,9 +168,9 @@ public class RBACController extends AuthenticatedController {
    * @param roleType
    * @return the list of roles and their information
    */
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.19.3.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.25.0.0")
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "List all the roles available",
       nickname = "listRoles",
       response = Role.class,
@@ -212,11 +213,11 @@ public class RBACController extends AuthenticatedController {
    * @return the info of the role created
    */
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Create a custom role",
       nickname = "createRole",
       response = Role.class)
@@ -290,11 +291,11 @@ public class RBACController extends AuthenticatedController {
    * @return the info of the edited role
    */
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Edit a custom role",
       nickname = "editRole",
       response = Role.class)
@@ -377,11 +378,11 @@ public class RBACController extends AuthenticatedController {
    * @return a success message if deleted properly.
    */
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Delete a custom role",
       nickname = "deleteRole",
       response = YBPSuccess.class)
@@ -413,16 +414,16 @@ public class RBACController extends AuthenticatedController {
     }
 
     // Ensure we don't delete role if role_binding exists.
-    Set<String> usersHavingRoleBindingsWithRole =
+    Set<Principal> principalsHavingRoleBindingsWithRole =
         RoleBinding.getAllWithRole(roleUUID).stream()
-            .map(rb -> rb.getUser().getEmail())
+            .map(rb -> rb.getPrincipal())
             .collect(Collectors.toSet());
-    if (!usersHavingRoleBindingsWithRole.isEmpty()) {
+    if (!principalsHavingRoleBindingsWithRole.isEmpty()) {
       String errorMsg =
           String.format(
               "Cannot delete Role with name: '%s', "
-                  + "since there are role bindings associated on users '%s'.",
-              role.getName(), usersHavingRoleBindingsWithRole);
+                  + "since there are role bindings associated on principals '%s'.",
+              role.getName(), principalsHavingRoleBindingsWithRole);
       log.error(errorMsg);
       throw new PlatformServiceException(CONFLICT, errorMsg);
     }
@@ -438,11 +439,11 @@ public class RBACController extends AuthenticatedController {
   }
 
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Get all the role bindings available",
       nickname = "getRoleBindings",
       response = RoleBinding.class,
@@ -467,14 +468,14 @@ public class RBACController extends AuthenticatedController {
     if (userUUID != null) {
       // Get the role bindings for the given user if 'userUUID' is not null.
       Users user = Users.getOrBadRequest(customerUUID, userUUID);
-      roleBindingMap.put(user.getUuid(), RoleBinding.getAll(user.getUuid()));
+      roleBindingMap.put(user.getUuid(), RoleBinding.fetchRoleBindingsForUser(user.getUuid()));
     } else {
       // Get all the users for the given customer.
       // Merge all the role bindings for users of the customer.
       List<Users> usersInCustomer = Users.getAll(customerUUID);
       for (Users user : usersInCustomer) {
         if (resourceUUIDs.contains(user.getUuid())) {
-          roleBindingMap.put(user.getUuid(), RoleBinding.getAll(user.getUuid()));
+          roleBindingMap.put(user.getUuid(), RoleBinding.fetchRoleBindingsForUser(user.getUuid()));
         }
       }
     }
@@ -482,14 +483,15 @@ public class RBACController extends AuthenticatedController {
   }
 
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Set the role bindings of a user",
       nickname = "setRoleBinding",
-      response = RoleBinding.class)
+      response = RoleBinding.class,
+      responseContainer = "List")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "RoleBindingFormData",

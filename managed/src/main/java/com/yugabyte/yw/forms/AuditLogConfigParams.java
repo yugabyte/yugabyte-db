@@ -5,7 +5,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import org.apache.commons.collections4.CollectionUtils;
@@ -33,12 +32,6 @@ public class AuditLogConfigParams extends UpgradeTaskParams {
               + " does not have OpenTelemetry Collector "
               + "installed and task params has installOtelCollector=false - can't configure audit "
               + "logs export for the universe");
-    }
-
-    if (installOtelCollector && Util.isOnPremManualProvisioning(universe)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Can't install OpenTelemetry Collector for onprem universe with manual provisioning");
     }
   }
 

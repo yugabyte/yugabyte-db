@@ -1,4 +1,4 @@
-export const DrConfigActions = {
+export const DrConfigAction = {
   CREATE: 'createDrConfig',
   DELETE: 'deleteDrConfig',
   EDIT: 'editDrConfig',
@@ -6,22 +6,26 @@ export const DrConfigActions = {
   SWITCHOVER: 'switchover',
   FAILOVER: 'failover'
 } as const;
-export type DrConfigActions = typeof DrConfigActions[keyof typeof DrConfigActions];
+export type DrConfigAction = typeof DrConfigAction[keyof typeof DrConfigAction];
 
 export const DurationUnit = {
   SECOND: 'second',
   MINUTE: 'minute',
-  HOUR: 'hour'
+  HOUR: 'hour',
+  DAY: 'day'
 } as const;
 export type DurationUnit = typeof DurationUnit[keyof typeof DurationUnit];
 
 /**
- * Map from RPO units to milliseconds.
+ * Map from duration units to seconds.
+ *
+ * The map should include all possible DurationUnit.
  */
-export const DURATION_UNIT_TO_MS = {
-  [DurationUnit.SECOND]: 1000,
-  [DurationUnit.MINUTE]: 60 * 1000,
-  [DurationUnit.HOUR]: 60 * 60 * 1000
+export const DURATION_UNIT_TO_SECONDS: { [key in DurationUnit]: number } = {
+  [DurationUnit.SECOND]: 1,
+  [DurationUnit.MINUTE]: 60,
+  [DurationUnit.HOUR]: 60 * 60,
+  [DurationUnit.DAY]: 24 * 60 * 60
 } as const;
 
 /**

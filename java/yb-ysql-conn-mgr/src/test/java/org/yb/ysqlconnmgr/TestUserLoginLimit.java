@@ -49,7 +49,12 @@ public class TestUserLoginLimit extends BaseYsqlConnMgr {
                     .connect();
             Statement statement = connection.createStatement()) {
 
-            statement.execute("CREATE ROLE limit_role LOGIN CONNECTION LIMIT 2");
+            // By default minimum 3 physical connections will be created in
+            // random warmup mode.
+            // We need at least one connection for the authentication via
+            // auth-backend, so the limit must be at least 4 to even allow a
+            // single logical connection to be made.
+            statement.execute("CREATE ROLE limit_role LOGIN CONNECTION LIMIT 4");
 
             ConnectionBuilder limitRoleUserConnBldr =
                                 getConnectionBuilder()
@@ -59,15 +64,21 @@ public class TestUserLoginLimit extends BaseYsqlConnMgr {
                 BasePgSQLTest.waitForStatsToGetUpdated();
                 try (Connection connection2 = limitRoleUserConnBldr.connect()) {
                     BasePgSQLTest.waitForStatsToGetUpdated();
-                    // Third concurrent connection causes error.
                     try (Connection ignored3 = limitRoleUserConnBldr.connect()) {
-                        fail("Expected third login attempt to fail");
-                    } catch (SQLException sqle) {
-                        assertThat(
-                            sqle.getMessage(),
-                            CoreMatchers.containsString("too many connections for " +
-                                    "role \"limit_role\"")
-                        );
+                        BasePgSQLTest.waitForStatsToGetUpdated();
+                        try (Connection ignored4 = limitRoleUserConnBldr.connect()) {
+                            BasePgSQLTest.waitForStatsToGetUpdated();
+                            // Fifth concurrent connection causes error.
+                            try (Connection ignored5 = limitRoleUserConnBldr.connect()) {
+                                fail("Expected fifth login attempt to fail");
+                            } catch (SQLException sqle) {
+                                assertThat(
+                                    sqle.getMessage(),
+                                    CoreMatchers.containsString("too many connections for " +
+                                            "role \"limit_role\"")
+                                );
+                            }
+                        }
                     }
 
                     // Close second connection.

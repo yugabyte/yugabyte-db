@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34728.123
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "wal2json", "wal2json.vcxproj", "{D10508A0-6575-4EE9-9AD9-4BC161A5E934}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D10508A0-6575-4EE9-9AD9-4BC161A5E934}.Debug|x64.ActiveCfg = Debug|x64
+		{D10508A0-6575-4EE9-9AD9-4BC161A5E934}.Debug|x64.Build.0 = Debug|x64
+		{D10508A0-6575-4EE9-9AD9-4BC161A5E934}.Debug|x86.ActiveCfg = Debug|Win32
+		{D10508A0-6575-4EE9-9AD9-4BC161A5E934}.Debug|x86.Build.0 = Debug|Win32
+		{D10508A0-6575-4EE9-9AD9-4BC161A5E934}.Release|x64.ActiveCfg = Release|x64
+		{D10508A0-6575-4EE9-9AD9-4BC161A5E934}.Release|x64.Build.0 = Release|x64
+		{D10508A0-6575-4EE9-9AD9-4BC161A5E934}.Release|x86.ActiveCfg = Release|Win32
+		{D10508A0-6575-4EE9-9AD9-4BC161A5E934}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {542A3CD9-759C-4DB6-B7CD-8E51866EFCC0}
+	EndGlobalSection
+EndGlobal

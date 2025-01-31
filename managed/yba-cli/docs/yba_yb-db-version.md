@@ -1,10 +1,10 @@
 ## yba yb-db-version
 
-Manage YugabyteDB version release
+Manage YugabyteDB versions
 
 ### Synopsis
 
-Manage YugabyteDB version release
+Manage YugabyteDB versions
 
 ```
 yba yb-db-version [flags]
@@ -33,5 +33,11 @@ yba yb-db-version [flags]
 ### SEE ALSO
 
 * [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba yb-db-version list](yba_yb-db-version_list.md)	 - List YugabyteDB version releases
+* [yba yb-db-version architecture](yba_yb-db-version_architecture.md)	 - Manage architectures for a version of YugabyteDB
+* [yba yb-db-version artifact-create](yba_yb-db-version_artifact-create.md)	 - Fetch artifact metadata for a version of YugabyteDB
+* [yba yb-db-version create](yba_yb-db-version_create.md)	 - Create a YugabyteDB version entry on YugabyteDB Anywhere
+* [yba yb-db-version delete](yba_yb-db-version_delete.md)	 - Delete a YugabyteDB version
+* [yba yb-db-version describe](yba_yb-db-version_describe.md)	 - Describe a YugabyteDB version
+* [yba yb-db-version list](yba_yb-db-version_list.md)	 - List YugabyteDB versions
+* [yba yb-db-version update](yba_yb-db-version_update.md)	 - Update a YugabyteDB version entry on YugabyteDB Anywhere
 

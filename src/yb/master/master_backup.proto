@@ -35,7 +35,9 @@ message BackupRowEntryPB {
 
 message CreateSnapshotRequestPB {
   repeated TableIdentifierPB tables = 1;
-  optional bool transaction_aware = 2;
+
+  // Can be removed once 2024.2 is out of support (usage removed in D37010).
+  optional bool DEPRECATED_transaction_aware = 2 [default = true];
 
   // Automatically add table indexes into the snapshot.
   optional bool add_indexes = 3 [default = false];
@@ -122,10 +124,8 @@ message ListSnapshotsRequestPB {
 
 message ListSnapshotsResponsePB {
   optional MasterErrorPB error = 1;
-
-  // Non-transactional snapshot currently being created/restored.
-  optional bytes current_snapshot_id = 2;
-
+  // Reserved for non-transactional snapshot deprecated field 'current_snapshot_id'.
+  reserved 2;
   repeated SnapshotInfoPB snapshots = 3;
 }
 

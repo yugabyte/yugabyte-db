@@ -14,9 +14,11 @@
 
 #pragma once
 
+#include <functional>
 #include <list>
 #include <memory>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -28,9 +30,11 @@
 #include "yb/util/lw_function.h"
 #include "yb/util/ref_cnt_buffer.h"
 
+#include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 
 namespace yb::pggate {
@@ -209,6 +213,8 @@ class PgDocResult {
 // different partitions and interact with different tablet servers.
 //--------------------------------------------------------------------------------------------------
 
+YB_STRONGLY_TYPED_BOOL(IsForWritePgDoc);
+
 // Helper class to wrap PerformFuture and custom response provider.
 // No memory allocations is required in case of using PerformFuture.
 class PgDocResponse {
@@ -221,17 +227,34 @@ class PgDocResponse {
     virtual Result<Data> Get() = 0;
   };
 
+  struct MetricInfo {
+    MetricInfo(TableType table_type_, IsForWritePgDoc is_write_)
+        : table_type(table_type_), is_write(is_write_) {}
+
+    TableType table_type;
+    IsForWritePgDoc is_write;
+  };
+
+  struct FutureInfo {
+    FutureInfo() : metrics(TableType::USER, IsForWritePgDoc::kFalse) {}
+    FutureInfo(PerformFuture&& future_, const MetricInfo& metrics_)
+        : future(std::move(future_)), metrics(metrics_) {}
+
+    PerformFuture future;
+    MetricInfo metrics;
+  };
+
   using ProviderPtr = std::unique_ptr<Provider>;
 
   PgDocResponse() = default;
-  explicit PgDocResponse(PerformFuture future);
+  PgDocResponse(PerformFuture&& future, const MetricInfo& info);
   explicit PgDocResponse(ProviderPtr provider);
 
   bool Valid() const;
-  Result<Data> Get();
+  Result<Data> Get(PgSession& session);
 
  private:
-  std::variant<PerformFuture, ProviderPtr> holder_;
+  std::variant<FutureInfo, ProviderPtr> holder_;
 };
 
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
@@ -239,7 +262,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   using SharedPtr = std::shared_ptr<PgDocOp>;
 
   using Sender = std::function<Result<PgDocResponse>(
-      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, HybridTime, ForceNonBufferable)>;
+      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, HybridTime,
+      ForceNonBufferable, IsForWritePgDoc)>;
 
   struct OperationRowOrder {
     OperationRowOrder(const PgsqlOpPtr& operation_, int64_t order_)
@@ -254,9 +278,9 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   virtual ~PgDocOp() = default;
 
   // Initialize doc operator.
-  virtual Status ExecuteInit(const PgExecParameters *exec_params);
+  virtual Status ExecuteInit(const YbcPgExecParameters* exec_params);
 
-  const PgExecParameters& ExecParameters() const;
+  const YbcPgExecParameters& ExecParameters() const;
 
   // Execute the op. Return true if the request has been sent and is awaiting the result.
   virtual Result<RequestSent> Execute(
@@ -284,13 +308,11 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   };
 
   // This operation is requested internally within PgGate, and that request does not go through
-  // all the steps as other operation from Postgres thru PgDocOp. This is used to create requests
-  // for the following select.
-  //   SELECT ... FROM <table> WHERE ybctid IN (SELECT base_ybctids from INDEX)
-  // After ybctids are queried from INDEX, PgGate will call "PopulateByYbctidOps" to create
-  // operators to fetch rows whose rowids equal queried ybctids.
+  // all the steps as other operation from Postgres thru PgDocOp.
+  // Ybctids from the generator may be skipped if they conflict with other conditions placed on the
+  // request. Function returns true result if it ended up with any requests to execute.
   // Response will have same order of ybctids as request in case of using KeepOrder::kTrue.
-  Status PopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder = KeepOrder::kFalse);
+  Result<bool> PopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder = KeepOrder::kFalse);
 
   bool has_out_param_backfill_spec() {
     return !out_param_backfill_spec_.empty();
@@ -309,6 +331,10 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   Status CreateRequests();
 
   const PgTable& table() const { return table_; }
+
+  static Result<PgDocResponse> DefaultSender(
+      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
+      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable, IsForWritePgDoc is_write);
 
  protected:
   PgDocOp(
@@ -332,7 +358,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   PgTable& table_;
 
   // Exec control parameters.
-  PgExecParameters exec_params_;
+  YbcPgExecParameters exec_params_;
 
   // Suppress sending new request after processing response.
   // Next request will be sent in case upper level will ask for additional data.
@@ -419,19 +445,15 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //
   // For read ops: usually one in txn limit is chosen for all for read ops of a SQL statement. And
   // the hybrid time in such a situation references the statement level integer that is passed down
-  // to all PgDocOp instances via PgExecParameters.
+  // to all PgDocOp instances via YbcPgExecParameters.
   //
-  // In case the reference to the statement level in_txn_limit_ht isn't passed in PgExecParameters,
-  // the local in_txn_limit_ht_ is used which is 0 at the start of the PgDocOp.
+  // In case the reference to the statement level in_txn_limit_ht isn't passed in
+  // YbcPgExecParameters, the local in_txn_limit_ht_ is used which is 0 at the start of the PgDocOp.
   //
   // For writes: the local in_txn_limit_ht_ is used if available.
   //
   // See ReadHybridTimePB for more details about in_txn_limit.
   uint64_t& GetInTxnLimitHt();
-
-  static Result<PgDocResponse> DefaultSender(
-      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable);
 
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.
@@ -454,10 +476,10 @@ class PgDocReadOp : public PgDocOp {
       const PgSession::ScopedRefPtr& pg_session, PgTable* table,
       PgsqlReadOpPtr read_op, const Sender& sender);
 
-  Status ExecuteInit(const PgExecParameters *exec_params) override;
+  Status ExecuteInit(const YbcPgExecParameters *exec_params) override;
 
   // Row sampler collects number of live and dead rows it sees.
-  Status GetEstimatedRowCount(double *liverows, double *deadrows);
+  EstimatedRowCount GetEstimatedRowCount() const;
 
   bool IsWrite() const override {
     return false;
@@ -642,10 +664,7 @@ class PgDocReadOp : public PgDocOp {
   // Template operation, used to fill in pgsql_ops_ by either assigning or cloning.
   PgsqlReadOpPtr read_op_;
 
-  // While sampling is in progress, number of scanned row is accumulated in this variable.
-  // After completion the value is extrapolated to account for not scanned partitions and estimate
-  // total number of rows in the table.
-  double sample_rows_ = 0;
+  double estimated_total_rows_ = 0;
 
   // Used internally for PopulateNextHashPermutationOps to keep track of which permutation should
   // be used to construct the next read_op.

@@ -24,34 +24,10 @@ import type { RefactoringCount } from './RefactoringCount';
 export interface RecommendedRefactoringGraph  {
   /**
    * 
-   * @type {RefactoringCount}
+   * @type {RefactoringCount[]}
    * @memberof RecommendedRefactoringGraph
    */
-  sql_type?: RefactoringCount;
-  /**
-   * 
-   * @type {RefactoringCount}
-   * @memberof RecommendedRefactoringGraph
-   */
-  table?: RefactoringCount;
-  /**
-   * 
-   * @type {RefactoringCount}
-   * @memberof RecommendedRefactoringGraph
-   */
-  view?: RefactoringCount;
-  /**
-   * 
-   * @type {RefactoringCount}
-   * @memberof RecommendedRefactoringGraph
-   */
-  _function?: RefactoringCount;
-  /**
-   * 
-   * @type {RefactoringCount}
-   * @memberof RecommendedRefactoringGraph
-   */
-  triggers?: RefactoringCount;
+  refactor_details?: RefactoringCount[];
 }
 
 

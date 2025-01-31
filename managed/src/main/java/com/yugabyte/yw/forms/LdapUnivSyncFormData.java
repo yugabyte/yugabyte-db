@@ -45,13 +45,8 @@ public class LdapUnivSyncFormData {
   private String ldapBindPassword;
 
   @ApiModelProperty(
-      value =
-          "LDAP search filter to get the user entries. This filter can also be used to search for"
-              + " the users based on their group memberships.",
-      example =
-          "(objectclass=person),"
-              + " (&(objectclass=person)(|(groupName=CN=group1,CN=Groups,DC=example,DC=com)"
-              + "(groupName=CN=group2,CN=Groups,DC=example,DC=com)))")
+      value = "LDAP search filter to get the user entries",
+      example = "(objectclass=person)")
   private String ldapSearchFilter;
 
   @ApiModelProperty(value = "Dn of the search starting point.", example = "dc=example,dc=org")
@@ -68,14 +63,17 @@ public class LdapUnivSyncFormData {
   private String ldapUserfield;
 
   @ApiModelProperty(
-      value = "Group dn field to get the group's name from",
+      value = "LDAP field to get the group information",
       required = true,
       example = "cn")
   @Constraints.Required()
   private String ldapGroupfield;
 
   @ApiModelProperty(value = "Use LDAP TLS")
-  private Boolean useLdapTls;
+  private Boolean useLdapTls = false;
+
+  @ApiModelProperty(value = "Use LDAP SSL")
+  private Boolean useLdapSsl = false;
 
   @ApiModelProperty(value = "Allow the API to create the LDAP groups as DB superusers")
   private Boolean createGroups = false;
@@ -85,6 +83,12 @@ public class LdapUnivSyncFormData {
 
   @ApiModelProperty(value = "TLS versions for LDAPS : TLSv1, TLSv1_1, TLSv1_2")
   private TlsProtocol ldapTlsProtocol = TlsProtocol.TLSv1_2;
+
+  @ApiModelProperty(
+      value =
+          "LDAP groups to sync. In case user belongs to multiple groups &"
+              + " we don't want to sync all of them to DB")
+  private List<String> groupsToSync = new ArrayList<>();
 
   public String getDbUser() {
     if (this.dbUser.isEmpty() && this.targetApi.equals(TargetApi.ycql)) {

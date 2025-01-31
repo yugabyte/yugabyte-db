@@ -66,9 +66,9 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -106,7 +106,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         .configure(testDatabase())
         .overrides(bind(ShellKubernetesManager.class).toInstance(kubernetesManager))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .build();
   }
@@ -207,6 +207,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   private Map<String, Object> getExpectedOverrides(boolean exposeAll) {
+    return getExpectedOverrides(exposeAll, false /* setMasterJoinExistingUniverseGflag */);
+  }
+
+  private Map<String, Object> getExpectedOverrides(
+      boolean exposeAll, boolean setMasterJoinExistingUniverseGflag) {
     Yaml yaml = new Yaml();
     Map<String, Object> expectedOverrides = new HashMap<>();
     if (exposeAll) {
@@ -232,7 +237,18 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       }
       if (defaultUserIntent.deviceInfo.storageClass != null) {
         tserverDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
-        masterDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
+      }
+
+      // For master
+      if (defaultUserIntent.masterDeviceInfo.numVolumes != null) {
+        masterDiskSpecs.put("count", defaultUserIntent.masterDeviceInfo.numVolumes);
+      }
+      if (defaultUserIntent.masterDeviceInfo.volumeSize != null) {
+        masterDiskSpecs.put(
+            "size", String.format("%dGi", defaultUserIntent.masterDeviceInfo.volumeSize));
+      }
+      if (defaultUserIntent.masterDeviceInfo.storageClass != null) {
+        masterDiskSpecs.put("storageClass", defaultUserIntent.masterDeviceInfo.storageClass);
       }
       storageOverrides.put("tserver", tserverDiskSpecs);
       storageOverrides.put("master", masterDiskSpecs);
@@ -310,13 +326,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       expectedOverrides.put("ip_version_support", "v6_only");
     }
 
-    // For all tests but 1, value should default to true.
-    if (defaultUserIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
-      expectedOverrides.put("enableLoadBalancer", false);
-    } else {
-      expectedOverrides.put("enableLoadBalancer", true);
-    }
-
     Map<String, Object> partition = new HashMap<>();
     partition.put("tserver", 0);
     partition.put("master", 0);
@@ -331,6 +340,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     masterGFlags.put("placement_zone", defaultAZ.getCode());
     masterGFlags.put(
         "placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid.toString());
+    if (setMasterJoinExistingUniverseGflag) {
+      masterGFlags.put("master_join_existing_universe", "true");
+    }
     gflagOverrides.put("master", masterGFlags);
 
     // Tserver flags.
@@ -344,10 +356,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     gflagOverrides.put("tserver", tserverGFlags);
     // Put all the flags together.
     expectedOverrides.put("gflags", gflagOverrides);
-
-    Map<String, Object> ybcOverrides = new HashMap<>();
-    ybcOverrides.put("enabled", false);
-    expectedOverrides.put("ybc", ybcOverrides);
 
     Map<String, String> universeConfig = defaultUniverse.getConfig();
     if (universeConfig.getOrDefault(Universe.LABEL_K8S_RESOURCES, "false").equals("true")) {
@@ -382,6 +390,14 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       }
     }
     expectedOverrides.put("disableYsql", !defaultUserIntent.enableYSQL);
+
+    // For all tests but 1, value should default to true.
+    if (defaultUserIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
+      expectedOverrides.put("enableLoadBalancer", false);
+    } else {
+      expectedOverrides.put("enableLoadBalancer", true);
+    }
+
     boolean helmLegacy =
         Universe.HelmLegacy.valueOf(universeConfig.get(Universe.HELM2_LEGACY))
             == Universe.HelmLegacy.V2TO3;
@@ -391,6 +407,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     if (defaultUniverse.getUniverseDetails().useNewHelmNamingStyle) {
       expectedOverrides.put("oldNamingStyle", false);
       expectedOverrides.put("fullnameOverride", "host");
+      expectedOverrides.put("useOldPodDisruptionBudget", false);
     }
     Map<String, Object> yugabytedUiInfo = new HashMap<>();
     Map<String, Object> metricsSnapshotterInfo = new HashMap<>();
@@ -399,6 +416,12 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     yugabytedUiInfo.put("enabled", COMMUNITY_OP_ENABLED);
     yugabytedUiInfo.put("metricsSnapshotter", metricsSnapshotterInfo);
     expectedOverrides.put("yugabytedUi", yugabytedUiInfo);
+
+    Map<String, Object> ybcOverrides = new HashMap<>();
+    ybcOverrides.put("enabled", false);
+    expectedOverrides.put("ybc", ybcOverrides);
+
+    expectedOverrides.put("defaultServiceScope", "AZ");
     return expectedOverrides;
   }
 
@@ -438,6 +461,47 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  @Test
+  public void testHelmInstallSetMasterExistingUniverseGflag() throws IOException {
+    defaultUniverse.updateConfig(
+        ImmutableMap.of(Universe.K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG, "true"));
+    defaultUniverse.save();
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            expectedUniverseUUID.capture(),
+            expectedYbSoftwareVersion.capture(),
+            expectedConfig.capture(),
+            expectedProviderUUID.capture(),
+            expectedNodePrefix.capture(),
+            expectedNamespace.capture(),
+            expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
+    assertEquals(config, expectedConfig.getValue());
+    assertEquals(defaultProvider.getUuid(), expectedProviderUUID.getValue());
+    assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    assertEquals(namespace, expectedNamespace.getValue());
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    // TODO implement exposeAll false case
+    assertEquals(getExpectedOverrides(true, true), overrides);
   }
 
   @Test

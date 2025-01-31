@@ -28,12 +28,14 @@ interface ScheduleTaskParams {
   keyspaceList: IBackup['commonBackupInfo']['responseList'];
   isTableByTableBackup: IBackup['isTableByTableBackup']
   expiryTimeUnit: string;
+  pointInTimeRestoreEnabled?: boolean;
 }
 
 export enum IBackupScheduleStatus {
   ACTIVE = 'Active',
   STOPPED = 'Stopped',
-  PAUSED = 'Paused'
+  PAUSED = 'Paused',
+  CREATING = 'Creating',
 }
 export interface IBackupSchedule extends Pick<IBackup, 'customerUUID' | 'universeUUID'> {
   scheduleUUID: string;

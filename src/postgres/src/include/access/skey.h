@@ -4,7 +4,7 @@
  *	  POSTGRES scan key definitions.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/skey.h
@@ -39,6 +39,12 @@
  * flag bit.  The sk_argument is not a value of the operator's right-hand
  * argument type, but rather an array of such values, and the per-element
  * comparisons are to be ORed together.
+ * YB note: NULL values in ScalarArrayOpExpr are filtered out by default. This
+ * is because NULL = NULL is undefined in Postgres. But in some scenarios
+ * that involve unique indexes in nulls-not-distinct mode, it is desired to
+ * lookup NULL values too (for eg, see yb_batch_fetch_conflicting_rows()). Use
+ * YB_SK_SEARCHARRAY_RETAIN_NULLS flag bit to signal this. For row comparisions,
+ * it should be set in the header along with SK_ROW_HEADER.
  *
  * A ScanKey can also represent a condition "column IS NULL" or "column
  * IS NOT NULL"; these cases are signaled by the SK_SEARCHNULL and
@@ -106,6 +112,68 @@ typedef ScanKeyData *ScanKey;
  */
 
 /*
+ * YB: about row array comparisons:
+ *
+ * We also support batched row comparisons like
+ *		(x, y) IN [(c1, c2), (c3, c4), ...]
+ * This is currently only used by BNL (Batch Nested Loop Join) for lsm indexes.
+ *
+ * The header entry has these properties:
+ *		sk_flags = SK_ROW_HEADER | SK_SEARCHARRAY
+ *		sk_attno = index column number for leading column of row comparison
+ *		sk_strategy = btree strategy code for semantics of row comparison
+ *				(ie, < <= > or >=) (NOTE: for now, only = is supported)
+ *		sk_subtype = RECORDOID
+ *		sk_collation, sk_func: not used
+ *		sk_argument: pointer to subsidiary ScanKey array
+ * If the header is part of a ScanKey array that's sorted by attno, it
+ * must be sorted according to the leading column number.
+ *
+ * The subsidiary ScanKey array appears in logical column order of the row
+ * comparison, which today always matches the index column order.  The array
+ * elements are like in the above row comparison case except that:
+ *		sk_flags must include SK_SEARCHARRAY
+ *		sk_argument:
+ *				- for the first key, this is a pointer to 1-dimensional
+ *				  ArrayType consisting of HeapTuple (e.g. [(c1, c2), (c3, c4),
+ *				  ...]).  This structure may be calculated as a runtime key.
+ *				- for the subsequent keys, this is zero
+ * sk_strategy must be the same in all elements of the subsidiary array,
+ * that is, the same as in the header entry.
+ * SK_SEARCHNULL, SK_SEARCHNOTNULL cannot be used here.
+ *
+ * Since it is not intuitive, here is an illustration:
+ * (top key):
+ * - sk_flags = SK_ROW_HEADER | SK_SEARCHARRAY
+ * - sk_attno = index column number for leading column of row comparison
+ * - sk_strategy = =
+ * - sk_subtype = RECORDOID
+ * - sk_argument:
+ *   - (first key)
+ *     - sk_flags = SK_ROW_MEMBER | SK_SEARCHARRAY
+ *     - sk_attno = x's attno
+ *     - sk_strategy = =
+ *     - sk_subtype = x's type
+ *     - sk_func = x's equality func
+ *     - sk_argument:
+ *       - (array)
+ *         - (heap tuple (c1, c2))
+ *         - (heap tuple (c3, c4))
+ *         - ...
+ *   - (second key)
+ *     - sk_flags = SK_ROW_MEMBER | SK_SEARCHARRAY | SK_ROW_END
+ *     - sk_attno = y's attno
+ *     - sk_strategy = =
+ *     - sk_subtype = y's type
+ *     - sk_func = y's equality func
+ *     - sk_argument = 0
+ * Notice the LHS information and RHS information are placed in different axes.
+ *
+ * TODO(jason): sk_subtype = RECORDOID should not be necessary and is currently
+ * tied to a hack in yb_scan.c.
+ */
+
+/*
  * ScanKeyData sk_flags
  *
  * sk_flags bits 0-15 are reserved for system-wide use (symbols for those
@@ -121,32 +189,35 @@ typedef ScanKeyData *ScanKey;
 #define SK_SEARCHNULL		0x0040	/* scankey represents "col IS NULL" */
 #define SK_SEARCHNOTNULL	0x0080	/* scankey represents "col IS NOT NULL" */
 #define SK_ORDER_BY			0x0100	/* scankey is for ORDER BY op */
-#define YB_SK_IS_HASHED	0x0200	/* scankey represents yb hash code */
+#define YB_SK_IS_HASHED		0x0200	/* scankey represents yb hash code */
+#define YB_SK_SEARCHARRAY_RETAIN_NULLS	0x0400	/* retain NULLs in
+												 * ScalarArrayOpExpr (see
+												 * above) */
 
 
 /*
  * prototypes for functions in access/common/scankey.c
  */
 extern void ScanKeyInit(ScanKey entry,
-			AttrNumber attributeNumber,
-			StrategyNumber strategy,
-			RegProcedure procedure,
-			Datum argument);
+						AttrNumber attributeNumber,
+						StrategyNumber strategy,
+						RegProcedure procedure,
+						Datum argument);
 extern void ScanKeyEntryInitialize(ScanKey entry,
-					   int flags,
-					   AttrNumber attributeNumber,
-					   StrategyNumber strategy,
-					   Oid subtype,
-					   Oid collation,
-					   RegProcedure procedure,
-					   Datum argument);
+								   int flags,
+								   AttrNumber attributeNumber,
+								   StrategyNumber strategy,
+								   Oid subtype,
+								   Oid collation,
+								   RegProcedure procedure,
+								   Datum argument);
 extern void ScanKeyEntryInitializeWithInfo(ScanKey entry,
-							   int flags,
-							   AttrNumber attributeNumber,
-							   StrategyNumber strategy,
-							   Oid subtype,
-							   Oid collation,
-							   FmgrInfo *finfo,
-							   Datum argument);
+										   int flags,
+										   AttrNumber attributeNumber,
+										   StrategyNumber strategy,
+										   Oid subtype,
+										   Oid collation,
+										   FmgrInfo *finfo,
+										   Datum argument);
 
 #endif							/* SKEY_H */

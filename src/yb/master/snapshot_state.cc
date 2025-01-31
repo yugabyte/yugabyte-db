@@ -39,29 +39,11 @@ using namespace std::literals;
 DEFINE_UNKNOWN_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
               "Delay for snapshot cleanup after deletion.");
 
-DEFINE_RUNTIME_int64(max_concurrent_snapshot_rpcs, -1,
-    "Maximum number of tablet snapshot RPCs that can be outstanding. "
-    "Only used if its value is >= 0. If its value is 0 then it means that "
-    "INT_MAX number of snapshot rpcs can be concurrent. "
-    "If its value is < 0 then the max_concurrent_snapshot_rpcs_per_tserver gflag and "
-    "the number of TServers in the primary cluster are used to determine "
-    "the number of maximum number of tablet snapshot RPCs that can be outstanding.");
-
-DEFINE_RUNTIME_int64(max_concurrent_snapshot_rpcs_per_tserver, 1,
-    "Maximum number of tablet snapshot RPCs per tserver that can be outstanding. "
-    "Only used if the value of the gflag max_concurrent_snapshot_rpcs is < 0. "
-    "When used it is multiplied with the number of TServers in the active cluster "
-    "(not read-replicas) to obtain the total maximum concurrent snapshot RPCs. If "
-    "the cluster config is not found and we are not able to determine the number of "
-    "live tservers then the total maximum concurrent snapshot RPCs is just the "
-    "value of this flag.");
-
 DEFINE_test_flag(bool, treat_hours_as_milliseconds_for_snapshot_expiry, false,
     "Test only flag to expire snapshots after x milliseconds instead of x hours. Used "
     "to speed up tests");
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 Result<dockv::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context) {
@@ -124,14 +106,14 @@ std::string SnapshotState::ToString() const {
 }
 
 Status SnapshotState::ToPB(
-    SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options) const {
+    SnapshotInfoPB* out, const ListSnapshotsDetailOptionsPB& options) const {
   out->set_id(id_.data(), id_.size());
   return ToEntryPB(out->mutable_entry(), ForClient::kTrue, options);
 }
 
 Status SnapshotState::ToEntryPB(
     SysSnapshotEntryPB* out, ForClient for_client,
-    ListSnapshotsDetailOptionsPB options) const {
+    const ListSnapshotsDetailOptionsPB& options) const {
   out->set_state(for_client ? VERIFY_RESULT(AggregatedState()) : initial_state());
   out->set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
   if (previous_snapshot_hybrid_time_) {
@@ -190,13 +172,19 @@ Status SnapshotState::TryStartDelete() {
   return Status::OK();
 }
 
+bool SnapshotState::delete_started() const {
+  return delete_started_;
+}
+
 void SnapshotState::DeleteAborted(const Status& status) {
   delete_started_ = false;
 }
 
 void SnapshotState::PrepareOperations(TabletSnapshotOperations* out) {
-  DoPrepareOperations([this, out](const TabletData& tablet) -> bool {
+  DoPrepareOperations([this, out](const TabletData& tablet, int64_t serial_no) -> bool {
     if (Throttler().Throttle()) {
+      VLOG_WITH_PREFIX(4)
+          << "Skip operation " << initial_state() << " for " << tablet.id << " because of throttle";
       return false;
     }
     out->push_back(TabletSnapshotOperation {
@@ -205,7 +193,9 @@ void SnapshotState::PrepareOperations(TabletSnapshotOperations* out) {
       .snapshot_id = id_,
       .state = initial_state(),
       .snapshot_hybrid_time = snapshot_hybrid_time_,
+      .serial_no = serial_no,
     });
+    VLOG_WITH_PREFIX(4) << "Add operation: " << out->back().ToString();
     return true;
   });
 }
@@ -247,6 +237,10 @@ bool SnapshotState::ShouldUpdate(const SnapshotState& other) const {
   return version() < other_version;
 }
 
+Result<bool> SnapshotState::Complete() const {
+  return VERIFY_RESULT(AggregatedState()) == SysSnapshotEntryPB::COMPLETE;
+}
+
 Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(
     const tablet::SnapshotOperation& operation) const {
   if (!schedule_id_) {
@@ -286,5 +280,21 @@ bool SnapshotState::HasExpired(HybridTime now) const {
   return now > expiry_time;
 }
 
-} // namespace master
-} // namespace yb
+size_t SnapshotState::ResetRunning() {
+  auto result = StateWithTablets::ResetRunning();
+  for (size_t i = 0; i != result; ++i) {
+    Throttler().RemoveOutstandingTask();
+  }
+  return result;
+}
+
+ListSnapshotsDetailOptionsPB ListSnapshotsDetailOptionsFactory::CreateWithNoDetails() {
+  auto result = ListSnapshotsDetailOptionsPB();
+  result.set_show_namespace_details(false);
+  result.set_show_udtype_details(false);
+  result.set_show_table_details(false);
+  result.set_show_tablet_details(false);
+  return result;
+}
+
+} // namespace yb::master

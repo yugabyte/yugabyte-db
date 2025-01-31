@@ -22,6 +22,7 @@ class CDCSDKBeforeImageTest : public CDCSDKYsqlTest {
     // These tests work on older RECORD_TYPE support, so we disable replica identity support here so
     // that the record_type mode is used.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   }
 };
 
@@ -263,6 +264,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBefor
 // For CHANGE mode
 TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageChangeMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -318,6 +320,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBefor
 TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageAllMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -336,6 +339,15 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBefor
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 2, 3)"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 3 WHERE key = 1"));
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 1"));
+
+  // Wait for sometime for UpdatePeersAndMetrics to move the barriers.
+  SleepFor(MonoDelta::FromSeconds(3 * FLAGS_update_min_cdc_indices_interval_secs));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  // The DocDB entry count shouldnt change after compaction as CDC is holding the history barrier
+  // due to before image mode ALL.
+  WaitForCompaction(table, true /* expect_equal_entries_after_compaction */);
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 1, 1, 1, 0, 0};
@@ -373,6 +385,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBefor
 TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageFullMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -391,6 +404,15 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBefor
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 2, 3)"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 3 WHERE key = 1"));
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 1"));
+
+  // Wait for sometime for UpdatePeersAndMetrics to move the barriers.
+  SleepFor(MonoDelta::FromSeconds(3 * FLAGS_update_min_cdc_indices_interval_secs));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  // The DocDB entry count shouldnt change after compaction as CDC is holding the history barrier
+  // due to PG_FULL.
+  WaitForCompaction(table, true /* expect_equal_entries_after_compaction */);
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 1, 1, 1, 0, 0};
@@ -598,6 +620,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(
   TestSingleShardUpdateBeforeImageDefaultMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -616,6 +639,15 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 2, 3);"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 3 WHERE key = 1;"));
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 1"));
+
+  // Wait for sometime for UpdatePeersAndMetrics to move the barriers.
+  SleepFor(MonoDelta::FromSeconds(3 * FLAGS_update_min_cdc_indices_interval_secs));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  // The DocDB entry count shouldnt change after compaction as CDC is holding the history barrier
+  // due to PG_DEFAULT.
+  WaitForCompaction(table, true /* expect_equal_entries_after_compaction */);
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 1, 1, 1, 0, 0};
@@ -653,6 +685,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(
   TestSingleShardUpdateBeforeImageNothingMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -1309,8 +1342,9 @@ TEST_F(
       first_get_changes = false;
 
     } else {
-      change_resp =
-          ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+      change_resp = ASSERT_RESULT(GetChangesFromCDC(
+          stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), 0 /* tablet_idx */,
+          change_resp.safe_hybrid_time()));
     }
 
     if (change_resp.cdc_sdk_proto_records_size() == 0) {
@@ -1403,8 +1437,9 @@ TEST_F(
       first_get_changes = false;
 
     } else {
-      change_resp =
-          ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+      change_resp = ASSERT_RESULT(GetChangesFromCDC(
+          stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), 0 /* tablet_idx */,
+          change_resp.safe_hybrid_time()));
     }
 
     if (change_resp.cdc_sdk_proto_records_size() == 0) {
@@ -1966,6 +2001,60 @@ TEST_F(CDCSDKBeforeImageTest, TestCompactionWithBeforeImageGetChangesCallFailed)
 INSTANTIATE_TEST_CASE_P(
     AddColumnBeforeImage, CDCYsqlAddColumnBeforeImageTest,
     ::testing::Values(SetColumnDefaultValue::kTrue, SetColumnDefaultValue::kFalse));
+
+TEST_F(CDCSDKBeforeImageTest, TestBeforeImageOfRecordInsertedInSameTxn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_send_null_before_image_if_not_exists) = true;
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(3));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1,1)"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 2 where key = 1"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2,2)"));
+  ASSERT_OK(conn.Execute("DELETE FROM test_table where key = 2"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {1, 2, 1, 1, 0, 0};
+  const uint32_t expected_count_with_packed_row[] = {1, 3, 0, 1, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecord expected_records[] = {{1, 1}, {1, 2}, {2, 2}, {2, INT_MAX}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {}, {2, INT_MAX}};
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    if (record.row_message().op() == RowMessage::DDL) {
+      count[0]++;
+      continue;
+    }
+
+    CheckRecord(
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
+  }
+
+  if (FLAGS_ysql_enable_packed_row) {
+    // For packed row if all the columns of a row is updated, it come as INSERT record.
+    CheckCount(expected_count_with_packed_row, count);
+  } else {
+    CheckCount(expected_count, count);
+  }
+}
 
 }  // namespace cdc
 }  // namespace yb

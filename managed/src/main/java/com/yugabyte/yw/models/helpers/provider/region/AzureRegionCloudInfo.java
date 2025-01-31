@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.Map;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.apache.commons.lang3.StringUtils;
 
 @Data
 @EqualsAndHashCode(callSuper = false)
@@ -23,6 +24,14 @@ public class AzureRegionCloudInfo implements CloudInfoInterface {
   @ApiModelProperty
   @JsonAlias("sg_id")
   public String securityGroupId;
+
+  @ApiModelProperty
+  @JsonAlias("azuNetworkRGOverride")
+  public String azuNetworkRGOverride;
+
+  @JsonAlias("azuRGOverride")
+  @ApiModelProperty
+  public String azuRGOverride;
 
   @ApiModelProperty(
       value =
@@ -44,6 +53,19 @@ public class AzureRegionCloudInfo implements CloudInfoInterface {
     }
     if (ybImage != null) {
       envVars.put("ybImage", ybImage);
+    }
+    if (!StringUtils.isEmpty(azuNetworkRGOverride)) {
+      // This will override that setting on provider level.
+      envVars.put("AZURE_NETWORK_RG", azuNetworkRGOverride);
+    }
+    if (!StringUtils.isEmpty(azuRGOverride)) {
+      // This will override that setting on provider level.
+      envVars.put("AZURE_RG", azuRGOverride);
+      if (StringUtils.isEmpty(azuNetworkRGOverride)) {
+        // Setting this for network rg too, because otherwise it could take network resource group
+        // from provider level which will be confusing.
+        envVars.put("AZURE_NETWORK_RG", azuRGOverride);
+      }
     }
 
     return envVars;

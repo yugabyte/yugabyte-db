@@ -7,10 +7,12 @@ import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/utils/dtos
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
 import { YBModalForm } from '../common/forms';
 import { YBFormInput } from '../common/forms/fields';
+import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 
 interface ResetConfigData {
   configData: RunTimeConfigData;
   onHide: () => void;
+  fetchUiTagFilter: () => void;
   deleteRunTimeConfig: (key: string, scope?: string) => void;
   scope?: string;
   universeUUID?: string;
@@ -21,6 +23,7 @@ interface ResetConfigData {
 export const ResetConfig: FC<ResetConfigData> = ({
   configData,
   onHide,
+  fetchUiTagFilter,
   deleteRunTimeConfig,
   scope,
   universeUUID,
@@ -42,6 +45,10 @@ export const ResetConfig: FC<ResetConfigData> = ({
       scopeValue = customerUUID!;
     }
     await deleteRunTimeConfig(configData.configKey, scopeValue);
+    // Refetch the conf tags to filter runtime config flags accordingly
+    if (configData.configKey === RuntimeConfigKey.UI_TAG_FILTER) {
+      fetchUiTagFilter();
+    }
     onHide();
   };
   return (

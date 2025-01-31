@@ -87,10 +87,10 @@ GRANT yb_fdw TO regress_priv_user;
 GRANT yb_db_admin TO regress_priv_user WITH ADMIN OPTION;
 SET SESSION AUTHORIZATION regress_priv_user;
 CREATE EXTENSION PGAudit;
-ALTER EXTENSION PGAudit UPDATE TO '1.3.2';
+ALTER EXTENSION PGAudit UPDATE TO '1.7';
 DROP EXTENSION PGAudit;
 CREATE EXTENSION orafce;
-ALTER EXTENSION orafce UPDATE TO '3.14';
+ALTER EXTENSION orafce UPDATE TO '4.9';
 DROP EXTENSION orafce;
 -- removing yb_db_admin role should result in error
 REVOKE yb_db_admin FROM regress_priv_user;

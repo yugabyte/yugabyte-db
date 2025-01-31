@@ -258,8 +258,11 @@ def copy_artifacts_to_host(
             try:
                 if method == UploadMethod.SSH:
                     assert dest_host is not None
-                    subprocess.check_call(['ssh', dest_host, 'mkdir', '-p', dest_dir])
-                    subprocess.check_call(['scp', artifact_path, f'{dest_host}:{dest_dir}/'])
+                    subprocess.check_call(['ssh', '-o', 'StrictHostKeyChecking=no', dest_host,
+                                          'mkdir', '-p', dest_dir])
+                    subprocess.check_call(['scp', '-o', 'StrictHostKeyChecking=no', artifact_path,
+                                          f'{dest_host}:{dest_dir}/'])
+
                 elif method == UploadMethod.CP:
                     ensure_dir_exists(dest_dir)
                     subprocess.check_call(['cp', '-f', artifact_path, dest_path])

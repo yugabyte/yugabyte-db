@@ -43,22 +43,19 @@ class RateLimiter;
 }  // namespace rocksdb
 
 namespace yb {
+class HostPort;
 class Thread;
 class ThreadPool;
+class XClusterTest_LeaderFailoverTest_Test;
 
 namespace rpc {
 class Messenger;
 class Rpcs;
-class SecureContext;
 }  // namespace rpc
 
-namespace cdc {
-class ConsumerRegistryPB;
-}  // namespace cdc
-
-namespace master {
-class TSHeartbeatRequestPB;
-}  // namespace master
+namespace client {
+class XClusterRemoteClientHolder;
+}  // namespace client
 
 namespace tserver {
 class AutoFlagsVersionHandler;
@@ -66,22 +63,13 @@ class XClusterPoller;
 class TabletServer;
 class TserverXClusterContextIf;
 
-struct XClusterClient {
-  std::unique_ptr<rpc::Messenger> messenger;
-  std::unique_ptr<rpc::SecureContext> secure_context;
-  std::shared_ptr<client::YBClient> client;
-
-  ~XClusterClient();
-  void Shutdown();
-};
-
 class XClusterConsumer : public XClusterConsumerIf {
  public:
   XClusterConsumer(
       std::function<int64_t(const TabletId&)> get_leader_term, const std::string& ts_uuid,
       client::YBClient& local_client, ConnectToPostgresFunc connect_to_pg_func,
       GetNamespaceInfoFunc get_namespace_info_func,
-      const TserverXClusterContextIf& xcluster_context,
+      TserverXClusterContextIf& xcluster_context,
       const scoped_refptr<MetricEntity>& server_metric_entity);
 
   ~XClusterConsumer();
@@ -110,11 +98,13 @@ class XClusterConsumer : public XClusterConsumerIf {
     return TEST_num_successful_write_rpcs_.load(std::memory_order_acquire);
   }
 
-  std::vector<std::shared_ptr<client::YBClient>> GetYbClientsList() const override;
+  void WriteServerMetaCacheAsJson(JsonWriter& writer) const override;
 
   Status ReloadCertificates() override;
 
-  Status PublishXClusterSafeTime();
+  // Get notified after the safe time table is updated.
+  void AddSafeTimePublishCallback(std::function<void()> callback)
+      EXCLUDES(safe_time_callback_mutex_);
 
   SchemaVersion GetMinXClusterSchemaVersion(
       const TableId& table_id, const ColocationId& colocation_id) override;
@@ -145,6 +135,8 @@ class XClusterConsumer : public XClusterConsumerIf {
     return metric_poll_failure_count_;
   }
  private:
+  FRIEND_TEST(yb::XClusterTest, LeaderFailoverTest);
+
   // Runs a thread that periodically polls for any new threads.
   void RunThread() EXCLUDES(shutdown_mutex_);
 
@@ -162,7 +154,7 @@ class XClusterConsumer : public XClusterConsumerIf {
   void TriggerDeletionOfOldPollers() EXCLUDES (master_data_mutex_);
 
   bool ShouldContinuePolling(
-      const xcluster::ProducerTabletInfo producer_tablet_info, const XClusterPoller& poller,
+      const xcluster::ProducerTabletInfo producer_tablet_info, XClusterPoller& poller,
       std::string& reason) REQUIRES_SHARED(master_data_mutex_);
 
   void UpdatePollerSchemaVersionMaps(
@@ -172,6 +164,10 @@ class XClusterConsumer : public XClusterConsumerIf {
   void RemoveFromPollersMap(const xcluster::ProducerTabletInfo producer_tablet_info);
 
   void SetRateLimiterSpeed();
+
+  void PublishXClusterSafeTime();
+
+  Status PublishXClusterSafeTimeInternal();
 
   // Mutex and cond for should_run_ state.
   std::mutex shutdown_mutex_;
@@ -206,11 +202,6 @@ class XClusterConsumer : public XClusterConsumerIf {
       GUARDED_BY(master_data_mutex_);
   std::unordered_set<xrepl::StreamId> ddl_queue_streams_ GUARDED_BY(master_data_mutex_);
 
-  // Pair of validated_schema_version and last_compatible_consumer_schema_version.
-  using SchemaVersionMapping = std::pair<uint32_t, uint32_t>;
-  std::unordered_map<xrepl::StreamId, SchemaVersionMapping> stream_to_schema_version_
-      GUARDED_BY(master_data_mutex_);
-
   cdc::StreamSchemaVersionMap stream_schema_version_map_ GUARDED_BY(master_data_mutex_);
 
   cdc::StreamColocatedSchemaVersionMap stream_colocated_schema_version_map_
@@ -223,9 +214,7 @@ class XClusterConsumer : public XClusterConsumerIf {
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
 
-  std::unordered_map<
-      xcluster::ProducerTabletInfo, std::shared_ptr<XClusterPoller>,
-      xcluster::ProducerTabletInfo::Hash>
+  std::unordered_map<xcluster::ProducerTabletInfo, std::shared_ptr<XClusterPoller>>
       pollers_map_ GUARDED_BY(pollers_map_mutex_);
 
   std::unique_ptr<ThreadPool> thread_pool_;
@@ -235,9 +224,10 @@ class XClusterConsumer : public XClusterConsumerIf {
   client::YBClient& local_client_;
 
   // map: {replication_group_id : ...}.
-  std::unordered_map<xcluster::ReplicationGroupId, std::shared_ptr<XClusterClient>> remote_clients_
-      GUARDED_BY(pollers_map_mutex_);
-  std::unordered_map<xcluster::ReplicationGroupId, std::string> uuid_master_addrs_
+  std::unordered_map<
+      xcluster::ReplicationGroupId, std::shared_ptr<client::XClusterRemoteClientHolder>>
+      remote_clients_ GUARDED_BY(pollers_map_mutex_);
+  std::unordered_map<xcluster::ReplicationGroupId, std::vector<HostPort>> uuid_master_addrs_
       GUARDED_BY(master_data_mutex_);
   std::unordered_set<xcluster::ReplicationGroupId> changed_master_addrs_
       GUARDED_BY(master_data_mutex_);
@@ -267,13 +257,16 @@ class XClusterConsumer : public XClusterConsumerIf {
 
   GetNamespaceInfoFunc get_namespace_info_func_;
 
-  const TserverXClusterContextIf& xcluster_context_;
+  TserverXClusterContextIf& xcluster_context_;
 
   scoped_refptr<Counter> metric_apply_failure_count_;
 
   scoped_refptr<Counter> metric_poll_failure_count_;
 
   scoped_refptr<Counter> metric_replication_error_count_;
+
+  std::mutex safe_time_callback_mutex_;
+  std::vector<std::function<void()>> safe_time_callbacks_ GUARDED_BY(safe_time_callback_mutex_);
 };
 
 } // namespace tserver

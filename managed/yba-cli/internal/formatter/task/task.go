@@ -10,6 +10,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -33,7 +34,7 @@ type Context struct {
 // NewTaskFormat for formatting output
 func NewTaskFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultTaskListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -43,6 +44,27 @@ func NewTaskFormat(source string) formatter.Format {
 
 // Write renders the context for a list of Tasks
 func Write(ctx formatter.Context, tasks []ybaclient.CustomerTaskData) error {
+	// Check if the format is JSON or Pretty JSON
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
+		// Marshal the slice of tasks into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(tasks, "", "  ")
+		} else {
+			output, err = json.Marshal(tasks)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling tasks to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, task := range tasks {
 			err := format(&Context{t: task})
@@ -89,7 +111,15 @@ func (c *Context) Target() string {
 
 // Status fetches the task state
 func (c *Context) Status() string {
-	return c.t.GetStatus()
+	taskStatus := c.t.GetStatus()
+	switch taskStatus {
+	case util.FailureTaskStatus:
+		return formatter.Colorize(taskStatus, formatter.RedColor)
+	case util.SuccessTaskStatus:
+		return formatter.Colorize(taskStatus, formatter.GreenColor)
+	default:
+		return formatter.Colorize(taskStatus, formatter.YellowColor)
+	}
 }
 
 // CreateTime fetches Task create time

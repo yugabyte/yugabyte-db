@@ -198,6 +198,10 @@ Status PgCreateTable::Exec(
     }
   }
 
+  if (xcluster_source_table_id_.IsValid()) {
+    table_creator->xcluster_source_table_id(xcluster_source_table_id_.GetYbTableId());
+  }
+
   if (transaction_metadata) {
     table_creator->part_of_transaction(transaction_metadata);
   }
@@ -216,9 +220,7 @@ Status PgCreateTable::Exec(
       }
       return STATUS(InvalidArgument, "Duplicate table");
     }
-    return STATUS_FORMAT(
-        InvalidArgument, "Invalid table definition: $0",
-        s.ToString(false /* include_file_and_line */, false /* include_code */));
+    return STATUS_FORMAT(InvalidArgument, "Invalid table definition: $0", s.message());
   }
 
   return Status::OK();
@@ -259,7 +261,7 @@ void PgCreateTable::EnsureYBbasectidColumnCreated() {
   // Add YBUniqueIdxKeySuffix column to store key suffix for handling multiple NULL values in
   // column with unique index.
   // Value of this column is set to ybctid (same as ybbasectid) for index row in case index
-  // is unique and at least one of its key column is NULL.
+  // is unique, uses nulls-are-distinct mode, and at least one of its key column is NULL.
   // In all other case value of this column is NULL.
   if (req_.is_unique_index()) {
     auto name = "ybuniqueidxkeysuffix";
@@ -352,6 +354,10 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
 
 size_t PgCreateTable::PrimaryKeyRangeColumnCount() const {
   return range_columns_.size();
+}
+
+void PgCreateTable::SetXClusterSourceTableId(const PgObjectId& xcluster_source_table_id) {
+  xcluster_source_table_id_ = xcluster_source_table_id;
 }
 
 Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline) {

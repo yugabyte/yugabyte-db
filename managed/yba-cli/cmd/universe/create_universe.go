@@ -18,6 +18,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/universe"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 var tserverGflagsString string
@@ -25,19 +26,20 @@ var v1 = viper.New()
 
 // createUniverseCmd represents the universe command
 var createUniverseCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create YugabyteDB Anywhere universe",
-	Long:  "Create an universe in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create YugabyteDB Anywhere universe",
+	Long:    "Create an universe in YugabyteDB Anywhere",
 	Example: `yba universe create -n <universe-name> --provider-code <provider-code> \
-	--provider-name <provider-name> --yb-db-version <YugbayteDB-version> \
-	--master-gflags \
-	"{\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\",\
-	\"<gflag-3>\": \"<value-3>\",\"<gflag-4>\": \"<value-4>\"}" \
-	--tserver-gflags \
-	"{\"primary\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"},\
-	\"async\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"}}" \
-	--num-nodes 1 --replication-factor 1 \
-	--user-tags <tag1>=<value1>,<tag2>=<value2>`,
+	 --provider-name <provider-name> --yb-db-version <YugbayteDB-version> \
+	 --master-gflags \
+	 '{"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>",\
+	 "<gflag-3>": "<value-3>","<gflag-4>": "<value-4>"}" \
+	 --tserver-gflags \
+	 "{"primary": {"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>"},\
+	 "async": {"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>"}}' \
+	 --num-nodes 1 --replication-factor 1 \
+	 --user-tags <key-1>=<value-1>,<key-2>=<value-2>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 
 		config, err := cmd.Flags().GetString("config-template")
@@ -84,26 +86,43 @@ var createUniverseCmd = &cobra.Command{
 		}
 
 		enableYbc := true
-		communicationPorts := buildCommunicationPorts(cmd)
+		communicationPorts := buildCommunicationPorts()
+		certs, response, err := authAPI.GetListOfCertificates().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Universe", "Create - List Certificates")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
 
-		certUUID := ""
-		clientRootCA := v1.GetString("root-ca")
+		clientRootCACertUUID := ""
+		clientRootCA := v1.GetString("client-root-ca")
 
-		// find the root certficate UUID from the name
+		// find the client root certficate UUID from the name
 		if len(clientRootCA) != 0 {
-			certs, response, err := authAPI.GetListOfCertificates().Execute()
-			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err,
-					"Universe", "Create - List Certificates")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-			}
 			for _, c := range certs {
 				if strings.Compare(c.GetLabel(), clientRootCA) == 0 {
-					certUUID = c.GetUuid()
-					logrus.Info("Using certificate: ",
+					clientRootCACertUUID = c.GetUuid()
+					logrus.Info("Using client root certificate: ",
 						fmt.Sprintf("%s %s",
 							clientRootCA,
-							formatter.Colorize(certUUID, formatter.GreenColor)), "\n")
+							formatter.Colorize(clientRootCACertUUID, formatter.GreenColor)), "\n")
+				}
+			}
+		}
+
+		rootCACertUUID := ""
+		rootCA := v1.GetString("client-root-ca")
+
+		// find the root certficate UUID from the name
+		if len(rootCA) != 0 {
+
+			for _, c := range certs {
+				if strings.Compare(c.GetLabel(), rootCA) == 0 {
+					rootCACertUUID = c.GetUuid()
+					logrus.Info("Using root certificate: ",
+						fmt.Sprintf("%s %s",
+							rootCA,
+							formatter.Colorize(rootCACertUUID, formatter.GreenColor)), "\n")
 				}
 			}
 		}
@@ -113,7 +132,7 @@ var createUniverseCmd = &cobra.Command{
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 
 		if enableVolumeEncryption {
-			opType = "ENABLE"
+			opType = util.EnableKMSOpType
 			kmsConfigName, err := cmd.Flags().GetString("kms-config")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -144,16 +163,26 @@ var createUniverseCmd = &cobra.Command{
 			}
 		}
 
-		clusters, err := buildClusters(cmd, authAPI, universeName)
+		cpuArch := v1.GetString("cpu-architecture")
+		if len(strings.TrimSpace(cpuArch)) == 0 {
+			cpuArch = util.X86_64
+		}
+
+		logrus.Info("Using architecture: ",
+			formatter.Colorize(cpuArch, formatter.GreenColor), "\n")
+
+		clusters, err := buildClusters(authAPI, universeName)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		requestBody := ybaclient.UniverseConfigureTaskParams{
-			ClientRootCA:       util.GetStringPointer(certUUID),
+			RootCA:             util.GetStringPointer(rootCACertUUID),
+			ClientRootCA:       util.GetStringPointer(clientRootCACertUUID),
 			Clusters:           clusters,
 			CommunicationPorts: communicationPorts,
 			EnableYbc:          util.GetBoolPointer(enableYbc),
+			Arch:               util.GetStringPointer(strings.ToLower(cpuArch)),
 		}
 
 		if enableVolumeEncryption {
@@ -163,15 +192,15 @@ var createUniverseCmd = &cobra.Command{
 			})
 		}
 
-		rCreate, response, err := authAPI.CreateAllClusters().
+		rTask, response, err := authAPI.CreateAllClusters().
 			UniverseConfigureTaskParams(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		universeUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
+		universeUUID := rTask.GetResourceUUID()
+		taskUUID := rTask.GetTaskUUID()
 
 		var universeData []ybaclient.UniverseResp
 
@@ -198,16 +227,21 @@ var createUniverseCmd = &cobra.Command{
 			}
 
 			universesCtx := formatter.Context{
-				Output: os.Stdout,
-				Format: universe.NewUniverseFormat(viper.GetString("output")),
+				Command: "create",
+				Output:  os.Stdout,
+				Format:  universe.NewUniverseFormat(viper.GetString("output")),
 			}
 
 			universe.Write(universesCtx, universeData)
-
-		} else {
-			logrus.Infoln(msg + "\n")
+			return
 		}
-
+		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 	},
 }
 
@@ -237,6 +271,8 @@ func init() {
 	createUniverseCmd.Flags().Bool("dedicated-nodes", false,
 		"[Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem."+
 			" Defaults to true for kubernetes.")
+	createUniverseCmd.Flags().String("cpu-architecture", "x86_64",
+		"[Optional] CPU architecture for nodes in all clusters. Allowed values: x86_64, aarch64.")
 	createUniverseCmd.Flags().Bool("add-read-replica", false,
 		"[Optional] Add a read replica cluster to the universe. (default false)")
 
@@ -261,38 +297,42 @@ func init() {
 			"in the following format: "+
 			"\"--regions 'region-1-for-primary-cluster,region-2-for-primary-cluster' "+
 			"--regions 'region-1-for-read-replica,region-2-for-read-replica'\". "+
-			"Defaults to fetching the region from the provider. "+
-			"Throws an error if multiple regions are present.")
+			"Defaults to fetching the regions from the provider.")
 	createUniverseCmd.Flags().StringArray("preferred-region", []string{},
 		"[Optional] Preferred region to place the node of the cluster in. "+
-			"Provide preferred regions for each cluster as a separate flag. Defaults to null.")
+			"Provide preferred regions for each cluster as a separate flag. (default [])")
 
 	createUniverseCmd.Flags().String("master-gflags", "",
 		"[Optional] Master GFlags in map (JSON or YAML) format. "+
 			"Provide the gflags in the following formats: "+
-			"\"--master-gflags { \\\"master-gflag-key-1\\\":\\\"value-1\\\","+
-			"\\\"master-gflag-key-2\\\":\\\"value-2\\\" }\" or"+
+			"\"--master-gflags {\"master-gflag-key-1\":\"value-1\","+
+			"\"master-gflag-key-2\":\"value-2\" }\" or"+
 			"  \"--master-gflags \"master-gflag-key-1: value-1\nmaster-gflag-key-2"+
-			": value-2\nmaster-gflag-key-3: value3\".")
+			": value-2\nmaster-gflag-key-3: value-3\".")
 
 	createUniverseCmd.Flags().StringVar(&tserverGflagsString, "tserver-gflags", "",
 		"[Optional] TServer GFlags in map (JSON or YAML) format. "+
 			"Provide gflags for clusters in the following format: "+
-			"\"--tserver-gflags \"{\\\"primary\\\": "+
-			"{\\\"tserver-gflag-key-1\\\": \\\"value-1\\\","+
-			"\\\"tserver-gflag-key-2\\\": \\\"value-2\\\"},"+
-			"\\\"async\\\": {\\\"tserver-gflag-key-1\\\": \\\"value-1\\\","+
-			"\\\"tserver-gflag-key-2\\\": \\\"value-2\\\"}}\"\" OR"+
-			" \"--tserver-gflag \"primary:\n\tlog_min_segments_to_retain: 1"+
-			"\n\tlog_cache_size_limit_mb: 0\n\tglobal_log_cache_size_limit_mb: "+
-			"0\n\tlog_stop_retaining_min_disk_mb: 9223372036854775807\nasync:"+
-			"\n\tlog_min_segments_to_retain: 2\n\tlog_cache_size_limit_mb: 0"+
-			"\n\tglobal_log_cache_size_limit_mb: 0\"\"."+
+			"\"--tserver-gflags '{\"primary\": "+
+			"{\"tserver-gflag-key-1\": \"value-1\","+
+			"\"tserver-gflag-key-2\": \"value-2\"},"+
+			"\"async\": {\"tserver-gflag-key-1\": \"value-1\","+
+			"\"tserver-gflag-key-2\": \"value-2\"}}'\" OR"+
+			" \"--tserver-gflag \"primary:\n\ttserver-gflag-key-1: value-1"+
+			"\n\ttserver-gflag-key-2: value-2\n\ttserver-gflag-key-3: value-3"+
+			"\n\ttserver-gflag-key-4: value-4\n\t"+
+			"tserver-gflag-key-5: value-5\nasync:"+
+			"\n\ttserver-gflag-key-6: value-6\n\ttserver-gflag-key-7: value-7"+
+			"\n\ttserver-gflag-key-8: value-8\"\"."+
 			" If no-of-clusters = 2 "+
 			"and no tserver gflags are provided for the read replica, the primary cluster gflags are "+
 			"by default applied to the read replica cluster.")
 
 	// Device Info per cluster
+	createUniverseCmd.Flags().StringArray("linux-version", []string{},
+		"[Optional] Linux version for the universe nodes. "+
+			"Default linux version is fetched from the provider. "+
+			"corresponding to cpu-architecture of the universe.")
 	createUniverseCmd.Flags().StringArray("instance-type", []string{},
 		"[Optional] Instance Type for the universe nodes. Provide the instance types for each "+
 			"cluster as a separate flag."+
@@ -337,6 +377,11 @@ func init() {
 		"[Optional] CPU core count of the kubernetes tserver node. Provide k8s-tserver-cpu-core-count "+
 			"for each cluster as a separate flag or as comma separated values.")
 
+	createUniverseCmd.Flags().StringArray("exposing-service", []string{},
+		"[Optional] Exposing service for the universe clusters. Can be unique for each cluster. "+
+			"Provide the exposing service for each cluster as a separate flag. "+
+			"Allowed values: none, exposed, unexposed. Defaults to none.")
+
 	// if dedicated nodes is set to true
 	createUniverseCmd.Flags().String("dedicated-master-instance-type", "",
 		"[Optional] Instance Type for the dedicated master nodes in the primary cluster."+
@@ -374,6 +419,11 @@ func init() {
 		"[Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count "+
 			"for each cluster as a separate flag or as comma separated values.")
 
+	createUniverseCmd.Flags().Bool("use-spot-instance", false,
+		"[Optional] Use spot instances for cloud provider based universe nodes. (default false)")
+	createUniverseCmd.Flags().Float64("spot-price", 0.0,
+		"[Optional] Max price willing to pay for spot instances.")
+
 	// Advanced configuration // taken only for Primary cluster
 	createUniverseCmd.Flags().Bool("assign-public-ip", true,
 		"[Optional] Assign Public IPs to the DB servers for connections over the internet.")
@@ -404,6 +454,9 @@ func init() {
 	createUniverseCmd.Flags().String("root-ca", "",
 		"[Optional] Root Certificate name for Encryption in Transit, defaults to creating new"+
 			" certificate for the universe if encryption in transit in enabled.")
+	createUniverseCmd.Flags().String("client-root-ca", "",
+		"[Optional] Client Root Certificate name for Encryption in Transit, defaults to creating new"+
+			" certificate for the universe if encryption in transit in enabled.")
 
 	createUniverseCmd.Flags().Bool("enable-volume-encryption", false,
 		"[Optional] Enable encryption for data stored on the tablet servers. (default false)")
@@ -414,7 +467,7 @@ func init() {
 
 	createUniverseCmd.Flags().Bool("enable-ipv6", false,
 		"[Optional] Enable IPV6 networking for connections between the DB Servers, supported "+
-			"only for Kubernetes universes (default false) ")
+			"only for Kubernetes universes. (default false)")
 	createUniverseCmd.Flags().String("yb-db-version", "",
 		"[Optional] YugabyteDB Software Version, defaults to the latest available version. "+
 			"Run \"yba yb-db-version list\" to find the latest version.")
@@ -428,7 +481,7 @@ func init() {
 
 	createUniverseCmd.Flags().StringToString("user-tags",
 		map[string]string{}, "[Optional] User Tags for the DB instances. Provide "+
-			"as key=value pairs per flag. Example \"--user-tags "+
+			"as key-value pairs per flag. Example \"--user-tags "+
 			"name=test --user-tags owner=development\" OR "+
 			"\"--user-tags name=test,owner=development\".")
 	createUniverseCmd.Flags().String("kubernetes-universe-overrides-file-path", "",
@@ -469,6 +522,8 @@ func init() {
 		"[Optional] YSQL Server RPC Port.")
 
 	v1.BindPFlag("name", createUniverseCmd.Flags().Lookup("name"))
+	v1.BindPFlag("cpu-architecture", createUniverseCmd.Flags().Lookup("cpu-architecture"))
+	v1.BindPFlag("linux-version", createUniverseCmd.Flags().Lookup("linux-version"))
 	v1.BindPFlag("provider-code", createUniverseCmd.Flags().Lookup("provider-code"))
 	v1.BindPFlag("provider-name", createUniverseCmd.Flags().Lookup("provider-name"))
 	v1.BindPFlag("dedicated-nodes", createUniverseCmd.Flags().Lookup("dedicated-nodes"))
@@ -508,6 +563,7 @@ func init() {
 	v1.BindPFlag("enable-node-to-node-encrypt", createUniverseCmd.Flags().Lookup("enable-node-to-node-encrypt"))
 	v1.BindPFlag("enable-client-to-node-encrypt", createUniverseCmd.Flags().Lookup("enable-client-to-node-encrypt"))
 	v1.BindPFlag("root-ca", createUniverseCmd.Flags().Lookup("root-ca"))
+	v1.BindPFlag("client-root-ca", createUniverseCmd.Flags().Lookup("client-root-ca"))
 	v1.BindPFlag("enable-volume-encryption", createUniverseCmd.Flags().Lookup("enable-volume-encryption"))
 	v1.BindPFlag("kms-config", createUniverseCmd.Flags().Lookup("kms-config"))
 	v1.BindPFlag("enable-ipv6", createUniverseCmd.Flags().Lookup("enable-ipv6"))
@@ -529,6 +585,9 @@ func init() {
 	v1.BindPFlag("yql-server-rpc-port", createUniverseCmd.Flags().Lookup("yql-server-rpc-port"))
 	v1.BindPFlag("ysql-server-http-port", createUniverseCmd.Flags().Lookup("ysql-server-http-port"))
 	v1.BindPFlag("ysql-server-rpc-port", createUniverseCmd.Flags().Lookup("ysql-server-rpc-port"))
+	v1.BindPFlag("use-spot-instance", createUniverseCmd.Flags().Lookup("use-spot-instance"))
+	v1.BindPFlag("spot-price", createUniverseCmd.Flags().Lookup("spot-price"))
+	v1.BindPFlag("exposing-service", createUniverseCmd.Flags().Lookup("exposing-service"))
 
 }
 

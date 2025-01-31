@@ -193,11 +193,13 @@ _Next_, look at a direct `::text` typecast of the value that was inserted:
 select v::text from t where k = 1;
 ```
 It shows this:
+
 ```
             v
 -------------------------
  {{11,12,13},{21,22,23}}
 ```
+
 Notice that, apart from the fact that it has no whitespace, this representation is identical to the literal that defined the inserted array. It can therefore be used in this way.
 
 _Next_ check that the inserted array value has the expected properties:
@@ -349,7 +351,7 @@ create table laps(
     references trips(trip_start_ts, userid)
     match full on delete cascade on update restrict);
 ```
-**Note:** In PostgreSQL, the maximum number of values that an array of any dimensionality can hold is `(2^27 - 1)` (about 137 million). If you exceed this limit, then you get a clear _"54000: array size exceeds the maximum allowed (134217727)"_ error. This maps to the PL/pgSQL exception _"program_limit_exceeded"_. In PostgreSQL, array values are stored out of line. However, in the YugabyteDB YSQL subsystem, they are stored in line, just like, for example, a `json` or `jsonb` value. As a consequence, the maximum number of values that a YSQL array can accommodate is smaller than the PostgreSQL limit. Moreover, the actual YSQL limit depends on circumstances—and when it's exceeded you get a "time out" error. Experiment shows that the limit is about 30 million values. You can test this for yourself using [`array_fill()`](./functions-operators/array-fill/)) function.
+**Note:** In PostgreSQL, the maximum number of values that an array of any dimensionality can hold is `(2^27 - 1)` (about 137 million). If you exceed this limit, then you get a clear _"54000: array size exceeds the maximum allowed (134217727)"_ error. This maps to the PL/pgSQL exception _"program_limit_exceeded"_. In PostgreSQL, array values are stored out of line. However, in the YugabyteDB YSQL subsystem, they are stored in line, just like, for example, a `json` or `jsonb` value. As a consequence, the maximum number of values that a YSQL array can accommodate is smaller than the PostgreSQL limit. Moreover, the actual YSQL limit depends on circumstances—and when it's exceeded you get a "time out" error. Experiment shows that the limit is about 30 million values. You can test this for yourself using [array_fill()](functions-operators/array-fill/)) function.
 
 With about 100,000 GPS data points, a 300 km trip is easily accommodated.
 

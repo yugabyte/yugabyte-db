@@ -1012,7 +1012,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
   RETURN_NOT_OK(FlushTestTable());
 
   // Split tablet should crash before creating either tablet
-  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_creating_single_split_tablet", "1.0"));
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_registering_split_tablets", "1.0"));
 
   // Retrieve split key from a leader peer
   if (split_partition_key) {
@@ -1027,7 +1027,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
   }
 
   RETURN_NOT_OK(RestartAllMasters(cluster_.get()));
-  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_creating_single_split_tablet", "0.0"));
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_registering_split_tablets", "0.0"));
 
   if (change_split_boundary) {
     RETURN_NOT_OK(WriteRows(kNumRows * 2, kNumRows));

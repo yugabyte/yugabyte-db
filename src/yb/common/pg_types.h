@@ -13,9 +13,10 @@
 
 #pragma once
 
-#include <boost/functional/hash/hash.hpp>
-
 #include "yb/common/entity_ids.h"
+#include "yb/common/schema.h"
+
+#include "yb/util/hash_util.h"
 
 namespace yb {
 
@@ -56,6 +57,10 @@ struct PgObjectId {
     return GetPgsqlTablespaceId(object_oid);
   }
 
+  NamespaceId GetYbNamespaceId() const {
+    return GetPgsqlNamespaceId(database_oid);
+  }
+
   std::string ToString() const;
 
   template <class PB>
@@ -73,6 +78,15 @@ struct PgObjectId {
   static TableId GetYbTableIdFromPB(const PB& pb) {
     return FromPB(pb).GetYbTableId();
   }
+
+  template <class PB>
+  static NamespaceId GetYbNamespaceIdFromPB(const PB& pb) {
+    return FromPB(pb).GetYbNamespaceId();
+  }
+
+  constexpr std::strong_ordering operator<=>(const PgObjectId&) const = default;
+
+  YB_STRUCT_DEFINE_HASH(PgObjectId, database_oid, object_oid);
 };
 
 using PgObjectIdHash = boost::hash<PgObjectId>;
@@ -81,21 +95,19 @@ inline std::ostream& operator<<(std::ostream& out, const PgObjectId& id) {
   return out << id.ToString();
 }
 
-inline bool operator==(const PgObjectId& lhs, const PgObjectId& rhs) {
-  return lhs.database_oid == rhs.database_oid && lhs.object_oid == rhs.object_oid;
-}
+// A struct for complete PG table names.
+struct YsqlFullTableName {
+  NamespaceName namespace_name;
+  PgSchemaName schema_name;
+  TableName table_name;
 
-inline bool operator<(const PgObjectId& lhs, const PgObjectId& rhs) {
-  return lhs.database_oid == rhs.database_oid
-      ? (lhs.object_oid < rhs.object_oid)
-      : (lhs.database_oid < rhs.database_oid);
-}
+  bool operator==(const YsqlFullTableName& other) const = default;
 
-inline size_t hash_value(const PgObjectId& id) {
-  size_t value = 0;
-  boost::hash_combine(value, id.database_oid);
-  boost::hash_combine(value, id.object_oid);
-  return value;
-}
+  YB_STRUCT_DEFINE_HASH(YsqlFullTableName, namespace_name, schema_name, table_name);
+
+  std::string ToString() const;
+};
+
+using YsqlFullTableNameHash = boost::hash<YsqlFullTableName>;
 
 }  // namespace yb

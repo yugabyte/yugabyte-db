@@ -6,7 +6,6 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -603,7 +602,7 @@ public class ApiUtils {
   }
 
   public static UserIntent getTestUserIntent(Region r, Provider p, InstanceType i, int numNodes) {
-    return getTestUserIntent(r, p, i, numNodes, 100, 0);
+    return getTestUserIntent(r, p, i, numNodes, 100, 50);
   }
 
   public static UserIntent getTestUserIntent(
@@ -710,7 +709,7 @@ public class ApiUtils {
       UUID azUUID,
       boolean isMultiAz) {
     NodeDetails node =
-        KubernetesTaskBase.getKubernetesNodeName(
+        KubernetesUtil.getKubernetesNodeName(
             partition, zone, isMaster ? ServerType.MASTER : ServerType.TSERVER, isMultiAz, false);
     node.nodeUuid = UUID.randomUUID();
     node.cloudInfo = new CloudSpecificInfo();

@@ -11,7 +11,11 @@ import {
 } from '../components/xcluster/constants';
 import { ApiTimeout } from '../redesign/helpers/api';
 import { MetricsQueryParams, YBPTask } from '../redesign/helpers/dtos';
-import { XClusterConfig } from '../components/xcluster/dtos';
+import {
+  XClusterConfig,
+  XClusterConfigNeedBootstrapPerTableResponse,
+  XClusterConfigNeedBootstrapPerTableSimpleResponse
+} from '../components/xcluster/dtos';
 
 // TODO: Move this out of the /actions folder since these functions aren't Redux actions.
 
@@ -46,7 +50,7 @@ export interface CreateXClusterConfigRequest {
 
   bootstrapParams?: {
     tables: string[];
-    allowBootstrapping: boolean;
+    allowBootstrap: boolean;
     backupRequestParams: {
       storageConfigUUID: string;
     };
@@ -59,7 +63,7 @@ export interface EditXClusterConfigTablesRequest {
   autoIncludeIndexTables?: boolean;
   bootstrapParams?: {
     tables: string[];
-    allowBootstrapping: boolean;
+    allowBootstrap: boolean;
     backupRequestParams: {
       storageConfigUUID: string;
     };
@@ -79,7 +83,12 @@ export function createXClusterConfig(createxClusterConfigRequest: CreateXCluster
 export function restartXClusterConfig(
   xClusterUUID: string,
   tables: string[],
-  bootstrapParams: { backupRequestParams: any }
+  bootstrapParams: {
+    allowBootstrap: boolean;
+    backupRequestParams: {
+      storageConfigUUID: string;
+    };
+  }
 ) {
   const customerId = localStorage.getItem('customerId');
   return axios
@@ -90,47 +99,36 @@ export function restartXClusterConfig(
     .then((response) => response.data);
 }
 
-export function isBootstrapRequired(
-  sourceUniverseUUID: string,
-  targetUniverseUUID: string | null,
-  tableUUIDs: string[],
-  configType: XClusterConfigType = XClusterConfigType.BASIC
+export function isBootstrapRequired<TIncludeDetails extends boolean>(
+  sourceUniverseUuid: string,
+  targetUniverseUuid: string | null,
+  tableUuids: string[],
+  configType: XClusterConfigType,
+  includeDetails: TIncludeDetails
 ) {
   const customerId = localStorage.getItem('customerId');
   return axios
-    .post<{ [tableUUID: string]: boolean }>(
-      `${ROOT_URL}/customers/${customerId}/universes/${sourceUniverseUUID}/need_bootstrap`,
+    .post<
+      TIncludeDetails extends true
+        ? XClusterConfigNeedBootstrapPerTableResponse
+        : XClusterConfigNeedBootstrapPerTableSimpleResponse
+    >(
+      `${ROOT_URL}/customers/${customerId}/universes/${sourceUniverseUuid}/need_bootstrap`,
       {
-        tables: tableUUIDs,
-        targetUniverseUUID
+        tables: tableUuids,
+        targetUniverseUUID: targetUniverseUuid
       },
-      { params: { configType } }
+      { params: { configType, includeDetails } }
     )
     .then((response) => response.data);
 }
 
-export function isCatchUpBootstrapRequired(
-  xClusterConfigUUID: string | undefined,
-  tableUUIDs: string[] | undefined
-) {
-  const customerId = localStorage.getItem('customerId');
-  if (tableUUIDs && xClusterConfigUUID) {
-    return axios
-      .post<{ [tableUUID: string]: boolean }>(
-        `${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}/need_bootstrap`,
-        { tables: tableUUIDs }
-      )
-      .then((response) => response.data);
-  }
-  const errorMsg = xClusterConfigUUID ? 'No table UUIDs provided' : 'No xCluster UUID provided';
-  return Promise.reject(`Querying bootstrap requirement failed: ${errorMsg}.`);
-}
-
-export function fetchXClusterConfig(xClusterConfigUUID: string) {
+export function fetchXClusterConfig(xClusterConfigUUID: string, syncWithDb?: boolean) {
   const customerId = localStorage.getItem('customerId');
   return axios
     .get<XClusterConfig>(
-      `${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}`
+      `${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}`,
+      { params: { syncWithDB: syncWithDb } }
     )
     .then((response) => response.data);
 }
@@ -178,13 +176,20 @@ export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
  * The purpose of the sync API is to reconcile changes to an xCluster config as a
  * result of yb-admin commands.
  */
-export function syncXClusterConfigWithDB(replicationGroupName: string, targetUniverseUUID: string) {
+export function syncXClusterConfigWithDB(
+  xClusterConfigUuid: string,
+  replicationGroupName: string,
+  targetUniverseUUID: string
+) {
   const customerUUID = localStorage.getItem('customerId');
   return axios
-    .post<YBPTask>(`${ROOT_URL}/customers/${customerUUID}/xcluster_configs/sync`, {
-      replicationGroupName: replicationGroupName,
-      targetUniverseUUID: targetUniverseUUID
-    })
+    .post<YBPTask>(
+      `${ROOT_URL}/customers/${customerUUID}/xcluster_configs/${xClusterConfigUuid}/sync`,
+      {
+        replicationGroupName: replicationGroupName,
+        targetUniverseUUID: targetUniverseUUID
+      }
+    )
     .then((response) => response.data);
 }
 
@@ -331,7 +336,7 @@ export function fetchTaskUntilItCompletes(
       }
       if (status === 'Failed' || status === 'Failure') {
         onTaskCompletion(true, resp);
-      } else if (percent === 100) {
+      } else if (percent === 100 && status === 'Success') {
         onTaskCompletion(false, resp.data);
       } else {
         setTimeout(retryTask, interval);

@@ -12,9 +12,11 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -33,9 +35,8 @@ import lombok.extern.slf4j.Slf4j;
 @Singleton
 @Slf4j
 public class LocalNodeUniverseManager {
-
-  private static final String YSQL_PASSWORD = "Pass@123";
   @Inject LocalNodeManager localNodeManager;
+  @Inject YcqlQueryExecutor ycqlQueryExecutor;
 
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
@@ -49,6 +50,38 @@ public class LocalNodeUniverseManager {
       String ysqlCommand,
       long timeoutSec,
       boolean authEnabled) {
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        timeoutSec,
+        authEnabled,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
+        false);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled) {
+    return runYsqlCommand(
+        node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled, false);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled,
+      boolean escaped) {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     LocalCloudInfo cloudInfo = LocalNodeManager.getCloudInfo(node, universe);
     List<String> bashCommand = new ArrayList<>();
@@ -60,19 +93,26 @@ public class LocalNodeUniverseManager {
       bashCommand.add(
           String.format(
               "%s/.yb.%s:%s",
-              customTmpDirectory, node.cloudInfo.private_ip, node.ysqlServerRpcPort));
+              customTmpDirectory,
+              node.cloudInfo.private_ip,
+              cpEnabled ? node.internalYsqlServerRpcPort : node.ysqlServerRpcPort));
     } else {
       bashCommand.add(node.cloudInfo.private_ip);
     }
-    bashCommand.add("-t");
     bashCommand.add("-p");
-    bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
+    if (cpEnabled) {
+      bashCommand.add(String.valueOf(node.internalYsqlServerRpcPort));
+    } else {
+      bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
+    }
     bashCommand.add("-U");
     bashCommand.add("yugabyte");
     bashCommand.add("-d");
     bashCommand.add(dbName);
     bashCommand.add("-c");
-    ysqlCommand = ysqlCommand.replace("\"", "");
+    if (!escaped) {
+      ysqlCommand = ysqlCommand.replace("\"", "");
+    }
     bashCommand.add(ysqlCommand);
 
     ProcessBuilder processBuilder =
@@ -97,6 +137,15 @@ public class LocalNodeUniverseManager {
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  public JsonNode runYcqlCommand(
+      Universe universe,
+      Boolean authEnabled,
+      String userName,
+      String password,
+      RunQueryFormData query) {
+    return ycqlQueryExecutor.executeQuery(universe, query, authEnabled, userName, password);
   }
 
   public ShellResponse executeNodeAction(

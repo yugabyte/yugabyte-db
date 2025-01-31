@@ -256,7 +256,7 @@ Status TableCache::DoGetTableReaderForIterator(
     bool skip_filters) {
   const bool create_new_table_reader =
       (for_compaction && ioptions_.new_table_reader_for_compaction_inputs);
-  if (create_new_table_reader) {
+  if (create_new_table_reader || options.query_id == kNoCacheQueryId) {
     unique_ptr<TableReader> table_reader_unique_ptr;
     Status s = DoGetTableReader(
         env_options, icomparator, fd, /* sequential mode */ true,
@@ -265,13 +265,14 @@ Status TableCache::DoGetTableReaderForIterator(
       return s;
     }
     trwh->table_reader = table_reader_unique_ptr.release();
+    trwh->created_new = true;
   } else {
     *trwh = VERIFY_RESULT(GetTableReader(
         env_options, icomparator, fd, options.query_id,
         /* no_io =*/ options.read_tier == kBlockCacheTier, file_read_hist, skip_filters,
         options.statistics));
+    trwh->created_new = false;
   }
-  trwh->created_new = create_new_table_reader;
   return Status::OK();
 }
 
@@ -292,6 +293,21 @@ InternalIterator* TableCache::NewIterator(
   return DoNewIterator(options, trwh, filter, for_compaction, arena, skip_filters);
 }
 
+namespace {
+
+template <typename IteratorType>
+void RegisterIteratorCleanup(
+    Cache* cache, TableCache::TableReaderWithHandle* trwh, IteratorType* iter) {
+  if (trwh->created_new) {
+    DCHECK(trwh->handle == nullptr);
+    iter->RegisterCleanup(&DeleteTableReader, trwh->table_reader, nullptr);
+  } else if (trwh->handle != nullptr) {
+    iter->RegisterCleanup(&UnrefEntry, cache, trwh->handle);
+  }
+}
+
+} // namespace
+
 InternalIterator* TableCache::DoNewIterator(
     const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter,
     bool for_compaction, Arena* arena, bool skip_filters) {
@@ -300,12 +316,7 @@ InternalIterator* TableCache::DoNewIterator(
   InternalIterator* result =
       trwh->table_reader->NewIterator(options, arena, skip_filters);
 
-  if (trwh->created_new) {
-    DCHECK(trwh->handle == nullptr);
-    result->RegisterCleanup(&DeleteTableReader, trwh->table_reader, nullptr);
-  } else if (trwh->handle != nullptr) {
-    result->RegisterCleanup(&UnrefEntry, cache_, trwh->handle);
-  }
+  RegisterIteratorCleanup(cache_, trwh, result);
 
   if (for_compaction) {
     trwh->table_reader->SetupForCompaction();
@@ -323,18 +334,19 @@ InternalIterator* TableCache::DoNewIterator(
 InternalIterator* TableCache::NewIndexIterator(
     const ReadOptions& options, TableReaderWithHandle* trwh) {
   RecordTick(ioptions_.statistics, NO_TABLE_CACHE_ITERATORS);
-
   InternalIterator* result = trwh->table_reader->NewIndexIterator(options);
-
-  if (trwh->created_new) {
-    DCHECK(trwh->handle == nullptr);
-    result->RegisterCleanup(&DeleteTableReader, trwh->table_reader, nullptr);
-  } else if (trwh->handle != nullptr) {
-    result->RegisterCleanup(&UnrefEntry, cache_, trwh->handle);
-  }
-
+  RegisterIteratorCleanup(cache_, trwh, result);
   trwh->Release();
+  return result;
+}
 
+DataBlockAwareIndexInternalIterator* TableCache::NewDataBlockAwareIndexIterator(
+    const ReadOptions& options, TableReaderWithHandle* trwh) {
+  RecordTick(ioptions_.statistics, NO_TABLE_CACHE_ITERATORS);
+  DataBlockAwareIndexInternalIterator* result =
+      trwh->table_reader->NewDataBlockAwareIndexIterator(options);
+  RegisterIteratorCleanup(cache_, trwh, result);
+  trwh->Release();
   return result;
 }
 

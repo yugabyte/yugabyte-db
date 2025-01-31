@@ -159,12 +159,11 @@ Today, this is done by backing up the source universe and restoring it to the ta
 
 Ongoing work, [#17862](https://github.com/yugabyte/yugabyte-db/issues/17862), will replace using backup and restore here with directly copying RocksDB files between the source and target universes.  This will be more performant and flexible and remove the need for external storage like S3 to set up replication.
 
-
 ## Supported deployment scenarios
 
 xCluster currently supports active-active single-master and active-active multi-master deployments.
 
-### Active- active single-master
+### Active-active single-master
 
 Here the replication is unidirectional from a source universe to a target universe. The target universe is typically located in data centers or regions that are different from the source universe. The source universe can serve both reads and writes. The target universe can only serve reads. Since only the nodes in one universe can take writes this mode is referred to as single master. Note that within the source universe all nodes can serve writes.
 
@@ -258,7 +257,7 @@ When the source universe is lost, an explicit decision must be made to switch ov
 ### DDL changes
 
 - Currently, DDL changes are not automatically replicated.  Applying commands such as `CREATE TABLE`, `ALTER TABLE`, and `CREATE INDEX` to the target universes is your responsibility.
-- `DROP TABLE` is not supported.  You must first disable replication for this table.
+- `DROP TABLE` is not supported in YCQL.  You must first disable replication for this table.
 - `TRUNCATE TABLE` is not supported.  This is an underlying limitation, due to the level at which the two features operate.  That is, replication is implemented on top of the Raft WAL files, while truncate is implemented on top of the RocksDB SST files.
 - In the future, it will be possible to propagate DDL changes safely to other universes.  This is tracked in [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
 
@@ -266,6 +265,10 @@ When the source universe is lost, an explicit decision must be made to switch ov
 
 - Technically, xCluster replication can be set up with Kubernetes-deployed universes.  However, the source and target must be able to communicate by directly referencing the pods in the other universe.  In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
 - Being able to have two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported, as per [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
+
+### Backups
+
+Backups are supported. However for backups on target clusters, if there is an active workload, consistency of the latest data is not guaranteed.
 
 ## Cross-feature interactions
 

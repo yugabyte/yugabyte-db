@@ -28,7 +28,7 @@ DocDB has adopted an optimized form of row storage as of v2.20. For details, see
 
 The keys in a DocDB document model are compound keys consisting of zero or more hash-organized components followed by zero or more ordered (range) components. These components are stored in their data type-specific sort order, with both ascending and descending sort order supported for each ordered component of the key.  If any hash columns are present then they are preceded by a 16-bit hash of the hash column values.
 
-If [colocation](../../docdb-sharding/colocated-tables/) is used, then the key is prefixed with the colocation ID of the table it is referring to (not shown in the diagram); this separates data from different tables colocated in the same tablet.
+If [colocation](../../../explore/colocation/) is used, then the key is prefixed with the colocation ID of the table it is referring to (not shown in the diagram); this separates data from different tables colocated in the same tablet.
 
 ## DocDB value
 

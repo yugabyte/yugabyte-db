@@ -95,11 +95,7 @@ Result<string> PgWrapperTestBase::RunYbAdminCommand(const string& cmd) {
     " --master_addresses " + cluster_->GetMasterAddresses() +
     " " + cmd;
   LOG(INFO) << "Running " << command;
-  string output;
-  if (RunShellProcess(command, &output)) {
-    return output;
-  }
-  return STATUS_FORMAT(RuntimeError, "Failed to execute $0 command", yb_admin);
+  return RunShellProcess(command);
 }
 
 namespace {
@@ -125,7 +121,7 @@ Result<std::string> PgCommandTestBase::RunPsqlCommand(
   vector<string> argv{
       GetPostgresInstallRoot() + "/bin/ysqlsh",
       "-h", pg_ts->bind_host(),
-      "-p", std::to_string(pg_ts->pgsql_rpc_port()),
+      "-p", std::to_string(pg_ts->ysql_port()),
       "-U", "yugabyte",
       "-f", tmp_file_name
   };
@@ -145,15 +141,33 @@ Result<std::string> PgCommandTestBase::RunPsqlCommand(
     argv.push_back("-t");
   }
 
-  LOG(INFO) << "Run tool: " << yb::ToString(argv);
-  Subprocess proc(argv.front(), argv);
-  if (use_auth_) {
-    proc.SetEnv("PGPASSWORD", "yugabyte");
-  }
-
-  string psql_stdout;
+  std::string psql_stdout;
   LOG(INFO) << "Executing statement: " << statement;
-  RETURN_NOT_OK(proc.Call(&psql_stdout));
+  // Postgres might not yet be ready, so retry a few times.
+  for (int retry = 0;;) {
+    LOG(INFO) << "Retry: " << retry << ", run tool: " << AsString(argv);
+    Subprocess proc(argv.front(), argv);
+    if (use_auth_) {
+      proc.SetEnv("PGPASSWORD", "yugabyte");
+    }
+
+    psql_stdout.clear();
+    std::string psql_stderr;
+    auto status = proc.Call(&psql_stdout, &psql_stderr);
+    if (status.ok()) {
+      break;
+    }
+    if (++retry < 10 && status.IsRuntimeError() &&
+        (psql_stderr.find("Connection refused") != std::string::npos ||
+         psql_stderr.find("the database system is starting up") != std::string::npos ||
+         psql_stderr.find(
+             "the database system is not yet accepting connections") != std::string::npos)) {
+      std::this_thread::sleep_for(250ms * kTimeMultiplier);
+      continue;
+    }
+    LOG(WARNING) << "Stderr: " << psql_stderr;
+    return status;
+  }
   LOG(INFO) << "Output from statement {{ " << statement << " }}:\n"
             << psql_stdout;
 

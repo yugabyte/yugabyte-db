@@ -1,0 +1,12 @@
+title: RoleResourceDefinition.
+description: Defines the association of Role to Resource Groups. Part of AuthGroupToRolesMapping.
+type: object
+required:
+  - role_uuid
+properties:
+  role_uuid:
+    description: UUID of the role to attach resource group to.
+    type: string
+    format: uuid
+  resource_group:
+    $ref: "./ResourceGroup.yaml"

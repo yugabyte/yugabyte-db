@@ -1,0 +1,208 @@
+Table name: test_table
+- Table information:
+|Table Name        |Table Groupname |Colocated |
++------------------+----------------+----------+
+|public.test_table |                |false     |
+
+- Columns:
+|Column      |Type                     |Collation |Nullable |Default           |Storage  |Stats Target |Description |
++------------+-------------------------+----------+---------+------------------+---------+-------------+------------+
+|id          |integer                  |          |not null |                  |plain    |             |            |
+|name        |character varying(100)   |          |not null |                  |extended |             |            |
+|description |text                     |          |         |                  |extended |             |            |
+|updated_at  |timestamp with time zone |          |         |CURRENT_TIMESTAMP |plain    |             |            |
+|is_active   |boolean                  |          |         |true              |plain    |             |            |
+|price       |numeric(10,2)            |          |         |                  |main     |             |            |
+
+- Indexes:
+|Name                          |Index Definition                                                                                          |Constraint Definition    |
++------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------+
+|test_table_pkey               |CREATE UNIQUE INDEX test_table_pkey ON ONLY test_table USING lsm (id HASH)                                |PRIMARY KEY (id)         |
+|test_table_id_description_key |CREATE UNIQUE INDEX test_table_id_description_key ON ONLY test_table USING lsm (id HASH, description ASC) |UNIQUE (id, description) |
+|idx_test_table_name           |CREATE INDEX idx_test_table_name ON ONLY test_table USING lsm (name HASH)                                 |                         |
+
+- Check constraints:
+|Name                 |Constraint Definition       |
++---------------------+----------------------------+
+|check_price_positive |CHECK (price >= 0::numeric) |
+
+- Policies:
+|Name        |Type       |Applicable Roles |USING Expression   |With CHECK Expression |Applicable Command |
++------------+-----------+-----------------+-------------------+----------------------+-------------------+
+|test_policy |Permissive |ALL ROLES        |(is_active = true) |                      |SELECT             |
+
+- Rules:
+|Name      |Rule Definition                                                                                                                         |
++----------+----------------------------------------------------------------------------------------------------------------------------------------+
+|test_rule |CREATE RULE test_rule AS     ON DELETE TO test_table DO INSTEAD  UPDATE test_table SET is_active = false   WHERE test_table.id = old.id |
+
+
+============================================================
+
+Table name: foreign_test_table
+- Table information:
+|Table Name                |Table Groupname |Colocated |
++--------------------------+----------------+----------+
+|public.foreign_test_table |                |false     |
+
+- Columns:
+|Column |Type                   |Collation |Nullable |Default |Storage  |Stats Target |Description |
++-------+-----------------------+----------+---------+--------+---------+-------------+------------+
+|id     |integer                |          |         |        |plain    |             |            |
+|name   |character varying(100) |          |         |        |extended |             |            |
+
+- Foreign table information:
+|Server Name    |FDW Options                                          |
++---------------+-----------------------------------------------------+
+|foreign_server |schema_name 'public', table_name 'remote_test_table' |
+
+
+============================================================
+
+Table name: test_sequence
+- Table information:
+|Table Name           |Table Groupname |Colocated |
++---------------------+----------------+----------+
+|public.test_sequence |                |false     |
+
+- Sequence details:
+|Type   |Start |Minimum |Maximum |Increment |Cycles? |Cache |
++-------+------+--------+--------+----------+--------+------+
+|bigint |1000  |1000    |9999    |1         |no      |100   |
+
+- Sequence owner:
+|Owned By             |
++---------------------+
+|public.test_table.id |
+
+- Columns:
+|Column     |Type    |Collation |Nullable |Default |Storage |Stats Target |Description |
++-----------+--------+----------+---------+--------+--------+-------------+------------+
+|last_value |bigint  |          |not null |        |plain   |             |            |
+|log_cnt    |bigint  |          |not null |        |plain   |             |            |
+|is_called  |boolean |          |not null |        |plain   |             |            |
+
+
+============================================================
+
+Table name: test_table_partition
+- Table information:
+|Table Name                  |Table Groupname |Colocated |
++----------------------------+----------------+----------+
+|public.test_table_partition |                |false     |
+
+- Columns:
+|Column      |Type                     |Collation |Nullable |Default           |Storage  |Stats Target |Description |
++------------+-------------------------+----------+---------+------------------+---------+-------------+------------+
+|id          |integer                  |          |not null |                  |plain    |             |            |
+|name        |character varying(100)   |          |not null |                  |extended |             |            |
+|description |text                     |          |         |                  |extended |             |            |
+|updated_at  |timestamp with time zone |          |         |CURRENT_TIMESTAMP |plain    |             |            |
+|is_active   |boolean                  |          |         |true              |plain    |             |            |
+|price       |numeric(10,2)            |          |         |                  |main     |             |            |
+
+- Partition information:
+|inhparent  |pg_get_expr                |pg_get_partition_constraintdef                |
++-----------+---------------------------+----------------------------------------------+
+|test_table |FOR VALUES FROM (0) TO (5) |((id IS NOT NULL) AND (id >= 0) AND (id < 5)) |
+
+- Indexes:
+|Name                                    |Index Definition                                                                                                         |Constraint Definition    |
++----------------------------------------+-------------------------------------------------------------------------------------------------------------------------+-------------------------+
+|test_table_partition_pkey               |CREATE UNIQUE INDEX test_table_partition_pkey ON test_table_partition USING lsm (id HASH)                                |PRIMARY KEY (id)         |
+|test_table_partition_id_description_key |CREATE UNIQUE INDEX test_table_partition_id_description_key ON test_table_partition USING lsm (id HASH, description ASC) |UNIQUE (id, description) |
+|test_table_partition_name_idx           |CREATE INDEX test_table_partition_name_idx ON test_table_partition USING lsm (name HASH)                                 |                         |
+
+- Check constraints:
+|Name                 |Constraint Definition       |
++---------------------+----------------------------+
+|check_price_positive |CHECK (price >= 0::numeric) |
+
+- Referenced by:
+|Name                                 |Relation Name     |Constraint Definition                                           |
++-------------------------------------+------------------+----------------------------------------------------------------+
+|referencing_table_test_table_id_fkey |referencing_table |FOREIGN KEY (test_table_id) REFERENCES test_table_partition(id) |
+
+- Publications:
+|Name             |
++-----------------+
+|test_publication |
+
+- Triggers:
+|Name                     |Trigger Definition                                                                                                             |Trigger Status |Is Internal |
++-------------------------+-------------------------------------------------------------------------------------------------------------------------------+---------------+------------+
+|trigger_update_timestamp |CREATE TRIGGER trigger_update_timestamp BEFORE UPDATE ON test_table_partition FOR EACH ROW EXECUTE FUNCTION update_timestamp() |Enabled        |No          |
+
+
+============================================================
+
+Table name: referencing_table
+- Table information:
+|Table Name               |Table Groupname |Colocated |
++-------------------------+----------------+----------+
+|public.referencing_table |                |false     |
+
+- Columns:
+|Column        |Type    |Collation |Nullable |Default |Storage  |Stats Target |Description |
++--------------+--------+----------+---------+--------+---------+-------------+------------+
+|id            |integer |          |not null |        |plain    |             |            |
+|test_table_id |integer |          |         |        |plain    |             |            |
+|related_data  |text    |          |         |        |extended |             |            |
+
+- Indexes:
+|Name                               |Index Definition                                                                                          |Constraint Definition |
++-----------------------------------+----------------------------------------------------------------------------------------------------------+----------------------+
+|referencing_table_pkey             |CREATE UNIQUE INDEX referencing_table_pkey ON referencing_table USING lsm (id HASH)                       |PRIMARY KEY (id)      |
+|referencing_table_related_data_key |CREATE UNIQUE INDEX referencing_table_related_data_key ON referencing_table USING lsm (related_data HASH) |UNIQUE (related_data) |
+
+- Foreign-key constraints:
+|Name                                 |Constraint Definition                                           |
++-------------------------------------+----------------------------------------------------------------+
+|referencing_table_test_table_id_fkey |FOREIGN KEY (test_table_id) REFERENCES test_table_partition(id) |
+
+
+============================================================
+
+Table name: test_view
+- Table information:
+|Table Name       |Table Groupname |Colocated |
++-----------------+----------------+----------+
+|public.test_view |                |false     |
+
+- Columns:
+|Column |Type                   |Collation |Nullable |Default |Storage  |Stats Target |Description |
++-------+-----------------------+----------+---------+--------+---------+-------------+------------+
+|id     |integer                |          |         |        |plain    |             |            |
+|name   |character varying(100) |          |         |        |extended |             |            |
+
+- View definition:
+|View Definition                                                                                                                                   |
++--------------------------------------------------------------------------------------------------------------------------------------------------+
+| SELECT table_referenced_by_view.id,
+    table_referenced_by_view.name
+   FROM table_referenced_by_view
+  WHERE table_referenced_by_view.id >= 0; |
+
+
+============================================================
+
+Table name: table_referenced_by_view
+- Table information:
+|Table Name                      |Table Groupname |Colocated |
++--------------------------------+----------------+----------+
+|public.table_referenced_by_view |                |false     |
+
+- Columns:
+|Column |Type                   |Collation |Nullable |Default |Storage  |Stats Target |Description |
++-------+-----------------------+----------+---------+--------+---------+-------------+------------+
+|id     |integer                |          |not null |        |plain    |             |            |
+|name   |character varying(100) |          |         |        |extended |             |            |
+
+- Indexes:
+|Name                          |Index Definition                                                                                  |Constraint Definition |
++------------------------------+--------------------------------------------------------------------------------------------------+----------------------+
+|table_referenced_by_view_pkey |CREATE UNIQUE INDEX table_referenced_by_view_pkey ON table_referenced_by_view USING lsm (id HASH) |PRIMARY KEY (id)      |
+
+
+============================================================
+

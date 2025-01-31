@@ -3,7 +3,6 @@ title: Benchmark YugabyteDB
 headerTitle: Benchmark YugabyteDB
 linkTitle: Benchmark
 description: Benchmark YugabyteDB using TPC-C, sysbench, YCSB and more.
-image: /images/section_icons/explore/high_performance.png
 type: indexpage
 ---
 
@@ -13,7 +12,7 @@ Benchmarking is the process of evaluating the performance and capabilities of a 
 
 ## TPC-C (Transaction Processing Performance Council - Benchmark C)
 
-[TPC-C](http://www.tpc.org/tpcc/) is a widely recognized benchmark for testing the performance of transactional database systems. It simulates a complex OLTP (Online Transaction Processing) workload that involves a mix of different transactions like order creation, payment processing, and stock level checking. Benchmarking YugabyteDB using TPC-C helps assess its ability to handle a high volume of concurrent transactions, and maintain consistency and integrity.
+[TPC-C](http://www.tpc.org/tpcc/) is a widely recognized benchmark for testing the performance of transactional database systems. It simulates a complex OLTP (Online Transaction Processing) workload that involves a mix of different transactions like order creation, payment processing, and stock level checking. Benchmarking YugabyteDB using TPC-C helps assess its ability to handle a high volume of concurrent transactions and maintain consistency and integrity.
 
 {{<lead link="tpcc/">}}
 To test performance for concurrent transactions with TPC-C, see [TPC-C](tpcc/).

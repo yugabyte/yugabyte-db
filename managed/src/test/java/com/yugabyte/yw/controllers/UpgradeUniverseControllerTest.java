@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -102,6 +103,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -134,6 +136,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   private Config mockConfig;
   private CertificateHelper certificateHelper;
   private AutoFlagUtil mockAutoFlagUtil;
+  private GFlagsValidation mockGFlagsValidation;
   private XClusterUniverseService mockXClusterUniverseService;
   private CloudUtilFactory mockCloudUtilFactory;
 
@@ -196,6 +199,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     mockCommissioner = mock(Commissioner.class);
     mockConfig = mock(Config.class);
     mockAutoFlagUtil = mock(AutoFlagUtil.class);
+    mockGFlagsValidation = mock(GFlagsValidation.class);
     mockXClusterUniverseService = mock(XClusterUniverseService.class);
     mockCloudUtilFactory = mock(CloudUtilFactory.class);
     ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
@@ -218,6 +222,12 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     when(mockConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
     when(mockConfig.getString("ybc.compatible_db_version")).thenReturn("2.15.0.0-b1");
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    try {
+      when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+          .thenReturn(Optional.empty());
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
 
     return new GuiceApplicationBuilder()
         .configure(testDatabase())
@@ -227,6 +237,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
         .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
         .overrides(bind(AutoFlagUtil.class).toInstance(mockAutoFlagUtil))
+        .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
         .overrides(bind(XClusterUniverseService.class).toInstance(mockXClusterUniverseService))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
         .overrides(
@@ -1774,27 +1785,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verifyNoActions();
   }
 
-  @Test
-  public void testSystemdUpgradeOnpremWithManual() {
-    Universe onprem = ModelFactory.createUniverse("onprem", customer.getId(), CloudType.onprem);
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(onprem.getUniverseDetails().getPrimaryCluster().userIntent.provider));
-    provider.getDetails().skipProvisioning = true;
-    provider.save();
-    PlatformServiceException exception =
-        assertThrows(
-            PlatformServiceException.class,
-            () -> runUpgrade(onprem, p -> {}, SystemdUpgradeParams.class, "systemd"));
-    assertTrue(
-        exception
-            .getUserVisibleMessage()
-            .contains("Cannot upgrade systemd for manually provisioned universes"));
-    verifyNoActions();
-  }
-
   // Reboot
-
   @Test
   public void testRebootUniverse() {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RebootUniverse);

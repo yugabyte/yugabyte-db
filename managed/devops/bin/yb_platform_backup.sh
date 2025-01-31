@@ -84,10 +84,10 @@ docker_aware_cmd() {
 }
 
 run_sudo_cmd() {
-  if [[ "${USER}" = "root" ]]; then
-    $1
-  else
+  if sudo -n true 2>/dev/null; then
     sudo $1
+  else
+    $1
   fi
 }
 
@@ -96,11 +96,17 @@ set_prometheus_data_dir() {
   prometheus_host="$1"
   prometheus_port="$2"
   data_dir="$3"
+  prometheus_protocol="$4"
   if [[ "$DOCKER_BASED" = true ]]; then
     PROMETHEUS_DATA_DIR="${data_dir}/prometheusv2"
   else
-    PROMETHEUS_DATA_DIR=$(curl "http://${prometheus_host}:${prometheus_port}/api/v1/status/flags" |
-    ${PYTHON_EXECUTABLE} -c "import sys, json; print(json.load(sys.stdin)['data']['storage.tsdb.path'])")
+    curl_cmd="curl -k \
+      ${prometheus_protocol}://${prometheus_host}:${prometheus_port}/api/v1/status/flags"
+    if [[ -n "${PROMETHEUS_USERNAME:-}" ]] && [[ -n "${PROMETHEUS_PASSWORD:-}" ]]; then
+      curl_cmd="${curl_cmd} -u ${PROMETHEUS_USERNAME}:${PROMETHEUS_PASSWORD}"
+    fi
+    PROMETHEUS_DATA_DIR=$($curl_cmd | ${PYTHON_EXECUTABLE} -c \
+      "import sys, json; print(json.load(sys.stdin)['data']['storage.tsdb.path'])")
   fi
   if [[ -z "$PROMETHEUS_DATA_DIR" ]]; then
     echo "Failed to find prometheus data directory"
@@ -306,7 +312,7 @@ delete_db_backup() {
 }
 
 create_backup() {
-  now=$(date +"%y-%m-%d-%H-%M")
+  now=$(date -u +"%y-%m-%d-%H-%M")
   output_path="${1}"
   data_dir="${2}"
   exclude_prometheus="${3}"
@@ -323,6 +329,7 @@ create_backup() {
   plain_sql="${14}"
   ybdb="${15}"
   ysql_dump_path="${16}"
+  prometheus_protocol="${17}"
   include_releases_flag="**/releases/**"
   include_uploaded_releases_flag="**/upload/release_artifacts/**"
 
@@ -373,18 +380,20 @@ create_backup() {
   if [ "$disable_version_check" != true ]; then
 
     metadata_regex="**/yugaware/conf/${VERSION_METADATA}"
+    metadata_dir="${data_dir}"
+    target_dir="${data_dir}"
+    # Hardcode container values for replicated
+    if [[ "$DOCKER_BASED" = true ]]; then
+      metadata_dir="/opt/yugabyte"
+      target_dir="/opt/yugabyte/yugaware/data"
+    fi
     if [[ "${yba_installer}" = true ]]; then
       version=$(basename $(realpath ${data_dir}/software/active))
       metadata_regex="**/${version}/**/yugaware/conf/${VERSION_METADATA}"
     fi
-    version_path=$(docker_aware_cmd "yugaware" "find ${data_dir} -wholename ${metadata_regex}")
+    version_path=$(docker_aware_cmd "yugaware" "find ${metadata_dir} -wholename ${metadata_regex}")
 
-    # At least keep some default as a worst case.
-    if [ ! -f ${version_path} ] || [ -z ${version_path} ]; then
-      version_path="${data_dir}/yugaware/conf/${VERSION_METADATA}"
-    fi
-
-    command="cp ${version_path} ${data_dir}/${VERSION_METADATA_BACKUP}"
+    command="cp ${version_path} ${target_dir}/${VERSION_METADATA_BACKUP}"
     docker_aware_cmd "yugaware" "${command}"
   fi
 
@@ -425,9 +434,15 @@ create_backup() {
   if [[ "$exclude_prometheus" = false ]]; then
     trap 'run_sudo_cmd "rm -rf ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"' RETURN
     echo "Creating prometheus snapshot..."
-    set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${data_dir}"
-    snapshot_dir=$(curl -X POST "http://${prometheus_host}:${prometheus_port}/api/v1/admin/tsdb/snapshot" |
-      ${PYTHON_EXECUTABLE} -c "import sys, json; print(json.load(sys.stdin)['data']['name'])")
+    set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${data_dir}" \
+      "${prometheus_protocol}"
+    snapshot_cmd="curl -k -X POST \
+      ${prometheus_protocol}://${prometheus_host}:${prometheus_port}/api/v1/admin/tsdb/snapshot"
+    if [[ -n "${PROMETHEUS_USERNAME:-}" ]] && [[ -n "${PROMETHEUS_PASSWORD:-}" ]]; then
+      snapshot_cmd="${snapshot_cmd} -u ${PROMETHEUS_USERNAME}:${PROMETHEUS_PASSWORD}"
+    fi
+    snapshot_dir=$( $snapshot_cmd | ${PYTHON_EXECUTABLE} -c \
+      "import sys, json; print(json.load(sys.stdin)['data']['name'])")
     mkdir -p "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
     run_sudo_cmd "cp -aR ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir} \
     ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"
@@ -471,6 +486,7 @@ restore_backup() {
   ybai_data_dir="${16}"
   skip_old_files="${17}"
   skip_dump_check="${18}"
+  prometheus_protocol="${19}"
   prometheus_dir_regex="\.\/${PROMETHEUS_SNAPSHOT_DIR}\/[[:digit:]]{8}T[[:digit:]]{6}Z-[[:alnum:]]{16}\/$"
 
   # Perform K8s restore.
@@ -555,9 +571,9 @@ restore_backup() {
       ${VERSION_METADATA_BACKUP}"
       exit 1
     fi
-    tar -xzf ${input_path} -C ${K8S_BACKUP_DIR} ${backup_metadata_path}
+    tar -xzf ${input_path} -C ${destination} ${backup_metadata_path}
     set +e
-    backup_metadata_path=$(find ${K8S_BACKUP_DIR} -name ${VERSION_METADATA_BACKUP} | head -1)
+    backup_metadata_path=$(find ${destination} -name ${VERSION_METADATA_BACKUP} | head -1)
     set -e
     if [ ! -f ${backup_metadata_path} ] || [ -z ${backup_metadata_path} ]; then
       echo "could not find untarred ${VERSION_METADATA_BACKUP}"
@@ -634,35 +650,37 @@ restore_backup() {
       "${verbose}" "${yba_installer}" "${pgrestore_path}" "${skip_dump_check}"
   fi
 
-  # Restore prometheus data.
+  # Restore prometheus swamper targets on migration always
+  if [[ "${yba_installer}" = true ]] && [[ "${migration}" = true ]]; then
+    set +e
+    backup_targets=$(find "${untar_dir}" -name swamper_targets -type d)
+    set -e
+    if  [[ "$backup_targets" != "" ]] && [[ -d "$backup_targets" ]]; then
+      run_sudo_cmd "cp -Tr ${backup_targets} ${destination}/data/prometheus/swamper_targets"
+    fi
+    set +e
+    backup_rules=$(find "${untar_dir}" -name swamper_rules -type d)
+    set -e
+    if  [[ "$backup_rules" != "" ]] && [[ -d "$backup_rules" ]]; then
+      run_sudo_cmd "cp -Tr ${backup_rules} ${destination}/data/prometheus/swamper_rules"
+    fi
+    run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
+  fi
   set +e
   prom_snapshot=$(tar -tf "${input_path}" | grep -E $prometheus_dir_regex)
   set -e
   if [[ -n "$prom_snapshot" ]]; then
     echo "Restoring prometheus snapshot..."
-    set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${data_dir}"
+    set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${data_dir}" \
+      "${prometheus_protocol}"
     modify_service prometheus stop
     # Find snapshot directory in backup
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/*"
     run_sudo_cmd "mv ${untar_dir}/${prom_snapshot:2}* ${PROMETHEUS_DATA_DIR}"
-    if [[ "${yba_installer}" = true ]] && [[ "${migration}" = true ]]; then
-      set +e
-      backup_targets=$(find "${untar_dir}" -name swamper_targets -type d)
-      set -e
-      if  [[ "$backup_targets" != "" ]] && [[ -d "$backup_targets" ]]; then
-        run_sudo_cmd "cp -Tr ${backup_targets} ${destination}/data/prometheus/swamper_targets"
-      fi
-      set +e
-      backup_rules=$(find "${untar_dir}" -name swamper_rules -type d)
-      set -e
-      if  [[ "$backup_rules" != "" ]] && [[ -d "$backup_rules" ]]; then
-        run_sudo_cmd "cp -Tr ${backup_rules} ${destination}/data/prometheus/swamper_rules"
-      fi
+
+    if [[ "${yba_installer}" = true ]]; then
       run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
-    elif [[ "${yba_installer}" = true ]]; then
-      run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
-    fi
-    if [[ "$SERVICE_BASED" = true ]]; then
+    elif [[ "$SERVICE_BASED" = true ]]; then
       run_sudo_cmd "chown -R ${prometheus_user}:${prometheus_user} ${PROMETHEUS_DATA_DIR}"
     else
       run_sudo_cmd "chown -R ${NOBODY_UID}:${NOBODY_UID} ${PROMETHEUS_DATA_DIR}"
@@ -705,6 +723,21 @@ validate_k8s_args() {
   fi
 }
 
+validate_prometheus_args() {
+  if [[ $prometheus_protocol != "http" ]] && [[ $prometheus_protocol != "https" ]]; then
+    echo "Error: prometheus_protocol must be either http or https"
+    exit 1
+  fi
+  if [[ -n "${PROMETHEUS_USERNAME:-}" ]] && [[ -z "${PROMETHEUS_PASSWORD:-}" ]]; then
+    echo "Error: PROMETHEUS_USERNAME is set but PROMETHEUS_PASSWORD is not. Either both must be set or unset."
+    exit 1
+  fi
+  if [[ -z "${PROMETHEUS_USERNAME:-}" ]] && [[ -n "${PROMETHEUS_PASSWORD:-}" ]]; then
+    echo "Error: PROMETHEUS_PASSWORD is set but PROMETHEUS_USERNAME is not. Either both must be set or unset."
+    exit 1
+  fi
+}
+
 print_backup_usage() {
   echo "Create: ${SCRIPT_NAME} create [options]"
   echo "options:"
@@ -720,6 +753,7 @@ print_backup_usage() {
   echo "  -P, --db_port=PORT             postgres port (default: 5432)"
   echo "  -n, --prometheus_host=HOST     prometheus host (default: localhost)"
   echo "  -t, --prometheus_port=PORT     prometheus port (default: 9090)"
+  echo "  --prometheus_protocol          prometheus protocol (default: http)."
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
   echo "  --k8s_timeout                  kubernetes cp timeout duration (default: 30m)"
@@ -727,8 +761,10 @@ print_backup_usage() {
   echo "  --plain_sql                    output a plain-text SQL script from pg_dump"
   echo "  --ybdb                         ybdb backup (default: false)"
   echo "  --ysql_dump_path               path to ysql_sump to dump ybdb"
-  echo "  -?, --help                     show create help, then exit"
   echo "  --disable_version_check        disable the backup version check (default: false)"
+  echo "  -?, --help                     show create help, then exit"
+  echo
+  echo "NOTE: If prometheus authentication is enabled, PROMETHEUS_USERNAME and PROMETHEUS_PASSWORD environment variables must be set"
   echo
 }
 
@@ -746,6 +782,7 @@ print_restore_usage() {
   echo "  -n, --prometheus_host=HOST     prometheus host (default: localhost)"
   echo "  -t, --prometheus_port=PORT     prometheus port (default: 9090)"
   echo "  -e, --prometheus_user=USERNAME prometheus user (default: prometheus)"
+  echo "  --prometheus_protocol          prometheus protocol (default: http)."
   echo "  -U, --yba_user=USERNAME        yugabyte anywhere user (default: yugabyte)"
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
@@ -759,6 +796,8 @@ print_restore_usage() {
   echo "  --skip_old_files               skip old files when untarring backup"
   echo "  --skip_dump_check              skip pg dump empty check before restore (default: false)"
   echo "  -?, --help                     show restore help, then exit"
+  echo
+  echo "NOTE: If prometheus authentication is enabled, PROMETHEUS_USERNAME and PROMETHEUS_PASSWORD environment variables must be set"
   echo
 }
 
@@ -793,6 +832,7 @@ db_host=localhost
 db_port=5432
 prometheus_host=localhost
 prometheus_port=9090
+prometheus_protocol=http
 prometheus_user=prometheus
 k8s_namespace=""
 k8s_pod=""
@@ -834,7 +874,7 @@ case $command in
     while (( "$#" )); do
       case "$1" in
         -o|--output)
-          output_path=$2
+          output_path=$(realpath $2)
           shift 2
           ;;
         -m|--exclude_prometheus)
@@ -846,7 +886,7 @@ case $command in
           shift
           ;;
         -d|--data_dir)
-          data_dir=$2
+          data_dir=$(realpath $2)
           shift 2
           ;;
         -v|--verbose)
@@ -867,7 +907,7 @@ case $command in
           shift 2
           ;;
         -h|--db_host)
-          db_host=$2
+          db_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -P|--db_port)
@@ -879,11 +919,15 @@ case $command in
           shift
           ;;
         -n|--prometheus_host)
-          prometheus_host=$2
+          prometheus_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -t|--prometheus_port)
           prometheus_port=$2
+          shift 2
+          ;;
+        --prometheus_protocol)
+          prometheus_protocol=$2
           shift 2
           ;;
         --k8s_namespace)
@@ -903,11 +947,11 @@ case $command in
           shift
           ;;
         --pg_dump_path)
-          pgdump_path=$2
+          pgdump_path=$(realpath $2)
           shift 2
           ;;
         --pgpass_path)
-          pgpass_path=$2
+          pgpass_path=$(realpath $2)
           shift 2
           ;;
         --ybdb)
@@ -915,7 +959,7 @@ case $command in
           shift
           ;;
         --ysql_dump_path)
-          ysql_dump_path=$2
+          ysql_dump_path=$(realpath $2)
           shift 2
           ;;
         --disable_version_check)
@@ -936,6 +980,7 @@ case $command in
     done
 
     validate_k8s_args "${k8s_namespace}" "${k8s_pod}"
+    validate_prometheus_args
 
     if [[ "${pgpass_path}" != "" ]]; then
       export PGPASSFILE=${pgpass_path}
@@ -943,7 +988,7 @@ case $command in
     create_backup "$output_path" "$data_dir" "$exclude_prometheus" "$exclude_releases" \
     "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$prometheus_port" \
     "$k8s_namespace" "$k8s_pod" "$pgdump_path" "$plain_sql" "$ybdb" "$ysql_dump_path" \
-    "$disable_version_check"
+    "$prometheus_protocol"
     exit 0
     ;;
   restore)
@@ -959,15 +1004,15 @@ case $command in
     while (( "$#" )); do
       case "$1" in
         -i|--input)
-          input_path=$2
+          input_path=$(realpath $2)
           shift 2
           ;;
         -o|--destination)
-          destination=$2
+          destination=$(realpath $2)
           shift 2
           ;;
         -d|--data_dir)
-          data_dir=$2
+          data_dir=$(realpath $2)
           shift 2
           ;;
         -v|--verbose)
@@ -985,7 +1030,7 @@ case $command in
           shift 2
           ;;
         -h|--db_host)
-          db_host=$2
+          db_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -P|--db_port)
@@ -993,7 +1038,7 @@ case $command in
           shift 2
           ;;
         -n|--prometheus_host)
-          prometheus_host=$2
+          prometheus_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -t|--prometheus_port)
@@ -1002,6 +1047,10 @@ case $command in
           ;;
         -e|--prometheus_user)
           prometheus_user=$2
+          shift 2
+          ;;
+        --prometheus_protocol)
+          prometheus_protocol=$2
           shift 2
           ;;
         --k8s_namespace)
@@ -1027,11 +1076,11 @@ case $command in
           shift
           ;;
         --pg_restore_path)
-          pgrestore_path=$2
+          pgrestore_path=$(realpath $2)
           shift 2
           ;;
         --pgpass_path)
-          pgpass_path=$2
+          pgpass_path=$(realpath $2)
           shift 2
           ;;
         --ybdb)
@@ -1039,7 +1088,7 @@ case $command in
           shift
           ;;
         --ysqlsh_path)
-          ysqlsh_path=$2
+          ysqlsh_path=$(realpath $2)
           shift 2
           ;;
         --yugabundle)
@@ -1052,7 +1101,7 @@ case $command in
           shift
           ;;
         --ybai_data_dir)
-          ybai_data_dir=$2
+          ybai_data_dir=$(realpath $2)
           shift 2
           ;;
         -U|--yba_user)
@@ -1091,6 +1140,7 @@ case $command in
     fi
 
     validate_k8s_args "${k8s_namespace}" "${k8s_pod}"
+    validate_prometheus_args
 
     if [[ "${pgpass_path}" != "" ]]; then
       export PGPASSFILE=${pgpass_path}
@@ -1099,7 +1149,7 @@ case $command in
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
     "$prometheus_host" "$prometheus_port" "$data_dir" "$k8s_namespace" "$k8s_pod" \
     "$disable_version_check" "$pgrestore_path" "$ybdb" "$ysqlsh_path" "$ybai_data_dir" \
-    "$skip_old_files" "$skip_dump_check"
+    "$skip_old_files" "$skip_dump_check" "$prometheus_protocol"
     exit 0
     ;;
   *)

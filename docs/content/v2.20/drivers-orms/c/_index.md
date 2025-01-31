@@ -3,7 +3,6 @@ title: Build applications with C Drivers and ORMs
 headerTitle: C
 linkTitle: C
 description: C Drivers and ORMs support for YugabyteDB.
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.20:
     identifier: c-drivers
@@ -32,8 +31,8 @@ To develop C applications for YugabyteDB, you need the following:
   - gcc 4.1.2 or later, clang 3.4 or later installed.
 
 - **YugabyteDB cluster**
-  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/).
+  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/tutorials/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/).
 
 ## Next step
 

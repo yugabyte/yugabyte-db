@@ -105,9 +105,15 @@ Status ExecContext::PrepareChildTransaction(
 
   // Set the deadline to be the earlier of the input deadline and the current timestamp
   // plus the waiting time for the prepare child
-  auto future_deadline = std::min(
-      deadline,
-      CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cql_prepare_child_threshold_ms));
+  auto now = CoarseMonoClock::Now();
+  auto threshold = MonoDelta::FromMilliseconds(FLAGS_cql_prepare_child_threshold_ms);
+  CoarseTimePoint future_deadline;
+  // If timeout 2 times greater than threshold, then use half of timeout for create child.
+  if (threshold != MonoDelta::kZero && now + threshold * 2 < deadline) {
+    future_deadline = now + (deadline - now) / 2;
+  } else {
+    future_deadline = std::min(deadline, now + threshold);
+  }
 
   auto future_status = future.wait_until(future_deadline);
 

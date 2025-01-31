@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Use the `yb-tserver` binary and its flags to configure the [YB-TServer](../../../architecture/yb-tserver/) server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
+Use the yb-tserver binary and its flags to configure the [YB-TServer](../../../architecture/yb-tserver/) server. The yb-tserver executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
@@ -45,6 +45,10 @@ Displays help on all flags.
 
 Displays help on modules named by the specified flag value.
 
+## All flags
+
+The following sections describe the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-TServer flags](../all-flags-yb-tserver/).
+
 ## General flags
 
 ##### --flagfile
@@ -57,7 +61,7 @@ Shows version and build info, then exits.
 
 ##### --tserver_master_addrs
 
-Specifies a comma-separated list of all the `yb-master` RPC addresses.
+Specifies a comma-separated list of all the yb-master RPC addresses.
 
 Required.
 
@@ -67,7 +71,7 @@ The number of comma-separated values should match the total number of YB-Master 
 
 ##### --fs_data_dirs
 
-Specifies a comma-separated list of mount directories, where `yb-tserver` will add a `yb-data/tserver` data directory, `tserver.err`, `tserver.out`, and `pg_data` directory.
+Specifies a comma-separated list of mount directories, where yb-tserver will add a `yb-data/tserver` data directory, `tserver.err`, `tserver.out`, and `pg_data` directory.
 
 Required.
 
@@ -75,7 +79,7 @@ Changing the value of this flag after the cluster has already been created is no
 
 ##### --fs_wal_dirs
 
-Specifies a comma-separated list of directories, where `yb-tserver` will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
+Specifies a comma-separated list of directories, where yb-tserver will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
 
 Default: The same value as `--fs_data_dirs`
 
@@ -89,7 +93,7 @@ Default: `500000` (500,000 µs = 500ms)
 
 Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
 
-The values must match on all [`yb-master`](../yb-master/#rpc-bind-addresses) and `yb-tserver` configurations.
+The values must match on all [yb-master](../yb-master/#rpc-bind-addresses) and yb-tserver configurations.
 
 Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/tserver/conf/server.conf`. For example:
 
@@ -171,11 +175,17 @@ Location of the `.htpasswd` file containing usernames and hashed passwords, for 
 
 Default: `""`
 
+##### --time_source
+
+Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+
+Default: `""`
+
 ## Logging flags
 
 ##### --log_dir
 
-The directory to write `yb-tserver` log files.
+The directory to write yb-tserver log files.
 
 Default: The same as [`--fs_data_dirs`](#fs-data-dirs)
 
@@ -236,7 +246,7 @@ The memory division flags have multiple sets of defaults; which set of defaults 
 
 If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
-Default: `false`
+Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
 
 If this flag is true then the memory division flag defaults change to provide much more memory for Postgres; furthermore, they optimize for the node size.
 
@@ -322,7 +332,7 @@ Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-def
 
 ## Raft flags
 
-For a typical deployment, values used for Raft and the write ahead log (WAL) flags in `yb-tserver` configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
+For a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -342,7 +352,7 @@ Default: `true`
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
-For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+For read replica clusters, set the value to `10` in all yb-tserver and yb-master configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
 
@@ -372,11 +382,11 @@ Default: `500`
 
 ### Write ahead log (WAL) flags
 
-Ensure that values used for the write ahead log (WAL) in `yb-tserver` configurations match the values for `yb-master` configurations.
+Ensure that values used for the write ahead log (WAL) in yb-tserver configurations match the values for yb-master configurations.
 
 ##### --fs_wal_dirs
 
-The directory where the `yb-tserver` retains WAL files. May be the same as one of the directories listed in [`--fs_data_dirs`](#fs-data-dirs), but not a subdirectory of a data directory.
+The directory where the yb-tserver retains WAL files. May be the same as one of the directories listed in [`--fs_data_dirs`](#fs-data-dirs), but not a subdirectory of a data directory.
 
 Default: The same as `--fs_data_dirs`
 
@@ -438,13 +448,13 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
   - For servers with up to two CPU cores, the default value is considered as `4`.
   - For three or more CPU cores, the default value is considered as `8`.
 
-Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+Local cluster installations created using yb-ctl and yb-docker-ctl use a default value of `2` for this flag.
 
-Clusters created using `yugabyted` always use a default value of `1`.
+Clusters created using yugabyted always use a default value of `1`.
 
 {{< note title="Note" >}}
 
-- This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 - If the value is set to *Default* (`-1`), then the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
 - The [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used on a per-table basis to override the `yb_num_shards_per_tserver` value.
 
@@ -465,13 +475,13 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
   - For servers with three or four CPU cores, the default value is considered as `4`.
   - Beyond four cores, the default value is considered as `8`.
 
-Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+Local cluster installations created using yb-ctl and yb-docker-ctl use a default value of `2` for this flag.
 
-Clusters created using `yugabyted` always use a default value of `1`.
+Clusters created using yugabyted always use a default value of `1`.
 
 {{< note title="Note" >}}
 
-- This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 - If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
 - The [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
 
@@ -491,7 +501,7 @@ Default: `true`
 
 {{< note title="Important" >}}
 
-This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 
 {{< /note >}}
 
@@ -575,7 +585,7 @@ Default: `50`
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+For more details, see [clusters in colocated tables](../../../explore/colocation/).
 
 Default: `false`
 
@@ -669,13 +679,13 @@ Enables the YSQL API.
 
 Default: `true`
 
-Ensure that `enable_ysql` values in `yb-tserver` configurations match the values in `yb-master` configurations.
+Ensure that `enable_ysql` values in yb-tserver configurations match the values in yb-master configurations.
 
 ##### --ysql_enable_auth
 
 Enables YSQL authentication.
 
-When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte`.
+When YSQL authentication is enabled, you can sign into ysqlsh using the default `yugabyte` user that has a default password of `yugabyte`.
 
 Default: `false`
 
@@ -743,7 +753,7 @@ For example:
 --ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '","pgaudit.log='all, -misc'",pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
 ```
 
-For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
+For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
 
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL server options](#postgresql-server-options).
 
@@ -777,9 +787,21 @@ Specifies the default transaction isolation level.
 
 Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-Default: `READ COMMITTED` {{<badge/ea>}}
+Default: `READ COMMITTED` {{<tags/feature/ea>}}
 
-Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). [Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+
+##### --yb_enable_read_committed_isolation
+
+{{<tags/feature/ea>}} Enables Read Committed Isolation. By default this flag is false and in this case `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+
+Default: `false`
+
+##### --pg_client_use_shared_memory
+
+Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
+
+Default: `true`
 
 ##### --ysql_disable_index_backfill
 
@@ -813,7 +835,7 @@ Default: `100`
 
 ##### --ysql_yb_fetch_size_limit
 
-{{<badge/tp>}} Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
+{{<tags/feature/tp>}} Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
 
 You can also specify the value as a string. For example, you can set it to `'10MB'`.
 
@@ -827,7 +849,7 @@ Default: 0
 
 ##### --ysql_yb_fetch_row_limit
 
-{{<badge/tp>}} Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+{{<tags/feature/tp>}} Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
 You should have at least one of row limit or size limit set.
 
@@ -853,7 +875,39 @@ Default: `-1` (disables logging statement durations)
 
 ##### --ysql_log_min_messages
 
-Specifies the lowest YSQL message level to log.
+Specifies the [severity level](https://www.postgresql.org/docs/15/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) of messages to log.
+
+Default: `WARNING`
+
+##### --enable_pg_cron
+
+Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
+
+Default: `false`
+
+##### --ysql_cron_database_name
+
+Specifies the database where pg_cron is to be installed. You can create the database after setting the flag.
+
+The [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
+
+To change the database after the extension is created, you must first drop the extension and then change the flag value.
+
+##### --ysql_output_buffer_size
+
+Size of YSQL layer output buffer, in bytes. YSQL buffers query responses in this output buffer until either a buffer flush is requested by the client or the buffer overflows.
+
+As long as no data has been flushed from the buffer, the database can retry queries on retryable errors. For example, you can increase the size of the buffer so that YSQL can retry [read restart errors](../../../architecture/transactions/read-restart-error).
+
+Default: `262144` (256kB, type: int32)
+
+##### --ysql_yb_bnl_batch_size
+
+Sets the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 1024
 
 ### YCQL
 
@@ -1060,7 +1114,7 @@ To upgrade from an older version that doesn't support RPC compression (such as 2
 
 ## Security flags
 
-For details on enabling client-server encryption, see [Client-server encryption](../../../secure/tls-encryption/client-to-server/).
+For details on enabling encryption in transit, see [Encryption in transit](../../../secure/tls-encryption/).
 
 ##### --certs_dir
 
@@ -1068,17 +1122,17 @@ Directory that contains certificate authority, private key, and certificates for
 
 Default: `""` (Uses `<data drive>/yb-data/tserver/data/certs`.)
 
-##### --allow_insecure_connections
-
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
-
-Default: `true`
-
 ##### --certs_for_client_dir
 
 The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
 
-Default: `""` (Use the same directory as for server-to-server communications.)
+Default: `""` (Use the same directory as certs_dir.)
+
+##### --allow_insecure_connections
+
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
+
+Default: `true`
 
 ##### --dump_certificate_entries
 
@@ -1088,13 +1142,15 @@ Default: `false`
 
 ##### --use_client_to_server_encryption
 
-Use client-to-server, or client-server, encryption with YCQL.
+Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs.
 
 Default: `false`
 
 ##### --use_node_to_node_encryption
 
-Enable server-server or node-to-node encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
+Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [--use_node_to_node_encryption](../yb-master/#use-node-to-node-encryption) setting enabled.
+
+When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
 
 Default: `false`
 
@@ -1160,7 +1216,7 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 
 ## Packed row flags
 
-The packed row format for the YSQL API is {{<badge/ga>}} as of v2.20.0, and for the YCQL API is {{<badge/tp>}}.
+The packed row format for the YSQL API is {{<tags/feature/ga>}} as of v2.20.0, and for the YCQL API is {{<tags/feature/tp>}}.
 
 To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
 
@@ -1280,13 +1336,71 @@ Default: `102400`
 
 The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
 
-Default: `14400000` (4 hours)
+Default: `28800000` (8 hours)
+
+##### --cdc_wal_retention_time_secs
+
+WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
+
+Default: `28800` (8 hours)
 
 ##### --cdcsdk_table_processing_limit_per_run
 
 Number of tables to be added to the stream ID per run of the background thread which adds newly created tables to the active streams on its namespace.
 
 Default: `2`
+
+The following set of flags are only relevant for CDC using the PostgreSQL replication protocol. To learn about CDC using the PostgreSQL replication protocol, see [CDC using logical replication](../../../architecture/docdb-replication/cdc-logical-replication).
+
+##### --ysql_yb_default_replica_identity
+
+The default replica identity to be assigned to user defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`,`'NOTHING` and `CHANGE`.
+
+Default: `CHANGE`
+
+##### --cdcsdk_enable_dynamic_table_support
+
+Tables created after the creation of a replication slot are referred as Dynamic tables. This flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
+
+Default: `true`
+
+##### --cdcsdk_publication_list_refresh_interval_secs
+
+Interval in seconds at which the table list in the publication will be refreshed.
+
+Default: `3600`
+
+##### --cdc_stream_records_threshold_size_bytes
+
+Maximum size (in bytes) of changes from a tablet sent from the CDC service to the gRPC connector when using the gRPC replication protocol.
+
+Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol. 
+
+Default: `4194304` (4MB)
+
+##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
+
+Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
+
+Default: `1 MB`
+
+##### --ysql_cdc_active_replication_slot_window_ms
+
+Determines the window in milliseconds in which if a client has consumed the changes of a ReplicationSlot across any tablet, then it is considered to be actively used. ReplicationSlots which haven't been used in this interval are considered to be inactive.
+
+Default: `60000`
+
+##### --cdc_send_null_before_image_if_not_exists
+
+When true, the CDC service returns a null before-image if it is not able to find one.
+
+Default: `false`
+
+##### --cdcsdk_tablet_not_of_interest_timeout_secs
+
+Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
+Default: `14400` (4 hours)
 
 ## File expiration based on TTL flags
 
@@ -1364,20 +1478,13 @@ Default: `100`
 
 ## Metric export flags
 
-YB-TServer metrics are available in Prometheus format atmax_prometheus_metric_entries
-`http://localhost:9000/prometheus-metrics`.
+YB-TServer metrics are available in Prometheus format at `http://localhost:9000/prometheus-metrics`.
 
 ##### --export_help_and_type_in_prometheus_metrics
 
-This flag controls whether
-#TYPE and #HELP information is included as part of the Prometheus
-metrics output by default.
+This flag controls whether #TYPE and #HELP information is included as part of the Prometheus metrics output by default.
 
-To override this flag on a per-scrape basis, set the URL parameter
-`show_help` to `true` to include or to `false` to not include type and
-help information.  For example, querying
-`http://localhost:9000/prometheus-metrics?show_help=true` will return
-type and help information regardless of the setting of this flag.
+To override this flag on a per-scrape basis, set the URL parameter `show_help` to `true` to include or to `false` to not include type and help information.  For example, querying `http://localhost:9000/prometheus-metrics?show_help=true` returns type and help information regardless of the setting of this flag.
 
 Default: `true`
 
@@ -1385,14 +1492,13 @@ Default: `true`
 
 Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
 
-To override this flag on a per-scrape basis, you can adjust the URL parameter
-`max_metric_entries`.
+To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
 
 Default: `UINT32_MAX`
 
 ## Catalog flags
 
-Catalog flags are {{<badge/ea>}}.
+Catalog flags are {{<tags/feature/ea>}}.
 
 ##### ysql_catalog_preload_additional_table_list
 
@@ -1437,8 +1543,6 @@ To minimize performance impact when enabling this flag, set it to 2KB or higher.
 Default: -1 (disabled). Minimum: 128 bytes.
 
 ## DDL concurrency flags
-
-DDL concurrency flags are {{<badge/tp>}}.
 
 ##### ysql_enable_db_catalog_version_mode
 
@@ -1510,29 +1614,28 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ## DDL atomicity flags
 
-DDL atomicity flags are {{<badge/tp>}}.
-
 ##### ysql_yb_ddl_rollback_enabled
 
-Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will rollback the changes made to the DocDB system catalog.
+Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will roll back the changes made to the DocDB system catalog.
 
 Default: true
 
 {{< note title="Important" >}}
-In YSQL, a DDL statement creates a separate DDL transaction to execute the DDL statement. A DDL transaction generally needs to read and write PostgreSQL metadata stored in catalog tables in the same way as a native PostgreSQL DDL statement. In addition, some DDL statements also involve updating DocDB system catalog table.
-(for example, a DDL statement such as `alter table add/drop column`). When a DDL transaction fails, the corresponding DDL statement is aborted. This means that the PostgreSQL metadata will be rolled back atomically.
-<br>Before the introduction of the flag `--ysql_yb_ddl_rollback_enabled`, the DocDB system catalog changes were not automatically rolled back by YB-Master, possibly leading to metadata corruption that had to be manually fixed. Currently, with this flag being set to true, YB-Master can rollback the DocDB system catalog changes
-automatically to prevent metadata corruption.
+In YSQL, a DDL statement creates a separate DDL transaction to execute the DDL statement. A DDL transaction generally needs to read and write PostgreSQL metadata stored in catalog tables in the same way as a native PostgreSQL DDL statement. In addition, some DDL statements also involve updating DocDB system catalog table (for example, a DDL statement such as `alter table add/drop column`). When a DDL transaction fails, the corresponding DDL statement is aborted. This means that the PostgreSQL metadata will be rolled back atomically.
+
+Before the introduction of the flag `--ysql_yb_ddl_rollback_enabled`, the DocDB system catalog changes were not automatically rolled back by YB-Master, possibly leading to metadata corruption that had to be manually fixed. Currently, with this flag being set to true, YB-Master can rollback the DocDB system catalog changes automatically to prevent metadata corruption.
 {{< /note >}}
 
 ##### report_ysql_ddl_txn_status_to_master
 
-If set, at the end of a DDL operation, the YB-TServer notifies the YB-Master whether the DDL operation was committed or aborted.
+If set, at the end of a DDL operation the YB-TServer notifies the YB-Master whether the DDL operation was committed or aborted.
 
 Default: true
 
 {{< note title="Important" >}}
-Due to implementation restrictions, after a DDL statement commits or aborts, YB-Master performs a relatively expensive operation by continuously polling the transaction status tablet, and comparing the DocDB schema with PostgreSQL schema to determine whether the transaction was a success.<br> This behavior is optimized with the flag `report_ysql_ddl_txn_status_to_master`, where at the end of a DDL transaction, YSQL sends the status of the transaction (commit/abort) to YB-Master. Once received, YB-Master can stop polling the transaction status tablet, and also skip the relatively expensive schema comparison.
+Due to implementation restrictions, after a DDL statement commits or aborts, YB-Master performs a relatively expensive operation by continuously polling the transaction status tablet, and comparing the DocDB schema with PostgreSQL schema to determine whether the transaction was a success.
+
+This behavior is optimized with the flag `report_ysql_ddl_txn_status_to_master`, where at the end of a DDL transaction, YSQL sends the status of the transaction (commit/abort) to YB-Master. Once received, YB-Master can stop polling the transaction status tablet, and also skip the relatively expensive schema comparison.
 {{< /note >}}
 
 ##### ysql_ddl_transaction_wait_for_ddl_verification
@@ -1542,11 +1645,22 @@ If set, DDL transactions will wait for DDL verification to complete before retur
 Default: true
 
 {{< note title="Important" >}}
-After a DDL statement that includes updating DocDB system catalog completes, YB-Master still needs to work on the DocDB system catalog changes in the background asynchronously, to ensure that they are eventually in sync with the corresponding PostgreSQL catalog changes. This can take additional time in order to reach eventual consistency. During this period, an immediately succeeding DML or DDL statement can fail due to changes made by YB-Master to the DocDB system catalog in the background, which may cause confusion.<br>
+After a DDL statement that includes updating DocDB system catalog completes, YB-Master still needs to work on the DocDB system catalog changes in the background asynchronously, to ensure that they are eventually in sync with the corresponding PostgreSQL catalog changes. This can take additional time in order to reach eventual consistency. During this period, an immediately succeeding DML or DDL statement can fail due to changes made by YB-Master to the DocDB system catalog in the background, which may cause confusion.
+
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
 ## Advanced flags
+
+##### --allowed_preview_flags_csv
+
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+
+By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+
+{{<warning>}}
+Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
+{{</warning>}}
 
 ##### backfill_index_client_rpc_timeout_ms
 
@@ -1622,7 +1736,7 @@ You can modify these parameters in the following ways:
     SET session yb_locks_max_transactions = 10;
     ```
 
-For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
+For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
 
 ### YSQL configuration parameters
 
@@ -1639,7 +1753,7 @@ YugabyteDB supports the following additional options for the `log_line_prefix` p
 - %N = node and cluster name
 - %H = current hostname
 
-For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
+For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/15/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
 
 ##### suppress_nonpg_logs (boolean)
 
@@ -1661,43 +1775,58 @@ Default: `1GB`
 
 ##### enable_bitmapscan
 
-{{<badge/tp>}} Enables or disables the query planner's use of bitmap-scan plan types.
+PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
 
 Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with AND or OR operators to create a final bitmap that is used to collect rows from the main table.
 
-Bitmap scans follow the same work_mem behavior as PostgreSQL: each individual bitmap is bounded by work_mem. If there are n bitmaps, it means we may use n * work_mem memory.
+Bitmap scans follow the same `work_mem` behavior as PostgreSQL: each individual bitmap is bounded by `work_mem`. If there are n bitmaps, it means we may use `n * work_mem` memory.
 
 Bitmap scans are only supported for LSM indexes.
+
+Default: true
+
+##### yb_enable_bitmapscan
+
+{{<tags/feature/tp>}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+
+| enable_bitmapscan | yb_enable_bitmapscan | Result |
+| :--- | :---  | :--- |
+| true | false | Default. Bitmap scans allowed only on temporary tables, if the planner believes the bitmap scan is most optimal. |
+| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../develop/postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
+| false | false | Bitmap scans allowed only on temporary tables, but only if every other scan type is also disabled / not possible. |
+| false | true  | Bitmap scans allowed on temporary tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
 
 Default: false
 
 ##### yb_bnl_batch_size
 
-Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
 Default: 1024
 
 ##### yb_enable_batchednl
 
-Enable or disable the query planner's use of Batched Nested Loop Join.
+{{<tags/feature/ea>}} Enable or disable the query planner's use of batched nested loop join.
 
 Default: true
 
 ##### yb_enable_base_scans_cost_model
 
-{{<badge/tp>}} Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this flag, it is also recommended to run ANALYZE on user tables to maintain up-to-date statistics.
+{{<tags/feature/ea>}} Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
 
 Default: false
 
 ##### yb_enable_optimizer_statistics
 
-{{<badge/tp>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
+{{<tags/feature/tp>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
 
 Default: false
 
 ##### yb_fetch_size_limit
 
-{{<badge/tp>}} Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+{{<tags/feature/tp>}} Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
 
 If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
 
@@ -1707,7 +1836,7 @@ Default: 0
 
 ##### yb_fetch_row_limit
 
-{{<badge/tp>}} Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+{{<tags/feature/tp>}} Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
 See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
 
@@ -1715,9 +1844,27 @@ Default: 1024
 
 ##### yb_use_hash_splitting_by_default
 
-When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
+{{<tags/feature/ea>}} When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
 
 Default: true
+
+##### yb_read_from_followers
+
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+
+Default: false
+
+##### yb_follower_read_staleness_ms
+
+Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+
+Default: 30000 (30 seconds)
+
+##### default_transaction_read_only
+
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+
+Default: false
 
 ##### default_transaction_isolation
 
@@ -1726,6 +1873,14 @@ Specifies the default isolation level of each new transaction. Every transaction
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
 Default: `read committed`
+
+##### yb_skip_redundant_update_ops
+
+Enables skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
+
+This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
+
+Default: true
 
 ## Admin UI
 

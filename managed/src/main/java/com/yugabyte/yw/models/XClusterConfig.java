@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
@@ -28,6 +29,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import java.util.ArrayList;
@@ -133,7 +135,10 @@ public class XClusterConfig extends Model {
     Updating("Updating"),
     DeletedUniverse("DeletedUniverse"),
     DeletionFailed("DeletionFailed"),
-    Failed("Failed");
+    Failed("Failed"),
+
+    // New states to handle retry-ability.
+    DrainedData("DrainedData");
 
     private final String status;
 
@@ -182,6 +187,7 @@ public class XClusterConfig extends Model {
   private Date modifyTime;
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
+  @JsonIgnore
   private Set<XClusterTableConfig> tables = new HashSet<>();
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -209,7 +215,7 @@ public class XClusterConfig extends Model {
     }
   }
 
-  @ApiModelProperty(value = "Whether the config is txn xCluster")
+  @ApiModelProperty(value = "Whether the config is basic, txn, or db scoped xCluster")
   private ConfigType type;
 
   @ApiModelProperty(value = "Whether the source is active in txn xCluster")
@@ -235,7 +241,7 @@ public class XClusterConfig extends Model {
           "WARNING: This is a preview API that could change. "
               + "The list of PITR configs used for the txn xCluster config")
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
-  @OneToMany
+  @ManyToMany
   @JoinTable(
       name = "xcluster_pitr",
       joinColumns = @JoinColumn(name = "xcluster_uuid", referencedColumnName = "uuid"),
@@ -285,11 +291,19 @@ public class XClusterConfig extends Model {
         .findAny();
   }
 
-  public Optional<XClusterNamespaceConfig> maybeGetNamespaceById(String namespaceId) {
-    // There will be at most one namespaceConfig for a namespaceId within each xCluster config.
-    return this.getNamespaceDetails().stream()
-        .filter(namespaceConfig -> namespaceConfig.getSourceNamespaceId().equals(namespaceId))
-        .findAny();
+  public Optional<XClusterNamespaceConfig> maybeGetNamespaceById(String sourceNamespaceId) {
+    // There will be at most one namespaceConfig for a sourceNamespaceId within each xCluster
+    // config.
+    Optional<XClusterNamespaceConfig> optClusterNamespaceConfig =
+        this.getNamespaceDetails().stream()
+            .filter(
+                namespaceConfig -> namespaceConfig.getSourceNamespaceId().equals(sourceNamespaceId))
+            .findAny();
+    if (optClusterNamespaceConfig.isEmpty()) {
+      log.info(
+          "Cannot find an xClusterNamespaceConfig with sourceNamespaceId {}", sourceNamespaceId);
+    }
+    return optClusterNamespaceConfig;
   }
 
   public Optional<DrConfig> maybeGetDrConfig() {
@@ -378,8 +392,13 @@ public class XClusterConfig extends Model {
   @JsonProperty("tableDetails")
   public Set<XClusterTableConfig> getTableDetails() {
     return tables.stream()
-        .sorted(Comparator.comparing(XClusterTableConfig::getStatus))
+        .sorted(Comparator.comparing((table) -> table.getStatus().getCode()))
         .collect(Collectors.toCollection(LinkedHashSet::new));
+  }
+
+  @JsonSetter("tableDetails")
+  private void setTableDetails(Set<XClusterTableConfig> tableDetails) {
+    this.tables = tableDetails;
   }
 
   @ApiModelProperty(value = "Namespaces participating in this xCluster config")
@@ -443,6 +462,13 @@ public class XClusterConfig extends Model {
   @JsonIgnore
   public Set<String> getTableIdsExcludeIndexTables() {
     return getTableIds(true /* includeMainTables */, false /* includeIndexTables */);
+  }
+
+  @JsonIgnore
+  public Set<XClusterTableConfig> getTableDetailsWithStatus(XClusterTableConfig.Status status) {
+    return this.getTableDetails().stream()
+        .filter(tableConfig -> tableConfig.getStatus().equals(status))
+        .collect(Collectors.toSet());
   }
 
   public void updateTables(Set<String> tableIds) {
@@ -1002,6 +1028,16 @@ public class XClusterConfig extends Model {
     super.update();
   }
 
+  @Transactional
+  @Override
+  public boolean delete() {
+    // If the dr config has no other xCluster configs, then delete the dr config as well.
+    if (this.drConfig != null && this.drConfig.getXClusterConfigs().size() == 1) {
+      this.drConfig.delete();
+    }
+    return super.delete();
+  }
+
   public static XClusterConfig getValidConfigOrBadRequest(
       Customer customer, UUID xClusterConfigUUID) {
     XClusterConfig xClusterConfig = getOrBadRequest(xClusterConfigUUID);
@@ -1102,7 +1138,7 @@ public class XClusterConfig extends Model {
     }
   }
 
-  private void addTableConfig(XClusterTableConfig tableConfig) {
+  public void addTableConfig(XClusterTableConfig tableConfig) {
     if (!this.getTables().add(tableConfig)) {
       log.debug(
           "Table with id {} already exists in xCluster config ({})",
@@ -1180,5 +1216,18 @@ public class XClusterConfig extends Model {
 
   public static boolean isUniverseXClusterParticipant(UUID universeUUID) {
     return !CollectionUtils.isEmpty(getByUniverseUuid(universeUUID));
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    XClusterConfig other = (XClusterConfig) o;
+    return this.uuid != null && this.uuid.equals(other.uuid);
+  }
+
+  @Override
+  public int hashCode() {
+    return this.uuid != null ? this.uuid.hashCode() : 0;
   }
 }

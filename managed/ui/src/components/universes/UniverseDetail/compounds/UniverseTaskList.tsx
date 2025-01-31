@@ -1,10 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from 'react-query';
+import { useDispatch, useSelector } from 'react-redux';
 
 import { api, taskQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { TaskListTable, TaskProgressContainer } from '../../../tasks';
 import { TASK_SHORT_TIMEOUT } from '../../../tasks/constants';
+import { patchTasksForCustomer } from '../../../../actions/tasks';
 
 interface UniverseTaskListProps {
   universeUuid: string;
@@ -28,10 +30,22 @@ export const UniverseTaskList = ({
 }: UniverseTaskListProps) => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const queryClient = useQueryClient();
+
+  const dispatch = useDispatch();
+  const featureFlags = useSelector((state: any) => state.featureFlags);
+
   const universeTasksQuery = useQuery(
     taskQueryKey.universe(universeUuid),
     () => api.fetchUniverseTasks(universeUuid),
-    { refetchInterval: TASK_SHORT_TIMEOUT }
+    {
+      refetchInterval: TASK_SHORT_TIMEOUT,
+      select: data => data.data,
+      onSuccess(data) {
+        // patch the current universe tasks to the store's list of tasks.
+        // used to synchronize the react query data with redux data
+        dispatch(patchTasksForCustomer(universeUuid, data));
+      },
+    }
   );
 
   if (universeTasksQuery.isError) {
@@ -68,6 +82,7 @@ export const UniverseTaskList = ({
         hideTaskAbortModal={hideTaskAbortModal}
         showTaskAbortModal={showTaskAbortModal}
         visibleModal={visibleModal}
+        featureFlags={featureFlags}
       />
     </div>
   );

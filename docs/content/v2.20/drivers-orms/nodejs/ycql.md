@@ -33,7 +33,7 @@ type: docs
   </li>
 </ul>
 
-[Yugabyte Node.js Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) is based on [DataStax Node.js Driver](https://github.com/datastax/nodejs-driver) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+[YugabyteDB Node.js Driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver) is based on [DataStax Node.js Driver](https://github.com/datastax/nodejs-driver) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
 
 {{< note title="YugabyteDB Aeon" >}}
 
@@ -55,7 +55,7 @@ $ npm install yb-ycql-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a cluster. Refer to [Quick start](/preview/quick-start/).
+- installed YugabyteDB and created a cluster. Refer to [Quick start](/preview/tutorials/quick-start/).
 - installed a recent version of [Node.js](https://nodejs.org/en/download/).
 - installed the [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.
 

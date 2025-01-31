@@ -13,7 +13,7 @@
 
 package org.yb.client;
 
-import org.yb.master.CatalogEntityInfo.PlacementInfoPB;
+import org.yb.CommonNet.PlacementInfoPB;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 
 // This provides the wrapper to read-modify the live placement for the cluster.

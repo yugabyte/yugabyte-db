@@ -21,18 +21,25 @@
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_types.pb.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
 #include "yb/server/clock.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
 
 namespace yb {
 
 class MemTracker;
+
+namespace pgwrapper {
+class PGConn;
+} // namespace pgwrapper
 
 namespace server {
 class RpcAndWebServerBase;
@@ -52,6 +59,7 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual TSTabletManager* tablet_manager() = 0;
   virtual TabletPeerLookupIf* tablet_peer_lookup() = 0;
+  virtual tablet::TSLocalLockManager* ts_local_lock_manager() const = 0;
 
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;
@@ -105,10 +113,23 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual void ClearAllMetaCachesOnServer() = 0;
 
+  virtual Status ClearMetacache(const std::string& namespace_id) = 0;
+
   virtual Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
     tserver::PgYCQLStatementStatsResponsePB* resp) const = 0;
 
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const = 0;
+  virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
+
+  virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
+      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) = 0;
+
+  virtual Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(
+      const PgTxnSnapshotLocalId& snapshot_id) = 0;
+
+  virtual bool SkipCatalogVersionChecks() { return false; }
+
+  virtual const std::string& permanent_uuid() const = 0;
 };
 
 } // namespace tserver

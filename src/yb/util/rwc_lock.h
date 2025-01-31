@@ -31,15 +31,24 @@
 //
 #pragma once
 
-#ifndef NDEBUG
+#include <condition_variable>
 #include <unordered_map>
-#endif // NDEBUG
 
 #include "yb/gutil/macros.h"
 
 #include "yb/util/condition_variable.h"
 #include "yb/util/mutex.h"
 #include "yb/util/stack_trace.h"
+
+// Enable mechanism to detect deadlocks with mutex that does not belong to RWCLock.
+// For instance it could detect the following scenario:
+// T1:
+//   acquire read lock on RWCLock
+//   acquire read lock on some external mutex
+// T2:
+//   acquire write lock on the same external mutex
+//   acquire write and then commit lock on the same RWCLock
+#define RWC_LOCK_TRACK_EXTERNAL_DEADLOCK 0
 
 namespace yb {
 
@@ -89,8 +98,16 @@ namespace yb {
 // never drops to 0) then UpgradeToCommitLock() may block arbitrarily long.
 class RWCLock {
  public:
-  RWCLock();
+  RWCLock() = default;
   ~RWCLock();
+
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+  static void CheckNoReadLockConflict(void* mutex);
+  static void SetConflictingMutex(void* mutex);
+#else
+  static void CheckNoReadLockConflict(void* mutex) {}
+  static void SetConflictingMutex(void* mutex) {}
+#endif
 
   // Acquire the lock in read mode. Upon return, guarantees that:
   // - Other threads may concurrently hold the lock for Read.
@@ -105,9 +122,8 @@ class RWCLock {
 
   // Return true if the current thread holds the write lock.
   //
-  // In DEBUG mode this is accurate -- we track the current holder's tid.
-  // In non-DEBUG mode, this may sometimes return true even if another thread
-  // is in fact the holder.
+  // If FLAGS_enable_rwc_lock_debugging is true this is accurate; we track the current holder's tid.
+  // Else, this may sometimes return true even if another thread is in fact the holder.
   // Thus, this is only really useful in the context of a DCHECK assertion.
   bool HasWriteLock() const;
 
@@ -118,48 +134,41 @@ class RWCLock {
   // Acquire the lock in write mode. Upon return, guarantees that:
   // - Other threads may concurrently hold the lock for Read.
   // - No other threads hold the lock for Write or Commit.
-  void WriteLock();
-  void WriteUnlock();
+  void WriteLock() ACQUIRE(write_mutex_);
+  void WriteUnlock() RELEASE(write_mutex_);
 
   // Boost-like wrappers
-  void lock() { WriteLock(); }
-  void unlock() { WriteUnlock(); }
+  void lock() ACQUIRE(write_mutex_) { WriteLock(); }
+  void unlock() RELEASE(write_mutex_) { WriteUnlock(); }
 
   // Upgrade the lock from Write mode to Commit mode.
   // Requires that the current thread holds the lock in Write mode.
   // Upon return, guarantees:
   // - No other thread holds the lock in any mode.
-  void UpgradeToCommitLock() ACQUIRE(lock_);
-  void CommitUnlock() RELEASE(lock_);
-
-  // If write lock was acquired in one thread and then used in another thread the below method
-  // should be invoked in a new thread.
-  // Otherwise check will fail in debug mode.
-  void WriteLockThreadChanged();
+  void UpgradeToCommitLock() ACQUIRE();
+  void CommitUnlock() RELEASE();
 
  private:
   // Lock which protects reader_count_ and write_locked_.
   // Additionally, while the commit lock is held, the
   // locking thread holds this mutex, which prevents any new
   // threads from obtaining the lock in any mode.
-  mutable Mutex lock_;
-  ConditionVariable no_mutators_, no_readers_;
-  int reader_count_;
-  bool write_locked_;
+
+  // Thread sanitizer does not understand timed_mutex and cannot catch related issues.
+  // So use std::mutex with it.
+#if defined(THREAD_SANITIZER)
+  mutable std::mutex write_mutex_;
+#else
+  mutable std::timed_mutex write_mutex_;
+#endif
 
 #ifndef NDEBUG
-  int64_t last_writer_tid_;
-  ThreadIdForStack last_writer_tid_for_stack_;
-  int64_t last_writelock_acquire_time_;
-  StackTrace last_writer_stacktrace_;
-
-  // thread id --> (thread's reader count, stack trace of first reader).
-  struct CountStack {
-    int count; // reader count
-    StackTrace stack; // stack trace of first reader
-  };
-  std::unordered_map<int64_t, CountStack> reader_stacks_;
-#endif // NDEBUG
+  CoarseTimePoint write_start_;
+#endif
+  std::mutex commit_mutex_;
+  std::atomic<size_t> reader_counter_{0};
+  std::condition_variable no_readers_;
+  std::condition_variable no_writers_;
 
   DISALLOW_COPY_AND_ASSIGN(RWCLock);
 };

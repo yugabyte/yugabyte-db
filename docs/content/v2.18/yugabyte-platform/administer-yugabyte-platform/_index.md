@@ -3,7 +3,6 @@ title: Administer YugabyteDB Anywhere
 headerTitle: Administer YugabyteDB Anywhere
 linkTitle: Administer
 description: Administer YugabyteDB Anywhere
-image: /images/section_icons/manage/enterprise.png
 headcontent:
 menu:
   v2.18_yugabyte-platform:

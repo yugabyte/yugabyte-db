@@ -86,6 +86,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
   private static final List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
@@ -109,6 +110,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

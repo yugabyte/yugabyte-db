@@ -25,6 +25,13 @@ public class BasePgRegressTest extends BasePgSQLTest {
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    appendToYsqlPgConf(flagMap, "compute_query_id=regress");
+    return flagMap;
+  }
+
   public void runPgRegressTest(
       File inputDir, String schedule, long maxRuntimeMillis, File executable) throws Exception {
     final int tserverIndex = 0;
@@ -33,7 +40,8 @@ public class BasePgRegressTest extends BasePgSQLTest {
         .setDirs(inputDir, pgRegress.outputDir())
         .setSchedule(schedule)
         .setHost(getPgHost(tserverIndex))
-        .setPort(getPgPort(tserverIndex))
+        .setPort(isTestRunningWithConnectionManager() ?
+            getYsqlConnMgrPort(tserverIndex) : getPgPort(tserverIndex))
         .setUser(DEFAULT_PG_USER)
         .setDatabase("yugabyte")
         .setEnvVars(getPgRegressEnvVars())

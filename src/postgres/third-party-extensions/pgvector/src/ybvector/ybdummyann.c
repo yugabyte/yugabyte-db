@@ -27,10 +27,10 @@
 #include "postgres.h"
 
 #include "ybvector.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 
 static void
-ybdummyannbindcolumnschema(YBCPgStatement handle,
+ybdummyannbindcolumnschema(YbcPgStatement handle,
 						   IndexInfo *indexInfo,
 						   TupleDesc indexTupleDesc,
 						   int16 *coloptions)
@@ -52,7 +52,8 @@ PGDLLEXPORT PG_FUNCTION_INFO_V1(ybdummyannhandler);
 Datum
 ybdummyannhandler(PG_FUNCTION_ARGS)
 {
-	IndexAmRoutine *amroutine = makeBaseYbVectorHandler();
+	IndexAmRoutine *amroutine =
+		makeBaseYbVectorHandler(false /* is_copartitioned */);
 	amroutine->yb_ambindschema = ybdummyannbindcolumnschema;
 
 	PG_RETURN_POINTER(amroutine);

@@ -20,6 +20,7 @@ static inline od_client_t *od_client_allocate_internal(od_global_t *global,
 	internal_client->global = global;
 	internal_client->type = OD_POOL_CLIENT_INTERNAL;
 	internal_client->yb_db_oid = YB_CTRL_CONN_OID;
+	internal_client->yb_user_oid = YB_CTRL_CONN_OID;
 
 	od_id_generate(&internal_client->id, "ic");
 

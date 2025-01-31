@@ -29,9 +29,13 @@ struct od_route {
 	od_error_logger_t *err_logger;
 	bool extra_logging_enabled;
 
-	yb_db_entry_t* yb_database_entry;
+	yb_oid_entry_t* yb_database_entry;
+	yb_oid_entry_t* yb_user_entry;
 
 	od_list_t link;
+
+	/*Maximum logical_client_version for a client that has been authenticated*/
+	int64_t max_logical_client_version;
 };
 
 static inline void od_route_init(od_route_t *route, bool extra_route_logging)
@@ -39,6 +43,7 @@ static inline void od_route_init(od_route_t *route, bool extra_route_logging)
 	route->rule = NULL;
 	route->tcp_connections = 0;
 	route->last_heartbeat = 0;
+	route->max_logical_client_version = 0;
 
 	od_route_id_init(&route->id);
 	od_server_pool_init(&route->server_pool);
@@ -65,7 +70,11 @@ static inline void od_route_init(od_route_t *route, bool extra_route_logging)
 
 static inline void od_route_free(od_route_t *route)
 {
-	od_route_id_free(&route->id);
+	/* invalid function after moving to OID pooling for user+DB */
+#ifndef YB_SUPPORT_FOUND
+	od_route_id_free(NULL);
+#endif
+
 	od_pg_server_pool_free(&route->server_pool);
 
 	kiwi_params_lock_free(&route->params);

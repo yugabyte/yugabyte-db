@@ -347,7 +347,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     }
 
     QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);
-    QLRocksDBStorage ql_storage(doc_db());
+    QLRocksDBStorage ql_storage(/* log_prefix = */ "", doc_db());
     const qlexpr::QLRSRowDesc rsrow_desc(*rsrow_desc_pb);
     WriteBuffer rows_data(1024);
     qlexpr::QLResultSet resultset(&rsrow_desc, &rows_data);
@@ -356,7 +356,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     auto pending_op = ScopedRWOperation::TEST_Create();
     EXPECT_OK(read_op.Execute(
         ql_storage, ReadOperationData::FromSingleReadTime(read_time), doc_read_context, pending_op,
-        &resultset, &read_restart_ht, nullptr /* statistics */));
+        &resultset, &read_restart_ht));
     EXPECT_FALSE(read_restart_ht.is_valid());
 
     // Transfer the column values from result set to rowblock.

@@ -154,7 +154,7 @@ To remove a table partition from DR, follow the same steps as [Remove a table fr
 
 ## Reconcile configuration
 
-When changing indexes or altering tables, to ensure changes made to the database are reflected in the YugabyteDB Anywhere DR configuration, you need to reconcile the DR configuration in YugabyteDB Anywhere as follows:
+When changing indexes or altering tables, to ensure changes made to the database are reflected in the DR configuration, you need to reconcile the DR configuration in YugabyteDB Anywhere as follows:
 
 1. In YugabyteDB Anywhere, navigate to your DR primary and select **xCluster Disaster Recovery**.
 1. Click **Actions > Advanced** and choose **Reconcile Config with Database**.

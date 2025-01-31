@@ -17,17 +17,25 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.KubernetesManager.RoleData;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.SupportBundle;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.ebean.PagedList;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -43,6 +51,7 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -50,6 +59,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -112,6 +122,44 @@ public class SupportBundleUtil {
     return !dateToCheck.before(startDate) && !dateToCheck.after(endDate);
   }
 
+  // Checks if the startDate is before the endDate
+  public boolean checkDatesValid(Date startDate, Date endDate) {
+    return startDate.before(endDate);
+  }
+
+  public Date getDateNMinutesAgo(Date date, int minutes) {
+    Date dateNMinutesAgo = new DateTime(date).minusMinutes(minutes).toDate();
+    return dateNMinutesAgo;
+  }
+
+  /**
+   * Simplified the following 4 cases to extract appropriate start and end date 1. If both of the
+   * dates are given and valid 2. If only the start date is valid, filter from startDate till the
+   * end 3. If only the end date is valid, filter from the beginning till endDate 4. Default : If no
+   * dates are specified, download all the files from last n days
+   */
+  public Pair<Date, Date> getValidStartAndEndDates(Config config, Date sDate, Date eDate)
+      throws Exception {
+    Date startDate, endDate;
+    boolean startDateIsValid = isValidDate(sDate);
+    boolean endDateIsValid = isValidDate(eDate);
+    if (!startDateIsValid && !endDateIsValid) {
+      int default_date_range = config.getInt("yb.support_bundle.default_date_range");
+      endDate = getTodaysDate();
+      startDate =
+          DateUtils.truncate(getDateNDaysAgo(endDate, default_date_range), Calendar.DAY_OF_MONTH);
+    } else {
+      // Strip the date object of the time and set only the date.
+      // This will ensure that we collect files inclusive of the start date.
+      startDate =
+          startDateIsValid
+              ? DateUtils.truncate(sDate, Calendar.DAY_OF_MONTH)
+              : new Date(Long.MIN_VALUE);
+      endDate = endDateIsValid ? eDate : new Date(Long.MAX_VALUE);
+    }
+    return new Pair<Date, Date>(startDate, endDate);
+  }
+
   public List<String> sortDatesWithPattern(List<String> datesList, String sdfPattern) {
     // Sort the list of dates based on the given 'SimpleDateFormat' pattern
     List<String> sortedList = new ArrayList<String>(datesList);
@@ -140,11 +188,11 @@ public class SupportBundleUtil {
    * @param regexList list of regex strings to match against any of them
    * @return list of paths after regex filtering
    */
-  public List<Path> filterList(List<Path> list, List<String> regexList) {
-    List<Path> result = new ArrayList<Path>();
-    for (Path entry : list) {
+  public List<String> filterList(List<String> list, List<String> regexList) {
+    List<String> result = new ArrayList<String>();
+    for (String entry : list) {
       for (String regex : regexList) {
-        if (entry.toString().matches(regex)) {
+        if (entry.matches(regex)) {
           result.add(entry);
         }
       }
@@ -264,12 +312,12 @@ public class SupportBundleUtil {
    * @return list of paths after filtering based on dates.
    * @throws ParseException
    */
-  public List<Path> filterFilePathsBetweenDates(
-      List<Path> logFilePaths, List<String> fileRegexList, Date startDate, Date endDate)
+  public List<String> filterFilePathsBetweenDates(
+      List<String> logFilePaths, List<String> fileRegexList, Date startDate, Date endDate)
       throws ParseException {
 
     // Final filtered log paths
-    List<Path> filteredLogFilePaths = new ArrayList<>();
+    List<String> filteredLogFilePaths = new ArrayList<>();
 
     // Initial filtering of the file names based on regex
     logFilePaths = filterList(logFilePaths, fileRegexList);
@@ -282,22 +330,21 @@ public class SupportBundleUtil {
     //     "/mnt/d0/master/logs/log.INFO.20221121-000000.log"]}
     // The reason we don't use a map of <fileType, List<Date>> is because we need to return the
     // entire path.
-    Map<String, List<Path>> fileTypeToDate =
+    Map<String, List<String>> fileTypeToDate =
         logFilePaths.stream()
             .collect(
-                Collectors.groupingBy(
-                    p -> extractFileTypeFromFileNameAndRegex(p.toString(), fileRegexList)));
+                Collectors.groupingBy(p -> extractFileTypeFromFileNameAndRegex(p, fileRegexList)));
 
     // Loop through each file type
     for (String fileType : fileTypeToDate.keySet()) {
       // Sort the files in descending order of extracted date
       Collections.sort(
           fileTypeToDate.get(fileType),
-          new Comparator<Path>() {
+          new Comparator<String>() {
             @Override
-            public int compare(Path path1, Path path2) {
-              Date date1 = extractDateFromFileNameAndRegex(path1.toString(), fileRegexList);
-              Date date2 = extractDateFromFileNameAndRegex(path2.toString(), fileRegexList);
+            public int compare(String path1, String path2) {
+              Date date1 = extractDateFromFileNameAndRegex(path1, fileRegexList);
+              Date date2 = extractDateFromFileNameAndRegex(path2, fileRegexList);
               return date2.compareTo(date1);
             }
           });
@@ -305,9 +352,8 @@ public class SupportBundleUtil {
       // Filter file paths according to start and end dates
       // Add filtered date paths to final list
       Date extraStartDate = null;
-      for (Path filePathToCheck : fileTypeToDate.get(fileType)) {
-        Date dateToCheck =
-            extractDateFromFileNameAndRegex(filePathToCheck.toString(), fileRegexList);
+      for (String filePathToCheck : fileTypeToDate.get(fileType)) {
+        Date dateToCheck = extractDateFromFileNameAndRegex(filePathToCheck, fileRegexList);
         if (checkDateBetweenDates(dateToCheck, startDate, endDate)) {
           filteredLogFilePaths.add(filePathToCheck);
         }
@@ -319,7 +365,6 @@ public class SupportBundleUtil {
         }
       }
     }
-
     return filteredLogFilePaths;
   }
 
@@ -430,14 +475,19 @@ public class SupportBundleUtil {
     }
   }
 
-  public boolean writeStringToFile(String message, String localFilePath) {
+  public boolean writeStringToFile(String message, String localFilePath, boolean append) {
     try {
-      FileUtils.writeStringToFile(new File(localFilePath), message, Charset.forName("UTF-8"));
+      FileUtils.writeStringToFile(
+          new File(localFilePath), message, Charset.forName("UTF-8"), append);
       return true;
     } catch (IOException e) {
       log.error("Failed writing output string to file: ", e);
       return false;
     }
+  }
+
+  public boolean writeStringToFile(String message, String localFilePath) {
+    return writeStringToFile(message, localFilePath, false);
   }
 
   /**
@@ -768,7 +818,7 @@ public class SupportBundleUtil {
   public void getCustomerMetadata(Customer customer, String destDir) {
     // Gather metadata.
     JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(customer), RedactionTarget.APIS);
+        RedactingService.filterSecretFields(Json.toJson(customer), RedactionTarget.LOGS);
 
     // Save the above collected metadata.
     saveMetadata(customer, destDir, jsonData, "customer.json");
@@ -779,7 +829,7 @@ public class SupportBundleUtil {
     List<UniverseResp> universes =
         customer.getUniverses().stream().map(u -> new UniverseResp(u)).collect(Collectors.toList());
     JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(universes), RedactionTarget.APIS);
+        RedactingService.filterSecretFields(Json.toJson(universes), RedactionTarget.LOGS);
 
     // Save the above collected metadata.
     saveMetadata(customer, destDir, jsonData, "universes.json");
@@ -790,7 +840,7 @@ public class SupportBundleUtil {
     List<Provider> providers = Provider.getAll(customer.getUuid());
     providers.forEach(CloudInfoInterface::mayBeMassageResponse);
     JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(providers), RedactionTarget.APIS);
+        RedactingService.filterSecretFields(Json.toJson(providers), RedactionTarget.LOGS);
 
     // Save the above collected metadata.
     saveMetadata(customer, destDir, jsonData, "providers.json");
@@ -800,21 +850,37 @@ public class SupportBundleUtil {
     // Gather metadata.
     List<Users> users = Users.getAll(customer.getUuid());
     JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(users), RedactionTarget.APIS);
+        RedactingService.filterSecretFields(Json.toJson(users), RedactionTarget.LOGS);
 
     // Save the above collected metadata.
     saveMetadata(customer, destDir, jsonData, "users.json");
   }
 
-  public void getTaskMetadata(Customer customer, String destDir) {
+  public void getTaskMetadata(Customer customer, String destDir, Date startDate, Date endDate) {
     // Gather metadata for customer_task table.
-    List<CustomerTask> customerTasks = CustomerTask.getByCustomerUUID(customer.getUuid());
-    // Save the above collected metadata.
-    JsonNode customerTaskJsonData =
-        RedactingService.filterSecretFields(Json.toJson(customerTasks), RedactionTarget.APIS);
-    saveMetadata(customer, destDir, customerTaskJsonData, "customer_task.json");
-
-    // Gather metadata for task_info table later.
+    int pageSize = 10, pageIndex = 0;
+    PagedList<CustomerTask> pagedList;
+    do {
+      pagedList =
+          CustomerTask.find
+              .query()
+              .where()
+              .eq("customer_uuid", customer.getUuid())
+              .ge("create_time", startDate)
+              .le("create_time", endDate)
+              .setFirstRow(pageIndex++ * pageSize)
+              .setMaxRows(pageSize)
+              .findPagedList();
+      List<CustomerTask> list = pagedList.getList();
+      JsonNode jsonData =
+          RedactingService.filterSecretFields(Json.toJson(list), RedactionTarget.LOGS);
+      writeStringToFile(
+          jsonData.toPrettyString(), Paths.get(destDir, "customer_task.json").toString(), true);
+      // For each task, add its subtaks.
+      for (CustomerTask task : list) {
+        getTaskInfo(task.getTaskUUID(), destDir);
+      }
+    } while (pagedList.hasNext());
   }
 
   public void getInstanceTypeMetadata(Customer customer, String destDir) {
@@ -828,18 +894,94 @@ public class SupportBundleUtil {
             .filter(it -> providerUUIDs.contains(it.getProvider().getUuid()))
             .collect(Collectors.toList());
     JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(instanceTypes), RedactionTarget.APIS);
+        RedactingService.filterSecretFields(Json.toJson(instanceTypes), RedactionTarget.LOGS);
 
     // Save the above collected metadata.
     saveMetadata(customer, destDir, jsonData, "instance_type.json");
   }
 
-  public void gatherAndSaveAllMetadata(Customer customer, String destDir) {
+  public void getHaMetadata(Customer customer, String destDir) {
+    // There can be atmost one config.
+    Optional<HighAvailabilityConfig> haConf = HighAvailabilityConfig.get();
+    if (haConf.isEmpty()) {
+      log.info("No HA config present!");
+      return;
+    }
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(haConf.get()), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "high_availability_config.json");
+  }
+
+  public void getAuditLogs(Customer customer, String destDir, Date startDate, Date endDate) {
+    int pageSize = 50, pageIndex = 0;
+    PagedList<?> pagedList;
+    do {
+      pagedList =
+          Audit.find
+              .query()
+              .where()
+              .eq("customer_uuid", customer.getUuid())
+              .ge("timestamp", startDate)
+              .le("timestamp", endDate)
+              .setFirstRow(pageIndex++ * pageSize)
+              .setMaxRows(pageSize)
+              .findPagedList();
+      JsonNode jsonData =
+          RedactingService.filterSecretFields(
+              Json.toJson(pagedList.getList()), RedactionTarget.LOGS);
+      writeStringToFile(
+          jsonData.toPrettyString(), Paths.get(destDir, "audit.json").toString(), true);
+    } while (pagedList.hasNext());
+  }
+
+  public void getXclusterMetadata(Customer customer, String destDir) {
+    List<XClusterConfig> xClusterConfigs = XClusterConfig.getAllXClusterConfigs();
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(xClusterConfigs), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "xcluster_config.json");
+
+    List<XClusterTableConfig> xClusterTableConfigs = XClusterTableConfig.find.all();
+    jsonData =
+        RedactingService.filterSecretFields(
+            Json.toJson(xClusterTableConfigs), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "xcluster_table_config.json");
+
+    List<XClusterNamespaceConfig> xClusterNamespaceConfigs = XClusterNamespaceConfig.find.all();
+    jsonData =
+        RedactingService.filterSecretFields(
+            Json.toJson(xClusterNamespaceConfigs), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "xcluster_namespace_config.json");
+  }
+
+  public void getTaskInfo(UUID parentTaskUUID, String destDir) {
+    List<TaskInfo> list = new ArrayList<>();
+    // Add parent task first.
+    list.add(TaskInfo.getOrBadRequest(parentTaskUUID));
+    // Add all subtasks.
+    list.addAll(
+        TaskInfo.find
+            .query()
+            .where()
+            .eq("parent_uuid", parentTaskUUID)
+            .orderBy()
+            .asc("position")
+            .findList());
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(list), RedactionTarget.LOGS);
+    writeStringToFile(
+        jsonData.toPrettyString(), Paths.get(destDir, "task_info.json").toString(), true);
+  }
+
+  public void gatherAndSaveAllMetadata(
+      Customer customer, String destDir, Date startDate, Date endDate) {
     ignoreExceptions(() -> getCustomerMetadata(customer, destDir));
     ignoreExceptions(() -> getUniversesMetadata(customer, destDir));
     ignoreExceptions(() -> getProvidersMetadata(customer, destDir));
     ignoreExceptions(() -> getUsersMetadata(customer, destDir));
-    ignoreExceptions(() -> getTaskMetadata(customer, destDir));
+    ignoreExceptions(() -> getTaskMetadata(customer, destDir, startDate, endDate));
     ignoreExceptions(() -> getInstanceTypeMetadata(customer, destDir));
+    ignoreExceptions(() -> getHaMetadata(customer, destDir));
+    ignoreExceptions(() -> getXclusterMetadata(customer, destDir));
+    ignoreExceptions(() -> getAuditLogs(customer, destDir, startDate, endDate));
   }
 }

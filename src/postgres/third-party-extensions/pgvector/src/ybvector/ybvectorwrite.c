@@ -34,8 +34,8 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_type.h"
 #include "catalog/yb_type.h"
-#include "commands/ybccmds.h"
-#include "executor/ybcModifyTable.h"
+#include "commands/yb_cmds.h"
+#include "executor/ybModifyTable.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "pg_yb_utils.h"
@@ -66,12 +66,12 @@ typedef struct {
  * Binds vector index option during creation.
  */
 void
-bindVectorIndexOptions(YBCPgStatement handle,
+bindVectorIndexOptions(YbcPgStatement handle,
 					   IndexInfo *indexInfo,
 					   TupleDesc indexTupleDesc,
-					   YbPgVectorIdxType ybpg_idx_type)
+					   YbcPgVectorIdxType ybpg_idx_type)
 {
-	YbPgVectorIdxOptions options;
+	YbcPgVectorIdxOptions options;
 	options.idx_type = ybpg_idx_type;
 
 	/*
@@ -86,6 +86,7 @@ bindVectorIndexOptions(YBCPgStatement handle,
 	/* Assuming vector is the first att */;
 	options.dimensions = TupleDescAttr(indexTupleDesc, 0)->atttypmod;
 	Assert(options.dimensions > 0);
+	options.attnum = indexInfo->ii_IndexAttrNumbers[0];
 
 	YBCPgCreateIndexSetVectorOptions(handle, &options);
 }
@@ -95,7 +96,7 @@ bindVectorIndexOptions(YBCPgStatement handle,
  * Copied from ybginwrite.c.
  */
 static void
-doBindsForIdx(YBCPgStatement stmt,
+doBindsForIdx(YbcPgStatement stmt,
 			  void *indexstate,
 			  Relation index,
 			  Datum *values,
@@ -143,7 +144,7 @@ doBindsForIdx(YBCPgStatement stmt,
  * ybginwrite.c.
  */
 static void
-doBindsForIdxWrite(YBCPgStatement stmt,
+doBindsForIdxWrite(YbcPgStatement stmt,
 				   void *indexstate,
 				   Relation index,
 				   Datum *values,
@@ -161,7 +162,7 @@ doBindsForIdxWrite(YBCPgStatement stmt,
  * ybginwrite.c.
  */
 static void
-doBindsForIdxDelete(YBCPgStatement stmt,
+doBindsForIdxDelete(YbcPgStatement stmt,
 				   void *indexstate,
 				   Relation index,
 				   Datum *values,
@@ -235,8 +236,8 @@ ybVectorTupleInsert(YbVectorBuildState *vectorstate, OffsetNumber attnum,
  * similar ybcinbuildCallback.
  */
 static void
-ybvectorBuildCallback(Relation index, HeapTuple heapTuple, Datum *values,
-				   bool *isnull, bool tupleIsAlive, void *state)
+ybvectorBuildCallback(Relation index, Datum ybctid, Datum *values, bool *isnull,
+					  bool tupleIsAlive, void *state)
 {
 	YbVectorBuildState *buildstate = (YbVectorBuildState *) state;
 	MemoryContext oldCtx;
@@ -247,7 +248,7 @@ ybvectorBuildCallback(Relation index, HeapTuple heapTuple, Datum *values,
 	 */
 	oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
 	ybVectorTupleInsert(buildstate, 1, index, values[0], isnull[0],
-		heapTuple->t_ybctid, buildstate->backfilltime);
+		ybctid, buildstate->backfilltime);
 
 	buildstate->indtuples += 1;
 
@@ -277,7 +278,7 @@ initVectorState(YbVectorBuildState *buildstate,
 
 	buildstate->collation = index->rd_indcollation[0];
 
-	buildstate->tmpCtx = AllocSetContextCreate(CurrentMemoryContext,
+	buildstate->tmpCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
 											   "ann build temporary context",
 											   ALLOCSET_DEFAULT_SIZES);
 }
@@ -305,9 +306,10 @@ ybvectorBuildCommon(Relation heap, Relation index, struct IndexInfo *indexInfo,
 	 * Do the heap scan.
 	 */
 	if (!bfinfo)
-		reltuples = IndexBuildHeapScan(heap, index, indexInfo, true,
-									   ybvectorBuildCallback, (void *) &buildstate,
-									   NULL /* HeapScanDesc */);
+		reltuples = yb_table_index_build_scan(heap, index, indexInfo, true,
+											  ybvectorBuildCallback,
+											  (void *) &buildstate,
+											  NULL /* HeapScanDesc */);
 	else
 		reltuples = IndexBackfillHeapRangeScan(heap, index, indexInfo,
 											   ybvectorBuildCallback,
@@ -412,9 +414,51 @@ ybvectordelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
 				  false /* isinsert */);
 }
 
+void
+ybvectorinupdate(Relation index, Datum *values, bool *isnull, Datum oldYbctid,
+				 Datum newYbctid, Relation heap, struct IndexInfo *indexInfo)
+{
+	elog(ERROR, "Unexpected in-place update of ybvector index requested");
+}
+
 IndexBuildResult *
 ybvectorbackfill(Relation heap, Relation index, struct IndexInfo *indexInfo,
 			  struct YbBackfillInfo *bfinfo, struct YbPgExecOutParam *bfresult)
 {
 	return ybvectorBuildCommon(heap, index, indexInfo, bfinfo, bfresult);
+}
+
+bool
+ybvectorcopartitionedinsert(Relation index, Datum *values, bool *isnull,
+							Datum ybctid, Relation heap,
+							IndexUniqueCheck checkUnique,
+							struct IndexInfo *indexInfo,
+							bool shared_insert)
+{
+	return false;
+}
+
+void
+ybvectorcopartitioneddelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
+			Relation heap, struct IndexInfo *indexInfo)
+{
+}
+
+IndexBuildResult *
+ybvectorcopartitionedbackfill(Relation heap, Relation index, struct IndexInfo *indexInfo,
+			  struct YbBackfillInfo *bfinfo, struct YbPgExecOutParam *bfresult)
+{
+	/* No backfill supported for copartitioned vector indexes yet. */
+	return NULL;
+}
+
+IndexBuildResult *
+ybvectorcopartitionedbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
+{
+	HandleYBStatus(YBCPgWaitVectorIndexReady(
+		YBCGetDatabaseOid(index), index->rd_id));
+
+	IndexBuildResult *result = palloc0(sizeof(IndexBuildResult));
+
+	return result;
 }

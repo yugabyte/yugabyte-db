@@ -41,8 +41,8 @@ SET yb_planner_custom_plan_for_partition_pruning=true;
 
 -- UPDATE list partitioned table using a JOIN with a non-partitioned table.
 PREPARE t2(int) AS UPDATE np SET d = 1 FROM lp WHERE lp.a = np.a AND lp.a = $1;
-EXPLAIN EXECUTE t2(1);
-EXPLAIN EXECUTE t2(1);
+EXPLAIN(COSTS OFF) EXECUTE t2(1);
+EXPLAIN(COSTS OFF) EXECUTE t2(1);
 
 -- DELETE range partitioned table using a JOIN with a non-partitioned table.
 PREPARE t3(int) AS DELETE FROM rp USING np WHERE rp.a = np.a AND rp.a = $1;

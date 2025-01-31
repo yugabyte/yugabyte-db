@@ -21,6 +21,7 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/dockv/dockv.pb.h"
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/util/result.h"
@@ -32,45 +33,13 @@ class RefCntPrefix;
 
 namespace dockv {
 
-// We may write intents with empty groups to intents_db, but when interacting with SharedLockManager
-// or WaitQueue, we expect no kGroupEnd markers in keys. This method normalizes the passed in key to
-// the format expected by conflict resolution. Returns an error if the provided key begins with a
-// kGroupEnd marker.
+// We may write intents with empty groups to intents_db, but when interacting with WaitQueue or
+// SharedLockManager, we expect no kGroupEnd markers in keys. This method normalizes the passed
+// in key to the format expected by conflict resolution. Returns an error if the provided key begins
+// with a kGroupEnd marker.
 Status RemoveGroupEndSuffix(RefCntPrefix* key);
 
-// "Intent types" are used for single-tablet operations and cross-shard transactions. For example,
-// multiple write-only operations don't need to conflict. However, if one operation is a
-// read-modify-write snapshot isolation operation, then a write-only operation cannot proceed in
-// parallel with it. Conflicts between intent types are handled according to the conflict matrix at
-// https://goo.gl/Wbc663.
-
-// "Weak" intents are obtained for prefix SubDocKeys of a key that a transaction is working with.
-// E.g. if we're writing "a.b.c", we'll obtain weak write intents on "a" and "a.b", but a strong
-// write intent on "a.b.c".
-constexpr int kWeakIntentFlag         = 0b000;
-
-// "Strong" intents are obtained on the fully qualified SubDocKey that an operation is working with.
-// See the example above.
-constexpr int kStrongIntentFlag       = 0b010;
-
-constexpr int kReadIntentFlag         = 0b000;
-constexpr int kWriteIntentFlag        = 0b001;
-
-// We put weak intents before strong intents to be able to skip weak intents while checking for
-// conflicts.
-//
-// This was not always the case.
-// kObsoleteIntentTypeSet corresponds to intent type set values stored in such a way that
-// strong/weak and read/write bits are swapped compared to the current format.
-YB_DEFINE_ENUM(IntentType,
-    ((kWeakRead,      kWeakIntentFlag |  kReadIntentFlag))
-    ((kWeakWrite,     kWeakIntentFlag | kWriteIntentFlag))
-    ((kStrongRead,  kStrongIntentFlag |  kReadIntentFlag))
-    ((kStrongWrite, kStrongIntentFlag | kWriteIntentFlag))
-);
-
 constexpr int kIntentTypeSetMapSize = 1 << kIntentTypeMapSize;
-typedef EnumBitSet<IntentType> IntentTypeSet;
 
 // DecodeIntentKey result.
 // intent_prefix - intent prefix (SubDocKey (no HT)).
@@ -127,6 +96,8 @@ struct ReadIntentTypeSets {
 
 [[nodiscard]] IntentTypeSet GetIntentTypesForWrite(IsolationLevel level);
 
+[[nodiscard]] IntentTypeSet GetIntentTypesForLock(DocdbLockMode mode);
+
 YB_STRONGLY_TYPED_BOOL(IsRowLock);
 
 [[nodiscard]] inline IntentTypeSet GetIntentTypes(
@@ -181,6 +152,20 @@ Status EnumerateIntents(
     Slice key, Slice intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key = LastKey::kFalse);
+
+struct ParsedIntent {
+  // Intent DocPath.
+  Slice doc_path;
+  dockv::IntentTypeSet types;
+  // Intent doc hybrid time.
+  Slice doc_ht;
+};
+
+// Parses the intent pointed to by intent_iter to a ParsedIntent.
+// Intent is encoded as Prefix + DocPath + IntentType + DocHybridTime.
+// `transaction_id_source` could be larger that 16 bytes, it is not problem here, because it is
+// used for error reporting.
+Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source);
 
 }  // namespace dockv
 }  // namespace yb

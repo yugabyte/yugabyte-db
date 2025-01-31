@@ -152,7 +152,7 @@ class PgIndexBackfillTest : public LibPqTestBase {
   void TestRetainDeleteMarkersRecovery(const std::string& db_name, bool use_multiple_requests);
   Status TestInsertsWhileCreatingIndex(bool expect_missing_row);
 
-  const int kTabletsPerServer = 8;
+  const int kTabletsPerServer = RegularBuildVsSanitizers(8, 2);
 
   std::unique_ptr<PGConn> conn_;
   TestThreadHolder thread_holder_;
@@ -200,7 +200,7 @@ class PgIndexBackfillTest : public LibPqTestBase {
           SCHECK_EQ(values.size(), 1, IllegalState, "unexpected number of rows");
           return values[0] == expected;
         },
-        30s,
+        30s * kTimeMultiplier,
         Format("Wait on index progress columns $0", columns));
   }
 
@@ -1064,7 +1064,7 @@ TEST_F_EX(PgIndexBackfillTest,
   {
     auto auth_conn = ASSERT_RESULT(PGConnBuilder({
         .host = pg_ts->bind_host(),
-        .port = pg_ts->pgsql_rpc_port(),
+        .port = pg_ts->ysql_port(),
         .dbname = this->kAuthDbName,
         .user = "yugabyte",
         .password = "yugabyte"
@@ -1656,7 +1656,7 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Create connection to a different tablet server from the one running CREATE INDEX";
   PGConn diff_ts_conn = ASSERT_RESULT(PGConnBuilder({
     .host = diff_ts->bind_host(),
-    .port = diff_ts->pgsql_rpc_port(),
+    .port = diff_ts->ysql_port(),
     .dbname = kDatabaseName
   }).Connect());
 
@@ -1999,6 +1999,7 @@ TEST_F_EX(PgIndexBackfillTest,
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE USER $0", kUserOne));
   ASSERT_OK(conn_->ExecuteFormat("CREATE USER $0", kUserTwo));
+  ASSERT_OK(conn_->ExecuteFormat("GRANT CREATE ON SCHEMA public TO $0", kUserOne));
 
   auto user_one_read_conn = ASSERT_RESULT(ConnectToDBAsUser(kDatabaseName, kUserOne));
   auto user_two_read_conn = ASSERT_RESULT(ConnectToDBAsUser(kDatabaseName, kUserTwo));
@@ -2287,6 +2288,244 @@ TEST_F_EX(PgIndexBackfillTest,
   ASSERT_OK(WaitForIndexScan(query));
   auto rows = ASSERT_RESULT((conn_->FetchRows<int32_t, int32_t>(query)));
   ASSERT_EQ(rows, (decltype(rows){{1, 2}, {3, 5}}));
+}
+
+class PgIndexBackfillReadCommittedBlockIndislive : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_test_block_index_phase=indislive");
+  }
+};
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/24313
+// Verify that concurrent updates do not leave phantom entries in the index
+// Phantom entries were created because inplace index update function did not check if the index
+// was ready. The index build procedure wait until "old" transactions (those who don't know about
+// the index) are completed before proceeding to "ready" state because update by old transaction may
+// prevent proper index update. This happens as follows ("new" transaction thinks the index is
+// ready, "old" transaction thinks the index does not exist):
+// - "new" transaction changes value in indexed column of record R from 'a' to 'b'.
+//   Index key is changed from 'a' to 'b'. Index is being built, the 'a' key may not exist yet, in
+//   this case new key is created.
+// - "old" transaction changes value in indexed column of record R from 'b' to 'c'.
+//   Index key is not updated, it remains 'b'.
+// - "new" transaction changes value in indexed column of record R from 'c' to 'd'.
+//   The transaction attempts to change the index key from 'c' to 'd'. The key 'c' does not exist
+//   in the index, so new key is created. Now index has two keys, 'b' and 'd' pointing to the same
+//   record R.
+// If index readiness is not checked, any transaction aware of the index acts as "new".
+TEST_F_EX(PgIndexBackfillTest, PhantomIdxEntry, PgIndexBackfillReadCommittedBlockIndislive) {
+  constexpr int kNumRows = 10;
+  const IndexStateFlags index_live_flags{IndexStateFlag::kIndIsLive};
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int, t text)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, $1), 'a')",
+                                 kTableName, kNumRows));
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create index thread";
+    auto create_idx_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_idx_conn.ExecuteFormat("CREATE INDEX $0 ON $1(t)", kIndexName, kTableName));
+    LOG(INFO) << "Create index thread has been completed";
+  });
+  // There's no reliable indicator that index build has stopped before 'indislive' phase, just give
+  // the index creation thread some extra time.
+  SleepFor(RegularBuildVsSanitizers(5s, 60s));
+  auto other_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_FALSE(ASSERT_RESULT(IsAtTargetIndexStateFlags(kIndexName, IndexStateFlags{})));
+  LOG(INFO) << "Begin older txn";
+  ASSERT_OK(other_conn.Execute("BEGIN"));
+  const std::string query = Format("SELECT t FROM $0 WHERE i = $1", kTableName, 1);
+  auto rows = ASSERT_RESULT((other_conn.FetchRows<std::string>(query)));
+  ASSERT_EQ(rows, (decltype(rows){{"a"}}));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "indisready"));
+  ASSERT_OK(WaitForIndexStateFlags(index_live_flags, kIndexName));
+  LOG(INFO) << "Update record by newer txn";
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET t = 'b' WHERE i = $1", kTableName, 2));
+  LOG(INFO) << "Update record by older txn";
+  ASSERT_OK(other_conn.ExecuteFormat("UPDATE $0 SET t = 'c' WHERE i = $1", kTableName, 2));
+  ASSERT_OK(other_conn.Execute("COMMIT"));
+  LOG(INFO) << "Update record by newer txn again";
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET t = 'd' WHERE i = $1", kTableName, 2));
+  ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(kIndexName, index_live_flags)));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  thread_holder_.Stop();
+  const std::string count_query = Format("SELECT count(t) FROM $0 WHERE t = 'b'", kTableName);
+  ASSERT_OK(WaitForIndexScan(count_query));
+  LOG(INFO) << "Check for phantom record";
+  auto idx_count = ASSERT_RESULT((conn_->FetchRow<PGUint64>(count_query)));
+  ASSERT_EQ(idx_count, 0);
+}
+
+class PgIndexBackfillReadCommittedBlockIndisliveBlockDoBackfill :
+  public PgIndexBackfillReadCommittedBlockIndislive {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillReadCommittedBlockIndislive::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--TEST_block_do_backfill=true");
+  }
+};
+
+// Make sure backends wait for catalog version waits on the correct version and ignores the backend
+// running the CREATE INDEX.
+//
+// Buggy behavior:
+// 1. A: CREATE INDEX
+// 1. B: other catver bumps
+// 1. B: BEGIN
+// 1. A: indislive
+// 1. A: indisready
+// 1. A: backfill get safe time (since this happens before the DELETE, the to-be-deleted row is
+//       backfilled)
+// 1. B: DELETE (since this happens with zero index permissions, no DELETE is sent to the index)
+// 1. B: COMMIT
+//
+// Correct behavior:
+// 1. A: CREATE INDEX
+// 1. B: other catver bumps
+// 1. B: BEGIN
+// 1. A: indislive
+// 1. B: DELETE
+// 1. B: COMMIT
+// 1. A: indisready
+// 1. A: backfill get safe time
+TEST_F_EX(PgIndexBackfillTest,
+          CatVerBumps,
+          PgIndexBackfillReadCommittedBlockIndisliveBlockDoBackfill) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
+
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create index thread";
+    auto create_idx_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_idx_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName));
+    LOG(INFO) << "End create index thread";
+  });
+
+  ASSERT_OK(EnsureClientCreated());
+  const std::string table_id = ASSERT_RESULT(GetTableIdByTableName(
+      client_.get(), kDatabaseName, kTableName));
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  ASSERT_OK(LoggedWaitFor(
+      [this]() {
+        return client_->TableExists(client::YBTableName(
+            YQL_DATABASE_PGSQL, kDatabaseName, kIndexName));
+      },
+      30s,
+      "wait for index to exist"));
+
+  // Need 2 catalog version bumps to make the following DML connection at a catalog version >= the
+  // CREATE INDEX's local catalog version, at least until backfill happens.
+  ASSERT_OK(BumpCatalogVersion(2, conn_.get()));
+  // Ensure we get the new catalog version by resetting connection.  This also clears the cached
+  // table schema version.
+  conn_->Reset();
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  // If tservers have table schema version 3 but master has table schema version 2, that causes
+  // schema version mismatch for DMLs.  Avoid that situation by not doing DMLs until the table
+  // schema version stabilizes to 3.
+  // 0 -> 1: add index to table
+  // 1 -> 2: revert that because committing indislive fails on conflict with pg_yb_catalog_table
+  // bumping catalog version when above BumpCatalogVersion also bumps it
+  // 2 -> 3: add index to table (retry)
+  ASSERT_OK(LoggedWaitFor(
+      [this, table_info, &table_id]() -> Result<bool> {
+        Synchronizer sync;
+        RETURN_NOT_OK(client_->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+        RETURN_NOT_OK(sync.Wait());
+        constexpr uint32_t kTargetVersion = 3;
+        SCHECK_LE(table_info->schema.version(), kTargetVersion,
+                  IllegalState,
+                  "Unexpected schema version");
+        return table_info->schema.version() == kTargetVersion;
+      },
+      60s,
+      "wait for table to register index"));
+  // Wait for index permission state changes to possibly go through (for the buggy case to fail).
+  SleepFor(RegularBuildVsDebugVsSanitizers(5s, 30s, 60s));
+  // It is unexpected for the index to be in backfill mode, let alone having committed indisready
+  // permission.
+  LOG_IF(WARNING,
+         ASSERT_RESULT(IsAtTargetIndexStateFlags(kIndexName,
+                                                 IndexStateFlags{IndexStateFlag::kIndIsLive,
+                                                                 IndexStateFlag::kIndIsReady})))
+      << "incorrectly advanced to indisready permission";
+  ASSERT_OK(conn_->ExecuteFormat("DELETE FROM $0", kTableName));
+  ASSERT_OK(conn_->Execute("COMMIT"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  thread_holder_.JoinAll();
+
+  const std::string query = Format("/*+IndexOnlyScan($0 $1)*/ SELECT count(*) FROM $0 WHERE i = 1",
+                                   kTableName, kIndexName);
+  ASSERT_OK(WaitForIndexScan(query));
+  ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<PGUint64>(query)), 0);
+}
+
+class PgIndexBackfill1kRowsPerSec : public PgIndexBackfillTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        Format("--backfill_index_write_batch_size=$0", kBackfillRateRowsPerSec));
+    options->extra_tserver_flags.push_back(
+        Format("--backfill_index_rate_rows_per_sec=$0", kBackfillRateRowsPerSec));
+  }
+
+ protected:
+  static constexpr auto kBackfillRateRowsPerSec = 1000;
+  static constexpr auto kNumRows = 10000;
+};
+
+// Test for GH Issue (#25250):
+TEST_F_EX(PgIndexBackfillTest, ConcurrentDelete, PgIndexBackfill1kRowsPerSec) {
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k int, v int, PRIMARY KEY (k ASC)) split at values "
+      "(($1))", kTableName, kNumRows+1));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 (k, v) SELECT i, i FROM generate_series(1, $1) AS i;", kTableName, kNumRows));
+
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create index thread";
+    auto create_idx_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_idx_conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 (v) SPLIT INTO 10 TABLETS", kIndexName, kTableName));
+    LOG(INFO) << "End create index thread";
+  });
+
+  ASSERT_OK(EnsureClientCreated());
+  ASSERT_OK(WaitFor(
+      [this]() {
+        return client_->TableExists(client::YBTableName(
+            YQL_DATABASE_PGSQL, kDatabaseName, kIndexName));
+      },
+      30s,
+      "wait for index to exist"));
+  ASSERT_OK(WaitForIndexProgressOutput(kPhase, kPhaseBackfilling));
+  LOG(INFO) << "Index backfill has started";
+
+  // Perform a DELETE half way into the backfill. This way the DELETE happens after a backfill
+  // write time is chosen, but before the row 9999 is backfilled.
+  SleepFor(MonoDelta::FromSeconds(kNumRows / (2 * kBackfillRateRowsPerSec)));
+  ASSERT_OK(conn_->ExecuteFormat("DELETE FROM $0 WHERE k=$1", kTableName, kNumRows));
+  LOG(INFO) << "Deleted row";
+
+  // Ensure that we haven't yet finished backfilling the last row.
+  const std::string& index_progress_query =
+    "SELECT phase, tuples_done FROM pg_stat_progress_create_index";
+  auto res = ASSERT_RESULT(conn_->Fetch(index_progress_query));
+  ASSERT_EQ(ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)), kPhaseBackfilling);
+  auto tuples_backfilled = ASSERT_RESULT(GetValue<PGUint64>(res.get(), 0, 1));
+  ASSERT_LT(tuples_backfilled, kNumRows);
+
+  // Use an index only scan to ensure that the row with key kNumRows is absent in the index.
+  // If the backfilled index entry for this key has a write time higher than the DELETE above,
+  // the row would be present in the index and show up in an index only scan.
+  const std::string query = Format("/*+IndexOnlyScan($0 $1) */ SELECT count(*) FROM $0 WHERE v=$2",
+                                   kTableName, kIndexName, kNumRows);
+  ASSERT_OK(WaitForIndexScan(query));
+  ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<PGUint64>(query)), 0);
+  thread_holder_.JoinAll();
 }
 
 } // namespace yb::pgwrapper

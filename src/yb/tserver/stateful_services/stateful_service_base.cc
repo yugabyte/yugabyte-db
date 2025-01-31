@@ -363,7 +363,7 @@ void StatefulServiceBase::ProcessTaskPeriodically() {
   {
     UniqueLock lock(service_state_mutex_);
     LOG_TASK_IDLE_AND_RETURN_IF_SHUTDOWN;
-    task_wait_cond_.wait_for(GetLockForCondition(&lock), wait_time_ms * 1ms);
+    task_wait_cond_.wait_for(GetLockForCondition(lock), wait_time_ms * 1ms);
   }
 
   StartPeriodicTaskIfNeeded();
@@ -371,6 +371,13 @@ void StatefulServiceBase::ProcessTaskPeriodically() {
 
 Result<std::shared_ptr<client::YBSession>> StatefulServiceBase::GetYBSession(MonoDelta delta) {
   auto session = GetYBClient()->NewSession(delta);
+  session->SetLeaderTerm(VERIFY_RESULT(GetLeaderTerm()));
+  return session;
+}
+
+Result<std::shared_ptr<client::YBSession>> StatefulServiceBase::GetYBSession(
+    CoarseTimePoint deadline) {
+  auto session = GetYBClient()->NewSession(deadline);
   session->SetLeaderTerm(VERIFY_RESULT(GetLeaderTerm()));
   return session;
 }

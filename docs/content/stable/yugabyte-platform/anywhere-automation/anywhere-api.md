@@ -1,6 +1,6 @@
 ---
 title: YugabyteDB Anywhere REST API
-headerTitle: REST API
+headerTitle: YugabyteDB Anywhere REST API
 linkTitle: REST API
 description: REST API YugabyteDB Anywhere.
 headcontent: Manage YugabyteDB Anywhere accounts and deployments using the REST API
@@ -14,7 +14,7 @@ type: docs
 
 The YugabyteDB Anywhere REST API allows you to deploy and manage universes programmatically. Some examples of what you can accomplish using this API include:
 
-- Create and manage YBA provider configurations
+- Create and manage YugabyteDB Anywhere provider configurations
 - Deploy and manage universes
 - Pause and resume universes
 - Perform software upgrades

@@ -28,6 +28,7 @@
 
 #include "yb/master/master_replication.fwd.h"
 
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -35,11 +36,12 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
-DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(TEST_allow_ycql_transactional_xcluster);
+DECLARE_bool(TEST_check_broadcast_address);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
-DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
 namespace yb {
@@ -47,7 +49,7 @@ namespace yb {
 using client::YBClient;
 using YBTables = std::vector<std::shared_ptr<client::YBTable>>;
 
-constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
+constexpr int kRpcTimeout = RegularBuildVsSanitizers(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const xcluster::ReplicationGroupId kReplicationGroupId("test_replication_group");
 static const std::string kKeyColumnName = "key";
@@ -200,12 +202,6 @@ class XClusterTestBase : public YBTest {
       const std::vector<xrepl::StreamId>& bootstrap_ids = {},
       SetupReplicationOptions opts = SetupReplicationOptions());
 
-  Status SetupNSUniverseReplication(
-      MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const xcluster::ReplicationGroupId& replication_group_id, const std::string& producer_ns_name,
-      const YQLDatabase& producer_ns_type,
-      SetupReplicationOptions opts = SetupReplicationOptions());
-
   Status VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp);
 
   Status VerifyUniverseReplication(
@@ -216,10 +212,6 @@ class XClusterTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id,
       master::GetUniverseReplicationResponsePB* resp);
-
-  Status VerifyNSUniverseReplication(
-      MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const xcluster::ReplicationGroupId& replication_group_id, int num_expected_table);
 
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
@@ -238,6 +230,10 @@ class XClusterTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id,
       master::IsSetupUniverseReplicationDoneResponsePB* resp);
+
+  Result<IsOperationDoneResult> WaitForSetupUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      MiniCluster* consumer_cluster = nullptr, YBClient* consumer_client = nullptr);
 
   Status GetCDCStreamForTable(const TableId& table_id, master::ListCDCStreamsResponsePB* resp);
 
@@ -283,7 +279,7 @@ class XClusterTestBase : public YBTest {
   Status WaitForReplicationDrain(
       int expected_num_nondrained = 0, int timeout_secs = kRpcTimeout,
       std::optional<uint64> target_time = std::nullopt,
-      std::vector<TableId> producer_table_ids = {});
+      std::vector<TableId> producer_table_ids = {}, YBClient* source_client = nullptr);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
@@ -331,22 +327,26 @@ class XClusterTestBase : public YBTest {
     return output;
   }
 
+  // Run ysql_dump on a database for the given cluster.
+  Result<std::string> RunYSQLDump(Cluster& cluster, const std::string& database_name = "yugabyte");
+
   // Wait for the xcluster safe time to advance to the given time on all TServers.
   Status WaitForSafeTime(const NamespaceId& namespace_id, const HybridTime& min_safe_time);
 
-  // Wait for the xcluster safe time to advance to Now on all TServers.
-  virtual Status WaitForSafeTimeToAdvanceToNow();
+  // Wait for the xcluster safe time to advance to Now on all TServers for the given namespaces.
+  // The empty list (the default) means just the namespace namespace_name.
+  virtual Status WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName> namespace_names = {});
 
   Status VerifyReplicationError(
       const std::string& consumer_table_id, const xrepl::StreamId& stream_id,
-      const std::optional<ReplicationErrorPb> expected_replication_error);
+      const std::optional<ReplicationErrorPb> expected_replication_error, int timeout_secs = 30);
 
   Result<xrepl::StreamId> GetCDCStreamID(const TableId& producer_table_id);
 
   Status PauseResumeXClusterProducerStreams(
       const std::vector<xrepl::StreamId>& stream_ids, bool is_paused);
 
-  Result<TableId> GetColocatedDatabaseParentTableId();
+  Result<TableId> GetColocatedDatabaseParentTableId(Cluster* cluster = nullptr);
 
   Result<master::MasterReplicationProxy> GetProducerMasterProxy();
 

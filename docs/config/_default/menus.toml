@@ -12,7 +12,7 @@
 [[top_nav]]
   name = "Join us on Slack"
   weight = 2
-  url = "https://communityinviter.com/apps/yugabyte-db/register"
+  url = "https://inviter.co/yugabytedb"
   post = "<img width='24' height='24' src='/icons/slack.svg' alt='YugabyteDB Community Slack'>"
   [top_nav.params]
     classes = "tritiery-btn"
@@ -99,7 +99,7 @@
 
 [[main]]
   name = "YugabyteDB Voyager"
-  weight = 4
+  weight = 5
   parent = "products"
   url = "/preview/yugabyte-voyager/"
   [main.params]
@@ -121,90 +121,104 @@
   [main.params]
     excludeVersion = true
 
-# [[main]]
-#   name = "APIs"
-#   weight = 3
-#   identifier = "yugabyte-apis"
-#   url = "/api/ysql/"
+[[main]]
+  name = "API"
+  weight = 4
+  identifier = "yugabyte-apis"
+  url = "/api/"
 
-# [[main]]
-#   name = "SQL APIs"
-#   weight = 1
-#   parent = "yugabyte-apis"
-#   [main.params]
-#     classes = "label"
-#     excludeVersion = true
+[[main]]
+  name = "SQL APIs"
+  weight = 1
+  parent = "yugabyte-apis"
+  [main.params]
+    classes = "label"
+    excludeVersion = true
 
-# [[main]]
-#   name = "YSQL"
-#   weight = 2
-#   identifier = "yugabytedb-api-ysql"
-#   parent = "yugabyte-apis"
-#   url = "/api/ysql/"
-#   [main.params]
-#     imageUrl = "/icons/api.svg"
+[[main]]
+  name = "YSQL"
+  weight = 2
+  identifier = "yugabytedb-api-ysql"
+  parent = "yugabyte-apis"
+  url = "/api/ysql/"
+  [main.params]
+    imageUrl = "/icons/api.svg"
 
-# [[main]]
-#   name = "YCQL"
-#   weight = 3
-#   identifier = "yugabytedb-api-ycql"
-#   parent = "yugabyte-apis"
-#   url = "/api/ycql/"
-#   [main.params]
-#     imageUrl = "/icons/api.svg"
+[[main]]
+  name = "YCQL"
+  weight = 3
+  identifier = "yugabytedb-api-ycql"
+  parent = "yugabyte-apis"
+  url = "/api/ycql/"
+  [main.params]
+    imageUrl = "/icons/api.svg"
 
-# [[main]]
-#   name = "Management APIs"
-#   weight = 4
-#   parent = "yugabyte-apis"
-#   [main.params]
-#     classes = "label"
-#     excludeVersion = true
+[[main]]
+  name = "Clients"
+  weight = 4
+  parent = "yugabyte-apis"
+  [main.params]
+    classes = "label"
+    excludeVersion = true
 
-# [[main]]
-#   name = "YugabyteDB Anywhere API"
-#   weight = 5
-#   identifier = "yugabytedb-anywhere-api"
-#   parent = "yugabyte-apis"
-#   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
-#   [main.params]
-#     imageUrl = "/icons/server.svg"
-#     newTab = true
+[[main]]
+  name = "ysqlsh"
+  weight = 5
+  identifier = "client-ysqlsh"
+  parent = "yugabyte-apis"
+  url = "/api/ysqlsh/"
+  [main.params]
+    imageUrl = "/icons/api.svg"
 
-# [[main]]
-#   name = "YugabyteDB Aeon API"
-#   weight = 6
-#   identifier = "yugabytedb-anaged-api"
-#   parent = "yugabyte-apis"
-#   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
-#   [main.params]
-#     imageUrl = "/icons/cloud.svg"
-#     newTab = true
+[[main]]
+  name = "ycqlsh"
+  weight = 6
+  identifier = "client-ycqlsh"
+  parent = "yugabyte-apis"
+  url = "/api/ycqlsh/"
+  [main.params]
+    imageUrl = "/icons/api.svg"
+
+[[main]]
+  name = "Management APIs"
+  weight = 7
+  parent = "yugabyte-apis"
+  [main.params]
+    classes = "label"
+    excludeVersion = true
+
+[[main]]
+  name = "YugabyteDB Anywhere API"
+  weight = 8
+  identifier = "yugabytedb-anywhere-api"
+  parent = "yugabyte-apis"
+  url = "/yugabyte-platform/anywhere-automation/anywhere-api/"
+  [main.params]
+    imageUrl = "/icons/server.svg"
+
+[[main]]
+  name = "YugabyteDB Aeon API"
+  weight = 9
+  identifier = "yugabytedb-anaged-api"
+  parent = "yugabyte-apis"
+  url = "/yugabyte-cloud/managed-automation/managed-api/"
+  [main.params]
+    imageUrl = "/icons/cloud.svg"
 
 [[main]]
   name = "FAQ"
-  weight = 4
+  weight = 5
   url = "/preview/faq/general/"
   [main.params]
     excludeVersion = true
 
 [[main]]
   name = "Releases"
-  weight = 5
+  weight = 6
   identifier = "releases"
   url = "/preview/releases/"
   [main.params]
     excludeVersion = true
-
-[[main]]
-  name = "Tech Advisories"
-  weight = 5
-  identifier = "tech-advisories-menu"
-  parent = "releases"
-  url = "/preview/releases/techadvisories/"
-  [main.params]
-    excludeVersion = true
-    imageUrl = "/icons/triangle-exclamation-thin.svg"
 
 [[main]]
   name = "YugabyteDB"
@@ -238,13 +252,33 @@
 
 [[main]]
   name = "YugabyteDB Voyager"
-  weight = 3
+  weight = 4
   identifier = "yugabytedb-voyager-releases"
   parent = "releases"
   url = "/preview/yugabyte-voyager/release-notes/"
   [main.params]
     excludeVersion = true
     imageUrl = "/images/migrate/migration-icon.svg"
+
+[[main]]
+  name = "YugabyteDB Clients"
+  weight = 5
+  identifier = "yugabytedb-client-releases"
+  parent = "releases"
+  url = "/preview/releases/yugabyte-clients/"
+  [main.params]
+    excludeVersion = true
+    imageUrl = "/icons/api.svg"
+
+[[main]]
+  name = "Tech Advisories"
+  weight = 6
+  identifier = "tech-advisories-menu"
+  parent = "releases"
+  url = "/preview/releases/techadvisories/"
+  [main.params]
+    excludeVersion = true
+    imageUrl = "/icons/triangle-exclamation-thin.svg"
 
 ########## Bottom menu for left navigation
 
@@ -269,7 +303,7 @@
   weight = 3
   parent = "join-our-community"
   pre = "<i class='icon-slack'></i>"
-  url = "https://communityinviter.com/apps/yugabyte-db/register"
+  url = "https://inviter.co/yugabytedb"
   [leftbottom.params]
     newTab = true
 
@@ -323,60 +357,58 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
+  pre = "<i class='icon-home'></i>"
   url = "/"
   [home.params]
+    classes = "no-transform"
     showSection = true
-
-# [[home]]
-#   name = "Key benefits"
-#   weight = 2
-#   identifier = "features"
-#   url = "/preview/features/"
-#   [home.params]
-#     showSection = true
-#     hideChildren = true
-
-# [[home]]
-#   name = "Resource guide"
-#   weight = 3
-#   identifier = "get-started-guide"
-#   url = "/preview/get-started-guide/"
-#   [home.params]
-#     showSection = true
-#     hideChildren = true
 
 [[home]]
   name = "Quick Start"
   weight = 4
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  pre = "<i class='icon-quick-start'></i>"
+  url = "/preview/tutorials/quick-start-yugabytedb-managed/"
   [home.params]
-    classes = "separator"
+    classes = "separator spacing no-transform"
     showSection = true
     hideChildren = true
+
+[[home]]
+  name = "Products"
+  weight = 6
+  [home.params]
+    showSection = true
+    classes = "no-link"
 
 [[home]]
   name = "YugabyteDB"
   weight = 10
   identifier = "yugabytedb"
+  pre = "<i class='icon-database'></i>"
   url = "/preview/"
   [home.params]
+    classes = "no-transform"
     showSection = true
 
 [[home]]
   name = "YugabyteDB Anywhere"
   weight = 11
   identifier = "yugabytedb-anywhere"
+  pre = "<i class='icon-server'></i>"
   url = "/preview/yugabyte-platform/"
   [home.params]
+    classes = "no-transform"
     showSection = true
 
 [[home]]
   name = "YugabyteDB Aeon"
   weight = 12
   identifier = "yugabytedb-managed"
+  pre = "<i class='icon-cloud'></i>"
   url = "/preview/yugabyte-cloud/"
   [home.params]
+    classes = "no-transform"
     showSection = true
     hideChildren = true
 
@@ -384,24 +416,59 @@
   name = "YugabyteDB Voyager"
   weight = 13
   identifier = "migrate"
+  pre = "<i class='icon-migrate'></i>"
   url = "/preview/yugabyte-voyager/"
   [home.params]
+    classes = "no-transform"
     showSection = true
     hideChildren = true
+
+########## Menus for Product Dropdown
+
+[[products]]
+  name = "YugabyteDB"
+  weight = 2
+  url = "/"
+  [products.params]
+    description = "The open source distributed SQL database"
+    imageUrl = "/icons/database.svg"
+
+[[products]]
+  name = "YugabyteDB Anywhere"
+  weight = 3
+  url = "/yugabyte-platform/"
+  [products.params]
+    description = "Self-managed cloud DBaaS"
+    imageUrl = "/icons/server.svg"
+
+[[products]]
+  name = "YugabyteDB Aeon"
+  weight = 4
+  url = "/preview/yugabyte-cloud/"
+  [products.params]
+    description = "Fully-managed cloud DBaaS"
+    excludeVersion = true
+    imageUrl = "/icons/cloud.svg"
+
+[[products]]
+  name = "YugabyteDB Voyager"
+  weight = 5
+  url = "/preview/yugabyte-voyager/"
+  [products.params]
+    description = "Database migration service"
+    excludeVersion = true
+    imageUrl = "/images/migrate/migration-icon.svg"
 
 ########## Menus for preview
 
 [[preview]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
+  identifier = "products-dropdown"
   [preview.params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [[preview]]
-  name = "YugabyteDB"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb"
   url = "/preview/"
@@ -430,8 +497,9 @@
   name = "Quick Start"
   weight = 5
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start/macos/"
   [preview.params]
+    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -451,22 +519,6 @@
   [preview.params]
     showSection = true
 
-#[[preview]]
-#  name = "Tutorials"
-#  weight = 7
-#  identifier = "tutorials"
-#  url = "/preview/tutorials/"
-#  [preview.params]
-#    showSection = true
-
-# [[preview]]
-#   name = "Migrate"
-#   weight = 6
-#   identifier = "migrate"
-#   url = "/preview/migrate/"
-#   [preview.params]
-#     showSection = true
-
 [[preview]]
   name = "Secure"
   weight = 8
@@ -484,17 +536,17 @@
     showSection = true
 
 [[preview]]
-  name = "Benchmark"
+  name = "Reference"
   weight = 10
-  identifier = "benchmark"
-  url = "/preview/benchmark/"
+  identifier = "reference"
   [preview.params]
     showSection = true
 
 [[preview]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
+  name = "Benchmark"
+  weight = 11
+  identifier = "benchmark"
+  url = "/preview/benchmark/"
   [preview.params]
     showSection = true
 
@@ -513,14 +565,14 @@
 
 ########## Menus (in preview) for Integrations
 
-[[preview_integrations]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  [preview_integrations.params]
-    classes = "separator"
-    showSection = true
+# [[preview_integrations]]
+#   name = "Docs Home"
+#   weight = 1
+#   identifier = "home"
+#   url = "/"
+#   [preview_integrations.params]
+#     classes = "separator"
+#     showSection = true
 
 [[preview_integrations]]
   name = "Integrations"
@@ -528,122 +580,150 @@
   identifier = "integrations"
   url = "/preview/integrations/"
   [preview_integrations.params]
+    classes = "separator"
     showSection = true
 
 [[preview_integrations]]
   name = "Drivers and ORMs"
-  weight = 2
+  weight = 3
   url = "/preview/drivers-orms/"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Schema migration"
-  weight = 3
+  weight = 4
   identifier = "schema-migration"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Data migration"
-  weight = 4
+  weight = 5
   identifier = "data-migration"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Data integration"
-  weight = 5
+  weight = 6
   identifier = "data-integration"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "GUI clients"
-  weight = 6
-  url = "/preview/tools/"
-  parent = "integrations"
+  weight = 7
+  identifier = "tools"
+  url = "/preview/integrations/tools/"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Application frameworks"
-  weight = 7
+  weight = 8
   identifier = "application-frameworks"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Development platforms"
-  weight = 8
+  weight = 9
   identifier = "development-platforms"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Data discovery"
-  weight = 9
+  weight = 10
   identifier = "data-discovery"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Security"
-  weight = 10
+  weight = 11
   identifier = "integrations-security"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Applications"
-  weight = 11
+  weight = 12
   identifier = "integrations-applications"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
-  name = "Infrastructure (HW, SW, Data Mgmt)"
-  weight = 12
+  name = "Infrastructure"
+  weight = 13
   identifier = "integrations-platforms"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Other"
-  weight = 13
+  weight = 14
   identifier = "integrations-other"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 ########## Menus (in preview) for Tutorials
 
+# [[preview_tutorials]]
+#   name = "Docs Home"
+#   weight = 1
+#   identifier = "home"
+#   url = "/"
+#   [preview_tutorials.params]
+#     showSection = true
+
 [[preview_tutorials]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
+  name = "Tutorials"
+  weight = 3
+  identifier = "tutorials"
+  url = "/preview/tutorials/"
   [preview_tutorials.params]
+    classes = "separator"
     showSection = true
 
 [[preview_tutorials]]
   name = "Quick Start"
-  weight = 3
+  weight = 4
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start-yugabytedb-managed/"
   [preview_tutorials.params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
 [[preview_tutorials]]
-  name = "Tutorials"
-  weight = 4
-  identifier = "tutorials"
-  url = "/preview/tutorials/"
+  name = "Hello world"
+  weight = 5
+  identifier = "build-apps"
+  url = "/preview/tutorials/build-apps/"
   [preview_tutorials.params]
     showSection = true
 
-#[[preview_tutorials]]
-#  name = "Hello world"
-#  weight = 3
-#  identifier = "build-apps"
-#  url = "/preview/tutorials/build-apps/"
-#  parent = "tutorials"
-#  [preview_tutorials.params]
-#    showSection = true
+[[preview_tutorials]]
+  name = "Build and learn"
+  weight = 10
+  identifier = "tutorials-build-and-learn"
+  url = "/preview/tutorials/build-and-learn/"
+  [preview_tutorials.params]
+    showSection = true
 
 [[preview_tutorials]]
   name = "Cloud"
   weight = 30
   identifier = "tutorials-cloud"
-  parent = "tutorials"
+  [preview_tutorials.params]
+    showSection = true
+
+[[preview_tutorials]]
+  name = "AI"
+  weight = 35
+  identifier = "tutorials-ai"
+  url = "/preview/tutorials/ai/"
   [preview_tutorials.params]
     showSection = true
 
@@ -651,7 +731,6 @@
   name = "CDC"
   weight = 40
   identifier = "tutorials-cdc"
-  parent = "tutorials"
   [preview_tutorials.params]
     showSection = true
 
@@ -666,78 +745,88 @@
 #     classes = "separator"
 #     showSection = true
 
-# [[preview_api]]
-#   name = "YSQL"
-#   weight = 2
-#   identifier = "yugabyte-api-ysql"
-#   [preview_api.params]
-#     showSection = true
-#     hideLink = true
+[[preview_api]]
+  name = "API"
+  weight = 2
+  identifier = "api"
+  url = "/preview/api/"
+  [preview_api.params]
+    classes = "separator"
+    showSection = true
 
-# [[preview_api]]
-#   name = "YCQL"
-#   weight = 3
-#   identifier = "yugabyte-api-ycql"
-#   [preview_api.params]
-#     showSection = true
-#     hideLink = true
+[[preview_api]]
+  name = "YSQL"
+  weight = 10
+  identifier = "api-ysql"
+  url = "/preview/api/ysql/"
+  [preview_api.params]
+    showSection = true
 
-# [[preview_api]]
-#   name = "YugabyteDB Anywhere API"
-#   weight = 4
-#   identifier = "yugabytedb-anywhere-api"
-#   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
-#   [preview_api.params]
-#     showSection = true
-#     newTab = true
+[[preview_api]]
+  name = "YCQL"
+  weight = 11
+  identifier = "api-cassandra"
+  url = "/preview/api/ycql/"
+  [preview_api.params]
+    classes = "separator"
+    showSection = true
 
-# [[preview_api]]
-#   name = "YugabyteDB Aeon API"
-#   weight = 5
-#   identifier = "yugabytedb-managed-api"
-#   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
-#   [preview_api.params]
-#     showSection = true
-#     newTab = true
+[[preview_api]]
+  name = "ysqlsh"
+  weight = 20
+  identifier = "ysqlsh"
+  url = "/preview/api/ysqlsh/"
+  [preview_api.params]
+    showSection = true
+
+[[preview_api]]
+  name = "ycqlsh"
+  weight = 21
+  identifier = "ycqlsh"
+  url = "/preview/api/ycqlsh/"
+  [preview_api.params]
+    classes = "separator"
+    showSection = true
+
+[[preview_api]]
+  name = "YugabyteDB Anywhere API"
+  weight = 30
+  identifier = "yugabytedb-anywhere-api"
+  url = "/preview/yugabyte-platform/anywhere-automation/anywhere-api/"
+  [preview_api.params]
+    showSection = true
+
+[[preview_api]]
+  name = "YugabyteDB Aeon API"
+  weight = 31
+  identifier = "yugabytedb-managed-api"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
+  [preview_api.params]
+    showSection = true
 
 ########## Menus (in preview) for releases section
 
+# [[preview_releases]]
+#   name = "Docs Home"
+#   weight = 1
+#   identifier = "home"
+#   url = "/"
+#   [preview_releases.params]
+#     classes = "separator"
+#     showSection = true
+
 [[preview_releases]]
-  name = "Docs Home"
+  name = "Releases"
   weight = 1
-  identifier = "home"
-  url = "/"
+  identifier = "releases"
+  url = "/preview/releases/"
   [preview_releases.params]
     classes = "separator"
     showSection = true
 
 [[preview_releases]]
-  name = "Releases"
-  weight = 2
-  identifier = "releases"
-  url = "/preview/releases/"
-  [preview_releases.params]
-    showSection = true
-
-[[preview_releases]]
-  name = "Versioning"
-  weight = 3
-  identifier = "release-versioning"
-  url = "/preview/releases/versioning/"
-  [preview_releases.params]
-    showSection = true
-
-[[preview_releases]]
-  name = "Tech Advisories"
-  weight = 4
-  identifier = "tech-advisories"
-  url = "/preview/releases/techadvisories/"
-  [preview_releases.params]
-    showSection = true
-
-[[preview_releases]]
   name = "YugabyteDB"
-  weight = 5
+  weight = 2
   identifier = "ybdb-releases"
   url = "/preview/releases/ybdb-releases/"
   [preview_releases.params]
@@ -753,16 +842,15 @@
 
 [[preview_releases]]
   name = "YugabyteDB Anywhere"
-  weight = 6
+  weight = 3
   identifier = "yba-releases"
   url = "/preview/releases/yba-releases/"
   [preview_releases.params]
-    classes = "separator"
     showSection = true
 
 [[preview_releases]]
   name = "YugabyteDB Aeon"
-  weight = 7
+  weight = 4
   identifier = "ybm-releases"
   url = "/preview/yugabyte-cloud/release-notes/"
   [preview_releases.params]
@@ -770,28 +858,55 @@
 
 [[preview_releases]]
   name = "YugabyteDB Voyager"
-  weight = 8
+  weight = 5
   identifier = "voy-releases"
   url = "/preview/yugabyte-voyager/release-notes/"
+  [preview_releases.params]
+    showSection = true
+    imageUrl = "/images/migrate/migration-icon.svg"
+
+[[preview_releases]]
+  name = "YugabyteDB Clients"
+  weight = 6
+  identifier = "yb-clients"
+  url = "/preview/releases/yugabyte-clients/"
+  [preview_releases.params]
+    classes = "separator"
+    showSection = true
+
+[[preview_releases]]
+  name = "Versioning"
+  weight = 10
+  identifier = "release-versioning"
+  url = "/preview/releases/versioning/"
+  [preview_releases.params]
+    showSection = true
+
+[[preview_releases]]
+  name = "Tech Advisories"
+  weight = 11
+  identifier = "tech-advisories"
+  url = "/preview/releases/techadvisories/"
   [preview_releases.params]
     showSection = true
 
 ########## Menus (in preview) for FAQ section
 
-[[preview_faq]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  [preview_faq.params]
-    classes = "separator"
-    showSection = true
+# [[preview_faq]]
+#   name = "Docs Home"
+#   weight = 1
+#   identifier = "home"
+#   url = "/"
+#   [preview_faq.params]
+#     classes = "separator"
+#     showSection = true
 
 [[preview_faq]]
   name = "FAQ"
   weight = 2
   identifier = "faq"
   [preview_faq.params]
+    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -806,27 +921,14 @@
 ########## Menus (in preview) for YB Anywhere section
 
 [[preview_yugabyte-platform]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
   [preview_yugabyte-platform.params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [[preview_yugabyte-platform]]
-  name = "YugabyteDB Anywhere"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb-anywhere"
-  [preview_yugabyte-platform.params]
-    showSection = true
-    hideLink = true
-
-[[preview_yugabyte-platform]]
-  name = "Servers for nodes"
-  parent = "prepare"
-  weight = 40
-  identifier = "server-nodes"
   [preview_yugabyte-platform.params]
     showSection = true
     hideLink = true
@@ -834,19 +936,16 @@
 ########## Menus (in preview) for YB Managed section
 
 [[preview_yugabyte-cloud]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
   [preview_yugabyte-cloud.params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [[preview_yugabyte-cloud]]
-  name = "YugabyteDB Aeon"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb-managed"
   [preview_yugabyte-cloud.params]
+    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -861,16 +960,12 @@
 ########## Menus (in preview) for YB Voyager section
 
 [[preview_yugabyte-voyager]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
   [preview_yugabyte-voyager.params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [[preview_yugabyte-voyager]]
-  name = "YugabyteDB Voyager"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb-voyager"
   [preview_yugabyte-voyager.params]
@@ -916,16 +1011,12 @@
 ########## Menus for stable
 
 [[stable]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
   [stable.params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [[stable]]
-  name = "YugabyteDB"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb"
   url = "/stable/"
@@ -936,8 +1027,9 @@
   name = "Quick Start"
   weight = 4
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start/macos/"
   [stable.params]
+    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1036,27 +1128,14 @@
 ########## Menus (in stable) for YB Anywhere section
 
 [[stable_yugabyte-platform]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
   [stable_yugabyte-platform.params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [[stable_yugabyte-platform]]
-  name = "YugabyteDB Anywhere"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb-anywhere"
-  [stable_yugabyte-platform.params]
-    showSection = true
-    hideLink = true
-
-[[stable_yugabyte-platform]]
-  name = "Servers for nodes"
-  parent = "prepare"
-  weight = 40
-  identifier = "server-nodes"
   [stable_yugabyte-platform.params]
     showSection = true
     hideLink = true
@@ -1072,54 +1151,229 @@
 #     classes = "separator"
 #     showSection = true
 
-# [[stable_api]]
-#   name = "YSQL"
-#   weight = 2
-#   identifier = "yugabyte-api-ysql"
-#   [stable_api.params]
-#     showSection = true
-#     hideLink = true
+[[stable_api]]
+  name = "API"
+  weight = 2
+  identifier = "api"
+  url = "/stable/api/"
+  [stable_api.params]
+    classes = "separator"
+    showSection = true
 
-# [[stable_api]]
-#   name = "YCQL"
-#   weight = 3
-#   identifier = "yugabyte-api-ycql"
-#   [stable_api.params]
-#     showSection = true
-#     hideLink = true
+[[stable_api]]
+  name = "YSQL"
+  weight = 10
+  identifier = "api-ysql"
+  url = "/stable/api/ysql/"
+  [stable_api.params]
+    showSection = true
 
-# [[stable_api]]
-#   name = "YugabyteDB Anywhere API"
-#   weight = 4
-#   identifier = "yugabytedb-anywhere-api"
-#   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
-#   [stable_api.params]
-#     showSection = true
-#     newTab = true
+[[stable_api]]
+  name = "YCQL"
+  weight = 11
+  identifier = "api-cassandra"
+  url = "/stable/api/ycql/"
+  [stable_api.params]
+    classes = "separator"
+    showSection = true
 
-# [[stable_api]]
-#   name = "YugabyteDB Aeon API"
-#   weight = 5
-#   identifier = "yugabytedb-managed-api"
-#   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
-#   [stable_api.params]
-#     showSection = true
-#     newTab = true
+[[stable_api]]
+  name = "ysqlsh"
+  weight = 20
+  identifier = "ysqlsh"
+  url = "/stable/api/ysqlsh/"
+  [stable_api.params]
+    showSection = true
 
+[[stable_api]]
+  name = "ycqlsh"
+  weight = 21
+  identifier = "ycqlsh"
+  url = "/stable/api/ycqlsh/"
+  [stable_api.params]
+    classes = "separator"
+    showSection = true
+
+[[stable_api]]
+  name = "YugabyteDB Anywhere API"
+  weight = 30
+  identifier = "yugabytedb-anywhere-api"
+  url = "/stable/yugabyte-platform/anywhere-automation/anywhere-api/"
+  [stable_api.params]
+    showSection = true
+
+[[stable_api]]
+  name = "YugabyteDB Aeon API"
+  weight = 31
+  identifier = "yugabytedb-managed-api"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
+  [stable_api.params]
+    showSection = true
+
+########## Menus for v2024.1
+
+[["v2024.1"]]
+  weight = 1
+  ["v2024.1".params]
+    productsDropdown = true
+
+[["v2024.1"]]
+  name = "Overview"
+  weight = 2
+  identifier = "yugabytedb"
+  url = "/v2024.1/"
+  ["v2024.1".params]
+    showSection = true
+
+[["v2024.1"]]
+  name = "Quick Start"
+  weight = 4
+  identifier = "quick-start"
+  url = "/preview/tutorials/quick-start/macos/"
+  ["v2024.1".params]
+    classes = "separator"
+    showSection = true
+    hideChildren = true
+
+[["v2024.1"]]
+  name = "Explore"
+  weight = 5
+  identifier = "explore"
+  url = "/v2024.1/explore/"
+  ["v2024.1".params]
+    showSection = true
+
+[["v2024.1"]]
+  name = "Develop"
+  weight = 6
+  identifier = "develop"
+  url = "/v2024.1/develop/"
+  ["v2024.1".params]
+    showSection = true
+
+[["v2024.1"]]
+  name = "Secure"
+  weight = 8
+  identifier = "secure"
+  url = "/v2024.1/secure/"
+  ["v2024.1".params]
+    showSection = true
+
+[["v2024.1"]]
+  name = "Launch and Manage"
+  weight = 9
+  identifier = "launch-and-manage"
+  url = "/v2024.1/launch-and-manage/"
+  ["v2024.1".params]
+    showSection = true
+
+[["v2024.1"]]
+  name = "Troubleshoot"
+  parent = "launch-and-manage"
+  url = "/preview/troubleshoot/"
+
+[["v2024.1"]]
+  name = "Benchmark"
+  weight = 10
+  identifier = "benchmark"
+  url = "/v2024.1/benchmark/"
+  ["v2024.1".params]
+    showSection = true
+
+[["v2024.1"]]
+  name = "Reference"
+  weight = 12
+  identifier = "reference"
+  ["v2024.1".params]
+    showSection = true
+
+
+######### Menus (in "v2024.1") for YB Anywhere section
+
+[["v2024.1_yugabyte-platform"]]
+  weight = 1
+  ["v2024.1_yugabyte-platform".params]
+    productsDropdown = true
+
+[["v2024.1_yugabyte-platform"]]
+  name = "YugabyteDB Anywhere"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  ["v2024.1_yugabyte-platform".params]
+    classes = "separator"
+    showSection = true
+    hideLink = true
+
+########## Menus (in v2024.1) for APIs
+
+[["v2024.1_api"]]
+  name = "API"
+  weight = 2
+  identifier = "api"
+  url = "/v2024.1/api/"
+  ["v2024.1_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2024.1_api"]]
+  name = "YSQL"
+  weight = 10
+  identifier = "api-ysql"
+  url = "/v2024.1/api/ysql/"
+  ["v2024.1_api".params]
+    showSection = true
+
+[["v2024.1_api"]]
+  name = "YCQL"
+  weight = 11
+  identifier = "api-cassandra"
+  url = "/v2024.1/api/ycql/"
+  ["v2024.1_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2024.1_api"]]
+  name = "ysqlsh"
+  weight = 20
+  identifier = "ysqlsh"
+  url = "/v2024.1/api/ysqlsh/"
+  ["v2024.1_api".params]
+    showSection = true
+
+[["v2024.1_api"]]
+  name = "ycqlsh"
+  weight = 21
+  identifier = "ycqlsh"
+  url = "/v2024.1/api/ycqlsh/"
+  ["v2024.1_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2024.1_api"]]
+  name = "YugabyteDB Anywhere API"
+  weight = 30
+  identifier = "yugabytedb-anywhere-api"
+  url = "/v2024.1/yugabyte-platform/anywhere-automation/anywhere-api/"
+  ["v2024.1_api".params]
+    showSection = true
+
+[["v2024.1_api"]]
+  name = "YugabyteDB Aeon API"
+  weight = 31
+  identifier = "yugabytedb-managed-api"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
+  ["v2024.1_api".params]
+    showSection = true
 
 ########## Menus for 2.20
 
 [["v2.20"]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
   ["v2.20".params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [["v2.20"]]
-  name = "YugabyteDB"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb"
   url = "/v2.20/"
@@ -1127,19 +1381,20 @@
     showSection = true
 
 [["v2.20"]]
-  name = "Key benefits"
+  name = "Quick Start"
   weight = 3
-  identifier = "features"
-  url = "/v2.20/features/"
+  identifier = "quick-start"
+  url = "/preview/tutorials/quick-start/macos/"
   ["v2.20".params]
+    classes = "separator"
     showSection = true
     hideChildren = true
 
 [["v2.20"]]
-  name = "Quick Start"
+  name = "Key benefits"
   weight = 4
-  identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  identifier = "features"
+  url = "/v2.20/features/"
   ["v2.20".params]
     showSection = true
     hideChildren = true
@@ -1224,16 +1479,12 @@
 ########## Menus (in "v2.20") for YB Anywhere section
 
 [["v2.20_yugabyte-platform"]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
   ["v2.20_yugabyte-platform".params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [["v2.20_yugabyte-platform"]]
-  name = "YugabyteDB Anywhere"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb-anywhere"
   ["v2.20_yugabyte-platform".params]
@@ -1263,16 +1514,12 @@
 ########## Menus for 2.18
 
 [["v2.18"]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
   ["v2.18".params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [["v2.18"]]
-  name = "YugabyteDB"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb"
   url = "/v2.18/"
@@ -1283,8 +1530,9 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start/macos/"
   ["v2.18".params]
+    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1368,16 +1616,12 @@
 ########## Menus (in "v2.18") for YB Anywhere section
 
 [["v2.18_yugabyte-platform"]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
   ["v2.18_yugabyte-platform".params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [["v2.18_yugabyte-platform"]]
-  name = "YugabyteDB Anywhere"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb-anywhere"
   ["v2.18_yugabyte-platform".params]
@@ -1404,152 +1648,15 @@
     showSection = true
     newTab = true
 
-########## Menus for v2.16
-
-[["v2.16"]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  ["v2.16".params]
-    classes = "separator"
-    showSection = true
-
-[["v2.16"]]
-  name = "YugabyteDB"
-  weight = 2
-  identifier = "yugabytedb"
-  url = "/v2.16/"
-  ["v2.16".params]
-    showSection = true
-
-[["v2.16"]]
-  name = "Quick Start"
-  weight = 3
-  identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
-  ["v2.16".params]
-    showSection = true
-    hideChildren = true
-
-[["v2.16"]]
-  name = "Explore"
-  weight = 4
-  identifier = "explore"
-  url = "/v2.16/explore/"
-  ["v2.16".params]
-    showSection = true
-
-[["v2.16"]]
-  name = "Develop"
-  weight = 5
-  identifier = "develop"
-  url = "/v2.16/develop/"
-  ["v2.16".params]
-    showSection = true
-
-[["v2.16"]]
-  name = "Secure"
-  weight = 7
-  identifier = "secure"
-  url = "/v2.16/secure/"
-  ["v2.16".params]
-    showSection = true
-
-[["v2.16"]]
-  name = "Launch and Manage"
-  weight = 8
-  identifier = "launch-and-manage"
-  url = "/v2.16/launch-and-manage/"
-  ["v2.16".params]
-    showSection = true
-
-[["v2.16"]]
-  name = "Troubleshoot"
-  parent = "launch-and-manage"
-  url = "/preview/troubleshoot/"
-
-[["v2.16"]]
-  name = "Benchmark"
-  weight = 9
-  identifier = "benchmark"
-  url = "/v2.16/benchmark/"
-  ["v2.16".params]
-    showSection = true
-
-[["v2.16"]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
-  ["v2.16".params]
-    showSection = true
-
-[["v2.16"]]
-  name = "Misc"
-  identifier = "misc"
-  parent = "reference"
-
-[["v2.16"]]
-  name = "YEDIS"
-  weight = 1
-  url = "/preview/yedis/"
-  parent = "misc"
-
-[["v2.16"]]
-  name = "Legal"
-  weight = 2
-  url = "/preview/legal/"
-  parent = "misc"
-
-[["v2.16"]]
-  name = "Contribute"
-  weight = 13
-  identifier = "contribute"
-  url = "/preview/contribute/"
-  ["v2.16".params]
-    showSection = true
-
-########## Menus (in v2.16) for YB Anywhere section
-
-[["v2.16_yugabyte-platform"]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  ["v2.16_yugabyte-platform".params]
-    classes = "separator"
-    showSection = true
-
-[["v2.16_yugabyte-platform"]]
-  name = "YugabyteDB Anywhere"
-  weight = 2
-  identifier = "yugabytedb-anywhere"
-  ["v2.16_yugabyte-platform".params]
-    showSection = true
-    hideLink = true
-
-[["v2.16_yugabyte-platform"]]
-  name = "YugabyteDB Anywhere API"
-  weight = 3
-  identifier = "yugabytedb-anywhere-api"
-  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
-  ["v2.16_yugabyte-platform".params]
-    showSection = true
-    newTab = true
-
 ########## Menus for v2.14
 
 [["v2.14"]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
   ["v2.14".params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [["v2.14"]]
-  name = "YugabyteDB"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb"
   url = "/v2.14/"
@@ -1560,8 +1667,9 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start/macos/"
   ["v2.14".params]
+    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1653,16 +1761,12 @@
 ########## Menus (in v2.14) for YB Anywhere section
 
 [["v2.14_yugabyte-platform"]]
-  name = "Docs Home"
   weight = 1
-  identifier = "home"
-  url = "/"
   ["v2.14_yugabyte-platform".params]
-    classes = "separator"
-    showSection = true
+    productsDropdown = true
 
 [["v2.14_yugabyte-platform"]]
-  name = "YugabyteDB Anywhere"
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb-anywhere"
   ["v2.14_yugabyte-platform".params]

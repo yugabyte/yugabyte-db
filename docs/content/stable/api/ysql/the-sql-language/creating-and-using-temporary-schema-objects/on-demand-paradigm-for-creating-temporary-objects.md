@@ -4,7 +4,7 @@ headerTitle: Recommended on-demand paradigm for creating temporary objects
 linkTitle: Paradigm for creating temporary objects
 description: Describes the recommended on-demand paradigm for creating temporary objects—given that PostgreSQL has no native feature to perform actions when a session is created. [YSQL]
 menu:
-  stable:
+  stable_api:
     identifier: on-demand-paradigm-for-creating-temporary-objects
     parent: creating-and-using-temporary-schema-objects
     weight: 400
@@ -193,7 +193,7 @@ select pkg.value_of_a();
 This is the result:
 
 ```output
- value_of_a 
+ value_of_a
 ------------
          19
 ```

@@ -6,13 +6,13 @@ menu:
   preview:
     identifier: advanced-features-collations
     parent: advanced-features
-    weight: 240
+    weight: 100
 type: docs
 ---
 
 ## Collation basics
 
-YSQL provides collation support. A _collation_ is a set of rules that define how to compare and sort character strings. YSQL's collation support is based on PostgreSQL with a few [limitations](#ysql-collation-limitations).
+YSQL provides collation support. A _collation_ is a set of rules that define how to compare and sort character strings. YSQL collation support is based on PostgreSQL with a few [limitations](#ysql-collation-limitations).
 
 As in PostgreSQL, most YSQL data types are not related to character strings and therefore are considered _not collatable_. For example:
 
@@ -100,7 +100,7 @@ insert into coll_tab2 values (E'El Nin\u0303o');
 insert into coll_tab2 values (E'El Ni\u00F1o');
 ```
 
-In libicu, the two strings `E'El Nin\u0303o'` and `E'El Ni\u00F1o'` are equal despite their different character encodings. Currently YSQL is based upon PostgreSQL 11.2 and only supports deterministic collations. In a deterministic collation, the two strings `E'El Nin\u0303o'` and `E'El Ni\u00F1o'` are not equal. Internally when libicu reports two strings are equal, YSQL uses `strcmp` as a tie-breaker to further compare them. This means that in YSQL two strings are not equal unless their database character encodings are identical. After YSQL is upgraded to PostgreSQL 13 which supports non-deterministic collations and does not use any tie-breaker, we also plan to enhance YSQL to support non-deterministic collations.
+In libicu, the two strings `E'El Nin\u0303o'` and `E'El Ni\u00F1o'` are equal despite their different character encodings. Currently YSQL is based upon PostgreSQL 15 and only supports deterministic collations. In a deterministic collation, the two strings `E'El Nin\u0303o'` and `E'El Ni\u00F1o'` are not equal. Internally when libicu reports two strings are equal, YSQL uses `strcmp` as a tie-breaker to further compare them. This means that in YSQL two strings are not equal unless their database character encodings are identical. After YSQL is upgraded to PostgreSQL 13 which supports non-deterministic collations and does not use any tie-breaker, we also plan to enhance YSQL to support non-deterministic collations.
 
 ## Advantage of collation
 

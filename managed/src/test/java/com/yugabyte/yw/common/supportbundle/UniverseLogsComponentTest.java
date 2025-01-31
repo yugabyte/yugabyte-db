@@ -32,9 +32,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -54,6 +55,8 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
   private final String testUniverseLogsRegexPattern =
       "((?:.*)(?:yb-)(?:master|tserver)(?:.*))(\\d{8})-(?:\\d*)\\.(?:.*)";
   private final String testPostgresLogsRegexPattern = "((?:.*)(?:postgresql)-)(.{10})(?:.*)";
+  private final String testConnectionPoolingLogsRegexPattern =
+      "((?:.*)(?:ysql-conn-mgr)-)(.{10})(?:.*)";
   private Universe universe;
   private Customer customer;
   private String fakeSupportBundleBasePath = "/tmp/yugaware_tests/support_bundle-universe_logs/";
@@ -102,6 +105,9 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     when(MockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.postgresLogsRegexPattern)))
         .thenReturn(testPostgresLogsRegexPattern);
+    when(MockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.connectionPoolingLogsRegexPattern)))
+        .thenReturn(testConnectionPoolingLogsRegexPattern);
     when(mockSupportBundleUtil.extractFileTypeFromFileNameAndRegex(any(), any()))
         .thenCallRealMethod();
     when(mockSupportBundleUtil.extractDateFromFileNameAndRegex(any(), any())).thenCallRealMethod();
@@ -118,10 +124,12 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
 
     // Generate a fake shell response containing the entire list of file paths
     // Mocks the server response
-    List<Path> fakeLogFilePathList =
-        fakeLogsList.stream().map(Paths::get).collect(Collectors.toList());
-    when(mockNodeUniverseManager.getNodeFilePaths(any(), any(), any(), eq(1), eq("f")))
-        .thenReturn(fakeLogFilePathList);
+    Map<String, Long> fakeLogPathSizeMap = new HashMap<>();
+    for (String path : fakeLogsList) {
+      fakeLogPathSizeMap.put(path, 10L);
+    }
+    when(mockNodeUniverseManager.getNodeFilePathAndSizes(any(), any(), any(), eq(1), eq("f")))
+        .thenReturn(fakeLogPathSizeMap);
     // Generate a fake shell response containing the output of the "check file exists" script
     // Mocks the server response as "file existing"
     when(mockNodeUniverseManager.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);

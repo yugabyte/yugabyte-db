@@ -14,7 +14,7 @@ type: docs
 
 ## Eliminate an unresponsive node
 
-If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues (such as problems with its operating system, disk, and so on) it is detected and displayed in the YugabyteDB Anywhere UI as an unreachable node, as per the following illustration:
+If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues (such as problems with its operating system, disk, and so on) it is detected and displayed in YugabyteDB Anywhere as an unreachable node, as per the following illustration:
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 
@@ -24,7 +24,7 @@ When this happens, new Master leaders are elected for the underlying data shards
 - Step 2: [Start a new Master process](#start-a-new-master-process), if necessary
 - Step 3: [Release node instance](#release-node-instance)
 - Step 4: [Delete node](#delete-node)
-- Step 5: For on-premises deployments only, if you want to reuse the node, you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../install-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
+- Step 5: For on-premises deployments only, if you want to reuse the node, you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../administer-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
 
 {{< note title="Note" >}}
 
@@ -131,7 +131,7 @@ Taking this action completely eliminates the node, as follows:
 1. Removes the node record from the universe metadata.
 2. Updates metadata in the database only.
 
-Note that, for on-premises deployments only, if you want to reuse the node, after deleting it you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../install-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
+Note that, for on-premises deployments only, if you want to reuse the node, after deleting it you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../administer-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
 
 ## Recover a node
 

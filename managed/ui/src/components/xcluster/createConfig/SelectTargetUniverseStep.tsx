@@ -15,12 +15,15 @@ import { CreateXClusterConfigFormValues } from './CreateConfigModal';
 import { YBCheckboxField, YBInputField, YBTooltip } from '../../../redesign/components';
 import {
   INPUT_FIELD_WIDTH_PX,
+  XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN,
   XCLUSTER_REPLICATION_DOCUMENTATION_URL,
   YB_ADMIN_XCLUSTER_DOCUMENTATION_URL
 } from '../constants';
-import { getIsTransactionalAtomicityEnabled } from '../ReplicationUtils';
+import { getIsTransactionalAtomicitySupported } from '../ReplicationUtils';
 import { YBBanner, YBBannerVariant } from '../../common/descriptors';
 import InfoMessageIcon from '../../../redesign/assets/info-message.svg';
+import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import { TableType, TableTypeLabel, Universe } from '../../../redesign/helpers/dtos';
 
@@ -133,9 +136,15 @@ export const SelectTargetUniverseStep = ({
         !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
     )
     .map((universe) => {
+      const isDisabled = !hasNecessaryPerm({
+        ...ApiPermissionMap.CREATE_XCLUSTER_REPLICATION,
+        onResource: universe.universeUUID
+      });
       return {
         label: universe.name,
-        value: universe
+        value: universe,
+        isDisabled: isDisabled,
+        disabledReason: isDisabled ? t('missingPermissionOnUniverse') : ''
       };
     });
 
@@ -147,7 +156,7 @@ export const SelectTargetUniverseStep = ({
   );
   // targetUniverse could be undefined on this page since the user might not have entered a value yet.
   const targetUniverse = watch('targetUniverse') as { label: string; value: Universe } | undefined;
-  const isTransactionalAtomicitySupported = getIsTransactionalAtomicityEnabled(
+  const isTransactionalAtomicitySupported = getIsTransactionalAtomicitySupported(
     sourceUniverse,
     targetUniverse?.value
   );
@@ -179,6 +188,17 @@ export const SelectTargetUniverseStep = ({
                 control={control}
                 name="configName"
                 disabled={isFormDisabled}
+                rules={{
+                  validate: {
+                    required: (configName) => !!configName || t('error.requiredField'),
+                    noIllegalCharactersInConfigName: (configName: any) => {
+                      return (
+                        !XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN.test(configName) ||
+                        t('error.illegalCharactersInConfigName')
+                      );
+                    }
+                  }
+                }}
               />
             </div>
             <div>

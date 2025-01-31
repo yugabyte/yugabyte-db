@@ -53,14 +53,17 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/common_consensus_util.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_utils.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_client.proxy.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -112,6 +115,8 @@ DEFINE_test_flag(bool, force_master_lookup_all_tablets, false,
                  "If set, force the client to go to the master for all tablet lookup "
                  "instead of reading from cache.");
 
+DEFINE_test_flag(int32, sleep_before_metacache_lookup_ms, 0,
+                 "If set, will sleep in LookupTabletByKey for a random amount up to this value.");
 DEFINE_test_flag(double, simulate_lookup_timeout_probability, 0,
                  "If set, mark an RPC as failed and force retry on the first attempt.");
 DEFINE_test_flag(double, simulate_lookup_partition_list_mismatch_probability, 0,
@@ -189,12 +194,17 @@ RemoteTabletServer::RemoteTabletServer(const string& uuid,
 RemoteTabletServer::~RemoteTabletServer() = default;
 
 Status RemoteTabletServer::InitProxy(YBClient* client) {
+  return ResultToStatus(ObtainProxy(*client));
+}
+
+Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::ObtainProxy(
+    YBClient& client) {
   {
     SharedLock lock(mutex_);
 
     if (proxy_) {
       // Already have a proxy created.
-      return Status::OK();
+      return proxy_;
     }
   }
 
@@ -202,11 +212,11 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
 
   if (proxy_) {
     // Already have a proxy created.
-    return Status::OK();
+    return proxy_;
   }
 
   if (!dns_resolve_stats_) {
-    auto metric_entity = client->metric_entity();
+    auto metric_entity = client.metric_entity();
     if (metric_entity) {
       dns_resolve_stats_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
           metric_entity);
@@ -217,13 +227,13 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
   // based on some kind of policy. For now just use the first always.
   auto hostport = HostPortFromPB(yb::DesiredHostPort(
       public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_,
-      client->data_->cloud_info_pb_));
+      client.data_->cloud_info_pb_));
   CHECK(!hostport.host().empty());
   ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
-  proxy_.reset(new TabletServerServiceProxy(client->data_->proxy_cache_.get(), hostport));
+  proxy_ = std::make_shared<TabletServerServiceProxy>(client.data_->proxy_cache_.get(), hostport);
   proxy_endpoint_ = hostport;
 
-  return Status::OK();
+  return proxy_;
 }
 
 void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
@@ -314,7 +324,7 @@ bool RemoteTabletServer::IsLocalRegion() const {
 
 LocalityLevel RemoteTabletServer::LocalityLevelWith(const CloudInfoPB& cloud_info) const {
   SharedLock lock(mutex_);
-  return PlacementInfoConverter::GetLocalityLevel(cloud_info_pb_, cloud_info);
+  return TablespaceParser::GetLocalityLevel(cloud_info_pb_, cloud_info);
 }
 
 HostPortPB RemoteTabletServer::DesiredHostPort(const CloudInfoPB& cloud_info) const {
@@ -972,33 +982,6 @@ void LookupRpc::DoProcessResponse(const Status& status, const Response& resp) {
 
 namespace {
 
-Status CheckTabletLocations(
-    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-    AllowSplitTablet allow_split_tablets) {
-  const std::string* prev_partition_end = nullptr;
-  for (const TabletLocationsPB& loc : locations) {
-    LOG_IF(DFATAL, !allow_split_tablets && loc.split_tablet_ids().size() > 0)
-        << "Processing remote tablet location with split children id set: "
-        << loc.ShortDebugString() << " when allow_split_tablets was set to false.";
-    if (prev_partition_end && *prev_partition_end > loc.partition().partition_key_start()) {
-      LOG(DFATAL) << "There should be no overlaps in tablet partitions and they should be sorted "
-                  << "by partition_key_start. Prev partition end: "
-                  << Slice(*prev_partition_end).ToDebugHexString() << ", current partition start: "
-                  << Slice(loc.partition().partition_key_start()).ToDebugHexString()
-                  << ". Tablet locations: " << [&locations] {
-                       std::string result;
-                       for (auto& loc : locations) {
-                         result += "\n  " + AsString(loc);
-                       }
-                       return result;
-                     }();
-      return STATUS(IllegalState, "Wrong order or overlaps in partitions");
-    }
-    prev_partition_end = &loc.partition().partition_key_end();
-  }
-  return Status::OK();
-}
-
 class TabletIdLookup : public ToStringable {
  public:
   explicit TabletIdLookup(const TabletId& tablet_id) : tablet_id_(tablet_id) {}
@@ -1370,7 +1353,7 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
   }
 }
 
-void MetaCache::AddAllTabletInfo(JsonWriter* writer) {
+void MetaCache::AddAllTabletInfo(JsonWriter* writer) const {
   SharedLock lock(mutex_);
   writer->StartObject();
   writer->String("tablets");
@@ -1438,14 +1421,14 @@ class LookupByIdRpc : public LookupRpc {
   LookupByIdRpc(const scoped_refptr<MetaCache>& meta_cache,
                 const TabletId& tablet_id,
                 const std::shared_ptr<const YBTable>& table,
-                master::IncludeInactive include_inactive,
+                master::IncludeHidden include_hidden,
                 master::IncludeDeleted include_deleted,
                 int64_t request_no,
                 CoarseTimePoint deadline,
                 int64_t lookups_without_new_replicas)
       : LookupRpc(meta_cache, table, request_no, deadline),
         tablet_id_(tablet_id),
-        include_inactive_(include_inactive),
+        include_hidden_(include_hidden),
         include_deleted_(include_deleted) {
     if (lookups_without_new_replicas != 0) {
       send_delay_ = std::min(
@@ -1479,7 +1462,7 @@ class LookupByIdRpc : public LookupRpc {
     if (table()) {
       req_.set_table_id(table()->id());
     }
-    req_.set_include_inactive(include_inactive_);
+    req_.set_include_hidden(include_hidden_);
     req_.set_include_deleted(include_deleted_);
 
     master_client_proxy()->GetTabletLocationsAsync(
@@ -1524,7 +1507,7 @@ class LookupByIdRpc : public LookupRpc {
 
   void NotifyFailure(const Status& status) override {
     meta_cache()->LookupByIdFailed(
-        tablet_id_, table(), include_inactive_, include_deleted_,
+        tablet_id_, table(), include_hidden_, include_deleted_,
         GetPartitionListVersion(resp_), request_no(), status);
   }
 
@@ -1540,8 +1523,8 @@ class LookupByIdRpc : public LookupRpc {
   // Tablet to lookup.
   const TabletId tablet_id_;
 
-  // Whether or not to lookup inactive (hidden) tablets.
-  master::IncludeInactive include_inactive_;
+  // Whether or not to lookup hidden tablets.
+  master::IncludeHidden include_hidden_;
 
   // Whether or not to return deleted tablets.
   master::IncludeDeleted include_deleted_;
@@ -1911,7 +1894,7 @@ void MetaCache::LookupFullTableFailed(const std::shared_ptr<const YBTable>& tabl
 void MetaCache::LookupByIdFailed(
     const TabletId& tablet_id,
     const std::shared_ptr<const YBTable>& table,
-    master::IncludeInactive include_inactive,
+    master::IncludeHidden include_hidden,
     master::IncludeDeleted include_deleted,
     const boost::optional<PartitionListVersion>& response_partition_list_version,
     int64_t request_no,
@@ -1953,7 +1936,7 @@ void MetaCache::LookupByIdFailed(
 
   if (max_deadline != CoarseTimePoint()) {
     auto rpc = std::make_shared<LookupByIdRpc>(
-        this, tablet_id, table, include_inactive, include_deleted, request_no, max_deadline, 0);
+        this, tablet_id, table, include_hidden, include_deleted, request_no, max_deadline, 0);
     client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   }
 }
@@ -2058,9 +2041,12 @@ bool MetaCache::DoLookupTabletByKey(
     LookupTabletCallback* callback, PartitionGroupStartKeyPtr* partition_group_start) {
   DCHECK_ONLY_NOTNULL(partition_group_start);
   RemoteTabletPtr tablet;
-  auto scope_exit = ScopeExit([callback, &tablet] {
+  Status status = Status::OK();
+  auto scope_exit = ScopeExit([callback, &tablet, &status] {
     if (tablet) {
       (*callback)(tablet);
+    } else if (!status.ok()) {
+      (*callback)(status);
     }
   });
   int64_t request_no;
@@ -2087,13 +2073,13 @@ bool MetaCache::DoLookupTabletByKey(
         (PREDICT_FALSE(RandomActWithProbability(
             FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability)) &&
          table->table_type() != YBTableType::TRANSACTION_STATUS_TABLE_TYPE)) {
-      (*callback)(STATUS(
+      status = STATUS(
           TryAgain,
           Format(
               "MetaCache's table $0 partitions version does not match, cached: $1, got: $2, "
               "refresh required",
               table->ToString(), table_data->partition_list->version, partitions->version),
-          ClientError(ClientErrorCode::kTablePartitionListIsStale)));
+          ClientError(ClientErrorCode::kTablePartitionListIsStale));
       return true;
     }
 
@@ -2200,6 +2186,12 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
     return;
   }
 
+  if (FLAGS_TEST_sleep_before_metacache_lookup_ms > 0) {
+    MonoDelta sleep_time = MonoDelta::FromMilliseconds(1) *
+                           RandomUniformInt(1, FLAGS_TEST_sleep_before_metacache_lookup_ms);
+    SleepFor(sleep_time);
+    VLOG_WITH_FUNC(2) << "Slept for " << sleep_time;
+  }
   if (table->ArePartitionsStale()) {
     RefreshTablePartitions(
         table,
@@ -2287,15 +2279,18 @@ template <class Lock>
 bool MetaCache::DoLookupTabletById(
     const TabletId& tablet_id,
     const std::shared_ptr<const YBTable>& table,
-    master::IncludeInactive include_inactive,
+    master::IncludeHidden include_hidden,
     master::IncludeDeleted include_deleted,
     CoarseTimePoint deadline,
     UseCache use_cache,
     LookupTabletCallback* callback) {
   std::optional<RemoteTabletPtr> tablet = std::nullopt;
-  auto scope_exit = ScopeExit([callback, &tablet] {
+  Status status = Status::OK();
+  auto scope_exit = ScopeExit([callback, &tablet, &status] {
     if (tablet) {
       (*callback)(*tablet);
+    } else if (!status.ok()) {
+      (*callback)(status);
     }
   });
   int64_t request_no;
@@ -2311,7 +2306,7 @@ bool MetaCache::DoLookupTabletById(
         if (use_cache) {
           if (!include_deleted) {
             tablet = std::nullopt;
-            (*callback)(STATUS(NotFound, "Tablet deleted"));
+            status = STATUS(NotFound, "Tablet deleted");
           }
           return true;
         }
@@ -2354,7 +2349,7 @@ bool MetaCache::DoLookupTabletById(
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Start lookup for tablet " << tablet_id << ": " << request_no;
 
   auto rpc = std::make_shared<LookupByIdRpc>(
-      this, tablet_id, table, include_inactive, include_deleted, request_no, deadline,
+      this, tablet_id, table, include_hidden, include_deleted, request_no, deadline,
       lookups_without_new_replicas);
   client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   return true;
@@ -2362,7 +2357,7 @@ bool MetaCache::DoLookupTabletById(
 
 void MetaCache::LookupTabletById(const TabletId& tablet_id,
                                  const std::shared_ptr<const YBTable>& table,
-                                 master::IncludeInactive include_inactive,
+                                 master::IncludeHidden include_hidden,
                                  master::IncludeDeleted include_deleted,
                                  CoarseTimePoint deadline,
                                  LookupTabletCallback callback,
@@ -2370,12 +2365,12 @@ void MetaCache::LookupTabletById(const TabletId& tablet_id,
   VLOG_WITH_PREFIX_AND_FUNC(5) << "(" << tablet_id << ", " << use_cache << ")";
 
   if (DoLookupTabletById<SharedLock<decltype(mutex_)>>(
-          tablet_id, table, include_inactive, include_deleted, deadline, use_cache, &callback)) {
+          tablet_id, table, include_hidden, include_deleted, deadline, use_cache, &callback)) {
     return;
   }
 
   auto result = DoLookupTabletById<std::lock_guard<decltype(mutex_)>>(
-      tablet_id, table, include_inactive, include_deleted, deadline, use_cache, &callback);
+      tablet_id, table, include_hidden, include_deleted, deadline, use_cache, &callback);
   LOG_IF(DFATAL, !result) << "Lookup was not started for tablet " << tablet_id;
 }
 
@@ -2426,11 +2421,48 @@ std::future<Result<internal::RemoteTabletPtr>> MetaCache::LookupTabletByKeyFutur
 
 void MetaCache::ClearAll() {
   std::lock_guard lock(mutex_);
-  ts_cache_.clear();
   tables_.clear();
   tablets_by_id_.clear();
   tablet_lookups_by_id_.clear();
   deleted_tablets_.clear();
+}
+
+Status MetaCache::ClearCacheEntries(const std::string& namespace_id) {
+  std::lock_guard lock(mutex_);
+  LOG(INFO) << Format("Clearing MetaCache entries for namespace: $0", namespace_id);
+  // Stores the tables and tablets that belong to the namespace namespace_id
+  std::set<TableId> db_tables_ids;
+  std::set<TabletId> db_tablets_ids;
+  for (const auto& [table_id, table_data] : tables_) {
+    // Escape sys catalog and parent table ids as they don't conform to a typical ysql table id
+    if (table_id == master::kSysCatalogTableId) {
+      continue;
+    } else if (IsColocationParentTableId(table_id)) {
+      db_tables_ids.insert(table_id);
+      continue;
+    } else if (VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id)) == namespace_id) {
+      VLOG(5) << Format(
+          "Marking table: $0 for clearing from metacache as it is part of namespace $1: ", table_id,
+          namespace_id);
+      for (const auto& [_, remote_tablet] : table_data.tablets_by_partition) {
+        // Do not clear the sys.catalog tablet
+        if (remote_tablet->tablet_id() != master::kSysCatalogTabletId) {
+          db_tablets_ids.insert(remote_tablet->tablet_id());
+        }
+      }
+      db_tables_ids.insert(table_id);
+    }
+  }
+  for (const auto& table_id : db_tables_ids) {
+    VLOG(4) << Format("Erasing table: $0 from metacache", table_id);
+    tables_.erase(table_id);
+  }
+  for (const auto& tablet_id : db_tablets_ids) {
+    VLOG(4) << Format("Erasing tablet: $0 from metacache", tablet_id);
+    tablets_by_id_.erase(tablet_id);
+    tablet_lookups_by_id_.erase(tablet_id);
+  }
+  return Status::OK();
 }
 
 LookupDataGroup::~LookupDataGroup() {

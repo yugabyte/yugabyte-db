@@ -3,13 +3,12 @@ title: How to manage clusters
 headerTitle: Manage clusters
 linkTitle: Manage clusters
 description: Get an overview of how to scale your database clusters, configure backups and maintenance windows, and pause or delete clusters in YugabyteDB Aeon.
-image: /images/section_icons/architecture/core_functions/universe.png
 headcontent: Scale clusters, configure read replicas, backups, and maintenance, and pause clusters
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-clusters
-    weight: 150
+    weight: 100
 type: indexpage
 showRightNav: true
 ---
@@ -65,6 +64,10 @@ Keep in mind the following:
 - On AWS, any disk modification (size or IOPS) blocks further disk modifications for six hours (this includes a scaling operation that increases the number of vCPUs, as this also increases disk size).
 
 - Make sure that you schedule maintenance and backups so that they do not conflict.
+
+### Enhanced Postgres Compatibility
+
+If your cluster database version is v2024.1.0 or later, you can enable early access features for PostgreSQL compatibility on the cluster **Settings** tab. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../develop/postgresql-compatibility/).
 
 &nbsp;
 

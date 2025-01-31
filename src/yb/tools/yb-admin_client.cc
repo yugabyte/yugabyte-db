@@ -46,7 +46,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.h"
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
@@ -67,6 +67,7 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 
+#include "yb/master/catalog_entity_parser.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.proxy.h"
@@ -1389,6 +1390,14 @@ Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::RemoveTabletServer(const std::string& uuid) {
+  master::RemoveTabletServerRequestPB req;
+  req.set_permanent_uuid(uuid);
+  RETURN_NOT_OK(
+      InvokeRpc(&master::MasterClusterProxy::RemoveTabletServer, *master_cluster_proxy_, req));
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ListAllMasters() {
   const auto lresp = VERIFY_RESULT(InvokeRpc(
       &master::MasterClusterProxy::ListMasters, *master_cluster_proxy_,
@@ -2068,7 +2077,7 @@ Status ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
 }
 
 Status ClusterAdminClient::FillPlacementInfo(
-    master::PlacementInfoPB* placement_info_pb, const string& placement_str) {
+    PlacementInfoPB* placement_info_pb, const string& placement_str) {
   placement_info_pb->clear_placement_blocks();
 
   std::vector<std::string> placement_info_splits = strings::Split(
@@ -2125,7 +2134,7 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
     return STATUS(InvalidCommand, "Placement cannot be modified for the global transactions table");
   }
 
-  master::PlacementInfoPB live_replicas;
+  PlacementInfoPB live_replicas;
   live_replicas.set_num_replicas(replication_factor);
   RETURN_NOT_OK(FillPlacementInfo(&live_replicas, placement_info));
 
@@ -2150,7 +2159,7 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
   master::SysClusterConfigEntryPB* sys_cluster_config_entry =
       resp_cluster_config.mutable_cluster_config();
-  master::PlacementInfoPB* live_replicas =
+  PlacementInfoPB* live_replicas =
       sys_cluster_config_entry->mutable_replication_info()->mutable_live_replicas();
   live_replicas->set_num_replicas(replication_factor);
   RETURN_NOT_OK(FillPlacementInfo(live_replicas, placement_info));
@@ -2315,6 +2324,124 @@ Status ClusterAdminClient::UpgradeYsql(bool use_single_connection) {
 
   cout << "YSQL successfully upgraded to the latest version" << endl;
   return Status::OK();
+}
+
+Status ClusterAdminClient::StartYsqlMajorCatalogUpgrade() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::StartYsqlMajorCatalogUpgradeRequestPB req;
+  master::StartYsqlMajorCatalogUpgradeResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy_->StartYsqlMajorCatalogUpgrade(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  } else {
+    std::cout << "ysql major catalog upgrade started\n";
+  }
+  return Status::OK();
+}
+
+Result<IsOperationDoneResult> ClusterAdminClient::IsYsqlMajorCatalogUpgradeDone() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::IsYsqlMajorCatalogUpgradeDoneRequestPB req;
+  master::IsYsqlMajorCatalogUpgradeDoneResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy_->IsYsqlMajorCatalogUpgradeDone(req, &resp, &rpc));
+
+  if (!resp.done()) {
+    return IsOperationDoneResult::NotDone();
+  }
+
+  if (resp.has_error()) {
+    return IsOperationDoneResult::Done(StatusFromPB(resp.error().status()));
+  }
+  return IsOperationDoneResult::Done();
+}
+
+Status ClusterAdminClient::WaitForYsqlMajorCatalogUpgrade() {
+  for (;;) {
+    auto result = IsYsqlMajorCatalogUpgradeDone();
+    if (!result.ok()) {
+      cout << "Failed to check if ysql major catalog version upgrade is done: " << result.status()
+           << std::endl;
+    } else if (result->done()) {
+      if (!result->status().ok()) {
+        return result->status();
+      }
+      std::cout << "ysql major catalog upgrade completed successfully\n";
+      return Status::OK();
+    }
+
+    std::this_thread::sleep_for(1s);
+  }
+}
+
+Status ClusterAdminClient::FinalizeYsqlMajorCatalogUpgrade() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::FinalizeYsqlMajorCatalogUpgradeRequestPB req;
+  master::FinalizeYsqlMajorCatalogUpgradeResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy_->FinalizeYsqlMajorCatalogUpgrade(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  } else {
+    std::cout << "Finalize successful\n";
+  }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::RollbackYsqlMajorCatalogVersion() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::RollbackYsqlMajorCatalogVersionRequestPB req;
+  master::RollbackYsqlMajorCatalogVersionResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy_->RollbackYsqlMajorCatalogVersion(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  } else {
+    std::cout << "Rollback successful\n";
+  }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetYsqlMajorCatalogUpgradeState() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::GetYsqlMajorCatalogUpgradeStateRequestPB req;
+  master::GetYsqlMajorCatalogUpgradeStateResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy_->GetYsqlMajorCatalogUpgradeState(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  switch (resp.state()) {
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_UNINITIALIZED:
+      // Bad enum, fail the call.
+      break;
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_DONE:
+      std::cout << "YSQL major catalog upgrade already completed, or is not required.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING:
+      std::cout << "YSQL major catalog upgrade for YSQL major upgrade has not yet started.\n"
+                   "Run `ysql_major_version_catalog_upgrade` to start the catalog upgrade\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK:
+      std::cout << "YSQL major catalog upgrade failed.\n"
+                   "Roll back the catalog upgrade using `rollback_ysql_major_version_upgrade`. "
+                   "After that you can either retry the catalog upgrade or roll back yb-masters to "
+                   "the older version.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_IN_PROGRESS:
+      std::cout << "YSQL major catalog upgrade is in progress.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK:
+      std::cout << "YSQL major catalog awaiting finalization or rollback.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_ROLLBACK_IN_PROGRESS:
+      std::cout << "YSQL major catalog rollback is in progress.\n";
+      return Status::OK();
+  }
+
+  return STATUS_FORMAT(IllegalState, "Unknown ysql major upgrade state: $0", resp.state());
 }
 
 Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
@@ -2512,7 +2639,6 @@ Status ClusterAdminClient::CreateSnapshot(
 
     req.set_add_indexes(add_indexes);
     req.set_add_ud_types(true);  // No-op for YSQL.
-    req.set_transaction_aware(true);
     if (retention_duration_hours && *retention_duration_hours <= 0) {
       req.set_retention_duration_hours(-1);
     } else if (retention_duration_hours) {
@@ -2552,7 +2678,9 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(
         const auto& table = resp.tables(i);
         tables[i].set_table_id(table.id());
         tables[i].set_namespace_id(table.namespace_().id());
-        tables[i].set_pgschema_name(table.pgschema_name());
+        if (!table.pgschema_name().empty()) {
+          tables[i].set_pgschema_name(table.pgschema_name());
+        }
 
         RSTATUS_DCHECK(
             table.relation_type() == master::USER_TABLE_RELATION ||
@@ -2834,21 +2962,21 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(
   }));
 
   if (resp.snapshots_size() > 1) {
-        LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
-                     << resp.snapshots_size() << " snapshots in the response";
+    LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
+                 << resp.snapshots_size() << " snapshots in the response";
   }
 
   SnapshotInfoPB* snapshot = nullptr;
   for (SnapshotInfoPB& snapshot_entry : *resp.mutable_snapshots()) {
-        if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
+    if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
       snapshot = &snapshot_entry;
       break;
-        }
+    }
   }
   if (!snapshot) {
-        return STATUS_FORMAT(
-            InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
-            resp.snapshots_size(), snapshot_id);
+    return STATUS_FORMAT(
+        InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
+        resp.snapshots_size(), snapshot_id);
   }
 
   if (FLAGS_TEST_metadata_file_format_version == -1) {
@@ -2860,7 +2988,7 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(
         meta.clear_namespace_name();
         entry.set_data(meta.SerializeAsString());
       }
-        }
+    }
   }
 
   cout << "Exporting snapshot " << snapshot_id << " (" << snapshot->entry().state() << ") to file "
@@ -3292,7 +3420,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(
 
   // All indexes already are in the request. Do not add them twice.
   snapshot_req.set_add_indexes(false);
-  snapshot_req.set_transaction_aware(true);
   snapshot_req.set_imported(true);
   // Create new snapshot.
   RETURN_NOT_OK(RequestMasterLeader(&snapshot_resp, [&](RpcController* rpc) {
@@ -3630,7 +3757,8 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
 Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
     const cdc::CDCRecordType record_type,
-    const std::string& consistent_snapshot_option) {
+    const std::string& consistent_snapshot_option,
+    const bool& is_dynamic_tables_enabled) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -3646,13 +3774,25 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   if (checkpoint_type == yb::ToString("EXPLICIT")) {
         req.set_checkpoint_type(cdc::CDCCheckpointType::EXPLICIT);
   } else {
-        req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
+    cout << "WARNING: Creation of streams with IMPLICIT checkpointing is deprecated and will be "
+            "removed in a future release. Consider creating a stream with EXPLICIT checkpointing."
+         << endl;
+    req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
   }
 
   if (consistent_snapshot_option == "USE_SNAPSHOT") {
     req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::USE_SNAPSHOT);
   } else {
     req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT);
+  }
+
+  auto stream_create_options = req.mutable_cdcsdk_stream_create_options();
+  if (is_dynamic_tables_enabled) {
+        stream_create_options->set_cdcsdk_dynamic_tables_option(
+            CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
+  } else {
+        stream_create_options->set_cdcsdk_dynamic_tables_option(
+            CDCSDKDynamicTablesOption::DYNAMIC_TABLES_DISABLED);
   }
 
   RpcController rpc;
@@ -3834,8 +3974,10 @@ Status ClusterAdminClient::RemoveUserTableFromCDCSDKStream(
     return StatusFromPB(resp.error().status());
   }
 
-  cout << "Successfully removed user table: " << table_id << " from CDC stream: " << stream_id
-       << "\n";
+  cout << "Request to remove table: " << table_id << " from the stream: " << stream_id
+       << " sent asynchronously.\n"
+       << "For confirmation, please run get_change_data_stream_info yb-admin command after "
+          "sometime. The output should not contain the removed table under \'table_info\'. \n";
 
   return Status::OK();
 }
@@ -3848,7 +3990,7 @@ Status ClusterAdminClient::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
   req.set_stream_id(stream_id);
 
   RpcController rpc;
-  rpc.set_timeout(timeout_);
+  rpc.set_timeout(MonoDelta::FromSeconds(std::max(timeout_.ToSeconds(), 120.0)));
   RETURN_NOT_OK(
       master_replication_proxy_->ValidateAndSyncCDCStateEntriesForCDCSDKStream(req, &resp, &rpc));
 
@@ -4082,8 +4224,7 @@ Status ClusterAdminClient::AlterUniverseReplication(
     const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
     const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
     const std::vector<std::string>& producer_bootstrap_ids_to_add,
-    const std::string& new_replication_group_id, const NamespaceId& source_namespace_to_remove,
-    bool remove_table_ignore_errors) {
+    const NamespaceId& source_namespace_to_remove, bool remove_table_ignore_errors) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_replication_group_id(replication_group_id);
@@ -4126,10 +4267,6 @@ Status ClusterAdminClient::AlterUniverseReplication(
         for (const auto& table : remove_tables) {
       req.add_producer_table_ids_to_remove(table);
         }
-  }
-
-  if (!new_replication_group_id.empty()) {
-    req.set_new_replication_group_id(new_replication_group_id);
   }
 
   if (!source_namespace_to_remove.empty()) {
@@ -4290,46 +4427,6 @@ Status ClusterAdminClient::WaitForReplicationDrain(
   return Status::OK();
 }
 
-Status ClusterAdminClient::SetupNSUniverseReplication(
-    const std::string& replication_group_id,
-    const std::vector<std::string>& producer_addresses,
-    const TypedNamespaceName& producer_namespace) {
-  switch (producer_namespace.db_type) {
-        case YQL_DATABASE_CQL:
-      break;
-        case YQL_DATABASE_PGSQL:
-      return STATUS(
-          InvalidArgument, "YSQL not currently supported for namespace-level replication setup");
-        default:
-      return STATUS(InvalidArgument, "Unsupported namespace type");
-  }
-
-  master::SetupNSUniverseReplicationRequestPB req;
-  master::SetupNSUniverseReplicationResponsePB resp;
-  req.set_replication_group_id(replication_group_id);
-  req.set_producer_ns_name(producer_namespace.name);
-  req.set_producer_ns_type(producer_namespace.db_type);
-
-  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
-  for (const auto& addr : producer_addresses) {
-        auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
-        HostPortToPB(hp, req.add_producer_master_addresses());
-  }
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_replication_proxy_->SetupNSUniverseReplication(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-        cout << "Error setting up namespace-level universe replication: "
-             << resp.error().status().message() << endl;
-        return StatusFromPB(resp.error().status());
-  }
-
-  cout << "Namespace-level replication setup successfully" << endl;
-  return Status::OK();
-}
-
 Status ClusterAdminClient::GetReplicationInfo(const std::string& replication_group_id) {
   master::GetReplicationStatusRequestPB req;
   master::GetReplicationStatusResponsePB resp;
@@ -4438,6 +4535,129 @@ Status ClusterAdminClient::WaitForAlterXClusterReplication(
 
     std::this_thread::sleep_for(100ms);
   }
+}
+
+Result<master::DumpSysCatalogEntriesResponsePB> ClusterAdminClient::DumpSysCatalogEntries(
+    master::SysRowEntryType entry_type, const std::string& entity_id_filter) {
+  master::DumpSysCatalogEntriesRequestPB req;
+  master::DumpSysCatalogEntriesResponsePB resp;
+  req.set_entry_type(entry_type);
+  req.set_entity_id_filter(entity_id_filter);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  RETURN_NOT_OK(master_admin_proxy_->DumpSysCatalogEntries(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return resp;
+}
+
+Status ClusterAdminClient::DumpSysCatalogEntriesAction(
+    master::SysRowEntryType entry_type, const std::string& folder_path,
+    const std::string& entry_id_filter) {
+  auto env = Env::Default();
+  if (!env->DirExists(folder_path)) {
+    RETURN_NOT_OK(env->CreateDir(folder_path));
+  }
+
+  const auto resp = VERIFY_RESULT(DumpSysCatalogEntries(entry_type, entry_id_filter));
+
+  std::cout << "Found " << resp.entries().size() << " entries of type "
+            << master::SysRowEntryType_Name(entry_type) << std::endl;
+
+  for (const auto& entry : resp.entries()) {
+    const auto entity_type = master::SysRowEntryType_Name(entry.entry_type());
+    auto file_path = JoinPathSegments(folder_path, Format("$0-$1", entity_type, entry.entity_id()));
+
+    std::cout << std::endl << "Entry Type: " << entity_type << std::endl;
+    std::cout << "Entry ID: " << entry.entity_id() << std::endl;
+    std::cout << "Path to entry data: " << file_path << std::endl;
+
+    if (env->FileExists(file_path)) {
+      RETURN_NOT_OK(env->DeleteFile(file_path));
+    }
+
+    RETURN_NOT_OK(WriteStringToFileSync(env, entry.pb_debug_string(), file_path));
+  }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::WriteSysCatalogEntry(
+    master::WriteSysCatalogEntryRequestPB::WriteOp operation, master::SysRowEntryType entry_type,
+    const std::string& entity_id, const std::string& pb_debug_string) {
+  master::WriteSysCatalogEntryRequestPB req;
+  master::WriteSysCatalogEntryResponsePB resp;
+  req.set_entry_type(entry_type);
+  req.set_entity_id(entity_id);
+  req.set_pb_debug_string(pb_debug_string);
+  req.set_op_type(operation);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  RETURN_NOT_OK(master_admin_proxy_->WriteSysCatalogEntry(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::WriteSysCatalogEntryAction(
+    master::WriteSysCatalogEntryRequestPB::WriteOp operation, master::SysRowEntryType entry_type,
+    const std::string& entry_id, const std::string& file_path, bool force) {
+  std::cout << "Operation: " << master::WriteSysCatalogEntryRequestPB::WriteOp_Name(operation)
+            << std::endl;
+  std::cout << "Entry Type: " << master::SysRowEntryType_Name(entry_type) << std::endl;
+  std::cout << "Entry Id: " << entry_id << std::endl;
+
+  std::string entity_data;
+  if (operation != master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_DELETE) {
+    faststring contents;
+    RETURN_NOT_OK(ReadFileToString(Env::Default(), file_path, &contents));
+    entity_data = contents.ToString();
+
+    auto new_pb = VERIFY_RESULT(master::DebugStringToCatalogEntityPB(entry_type, entity_data));
+
+    if (operation == master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_INSERT) {
+      std::cout << "Entry Data: " << std::endl << new_pb->DebugString() << std::endl << std::endl;
+    } else {
+      const auto resp = VERIFY_RESULT(DumpSysCatalogEntries(entry_type, entry_id));
+      SCHECK_EQ(
+          resp.entries().size(), 1, InvalidArgument,
+          "Invalid number of entries match the entity id");
+
+      auto old_pb = VERIFY_RESULT(
+          master::DebugStringToCatalogEntityPB(entry_type, resp.entries(0).pb_debug_string()));
+
+      string diff_str;
+      SCHECK(!pb_util::ArePBsEqual(*old_pb, *new_pb, &diff_str), InvalidArgument, "No changes");
+
+      std::cout << "Entity diff: " << std::endl << diff_str << std::endl;
+    }
+  }
+  std::cout << std::endl;
+
+  if (!force) {
+    std::cout << "WARNING: Incorrect modifications to the YugabyteDB system catalog can lead to "
+                 "outages, corruptions or data loss!"
+              << std::endl;
+    std::cout << "Are you sure you want to proceed? (y/N)" << std::endl;
+    std::string answer;
+    std::cin >> answer;
+    SCHECK(answer == "y" || answer == "Y", InvalidArgument, "Aborted");
+  }
+
+  RETURN_NOT_OK(WriteSysCatalogEntry(operation, entry_type, entry_id, entity_data));
+
+  std::cout << std::endl << "Successfully updated the YugabyteDB system catalog." << std::endl;
+  return Status::OK();
 }
 
 client::XClusterClient ClusterAdminClient::XClusterClient() {

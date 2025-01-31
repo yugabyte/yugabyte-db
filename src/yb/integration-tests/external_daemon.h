@@ -135,6 +135,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   std::vector<std::string> GetDataDirs() const { return data_dirs_; }
 
   const std::string& exe() const { return exe_; }
+  void SetExe(const std::string& new_exe) { exe_ = new_exe; }
 
   const std::string& GetRootDir() const { return root_dir_; }
 
@@ -249,6 +250,10 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // Remove a flag from the extra flags. A restart is required to get any effect of that change.
   size_t RemoveExtraFlag(const std::string& flag);
 
+  void SetMaxGracefulShutdownWaitSec(int max_graceful_shutdown_wait_sec) {
+    max_graceful_shutdown_wait_sec_ = max_graceful_shutdown_wait_sec;
+  }
+
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;
   virtual ~ExternalDaemon();
@@ -275,7 +280,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   const std::string daemon_id_;
   rpc::Messenger* messenger_;
   rpc::ProxyCache* proxy_cache_;
-  const std::string exe_;
+  std::string exe_;
   const std::string root_dir_;
   std::vector<std::string> data_dirs_;
   std::vector<std::string> extra_flags_;
@@ -290,6 +295,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // are used to Restart() the daemon with the same parameters.
   HostPort bound_rpc_;
   HostPort bound_http_;
+
+  int max_graceful_shutdown_wait_sec_ = 60;
 
  private:
   std::unique_ptr<LogTailerThread> stdout_tailer_thread_, stderr_tailer_thread_;

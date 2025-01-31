@@ -19,11 +19,12 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.fwd.h"
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/dockv/intent.h"
+#include "yb/docdb/storage_set.h"
 
 #include "yb/rocksdb/write_batch.h"
 
@@ -70,7 +71,8 @@ class TransactionalWriter : public rocksdb::DirectWriter {
       IsolationLevel isolation_level,
       dockv::PartialRangeKeyIntents partial_range_key_intents,
       const Slice& replicated_batches_state,
-      IntraTxnWriteId intra_txn_write_id);
+      IntraTxnWriteId intra_txn_write_id,
+      tablet::TransactionIntentApplier* applier);
 
   Status Apply(rocksdb::DirectWriteHandler* handler) override;
 
@@ -103,6 +105,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   IntraTxnWriteId intra_txn_write_id_;
   IntraTxnWriteId write_id_ = 0;
   const LWTransactionMetadataPB* metadata_to_store_ = nullptr;
+  tablet::TransactionIntentApplier* applier_;
 
   // TODO(dtxn) weak & strong intent in one batch.
   // TODO(dtxn) extract part of code knowing about intents structure to lower level.
@@ -142,7 +145,7 @@ class IntentsWriterContext {
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler* handler) = 0;
 
-  virtual void Complete(rocksdb::DirectWriteHandler* handler) = 0;
+  virtual Status Complete(rocksdb::DirectWriteHandler* handler) = 0;
 
   const TransactionId& transaction_id() const {
     return transaction_id_;
@@ -179,9 +182,12 @@ class IntentsWriter : public rocksdb::DirectWriter {
   IntentsWriter(const Slice& start_key,
                 HybridTime file_filter_ht,
                 rocksdb::DB* intents_db,
-                IntentsWriterContext* context);
+                IntentsWriterContext* context,
+                bool ignore_metadata = false,
+                const Slice& key_to_apply = Slice());
 
   Status Apply(rocksdb::DirectWriteHandler* handler) override;
+  bool key_applied() { return key_applied_; }
 
  private:
   Slice start_key_;
@@ -190,6 +196,14 @@ class IntentsWriter : public rocksdb::DirectWriter {
   dockv::KeyBytes txn_reverse_index_prefix_;
   Slice reverse_index_upperbound_;
   BoundedRocksDbIterator reverse_index_iter_;
+
+  // For removing advisory locks only.
+  // If true, don't remove txn metadata entry, for unlock all operation.
+  bool ignore_metadata_;
+  // If not empty, only remove entry with this key, for unlock a specific lock.
+  Slice key_to_apply_;
+  // If the lock specified by key_to_apply_ has been applied.
+  bool key_applied_ = false;
 };
 
 class FrontierSchemaVersionUpdater {
@@ -199,12 +213,19 @@ class FrontierSchemaVersionUpdater {
 
   void SetFrontiers(ConsensusFrontiers* frontiers) { frontiers_ = frontiers; }
 
+  SchemaPackingProvider* schema_packing_provider() const {
+    return schema_packing_provider_;
+  }
+
  protected:
   Status UpdateSchemaVersion(Slice key, Slice value);
   void FlushSchemaVersion();
+  ConsensusFrontiers* frontiers() const {
+    return frontiers_;
+  }
 
  private:
-  SchemaPackingProvider* schema_packing_provider_;
+  SchemaPackingProvider* const schema_packing_provider_;
   Uuid schema_version_table_ = Uuid::Nil();
   ColocationId schema_version_colocation_id_ = 0;
   SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
@@ -215,6 +236,7 @@ class FrontierSchemaVersionUpdater {
 class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVersionUpdater {
  public:
   ApplyIntentsContext(
+      const TabletId& tablet_id,
       const TransactionId& transaction_id,
       const ApplyTransactionState* apply_state,
       const SubtxnSet& aborted,
@@ -223,7 +245,9 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       HybridTime file_filter_ht,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
-      rocksdb::DB* intents_db);
+      rocksdb::DB* intents_db,
+      const VectorIndexesPtr& vector_indexes,
+      const StorageSet& apply_to_storages);
 
   void Start(const boost::optional<Slice>& first_key) override;
 
@@ -231,18 +255,39 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler* handler) override;
 
-  void Complete(rocksdb::DirectWriteHandler* handler) override;
+  Status Complete(rocksdb::DirectWriteHandler* handler) override;
 
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
+  Status ProcessVectorIndexes(rocksdb::DirectWriteHandler* handler, Slice key, Slice value);
+  template <class Decoder>
+  Status ProcessVectorIndexesForPackedRow(
+      rocksdb::DirectWriteHandler* handler, size_t prefix_size, Slice key, Slice value);
 
+  bool ApplyToRegularDB() const {
+    return apply_to_storages_.TestRegularDB();
+  }
+
+  bool ApplyToVectorIndex(size_t index) const {
+    return apply_to_storages_.TestVectorIndex(index);
+  }
+
+  const TabletId& tablet_id_;
   const ApplyTransactionState* apply_state_;
   const SubtxnSet& aborted_;
   HybridTime commit_ht_;
   HybridTime log_ht_;
   IntraTxnWriteId write_id_;
   const KeyBounds* key_bounds_;
+  VectorIndexesPtr vector_indexes_;
+  StorageSet apply_to_storages_;
   BoundedRocksDbIterator intent_iter_;
+  // TODO(vector_index) Optimize memory management
+  std::vector<VectorIndexInsertEntries> vector_index_batches_;
+
+  std::shared_ptr<const dockv::SchemaPacking> schema_packing_;
+  SchemaVersion schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
+  KeyBuffer schema_packing_table_prefix_;
 };
 
 class RemoveIntentsContext : public IntentsWriterContext {
@@ -253,7 +298,7 @@ class RemoveIntentsContext : public IntentsWriterContext {
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler* handler) override;
 
-  void Complete(rocksdb::DirectWriteHandler* handler) override;
+  Status Complete(rocksdb::DirectWriteHandler* handler) override;
  private:
   uint8_t reason_;
 };
@@ -275,10 +320,10 @@ class RemoveIntentsContext : public IntentsWriterContext {
 //   But if apply_external_transactions contains transaction for those external intents, then
 //   those intents will be applied directly to regular DB, avoiding unnecessary write to intents DB.
 //   This case is very common for short running transactions.
-class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
-                                   public FrontierSchemaVersionUpdater {
+class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
+                                    public FrontierSchemaVersionUpdater {
  public:
-  ExternalIntentsBatchWriter(
+  NonTransactionalBatchWriter(
       std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
       HybridTime batch_hybrid_time, rocksdb::DB* intents_db,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider* schema_packing_provider);
@@ -294,7 +339,7 @@ class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
 
   // Adds external pair to write batch.
   // Returns true if add was skipped because pair is a regular (non external) record.
-  Result<bool> AddExternalPairToWriteBatch(
+  Result<bool> AddEntryToWriteBatch(
       const yb::docdb::LWKeyValuePairPB& kv_pair,
       ExternalTxnApplyState* apply_external_transactions,
       rocksdb::DirectWriteHandler* regular_write_handler, IntraTxnWriteId* write_id);

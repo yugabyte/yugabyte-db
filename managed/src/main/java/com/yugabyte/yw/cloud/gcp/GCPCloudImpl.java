@@ -249,6 +249,7 @@ public class GCPCloudImpl implements CloudAPI {
         backendToZoneMap.entrySet().stream()
             .filter(mapEntry -> zonesToRemove.contains(mapEntry.getKey()))
             .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
+    log.info("About to remove LB backends for zones {}", backendToZoneMap.keySet());
     try {
       apiClient.deleteBackends(backendsInZonesToRemove);
     } catch (Exception e) {
@@ -473,7 +474,7 @@ public class GCPCloudImpl implements CloudAPI {
           getAzToInstanceReferenceMap(apiClient, azToNodeIDs);
       BackendService backendService = apiClient.getBackendService(regionCode, backendServiceName);
       List<Backend> backends = backendService.getBackends();
-      log.debug("Checking backends....");
+      log.debug("Reconciling LB backends....");
       backends = ensureBackends(apiClient, nodeAzMap, backends);
       backendService.setConnectionDraining((new ConnectionDraining()).setDrainingTimeoutSec(3600));
       backendService.setBackends(backends);

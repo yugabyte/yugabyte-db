@@ -10,6 +10,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.xml.JacksonXmlModule;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
@@ -22,13 +23,16 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -41,8 +45,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 import javax.inject.Singleton;
 import lombok.EqualsAndHashCode;
 import org.apache.commons.collections4.MapUtils;
@@ -74,6 +81,8 @@ public class GFlagsValidation {
 
   private static final String GLIBC_VERSION_FIELD_NAME = "glibc_v";
 
+  private static final String YSQL_MAJOR_VERSION_FIELD_NAME = "ysql_major_version";
+
   // Skip these test auto flags while computing auto flags in YBA.
   public static final Set<String> TEST_AUTO_FLAGS =
       ImmutableSet.of("TEST_auto_flags_new_install", "TEST_auto_flags_initialized");
@@ -86,7 +95,7 @@ public class GFlagsValidation {
           Util.DB_VERSION_METADATA_FILENAME,
           YSQL_MIGRATION_FILES_LIST_FILE_NAME);
 
-  public static final String DB_BUILD_WITH_FLAG_FILES = "2.17.0.0-b1";
+  public static final String DB_BUILD_WITH_FLAG_FILES = "2.16.0.0-b1";
 
   @Inject
   public GFlagsValidation(
@@ -94,6 +103,30 @@ public class GFlagsValidation {
     this.environment = environment;
     this.confGetter = confGetter;
     this.releaseManager = releaseManager;
+  }
+
+  /**
+   * Given a YBDB version, returns a set of JsonPaths containing the sensitive Master and Tserver
+   * Gflags.
+   */
+  public Set<String> getSensitiveJsonPathsForVersion(String version) {
+    LOG.info("Parsing sensitive gflags for DB version " + version);
+    Set<String> sensitiveGflags = new HashSet<>();
+    for (ServerType server : ServerType.values()) {
+      if (!server.equals(ServerType.MASTER) && !server.equals(ServerType.TSERVER)) {
+        continue;
+      }
+      try {
+        for (GFlagDetails gflag : extractGFlags(version, server.name(), false)) {
+          if (gflag.tags.contains("sensitive_info")) {
+            sensitiveGflags.add("$.." + gflag.name);
+          }
+        }
+      } catch (Exception e) {
+        LOG.error("Error while fetching Gflags for db version " + version, e);
+      }
+    }
+    return sensitiveGflags;
   }
 
   public List<GFlagDetails> extractGFlags(String version, String serverType, boolean mostUsedGFlags)
@@ -165,18 +198,42 @@ public class GFlagsValidation {
     }
   }
 
+  public Optional<GFlagDetails> getGFlagDetails(String version, String serverType, String gflagName)
+      throws IOException {
+    List<GFlagDetails> gflagsList = extractGFlags(version, serverType, false);
+    return gflagsList.stream().filter(flag -> flag.name.equals(gflagName)).findFirst();
+  }
+
   public List<GFlagGroup> extractGFlagGroups(String version) throws IOException {
     InputStream flagStream = null;
     try {
-      String majorVersion = version.substring(0, StringUtils.ordinalIndexOf(version, ".", 2));
+      SortedSet<String> avaliableVersions = new TreeSet<>();
+      InputStream foldersStream = environment.resourceAsStream("gflag_groups");
+      try (BufferedReader in = new BufferedReader(new InputStreamReader(foldersStream))) {
+        String inputLine;
+        while ((inputLine = in.readLine()) != null) {
+          avaliableVersions.add(inputLine);
+        }
+      }
+      SortedSet<String> head = avaliableVersions.headSet(version);
+      if (head.isEmpty()) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Failed to find gflags group version for " + version + " db");
+      }
+      String versionToUse = head.last();
+      LOG.debug(
+          "Found {} group versions, picked {} for current db version {}",
+          avaliableVersions,
+          versionToUse,
+          version);
       flagStream =
           environment.resourceAsStream(
-              "gflag_groups/" + majorVersion + "/" + Util.GFLAG_GROUPS_FILENAME);
+              "gflag_groups/" + versionToUse + "/" + Util.GFLAG_GROUPS_FILENAME);
       if (flagStream == null) {
-        LOG.error("GFlag groups metadata file for " + majorVersion + " is not present");
+        LOG.error("GFlag groups metadata file for " + versionToUse + " is not present");
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
-            "GFlag groups metadata file for " + majorVersion + " is not present");
+            "GFlag groups metadata file for " + versionToUse + " is not present");
       }
       ObjectMapper mapper = new ObjectMapper();
       List<GFlagGroup> data =
@@ -187,6 +244,85 @@ public class GFlagsValidation {
         flagStream.close();
       }
     }
+  }
+
+  public void validateConnectionPoolingGflags(
+      Universe universe, Map<String, String> connectionPoolingGflags) {
+    if (connectionPoolingGflags.isEmpty()) {
+      return;
+    }
+
+    // Get the right connection pooling gflags list for preview vs stable version.
+    String ybdbVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    boolean isStableVersion = Util.isStableVersion(ybdbVersion, false);
+
+    String flagsFileName = "connection_pooling/connection_pooling_gflags_";
+    if (isStableVersion) {
+      flagsFileName += "stable.json";
+    } else {
+      flagsFileName += "preview.json";
+    }
+
+    // Get the connection pooling gflags file content.
+    ObjectNode flagsFileObject = null;
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      flagsFileObject = (ObjectNode) mapper.readTree(environment.resourceAsStream(flagsFileName));
+    } catch (Exception e) {
+      String errMsg =
+          String.format(
+              "Error occurred retrieving connection pooling gflags file '%s'.", flagsFileName);
+      LOG.error(errMsg, e);
+      // If error with reading the file, log error and continue the operation.
+      return;
+    }
+
+    // Find the correct version to check against.
+    // Find the closest version less than or equal to ybdbVersion.
+    SortedSet<String> avaliableVersions = new TreeSet<>();
+    flagsFileObject.fieldNames().forEachRemaining(avaliableVersions::add);
+    SortedSet<String> head = avaliableVersions.headSet(ybdbVersion);
+    if (head.isEmpty()) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Failed to find connection pooling flags for '" + ybdbVersion + "' db version.");
+    }
+    String versionToUse = head.last();
+    LOG.debug(
+        "Found '{}' connection pooling flags versions, picked '{}' for current db version '{}'.",
+        avaliableVersions,
+        versionToUse,
+        ybdbVersion);
+
+    // Get all the allowed connection pooling gflags for that version.
+    JsonNode versionNode = flagsFileObject.get(versionToUse);
+    Set<String> allowedGflagsForCurrentVersion =
+        StreamSupport.stream(versionNode.spliterator(), false)
+            .map(JsonNode::asText)
+            .collect(Collectors.toSet());
+
+    // If there are extra gflags not related to connection pooling for that DB version, throw an
+    // error. Else validation is successful.
+    List<String> invalidConnectionPoolingGflags = new ArrayList<>();
+    for (String flag : connectionPoolingGflags.keySet()) {
+      if (!allowedGflagsForCurrentVersion.contains(flag) && !flag.startsWith("ysql_conn_mgr")) {
+        invalidConnectionPoolingGflags.add(flag);
+      }
+    }
+    if (!invalidConnectionPoolingGflags.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot set gflags '%s' as they are not related to Connection Pooling in version"
+                  + " '%s'.",
+              invalidConnectionPoolingGflags.toString(), ybdbVersion));
+    }
+    LOG.info(
+        "Successfully validated that all the gflags '{}' are related to connection pooling for"
+            + " version '{}'.",
+        connectionPoolingGflags.keySet().toString(),
+        ybdbVersion);
   }
 
   public synchronized void fetchGFlagFilesFromTarGZipInputStream(
@@ -443,6 +579,30 @@ public class GFlagsValidation {
   }
 
   public Optional<Double> getGlibcVersion(String version) throws IOException {
+    File file = getDBMetadataFile(version);
+    ObjectMapper objectMapper = new ObjectMapper();
+    JsonNode jsonNode = objectMapper.readTree(file);
+    if (jsonNode.has(GLIBC_VERSION_FIELD_NAME)) {
+      String glibc = jsonNode.get(GLIBC_VERSION_FIELD_NAME).asText();
+      return Optional.of(Double.parseDouble(glibc));
+    } else {
+      return Optional.empty();
+    }
+  }
+
+  public Optional<Integer> getYsqlMajorVersion(String version) throws IOException {
+    File file = getDBMetadataFile(version);
+    ObjectMapper objectMapper = new ObjectMapper();
+    JsonNode jsonNode = objectMapper.readTree(file);
+    if (jsonNode.has(YSQL_MAJOR_VERSION_FIELD_NAME)) {
+      int ysqlMajorVersion = jsonNode.get(YSQL_MAJOR_VERSION_FIELD_NAME).asInt();
+      return Optional.of(ysqlMajorVersion);
+    } else {
+      return Optional.empty();
+    }
+  }
+
+  private File getDBMetadataFile(String version) {
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
     String filePath =
         String.format("%s/%s/%s", releasesPath, version, Util.DB_VERSION_METADATA_FILENAME);
@@ -460,13 +620,33 @@ public class GFlagsValidation {
             INTERNAL_SERVER_ERROR, "Error in extracting version metadata form DB package");
       }
     }
-    ObjectMapper objectMapper = new ObjectMapper();
-    JsonNode jsonNode = objectMapper.readTree(file);
-    if (jsonNode.has(GLIBC_VERSION_FIELD_NAME)) {
-      String glibc = jsonNode.get(GLIBC_VERSION_FIELD_NAME).asText();
-      return Optional.of(Double.parseDouble(glibc));
-    } else {
-      return Optional.empty();
+    return file;
+  }
+
+  public boolean ysqlMajorVersionUpgrade(String oldVersion, String newVersion) {
+    try {
+      Optional<Integer> newVersionYsqlVersion = getYsqlMajorVersion(newVersion);
+      Optional<Integer> oldVersionYsqlVersion = getYsqlMajorVersion(oldVersion);
+
+      // We assume that old db version that does not contains ysql major version are on pg-11.
+      if (!newVersionYsqlVersion.isPresent()) {
+        return false;
+      }
+      if (newVersionYsqlVersion.get().equals(15)) {
+        if (oldVersionYsqlVersion.isPresent()) {
+          if (newVersionYsqlVersion.get().equals(oldVersionYsqlVersion.get())) {
+            return false;
+          } else {
+            return true;
+          }
+        } else {
+          return true;
+        }
+      }
+      return false;
+    } catch (Exception e) {
+      LOG.error("failed to get ysql major version", e);
+      throw new RuntimeException(e);
     }
   }
 

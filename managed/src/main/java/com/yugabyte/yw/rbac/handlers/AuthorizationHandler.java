@@ -30,7 +30,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.pac4j.play.store.PlaySessionStore;
+import org.pac4j.core.context.session.SessionStore;
 import play.mvc.Action;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -48,7 +48,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
 
   private final Config config;
   private final RuntimeConfigCache runtimeConfigCache;
-  private final PlaySessionStore sessionStore;
+  private final SessionStore sessionStore;
   private final JWTVerifier jwtVerifier;
   private final TokenAuthenticator tokenAuthenticator;
 
@@ -58,7 +58,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
   @Inject
   public AuthorizationHandler(
       Config config,
-      PlaySessionStore sessionStore,
+      SessionStore sessionStore,
       RuntimeConfigCache runtimeConfigCache,
       JWTVerifier jwtVerifier,
       TokenAuthenticator tokenAuthenticator) {
@@ -78,7 +78,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
     Users user = tokenAuthenticator.getCurrentAuthenticatedUser(request);
     if (user == null) {
       log.debug("User not present in the system");
-      return CompletableFuture.completedFuture(Results.unauthorized("Unable To authenticate User"));
+      return CompletableFuture.completedFuture(Results.unauthorized("Unable To Authenticate User"));
     }
     UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
     Customer customer = Customer.get(user.getCustomerUUID());
@@ -95,7 +95,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
 
     if (customerUUID != null && !user.getCustomerUUID().equals(customerUUID)) {
       log.debug("User {} does not belong to the customer {}", user.getUuid(), customerUUID);
-      return CompletableFuture.completedFuture(Results.unauthorized("Unable To authenticate User"));
+      return CompletableFuture.completedFuture(Results.unauthorized("Unable To Authenticate User"));
     }
 
     RequiredPermissionOnResource[] permissionPathList = configuration.value();
@@ -202,13 +202,13 @@ public class AuthorizationHandler extends Action<AuthzPath> {
             Class<? extends Model> modelClass = resource.dbClass();
             Finder<UUID, Model> find = new Finder(modelClass);
 
-            Model modelEntity =
-                find.query().where().eq(resource.columnName(), resourceUUID).findOne();
+            List<Model> modelEntityList =
+                find.query().where().eq(resource.columnName(), resourceUUID).findList();
             ObjectMapper mapper = new ObjectMapper();
-            if (modelEntity == null) {
-              return CompletableFuture.completedFuture(
-                  Results.unauthorized("Unable to authorize user"));
+            if (modelEntityList == null || modelEntityList.isEmpty()) {
+              return CompletableFuture.completedFuture(Results.notFound("Entity does not exist."));
             }
+            Model modelEntity = modelEntityList.get(0);
             JsonNode requestBody = mapper.convertValue(modelEntity, JsonNode.class);
 
             String[] pathList = resource.path().split("\\.");

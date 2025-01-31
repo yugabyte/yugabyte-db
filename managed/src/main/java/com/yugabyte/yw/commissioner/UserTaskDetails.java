@@ -15,12 +15,12 @@ public class UserTaskDetails {
 
   // The various groupings of user facing subtasks.
   public enum SubTaskGroupType {
+    // Default generic subtask group type. Do not use this to set as it's given special treatment.
+    Configuring,
+
     // Used for parent tasks which could have own details/errors. Only for UI/API
     // purposes, not stored in DB.
     Preparation,
-
-    // Ignore this subtask and do not display it to the user.
-    Invalid,
 
     // Perform preflight checks to determine if the node is ready to be configured or provisioned.
     PreflightChecks,
@@ -214,6 +214,12 @@ public class UserTaskDetails {
     // Run the initdb script in a tserver pod. (Deprecated)
     KubernetesInitYSQL,
 
+    // Delete Kubernetes Namespaced Service
+    KubernetesNamespacedServiceDelete,
+
+    // Handle Kubernetes Namespaced Service
+    KubernetesHandleNamespacedService,
+
     // Start master process on a node
     StartingMasterProcess,
 
@@ -272,7 +278,16 @@ public class UserTaskDetails {
     OSPatching,
 
     // Update Proxy Config
-    UpdateProxyConfig
+    UpdateProxyConfig,
+
+    // Create Pod Disruption Budget Policy
+    CreatePodDisruptionBudgetPolicy,
+
+    // Remove Pod Disruption Budget Policy
+    RemovingPodDisruptionBudgetPolicy,
+
+    // Validate after upgrade
+    PostUpdateValidations
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -282,6 +297,10 @@ public class UserTaskDetails {
     String title;
     String description;
     switch (subTaskGroupType) {
+      case Configuring:
+        title = "Configuring";
+        description = "Applying the configuration.";
+        break;
       case Preparation:
         title = "Action preparation";
         description = "Preparing to execute a selected action.";
@@ -525,6 +544,13 @@ public class UserTaskDetails {
         title = "Upgrade Kubernetes Pod";
         description = "Upgrade Kubernetes Pod";
         break;
+      case KubernetesNamespacedServiceDelete:
+        title = "Delete Kubernetes Namespaced Service";
+        description = "Delete Kubernetes Namespaced Service";
+        break;
+      case KubernetesHandleNamespacedService:
+        title = "Handle Kubernetes Namespaced Service";
+        description = "Handle Kubernetes Namespaced Service";
       case KubernetesCopyPackage:
         title = "Copy Package to Kubernetes Pod";
         description = "Copy Package to Kubernetes Pod";
@@ -632,6 +658,18 @@ public class UserTaskDetails {
       case UpdateProxyConfig:
         title = "Updating Proxy config";
         description = "Updating Proxy Config for Universe nodes";
+        break;
+      case CreatePodDisruptionBudgetPolicy:
+        title = "Creating Pod Disruption Budget Policy";
+        description = "Creating Pod Disruption Budget Policy";
+        break;
+      case RemovingPodDisruptionBudgetPolicy:
+        title = "Removing Pod Disruption Budget Policy";
+        description = "Removing Pod Disruption Budget Policy";
+        break;
+      case PostUpdateValidations:
+        title = "Validating after updates";
+        description = "Validating updates applied correctly";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

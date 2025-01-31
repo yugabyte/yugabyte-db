@@ -9,6 +9,8 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.TlsToggleParams;
@@ -65,7 +67,13 @@ public class TlsToggle extends UpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    addBasicPrecheckTasks();
+    // Skip running prechecks if Node2Node certs has expired
+    if (!CertificateHelper.checkNode2NodeCertsExpiry(universe)) {
+      addBasicPrecheckTasks();
+    }
+    if (taskParams().enableNodeToNodeEncrypt || taskParams().enableClientToNodeEncrypt) {
+      createCheckCertificateConfigTask();
+    }
   }
 
   @Override
@@ -93,6 +101,10 @@ public class TlsToggle extends UpgradeTaskBase {
 
   private void createRound1GFlagUpdateTasks(MastersAndTservers nodes) {
     if (getNodeToNodeChange() < 0) {
+      // Skip running round1 if Node2Node certs have expired
+      if (CertificateHelper.checkNode2NodeCertsExpiry(getUniverse())) {
+        return;
+      }
       // Setting allow_insecure to true can be done in non-restart way
       createNonRestartUpgradeTaskFlow(
           (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
@@ -305,9 +317,27 @@ public class TlsToggle extends UpgradeTaskBase {
     return task;
   }
 
+  /*
+   * Returns:
+   * 1: If task is to enable node-to-node encryption
+   * -1: If task is to disable node-to-node encryption
+   * 0: If there is no change in node-to-node encryption
+   */
   private int getNodeToNodeChange() {
     return getUserIntent().enableNodeToNodeEncrypt != taskParams().enableNodeToNodeEncrypt
         ? (taskParams().enableNodeToNodeEncrypt ? 1 : -1)
         : 0;
+  }
+
+  public void createCheckCertificateConfigTask() {
+    MastersAndTservers nodes = getNodesToBeRestarted();
+    Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
+    createCheckCertificateConfigTask(
+        taskParams().clusters,
+        allNodes,
+        taskParams().rootCA,
+        taskParams().getClientRootCA(),
+        taskParams().enableClientToNodeEncrypt,
+        NodeManager.YUGABYTE_USER);
   }
 }

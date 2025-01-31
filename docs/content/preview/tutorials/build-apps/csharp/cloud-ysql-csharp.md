@@ -8,11 +8,11 @@ menu:
     parent: build-apps
     name: C#
     identifier: cloud-csharp
-    weight: 600
+    weight: 800
 type: docs
 ---
 
-The following tutorial shows a small [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) that connects to a YugabyteDB cluster using the [Npgsql driver](../../../../reference/drivers/ysql-client-drivers/#npgsql) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in C#.
+The following tutorial shows a small [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) that connects to a YugabyteDB cluster using the [Npgsql driver](../../../../drivers-orms/csharp/postgres-npgsql) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in C#.
 
 ## Prerequisites
 
@@ -173,4 +173,4 @@ try
 
 ## Learn more
 
-[Npgsql driver](../../../../reference/drivers/ysql-client-drivers/#npgsql)
+[Npgsql driver](../../../../drivers-orms/csharp/postgres-npgsql/)

@@ -14,12 +14,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
-import com.typesafe.config.Config;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUIApiHelper;
-import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -29,37 +28,36 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.GetMasterHeartbeatDelaysResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
-import org.yb.util.ServerInfo;
+import org.yb.util.PeerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AutoMasterFailoverTest extends FakeDBApplication {
-  @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private RuntimeConfGetter mockRuntimeConfGetter;
   @Mock private YBClientService mockYbClientService;
   @Mock private NodeUIApiHelper mockApiHelper;
-  @Mock private Config mockUniverseConfig;
   @Mock private YBClient mockYbClient;
   @Mock private Commissioner mockCommissioner;
+  @Mock private BaseTaskDependencies mockBaseTaskDependencies;
   @Mock private CustomerTaskManager mockCustomerTaskManager;
 
   private Customer defaultCustomer;
   private Universe defaultUniverse;
   private AutoMasterFailover automatedMasterFailover;
   private Map<String, Long> mockMasterHeartbeatDelays;
-  private List<ServerInfo> mockServerInfoList;
-  private ListMastersResponse mockListMastersResponse;
+  private List<PeerInfo> mockPeerInfoList;
+  private ListMasterRaftPeersResponse mockListMastersResponse;
   private GetMasterHeartbeatDelaysResponse mockMasterHeartbeatDelaysResponse;
 
   private final String[] masterUUIDs = {
@@ -85,32 +83,34 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
     when(mockMasterHeartbeatDelaysResponse.hasError()).thenReturn(false);
 
     when(mockRuntimeConfGetter.getConfForScope(
-            eq(defaultUniverse), eq(UniverseConfKeys.autoMasterFailoverMaxMasterFollowerLag)))
-        .thenReturn(Duration.ofMinutes(10));
-    when(mockRuntimeConfGetter.getConfForScope(
-            eq(defaultUniverse), eq(UniverseConfKeys.autoMasterFailoverMaxMasterHeartbeatDelay)))
+            eq(defaultUniverse), eq(UniverseConfKeys.autoMasterFailoverFollowerLagSoftThreshold)))
         .thenReturn(Duration.ofMinutes(10));
 
-    mockListMastersResponse = mock(ListMastersResponse.class);
-    mockServerInfoList = new ArrayList<>();
+    mockListMastersResponse = mock(ListMasterRaftPeersResponse.class);
+    mockPeerInfoList = new ArrayList<>();
     for (int i = 0; i < masterUUIDs.length; i++) {
-      ServerInfo serverInfo = new ServerInfo(masterUUIDs[i], "127.0.0." + i, 7100, i == 0, "");
-      mockServerInfoList.add(serverInfo);
+      PeerInfo peerInfo = new PeerInfo();
+
+      peerInfo.setLastKnownPrivateIps(
+          Collections.singletonList(HostAndPort.fromParts("127.0.0." + i, 7100)));
+      peerInfo.setMemberType(PeerInfo.MemberType.VOTER);
+      peerInfo.setUuid(masterUUIDs[i]);
+      mockPeerInfoList.add(peerInfo);
     }
-    when(mockListMastersResponse.getMasters()).thenReturn(mockServerInfoList);
+    when(mockListMastersResponse.getPeersList()).thenReturn(mockPeerInfoList);
 
     when(mockYbClient.getMasterHeartbeatDelays()).thenReturn(mockMasterHeartbeatDelaysResponse);
-    when(mockYbClient.listMasters()).thenReturn(mockListMastersResponse);
+    when(mockYbClient.listMasterRaftPeers()).thenReturn(mockListMastersResponse);
+    when(mockYbClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts("127.0.0.0", 7100));
     when(mockYbClient.waitForServer(any(), anyLong())).thenReturn(true);
 
+    when(mockBaseTaskDependencies.getYbService()).thenReturn(mockYbClientService);
+    when(mockBaseTaskDependencies.getConfGetter()).thenReturn(mockRuntimeConfGetter);
+    when(mockBaseTaskDependencies.getCommissioner()).thenReturn(mockCommissioner);
+    when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockApiHelper);
     automatedMasterFailover =
-        spy(
-            new AutoMasterFailover(
-                mockRuntimeConfGetter,
-                mockYbClientService,
-                mockApiHelper,
-                mockCommissioner,
-                mockCustomerTaskManager));
+        spy(new AutoMasterFailover(mockBaseTaskDependencies, mockCustomerTaskManager));
     automatedMasterFailover = spy(automatedMasterFailover);
     Map<String, Long> followerLags = new HashMap<>();
     followerLags.put("tablet-id-1", 100L);
@@ -138,9 +138,9 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
 
   @Test
   public void testNoFailedMasters() throws Exception {
-    Set<String> failedMasters =
-        automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
-    assertEquals(0, failedMasters.size());
+    Map<String, Long> maybeFailedMasters =
+        automatedMasterFailover.getMaybeFailedMastersForUniverse(defaultUniverse, mockYbClient);
+    assertEquals(0, maybeFailedMasters.size());
   }
 
   @Test
@@ -150,25 +150,25 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
     doReturn(followerLags)
         .when(automatedMasterFailover)
         .getFollowerLagMs(eq("127.0.0.2"), anyInt());
-    Set<String> failedMasters =
-        automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
-    assertEquals(1, failedMasters.size());
+    Map<String, Long> maybeFailedMasters =
+        automatedMasterFailover.getMaybeFailedMastersForUniverse(defaultUniverse, mockYbClient);
+    assertEquals(1, maybeFailedMasters.size());
   }
 
   @Test
   public void testMasterUnreachableDetection() throws Exception {
     mockMasterHeartbeatDelays.remove(masterUUIDs[1]);
-    Set<String> failedMasters =
-        automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
+    Map<String, Long> maybeFailedMasters =
+        automatedMasterFailover.getMaybeFailedMastersForUniverse(defaultUniverse, mockYbClient);
     // No action to be conservative.
-    assertEquals(0, failedMasters.size());
+    assertEquals(0, maybeFailedMasters.size());
   }
 
   @Test
   public void testMasterExceedingHeartbeatDelay() throws Exception {
     mockMasterHeartbeatDelays.put(masterUUIDs[1], 1000000L);
-    Set<String> failedMasters =
-        automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
-    assertEquals(1, failedMasters.size());
+    Map<String, Long> maybeFailedMasters =
+        automatedMasterFailover.getMaybeFailedMastersForUniverse(defaultUniverse, mockYbClient);
+    assertEquals(1, maybeFailedMasters.size());
   }
 }

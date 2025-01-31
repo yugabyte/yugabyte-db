@@ -333,10 +333,15 @@ public class PitrControllerTest extends FakeDBApplication {
             State.COMPLETE);
     snapshotList1.add(snapshot11);
     UUID snapshotUUID12 = UUID.randomUUID();
+    long schedule1minRecoveryTime = currentTime11;
     SnapshotInfo snapshot12 =
-        new SnapshotInfo(
-            snapshotUUID12, currentTime11 + 1000 * 100L, currentTime11, State.COMPLETE);
+        new SnapshotInfo(snapshotUUID12, currentTime11, currentTime11, State.COMPLETE);
     snapshotList1.add(snapshot12);
+    UUID snapshotUUID13 = UUID.randomUUID();
+    SnapshotInfo snapshot13 =
+        new SnapshotInfo(
+            snapshotUUID13, currentTime11 + 1000 * 100L, currentTime11, State.COMPLETE);
+    snapshotList1.add(snapshot13);
     SnapshotScheduleInfo schedule1 =
         new SnapshotScheduleInfo(scheduleUUID1, 86400L, 7L * 86400L, snapshotList1);
     scheduleInfoList.add(schedule1);
@@ -362,6 +367,7 @@ public class PitrControllerTest extends FakeDBApplication {
             State.FAILED);
     snapshotList2.add(snapshot21);
     UUID snapshotUUID22 = UUID.randomUUID();
+    long schedule2minRecoveryTime = currentTime21 + 1000 * 100L;
     SnapshotInfo snapshot22 =
         new SnapshotInfo(
             snapshotUUID22, currentTime21 + 1000 * 100L, currentTime21, State.COMPLETE);
@@ -383,6 +389,7 @@ public class PitrControllerTest extends FakeDBApplication {
     PitrConfig pitr3 = PitrConfig.create(scheduleUUID3, params3);
     List<SnapshotInfo> snapshotList3 = new ArrayList<>();
     UUID snapshotUUID31 = UUID.randomUUID();
+    long schedule3minRecoveryTime = currentTime3 + 1000 * 100L;
     SnapshotInfo snapshot31 =
         new SnapshotInfo(snapshotUUID31, currentTime3 + 1000 * 100L, currentTime3, State.COMPLETE);
     snapshotList3.add(snapshot31);
@@ -390,6 +397,36 @@ public class PitrControllerTest extends FakeDBApplication {
         new SnapshotScheduleInfo(scheduleUUID3, 86400L, 7L * 86400L, snapshotList3);
     scheduleInfoList.add(schedule3);
     scheduleInfoMap.put(scheduleUUID3, schedule3);
+
+    long currentTime41 = System.currentTimeMillis();
+    UUID scheduleUUID4 = UUID.randomUUID();
+    CreatePitrConfigParams params4 = new CreatePitrConfigParams();
+    params4.retentionPeriodInSeconds = 7 * 86400L;
+    params4.intervalInSeconds = 86400L;
+    params4.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params4.customerUUID = defaultCustomer.getUuid();
+    params4.keyspaceName = "fail";
+    params4.tableType = TableType.PGSQL_TABLE_TYPE;
+    PitrConfig pitr4 = PitrConfig.create(scheduleUUID4, params4);
+    List<SnapshotInfo> snapshotList4 = new ArrayList<>();
+    // All snapshots have failed for this schedule.
+    long schedule4minRecoveryTime = 0L;
+    UUID snapshotUUID41 = UUID.randomUUID();
+    SnapshotInfo snapshot41 =
+        new SnapshotInfo(
+            snapshotUUID41,
+            currentTime41 + 1000 * 86500L,
+            currentTime41 + 1000 * 100L,
+            State.FAILED);
+    snapshotList4.add(snapshot41);
+    UUID snapshotUUID42 = UUID.randomUUID();
+    SnapshotInfo snapshot42 =
+        new SnapshotInfo(snapshotUUID42, currentTime41 + 1000 * 100L, currentTime41, State.FAILED);
+    snapshotList4.add(snapshot42);
+    SnapshotScheduleInfo schedule4 =
+        new SnapshotScheduleInfo(scheduleUUID4, 86400L, 7L * 86400L, snapshotList4);
+    scheduleInfoList.add(schedule4);
+    scheduleInfoMap.put(scheduleUUID4, schedule4);
 
     when(mockListSnapshotSchedulesResponse.getSnapshotScheduleInfoList())
         .thenReturn(scheduleInfoList);
@@ -420,16 +457,22 @@ public class PitrControllerTest extends FakeDBApplication {
         assertTrue(System.currentTimeMillis() > minTime);
         assertTrue(currentTime3 < maxTime);
         assertEquals("COMPLETE", state);
+        assertEquals(schedule1minRecoveryTime, minTime);
       } else if (scheduleUUID.equals(scheduleUUID2)) {
         assertTrue(currentTime3 < maxTime);
         assertEquals("FAILED", state);
+        assertEquals(schedule2minRecoveryTime, minTime);
       } else if (scheduleUUID.equals(scheduleUUID3)) {
         assertEquals("COMPLETE", state);
+        assertEquals(schedule3minRecoveryTime, minTime);
+      } else if (scheduleUUID.equals(scheduleUUID4)) {
+        assertEquals("FAILED", state);
+        assertEquals(schedule4minRecoveryTime, minTime);
       } else {
         Assert.fail();
       }
     }
-    assertEquals(3, count);
+    assertEquals(4, count);
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
 

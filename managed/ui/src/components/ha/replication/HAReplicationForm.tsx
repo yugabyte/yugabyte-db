@@ -185,7 +185,6 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
       )
     : EMPTY_YB_HA_WEBSERVICE;
 
-
   const peerCerts = getPeerCerts(ybHAWebService);
   return (
     <div className="ha-replication-form" data-testid="ha-replication-config-form">
@@ -319,7 +318,16 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                         <span>minute(s)</span>
                         <YBInfoTip
                           title="Replication Configuration"
-                          content="How frequently periodic backups are sent to standby platforms"
+                          content={
+                            <div>
+                              <p>How frequently periodic backups are sent to standby platforms.</p>
+                              <p>
+                                If this value is greater than the HA standby sync alert threshold,
+                                then that alert will fire repeatedly. You may adjust the replication
+                                frequency or the alert threshold to avoid this.
+                              </p>
+                            </div>
+                          }
                         />
                       </Col>
                     </Row>
@@ -353,10 +361,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                       {isEditMode && <YBButton btnText="Cancel" onClick={backToViewMode} />}
                       <YBButton
                         btnType="submit"
-                        disabled={
-                          formikProps.isSubmitting ||
-                          !formikProps.isValid
-                        }
+                        disabled={formikProps.isSubmitting || !formikProps.isValid}
                         loading={formikProps.isSubmitting}
                         btnClass="btn btn-orange"
                         btnText={isEditMode ? 'Save' : 'Create'}

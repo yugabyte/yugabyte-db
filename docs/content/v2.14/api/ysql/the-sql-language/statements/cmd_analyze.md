@@ -3,7 +3,8 @@ title: ANALYZE statement [YSQL]
 headerTitle: ANALYZE
 linkTitle: ANALYZE
 description: Collect statistics about database tables with the ANALYZE statement.
-techPreview: /preview/releases/versioning/#feature-availability
+tags:
+  feature: tech-preview
 menu:
   v2.14:
     identifier: cmd_analyze
@@ -30,13 +31,13 @@ To collect or update statistics, run the ANALYZE command manually.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-bs-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-bs-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>

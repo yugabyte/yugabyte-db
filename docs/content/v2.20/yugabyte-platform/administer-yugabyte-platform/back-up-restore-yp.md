@@ -45,10 +45,10 @@ To perform backups and restores in a Replicated environment, you must have a per
 
 Download the version of the backup script that corresponds to the version of YugabyteDB Anywhere that you are backing up and restoring.
 
-For example, if you are running version {{< yb-version version="stable">}}, you can copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
+For example, if you are running version {{< yb-version version="v2.20">}}, you can copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
 
 ```sh
-wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/v{{< yb-version version="stable">}}/managed/devops/bin/yb_platform_backup.sh
+wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/v{{< yb-version version="v2.20">}}/managed/devops/bin/yb_platform_backup.sh
 ```
 
 If you are running a different version of YugabyteDB Anywhere, replace the version number in the command with the correct version number.
@@ -65,11 +65,17 @@ To back up a YugabyteDB Anywhere server, perform the following:
 
     The `create` command runs the backup of the YugabyteDB Anywhere server.
 
-    `output_path` specifies the location for the `.tar` output file.
+    `--output` specifies the location (absolute path) for the `.tar` output file.
 
-    `data_dir` is optional. It specifies the data directory to be backed up. Default is `/opt/yugabyte`.
+    `--data_dir` specifies the data directory to be backed up. Default is `/opt/yugabyte`. Use this flag if YugabyteDB Anywhere is not installed in the default location.
 
-    `--exclude_prometheus` is optional. It excludes Prometheus metrics from the backup.
+    `--exclude_prometheus` excludes Prometheus metrics from the backup. Optional.
+
+    {{<note title="Note">}}
+
+If you are using versions 2.18.9, 2.20.6, or 2024.1.2 or earlier, add the `--disable_version_check` flag if you are specifying a custom data directory (that is, you are not using `/opt/yugabyte`).
+
+    {{</note>}}
 
 1. Verify that the backup `.tar` file, with the correct timestamp, is in the specified output directory.
 

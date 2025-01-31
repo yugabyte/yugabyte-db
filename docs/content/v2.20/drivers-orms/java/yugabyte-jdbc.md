@@ -74,16 +74,18 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.3.0</version>
+  <version>42.7.3-yb-1</version>
 </dependency>
 
 <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
 <dependency>
   <groupId>com.zaxxer</groupId>
   <artifactId>HikariCP</artifactId>
-  <version>4.0.3</version>
+  <version>5.0.1</version>
 </dependency>
 ```
+
+Note that v4 of HikariCP is required because the YugabyteDB JDBC Driver requires Java 8.
 
 Install the added dependency using `mvn install`.
 
@@ -92,8 +94,8 @@ Install the added dependency using `mvn install`.
 If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
 
 ```java
-implementation 'com.yugabyte:jdbc-yugabytedb:42.3.0'
-implementation 'com.zaxxer:HikariCP:4.0.3'
+implementation 'com.yugabyte:jdbc-yugabytedb:42.7.3-yb-1'
+implementation 'com.zaxxer:HikariCP:5.0.1'
 ```
 
 ### Step 2: Set up the database connection
@@ -108,14 +110,18 @@ The following table describes the connection parameters required to connect, inc
 
 | JDBC Parameter | Description | Default |
 | :------------- | :---------- | :------ |
-| hostname  | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost
-| port |  Listen port for YSQL | 5433
-| database | Database name | yugabyte
-| user | User connecting to the database | yugabyte
-| password | User password | yugabyte
-| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
-| `yb-servers-refresh-interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300
-| `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
+| hostname  | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost |
+| port |  Listen port for YSQL | 5433 |
+| database | Database name | yugabyte |
+| user | User connecting to the database | yugabyte |
+| password | User password | yugabyte |
+| load-balance | Enables [uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | false (Disabled) |
+| topology-keys | Enables [topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing). Specify comma-separated geo-locations in the form `cloud.region.zone:priority`. Ignored if `load-balance` is false | Empty |
+| yb-servers-refresh-interval | The interval in seconds to refresh the servers list; ignored if `load-balance` is false | 300 |
+| fallback-to-topology-keys-only | If set to true and `topology-keys` are specified, the driver only tries to connect to nodes specified in `topology-keys` | false |
+| failed-host-reconnect-delay-secs | Time (in seconds) to wait before trying to connect to failed nodes. When the driver is unable to connect to a node, it marks the node as failed using a timestamp, and ignores the node when trying new connections until this time elapses. | 5 |
+
+In v42.7.3-yb-1 and later, the `load_balance` property supports the following additional properties: any (alias for 'true'), only-primary, only-rr, prefer-primary, and prefer-rr. See [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
 
 The following is an example JDBC URL for connecting to YugabyteDB:
 
@@ -192,6 +198,10 @@ public class QuickStartApp {
   public static void main(String[] args) throws ClassNotFoundException, SQLException {
     Class.forName("com.yugabyte.Driver");
     String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true";
+    // If you have a read replica cluster and want to balance
+    // connections across only read replica nodes,
+    // set the load-balance property to 'only-rr' as follows:
+    // String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=only-rr";
     Connection conn = DriverManager.getConnection(yburl);
     Statement stmt = conn.createStatement();
     try {

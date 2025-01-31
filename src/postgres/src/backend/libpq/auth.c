@@ -3,7 +3,7 @@
  * auth.c
  *	  Routines to handle network authentication
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,6 +18,7 @@
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <pwd.h>
 #include <unistd.h>
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
@@ -26,43 +27,49 @@
 #include "commands/user.h"
 #include "common/ip.h"
 #include "common/md5.h"
-#include "common/scram-common.h"
 #include "libpq/auth.h"
 #include "libpq/crypt.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
+#include "libpq/sasl.h"
 #include "libpq/scram.h"
 #include "miscadmin.h"
 #include "port/pg_bswap.h"
+#include "postmaster/postmaster.h"
 #include "replication/walsender.h"
 #include "storage/ipc.h"
-#include "utils/backend_random.h"
-#include "utils/builtins.h"
+#include "utils/guc.h"
+#include "utils/memutils.h"
 #include "utils/timestamp.h"
+#include "utils/builtins.h"
 
 #include "access/htup_details.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
+#include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+/* Yugabyte includes */
+#include "catalog/pg_authid.h"
 
 /*----------------------------------------------------------------
  * Global authentication functions
  *----------------------------------------------------------------
  */
-static void sendAuthRequest(Port *port, AuthRequest areq, const char *extradata,
-				int extralen);
-static void auth_failed(Port *port, int status, char *logdetail, bool lockout);
+static void auth_failed(Port *port, int status, const char *logdetail, bool lockout);
 static char *recv_password_packet(Port *port);
+static void set_authn_id(Port *port, const char *id);
 
 /*
  * GH #19781: FATAL or ERROR packet leads to a broken physical connection. Therefore,
  * in auth passthrough, instead of FATAL/ERROR packet, WARNING packet along with
  * FatalForLogicalConnection packet is used.
  */
-static int YbAuthFailedErrorLevel(const bool auth_passthrough) {
+static int
+YbAuthFailedErrorLevel(const bool auth_passthrough)
+{
 	return (YbIsClientYsqlConnMgr() && auth_passthrough == true) ? WARNING : FATAL;
 }
 
@@ -70,20 +77,19 @@ static int YbAuthFailedErrorLevel(const bool auth_passthrough) {
  * Password-based authentication methods (password, md5, and scram-sha-256)
  *----------------------------------------------------------------
  */
-static int	CheckPasswordAuth(Port *port, char **logdetail);
-static int	CheckPWChallengeAuth(Port *port, char **logdetail);
+static int	CheckPasswordAuth(Port *port, const char **logdetail);
+static int	CheckPWChallengeAuth(Port *port, const char **logdetail);
 
-static int	CheckMD5Auth(Port *port, char *shadow_pass, char **logdetail);
-static int	CheckSCRAMAuth(Port *port, char *shadow_pass, char **logdetail);
+static int	CheckMD5Auth(Port *port, char *shadow_pass,
+						 const char **logdetail);
 
-static int	CheckYbTserverKeyAuth(Port *port, char **logdetail);
-
+static int	CheckYbTserverKeyAuth(Port *port, const char **logdetail);
 
 /*----------------------------------------------------------------
  * Ident authentication
  *----------------------------------------------------------------
  */
-/* Max size of username ident server can return */
+/* Max size of username ident server can return (per RFC 1413) */
 #define IDENT_USERNAME_MAX 512
 
 /* Standard TCP port number for Ident service.  Assigned by IANA */
@@ -91,9 +97,12 @@ static int	CheckYbTserverKeyAuth(Port *port, char **logdetail);
 
 static int	ident_inet(hbaPort *port);
 
-#ifdef HAVE_UNIX_SOCKETS
+
+/*----------------------------------------------------------------
+ * Peer authentication
+ *----------------------------------------------------------------
+ */
 static int	auth_peer(hbaPort *port);
-#endif
 
 
 /*----------------------------------------------------------------
@@ -111,8 +120,8 @@ static int	auth_peer(hbaPort *port);
 #define PGSQL_PAM_SERVICE "postgresql"	/* Service name passed to PAM */
 
 static int	CheckPAMAuth(Port *port, const char *user, const char *password);
-static int pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
-					 struct pam_response **resp, void *appdata_ptr);
+static int	pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
+								 struct pam_response **resp, void *appdata_ptr);
 
 static struct pam_conv pam_passw_conv = {
 	&pam_passwd_conv_proc,
@@ -123,6 +132,7 @@ static const char *pam_passwd = NULL;	/* Workaround for Solaris 2.6
 										 * brokenness */
 static Port *pam_port_cludge;	/* Workaround for passing "Port *port" into
 								 * pam_passwd_conv_proc */
+static bool pam_no_password;	/* For detecting no-password-given */
 #endif							/* USE_PAM */
 
 
@@ -151,8 +161,7 @@ static int	CheckBSDAuth(Port *port, char *user);
 
 /* Correct header from the Platform SDK */
 typedef
-ULONG		(*__ldap_start_tls_sA) (
-									IN PLDAP ExternalHandle,
+ULONG		(*__ldap_start_tls_sA) (IN PLDAP ExternalHandle,
 									OUT PULONG ServerReturnValue,
 									OUT LDAPMessage **result,
 									IN PLDAPControlA * ServerControls,
@@ -162,7 +171,7 @@ ULONG		(*__ldap_start_tls_sA) (
 
 static int	CheckLDAPAuth(Port *port);
 
-static char* get_ldap_password(char* ldapbindpasswd);
+static char *get_ldap_password(char *ldapbindpasswd);
 
 /* LDAP_OPT_DIAGNOSTIC_MESSAGE is the newer spelling */
 #ifndef LDAP_OPT_DIAGNOSTIC_MESSAGE
@@ -193,12 +202,9 @@ bool		pg_krb_caseins_users;
  *----------------------------------------------------------------
  */
 #ifdef ENABLE_GSS
-#if defined(HAVE_GSSAPI_H)
-#include <gssapi.h>
-#else
-#include <gssapi/gssapi.h>
-#endif
+#include "libpq/be-gssapi-common.h"
 
+static int	pg_GSS_checkauth(Port *port);
 static int	pg_GSS_recvauth(Port *port);
 #endif							/* ENABLE_GSS */
 
@@ -209,14 +215,13 @@ static int	pg_GSS_recvauth(Port *port);
  */
 #ifdef ENABLE_SSPI
 typedef SECURITY_STATUS
-			(WINAPI * QUERY_SECURITY_CONTEXT_TOKEN_FN) (
-														PCtxtHandle, void **);
+			(WINAPI * QUERY_SECURITY_CONTEXT_TOKEN_FN) (PCtxtHandle, void **);
 static int	pg_SSPI_recvauth(Port *port);
-static int pg_SSPI_make_upn(char *accountname,
-				 size_t accountnamesize,
-				 char *domainname,
-				 size_t domainnamesize,
-				 bool update_accountname);
+static int	pg_SSPI_make_upn(char *accountname,
+							 size_t accountnamesize,
+							 char *domainname,
+							 size_t domainnamesize,
+							 bool update_accountname);
 #endif
 
 /*----------------------------------------------------------------
@@ -234,6 +239,7 @@ static int	YbCheckJwtAuth(Port *port);
 
 /*
  * Maximum accepted size of GSS and SSPI authentication tokens.
+ * We also use this as a limit on ordinary password packet lengths.
  *
  * Kerberos tickets are usually quite small, but the TGTs issued by Windows
  * domain controllers include an authorization field known as the Privilege
@@ -246,14 +252,6 @@ static int	YbCheckJwtAuth(Port *port);
  * 65535 bytes, so that seems like a reasonable limit for us as well.
  */
 #define PG_MAX_AUTH_TOKEN_LENGTH	65535
-
-/*
- * Maximum accepted size of SASL messages.
- *
- * The messages that the server or libpq generate are much smaller than this,
- * but have some headroom.
- */
-#define PG_MAX_SASL_MESSAGE_LENGTH	1024
 
 /*----------------------------------------------------------------
  * Global authentication functions
@@ -281,7 +279,7 @@ ClientAuthentication_hook_type ClientAuthentication_hook = NULL;
  * particular, if logdetail isn't NULL, we send that string to the log.
  */
 static void
-auth_failed(Port *port, int status, char *logdetail, bool yb_role_is_locked_out)
+auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locked_out)
 {
 	const char *errstr;
 	char	   *cdetail;
@@ -357,7 +355,8 @@ auth_failed(Port *port, int status, char *logdetail, bool yb_role_is_locked_out)
 			break;
 	}
 
-	char *line_to_print = port->hba->maskedline;
+	char	   *line_to_print = port->hba->maskedline;
+
 	if (!line_to_print)
 		line_to_print = port->hba->rawline;
 
@@ -373,13 +372,58 @@ auth_failed(Port *port, int status, char *logdetail, bool yb_role_is_locked_out)
 
 	ereport(YbAuthFailedErrorLevel(port->yb_is_auth_passthrough_req),
 			(errcode(errcode_return),
-			 (yb_role_is_locked_out ? errmsg("role \"%s\" is locked. Contact"
-											 " your database administrator.",
-											 port->user_name)
-									: errmsg(errstr, port->user_name)),
+			 (yb_role_is_locked_out ?
+			  errmsg("role \"%s\" is locked. Contact your database administrator.",
+					 port->user_name) :
+			  errmsg(errstr, port->user_name)),
 			 (logdetail ? errdetail_log("%s", logdetail) : 0)));
 
 	/* doesn't return */
+}
+
+
+/*
+ * Sets the authenticated identity for the current user.  The provided string
+ * will be copied into the TopMemoryContext.  The ID will be logged if
+ * log_connections is enabled.
+ *
+ * Auth methods should call this routine exactly once, as soon as the user is
+ * successfully authenticated, even if they have reasons to know that
+ * authorization will fail later.
+ *
+ * The provided string will be copied into TopMemoryContext, to match the
+ * lifetime of the Port, so it is safe to pass a string that is managed by an
+ * external library.
+ */
+static void
+set_authn_id(Port *port, const char *id)
+{
+	Assert(id);
+
+	if (port->authn_id)
+	{
+		/*
+		 * An existing authn_id should never be overwritten; that means two
+		 * authentication providers are fighting (or one is fighting itself).
+		 * Don't leak any authn details to the client, but don't let the
+		 * connection continue, either.
+		 */
+		ereport(FATAL,
+				(errmsg("authentication identifier set more than once"),
+				 errdetail_log("previous identifier: \"%s\"; new identifier: \"%s\"",
+							   port->authn_id, id)));
+	}
+
+	port->authn_id = MemoryContextStrdup(TopMemoryContext, id);
+
+	if (Log_connections)
+	{
+		ereport(LOG,
+				errmsg("connection authenticated: identity=\"%s\" method=%s "
+					   "(%s:%d)",
+					   port->authn_id, hba_authname(port->hba->auth_method), HbaFileName,
+					   port->hba->linenumber));
+	}
 }
 
 
@@ -391,9 +435,9 @@ void
 ClientAuthentication(Port *port)
 {
 	int			status = STATUS_ERROR;
-	char	   *logdetail = NULL;
+	const char *logdetail = NULL;
 
-	bool 		yb_auth_passthrough = port->yb_is_auth_passthrough_req;
+	bool		yb_auth_passthrough = port->yb_is_auth_passthrough_req;
 
 	if (yb_auth_passthrough)
 	{
@@ -422,7 +466,7 @@ ClientAuthentication(Port *port)
 	 * current connection, so perform any verifications based on the hba
 	 * options field that should be done *before* the authentication here.
 	 */
-	if (port->hba->clientcert)
+	if (port->hba->clientcert != clientCertOff)
 	{
 		if (YbIsClientYsqlConnMgr() && yb_auth_passthrough == true)
 		{
@@ -433,7 +477,7 @@ ClientAuthentication(Port *port)
 			 */
 			ereport(FATAL,
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-					 errmsg("Cert authentication is not supported")));
+					 errmsg("cert authentication is not supported")));
 			return;
 		}
 
@@ -480,51 +524,44 @@ ClientAuthentication(Port *port)
 			 */
 			{
 				char		hostinfo[NI_MAXHOST];
+				const char *encryption_state;
 
 				pg_getnameinfo_all(&port->raddr.addr, port->raddr.salen,
 								   hostinfo, sizeof(hostinfo),
 								   NULL, 0,
 								   NI_NUMERICHOST);
 
-				if (am_walsender)
-				{
+				encryption_state =
+#ifdef ENABLE_GSS
+					(port->gss && port->gss->enc) ? _("GSS encryption") :
+#endif
 #ifdef USE_SSL
+					port->ssl_in_use ? _("SSL encryption") :
+#endif
+					_("no encryption");
+
+				if (am_walsender && !am_db_walsender)
+				{
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+					/* translator: last %s describes encryption state */
 							 errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\", %s",
 									hostinfo, port->user_name,
-									port->ssl_in_use ? _("SSL on") : _("SSL off"))));
-#else
-					ereport(FATAL,
-							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-							 errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\"",
-									hostinfo, port->user_name)));
-#endif
+									encryption_state)));
 				}
 				else
 				{
-#ifdef USE_SSL
 					if (yb_auth_passthrough)
 						YbSendFatalForLogicalConnectionPacket();
 
 					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+					/* translator: last %s describes encryption state */
 							 errmsg("pg_hba.conf rejects connection for host \"%s\", user \"%s\", database \"%s\", %s",
 									hostinfo, port->user_name,
 									port->database_name,
-									port->ssl_in_use ? _("SSL on") : _("SSL off"))));
+									encryption_state)));
 					return;
-#else
-					if (yb_auth_passthrough)
-						YbSendFatalForLogicalConnectionPacket();
-
-					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
-							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-							 errmsg("pg_hba.conf rejects connection for host \"%s\", user \"%s\", database \"%s\"",
-									hostinfo, port->user_name,
-									port->database_name)));
-					return;
-#endif
 				}
 				break;
 			}
@@ -541,11 +578,21 @@ ClientAuthentication(Port *port)
 			 */
 			{
 				char		hostinfo[NI_MAXHOST];
+				const char *encryption_state;
 
 				pg_getnameinfo_all(&port->raddr.addr, port->raddr.salen,
 								   hostinfo, sizeof(hostinfo),
 								   NULL, 0,
 								   NI_NUMERICHOST);
+
+				encryption_state =
+#ifdef ENABLE_GSS
+					(port->gss && port->gss->enc) ? _("GSS encryption") :
+#endif
+#ifdef USE_SSL
+					port->ssl_in_use ? _("SSL encryption") :
+#endif
+					_("no encryption");
 
 #define HOSTNAME_LOOKUP_DETAIL(port) \
 				(port->remote_hostname ? \
@@ -568,57 +615,54 @@ ClientAuthentication(Port *port)
 								  gai_strerror(port->remote_hostname_errcode)) : \
 					0))
 
-				if (am_walsender)
+				if (am_walsender && !am_db_walsender)
 				{
-#ifdef USE_SSL
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+					/* translator: last %s describes encryption state */
 							 errmsg("no pg_hba.conf entry for replication connection from host \"%s\", user \"%s\", %s",
 									hostinfo, port->user_name,
-									port->ssl_in_use ? _("SSL on") : _("SSL off")),
+									encryption_state),
 							 HOSTNAME_LOOKUP_DETAIL(port)));
-#else
-					ereport(FATAL,
-							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-							 errmsg("no pg_hba.conf entry for replication connection from host \"%s\", user \"%s\"",
-									hostinfo, port->user_name),
-							 HOSTNAME_LOOKUP_DETAIL(port)));
-#endif
 				}
 				else
 				{
-#ifdef USE_SSL
 					if (yb_auth_passthrough)
 						YbSendFatalForLogicalConnectionPacket();
 
 					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+					/* translator: last %s describes encryption state */
 							 errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\", %s",
 									hostinfo, port->user_name,
 									port->database_name,
-									port->ssl_in_use ? _("SSL on") : _("SSL off")),
+									encryption_state),
 							 HOSTNAME_LOOKUP_DETAIL(port)));
 					return;
-#else
-					if (yb_auth_passthrough)
-						YbSendFatalForLogicalConnectionPacket();
-
-					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
-							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-							 errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\"",
-									hostinfo, port->user_name,
-									port->database_name),
-							 HOSTNAME_LOOKUP_DETAIL(port)));
-					return;
-#endif
 				}
 				break;
 			}
 
 		case uaGSS:
 #ifdef ENABLE_GSS
-			sendAuthRequest(port, AUTH_REQ_GSS, NULL, 0);
-			status = pg_GSS_recvauth(port);
+			/* We might or might not have the gss workspace already */
+			if (port->gss == NULL)
+				port->gss = (pg_gssinfo *)
+					MemoryContextAllocZero(TopMemoryContext,
+										   sizeof(pg_gssinfo));
+			port->gss->auth = true;
+
+			/*
+			 * If GSS state was set up while enabling encryption, we can just
+			 * check the client's principal.  Otherwise, ask for it.
+			 */
+			if (port->gss->enc)
+				status = pg_GSS_checkauth(port);
+			else
+			{
+				sendAuthRequest(port, AUTH_REQ_GSS, NULL, 0);
+				status = pg_GSS_recvauth(port);
+			}
 #else
 			Assert(false);
 #endif
@@ -626,6 +670,10 @@ ClientAuthentication(Port *port)
 
 		case uaSSPI:
 #ifdef ENABLE_SSPI
+			if (port->gss == NULL)
+				port->gss = (pg_gssinfo *)
+					MemoryContextAllocZero(TopMemoryContext,
+										   sizeof(pg_gssinfo));
 			sendAuthRequest(port, AUTH_REQ_SSPI, NULL, 0);
 			status = pg_SSPI_recvauth(port);
 #else
@@ -634,11 +682,7 @@ ClientAuthentication(Port *port)
 			break;
 
 		case uaPeer:
-#ifdef HAVE_UNIX_SOCKETS
 			status = auth_peer(port);
-#else
-			Assert(false);
-#endif
 			break;
 
 		case uaIdent:
@@ -661,8 +705,9 @@ ClientAuthentication(Port *port)
 			if (YbIsClientYsqlConnMgr() && port->yb_is_auth_passthrough_req)
 			{
 				YbSendFatalForLogicalConnectionPacket();
-				elog(WARNING, "YbTserverKey authentication is not supported "
-							  " in auth passthrough");
+				elog(WARNING,
+					 "YbTserverKey authentication is not supported "
+					 " in auth passthrough");
 			}
 
 			status = CheckYbTserverKeyAuth(port, &logdetail);
@@ -694,17 +739,11 @@ ClientAuthentication(Port *port)
 			Assert(false);
 #endif
 			break;
-
-		case uaCert:
-#ifdef USE_SSL
-			status = CheckCertAuth(port);
-#else
-			Assert(false);
-#endif
-			break;
 		case uaRADIUS:
 			status = CheckRADIUSAuth(port);
 			break;
+		case uaCert:
+			/* uaCert will be treated as if clientcert=verify-full (uaTrust) */
 		case uaTrust:
 			status = STATUS_OK;
 			break;
@@ -714,9 +753,22 @@ ClientAuthentication(Port *port)
 			break;
 	}
 
+	if ((status == STATUS_OK && port->hba->clientcert == clientCertFull)
+		|| port->hba->auth_method == uaCert)
+	{
+		/*
+		 * Make sure we only check the certificate if we use the cert method
+		 * or verify-full option.
+		 */
+#ifdef USE_SSL
+		status = CheckCertAuth(port);
+#else
+		Assert(false);
+#endif
+	}
+
 	if (ClientAuthentication_hook)
 		(*ClientAuthentication_hook) (port, status);
-
 
 	/*
 	 * If conditions are met, update the role's profile entry.  Specific
@@ -725,20 +777,21 @@ ClientAuthentication(Port *port)
 	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist &&
 		IsProfileHandlingRequired(port->hba->auth_method))
 	{
-		bool profile_is_disabled = false;
-		HeapTuple roleTuple, profileTuple = NULL;
-		Oid roleid = InvalidOid;
+		bool		profile_is_disabled = false;
+		HeapTuple	roleTuple,
+					profileTuple = NULL;
+		Oid			roleid = InvalidOid;
 
 		/* Get role info from pg_authid */
 		roleTuple = SearchSysCache1(AUTHNAME, PointerGetDatum(port->user_name));
 		if (HeapTupleIsValid(roleTuple))
 		{
-			roleid = HeapTupleGetOid(roleTuple);
+			roleid = ((Form_pg_authid) GETSTRUCT(roleTuple))->oid;
 			profileTuple = yb_get_role_profile_tuple_by_role_oid(roleid);
 			if (HeapTupleIsValid(profileTuple))
 			{
-				Form_pg_yb_role_profile rolprfform =
-					(Form_pg_yb_role_profile) GETSTRUCT(profileTuple);
+				Form_pg_yb_role_profile rolprfform = (Form_pg_yb_role_profile) GETSTRUCT(profileTuple);
+
 				if (rolprfform->rolprfstatus != YB_ROLPRFSTATUS_OPEN)
 					profile_is_disabled = true;
 			}
@@ -773,14 +826,14 @@ ClientAuthentication(Port *port)
 			YbCreateClientId();
 	}
 	else
-		auth_failed(port, status, logdetail, false /* yb_role_is_locked_out */);
+		auth_failed(port, status, logdetail, false /* yb_role_is_locked_out */ );
 }
 
 
 /*
  * Send an authentication request packet to the frontend.
  */
-static void
+void
 sendAuthRequest(Port *port, AuthRequest areq, const char *extradata, int extralen)
 {
 	StringInfoData buf;
@@ -814,39 +867,29 @@ static char *
 recv_password_packet(Port *port)
 {
 	StringInfoData buf;
+	int			mtype;
 
 	pq_startmsgread();
-	if (PG_PROTOCOL_MAJOR(port->proto) >= 3)
-	{
-		/* Expect 'p' message type */
-		int			mtype;
 
-		mtype = pq_getbyte();
-		if (mtype != 'p')
-		{
-			/*
-			 * If the client just disconnects without offering a password,
-			 * don't make a log entry.  This is legal per protocol spec and in
-			 * fact commonly done by psql, so complaining just clutters the
-			 * log.
-			 */
-			if (mtype != EOF)
-				ereport(ERROR,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("expected password response, got message type %d",
-								mtype)));
-			return NULL;		/* EOF or bad message type */
-		}
-	}
-	else
+	/* Expect 'p' message type */
+	mtype = pq_getbyte();
+	if (mtype != 'p')
 	{
-		/* For pre-3.0 clients, avoid log entry if they just disconnect */
-		if (pq_peekbyte() == EOF)
-			return NULL;		/* EOF */
+		/*
+		 * If the client just disconnects without offering a password, don't
+		 * make a log entry.  This is legal per protocol spec and in fact
+		 * commonly done by psql, so complaining just clutters the log.
+		 */
+		if (mtype != EOF)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("expected password response, got message type %d",
+							mtype)));
+		return NULL;			/* EOF or bad message type */
 	}
 
 	initStringInfo(&buf);
-	if (pq_getmessage(&buf, 0)) /* receive password */
+	if (pq_getmessage(&buf, PG_MAX_AUTH_TOKEN_LENGTH))	/* receive password */
 	{
 		/* EOF - pq_getmessage already logged a suitable message */
 		pfree(buf.data);
@@ -902,7 +945,7 @@ recv_password_packet(Port *port)
  * Plaintext password authentication.
  */
 static int
-CheckPasswordAuth(Port *port, char **logdetail)
+CheckPasswordAuth(Port *port, const char **logdetail)
 {
 	char	   *passwd;
 	int			result;
@@ -927,6 +970,9 @@ CheckPasswordAuth(Port *port, char **logdetail)
 		pfree(shadow_pass);
 	pfree(passwd);
 
+	if (result == STATUS_OK)
+		set_authn_id(port, port->user_name);
+
 	return result;
 }
 
@@ -934,7 +980,7 @@ CheckPasswordAuth(Port *port, char **logdetail)
  * MD5 and SCRAM authentication.
  */
 static int
-CheckPWChallengeAuth(Port *port, char **logdetail)
+CheckPWChallengeAuth(Port *port, const char **logdetail)
 {
 	int			auth_result;
 	char	   *shadow_pass;
@@ -964,15 +1010,17 @@ CheckPWChallengeAuth(Port *port, char **logdetail)
 	 * If 'md5' authentication is allowed, decide whether to perform 'md5' or
 	 * 'scram-sha-256' authentication based on the type of password the user
 	 * has.  If it's an MD5 hash, we must do MD5 authentication, and if it's a
-	 * SCRAM verifier, we must do SCRAM authentication.
+	 * SCRAM secret, we must do SCRAM authentication.
 	 *
 	 * If MD5 authentication is not allowed, always use SCRAM.  If the user
-	 * had an MD5 password, CheckSCRAMAuth() will fail.
+	 * had an MD5 password, CheckSASLAuth() with the SCRAM mechanism will
+	 * fail.
 	 */
 	if (port->hba->auth_method == uaMD5 && pwtype == PASSWORD_TYPE_MD5)
 		auth_result = CheckMD5Auth(port, shadow_pass, logdetail);
 	else
-		auth_result = CheckSCRAMAuth(port, shadow_pass, logdetail);
+		auth_result = CheckSASLAuth(&pg_be_scram_mech, port, shadow_pass,
+									logdetail);
 
 	if (shadow_pass)
 		pfree(shadow_pass);
@@ -986,11 +1034,15 @@ CheckPWChallengeAuth(Port *port, char **logdetail)
 		Assert(auth_result != STATUS_OK);
 		return STATUS_ERROR;
 	}
+
+	if (auth_result == STATUS_OK)
+		set_authn_id(port, port->user_name);
+
 	return auth_result;
 }
 
 static int
-CheckMD5Auth(Port *port, char *shadow_pass, char **logdetail)
+CheckMD5Auth(Port *port, char *shadow_pass, const char **logdetail)
 {
 	char		md5Salt[4];		/* Password salt */
 	char	   *passwd;
@@ -1002,7 +1054,7 @@ CheckMD5Auth(Port *port, char *shadow_pass, char **logdetail)
 				 errmsg("MD5 authentication is not supported when \"db_user_namespace\" is enabled")));
 
 	/* include the salt to use for computing the response */
-	if (!pg_backend_random(md5Salt, 4))
+	if (!pg_strong_random(md5Salt, 4))
 	{
 		ereport(LOG,
 				(errmsg("could not generate random MD5 salt")));
@@ -1026,170 +1078,11 @@ CheckMD5Auth(Port *port, char *shadow_pass, char **logdetail)
 	return result;
 }
 
-static int
-CheckSCRAMAuth(Port *port, char *shadow_pass, char **logdetail)
-{
-	StringInfoData sasl_mechs;
-	int			mtype;
-	StringInfoData buf;
-	void	   *scram_opaq = NULL;
-	char	   *output = NULL;
-	int			outputlen = 0;
-	char	   *input;
-	int			inputlen;
-	int			result;
-	bool		initial;
-
-	/*
-	 * SASL auth is not supported for protocol versions before 3, because it
-	 * relies on the overall message length word to determine the SASL payload
-	 * size in AuthenticationSASLContinue and PasswordMessage messages.  (We
-	 * used to have a hard rule that protocol messages must be parsable
-	 * without relying on the length word, but we hardly care about older
-	 * protocol version anymore.)
-	 */
-	if (PG_PROTOCOL_MAJOR(FrontendProtocol) < 3)
-		ereport(FATAL,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("SASL authentication is not supported in protocol version 2")));
-
-	/*
-	 * Send the SASL authentication request to user.  It includes the list of
-	 * authentication mechanisms that are supported.
-	 */
-	initStringInfo(&sasl_mechs);
-
-	pg_be_scram_get_mechanisms(port, &sasl_mechs);
-	/* Put another '\0' to mark that list is finished. */
-	appendStringInfoChar(&sasl_mechs, '\0');
-
-	sendAuthRequest(port, AUTH_REQ_SASL, sasl_mechs.data, sasl_mechs.len);
-	pfree(sasl_mechs.data);
-
-	/*
-	 * Loop through SASL message exchange.  This exchange can consist of
-	 * multiple messages sent in both directions.  First message is always
-	 * from the client.  All messages from client to server are password
-	 * packets (type 'p').
-	 */
-	initial = true;
-	do
-	{
-		pq_startmsgread();
-		mtype = pq_getbyte();
-		if (mtype != 'p')
-		{
-			/* Only log error if client didn't disconnect. */
-			if (mtype != EOF)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("expected SASL response, got message type %d",
-								mtype)));
-			}
-			else
-				return STATUS_EOF;
-		}
-
-		/* Get the actual SASL message */
-		initStringInfo(&buf);
-		if (pq_getmessage(&buf, PG_MAX_SASL_MESSAGE_LENGTH))
-		{
-			/* EOF - pq_getmessage already logged error */
-			pfree(buf.data);
-			return STATUS_ERROR;
-		}
-
-		elog(DEBUG4, "Processing received SASL response of length %d", buf.len);
-
-		/*
-		 * The first SASLInitialResponse message is different from the others.
-		 * It indicates which SASL mechanism the client selected, and contains
-		 * an optional Initial Client Response payload.  The subsequent
-		 * SASLResponse messages contain just the SASL payload.
-		 */
-		if (initial)
-		{
-			const char *selected_mech;
-
-			selected_mech = pq_getmsgrawstring(&buf);
-
-			/*
-			 * Initialize the status tracker for message exchanges.
-			 *
-			 * If the user doesn't exist, or doesn't have a valid password, or
-			 * it's expired, we still go through the motions of SASL
-			 * authentication, but tell the authentication method that the
-			 * authentication is "doomed". That is, it's going to fail, no
-			 * matter what.
-			 *
-			 * This is because we don't want to reveal to an attacker what
-			 * usernames are valid, nor which users have a valid password.
-			 */
-			scram_opaq = pg_be_scram_init(port, selected_mech, shadow_pass);
-
-			inputlen = pq_getmsgint(&buf, 4);
-			if (inputlen == -1)
-				input = NULL;
-			else
-				input = (char *) pq_getmsgbytes(&buf, inputlen);
-
-			initial = false;
-		}
-		else
-		{
-			inputlen = buf.len;
-			input = (char *) pq_getmsgbytes(&buf, buf.len);
-		}
-		pq_getmsgend(&buf);
-
-		/*
-		 * The StringInfo guarantees that there's a \0 byte after the
-		 * response.
-		 */
-		Assert(input == NULL || input[inputlen] == '\0');
-
-		/*
-		 * we pass 'logdetail' as NULL when doing a mock authentication,
-		 * because we should already have a better error message in that case
-		 */
-		result = pg_be_scram_exchange(scram_opaq, input, inputlen,
-									  &output, &outputlen,
-									  logdetail);
-
-		/* input buffer no longer used */
-		pfree(buf.data);
-
-		if (output)
-		{
-			/*
-			 * Negotiation generated data to be sent to the client.
-			 */
-			elog(DEBUG4, "sending SASL challenge of length %u", outputlen);
-
-			if (result == SASL_EXCHANGE_SUCCESS)
-				sendAuthRequest(port, AUTH_REQ_SASL_FIN, output, outputlen);
-			else
-				sendAuthRequest(port, AUTH_REQ_SASL_CONT, output, outputlen);
-
-			pfree(output);
-		}
-	} while (result == SASL_EXCHANGE_CONTINUE);
-
-	/* Oops, Something bad happened */
-	if (result != SASL_EXCHANGE_SUCCESS)
-	{
-		return STATUS_ERROR;
-	}
-
-	return STATUS_OK;
-}
-
 /*
  * Yugabyte internal tserver to postgres key authentication.
  */
 static int
-CheckYbTserverKeyAuth(Port *port, char **logdetail)
+CheckYbTserverKeyAuth(Port *port, const char **logdetail)
 {
 	char	   *passwd;
 	uint64_t	client_key;
@@ -1202,7 +1095,8 @@ CheckYbTserverKeyAuth(Port *port, char **logdetail)
 	else
 	{
 		/* Convert client-supplied password string to uint64 key */
-		char *end;
+		char	   *end;
+
 		errno = 0;
 		client_key = pg_strtouint64(passwd, &end, 10);
 		if (!(*passwd != '\0' && *end == '\0') || errno == ERANGE)
@@ -1212,7 +1106,8 @@ CheckYbTserverKeyAuth(Port *port, char **logdetail)
 		pfree(passwd);
 	}
 
-	uint64_t auth_key;
+	uint64_t	auth_key;
+
 	return yb_get_role_password(port->user_name, logdetail, &auth_key)
 		? yb_plain_key_verify(port->user_name, auth_key, client_key, logdetail)
 		: STATUS_ERROR;
@@ -1224,68 +1119,6 @@ CheckYbTserverKeyAuth(Port *port, char **logdetail)
  *----------------------------------------------------------------
  */
 #ifdef ENABLE_GSS
-
-#if defined(WIN32) && !defined(_MSC_VER)
-/*
- * MIT Kerberos GSSAPI DLL doesn't properly export the symbols for MingW
- * that contain the OIDs required. Redefine here, values copied
- * from src/athena/auth/krb5/src/lib/gssapi/generic/gssapi_generic.c
- */
-static const gss_OID_desc GSS_C_NT_USER_NAME_desc =
-{10, (void *) "\x2a\x86\x48\x86\xf7\x12\x01\x02\x01\x02"};
-static GSS_DLLIMP gss_OID GSS_C_NT_USER_NAME = &GSS_C_NT_USER_NAME_desc;
-#endif
-
-
-/*
- * Generate an error for GSSAPI authentication.  The caller should apply
- * _() to errmsg to make it translatable.
- */
-static void
-pg_GSS_error(int severity, const char *errmsg, OM_uint32 maj_stat, OM_uint32 min_stat)
-{
-	gss_buffer_desc gmsg;
-	OM_uint32	lmin_s,
-				msg_ctx;
-	char		msg_major[128],
-				msg_minor[128];
-
-	/* Fetch major status message */
-	msg_ctx = 0;
-	gss_display_status(&lmin_s, maj_stat, GSS_C_GSS_CODE,
-					   GSS_C_NO_OID, &msg_ctx, &gmsg);
-	strlcpy(msg_major, gmsg.value, sizeof(msg_major));
-	gss_release_buffer(&lmin_s, &gmsg);
-
-	if (msg_ctx)
-
-		/*
-		 * More than one message available. XXX: Should we loop and read all
-		 * messages? (same below)
-		 */
-		ereport(WARNING,
-				(errmsg_internal("incomplete GSS error report")));
-
-	/* Fetch mechanism minor status message */
-	msg_ctx = 0;
-	gss_display_status(&lmin_s, min_stat, GSS_C_MECH_CODE,
-					   GSS_C_NO_OID, &msg_ctx, &gmsg);
-	strlcpy(msg_minor, gmsg.value, sizeof(msg_minor));
-	gss_release_buffer(&lmin_s, &gmsg);
-
-	if (msg_ctx)
-		ereport(WARNING,
-				(errmsg_internal("incomplete GSS minor error report")));
-
-	/*
-	 * errmsg_internal, since translation of the first part must be done
-	 * before calling this function anyway.
-	 */
-	ereport(severity,
-			(errmsg_internal("%s", errmsg),
-			 errdetail_internal("%s: %s", msg_major, msg_minor)));
-}
-
 static int
 pg_GSS_recvauth(Port *port)
 {
@@ -1294,46 +1127,21 @@ pg_GSS_recvauth(Port *port)
 				lmin_s,
 				gflags;
 	int			mtype;
-	int			ret;
 	StringInfoData buf;
 	gss_buffer_desc gbuf;
 
 	/*
-	 * GSS auth is not supported for protocol versions before 3, because it
-	 * relies on the overall message length word to determine the GSS payload
-	 * size in AuthenticationGSSContinue and PasswordMessage messages. (This
-	 * is, in fact, a design error in our GSS support, because protocol
-	 * messages are supposed to be parsable without relying on the length
-	 * word; but it's not worth changing it now.)
+	 * Use the configured keytab, if there is one.  Unfortunately, Heimdal
+	 * doesn't support the cred store extensions, so use the env var.
 	 */
-	if (PG_PROTOCOL_MAJOR(FrontendProtocol) < 3)
-		ereport(FATAL,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("GSSAPI is not supported in protocol version 2")));
-
-	if (pg_krb_server_keyfile && strlen(pg_krb_server_keyfile) > 0)
+	if (pg_krb_server_keyfile != NULL && pg_krb_server_keyfile[0] != '\0')
 	{
-		/*
-		 * Set default Kerberos keytab file for the Krb5 mechanism.
-		 *
-		 * setenv("KRB5_KTNAME", pg_krb_server_keyfile, 0); except setenv()
-		 * not always available.
-		 */
-		if (getenv("KRB5_KTNAME") == NULL)
+		if (setenv("KRB5_KTNAME", pg_krb_server_keyfile, 1) != 0)
 		{
-			size_t		kt_len = strlen(pg_krb_server_keyfile) + 14;
-			char	   *kt_path = malloc(kt_len);
-
-			if (!kt_path ||
-				snprintf(kt_path, kt_len, "KRB5_KTNAME=%s",
-						 pg_krb_server_keyfile) != kt_len - 2 ||
-				putenv(kt_path) != 0)
-			{
-				ereport(LOG,
-						(errcode(ERRCODE_OUT_OF_MEMORY),
-						 errmsg("out of memory")));
-				return STATUS_ERROR;
-			}
+			/* The only likely failure cause is OOM, so use that errcode */
+			ereport(FATAL,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("could not set environment: %m")));
 		}
 	}
 
@@ -1387,11 +1195,10 @@ pg_GSS_recvauth(Port *port)
 		gbuf.length = buf.len;
 		gbuf.value = buf.data;
 
-		elog(DEBUG4, "Processing received GSS token of length %u",
+		elog(DEBUG4, "processing received GSS token of length %u",
 			 (unsigned int) gbuf.length);
 
-		maj_stat = gss_accept_sec_context(
-										  &min_stat,
+		maj_stat = gss_accept_sec_context(&min_stat,
 										  &port->gss->ctx,
 										  port->gss->cred,
 										  &gbuf,
@@ -1406,8 +1213,8 @@ pg_GSS_recvauth(Port *port)
 		/* gbuf no longer used */
 		pfree(buf.data);
 
-		elog(DEBUG5, "gss_accept_sec_context major: %d, "
-			 "minor: %d, outlen: %u, outflags: %x",
+		elog(DEBUG5, "gss_accept_sec_context major: %u, "
+			 "minor: %u, outlen: %u, outflags: %x",
 			 maj_stat, min_stat,
 			 (unsigned int) port->gss->outbuf.length, gflags);
 
@@ -1430,9 +1237,9 @@ pg_GSS_recvauth(Port *port)
 		if (maj_stat != GSS_S_COMPLETE && maj_stat != GSS_S_CONTINUE_NEEDED)
 		{
 			gss_delete_sec_context(&lmin_s, &port->gss->ctx, GSS_C_NO_BUFFER);
-			pg_GSS_error(ERROR,
-						 _("accepting GSS security context failed"),
+			pg_GSS_error(_("accepting GSS security context failed"),
 						 maj_stat, min_stat);
+			return STATUS_ERROR;
 		}
 
 		if (maj_stat == GSS_S_CONTINUE_NEEDED)
@@ -1447,25 +1254,61 @@ pg_GSS_recvauth(Port *port)
 		 */
 		gss_release_cred(&min_stat, &port->gss->cred);
 	}
+	return pg_GSS_checkauth(port);
+}
+
+/*
+ * Check whether the GSSAPI-authenticated user is allowed to connect as the
+ * claimed username.
+ */
+static int
+pg_GSS_checkauth(Port *port)
+{
+	int			ret;
+	OM_uint32	maj_stat,
+				min_stat,
+				lmin_s;
+	gss_buffer_desc gbuf;
+	char	   *princ;
 
 	/*
-	 * GSS_S_COMPLETE indicates that authentication is now complete.
-	 *
 	 * Get the name of the user that authenticated, and compare it to the pg
 	 * username that was specified for the connection.
 	 */
 	maj_stat = gss_display_name(&min_stat, port->gss->name, &gbuf, NULL);
 	if (maj_stat != GSS_S_COMPLETE)
-		pg_GSS_error(ERROR,
-					 _("retrieving GSS user name failed"),
+	{
+		pg_GSS_error(_("retrieving GSS user name failed"),
 					 maj_stat, min_stat);
+		return STATUS_ERROR;
+	}
+
+	/*
+	 * gbuf.value might not be null-terminated, so turn it into a regular
+	 * null-terminated string.
+	 */
+	princ = palloc(gbuf.length + 1);
+	memcpy(princ, gbuf.value, gbuf.length);
+	princ[gbuf.length] = '\0';
+	gss_release_buffer(&lmin_s, &gbuf);
+
+	/*
+	 * Copy the original name of the authenticated principal into our backend
+	 * memory for display later.
+	 *
+	 * This is also our authenticated identity.  Set it now, rather than
+	 * waiting for the usermap check below, because authentication has already
+	 * succeeded and we want the log file to reflect that.
+	 */
+	port->gss->princ = MemoryContextStrdup(TopMemoryContext, princ);
+	set_authn_id(port, princ);
 
 	/*
 	 * Split the username at the realm separator
 	 */
-	if (strchr(gbuf.value, '@'))
+	if (strchr(princ, '@'))
 	{
-		char	   *cp = strchr(gbuf.value, '@');
+		char	   *cp = strchr(princ, '@');
 
 		/*
 		 * If we are not going to include the realm in the username that is
@@ -1492,7 +1335,7 @@ pg_GSS_recvauth(Port *port)
 				elog(DEBUG2,
 					 "GSSAPI realm (%s) and configured realm (%s) don't match",
 					 cp, port->hba->krb_realm);
-				gss_release_buffer(&lmin_s, &gbuf);
+				pfree(princ);
 				return STATUS_ERROR;
 			}
 		}
@@ -1501,15 +1344,14 @@ pg_GSS_recvauth(Port *port)
 	{
 		elog(DEBUG2,
 			 "GSSAPI did not return realm but realm matching was requested");
-
-		gss_release_buffer(&lmin_s, &gbuf);
+		pfree(princ);
 		return STATUS_ERROR;
 	}
 
-	ret = check_usermap(port->hba->usermap, port->user_name, gbuf.value,
+	ret = check_usermap(port->hba->usermap, port->user_name, princ,
 						pg_krb_caseins_users);
 
-	gss_release_buffer(&lmin_s, &gbuf);
+	pfree(princ);
 
 	return ret;
 }
@@ -1568,21 +1410,9 @@ pg_SSPI_recvauth(Port *port)
 	DWORD		domainnamesize = sizeof(domainname);
 	SID_NAME_USE accountnameuse;
 	HMODULE		secur32;
+	char	   *authn_id;
 
 	QUERY_SECURITY_CONTEXT_TOKEN_FN _QuerySecurityContextToken;
-
-	/*
-	 * SSPI auth is not supported for protocol versions before 3, because it
-	 * relies on the overall message length word to determine the SSPI payload
-	 * size in AuthenticationGSSContinue and PasswordMessage messages. (This
-	 * is, in fact, a design error in our SSPI support, because protocol
-	 * messages are supposed to be parsable without relying on the length
-	 * word; but it's not worth changing it now.)
-	 */
-	if (PG_PROTOCOL_MAJOR(FrontendProtocol) < 3)
-		ereport(FATAL,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("SSPI is not supported in protocol version 2")));
 
 	/*
 	 * Acquire a handle to the server credentials.
@@ -1611,6 +1441,13 @@ pg_SSPI_recvauth(Port *port)
 		mtype = pq_getbyte();
 		if (mtype != 'p')
 		{
+			if (sspictx != NULL)
+			{
+				DeleteSecurityContext(sspictx);
+				free(sspictx);
+			}
+			FreeCredentialsHandle(&sspicred);
+
 			/* Only log error if client didn't disconnect. */
 			if (mtype != EOF)
 				ereport(ERROR,
@@ -1626,6 +1463,12 @@ pg_SSPI_recvauth(Port *port)
 		{
 			/* EOF - pq_getmessage already logged error */
 			pfree(buf.data);
+			if (sspictx != NULL)
+			{
+				DeleteSecurityContext(sspictx);
+				free(sspictx);
+			}
+			FreeCredentialsHandle(&sspicred);
 			return STATUS_ERROR;
 		}
 
@@ -1645,8 +1488,7 @@ pg_SSPI_recvauth(Port *port)
 		outbuf.pBuffers = OutBuffers;
 		outbuf.ulVersion = SECBUFFER_VERSION;
 
-
-		elog(DEBUG4, "Processing received SSPI token of length %u",
+		elog(DEBUG4, "processing received SSPI token of length %u",
 			 (unsigned int) buf.len);
 
 		r = AcceptSecurityContext(&sspicred,
@@ -1732,10 +1574,10 @@ pg_SSPI_recvauth(Port *port)
 	secur32 = LoadLibrary("SECUR32.DLL");
 	if (secur32 == NULL)
 		ereport(ERROR,
-				(errmsg_internal("could not load secur32.dll: error code %lu",
-								 GetLastError())));
+				(errmsg("could not load library \"%s\": error code %lu",
+						"SECUR32.DLL", GetLastError())));
 
-	_QuerySecurityContextToken = (QUERY_SECURITY_CONTEXT_TOKEN_FN)
+	_QuerySecurityContextToken = (QUERY_SECURITY_CONTEXT_TOKEN_FN) (pg_funcptr_t)
 		GetProcAddress(secur32, "QuerySecurityContextToken");
 	if (_QuerySecurityContextToken == NULL)
 	{
@@ -1797,6 +1639,26 @@ pg_SSPI_recvauth(Port *port)
 			/* Error already reported from pg_SSPI_make_upn */
 			return status;
 	}
+
+	/*
+	 * We have all of the information necessary to construct the authenticated
+	 * identity.  Set it now, rather than waiting for check_usermap below,
+	 * because authentication has already succeeded and we want the log file
+	 * to reflect that.
+	 */
+	if (port->hba->compat_realm)
+	{
+		/* SAM-compatible format. */
+		authn_id = psprintf("%s\\%s", domainname, accountname);
+	}
+	else
+	{
+		/* Kerberos principal format. */
+		authn_id = psprintf("%s@%s", accountname, domainname);
+	}
+
+	set_authn_id(port, authn_id);
+	pfree(authn_id);
 
 	/*
 	 * Compare realm/domain if requested. In SSPI, always compare case
@@ -2018,14 +1880,9 @@ interpret_ident_response(const char *ident_response,
 
 
 /*
- *	Talk to the ident server on host "remote_ip_addr" and find out who
- *	owns the tcp connection from his port "remote_port" to port
- *	"local_port_addr" on host "local_ip_addr".  Return the user name the
- *	ident server gives as "*ident_user".
- *
- *	IP addresses and port numbers are in network byte order.
- *
- *	But iff we're unable to get the information from ident, return false.
+ *	Talk to the ident server on "remote_addr" and find out who
+ *	owns the tcp connection to "local_addr"
+ *	If the username is successfully retrieved, check the usermap.
  *
  *	XXX: Using WaitLatchOrSocket() and doing a CHECK_FOR_INTERRUPTS() if the
  *	latch was set would improve the responsiveness to timeouts/cancellations.
@@ -2190,10 +2047,23 @@ ident_inet_done:
 		pg_freeaddrinfo_all(local_addr.addr.ss_family, la);
 
 	if (ident_return)
-		/* Success! Check the usermap */
+	{
+		/*
+		 * Success!  Store the identity, then check the usermap. Note that
+		 * setting the authenticated identity is done before checking the
+		 * usermap, because at this point authentication has succeeded.
+		 */
+		set_authn_id(port, ident_user);
 		return check_usermap(port->hba->usermap, port->user_name, ident_user, false);
+	}
 	return STATUS_ERROR;
 }
+
+
+/*----------------------------------------------------------------
+ * Peer authentication system
+ *----------------------------------------------------------------
+ */
 
 /*
  *	Ask kernel about the credentials of the connecting process,
@@ -2202,15 +2072,15 @@ ident_inet_done:
  *
  *	Iff authorized, return STATUS_OK, otherwise return STATUS_ERROR.
  */
-#ifdef HAVE_UNIX_SOCKETS
-
 static int
 auth_peer(hbaPort *port)
 {
-	char		ident_user[IDENT_USERNAME_MAX + 1];
 	uid_t		uid;
 	gid_t		gid;
+#ifndef WIN32
 	struct passwd *pw;
+	int			ret;
+#endif
 
 	if (getpeereid(port->sock, &uid, &gid) != 0)
 	{
@@ -2226,6 +2096,7 @@ auth_peer(hbaPort *port)
 		return STATUS_ERROR;
 	}
 
+#ifndef WIN32
 	errno = 0;					/* clear errno before call */
 	pw = getpwuid(uid);
 	if (!pw)
@@ -2239,11 +2110,22 @@ auth_peer(hbaPort *port)
 		return STATUS_ERROR;
 	}
 
-	strlcpy(ident_user, pw->pw_name, IDENT_USERNAME_MAX + 1);
+	/*
+	 * Make a copy of static getpw*() result area; this is our authenticated
+	 * identity.  Set it before calling check_usermap, because authentication
+	 * has already succeeded and we want the log file to reflect that.
+	 */
+	set_authn_id(port, pw->pw_name);
 
-	return check_usermap(port->hba->usermap, port->user_name, ident_user, false);
+	ret = check_usermap(port->hba->usermap, port->user_name, port->authn_id, false);
+
+	return ret;
+#else
+	/* should have failed with ENOSYS above */
+	Assert(false);
+	return STATUS_ERROR;
+#endif
 }
-#endif							/* HAVE_UNIX_SOCKETS */
 
 
 /*----------------------------------------------------------------
@@ -2310,8 +2192,10 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
 					{
 						/*
 						 * Client didn't want to send password.  We
-						 * intentionally do not log anything about this.
+						 * intentionally do not log anything about this,
+						 * either here or at higher levels.
 						 */
+						pam_no_password = true;
 						goto fail;
 					}
 				}
@@ -2323,7 +2207,7 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
 				ereport(LOG,
 						(errmsg("error from underlying PAM layer: %s",
 								msg[i]->msg)));
-				/* FALL THROUGH */
+				switch_fallthrough();
 			case PAM_TEXT_INFO:
 				/* we don't bother to log TEXT_INFO messages */
 				if ((reply[i].resp = strdup("")) == NULL)
@@ -2331,9 +2215,10 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
 				reply[i].resp_retcode = PAM_SUCCESS;
 				break;
 			default:
-				elog(LOG, "unsupported PAM conversation %d/\"%s\"",
-					 msg[i]->msg_style,
-					 msg[i]->msg ? msg[i]->msg : "(none)");
+				ereport(LOG,
+						(errmsg("unsupported PAM conversation %d/\"%s\"",
+								msg[i]->msg_style,
+								msg[i]->msg ? msg[i]->msg : "(none)")));
 				goto fail;
 		}
 	}
@@ -2370,14 +2255,15 @@ CheckPAMAuth(Port *port, const char *user, const char *password)
 	 */
 	pam_passwd = password;
 	pam_port_cludge = port;
+	pam_no_password = false;
 
 	/*
 	 * Set the application data portion of the conversation struct.  This is
 	 * later used inside the PAM conversation to pass the password to the
 	 * authentication module.
 	 */
-	pam_passw_conv.appdata_ptr = (char *) password; /* from password above,
-													 * not allocated */
+	pam_passw_conv.appdata_ptr = unconstify(char *, password);	/* from password above,
+																 * not allocated */
 
 	/* Optionally, one can set the service name in pg_hba.conf */
 	if (port->hba->pamservice && port->hba->pamservice[0] != '\0')
@@ -2455,22 +2341,26 @@ CheckPAMAuth(Port *port, const char *user, const char *password)
 
 	if (retval != PAM_SUCCESS)
 	{
-		ereport(LOG,
-				(errmsg("pam_authenticate failed: %s",
-						pam_strerror(pamh, retval))));
+		/* If pam_passwd_conv_proc saw EOF, don't log anything */
+		if (!pam_no_password)
+			ereport(LOG,
+					(errmsg("pam_authenticate failed: %s",
+							pam_strerror(pamh, retval))));
 		pam_passwd = NULL;		/* Unset pam_passwd */
-		return STATUS_ERROR;
+		return pam_no_password ? STATUS_EOF : STATUS_ERROR;
 	}
 
 	retval = pam_acct_mgmt(pamh, 0);
 
 	if (retval != PAM_SUCCESS)
 	{
-		ereport(LOG,
-				(errmsg("pam_acct_mgmt failed: %s",
-						pam_strerror(pamh, retval))));
+		/* If pam_passwd_conv_proc saw EOF, don't log anything */
+		if (!pam_no_password)
+			ereport(LOG,
+					(errmsg("pam_acct_mgmt failed: %s",
+							pam_strerror(pamh, retval))));
 		pam_passwd = NULL;		/* Unset pam_passwd */
-		return STATUS_ERROR;
+		return pam_no_password ? STATUS_EOF : STATUS_ERROR;
 	}
 
 	retval = pam_end(pamh, retval);
@@ -2483,6 +2373,9 @@ CheckPAMAuth(Port *port, const char *user, const char *password)
 	}
 
 	pam_passwd = NULL;			/* Unset pam_passwd */
+
+	if (retval == PAM_SUCCESS)
+		set_authn_id(port, user);
 
 	return (retval == PAM_SUCCESS ? STATUS_OK : STATUS_ERROR);
 }
@@ -2519,6 +2412,7 @@ CheckBSDAuth(Port *port, char *user)
 	if (!retval)
 		return STATUS_ERROR;
 
+	set_authn_id(port, user);
 	return STATUS_OK;
 }
 #endif							/* USE_BSD_AUTH */
@@ -2561,45 +2455,95 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 	}
 #else
 #ifdef HAVE_LDAP_INITIALIZE
+
+	/*
+	 * OpenLDAP provides a non-standard extension ldap_initialize() that takes
+	 * a list of URIs, allowing us to request "ldaps" instead of "ldap".  It
+	 * also provides ldap_domain2hostlist() to find LDAP servers automatically
+	 * using DNS SRV.  They were introduced in the same version, so for now we
+	 * don't have an extra configure check for the latter.
+	 */
 	{
-		const char *hostnames = port->hba->ldapserver;
-		char	   *uris = NULL;
+		StringInfoData uris;
+		char	   *hostlist = NULL;
+		char	   *p;
+		bool		append_port;
+
+		/* We'll build a space-separated scheme://hostname:port list here */
+		initStringInfo(&uris);
 
 		/*
-		 * We have a space-separated list of hostnames.  Convert it
-		 * to a space-separated list of URIs.
+		 * If pg_hba.conf provided no hostnames, we can ask OpenLDAP to try to
+		 * find some by extracting a domain name from the base DN and looking
+		 * up DSN SRV records for _ldap._tcp.<domain>.
 		 */
+		if (!port->hba->ldapserver || port->hba->ldapserver[0] == '\0')
+		{
+			char	   *domain;
+
+			/* ou=blah,dc=foo,dc=bar -> foo.bar */
+			if (ldap_dn2domain(port->hba->ldapbasedn, &domain))
+			{
+				ereport(LOG,
+						(errmsg("could not extract domain name from ldapbasedn")));
+				return STATUS_ERROR;
+			}
+
+			/* Look up a list of LDAP server hosts and port numbers */
+			if (ldap_domain2hostlist(domain, &hostlist))
+			{
+				ereport(LOG,
+						(errmsg("LDAP authentication could not find DNS SRV records for \"%s\"",
+								domain),
+						 (errhint("Set an LDAP server name explicitly."))));
+				ldap_memfree(domain);
+				return STATUS_ERROR;
+			}
+			ldap_memfree(domain);
+
+			/* We have a space-separated list of host:port entries */
+			p = hostlist;
+			append_port = false;
+		}
+		else
+		{
+			/* We have a space-separated list of hosts from pg_hba.conf */
+			p = port->hba->ldapserver;
+			append_port = true;
+		}
+
+		/* Convert the list of host[:port] entries to full URIs */
 		do
 		{
-			char	   *hostname;
-			size_t		hostname_size;
-			char	   *new_uris;
+			size_t		size;
 
-			/* Find the leading hostname. */
-			hostname_size = strcspn(hostnames, " ");
-			hostname = pnstrdup(hostnames, hostname_size);
+			/* Find the span of the next entry */
+			size = strcspn(p, " ");
 
-			/* Append a URI for this hostname. */
-			new_uris = psprintf("%s%s%s://%s:%d",
-								uris ? uris : "",
-								uris ? " " : "",
-								scheme,
-								hostname,
-								port->hba->ldapport);
+			/* Append a space separator if this isn't the first URI */
+			if (uris.len > 0)
+				appendStringInfoChar(&uris, ' ');
 
-			pfree(hostname);
-			if (uris)
-				pfree(uris);
-			uris = new_uris;
+			/* Append scheme://host:port */
+			appendStringInfoString(&uris, scheme);
+			appendStringInfoString(&uris, "://");
+			appendBinaryStringInfo(&uris, p, size);
+			if (append_port)
+				appendStringInfo(&uris, ":%d", port->hba->ldapport);
 
-			/* Step over this hostname and any spaces. */
-			hostnames += hostname_size;
-			while (*hostnames == ' ')
-				++hostnames;
-		} while (*hostnames);
+			/* Step over this entry and any number of trailing spaces */
+			p += size;
+			while (*p == ' ')
+				++p;
+		} while (*p);
 
-		r = ldap_initialize(ldap, uris);
-		pfree(uris);
+		/* Free memory from OpenLDAP if we looked up SRV records */
+		if (hostlist)
+			ldap_memfree(hostlist);
+
+		/* Finally, try to connect using the URI list */
+		r = ldap_initialize(ldap, uris.data);
+		pfree(uris.data);
 		if (r != LDAP_SUCCESS)
 		{
 			ereport(LOG,
@@ -2648,9 +2592,9 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 		if (_ldap_start_tls_sA == NULL)
 		{
 			/*
-			 * Need to load this function dynamically because it does not
-			 * exist on Windows 2000, and causes a load error for the whole
-			 * exe if referenced.
+			 * Need to load this function dynamically because it may not exist
+			 * on Windows, and causes a load error for the whole exe if
+			 * referenced.
 			 */
 			HANDLE		ldaphandle;
 
@@ -2662,17 +2606,19 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 				 * wldap32, but check anyway
 				 */
 				ereport(LOG,
-						(errmsg("could not load wldap32.dll")));
+						(errmsg("could not load library \"%s\": error code %lu",
+								"WLDAP32.DLL", GetLastError())));
 				ldap_unbind(*ldap);
 				return STATUS_ERROR;
 			}
-			_ldap_start_tls_sA = (__ldap_start_tls_sA) GetProcAddress(ldaphandle, "ldap_start_tls_sA");
+			_ldap_start_tls_sA = (__ldap_start_tls_sA) (pg_funcptr_t) GetProcAddress(ldaphandle, "ldap_start_tls_sA");
 			if (_ldap_start_tls_sA == NULL)
 			{
 				ereport(LOG,
 						(errmsg("could not load function _ldap_start_tls_sA in wldap32.dll"),
 						 errdetail("LDAP over SSL is not supported on this platform.")));
 				ldap_unbind(*ldap);
+				FreeLibrary(ldaphandle);
 				return STATUS_ERROR;
 			}
 
@@ -2745,13 +2691,35 @@ CheckLDAPAuth(Port *port)
 	LDAP	   *ldap;
 	int			r;
 	char	   *fulluser;
+	const char *server_name;
 
+#ifdef HAVE_LDAP_INITIALIZE
+
+	/*
+	 * For OpenLDAP, allow empty hostname if we have a basedn.  We'll look for
+	 * servers with DNS SRV records via OpenLDAP library facilities.
+	 */
+	if ((!port->hba->ldapserver || port->hba->ldapserver[0] == '\0') &&
+		(!port->hba->ldapbasedn || port->hba->ldapbasedn[0] == '\0'))
+	{
+		ereport(LOG,
+				(errmsg("LDAP server not specified, and no ldapbasedn")));
+		return STATUS_ERROR;
+	}
+#else
 	if (!port->hba->ldapserver || port->hba->ldapserver[0] == '\0')
 	{
 		ereport(LOG,
 				(errmsg("LDAP server not specified")));
 		return STATUS_ERROR;
 	}
+#endif
+
+	/*
+	 * If we're using SRV records, we don't have a server name so we'll just
+	 * show an empty string in error messages.
+	 */
+	server_name = port->hba->ldapserver ? port->hba->ldapserver : "";
 
 	if (port->hba->ldapport == 0)
 	{
@@ -2815,7 +2783,7 @@ CheckLDAPAuth(Port *port)
 		 * Bind with a pre-defined username/password (if available) for
 		 * searching. If none is specified, this turns into an anonymous bind.
 		 */
-		char* hba_password = get_ldap_password(port->hba->ldapbindpasswd);
+		char	   *hba_password = get_ldap_password(port->hba->ldapbindpasswd);
 
 		r = ldap_simple_bind_s(ldap,
 							   port->hba->ldapbinddn ? port->hba->ldapbinddn : "",
@@ -2827,7 +2795,7 @@ CheckLDAPAuth(Port *port)
 			ereport(LOG,
 					(errmsg("could not perform initial LDAP bind for ldapbinddn \"%s\" on server \"%s\": %s",
 							port->hba->ldapbinddn ? port->hba->ldapbinddn : "",
-							port->hba->ldapserver,
+							server_name,
 							ldap_err2string(r)),
 					 errdetail_for_ldap(ldap)));
 			ldap_unbind(ldap);
@@ -2856,7 +2824,7 @@ CheckLDAPAuth(Port *port)
 		{
 			ereport(LOG,
 					(errmsg("could not search LDAP for filter \"%s\" on server \"%s\": %s",
-							filter, port->hba->ldapserver, ldap_err2string(r)),
+							filter, server_name, ldap_err2string(r)),
 					 errdetail_for_ldap(ldap)));
 			if (search_message != NULL)
 				ldap_msgfree(search_message);
@@ -2873,14 +2841,14 @@ CheckLDAPAuth(Port *port)
 				ereport(LOG,
 						(errmsg("LDAP user \"%s\" does not exist", port->user_name),
 						 errdetail("LDAP search for filter \"%s\" on server \"%s\" returned no entries.",
-								   filter, port->hba->ldapserver)));
+								   filter, server_name)));
 			else
 				ereport(LOG,
 						(errmsg("LDAP user \"%s\" is not unique", port->user_name),
 						 errdetail_plural("LDAP search for filter \"%s\" on server \"%s\" returned %d entry.",
 										  "LDAP search for filter \"%s\" on server \"%s\" returned %d entries.",
 										  count,
-										  filter, port->hba->ldapserver, count)));
+										  filter, server_name, count)));
 
 			ldap_unbind(ldap);
 			pfree(passwd);
@@ -2898,7 +2866,7 @@ CheckLDAPAuth(Port *port)
 			(void) ldap_get_option(ldap, LDAP_OPT_ERROR_NUMBER, &error);
 			ereport(LOG,
 					(errmsg("could not get dn for the first entry matching \"%s\" on server \"%s\": %s",
-							filter, port->hba->ldapserver,
+							filter, server_name,
 							ldap_err2string(error)),
 					 errdetail_for_ldap(ldap)));
 			ldap_unbind(ldap);
@@ -2919,7 +2887,7 @@ CheckLDAPAuth(Port *port)
 		{
 			ereport(LOG,
 					(errmsg("could not unbind after searching for user \"%s\" on server \"%s\"",
-							fulluser, port->hba->ldapserver)));
+							fulluser, server_name)));
 			pfree(passwd);
 			pfree(fulluser);
 			return STATUS_ERROR;
@@ -2950,13 +2918,16 @@ CheckLDAPAuth(Port *port)
 	{
 		ereport(LOG,
 				(errmsg("LDAP login failed for user \"%s\" on server \"%s\": %s",
-						fulluser, port->hba->ldapserver, ldap_err2string(r)),
+						fulluser, server_name, ldap_err2string(r)),
 				 errdetail_for_ldap(ldap)));
 		ldap_unbind(ldap);
 		pfree(passwd);
 		pfree(fulluser);
 		return STATUS_ERROR;
 	}
+
+	/* Save the original bind DN as the authenticated identity. */
+	set_authn_id(port, fulluser);
 
 	ldap_unbind(ldap);
 	pfree(passwd);
@@ -2986,7 +2957,7 @@ errdetail_for_ldap(LDAP *ldap)
 }
 
 static char *
-get_ldap_password(char* ldapbindpasswd)
+get_ldap_password(char *ldapbindpasswd)
 {
 	/* Return password stored in YSQL_LDAP_BIND_PWD_ENV env var */
 	if (strncmp(ldapbindpasswd, "YSQL_LDAP_BIND_PWD_ENV", 22) == 0)
@@ -2997,7 +2968,7 @@ get_ldap_password(char* ldapbindpasswd)
 		}
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-				errmsg("expected env variable YSQL_LDAP_BIND_PWD_ENV to be defined, got NULL")));
+				 errmsg("expected env variable YSQL_LDAP_BIND_PWD_ENV to be defined, got NULL")));
 	}
 
 	/* Return password as defined in hba.conf */
@@ -3014,11 +2985,24 @@ get_ldap_password(char* ldapbindpasswd)
 static int
 CheckCertAuth(Port *port)
 {
+	int			status_check_usermap = STATUS_ERROR;
+	char	   *peer_username = NULL;
+
 	Assert(port->ssl);
 
+	/* select the correct field to compare */
+	switch (port->hba->clientcertname)
+	{
+		case clientCertDN:
+			peer_username = port->peer_dn;
+			break;
+		case clientCertCN:
+			peer_username = port->peer_cn;
+	}
+
 	/* Make sure we have received a username in the certificate */
-	if (port->peer_cn == NULL ||
-		strlen(port->peer_cn) <= 0)
+	if (peer_username == NULL ||
+		strlen(peer_username) <= 0)
 	{
 		ereport(LOG,
 				(errmsg("certificate authentication failed for user \"%s\": client certificate contains no user name",
@@ -3026,8 +3010,56 @@ CheckCertAuth(Port *port)
 		return STATUS_ERROR;
 	}
 
-	/* Just pass the certificate CN to the usermap check */
-	return check_usermap(port->hba->usermap, port->user_name, port->peer_cn, false);
+	if (port->hba->auth_method == uaCert)
+	{
+		/*
+		 * For cert auth, the client's Subject DN is always our authenticated
+		 * identity, even if we're only using its CN for authorization.  Set
+		 * it now, rather than waiting for check_usermap() below, because
+		 * authentication has already succeeded and we want the log file to
+		 * reflect that.
+		 */
+		if (!port->peer_dn)
+		{
+			/*
+			 * This should not happen as both peer_dn and peer_cn should be
+			 * set in this context.
+			 */
+			ereport(LOG,
+					(errmsg("certificate authentication failed for user \"%s\": unable to retrieve subject DN",
+							port->user_name)));
+			return STATUS_ERROR;
+		}
+
+		set_authn_id(port, port->peer_dn);
+	}
+
+	/* Just pass the certificate cn/dn to the usermap check */
+	status_check_usermap = check_usermap(port->hba->usermap, port->user_name, peer_username, false);
+	if (status_check_usermap != STATUS_OK)
+	{
+		/*
+		 * If clientcert=verify-full was specified and the authentication
+		 * method is other than uaCert, log the reason for rejecting the
+		 * authentication.
+		 */
+		if (port->hba->clientcert == clientCertFull && port->hba->auth_method != uaCert)
+		{
+			switch (port->hba->clientcertname)
+			{
+				case clientCertDN:
+					ereport(LOG,
+							(errmsg("certificate validation (clientcert=verify-full) failed for user \"%s\": DN mismatch",
+									port->user_name)));
+					break;
+				case clientCertCN:
+					ereport(LOG,
+							(errmsg("certificate validation (clientcert=verify-full) failed for user \"%s\": CN mismatch",
+									port->user_name)));
+			}
+		}
+	}
+	return status_check_usermap;
 }
 #endif
 
@@ -3096,7 +3128,7 @@ radius_add_attribute(radius_packet *packet, uint8 type, const unsigned char *dat
 		 * fail.
 		 */
 		elog(WARNING,
-			 "Adding attribute code %d with length %d to radius packet would create oversize packet, ignoring",
+			 "adding attribute code %d with length %d to radius packet would create oversize packet, ignoring",
 			 type, len);
 		return;
 	}
@@ -3173,6 +3205,8 @@ CheckRADIUSAuth(Port *port)
 		 */
 		if (ret == STATUS_OK)
 		{
+			set_authn_id(port, port->user_name);
+
 			pfree(passwd);
 			return STATUS_OK;
 		}
@@ -3189,11 +3223,11 @@ CheckRADIUSAuth(Port *port)
 		 * don't and will then reuse the correct value.
 		 */
 		if (list_length(port->hba->radiussecrets) > 1)
-			secrets = lnext(secrets);
+			secrets = lnext(port->hba->radiussecrets, secrets);
 		if (list_length(port->hba->radiusports) > 1)
-			radiusports = lnext(radiusports);
+			radiusports = lnext(port->hba->radiusports, radiusports);
 		if (list_length(port->hba->radiusidentifiers) > 1)
-			identifiers = lnext(identifiers);
+			identifiers = lnext(port->hba->radiusidentifiers, identifiers);
 	}
 
 	/* No servers left to try, so give up */
@@ -3228,7 +3262,7 @@ PerformRadiusTransaction(const char *server, const char *secret, const char *por
 	struct addrinfo hint;
 	struct addrinfo *serveraddrs;
 	int			port;
-	ACCEPT_TYPE_ARG3 addrsize;
+	socklen_t	addrsize;
 	fd_set		fdset;
 	struct timeval endtime;
 	int			i,
@@ -3261,7 +3295,7 @@ PerformRadiusTransaction(const char *server, const char *secret, const char *por
 	/* Construct RADIUS packet */
 	packet->code = RADIUS_ACCESS_REQUEST;
 	packet->length = RADIUS_HEADER_LENGTH;
-	if (!pg_backend_random((char *) packet->vector, RADIUS_VECTOR_LENGTH))
+	if (!pg_strong_random(packet->vector, RADIUS_VECTOR_LENGTH))
 	{
 		ereport(LOG,
 				(errmsg("could not generate random encryption vector")));
@@ -3287,6 +3321,8 @@ PerformRadiusTransaction(const char *server, const char *secret, const char *por
 	md5trailer = packet->vector;
 	for (i = 0; i < encryptedpasswordlen; i += RADIUS_VECTOR_LENGTH)
 	{
+		const char *errstr = NULL;
+
 		memcpy(cryptvector + strlen(secret), md5trailer, RADIUS_VECTOR_LENGTH);
 
 		/*
@@ -3295,10 +3331,12 @@ PerformRadiusTransaction(const char *server, const char *secret, const char *por
 		 */
 		md5trailer = encryptedpassword + i;
 
-		if (!pg_md5_binary(cryptvector, strlen(secret) + RADIUS_VECTOR_LENGTH, encryptedpassword + i))
+		if (!pg_md5_binary(cryptvector, strlen(secret) + RADIUS_VECTOR_LENGTH,
+						   encryptedpassword + i, &errstr))
 		{
 			ereport(LOG,
-					(errmsg("could not perform MD5 encryption of password")));
+					(errmsg("could not perform MD5 encryption of password: %s",
+							errstr)));
 			pfree(cryptvector);
 			pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
 			return STATUS_ERROR;
@@ -3383,6 +3421,7 @@ PerformRadiusTransaction(const char *server, const char *secret, const char *por
 		struct timeval timeout;
 		struct timeval now;
 		int64		timeoutval;
+		const char *errstr = NULL;
 
 		gettimeofday(&now, NULL);
 		timeoutval = (endtime.tv_sec * 1000000 + endtime.tv_usec) - (now.tv_sec * 1000000 + now.tv_usec);
@@ -3501,10 +3540,11 @@ PerformRadiusTransaction(const char *server, const char *secret, const char *por
 
 		if (!pg_md5_binary(cryptvector,
 						   packetlength + strlen(secret),
-						   encryptedpassword))
+						   encryptedpassword, &errstr))
 		{
 			ereport(LOG,
-					(errmsg("could not perform MD5 encryption of received packet")));
+					(errmsg("could not perform MD5 encryption of received packet: %s",
+							errstr)));
 			pfree(cryptvector);
 			continue;
 		}
@@ -3546,24 +3586,28 @@ PerformRadiusTransaction(const char *server, const char *secret, const char *por
 static char *ybReadFile(const char *outer_filename, const char *inc_filename,
 						int elevel);
 
+static char *ybReadFromUrl(const char *url);
+
 static void
 ybGetJwtAuthOptionsFromPortAndJwks(Port *port, char *jwks,
-								   YBCPgJwtAuthOptions *opt)
+								   YbcPgJwtAuthOptions *opt)
 {
-	HbaLine	   *hba_line = port->hba;
+	HbaLine    *hba_line = port->hba;
 
 	opt->jwks = jwks;
 	opt->usermap = hba_line->usermap;
 	opt->username = port->user_name;
 
 	/* Use "sub" as the default matching claim key */
-	opt->matching_claim_key = hba_line->yb_jwt_matching_claim_key ?: "sub";
+	opt->matching_claim_key = hba_line->yb_jwt_matching_claim_key ? : "sub";
 
-	opt->allowed_issuers = (char **) YbPtrListToArray(
-		hba_line->yb_jwt_issuers, &opt->allowed_issuers_length);
+	opt->allowed_issuers = (char **)
+		YbPtrListToArray(hba_line->yb_jwt_issuers,
+						 &opt->allowed_issuers_length);
 
-	opt->allowed_audiences = (char **) YbPtrListToArray(
-		hba_line->yb_jwt_audiences, &opt->allowed_audiences_length);
+	opt->allowed_audiences = (char **)
+		YbPtrListToArray(hba_line->yb_jwt_audiences,
+						 &opt->allowed_audiences_length);
 }
 
 static int
@@ -3576,8 +3620,12 @@ YbCheckJwtAuth(Port *port)
 	/*
 	 * Read the jwks file before the password prompt so that we fail fast if we
 	 * fail to read the jwks file or the content is invalid.
+	 * Check if jwt_jwks_url is provided then use that otherwise use jwt_jwks_path
 	 */
-	jwks = ybReadFile(HbaFileName, port->hba->yb_jwt_jwks_path, LOG);
+	if (port->hba->yb_jwt_jwks_url)
+		jwks = ybReadFromUrl(port->hba->yb_jwt_jwks_url);
+	else
+		jwks = ybReadFile(HbaFileName, port->hba->yb_jwt_jwks_path, LOG);
 	if (jwks == NULL)
 		return STATUS_ERROR;
 
@@ -3587,19 +3635,21 @@ YbCheckJwtAuth(Port *port)
 	/* Interpret password as jwt */
 	jwt = recv_password_packet(port);
 	if (jwt == NULL)
-		return STATUS_EOF; /* client didn't send jwt */
+		return STATUS_EOF;		/* client didn't send jwt */
 
 	/*
 	 * We are allocating a temporary array of char* for audiences and issuers
 	 * entries. We do that since there is no easy way to send the PG List to the
 	 * C++ layer.
 	 */
-	YBCPgJwtAuthOptions jwt_auth_options;
+	YbcPgJwtAuthOptions jwt_auth_options;
+
 	ybGetJwtAuthOptionsFromPortAndJwks(port, jwks, &jwt_auth_options);
 
-	YBCStatus s = YBCValidateJWT(jwt, &jwt_auth_options);
+	YbcStatus	s = YBCValidateJWT(jwt, &jwt_auth_options);
+
 	auth_result = (s) ? STATUS_ERROR : STATUS_OK;
-	if (s) /* !ok */
+	if (s)						/* !ok */
 	{
 		ereport(LOG,
 				(errmsg("JWT login failed with error: %s",
@@ -3631,9 +3681,9 @@ YbCheckJwtAuth(Port *port)
 static char *
 ybReadFile(const char *outer_filename, const char *inc_filename, int elevel)
 {
-	char *file_fullname;
-	char *file_contents;
-	int len;
+	char	   *file_fullname;
+	char	   *file_contents;
+	int			len;
 
 	if (is_absolute_path(inc_filename))
 	{
@@ -3642,8 +3692,10 @@ ybReadFile(const char *outer_filename, const char *inc_filename, int elevel)
 	}
 	else
 	{
-		/* relative path is relative to dir of file from which the path was
-		 * referenced. */
+		/*
+		 * relative path is relative to dir of file from which the path was
+		 * referenced.
+		 */
 		file_fullname =
 			(char *) palloc(strlen(outer_filename) + 1 + strlen(inc_filename) + 1);
 		strcpy(file_fullname, outer_filename);
@@ -3676,4 +3728,34 @@ ybReadFile(const char *outer_filename, const char *inc_filename, int elevel)
 
 	pfree(file_fullname);
 	return file_contents;
+}
+
+static char *
+ybReadFromUrl(const char *url)
+{
+	char	   *url_contents = NULL;
+	int			len;
+	YbcStatus	status;
+
+	status = YBCFetchFromUrl(url, &url_contents);
+	if (status)					/* !ok */
+	{
+		ereport(LOG,
+				(errmsg("fetching from JWT_JWKS_URL failed with error: %s",
+						YBCStatusMessageBegin(status))));
+		YBCFreeStatus(status);
+		return NULL;
+	}
+	if (!url_contents)
+		return NULL;
+
+	len = strlen(url_contents);
+	if (!pg_verifymbstr(url_contents, len, true))
+	{
+		ereport(LOG,
+				(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
+				 errmsg("invalid encoding of contents at \"%s\"", url)));
+		return NULL;
+	}
+	return url_contents;
 }

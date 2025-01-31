@@ -64,7 +64,6 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/util/callsite_profiling.h"
 
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/ql_rowblock.h"
@@ -92,16 +91,20 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
+#include "yb/tserver/heartbeater.h"
+#include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/read_query.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/crc.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -115,6 +118,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -127,6 +131,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
+#include "yb/util/uuid.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/ysql_binary_runner.h"
 
@@ -263,16 +268,32 @@ DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 DEFINE_test_flag(bool, cdc_sdk_fail_setting_retention_barrier, false,
     "Fail setting retention barrier on newly created tablets");
 
-DEFINE_RUNTIME_bool(reject_writes_when_disk_full, true,
+#if defined ADDRESS_SANITIZER
+// ASAN tests run on machines with limited disk space, so disable disk full checks.
+constexpr bool kRejectWritesWhenDiskFullDefault = false;
+#else
+constexpr bool kRejectWritesWhenDiskFullDefault = true;
+#endif
+
+DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefault,
     "Reject incoming writes to the tablet if we are running out of disk space.");
+
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
 
+DEFINE_RUNTIME_bool(ysql_debug_log_write_requests, false,
+    "Print all YSQL write requests received by this process to the log."
+    "Note: Enabling this flag might log sensitive information.");
+TAG_FLAG(ysql_debug_log_write_requests, advanced);
+TAG_FLAG(ysql_debug_log_write_requests, unsafe);
+
 double TEST_delay_create_transaction_probability = 0;
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
+
+YB_STRONGLY_TYPED_HEX_UUID_IMPL(PgTxnSnapshotLocalId);
 
 using consensus::ChangeConfigRequestPB;
 using consensus::ChangeConfigResponsePB;
@@ -372,6 +393,64 @@ void PerformAtLeader(
       SetupErrorAndRespond(resp->mutable_error(), status, context);
     }
   }
+}
+
+Result<PgTxnSnapshot> GetLocalPgTxnSnapshotImpl(
+    TabletServerIf& server, const std::string& snapshot_id_uuid) {
+  return server.GetLocalPgTxnSnapshot(VERIFY_RESULT(
+      FullyDecodePgTxnSnapshotLocalId(snapshot_id_uuid)));
+}
+
+Status PrintYSQLWriteRequest(
+    const WriteRequestPB& req, const RpcContext& context, const Tablet& tablet) {
+  if (req.pgsql_write_batch_size() == 0) {
+    return Status::OK();
+  }
+  const auto& metadata = *tablet.metadata();
+
+  std::stringstream ss;
+  ss << "YSQL Write Request: " << std::endl << "From: " << context.requestor_string() << std::endl;
+  if (req.has_write_batch() && req.write_batch().has_transaction()) {
+    ss << "TransactionId: "
+       << VERIFY_RESULT(FullyDecodeTransactionId(req.write_batch().transaction().transaction_id()))
+       << std::endl;
+  }
+  for (const auto& entry : req.pgsql_write_batch()) {
+    ss << std::endl;
+
+    auto stmt_type = PgsqlWriteRequestPB::PgsqlStmtType_Name(entry.stmt_type());
+    boost::replace_all(stmt_type, "PGSQL_", "");
+    ss << stmt_type << ": " << std::endl;
+
+    if (entry.force_catalog_modifications()) {
+      ss << "\tforce_catalog_modifications: true" << std::endl;
+    }
+    const auto table_info = VERIFY_RESULT(metadata.GetTableInfo(entry.table_id()));
+    ss << "\tTable: " << table_info->table_name << " [" << entry.table_id() << "]" << std::endl;
+
+    ss << "\tKey: ";
+    if (entry.has_ybctid_column_value()) {
+      ss << "ybctid [" << entry.ybctid_column_value().ShortDebugString() << "]";
+    }
+    if (entry.has_ybctid_column_value() && !entry.range_column_values().empty()) {
+      ss << ", ";
+    }
+    if (!entry.range_column_values().empty()) {
+      ss << "range [" << pb_util::JoinRepeatedPBs(entry.range_column_values()) << "]";
+    }
+    ss << std::endl;
+    if (!entry.column_new_values().empty() || !entry.column_values().empty()) {
+      ss << "\tColumns: ";
+      ss << pb_util::JoinRepeatedPBs(entry.column_new_values());
+      if (!entry.column_new_values().empty() && !entry.column_values().empty()) {
+        ss << ", ";
+      }
+      ss << pb_util::JoinRepeatedPBs(entry.column_values());
+      ss << std::endl;
+    }
+  }
+  LOG(INFO) << ss.str();
+  return Status::OK();
 }
 
 } // namespace
@@ -730,7 +809,9 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  const uint32_t our_schema_version = tablet.peer->tablet_metadata()->schema_version();
+  // TODO(asrivastava): This does not correctly handle colocated tables.
+  const uint32_t our_schema_version =
+      tablet.peer->tablet_metadata()->primary_table_schema_version();
   const uint32_t their_schema_version = req->schema_version();
   bool all_at_backfill = true;
   bool all_past_backfill = true;
@@ -1212,7 +1293,9 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
-  if (req->state().status() == TransactionStatus::APPLYING || cleanup) {
+  if (req->state().status() == TransactionStatus::APPLYING ||
+      req->state().status() == TransactionStatus::PROMOTING ||
+      cleanup) {
     auto* participant = tablet.tablet->transaction_participant();
     if (participant) {
       participant->Handle(std::move(state), tablet.leader_term);
@@ -1405,27 +1488,8 @@ Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
     return STATUS(InvalidArgument, "No transaction participant to process transaction status move");
   }
 
-  auto metadata = participant->UpdateTransactionStatusLocation(txn_id, req->new_status_tablet_id());
-  if (!metadata.ok()) {
-    return metadata.status();
-  }
-
-  auto query = std::make_unique<tablet::WriteQuery>(
-      tablet.leader_term, context->GetClientDeadline(), tablet.peer.get(),
-      tablet.tablet, nullptr);
-  auto* request = query->operation().AllocateRequest();
-  metadata->ToPB(request->mutable_write_batch()->mutable_transaction());
-
-  query->set_callback([resp, context](const Status& status) {
-    if (!status.ok()) {
-      LOG(WARNING) << status;
-      SetupErrorAndRespond(resp->mutable_error(), status, context.get());
-    } else {
-      context->RespondSuccess();
-    }
-  });
-  tablet.peer->WriteAsync(std::move(query));
-
+  RETURN_NOT_OK(participant->UpdateTransactionStatusLocation(txn_id, req->new_status_tablet_id()));
+  context->RespondSuccess();
   return Status::OK();
 }
 
@@ -1528,6 +1592,8 @@ void TabletServiceImpl::GetCompatibleSchemaVersion(
     if (result.ok()) {
       schema_version = *result;
     } else {
+      // Also set the latest schema version.
+      resp->set_latest_schema_version(schema_version);
       SetupErrorAndRespond(
           resp->mutable_error(), result.status(), TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
       return;
@@ -1597,7 +1663,7 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
       consensus::MakeTabletLogPrefix(req->tablet_id(), server_->permanent_uuid()),
       tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
       req->table_type(), schema, qlexpr::IndexMap(),
-      req->has_index_info() ? boost::optional<qlexpr::IndexInfo>(req->index_info()) : boost::none,
+      req->has_index_info() ? std::optional<qlexpr::IndexInfo>(req->index_info()) : std::nullopt,
       0 /* schema_version */, partition_schema, req->pg_table_id(),
       tablet::SkipTableTombstoneCheck(FLAGS_ysql_yb_enable_alter_table_rewrite));
 
@@ -1952,6 +2018,18 @@ void TabletServiceAdminImpl::CloneTablet(
   });
 }
 
+Result<HostPort> TabletServiceAdminImpl::GetLocalPgHostPort() {
+  HostPort local_pg_host_port;
+  if (!FLAGS_TEST_mini_cluster_pg_host_port.empty()) {
+    RETURN_NOT_OK(local_pg_host_port.ParseString(
+        FLAGS_TEST_mini_cluster_pg_host_port, pgwrapper::PgProcessConf::kDefaultPort));
+  } else {
+    local_pg_host_port = server_->pgsql_proxy_bind_address();
+  }
+  std::string unix_domain_socket = PgDeriveSocketDir(local_pg_host_port);
+  return HostPort(unix_domain_socket, local_pg_host_port.port());
+}
+
 void TabletServiceAdminImpl::ClonePgSchema(
     const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp, rpc::RpcContext context) {
   auto status = DoClonePgSchema(req, resp);
@@ -1965,17 +2043,9 @@ void TabletServiceAdminImpl::ClonePgSchema(
 Status TabletServiceAdminImpl::DoClonePgSchema(
     const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp) {
   // Run ysql_dump to generate the schema of the clone database as of restore time.
-  HostPort local_pg_host_port;
-  if (!FLAGS_TEST_mini_cluster_pg_host_port.empty()) {
-    RETURN_NOT_OK(local_pg_host_port.ParseString(
-        FLAGS_TEST_mini_cluster_pg_host_port, pgwrapper::PgProcessConf::kDefaultPort));
-  } else {
-    local_pg_host_port = server_->pgsql_proxy_bind_address();
-  }
   const std::string& target_db_name = req->target_db_name();
-  std::string unix_domain_socket = PgDeriveSocketDir(local_pg_host_port);
-  HostPort local_hostport(unix_domain_socket, local_pg_host_port.port());
 
+  auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
   YsqlDumpRunner ysql_dump_runner =
       VERIFY_RESULT(YsqlDumpRunner::GetYsqlDumpRunner(local_hostport));
   std::string dump_output = VERIFY_RESULT(ysql_dump_runner.RunAndModifyForClone(
@@ -1983,29 +2053,39 @@ Status TabletServiceAdminImpl::DoClonePgSchema(
       HybridTime(req->restore_ht())));
   VLOG(2) << "Dump output: " << dump_output;
 
-  // Write the dump output to a file in order to execute it using ysqlsh.
-  std::unique_ptr<WritableFile> dump_output_file;
-  std::string tmp_file_name;
-  RETURN_NOT_OK(Env::Default()->NewTempWritableFile(
-      WritableFileOptions(), target_db_name + "_ysql_dump_XXXXXX", &tmp_file_name,
-      &dump_output_file));
-  RETURN_NOT_OK(dump_output_file->Append(dump_output));
-  RETURN_NOT_OK(dump_output_file->Close());
-  auto scope_exit = ScopeExit([tmp_file_name] {
-    if (Env::Default()->FileExists(tmp_file_name)) {
-      WARN_NOT_OK(
-          Env::Default()->DeleteFile(tmp_file_name),
-          Format("Failed to delete ysql_dump_file $0 as a cloning cleanup.", tmp_file_name));
-    }
-  });
-
   // Execute the sql script to generate the PG database.
-  YsqlshRunner ysqlsh_runner =
-      VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(HostPort::FromPB(local_hostport)));
-  Result<std::string> ysqlsh_output = VERIFY_RESULT(ysqlsh_runner.ExecuteSqlScript(tmp_file_name));
+  YsqlshRunner ysqlsh_runner = VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(local_hostport));
+  RETURN_NOT_OK(ysqlsh_runner.ExecuteSqlScript(dump_output, "ysql_dump" /* tmp_file_prefix */));
   LOG(INFO) << Format(
       "Clone Pg Schema Objects for source database: $0 to clone database: $1 done successfully",
       req->source_db_name(), target_db_name);
+  return Status::OK();
+}
+
+void TabletServiceAdminImpl::EnableDbConns(
+    const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp,
+    rpc::RpcContext context) {
+  auto status = DoEnableDbConns(req, resp);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
+Status TabletServiceAdminImpl::DoEnableDbConns(
+    const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp) {
+  const std::string script = Format(
+      "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
+      "UPDATE pg_database SET datallowconn = true WHERE datname = '$0'", req->target_db_name());
+
+  auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
+  YsqlshRunner ysqlsh_runner =
+      VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(HostPort::FromPB(local_hostport)));
+  RETURN_NOT_OK(ysqlsh_runner.ExecuteSqlScript(script, "enable_connections" /* tmp_file_prefix */));
+
+  LOG(INFO) << Format(
+      "Successfully enabled connections to clone target database $0", req->target_db_name());
   return Status::OK();
 }
 
@@ -2071,8 +2151,9 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   const std::string db_ver_tag = Format("[DB $0, V $1]", database_oid, catalog_version);
   uint64_t ts_catalog_version = 0;
   SCOPED_WAIT_STATUS(WaitForYSQLBackendsCatalogVersion);
+  bool first_run = true;
   Status s = Wait(
-      [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
+      [catalog_version, database_oid, this, &ts_catalog_version, &first_run]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
         // sure to handle that case if initdb ever goes through this codepath.
         bool perdb_mode = false;
@@ -2093,7 +2174,14 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
           server_->get_ysql_catalog_version(
               &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         }
-        return ts_catalog_version >= catalog_version;
+        if (ts_catalog_version >= catalog_version) {
+          return true;
+        }
+        if (first_run) {
+          first_run = false;
+          server_->heartbeater()->TriggerASAP();
+        }
+        return false;
       },
       modified_deadline,
       Format("Wait for tserver catalog version to reach $0", db_ver_tag));
@@ -2128,8 +2216,11 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
 
   // TODO(jason): handle or create issue for catalog version being uint64 vs int64.
   const std::string num_lagging_backends_query = Format(
-      "SELECT count(*) FROM pg_stat_activity WHERE catalog_version < $0 AND datid = $1",
-      catalog_version, database_oid);
+      "SELECT count(*) FROM pg_stat_activity WHERE catalog_version < $0 AND datid = $1$2",
+      catalog_version, database_oid,
+      (req->has_requestor_pg_backend_pid() ?
+       Format(" AND pid != $0", req->requestor_pg_backend_pid()) :
+       ""));
   int num_lagging_backends = -1;
   const std::string description = Format("Wait for update to num lagging backends $0", db_ver_tag);
   s = Wait(
@@ -2200,43 +2291,24 @@ Status TabletServiceImpl::PerformWrite(
   TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
                "tablet_id", req->tablet_id());
   VLOG(2) << "Received Write RPC: " << req->DebugString();
+
   UpdateClock(*req, server_->Clock());
 
   auto tablet =
       VERIFY_RESULT(LookupLeaderTablet(server_->tablet_peer_lookup(), req->tablet_id(), resp));
   RETURN_NOT_OK(CheckWriteThrottling(req->rejection_score(), tablet.peer.get()));
 
+  if (FLAGS_ysql_debug_log_write_requests) {
+    WARN_NOT_OK(
+        PrintYSQLWriteRequest(*req, *context, *tablet.tablet),
+        "Failed to print YSQL write request");
+  }
+
   if (tablet.tablet->metadata()->hidden()) {
     return STATUS(
         NotFound, "Tablet not found", req->tablet_id(),
         TabletServerError(TabletServerErrorPB::TABLET_NOT_FOUND));
   }
-
-#if defined(DUMP_WRITE)
-  if (req->has_write_batch() && req->write_batch().has_transaction()) {
-    VLOG(1) << "Write with transaction: " << req->write_batch().transaction().ShortDebugString();
-    if (req->pgsql_write_batch_size() != 0) {
-      auto txn_id = CHECK_RESULT(FullyDecodeTransactionId(
-          req->write_batch().transaction().transaction_id()));
-      for (const auto& entry : req->pgsql_write_batch()) {
-        if (entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
-          auto key = entry.column_new_values(0).expr().value().int32_value();
-          LOG(INFO) << txn_id << " UPDATE: " << key << " = "
-                    << entry.column_new_values(1).expr().value().string_value();
-        } else if (
-            entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
-            entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
-          dockv::DocKey doc_key;
-          CHECK_OK(doc_key.FullyDecodeFrom(entry.ybctid_column_value().value().binary_value()));
-          LOG(INFO) << txn_id << " INSERT: " << doc_key.hashed_group()[0].GetInt32() << " = "
-                    << entry.column_values(0).expr().value().string_value();
-        } else if (entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_DELETE) {
-          LOG(INFO) << txn_id << " DELETE: " << entry.ShortDebugString();
-        }
-      }
-    }
-  }
-#endif
 
   if (PREDICT_FALSE(req->has_write_batch() && !req->has_external_hybrid_time() &&
       (!req->write_batch().write_pairs().empty() || !req->write_batch().read_pairs().empty()))) {
@@ -2249,6 +2321,7 @@ Status TabletServiceImpl::PerformWrite(
   bool has_operations = req->ql_write_batch_size() != 0 ||
                         req->redis_write_batch_size() != 0 ||
                         req->pgsql_write_batch_size() != 0 ||
+                        req->pgsql_lock_batch_size() != 0 ||
                         (req->has_external_hybrid_time() && !EmptyWriteBatch(req->write_batch()));
   if (!has_operations && tablet.tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
@@ -3078,6 +3151,19 @@ void TabletServiceImpl::CheckTserverTabletHealth(const CheckTserverTabletHealthR
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
+                                   GetMetricsResponsePB* resp,
+                                   rpc::RpcContext context) {
+  auto result = server_->GetMetrics();
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), &context);
+    return;
+  }
+  vector<TserverMetricsInfoPB> metrics = result.get();
+  *resp->mutable_metrics() = {metrics.begin(), metrics.end()};
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
                                       GetLockStatusResponsePB* resp,
                                       rpc::RpcContext context) {
@@ -3316,6 +3402,105 @@ void TabletServiceImpl::ClearAllMetaCachesOnServer(
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::ClearMetacache(
+    const ClearMetacacheRequestPB* req, ClearMetacacheResponsePB* resp, rpc::RpcContext context) {
+  if (!req->has_namespace_id()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(InvalidArgument, "namespace_id is not specified"), &context);
+    return;
+  }
+  auto s = server_->ClearMetacache(req->namespace_id());
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
+void TabletServiceImpl::AcquireObjectLocks(
+    const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
+  }
+  TRACE("Start AcquireObjectLocks");
+  VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
+
+  auto* ts_local_lock_manager = server_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
+  }
+  auto s = ts_local_lock_manager->AcquireObjectLocks(*req, context.GetClientDeadline());
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
+void TabletServiceImpl::ReleaseObjectLocks(
+    const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
+  }
+  TRACE("Start ReleaseObjectLocks");
+  VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
+
+  auto* ts_local_lock_manager = server_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
+  }
+  auto s = ts_local_lock_manager->ReleaseObjectLocks(*req);
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
+void TabletServiceImpl::AdminExecutePgsql(
+    const AdminExecutePgsqlRequestPB* req, AdminExecutePgsqlResponsePB* resp,
+    rpc::RpcContext context) {
+  auto execute_pg_sql = [&req, &context, &server = server_]() -> Status {
+    const auto& deadline = context.GetClientDeadline();
+    auto pg_conn = VERIFY_RESULT(server->CreateInternalPGConn(req->database_name(), deadline));
+    for (const auto& stmt : req->pgsql_statements()) {
+      SCHECK_LT(
+          CoarseMonoClock::Now(), deadline, TimedOut, "Timed out while executing Ysql statements");
+      RETURN_NOT_OK(pg_conn.Execute(stmt));
+    }
+    return Status::OK();
+  };
+
+  auto status = execute_pg_sql();
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
+void TabletServiceImpl::GetLocalPgTxnSnapshot(
+    const GetLocalPgTxnSnapshotRequestPB* req, GetLocalPgTxnSnapshotResponsePB* resp,
+    rpc::RpcContext context) {
+  const auto result = GetLocalPgTxnSnapshotImpl(*server_, req->snapshot_id());
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), &context);
+    return;
+  }
+  const auto& snapshot = *result;
+  snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
+  snapshot.read_time.ToPB(resp->mutable_snapshot_read_time());
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::TestRetry(
     const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {
@@ -3334,5 +3519,4 @@ void TabletServiceAdminImpl::TestRetry(
 void TabletServiceImpl::Shutdown() {
 }
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

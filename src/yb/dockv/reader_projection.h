@@ -35,6 +35,8 @@ struct ProjectedColumn {
   KeyEntryValue subkey; // id converted to KeyEntryValue
   DataType data_type;
 
+  bool is_vector() const;
+
   std::string ToString() const;
 };
 

@@ -136,8 +136,8 @@ class LoadBalancerColocatedTablesTest : public YBTableTestBase {
   Result<pgwrapper::PGConn> ConnectToDB(
       const std::string& dbname = "", bool simple_query_protocol = false) {
     return pgwrapper::PGConnBuilder({
-      .host = external_mini_cluster_->pgsql_hostport(0).host(),
-      .port = external_mini_cluster_->pgsql_hostport(0).port(),
+      .host = external_mini_cluster_->ysql_hostport(0).host(),
+      .port = external_mini_cluster_->ysql_hostport(0).port(),
       .dbname = dbname
     }).Connect(simple_query_protocol);
   }
@@ -160,7 +160,8 @@ class LoadBalancerColocatedTablesTest : public YBTableTestBase {
         kDefaultTimeout));
 
     // Wait for load balancing to complete.
-    WaitForLoadBalanceCompletion();
+    auto base_timeout = MonoDelta::FromMilliseconds(kDefaultLoadBalanceTimeoutMs);
+    WaitForLoadBalanceCompletion(yb::IsTsan() ? base_timeout * 5 : base_timeout);
 
     // Assert that each table is balanced, and that we are globally balanced (Before global load
     // balancing, colocated parent tablets would not move) - Each colocated database or tablegroup

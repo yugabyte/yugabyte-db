@@ -31,7 +31,8 @@ namespace cdc {
 class CDCSDKVirtualWAL {
  public:
   explicit CDCSDKVirtualWAL(
-      CDCServiceImpl* cdc_service, const xrepl::StreamId& stream_id, const uint64_t session_id);
+      CDCServiceImpl* cdc_service, const xrepl::StreamId& stream_id, const uint64_t session_id,
+      ReplicationSlotLsnType lsn_type);
 
   using RecordInfo =
       std::pair<std::shared_ptr<CDCSDKUniqueRecordID>, std::shared_ptr<CDCSDKProtoRecordPB>>;
@@ -105,6 +106,7 @@ class CDCSDKVirtualWAL {
     uint64_t max_lsn = 0;
     bool is_last_txn_fully_sent = false;
     bool contains_publication_refresh_record = false;
+    std::map<uint32_t, std::pair<uint64_t, int>> txn_id_to_ct_records_map_;
   };
 
   using TabletRecordPriorityQueue = std::priority_queue<
@@ -280,6 +282,9 @@ class CDCSDKVirtualWAL {
 
   // ordered map in increasing order of LSN of commit record.
   std::map<uint64_t, CommitMetadataAndLastSentRequest> commit_meta_and_last_req_map_;
+
+  // Store the LSN type the replication slot is created with.
+  ReplicationSlotLsnType slot_lsn_type_;
 };
 
 }  // namespace cdc

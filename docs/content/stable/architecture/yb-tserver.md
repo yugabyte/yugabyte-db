@@ -4,7 +4,6 @@ headerTitle: YB-TServer service
 linkTitle: YB-TServer
 description: Learn how the YB-TServer service stores and serves application data using tablets (also known as shards).
 headcontent: Serve application data and manage tablets
-image: fa-sharp fa-thin fa-grid-horizontal
 menu:
   stable:
     identifier: architecture-concepts-yb-tserver
@@ -17,11 +16,11 @@ The YugabyteDB Tablet Server (YB-TServer) service is responsible for the input-o
 
 The following diagram depicts a basic four-node YugabyteDB universe, with one table that has 4 tablets and a replication factor of 3:
 
-![Tserver overview](/images/architecture/tserver_overview.png)
+![TServer overview](/images/architecture/tserver_overview.png)
 
 The tablet-peers corresponding to each tablet hosted on different YB-TServers form a Raft group and replicate data between each other. The system shown in the preceding diagram includes sixteen independent Raft groups. For more information, see [Replication layer](../docdb-replication/).
 
-Within each YB-TServer, cross-tablet intelligence is employed to maximize resource efficiency. There are multiple ways the YB-TServer coordinates operations across the tablets it hosts.
+In each YB-TServer, cross-tablet intelligence is employed to maximize resource efficiency. There are multiple ways the YB-TServer coordinates operations across the tablets it hosts.
 
 ## Server-global block cache
 

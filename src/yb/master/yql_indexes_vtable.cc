@@ -114,8 +114,7 @@ Result<VTableDataPtr> YQLIndexesVTable::RetrieveData(
     if (indexed_table == nullptr) {
       continue;
     }
-    Schema indexed_schema;
-    RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
+    auto indexed_schema = VERIFY_RESULT(indexed_table->GetSchema());
 
     // Get namespace for table.
     auto ns_info = VERIFY_RESULT(catalog_manager->FindNamespaceById(table->namespace_id()));
@@ -198,8 +197,7 @@ Result<VTableDataPtr> YQLIndexesVTable::RetrieveData(
     uuid = VERIFY_RESULT(Uuid::FromHexString(table->id()));
     RETURN_NOT_OK(SetColumnValue(kIndexId, uuid, &row));
 
-    Schema schema;
-    RETURN_NOT_OK(table->GetSchema(&schema));
+    auto schema = VERIFY_RESULT(table->GetSchema());
     const auto & table_properties = schema.table_properties();
 
     if (table_properties.HasNumTablets()) {

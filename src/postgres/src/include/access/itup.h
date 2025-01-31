@@ -4,7 +4,7 @@
  *	  POSTGRES index tuple definitions.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/itup.h
@@ -35,7 +35,7 @@
 typedef struct IndexTupleData
 {
 	ItemPointerData t_tid;		/* reference TID to heap tuple */
-	Datum 			t_ybctid;	/* virtual column ybctid */
+	Datum		t_ybctid;		/* virtual column ybctid */
 
 	/* ---------------
 	 * t_info is laid out in the following fashion:
@@ -48,7 +48,7 @@ typedef struct IndexTupleData
 	 * ---------------
 	 */
 
-	uint32	t_info;				/* various info about tuple */
+	uint32		t_info;			/* various info about tuple */
 
 } IndexTupleData;				/* MORE DATA FOLLOWS AT END OF STRUCT */
 
@@ -67,7 +67,7 @@ typedef IndexAttributeBitMapData * IndexAttributeBitMap;
 #define INDEX_SIZE_MASK 0x1FFF	/* 8 KB */
 #define YB_INDEX_SIZE_MASK 0x1FFFFFF	/* 32 MB */
 #define INDEX_AM_RESERVED_BIT 0x20000000	/* reserved for index-AM specific
-										 	 * usage */
+											 * usage */
 #define INDEX_VAR_MASK	0x40000000
 #define INDEX_NULL_MASK 0x80000000
 
@@ -134,7 +134,7 @@ typedef IndexAttributeBitMapData * IndexAttributeBitMap;
  * fit on one index page.  An index tuple must have either data or a null
  * bitmap, so we can safely assume it's at least 1 byte bigger than a bare
  * IndexTupleData struct.  We arrive at the divisor because each tuple
- * must be maxaligned, and it must have an associated item pointer.
+ * must be maxaligned, and it must have an associated line pointer.
  *
  * To be index-type-independent, this does not account for any special space
  * on the page, and is thus conservative.
@@ -152,13 +152,19 @@ typedef IndexAttributeBitMapData * IndexAttributeBitMap;
 
 /* routines in indextuple.c */
 extern IndexTuple index_form_tuple(TupleDesc tupleDescriptor,
-				 Datum *values, bool *isnull);
+								   Datum *values, bool *isnull);
+extern IndexTuple index_form_tuple_context(TupleDesc tupleDescriptor,
+										   Datum *values, bool *isnull,
+										   MemoryContext context);
 extern Datum nocache_index_getattr(IndexTuple tup, int attnum,
-					  TupleDesc tupleDesc);
+								   TupleDesc tupleDesc);
 extern void index_deform_tuple(IndexTuple tup, TupleDesc tupleDescriptor,
-				   Datum *values, bool *isnull);
+							   Datum *values, bool *isnull);
+extern void index_deform_tuple_internal(TupleDesc tupleDescriptor,
+										Datum *values, bool *isnull,
+										char *tp, bits8 *bp, int hasnulls);
 extern IndexTuple CopyIndexTuple(IndexTuple source);
 extern IndexTuple index_truncate_tuple(TupleDesc sourceDescriptor,
-					 IndexTuple source, int leavenatts);
+									   IndexTuple source, int leavenatts);
 
 #endif							/* ITUP_H */

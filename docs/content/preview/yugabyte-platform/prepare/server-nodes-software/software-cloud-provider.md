@@ -3,7 +3,7 @@ title: YugabyteDB Anywhere node software requirements
 headerTitle: Software requirements for cloud provider nodes
 linkTitle: Cloud provider
 description: Software requirements for cloud provider nodes.
-headContent: Prepare a VM for deployment in a universe
+headContent: Prepare a VM for deploying universes on cloud providers
 menu:
   preview_yugabyte-platform:
     identifier: software-cloud-provider
@@ -41,9 +41,9 @@ Take the time now to prepare the Linux disk image.
 
 | Save for later | To configure |
 | :--- | :--- |
-| SSH-enabled, root-privileged user name | [Cloud provider](../../../configure-yugabyte-platform/aws/) |
-| SSH-enabled, root-privileged Private Key Content PEM file | [Cloud provider](../../../configure-yugabyte-platform/aws/) |
-| Disk image IDs | [Cloud provider](../../../configure-yugabyte-platform/aws/) |
+| SSH-enabled, root-privileged user name | [Cloud provider configuration](../../../configure-yugabyte-platform/aws/) |
+| SSH-enabled, root-privileged Private Key Content PEM file | [Cloud provider configuration](../../../configure-yugabyte-platform/aws/) |
+| Disk image IDs | [Cloud provider configuration](../../../configure-yugabyte-platform/aws/) |
 
 ## Custom Linux version without Internet connectivity
 
@@ -60,6 +60,6 @@ Take the time now to prepare the Linux disk image.
 
 | Save for later | To configure |
 | :--- | :--- |
-| SSH-enabled, root-privileged user name | [Cloud provider](../../../configure-yugabyte-platform/aws/) |
-| SSH-enabled, root-privileged Private Key Content PEM file | [Cloud provider](../../../configure-yugabyte-platform/aws/) |
-| Disk image IDs | [Cloud provider](../../../configure-yugabyte-platform/aws/) |
+| SSH-enabled, root-privileged user name | [Cloud provider configuration](../../../configure-yugabyte-platform/aws/) |
+| SSH-enabled, root-privileged Private Key Content PEM file | [Cloud provider configuration](../../../configure-yugabyte-platform/aws/) |
+| Disk image IDs | [Cloud provider configuration](../../../configure-yugabyte-platform/aws/) |

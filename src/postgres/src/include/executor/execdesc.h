@@ -5,7 +5,7 @@
  *	  and related modules.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/execdesc.h
@@ -54,21 +54,23 @@ typedef struct QueryDesc
 	/* This is always set NULL by the core system, but plugins can change it */
 	struct Instrumentation *totaltime;	/* total time spent in ExecutorRun */
 
-	/* An additional instrumentation field to collect async RPC stats. This
-	 * needs to be a separate field because its life cycle is distinct from that
-	 * of 'totaltime'. */
+	/*
+	 * An additional instrumentation field to collect async RPC stats. This
+	 * needs to be a separate field because its life cycle is distinct from
+	 * that of 'totaltime'.
+	 */
 	struct Instrumentation *yb_query_stats;
 } QueryDesc;
 
 /* in pquery.c */
 extern QueryDesc *CreateQueryDesc(PlannedStmt *plannedstmt,
-				const char *sourceText,
-				Snapshot snapshot,
-				Snapshot crosscheck_snapshot,
-				DestReceiver *dest,
-				ParamListInfo params,
-				QueryEnvironment *queryEnv,
-				int instrument_options);
+								  const char *sourceText,
+								  Snapshot snapshot,
+								  Snapshot crosscheck_snapshot,
+								  DestReceiver *dest,
+								  ParamListInfo params,
+								  QueryEnvironment *queryEnv,
+								  int instrument_options);
 
 extern void FreeQueryDesc(QueryDesc *qdesc);
 

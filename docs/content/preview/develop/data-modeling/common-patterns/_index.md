@@ -4,7 +4,6 @@ headerTitle: Common patterns
 linkTitle: Common patterns
 description: Build on Common patterns
 headcontent: Design robust and efficient applications using common patterns
-image: /images/section_icons/architecture/distributed_acid.png
 menu:
   preview:
     identifier: common-patterns
@@ -56,6 +55,14 @@ Key-value stores are expected to be some of the fastest storage data models.
 
 {{<lead link="./keyvalue">}}
 For more information on using YugabyteDB for key-value stores, see [Key-value data model](./keyvalue).
+{{</lead>}}
+
+## Job queue
+
+Use distributed job queues to manage and process tasks across multiple systems. A distributed job queue enhances scalability and fault tolerance, and maximizes resource use in modern applications.
+
+{{<lead link="./jobqueue">}}
+For more information on designing a distributed job queue, see [Distributed job queue](./jobqueue).
 {{</lead>}}
 
 ## Wide-column

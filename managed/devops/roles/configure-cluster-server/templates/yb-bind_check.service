@@ -3,8 +3,8 @@ Description=Yugabyte IP Bind Check
 Requires=network-online.target
 After=network.target network-online.target multi-user.target
 Before=yb-controller.service yb-tserver.service yb-master.service
-StartLimitInterval=100
-StartLimitBurst=10
+# Disable restart limits, using RestartSec to rate limit restarts
+StartLimitInterval=0
 
 [Path]
 PathExists={{yb_home_dir}}/controller/bin/yb-controller-server

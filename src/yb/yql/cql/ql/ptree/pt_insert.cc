@@ -289,7 +289,7 @@ void PTInsertStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
 ExplainPlanPB PTInsertStmt::AnalysisResultToPB() {
   ExplainPlanPB explain_plan;
   InsertPlanPB *insert_plan = explain_plan.mutable_insert_plan();
-  insert_plan->set_insert_type("Insert on " + table_name().ToString());
+  insert_plan->set_insert_type("Insert on " + table_name().ToString(false));
   insert_plan->set_output_width(narrow_cast<int32_t>(insert_plan->insert_type().length()));
   return explain_plan;
 }

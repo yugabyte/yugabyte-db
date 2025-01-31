@@ -11,7 +11,7 @@ import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import '../AdvancedConfig.scss';
 
 export const CustomerRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
-  configTagFilter,
+  getRuntimeConfig,
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
@@ -101,7 +101,7 @@ export const CustomerRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
         deleteRunTimeConfig={deleteRunTimeConfig}
         scope={RunTimeConfigScope.CUSTOMER}
         customerUUID={customerUUID}
-        configTagFilter={configTagFilter}
+        getRuntimeConfig={getRuntimeConfig}
       />
     </div>
   );

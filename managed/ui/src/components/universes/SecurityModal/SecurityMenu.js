@@ -11,7 +11,9 @@ export function SecurityMenu({
   showTLSConfigurationModal,
   showManageKeyModal,
   manageKeyAvailability,
-  allowedTasks
+  allowedTasks,
+  isEncryptionAtTransitEnabled,
+  isItKubernetesUniverse
 }) {
   const { test, released } = useSelector((state) => state.featureFlags);
 
@@ -31,7 +33,10 @@ export function SecurityMenu({
       <YBMenuItem
         onClick={showTLSConfigurationModal}
         availability={tlsAvailability}
-        disabled={isActionFrozen(allowedTasks, UNIVERSE_TASKS.ENCRYPTION_IN_TRANSIT)}
+        disabled={
+          isActionFrozen(allowedTasks, UNIVERSE_TASKS.ENCRYPTION_IN_TRANSIT) ||
+          (isItKubernetesUniverse && !isEncryptionAtTransitEnabled)
+        }
       >
         Encryption in-Transit
       </YBMenuItem>

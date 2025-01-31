@@ -33,8 +33,7 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 class TServerSharedData {
  public:
@@ -116,6 +115,14 @@ class TServerSharedData {
 
   bool IsCronLeader() const;
 
+  void SetPid(pid_t pid) {
+    pid_ = pid;
+  }
+
+  pid_t pid() const {
+    return pid_;
+  }
+
  private:
   // Endpoint that should be used by local processes to access this tserver.
   Endpoint endpoint_;
@@ -130,13 +137,16 @@ class TServerSharedData {
   std::atomic<std::optional<bool>> catalog_version_table_in_perdb_mode_{std::nullopt};
 
   std::atomic<MonoTime> cron_leader_lease_{MonoTime::kUninitialized};
+
+  // pid of the local TServer
+  pid_t pid_;
 };
 
 YB_STRONGLY_TYPED_BOOL(Create);
 
 class SharedExchange {
  public:
-  SharedExchange(const std::string& instance_id, uint64_t session_id, Create create);
+  SharedExchange(SharedExchange&&);
   ~SharedExchange();
 
   std::byte* Obtain(size_t required_size);
@@ -148,12 +158,18 @@ class SharedExchange {
   Result<size_t> Poll();
   void SignalStop();
 
+  const std::string& instance_id() const;
   uint64_t session_id() const;
 
   static Status Cleanup(const std::string& instance_id);
 
+  static Result<SharedExchange> Make(
+      const std::string& instance_id, uint64_t session_id, Create create);
+
  private:
   class Impl;
+
+  explicit SharedExchange(std::unique_ptr<Impl> impl);
   std::unique_ptr<Impl> impl_;
 };
 
@@ -161,9 +177,7 @@ using SharedExchangeListener = std::function<void(size_t)>;
 
 class SharedExchangeThread {
  public:
-  SharedExchangeThread(
-      const std::string& instance_id, uint64_t session_id, Create create,
-      const SharedExchangeListener& listener);
+  SharedExchangeThread(SharedExchange exchange, const SharedExchangeListener& listener);
 
   ~SharedExchangeThread();
 
@@ -171,9 +185,17 @@ class SharedExchangeThread {
     return exchange_;
   }
 
+  bool ReadyToShutdown() const {
+    return ready_to_complete_.load();
+  }
+
+  void StartShutdown();
+  void CompleteShutdown();
+
  private:
   SharedExchange exchange_;
-  scoped_refptr<Thread> thread_;
+  ThreadPtr thread_;
+  std::atomic<bool> ready_to_complete_{false};
 };
 
 struct SharedExchangeMessage {
@@ -182,6 +204,9 @@ struct SharedExchangeMessage {
 };
 
 constexpr size_t kTooBigResponseMask = 1ULL << 63;
+constexpr size_t kBigSharedMemoryMask = 1ULL << 62;
+constexpr size_t kBigSharedMemoryIdShift = 40;
 
-}  // namespace tserver
-}  // namespace yb
+std::string MakeSharedMemoryBigSegmentName(const std::string& instance_id, uint64_t id);
+
+}  // namespace yb::tserver

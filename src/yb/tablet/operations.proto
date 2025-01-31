@@ -31,6 +31,7 @@ message TransactionStatePB {
   // PENDING - list of involved tablets, if FLAGS_disable_heartbeat_send_involved_tablets = false.
   // COMMITTED - list of involved tablets
   // APPLYING - single entry, status tablet of this transaction
+  // PROMOTING - single entry, new status tablet of this transaction
   // APPLIED - single entry, tablet that applied this transaction
   // Not used is other cases.
   repeated bytes tablets = 3;
@@ -61,6 +62,21 @@ message TransactionStatePB {
 
   // Status containing deadlock info if the transaction was aborted due to deadlock.
   optional AppStatusPB deadlock_reason = 12;
+
+  // Reserved for deprecated object-locks field txn_reuse_version.
+  reserved 13;
+
+  // Fields 14, 15 are used for session level transactions alone (when session advisory locks
+  // feature is enabled).
+  // The current pg session request version is propagated on transaction heartbeats. If the
+  // coordinator has a higher version than the one received in the request, it errors with the
+  // status holding the active pg session request version, post which YBTransaction updates
+  // its state.
+  optional uint64 pg_session_req_version = 14;
+
+  // For detection deadlocks spanning session advisory locks and row-level locks, the status tablet
+  // needs to be made aware of the active regular docdb transaction of the ysql session, if any.
+  optional TransactionMetadataPB background_transaction_meta = 15;
 }
 
 message TruncatePB {
@@ -131,6 +147,11 @@ message ChangeMetadataRequestPB {
   // For CDCSDK Stream creation with consistent snapshot
   optional bytes retention_requester_id = 18;
   optional bool cdc_sdk_require_history_cutoff = 19;
+
+  // Will insert the new schema into historical packing schema with schema version
+  // [schema_version - 1], and then reinsert the current packing schema with [schema_version].
+  // Schema version must be bumped by 2 before this call is made.
+  optional bool insert_packed_schema = 20;
 }
 
 message SplitTabletRequestPB {
@@ -185,4 +206,10 @@ message CloneTabletRequestPB {
   // This is set for tablets that were hidden before the snapshot that covers the clone time was
   // taken (we do not take snapshots after hiding a tablet).
   optional bool clone_from_active_rocksdb = 15;
+  // The colocated tables' infos used to build the superblock of the parent tablet. The colocated
+  // tables' info cannot be copied from the source tablet becuase:
+  // 1- The colocated tables don't have the same table ids in both source and target databases.
+  // 2- The colocated tables on the target can have different schemas than the tables on the source
+  // tablet. i.e when cloning to a time before DDl operations happened on the source tablet.
+  repeated TableInfoPB colocated_tables = 16;
 }

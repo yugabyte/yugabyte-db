@@ -19,6 +19,7 @@
 
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
 
+#include "yb/gutil/callback.h"
 #include "yb/util/backoff_waiter.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -70,15 +71,165 @@ class YBBackupTestColocatedTablesWithTablespaces : public YBBackupTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.emplace_back(
-        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
+    options->replication_factor = 3;
     options->extra_master_flags.emplace_back(
         "--ysql_enable_colocated_tables_with_tablespaces=true");
 
     options->extra_tserver_flags.emplace_back(
-        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
-    options->extra_tserver_flags.emplace_back(
         "--ysql_enable_colocated_tables_with_tablespaces=true");
+  }
+  void SetupTablespaces() {
+    const std::string placement_info_1 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack1",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
+    ASSERT_OK(cluster_->AddTabletServer(
+        ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+        {"--placement_cloud=cloud1", "--placement_region=datacenter1", "--placement_zone=rack2"}));
+    const std::string placement_info_2 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack2",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
+
+    ASSERT_OK(cluster_->AddTabletServer(
+        ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+        {"--placement_cloud=cloud1", "--placement_region=datacenter1", "--placement_zone=rack3"}));
+    const std::string placement_info_3 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack3",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        "CREATE TABLESPACE tsp1 WITH (replica_placement=" + placement_info_1 + ")",
+        "CREATE TABLESPACE"));
+
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        "CREATE TABLESPACE tsp2 WITH (replica_placement=" + placement_info_2 + ")",
+        "CREATE TABLESPACE"));
+
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        "CREATE TABLESPACE tsp3 WITH (replica_placement=" + placement_info_3 + ")",
+        "CREATE TABLESPACE"));
+  }
+
+  void SetupColocatedGeoPartitionedTables(std::string backup_db_name) {
+    SetupTablespaces();
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
+    SetDbName(backup_db_name);
+
+    ASSERT_NO_FATALS(CreateTable(
+        "CREATE TABLE t1 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region)) PARTITION BY "
+        "LIST (region)"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t1_1 PARTITION OF t1 FOR VALUES IN "
+                    "('USWEST') TABLESPACE tsp1;"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t1_2 PARTITION OF t1 FOR VALUES IN "
+                    "('USEAST') TABLESPACE tsp2;"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t1_3 PARTITION OF t1 FOR VALUES IN "
+                    "('APSOUTH') TABLESPACE tsp3;"));
+    ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1_default PARTITION OF t1 DEFAULT;"));
+
+    ASSERT_NO_FATALS(CreateTable(
+        "CREATE TABLE t2 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region)) PARTITION BY "
+        "LIST (region)"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t2_1 PARTITION OF t2 FOR VALUES IN "
+                    "('USWEST') TABLESPACE tsp1;"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t2_2 PARTITION OF t2 FOR VALUES IN "
+                    "('USEAST') TABLESPACE tsp2;"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t2_3 PARTITION OF t2 FOR VALUES IN "
+                    "('APSOUTH') TABLESPACE tsp3;"));
+    ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2_default PARTITION OF t2 DEFAULT;"));
+
+    std::vector<std::string> regions = {"USWEST", "USEAST", "APSOUTH", "EUWEST", "APSOUTHEAST"};
+    for (int i = 0; i < 30; ++i) {
+      ASSERT_NO_FATALS(
+          InsertOneRow(Format("INSERT INTO t1 VALUES ($0, '$1', $2)", i, regions[i % 5], 100 * i)));
+    }
+
+    for (int i = 0; i < 30; ++i) {
+      ASSERT_NO_FATALS(
+          InsertOneRow(Format("INSERT INTO t2 VALUES ($0, '$1', $2)", i, regions[i % 5], 200 * i)));
+    }
+  }
+
+  void SetupMixColocatedGeoPartitionedTables(std::string backup_db_name) {
+    SetupTablespaces();
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
+    SetDbName(backup_db_name);
+
+    ASSERT_NO_FATALS(CreateTable(
+        "CREATE TABLE t1 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region)) PARTITION BY "
+        "LIST (region)"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t1_1 PARTITION OF t1 FOR VALUES IN "
+                    "('USWEST') WITH (COLOCATION=FALSE) TABLESPACE tsp1;"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t1_2 PARTITION OF t1 FOR VALUES IN "
+                    "('USEAST') TABLESPACE tsp2;"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t1_3 PARTITION OF t1 FOR VALUES IN "
+                    "('APSOUTH') TABLESPACE tsp3;"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t1_default PARTITION OF t1 DEFAULT WITH (COLOCATION=FALSE);"));
+
+    ASSERT_NO_FATALS(CreateTable(
+        "CREATE TABLE t2 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region)) PARTITION BY "
+        "LIST (region)"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t2_1 PARTITION OF t2 FOR VALUES IN "
+                    "('USWEST') WITH (COLOCATION=FALSE) TABLESPACE tsp1;"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t2_2 PARTITION OF t2 FOR VALUES IN "
+                    "('USEAST') WITH (COLOCATION=FALSE) TABLESPACE tsp2;"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t2_3 PARTITION OF t2 FOR VALUES IN "
+                    "('APSOUTH') WITH (COLOCATION=FALSE) TABLESPACE tsp3;"));
+    ASSERT_NO_FATALS(
+        CreateTable("CREATE TABLE t2_default PARTITION OF t2 DEFAULT WITH (COLOCATION=FALSE);"));
+
+    std::vector<std::string> regions = {"USWEST", "USEAST", "APSOUTH", "EUWEST", "APSOUTHEAST"};
+    for (int i = 0; i < 30; ++i) {
+      ASSERT_NO_FATALS(
+          InsertOneRow(Format("INSERT INTO t1 VALUES ($0, '$1', $2)", i, regions[i % 5], 100 * i)));
+    }
+
+    for (int i = 0; i < 30; ++i) {
+      ASSERT_NO_FATALS(
+          InsertOneRow(Format("INSERT INTO t2 VALUES ($0, '$1', $2)", i, regions[i % 5], 200 * i)));
+    }
   }
 };
 // Test backup/restore on table with UNIQUE constraint when default number of tablets differs. When
@@ -105,10 +256,6 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table (and index) so that, on restore, running the ysql_dump file recreates the table
-  // (and index).
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // When restore runs the CREATE TABLE, make it run in an environment where the default number of
   // tablets is different. Namely, run it with new default 2 (previously 3). This won't affect the
   // table since the table is generated with SPLIT clause specifying 3, but it will change the way
@@ -123,14 +270,15 @@ TEST_F_EX(YBBackupTest,
   // Check that --ysql_num_tablets=2 is working as intended by
   // 1. running the CREATE TABLE that is expected to be found in the ysql_dump file and
   // 2. finding 2 index tablets
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
   ASSERT_NO_FATALS(CreateTable(Format(
       "CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT, UNIQUE (v))", table_name)));
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 2);
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore should notice that the index it creates from ysql_dump file (2 tablets) differs from
   // the external snapshot (3 tablets), so it should adjust to match the snapshot (3 tablets).
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -240,6 +388,12 @@ TEST_F_EX(
   ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
 }
 
+// WARNING: The following test currently does not test what it describes below (different boundaries
+// but the same number of partitions), but rather both a different number of partitions and
+// different boundaries, which tests a simpler and different path of the code.  #23303 is the GitHub
+// issue to fix this.  It has more information, but also see the comments prefixed with MLILLIBRIDGE
+// below.
+//
 // Test backup/restore when a hash-partitioned table undergoes manual tablet splitting.  Most
 // often, if tablets are split after creation, the partition boundaries will not be evenly spaced.
 // This then differs from the boundaries of a hash table that is pre-split with the same number of
@@ -249,9 +403,8 @@ TEST_F_EX(
 // 1. start with 3 pre-split tablets
 // 2. split one of them to make 4 tablets
 // 3. backup
-// 4. drop table
-// 5. restore, which will initially create 4 pre-split tablets then realize the partition boundaries
-//    differ
+// 4. restore, which will initially create [sic] 4 pre-split tablets then realize the partition
+//    boundaries differ
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplit),
           YBBackupTestNumTablets) {
@@ -334,23 +487,26 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table so that, on restore, running the ysql_dump file recreates the table.  ysql_dump
+  // On restore, running the ysql_dump file recreates the table.  ysql_dump
   // should specify SPLIT INTO 4 TABLETS because the table in snapshot has 4 tablets.
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+  // MLILLIBRIDGE: This is not true; the actual split is into 3 tablets.
 
   // Before performing restore, demonstrate that the table that would be created by the ysql_dump
   // file will have different splits.
+  // MLILLIBRIDGE: Given the above misunderstanding, this does not demonstrate that.
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
   ASSERT_NO_FATALS(CreateTable(
       Format("CREATE TABLE $0 (k INT PRIMARY KEY) SPLIT INTO 4 TABLETS", table_name)));
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   ASSERT_EQ(tablets.size(), 4);
   auto default_table_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
   ASSERT_NE(three_split_points, default_table_split_points);
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore should notice that the table it creates from ysql_dump file has different partition
   // boundaries from the one in the external snapshot EVEN THOUGH the number of partitions is four
   // in both, so it should recreate partitions to match the splits in the snapshot.
+  // MLILLIBRIDGE: The number of partitions is not 4 in both.
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -373,8 +529,7 @@ TEST_F_EX(YBBackupTest,
 // 1. start with a table with 3 pre-split tablets
 // 2. insert data
 // 3. backup
-// 4. drop table
-// 5. restore
+// 4. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestPreSplitYSQLRangeSplitTable),
           YBBackupTestNumTablets) {
@@ -418,10 +573,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -456,8 +609,7 @@ TEST_F_EX(YBBackupTest,
 // 2. create an index with 3 pre-split tablets
 // 3. insert data
 // 4. backup
-// 5. drop table
-// 6. restore
+// 5. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestPreSplitYSQLRangeSplitTableAndIndex),
           YBBackupTestNumTablets) {
@@ -511,10 +663,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -550,8 +700,7 @@ TEST_F_EX(YBBackupTest,
 // 1. start with a table with 2 pre-split tablets
 // 2. insert data into the table to trigger automatic tablet splitting
 // 3. backup
-// 4. drop table
-// 5. restore
+// 4. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLAutomaticTabletSplitRangeTable),
           YBBackupTestNumTablets) {
@@ -604,10 +753,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table.
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore.
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -627,8 +774,7 @@ TEST_F_EX(YBBackupTest,
 // 2. split one of them (3 tablets)
 // 3. further split one of newly created tablets (4 tablets)
 // 4. backup
-// 5. drop table
-// 6. restore
+// 5. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplitRangeTable),
           YBBackupTestNumTablets) {
@@ -701,10 +847,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -724,8 +868,7 @@ TEST_F_EX(YBBackupTest,
 // 2. insert data into the table
 // 3. split the index on its hidden column into 3 tablets
 // 4. backup
-// 5. drop table
-// 6. restore
+// 5. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeUniqueIndexOnHiddenColumn),
           YBBackupTestNumTablets) {
@@ -807,10 +950,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -842,8 +983,7 @@ TEST_F_EX(YBBackupTest,
 // 2. insert data into the table
 // 3. split the index on its hidden column into 3 tablets
 // 4. backup
-// 5. drop table
-// 6. restore
+// 5. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeIndexOnHiddenColumn),
           YBBackupTestNumTablets) {
@@ -911,10 +1051,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -941,8 +1079,7 @@ TEST_F_EX(YBBackupTest,
 // 2. insert NULL data into the table
 // 3. split the GIN index into 2 tablets to make GinNull become part of partition bounds
 // 4. backup
-// 5. drop table
-// 6. restore
+// 5. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitGINIndexWithGinNullInPartitionBounds),
           YBBackupTestNumTablets) {
@@ -1000,10 +1137,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -1052,7 +1187,7 @@ TEST_F(
   SetDbName(backup_db_name);
 
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (a INT PRIMARY KEY) TABLESPACE tsp1"));
-  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY)"));
 
   for (int i = 0; i < 3; ++i) {
     ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t1 VALUES ($0)", i)));
@@ -1096,8 +1231,7 @@ TEST_F(
     --------+---------+-----------+----------+---------
      a      | integer |           | not null |
     Indexes:
-        "t2_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp1", colocation: true
-    Tablespace: "tsp1"
+        "t2_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
     Colocation: true
   )#");
 }
@@ -1112,30 +1246,17 @@ TEST_F(
   const string& backup_db_name = "backup_db";
   const string& restore_db_name = "restore_db";
 
-  const std::string placement_info_1 = R"#(
-    '{
-      "num_replicas" : 1,
-      "placement_blocks": [
-          {
-            "cloud"            : "cloud1",
-            "region"           : "datacenter1",
-            "zone"             : "rack1",
-            "min_num_replicas" : 1
-          }
-      ]
-    }'
-  )#";
-
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "CREATE TABLESPACE tsp1 WITH (replica_placement=" + placement_info_1 + ")",
-      "CREATE TABLESPACE"));
+  SetupTablespaces();
 
   ASSERT_NO_FATALS(RunPsqlCommand(
       Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
   SetDbName(backup_db_name);
 
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (a INT PRIMARY KEY) TABLESPACE tsp1"));
-  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY) TABLESPACE tsp2"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t3 (a INT PRIMARY KEY) TABLESPACE tsp3"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t4 (a INT PRIMARY KEY)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t5 (a INT PRIMARY KEY) TABLESPACE tsp1"));
 
   for (int i = 0; i < 3; ++i) {
     ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t1 VALUES ($0)", i)));
@@ -1181,6 +1302,672 @@ TEST_F(
         "t2_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
     Colocation: true
   )#");
+  RunPsqlCommand(" \\d t3",
+  R"#(
+                    Table "public.t3"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t3_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+    Colocation: true
+  )#");
+  RunPsqlCommand(" \\d t4",
+  R"#(
+                    Table "public.t4"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t4_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+    Colocation: true
+  )#");
+  RunPsqlCommand(" \\d t5",
+  R"#(
+                    Table "public.t5"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t5_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+    Colocation: true
+  )#");
+  RunPsqlCommand(" \\dgrt",
+  R"#(
+                  List of tablegroup tables
+          Group Name        | Group Owner | Name | Type  |  Owner
+  --------------------------+-------------+------+-------+----------
+   colocation_restore_16387 | postgres    | t1   | table | yugabyte
+   colocation_restore_16387 | postgres    | t5   | table | yugabyte
+   colocation_restore_16393 | postgres    | t2   | table | yugabyte
+   colocation_restore_16399 | postgres    | t3   | table | yugabyte
+   default                  | postgres    | t4   | table | yugabyte
+  (5 rows)
+  )#");
+}
+
+// Test backup/restore of geo-partitioned colocated tables with tablespace information.
+TEST_F(
+    YBBackupTestColocatedTablesWithTablespaces,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestBackupGeoPartitionedColocatedTablesWithTablespaces)) {
+  const std::string backup_db_name = "backup_db";
+  const std::string restore_db_name = "restore_db";
+  SetupColocatedGeoPartitionedTables(backup_db_name);
+
+  const string backup_dir = GetTempDir("backup");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+
+  auto select_t1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1 ORDER BY a;"));
+  auto select_t1_1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_1 ORDER BY a;"));
+  auto select_t1_2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_2 ORDER BY a;"));
+  auto select_t1_3 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_3 ORDER BY a;"));
+  auto select_t1_default = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_default ORDER BY a;"));
+
+  auto select_t2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2 ORDER BY a;"));
+  auto select_t2_1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_1 ORDER BY a;"));
+  auto select_t2_2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_2 ORDER BY a;"));
+  auto select_t2_3 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_3 ORDER BY a;"));
+  auto select_t2_default = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_default ORDER BY a;"));
+
+  auto desc_t1 = ASSERT_RESULT(RunPsqlCommand("\\d t1"));
+  auto desc_t1_1 = ASSERT_RESULT(RunPsqlCommand("\\d t1_1"));
+  auto desc_t1_2 = ASSERT_RESULT(RunPsqlCommand("\\d t1_2"));
+  auto desc_t1_3 = ASSERT_RESULT(RunPsqlCommand("\\d t1_3"));
+  auto desc_t1_default = ASSERT_RESULT(RunPsqlCommand("\\d t1_default"));
+
+  auto desc_t2 = ASSERT_RESULT(RunPsqlCommand("\\d t2"));
+  auto desc_t2_1 = ASSERT_RESULT(RunPsqlCommand("\\d t2_1"));
+  auto desc_t2_2 = ASSERT_RESULT(RunPsqlCommand("\\d t2_2"));
+  auto desc_t2_3 = ASSERT_RESULT(RunPsqlCommand("\\d t2_3"));
+  auto desc_t2_default = ASSERT_RESULT(RunPsqlCommand("\\d t2_default"));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace", backup_keyspace,
+       "create"}));
+
+  SetDbName("yugabyte");
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP DATABASE backup_db", "DROP DATABASE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp1", "DROP TABLESPACE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp2", "DROP TABLESPACE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp3", "DROP TABLESPACE"));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace", restore_keyspace,
+       "restore"}));
+
+  SetDbName(restore_db_name);
+
+  RunPsqlCommand("SELECT * FROM t1 ORDER BY a;", select_t1);
+  RunPsqlCommand("SELECT * FROM t1_1 ORDER BY a;", select_t1_1);
+  RunPsqlCommand("SELECT * FROM t1_2 ORDER BY a;", select_t1_2);
+  RunPsqlCommand("SELECT * FROM t1_3 ORDER BY a;", select_t1_3);
+  RunPsqlCommand("SELECT * FROM t1_default ORDER BY a;", select_t1_default);
+
+  RunPsqlCommand("SELECT * FROM t2 ORDER BY a;", select_t2);
+  RunPsqlCommand("SELECT * FROM t2_1 ORDER BY a;", select_t2_1);
+  RunPsqlCommand("SELECT * FROM t2_2 ORDER BY a;", select_t2_2);
+  RunPsqlCommand("SELECT * FROM t2_3 ORDER BY a;", select_t2_3);
+  RunPsqlCommand("SELECT * FROM t2_default ORDER BY a;", select_t2_default);
+
+  RunPsqlCommand("\\d t1", desc_t1);
+  RunPsqlCommand("\\d t1_1", desc_t1_1);
+  RunPsqlCommand("\\d t1_2", desc_t1_2);
+  RunPsqlCommand("\\d t1_3", desc_t1_3);
+  RunPsqlCommand("\\d t1_default", desc_t1_default);
+
+  RunPsqlCommand("\\d t2", desc_t2);
+  RunPsqlCommand("\\d t2_1", desc_t2_1);
+  RunPsqlCommand("\\d t2_2", desc_t2_2);
+  RunPsqlCommand("\\d t2_3", desc_t2_3);
+  RunPsqlCommand("\\d t2_default", desc_t2_default);
+
+  RunPsqlCommand(
+      "\\dgrt",
+      R"#(                   List of tablegroup tables
+      Group Name    | Group Owner |    Name    | Type  |  Owner
+  ------------------+-------------+------------+-------+----------
+   colocation_16388 | postgres    | t1_1       | table | yugabyte
+   colocation_16388 | postgres    | t2_1       | table | yugabyte
+   colocation_16389 | postgres    | t2_2       | table | yugabyte
+   colocation_16389 | postgres    | t1_2       | table | yugabyte
+   colocation_16390 | postgres    | t2_3       | table | yugabyte
+   colocation_16390 | postgres    | t1_3       | table | yugabyte
+   default          | postgres    | t2         | table | yugabyte
+   default          | postgres    | t1_default | table | yugabyte
+   default          | postgres    | t1         | table | yugabyte
+   default          | postgres    | t2_default | table | yugabyte
+  (10 rows)
+  )#");
+}
+
+// Test backup/restore of geo-partitioned colocated tables without tablespace information.
+TEST_F(
+    YBBackupTestColocatedTablesWithTablespaces,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestBackupGeoPartitionedColocatedTablesWithoutTablespaces)) {
+  const std::string backup_db_name = "backup_db";
+  const std::string restore_db_name = "restore_db";
+  SetupColocatedGeoPartitionedTables(backup_db_name);
+
+  const string backup_dir = GetTempDir("backup");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+
+  auto select_t1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1 ORDER BY a;"));
+  auto select_t1_1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_1 ORDER BY a;"));
+  auto select_t1_2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_2 ORDER BY a;"));
+  auto select_t1_3 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_3 ORDER BY a;"));
+  auto select_t1_default = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_default ORDER BY a;"));
+
+  auto select_t2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2 ORDER BY a;"));
+  auto select_t2_1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_1 ORDER BY a;"));
+  auto select_t2_2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_2 ORDER BY a;"));
+  auto select_t2_3 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_3 ORDER BY a;"));
+  auto select_t2_default = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_default ORDER BY a;"));
+
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", backup_keyspace, "create"}));
+
+  SetDbName("yugabyte");
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP DATABASE backup_db", "DROP DATABASE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp1", "DROP TABLESPACE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp2", "DROP TABLESPACE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp3", "DROP TABLESPACE"));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"}));
+
+  SetDbName(restore_db_name);
+
+  RunPsqlCommand("SELECT * FROM t1 ORDER BY a;", select_t1);
+  RunPsqlCommand("SELECT * FROM t1_1 ORDER BY a;", select_t1_1);
+  RunPsqlCommand("SELECT * FROM t1_2 ORDER BY a;", select_t1_2);
+  RunPsqlCommand("SELECT * FROM t1_3 ORDER BY a;", select_t1_3);
+  RunPsqlCommand("SELECT * FROM t1_default ORDER BY a;", select_t1_default);
+
+  RunPsqlCommand("SELECT * FROM t2 ORDER BY a;", select_t2);
+  RunPsqlCommand("SELECT * FROM t2_1 ORDER BY a;", select_t2_1);
+  RunPsqlCommand("SELECT * FROM t2_2 ORDER BY a;", select_t2_2);
+  RunPsqlCommand("SELECT * FROM t2_3 ORDER BY a;", select_t2_3);
+  RunPsqlCommand("SELECT * FROM t2_default ORDER BY a;", select_t2_default);
+
+  RunPsqlCommand(
+      "\\d t1",
+      R"#(
+                    Partitioned table "public.t1"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition key: LIST (region)
+    Indexes:
+        "t1_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Number of partitions: 4 (Use \d+ to list them.)
+    Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      "\\d t1_1",
+      R"#(
+                           Table "public.t1_1"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t1 FOR VALUES IN ('USWEST')
+    Indexes:
+        "t1_1_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      "\\d t1_2",
+      R"#(
+                         Table "public.t1_2"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t1 FOR VALUES IN ('USEAST')
+    Indexes:
+        "t1_2_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Colocation: true
+  )#");
+
+  RunPsqlCommand("\\d t1_3", R"#(
+                         Table "public.t1_3"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t1 FOR VALUES IN ('APSOUTH')
+    Indexes:
+        "t1_3_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Colocation: true
+  )#");
+
+  RunPsqlCommand("\\d t1_default", R"#(
+                      Table "public.t1_default"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t1 DEFAULT
+    Indexes:
+        "t1_default_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      "\\d t2",
+      R"#(
+                    Partitioned table "public.t2"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition key: LIST (region)
+    Indexes:
+        "t2_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Number of partitions: 4 (Use \d+ to list them.)
+    Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      "\\d t2_1",
+      R"#(
+                           Table "public.t2_1"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t2 FOR VALUES IN ('USWEST')
+    Indexes:
+        "t2_1_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      "\\d t2_2",
+      R"#(
+                         Table "public.t2_2"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t2 FOR VALUES IN ('USEAST')
+    Indexes:
+        "t2_2_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Colocation: true
+  )#");
+
+  RunPsqlCommand("\\d t2_3", R"#(
+                         Table "public.t2_3"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t2 FOR VALUES IN ('APSOUTH')
+    Indexes:
+        "t2_3_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Colocation: true
+  )#");
+
+  RunPsqlCommand("\\d t2_default", R"#(
+                      Table "public.t2_default"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t2 DEFAULT
+    Indexes:
+        "t2_default_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      "\\dgrt",
+      R"#(
+                             List of tablegroup tables
+            Group Name        | Group Owner |    Name    | Type  |  Owner
+    --------------------------+-------------+------------+-------+----------
+     colocation_restore_16393 | postgres    | t1_1       | table | yugabyte
+     colocation_restore_16393 | postgres    | t2_1       | table | yugabyte
+     colocation_restore_16399 | postgres    | t2_2       | table | yugabyte
+     colocation_restore_16399 | postgres    | t1_2       | table | yugabyte
+     colocation_restore_16405 | postgres    | t2_3       | table | yugabyte
+     colocation_restore_16405 | postgres    | t1_3       | table | yugabyte
+     default                  | postgres    | t2         | table | yugabyte
+     default                  | postgres    | t1_default | table | yugabyte
+     default                  | postgres    | t1         | table | yugabyte
+     default                  | postgres    | t2_default | table | yugabyte
+    (10 rows)
+  )#");
+
+  // Assert that all the tablegroups are in default tablespace (grptablespace == 0)
+  RunPsqlCommand(
+      "SELECT * FROM pg_yb_tablegroup;",
+      R"#(
+        oid  |         grpname          | grpowner | grptablespace | grpacl | grpoptions
+      -------+--------------------------+----------+---------------+--------+------------
+       16387 | default                  |       10 |             0 |        |
+       16393 | colocation_restore_16393 |       10 |             0 |        |
+       16399 | colocation_restore_16399 |       10 |             0 |        |
+       16405 | colocation_restore_16405 |       10 |             0 |        |
+      (4 rows)
+    )#");
+}
+
+TEST_F(
+    YBBackupTestColocatedTablesWithTablespaces,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestBackupGeoPartitionedMixColocatedTablesWithTablespaces)) {
+  const std::string backup_db_name = "backup_db";
+  const std::string restore_db_name = "restore_db";
+  SetupMixColocatedGeoPartitionedTables(backup_db_name);
+
+  const string backup_dir = GetTempDir("backup");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+
+  auto select_t1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1 ORDER BY a;"));
+  auto select_t1_1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_1 ORDER BY a;"));
+  auto select_t1_2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_2 ORDER BY a;"));
+  auto select_t1_3 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_3 ORDER BY a;"));
+  auto select_t1_default = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_default ORDER BY a;"));
+
+  auto select_t2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2 ORDER BY a;"));
+  auto select_t2_1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_1 ORDER BY a;"));
+  auto select_t2_2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_2 ORDER BY a;"));
+  auto select_t2_3 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_3 ORDER BY a;"));
+  auto select_t2_default = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_default ORDER BY a;"));
+
+  auto desc_t1 = ASSERT_RESULT(RunPsqlCommand("\\d t1"));
+  auto desc_t1_1 = ASSERT_RESULT(RunPsqlCommand("\\d t1_1"));
+  auto desc_t1_2 = ASSERT_RESULT(RunPsqlCommand("\\d t1_2"));
+  auto desc_t1_3 = ASSERT_RESULT(RunPsqlCommand("\\d t1_3"));
+  auto desc_t1_default = ASSERT_RESULT(RunPsqlCommand("\\d t1_default"));
+
+  auto desc_t2 = ASSERT_RESULT(RunPsqlCommand("\\d t2"));
+  auto desc_t2_1 = ASSERT_RESULT(RunPsqlCommand("\\d t2_1"));
+  auto desc_t2_2 = ASSERT_RESULT(RunPsqlCommand("\\d t2_2"));
+  auto desc_t2_3 = ASSERT_RESULT(RunPsqlCommand("\\d t2_3"));
+  auto desc_t2_default = ASSERT_RESULT(RunPsqlCommand("\\d t2_default"));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace", backup_keyspace,
+       "create"}));
+
+  SetDbName("yugabyte");
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP DATABASE backup_db", "DROP DATABASE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp1", "DROP TABLESPACE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp2", "DROP TABLESPACE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp3", "DROP TABLESPACE"));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace", restore_keyspace,
+       "restore"}));
+
+  SetDbName(restore_db_name);
+
+  RunPsqlCommand("SELECT * FROM t1 ORDER BY a;", select_t1);
+  RunPsqlCommand("SELECT * FROM t1_1 ORDER BY a;", select_t1_1);
+  RunPsqlCommand("SELECT * FROM t1_2 ORDER BY a;", select_t1_2);
+  RunPsqlCommand("SELECT * FROM t1_3 ORDER BY a;", select_t1_3);
+  RunPsqlCommand("SELECT * FROM t1_default ORDER BY a;", select_t1_default);
+
+  RunPsqlCommand("SELECT * FROM t2 ORDER BY a;", select_t2);
+  RunPsqlCommand("SELECT * FROM t2_1 ORDER BY a;", select_t2_1);
+  RunPsqlCommand("SELECT * FROM t2_2 ORDER BY a;", select_t2_2);
+  RunPsqlCommand("SELECT * FROM t2_3 ORDER BY a;", select_t2_3);
+  RunPsqlCommand("SELECT * FROM t2_default ORDER BY a;", select_t2_default);
+
+  RunPsqlCommand("\\d t1", desc_t1);
+  RunPsqlCommand("\\d t1_1", desc_t1_1);
+  RunPsqlCommand("\\d t1_2", desc_t1_2);
+  RunPsqlCommand("\\d t1_3", desc_t1_3);
+  RunPsqlCommand("\\d t1_default", desc_t1_default);
+
+  RunPsqlCommand("\\d t2", desc_t2);
+  RunPsqlCommand("\\d t2_1", desc_t2_1);
+  RunPsqlCommand("\\d t2_2", desc_t2_2);
+  RunPsqlCommand("\\d t2_3", desc_t2_3);
+  RunPsqlCommand("\\d t2_default", desc_t2_default);
+
+  RunPsqlCommand(
+      "\\dgrt",
+      R"#(                List of tablegroup tables
+        Group Name    | Group Owner | Name | Type  |  Owner
+    ------------------+-------------+------+-------+----------
+     colocation_16389 | postgres    | t1_2 | table | yugabyte
+     colocation_16390 | postgres    | t1_3 | table | yugabyte
+     default          | postgres    | t1   | table | yugabyte
+     default          | postgres    | t2   | table | yugabyte
+    (4 rows)
+  )#");
+}
+
+// Test backup/restore of geo-partitioned colocated tables without tablespace information.
+TEST_F(
+    YBBackupTestColocatedTablesWithTablespaces,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestBackupGeoPartitionedMixColocatedTablesWithoutTablespaces)) {
+  const std::string backup_db_name = "backup_db";
+  const std::string restore_db_name = "restore_db";
+  SetupMixColocatedGeoPartitionedTables(backup_db_name);
+
+  const string backup_dir = GetTempDir("backup");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+
+  auto select_t1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1 ORDER BY a;"));
+  auto select_t1_1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_1 ORDER BY a;"));
+  auto select_t1_2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_2 ORDER BY a;"));
+  auto select_t1_3 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_3 ORDER BY a;"));
+  auto select_t1_default = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t1_default ORDER BY a;"));
+
+  auto select_t2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2 ORDER BY a;"));
+  auto select_t2_1 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_1 ORDER BY a;"));
+  auto select_t2_2 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_2 ORDER BY a;"));
+  auto select_t2_3 = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_3 ORDER BY a;"));
+  auto select_t2_default = ASSERT_RESULT(RunPsqlCommand("SELECT * FROM t2_default ORDER BY a;"));
+
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", backup_keyspace, "create"}));
+
+  SetDbName("yugabyte");
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP DATABASE backup_db", "DROP DATABASE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp1", "DROP TABLESPACE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp2", "DROP TABLESPACE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLESPACE tsp3", "DROP TABLESPACE"));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"}));
+
+  SetDbName(restore_db_name);
+
+  RunPsqlCommand("SELECT * FROM t1 ORDER BY a;", select_t1);
+  RunPsqlCommand("SELECT * FROM t1_1 ORDER BY a;", select_t1_1);
+  RunPsqlCommand("SELECT * FROM t1_2 ORDER BY a;", select_t1_2);
+  RunPsqlCommand("SELECT * FROM t1_3 ORDER BY a;", select_t1_3);
+  RunPsqlCommand("SELECT * FROM t1_default ORDER BY a;", select_t1_default);
+
+  RunPsqlCommand("SELECT * FROM t2 ORDER BY a;", select_t2);
+  RunPsqlCommand("SELECT * FROM t2_1 ORDER BY a;", select_t2_1);
+  RunPsqlCommand("SELECT * FROM t2_2 ORDER BY a;", select_t2_2);
+  RunPsqlCommand("SELECT * FROM t2_3 ORDER BY a;", select_t2_3);
+  RunPsqlCommand("SELECT * FROM t2_default ORDER BY a;", select_t2_default);
+
+  RunPsqlCommand(
+      "\\d t1",
+      R"#(
+                    Partitioned table "public.t1"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition key: LIST (region)
+    Indexes:
+        "t1_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Number of partitions: 4 (Use \d+ to list them.)
+    Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      "\\d t1_1",
+      R"#(
+                           Table "public.t1_1"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t1 FOR VALUES IN ('USWEST')
+    Indexes:
+        "t1_1_pkey" PRIMARY KEY, lsm (a ASC, region ASC)
+  )#");
+
+  RunPsqlCommand(
+      "\\d t1_2",
+      R"#(
+                         Table "public.t1_2"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t1 FOR VALUES IN ('USEAST')
+    Indexes:
+        "t1_2_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Colocation: true
+  )#");
+
+  RunPsqlCommand("\\d t1_3", R"#(
+                         Table "public.t1_3"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t1 FOR VALUES IN ('APSOUTH')
+    Indexes:
+        "t1_3_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Colocation: true
+  )#");
+
+  RunPsqlCommand("\\d t1_default", R"#(
+                      Table "public.t1_default"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t1 DEFAULT
+    Indexes:
+        "t1_default_pkey" PRIMARY KEY, lsm (a ASC, region ASC)
+  )#");
+
+  RunPsqlCommand(
+      "\\d t2",
+      R"#(
+                    Partitioned table "public.t2"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition key: LIST (region)
+    Indexes:
+        "t2_pkey" PRIMARY KEY, lsm (a ASC, region ASC), colocation: true
+    Number of partitions: 4 (Use \d+ to list them.)
+    Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      "\\d t2_1",
+      R"#(
+                           Table "public.t2_1"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t2 FOR VALUES IN ('USWEST')
+    Indexes:
+        "t2_1_pkey" PRIMARY KEY, lsm (a ASC, region ASC)
+  )#");
+
+  RunPsqlCommand(
+      "\\d t2_2",
+      R"#(
+                         Table "public.t2_2"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t2 FOR VALUES IN ('USEAST')
+    Indexes:
+        "t2_2_pkey" PRIMARY KEY, lsm (a ASC, region ASC)
+  )#");
+
+  RunPsqlCommand("\\d t2_3", R"#(
+                         Table "public.t2_3"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t2 FOR VALUES IN ('APSOUTH')
+    Indexes:
+        "t2_3_pkey" PRIMARY KEY, lsm (a ASC, region ASC)
+  )#");
+
+  RunPsqlCommand("\\d t2_default", R"#(
+                      Table "public.t2_default"
+     Column |       Type        | Collation | Nullable | Default
+    --------+-------------------+-----------+----------+---------
+     a      | integer           |           | not null |
+     region | character varying |           | not null |
+     c      | integer           |           |          |
+    Partition of: t2 DEFAULT
+    Indexes:
+        "t2_default_pkey" PRIMARY KEY, lsm (a ASC, region ASC)
+  )#");
+
+  RunPsqlCommand(
+      "\\dgrt",
+      R"#(
+                             List of tablegroup tables
+            Group Name        | Group Owner | Name | Type  |  Owner
+    --------------------------+-------------+------+-------+----------
+     colocation_restore_16398 | postgres    | t1_2 | table | yugabyte
+     colocation_restore_16404 | postgres    | t1_3 | table | yugabyte
+     default                  | postgres    | t1   | table | yugabyte
+     default                  | postgres    | t2   | table | yugabyte
+    (4 rows)
+  )#");
+
+  // Assert that all the tablegroups are in default tablespace (grptablespace == 0)
+  RunPsqlCommand(
+      "SELECT * FROM pg_yb_tablegroup;",
+      R"#(
+        oid  |         grpname          | grpowner | grptablespace | grpacl | grpoptions
+      -------+--------------------------+----------+---------------+--------+------------
+       16387 | default                  |       10 |             0 |        |
+       16398 | colocation_restore_16398 |       10 |             0 |        |
+       16404 | colocation_restore_16404 |       10 |             0 |        |
+      (3 rows)
+    )#");
 }
 
 class YBBackupPartitioningVersionTest : public YBBackupTest {
@@ -1304,18 +2091,16 @@ TEST_F_EX(
   ASSERT_OK(
       RunBackupCommand({"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // 3) Drop table to be able to restore in the same keyspace.
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE tblv0"), "DROP TABLE"));
-
-  // 4) Simulate cluster upgrade with new partitioning_version and restore. Index tables with
+  // 3) Simulate cluster upgrade with new partitioning_version and restore. Index tables with
   //    partitioning version above 0 should contain additional `null` value for a hidden columns
   //    `ybuniqueidxkeysuffix` or `ybidxbasectid`.
   ASSERT_OK(ForceSetPartitioningVersion(1));
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
-  // 5) Make sure new tables are created with a new patitioning version.
-  // 5.1) Create regular tablet and check partitioning verison and structure.
+  // 4) Make sure new tables are created with a new patitioning version.
+  // 4.1) Create regular tablet and check partitioning verison and structure.
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tblr1 (k INT, v TEXT, PRIMARY KEY (k ASC))")));
   ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("tblr1", "post-restore")));
   ASSERT_TRUE(CheckPartitions(
@@ -1327,7 +2112,7 @@ TEST_F_EX(
       ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "tblv1")),
       {bytes_to_str("\x48\x80\x00\x00\x0a\x21"), /* 10 */}));
 
-  // 5.2) Create indexes and check partitoning verison and structure.
+  // 4.2) Create indexes and check partitoning verison and structure.
   ASSERT_NO_FATALS(
       CreateIndex(Format("CREATE INDEX idx1v1 ON tblv1 (v ASC) SPLIT AT VALUES (('de'), ('op'))")));
   ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("idx1v1", "post-restore")));
@@ -1345,7 +2130,7 @@ TEST_F_EX(
        bytes_to_str("\x61\x9c\x9c\xff\xff\x00\x21"),
        /* 'cc', -Inf */}));
 
-  // 6) Make sure old tables have been restored with the old patitioning version and structure
+  // 5) Make sure old tables have been restored with the old patitioning version and structure
   ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("tblr0", "post-restore")));
   ASSERT_TRUE(CheckPartitions(
       ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "tblr0")), {}));
@@ -1850,10 +2635,10 @@ TEST_P(
       tserver::FlushTabletsRequestPB::COMPACT));
 
   ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db_name),
        "restore"}));
 
-  SetDbName(backup_db_name);
+  SetDbName(restore_db_name);
 
   ASSERT_NO_FATALS(
       InsertRows(Format("INSERT INTO $0 VALUES (9,9,9), (10,10,10), (11,11,11)", table_name), 3));
@@ -2266,6 +3051,340 @@ TEST_P(YBBackupTestWithTableRewrite,
         (1 row)
       )#"
   ));
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithFailedLegacyRewrite)) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_enable_alter_table_rewrite", "false"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_transactional_ddl_gc", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_ddl_rollback_enabled", "false"));
+
+  const auto table_name = "t1";
+  // Create the table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (a int, b int)", table_name)));
+  // Insert some data.
+  ASSERT_NO_FATALS(InsertRows(Format(
+      "INSERT INTO $0 (a, b) VALUES (generate_series(1, 5), generate_series(1, 5))", table_name),
+      5));
+  // Create an index.
+  ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX idx1 ON $0 (b DESC)", table_name)));
+  // Perform a failed ADD PKEY operation.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SET yb_test_fail_next_ddl = true;"
+             "ALTER TABLE $0 ADD PRIMARY KEY (a ASC)", table_name), "SET"));
+  // Verify the original table and the orphaned table exist.
+  ASSERT_EQ(ASSERT_RESULT(client_->ListTables(table_name)).size(), 2);
+
+  // Verify backup/restore works correctly.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  SetDbName("yugabyte_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 ORDER BY a", table_name),
+      R"#(
+         a | b
+        ---+---
+         1 | 1
+         2 | 2
+         3 | 3
+         4 | 4
+         5 | 5
+        (5 rows)
+      )#"));
+}
+
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPreservingPgEnumOids),
+    YBBackupTestOneTablet) {
+
+  // Backup only works when there is at least one table so create one.
+  ASSERT_NO_FATALS(CreateTable(
+      Format("CREATE TABLE gratuitous_table (a INT, b INT)", "gratuitous_table")));
+
+  // Create some enums intermixed with filler ones then drop the fillers.
+  // The filler enums will ensure the non-filler enums don't just use the default OIDs.
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE filler_1 AS ENUM ('A','B','C')"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE e_contact_method AS ENUM ('Email','Sms','Phone','A')"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE filler_2 AS ENUM ('A','B','C')"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE empty_enum AS ENUM ()"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE twofold AS ENUM ('A', 'B')"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TYPE filler_1", "DROP TYPE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TYPE filler_2", "DROP TYPE"));
+
+  // Backup then restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  auto query = "SELECT oid, enumlabel FROM pg_enum ORDER BY oid ASC";
+  Result<std::string> result{""};
+  ASSERT_NO_FATALS(result = RunPsqlCommand(query));
+  ASSERT_OK(result);
+  LOG(INFO) << "***** pg_enum OIDs on namespace being backed up are: " << *result;
+
+  SetDbName("yugabyte_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(query, *result));
+}
+
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPreservingPgTypeAndClassOids),
+    YBBackupTestOneTablet) {
+  // Attempt to create one instance of each thing that consumes a pg_type or pg_class OID.  Also
+  // create some fillers that will we will drop at the end to make sure we don't just use the same
+  // default OIDs by accident.
+
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE filler_table (a INT, b INT)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE filler_table_2 (a INT, b INT)"));
+
+  // Creating basic tables.
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE simple_table (a INT, b INT)"));
+  // Backup ignores temporary tables so no need to test.
+
+  // Creating tables with indexes and constraints.
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE table_with_primary_key (a INT PRIMARY KEY, b INT, c INT)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE indexed_table (a INT, b INT)"));
+  ASSERT_NO_FATALS(CreateIndex("CREATE INDEX simple_index ON indexed_table (a DESC)"));
+  // This is a special case due to D6956, where we create the table and the primary key index
+  // simultaneously.
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE table_with_index_and_constraint (k INT PRIMARY KEY, v TEXT, UNIQUE (v))"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE constrained_table (a INT, b INT)"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "ALTER TABLE constrained_table ADD CONSTRAINT equality_constraint CHECK (a = b)",
+      "ALTER TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "ALTER TABLE constrained_table ADD CONSTRAINT positive_constraint CHECK (a > 0)",
+      "ALTER TABLE"));
+  // Another special case due to D6956; note that a separate index/OID is created for
+  // htest_1 automatically.
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE htest(k1 INT, k2 TEXT, k3 INT, v1 INT, v2 TEXT, PRIMARY KEY(k1, k2)) PARTITION "
+      "BY HASH (k1)"));
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE htest_1 PARTITION OF htest(k1, k2, k3, v1, v2) FOR VALUES WITH (MODULUS 2, "
+      "REMAINDER 0)"));
+
+  // Attempt to create a table with an accompanying TOAST table; this does not actually work with
+  // YugabyteDB, which does not use TOAST tables.
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE table_using_toast (id SERIAL PRIMARY KEY, data TEXT)"));
+  ASSERT_NO_FATALS(
+      InsertOneRow("INSERT INTO table_using_toast (data) VALUES (repeat('A', 5000))"));
+
+  // Creating sequences, both standalone and as part of a table.
+  ASSERT_NO_FATALS(CreateSequence("CREATE SEQUENCE standalone_sequence"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_with_serial_column (key SERIAL, value TEXT)"));
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE table_with_2_serial_columns (key SERIAL, id SERIAL, value TEXT)"));
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE table_with_default_sequence ("
+                  "id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY (INCREMENT 7 START "
+                  "77777),value INTEGER)"));
+  ASSERT_NO_FATALS(CreateSequence("CREATE SEQUENCE sequence_created_first"));
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE table_using_existing_sequence (id INTEGER DEFAULT "
+                  "nextval('sequence_created_first'),value INTEGER)"));
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE table_with_primary_serial_key (a SERIAL PRIMARY KEY, b INT, c INT)"));
+
+  // Creating table-like things.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE VIEW view AS SELECT a, b FROM simple_table WHERE a = b", "CREATE VIEW"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE MATERIALIZED VIEW materialized_view AS SELECT a, b FROM simple_table", "SELECT 0"));
+  // Not possible to create a materialized view with a primary key directly so no D6956 special case
+  // exists for materialized views.
+  // The following currently produces warnings because FOREIGN DATA WRAPPER is a YSQL beta feature.
+  // This doesn't matter for this test, however.
+  ASSERT_NO_FATALS(
+      RunPsqlCommand("CREATE FOREIGN DATA WRAPPER dummy_wrapper", "CREATE FOREIGN DATA WRAPPER"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE SERVER dummy_server FOREIGN DATA WRAPPER dummy_wrapper", "CREATE SERVER"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE FOREIGN TABLE test_foreign_table () SERVER dummy_server", "CREATE FOREIGN TABLE"));
+
+  // Create one of each type of Postgres type not already covered.
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE composite_type AS (x INT, y INT)"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE twofold AS ENUM ('A', 'B')"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE date_range AS RANGE (subtype = DATE)"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE shell_type"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE DOMAIN email_address AS VARCHAR CHECK (VALUE ~ "
+      "'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$')",
+      "CREATE DOMAIN"));
+  // This extension creates a new base type, vector.
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE EXTENSION vector", "CREATE EXTENSION"));
+
+  // Done creating stuff, time to drop the filler objects.
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE filler_table", "DROP TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE filler_table_2", "DROP TABLE"));
+
+  // Backup then restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  // Assert the pg type OIDs are the same in both databases.
+  {
+    auto query = "SELECT oid, typname FROM pg_type ORDER BY oid ASC";
+    Result<std::string> query_result{""};
+    SetDbName("yugabyte");
+    ASSERT_NO_FATALS(query_result = RunPsqlCommand(query));
+    ASSERT_OK(query_result);
+    LOG(INFO) << "***** pg_type OIDs on namespace being backed up are: " << *query_result;
+    SetDbName("yugabyte_new");
+    ASSERT_NO_FATALS(RunPsqlCommand(query, *query_result));
+  }
+
+  // Assert the pg class OIDs are the same in both databases.
+  {
+    auto query = "SELECT oid, relname FROM pg_class ORDER BY oid ASC";
+    Result<std::string> query_result{""};
+    SetDbName("yugabyte");
+    ASSERT_NO_FATALS(query_result = RunPsqlCommand(query));
+    ASSERT_OK(query_result);
+    LOG(INFO) << "***** pg_class OIDs on namespace being backed up are: " << *query_result;
+    SetDbName("yugabyte_new");
+    ASSERT_NO_FATALS(RunPsqlCommand(query, *query_result));
+  }
+}
+
+TEST_F(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRenamedColumns)) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_1 (a INT, b INT, c INT, d INT)"));
+  ASSERT_NO_FATALS(InsertRows("INSERT INTO table_1 VALUES (1, 1, 1, 1), (2, 2, 2, 2)", 2));
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE TABLE table_2 AS SELECT b, d FROM table_1", "SELECT 2"));
+  ASSERT_NO_FATALS(CreateIndex("CREATE INDEX index_1 ON table_1 (b, d)"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE MATERIALIZED VIEW matview AS SELECT b, d FROM table_1", "SELECT 2"));
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE table_1 RENAME COLUMN b TO b1", "ALTER TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE table_1 DROP COLUMN c", "ALTER TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE table_1 RENAME COLUMN d TO d1", "ALTER TABLE"));
+  // Backup then restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+  // Verify that the restored index has the new column names.
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte_new", "index_1"));
+  Synchronizer sync;
+  auto table_info = std::make_shared<client::YBTableInfo>();
+  ASSERT_OK(client_->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(table_info->schema.columns()[0].name(), "b1");
+  ASSERT_EQ(table_info->schema.columns()[1].name(), "d1");
+  SetDbName("yugabyte_new");
+  // Verify that the index works correctly.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "EXPLAIN (COSTS OFF) SELECT b1, d1 FROM table_1 WHERE b1 = 1 AND d1 = 1",
+      R"#(
+                      QUERY PLAN
+      ------------------------------------------
+       Index Only Scan using index_1 on table_1
+         Index Cond: ((b1 = 1) AND (d1 = 1))
+      (2 rows)
+
+      )#"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT b1, d1 FROM table_1 WHERE b1 = 1 AND d1 = 1", R"#(
+         b1 | d1
+        ----+----
+          1 |  1
+        (1 row)
+      )#"));
+  // Lastly, also perform some sanity check on the other objects.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT b, d FROM table_2 ORDER BY b", R"#(
+         b | d
+        ---+---
+         1 | 1
+         2 | 2
+        (2 rows)
+      )#"));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT b, d FROM matview ORDER BY b", R"#(
+         b | d
+        ---+---
+         1 | 1
+         2 | 2
+        (2 rows)
+      )#"));
+}
+
+TEST_F(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPartitionedTableRewrite)) {
+  // Create a partitioned table and index.
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE table_1 (a INT, b INT, c TEXT) PARTITION BY RANGE (a)"));
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE table_partition_1 PARTITION OF table_1 FOR VALUES FROM (1) TO (3)"));
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE table_partition_2 PARTITION OF table_1 FOR VALUES FROM (3) TO (6)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_partition_3 PARTITION OF table_1 DEFAULT"));
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE INDEX index_1 ON table_1 (b)", "CREATE INDEX"));
+  // Insert some data.
+  ASSERT_NO_FATALS(InsertRows("INSERT INTO table_1 (a, b, c) VALUES"
+      "(generate_series(1, 6), generate_series(1, 6), 'test')", 6));
+  // Perform some rewrite operations.
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE table_1 ADD PRIMARY KEY (a)", "ALTER TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "ALTER TABLE table_1 ALTER COLUMN c TYPE int USING LENGTH(c)", "ALTER TABLE"));
+  // Perform some failed rewrite operations.
+  ASSERT_NO_FATALS(RunPsqlCommand("SET yb_test_fail_table_rewrite_after_creation = true;"
+      "ALTER TABLE table_1 ADD COLUMN d SERIAL", "SET"));
+  ASSERT_NO_FATALS(RunPsqlCommand("SET yb_test_fail_next_ddl = true;"
+      "ALTER TABLE table_1 DROP CONSTRAINT table_1_pkey", "SET"));
+  // Backup then restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+  // Verify that the partitioned table and index were restored correctly.
+  SetDbName("yugabyte_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "EXPLAIN (COSTS OFF) SELECT a FROM table_1 WHERE b = 1", R"#(
+                                   QUERY PLAN
+      -------------------------------------------------------------------------------
+       Append
+         ->  Index Scan using table_partition_1_b_idx on table_partition_1 table_1_1
+               Index Cond: (b = 1)
+         ->  Index Scan using table_partition_2_b_idx on table_partition_2 table_1_2
+               Index Cond: (b = 1)
+         ->  Index Scan using table_partition_3_b_idx on table_partition_3 table_1_3
+               Index Cond: (b = 1)
+      (7 rows)
+      )#"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT a FROM table_1 WHERE b = 1", R"#(
+         a
+        ---
+         1
+        (1 row)
+      )#"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT * FROM table_1 ORDER BY a", R"#(
+         a | b | c
+        ---+---+---
+         1 | 1 | 4
+         2 | 2 | 4
+         3 | 3 | 4
+         4 | 4 | 4
+         5 | 5 | 4
+         6 | 6 | 4
+        (6 rows)
+      )#"));
 }
 }  // namespace tools
 }  // namespace yb

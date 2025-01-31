@@ -43,7 +43,14 @@ extern od_hashmap_t *od_hashmap_create(size_t sz);
 extern od_retcode_t od_hashmap_free(od_hashmap_t *hm);
 od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, od_hash_t keyhash,
 				  od_hashmap_elt_t *key);
+/* 
+ * This function inserts a new key into the hashmap.
+ * If hashmap already contains a value assotiated with provided key,
+ * it will be rewritten.
+ */
 int od_hashmap_insert(od_hashmap_t *hm, od_hash_t keyhash,
 		      od_hashmap_elt_t *key, od_hashmap_elt_t **value);
+extern od_hash_t yb_prepare_stmt_hash(od_hash_t body_hash, od_hash_t keyhash,
+			       od_hash_t client_hash, bool optimized);
 
 #endif /* OD_HASHMAP_H */

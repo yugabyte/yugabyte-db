@@ -4,14 +4,14 @@ headerTitle: Typecasting between values of different date-time data types
 linkTitle: Typecasting between date-time data types
 description: Describes how to typecast date-time values of different date-time data types. [YSQL]
 menu:
-  preview:
+  preview_api:
     identifier: typecasting-between-date-time-values
     parent: api-ysql-datatypes-datetime
     weight: 70
 type: docs
 ---
 
-See the [table](../../type_datetime/#synopsis) at the start of the overall "Date and time data types" section. It lists six data types, but quotes the [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) that recommends that you avoid using the _timetz_ data type. This leaves five _date-time_ data types that are recommended for use. Each of the two axes of the [Summary table](#summary-table) below lists these five data types  along with the _text_ data type—so there are _thirty-six_ cells.
+See the [table](../../type_datetime/#synopsis) at the start of the overall "Date and time data types" section. It lists six data types, but quotes the [PostgreSQL documentation](https://www.postgresql.org/docs/15/datatype-datetime.html#DATATYPE-DATETIME-TABLE) that recommends that you avoid using the _timetz_ data type. This leaves five _date-time_ data types that are recommended for use. Each of the two axes of the [Summary table](#summary-table) below lists these five data types  along with the _text_ data type—so there are _thirty-six_ cells.
 
 The cells on the diagonal represent the typecast from _some_type_ to the same type—and so they are tautologically uninteresting. This leaves _thirty_ cells and therefore _thirty_ rules to understand. See the section [Code to fill out the thirty interesting table cells](#code-to-fill-out-the-thirty-interesting-table-cells). This shows that _ten_ of the remaining typecasts are simply unsupported. The attempts cause the _42846_ error. This maps in PL/pgSQL code to the _cannot_coerce_ exception. You get one of these messages:
 

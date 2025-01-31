@@ -1075,7 +1075,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       case Certs:
         return SubTaskGroupType.RotatingCert;
       default:
-        return SubTaskGroupType.Invalid;
+        return SubTaskGroupType.Configuring;
     }
   }
 
@@ -1202,10 +1202,13 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       ServerType processType,
       UpgradeTaskType type,
       UpgradeTaskSubType taskSubType) {
-    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UserIntent userIntent =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+    AnsibleConfigureServers.Params params =
+        getBaseAnsibleServerTaskParams(userIntent, node, processType, type, taskSubType);
+
     // Set the device information (numVolumes, volumeSize, etc.)
     params.deviceInfo = userIntent.getDeviceInfoForNode(node);
     // Add the node name.
@@ -1226,6 +1229,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     // Sets the isMaster field
     params.isMaster = node.isMaster;
     params.enableYSQL = userIntent.enableYSQL;
+    params.enableConnectionPooling = userIntent.enableConnectionPooling;
     params.enableYCQL = userIntent.enableYCQL;
     params.enableYCQLAuth = userIntent.enableYCQLAuth;
     params.enableYSQLAuth = userIntent.enableYSQLAuth;

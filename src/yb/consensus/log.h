@@ -48,6 +48,7 @@
 #include "yb/ash/wait_state_fwd.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 
 #include "yb/consensus/consensus_fwd.h"
@@ -142,22 +143,23 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Opens or continues a log and sets 'log' to the newly built Log.
   // After a successful Open() the Log is ready to receive entries, if create_new_segment is true.
-  static Status Open(const LogOptions &options,
-                             const std::string& tablet_id,
-                             const std::string& wal_dir,
-                             const std::string& peer_uuid,
-                             const Schema& schema,
-                             uint32_t schema_version,
-                             const scoped_refptr<MetricEntity>& table_metric_entity,
-                             const scoped_refptr<MetricEntity>& tablet_metric_entity,
-                             ThreadPool *append_thread_pool,
-                             ThreadPool* allocation_thread_pool,
-                             ThreadPool* background_sync_threadpool,
-                             int64_t cdc_min_replicated_index,
-                             scoped_refptr<Log> *log,
-                             const PreLogRolloverCallback& pre_log_rollover_callback = {},
-                             NewSegmentAllocationCallback callback = {},
-                             CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
+  static Status Open(
+      const LogOptions& options,
+      const std::string& tablet_id,
+      const std::string& wal_dir,
+      const std::string& peer_uuid,
+      const Schema& schema,
+      uint32_t schema_version,
+      const scoped_refptr<MetricEntity>& table_metric_entity,
+      const scoped_refptr<MetricEntity>& tablet_metric_entity,
+      ThreadPool* append_thread_pool,
+      ThreadPool* allocation_thread_pool,
+      ThreadPool* background_sync_threadpool,
+      scoped_refptr<Log>* log,
+      const PreLogRolloverCallback& pre_log_rollover_callback = {},
+      NewSegmentAllocationCallback callback = {},
+      CreateNewSegment create_new_segment = CreateNewSegment::kTrue,
+      MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback = {});
 
   ~Log();
 
@@ -339,6 +341,16 @@ class Log : public RefCountedThreadSafe<Log> {
 
   bool HasSufficientDiskSpaceForWrite();
 
+  void SetGetXClusterMinIndexToRetainFunc(
+      std::function<int64_t(const std::string&)> get_xcluster_required_index_func) {
+    std::lock_guard l(get_xcluster_index_lock_);
+    if (get_xcluster_min_index_to_retain_ == nullptr) {
+      get_xcluster_min_index_to_retain_ = std::move(get_xcluster_required_index_func);
+    }
+  }
+
+  HybridTime GetMinStartHTOfRunningTxnsFromGCSegments() const;
+
  private:
   friend class LogTest;
   friend class LogTestBase;
@@ -375,7 +387,8 @@ class Log : public RefCountedThreadSafe<Log> {
       ThreadPool* background_sync_threadpool,
       NewSegmentAllocationCallback callback,
       const PreLogRolloverCallback& pre_log_rollover_callback,
-      CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
+      CreateNewSegment create_new_segment = CreateNewSegment::kTrue,
+      MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback = {});
 
   Env* get_env() {
     return options_.env;
@@ -508,6 +521,11 @@ class Log : public RefCountedThreadSafe<Log> {
   // able to make forward progress.
   Result<std::unique_ptr<LogEntryBatch>> Reserve(
       LogEntryTypePB type, std::shared_ptr<LWLogEntryBatchPB> entry_batch);
+
+  void WriteLatestMinStartTimeRunningTxnsInFooterBuilder();
+
+  // Updates 'min_start_time_running_txns_from_gc_segments_' from the available segments for GC.
+  void UpdateMinStartTimeRunningTxnsFromGCSegments(const SegmentSequence& segments) const;
 
   LogOptions options_;
 
@@ -654,6 +672,11 @@ class Log : public RefCountedThreadSafe<Log> {
   // Minimum replicate index for the current log being written. Used for CDC read initialization.
   std::atomic<int64_t> min_replicate_index_{-1};
 
+  // Stores the min_start_time_running_txns from WAL segments that are available for GC based on
+  // index.
+  mutable std::atomic<HybridTime> min_start_time_running_txns_from_gc_segments_ =
+      HybridTime::kInvalid;
+
   // The current replicated index that CDC has read.  Used for CDC read cache optimization.
   std::atomic<int64_t> cdc_min_replicated_index_{std::numeric_limits<int64_t>::max()};
 
@@ -670,10 +693,22 @@ class Log : public RefCountedThreadSafe<Log> {
 
   const yb::ash::WaitStateInfoPtr background_synchronizer_wait_state_;
 
+  // Initialised during tablet bootstrap to TabletPeer::GetMinStartHTRunningTxnsOrLeaderSafeTime.
+  // The callback guarantees that value returned would be a 'valid' Hybrid time.
+  MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback_;
+
   std::atomic<CoarseTimePoint> last_disk_space_check_time_{CoarseTimePoint::min()};
   std::atomic<bool> has_free_disk_space_{false};
   std::atomic<uint32> disk_space_frequent_check_interval_sec_{0};
   std::shared_timed_mutex disk_space_mutex_;
+
+  // Protect access to the get_xcluster_min_index_to_retain_.
+  mutable PerCpuRwMutex get_xcluster_index_lock_;
+
+  // Function pointer to CDCServiceImpl::GetXClusterMinRequiredIndex.
+  // This function retrieves the xCluster minimum required index for a given tablet.
+  std::function<int64_t(const std::string&)> get_xcluster_min_index_to_retain_
+      GUARDED_BY(get_xcluster_index_lock_);
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

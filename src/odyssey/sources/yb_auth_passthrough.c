@@ -4,7 +4,7 @@
  * Utilities for Ysql Connection Manager/Yugabyte (Postgres layer) integration
  * that have to be defined on the Ysql Connection Manager (Odyssey) side.
  *
- * Copyright (c) YugaByteDB, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -411,6 +411,8 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 	int rc = -1;
 	int rc_auth = -1;
 
+	assert(!instance->config.yb_use_auth_backend);
+
 	rc = yb_route_auth_packets(server, client);
 	rc_auth = rc;
 
@@ -514,4 +516,5 @@ void yb_handle_fatalforlogicalconnection_pkt(od_client_t *client,
 	}
 
 	yb_forward_fatal_msg(client, msg);
+	machine_msg_free(msg);
 }

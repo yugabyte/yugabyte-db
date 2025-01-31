@@ -203,7 +203,7 @@ WAIT: This option causes the command to wait if the slot is active until it beco
 
 - Removes a Replication Slot. A publication can only be dropped by its superuser or a user with replication privileges.
 - The WAIT option is treated differently In YugabyteDB. An “active” replication slot means a slot which has been consumed for a certain timeframe.
-- We will define this timeframe via a GFlag ysql_replication_slot_activity_threshold with a default of 5 minutes.
+- We will define this timeframe via a GFlag `ysql_cdc_active_replication_slot_window_ms` with a default of 5 minutes.
 
 #### Examples
 Drop an inactive replication slot:
@@ -261,7 +261,7 @@ Provides a listing of all replication slots that currently exist on the database
 | datoid | oid | The OID of the database this slot is associated with. |
 | database | text | The name of the database this slot is associated with. |
 | temporary | boolean | True if this is a temporary replication slot. Temporary slots are automatically dropped on error or when the session has finished. |
-| active | boolean | True if this slot is currently actively being used. In YugabyteDB, it is difficult to detect activity since the consumption of the replication slot could be happening on another node. So for us, an "active" replication slot means a slot which has been consumed at least once in a certain timeframe. We will define this timeframe via a GFlag ysql_replication_slot_activity_threshold with a default of 5 minutes. |
+| active | boolean | True if this slot is currently actively being used. In YugabyteDB, it is difficult to detect activity since the consumption of the replication slot could be happening on another node. So for us, an "active" replication slot means a slot which has been consumed at least once in a certain timeframe. We will define this timeframe via a GFlag ysql_cdc_active_replication_slot_window_ms with a default of 5 minutes. |
 | active_pid | integer | Not relevant for us. Always 0 The process ID of the session using this slot if the slot is currently actively being used. NULL if inactive. |
 | xmin | xid | Irrelevant for us. The oldest transaction that this slot needs the database to retain. VACUUM cannot remove tuples deleted by any later transaction. |
 | catalog\_xmin | xid | Irrelevant for us. The oldest transaction affecting the system catalogs that this slot needs the database to retain. VACUUM cannot remove catalog tuples deleted by any later transaction. |

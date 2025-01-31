@@ -1,0 +1,2 @@
+# Test output files that contain extra whitespace
+*.out					-whitespace

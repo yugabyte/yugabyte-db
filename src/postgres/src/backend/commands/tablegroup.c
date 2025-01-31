@@ -1,37 +1,28 @@
-// tablegroup.c
-//	  Commands to manipulate table groups.
-//	  Tablegroups are used to create colocation groups for tables.
-//
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
-//
-// The following only applies to changes made to this file as part of YugaByte development.
-//
-// Portions Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
-// in compliance with the License.  You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software distributed under the License
-// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-// or implied.  See the License for the specific language governing permissions and limitations
-// under the License.
+/*-------------------------------------------------------------------------
+ *
+ *  tablegroup.c
+ * 	  Commands to manipulate table groups.
+ * 	  Tablegroups are used to create colocation groups for tables.
+ *
+ *  Copyright (c) YugaByte, Inc.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ *  use this file except in compliance with the License.  You may obtain a copy
+ *  of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ *  License for the specific language governing permissions and limitations
+ *  under the License.
+ *
+ * IDENTIFICATION
+ *        src/backend/commands/tablegroup.c
+ *
+ *------------------------------------------------------------------------------
+ */
 
 #include "postgres.h"
 
@@ -61,7 +52,7 @@
 #include "commands/tablespace.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "common/file_perm.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"
@@ -76,19 +67,19 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-#include "utils/tqual.h"
 #include "utils/varlena.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
-Oid binary_upgrade_next_tablegroup_oid = InvalidOid;
+Oid			binary_upgrade_next_tablegroup_oid = InvalidOid;
+bool		binary_upgrade_next_tablegroup_default = false;
 
 /*
  * Create a table group.
  */
 Oid
-CreateTableGroup(CreateTableGroupStmt *stmt)
+CreateTableGroup(YbCreateTableGroupStmt *stmt)
 {
 	Relation	rel;
 	Datum		values[Natts_pg_yb_tablegroup];
@@ -103,7 +94,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
+				 errmsg("tablegroup system catalog does not exist")));
 	}
 
 	/*
@@ -112,9 +103,12 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	 */
 	if (!stmt->implicit && !superuser())
 	{
-		AclResult aclresult;
-		// Check that user has create privs on the database to allow creation
-		// of a new tablegroup.
+		AclResult	aclresult;
+
+		/*
+		 * Check that user has create privs on the database to allow creation
+		 * of a new tablegroup.
+		 */
 		aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_DATABASE,
@@ -133,10 +127,10 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	 * Check that there is no other tablegroup by this name.
 	 */
 	if (OidIsValid(get_tablegroup_oid(stmt->tablegroupname, true)))
-			ereport(ERROR,
-					(errcode(ERRCODE_DUPLICATE_OBJECT),
-					 errmsg("tablegroup \"%s\" already exists",
-					 		stmt->tablegroupname)));
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("tablegroup \"%s\" already exists",
+						stmt->tablegroupname)));
 
 	if (stmt->owner)
 		owneroid = get_rolespec_oid(stmt->owner, false);
@@ -146,7 +140,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	if (stmt->tablespacename)
 		tablespaceoid = get_tablespace_oid(stmt->tablespacename, false);
 	else
-		tablespaceoid = GetDefaultTablespace(RELPERSISTENCE_PERMANENT);
+		tablespaceoid = GetDefaultTablespace(RELPERSISTENCE_PERMANENT, false);
 
 	if (tablespaceoid == GLOBALTABLESPACE_OID)
 		/* In all cases disallow placing user relations in pg_global */
@@ -157,9 +151,11 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	/*
 	 * Insert tuple into pg_tablegroup.
 	 */
-	rel = heap_open(YbTablegroupRelationId, RowExclusiveLock);
-
+	rel = table_open(YbTablegroupRelationId, RowExclusiveLock);
 	MemSet(nulls, false, sizeof(nulls));
+
+	tablegroupoid = GetNewOidWithIndex(rel, YbTablegroupOidIndexId,
+									   Anum_pg_yb_tablegroup_oid);
 
 	values[Anum_pg_yb_tablegroup_grpname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->tablegroupname));
@@ -177,20 +173,15 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 
 	/* Generate new proposed grpoptions (text array) */
 	/* For now no grpoptions. Will be part of Interleaved */
-
 	nulls[Anum_pg_yb_tablegroup_grpoptions - 1] = true;
 
-	tuple = heap_form_tuple(rel->rd_att, values, nulls);
-
 	/*
-	 * If YB binary restore mode is set, we want to use the specified tablegroup
-	 * oid stored in binary_upgrade_next_tablegroup_oid instead of generating
-	 * an oid when inserting the tuple into pg_yb_tablegroup catalog.
-	 * YB binary restore mode is similar to PG binary upgrade mode. However, in
-	 * YB binary restore mode, we only expecte oids of few types of DB objects
-	 * (tablegroup, type, etc) to be set.
+	 * When inserting the tuple into the pg_yb_tablegroup catalog, if YB binary
+	 * restore mode or binary upgrade mode is set, use the specified tablegroup
+	 * oid stored in binary_upgrade_next_tablegroup_oid instead of generating a
+	 * new oid.
 	 */
-	if (yb_binary_restore)
+	if (yb_binary_restore || IsBinaryUpgrade)
 	{
 		/*
 		 * The reason to comment out the check below is mainly for supporting
@@ -225,12 +216,16 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 		 */
 		if (OidIsValid(binary_upgrade_next_tablegroup_oid))
 		{
-			HeapTupleSetOid(tuple, binary_upgrade_next_tablegroup_oid);
+			tablegroupoid = binary_upgrade_next_tablegroup_oid;
 			binary_upgrade_next_tablegroup_oid = InvalidOid;
 		}
 	}
 
-	tablegroupoid = CatalogTupleInsert(rel, tuple);
+	values[Anum_pg_yb_tablegroup_oid - 1] = ObjectIdGetDatum(tablegroupoid);
+
+	tuple = heap_form_tuple(rel->rd_att, values, nulls);
+
+	CatalogTupleInsert(rel, tuple);
 
 	heap_freetuple(tuple);
 
@@ -245,7 +240,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	recordDependencyOnOwner(YbTablegroupRelationId, tablegroupoid, owneroid);
 
 	/* We keep the lock on pg_yb_tablegroup until commit */
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	return tablegroupoid;
 }
@@ -259,17 +254,17 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 Oid
 get_tablegroup_oid(const char *tablegroupname, bool missing_ok)
 {
-	Oid				result;
-	Relation		rel;
-	HeapScanDesc	scandesc;
-	HeapTuple		tuple;
-	ScanKeyData		entry[1];
+	Oid			result;
+	Relation	rel;
+	TableScanDesc scandesc;
+	HeapTuple	tuple;
+	ScanKeyData entry[1];
 
 	if (!YbTablegroupCatalogExists)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
+				 errmsg("tablegroup system catalog does not exist")));
 	}
 
 	/*
@@ -277,29 +272,29 @@ get_tablegroup_oid(const char *tablegroupname, bool missing_ok)
 	 * index on name, on the theory that pg_yb_tablegroup will usually have just
 	 * a few entries and so an indexed lookup is a waste of effort.
 	 */
-	rel = heap_open(YbTablegroupRelationId, AccessShareLock);
+	rel = table_open(YbTablegroupRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0],
 				Anum_pg_yb_tablegroup_grpname,
 				BTEqualStrategyNumber, F_NAMEEQ,
 				CStringGetDatum(tablegroupname));
-	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	scandesc = table_beginscan_catalog(rel, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
 	/* We assume that there can be at most one matching tuple */
 	if (HeapTupleIsValid(tuple))
-		result = HeapTupleGetOid(tuple);
+		result = ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->oid;
 	else
 		result = InvalidOid;
 
 	heap_endscan(scandesc);
-	heap_close(rel, AccessShareLock);
+	table_close(rel, AccessShareLock);
 
 	if (!OidIsValid(result) && !missing_ok)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup \"%s\" does not exist",
-				 		tablegroupname)));
+						tablegroupname)));
 
 	return result;
 }
@@ -312,14 +307,14 @@ get_tablegroup_oid(const char *tablegroupname, bool missing_ok)
 char *
 get_tablegroup_name(Oid grp_oid)
 {
-	char		   *result;
-	HeapTuple		tuple;
+	char	   *result;
+	HeapTuple	tuple;
 
 	if (!YbTablegroupCatalogExists)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
+				 errmsg("tablegroup system catalog does not exist")));
 	}
 
 	/*
@@ -348,16 +343,16 @@ get_tablegroup_name(Oid grp_oid)
 void
 RemoveTablegroupById(Oid grp_oid, bool remove_implicit)
 {
-	Relation		pg_tblgrp_rel;
-	HeapScanDesc	scandesc;
-	ScanKeyData		skey[1];
-	HeapTuple		tuple;
+	Relation	pg_tblgrp_rel;
+	TableScanDesc scandesc;
+	ScanKeyData skey[1];
+	HeapTuple	tuple;
 
 	if (!YbTablegroupCatalogExists)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
+				 errmsg("tablegroup system catalog does not exist")));
 	}
 
 	/*
@@ -376,26 +371,24 @@ RemoveTablegroupById(Oid grp_oid, bool remove_implicit)
 						"in a colocated database.")));
 	}
 
-	pg_tblgrp_rel = heap_open(YbTablegroupRelationId, RowExclusiveLock);
+	pg_tblgrp_rel = table_open(YbTablegroupRelationId, RowExclusiveLock);
 
 	/*
 	 * Find the tablegroup to delete.
 	 */
 	ScanKeyInit(&skey[0],
-				ObjectIdAttributeNumber,
+				Anum_pg_yb_tablegroup_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(grp_oid));
-	scandesc = heap_beginscan_catalog(pg_tblgrp_rel, 1, skey);
+	scandesc = table_beginscan_catalog(pg_tblgrp_rel, 1, skey);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
 	/* If the tablegroup exists, then remove it, otherwise raise an error. */
 	if (!HeapTupleIsValid(tuple))
-	{
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup with oid %u does not exist",
-				 		grp_oid)));
-	}
+						grp_oid)));
 
 	/* DROP hook for the tablegroup being removed */
 	InvokeObjectDropHook(YbTablegroupRelationId, grp_oid, 0);
@@ -413,21 +406,36 @@ RemoveTablegroupById(Oid grp_oid, bool remove_implicit)
 	}
 
 	/* We keep the lock on pg_yb_tablegroup until commit */
-	heap_close(pg_tblgrp_rel, NoLock);
+	table_close(pg_tblgrp_rel, NoLock);
 }
 
-char*
+char *
 get_implicit_tablegroup_name(Oid oidSuffix)
 {
-	char *tablegroup_name_from_tablespace = (char*) palloc(
-		(
-			10 /*strlen("colocation")*/ + 10 /*Max digits in OID*/ + 1 /*Under Scores*/
-			+ 1 /*Null Terminator*/
-		) * sizeof(char)
-	);
+	char	   *tablegroup_name_from_tablespace;
+
+	tablegroup_name_from_tablespace =
+		(char *) palloc((10 /* strlen("colocation") */ +
+						 10 /* Max digits in OID */ +
+						 1 /* Under Scores */ +
+						 1 /* Null Terminator */ ) * sizeof(char));
 
 	sprintf(tablegroup_name_from_tablespace, "colocation_%u", oidSuffix);
 	return tablegroup_name_from_tablespace;
+}
+
+char *
+get_restore_tablegroup_name(Oid oidSuffix)
+{
+	char	   *restore_tablegroup_name;
+
+	restore_tablegroup_name =
+		(char *) palloc((19 /* strlen("colocation_restore_") */ +
+						 10 /* Max digits in OID */ +
+						 1 /* Null Terminator */ ) * sizeof(char));
+
+	sprintf(restore_tablegroup_name, "colocation_restore_%u", oidSuffix);
+	return restore_tablegroup_name;
 }
 
 /*
@@ -436,30 +444,31 @@ get_implicit_tablegroup_name(Oid oidSuffix)
 ObjectAddress
 RenameTablegroup(const char *oldname, const char *newname)
 {
-	Oid				tablegroupoid;
-	HeapTuple		newtup;
-	Relation		rel;
-	ObjectAddress	address;
-	HeapTuple		tuple;
-	HeapScanDesc	scandesc;
-	ScanKeyData		entry[1];
+	Oid			tablegroupoid;
+	HeapTuple	newtup;
+	Relation	rel;
+	ObjectAddress address;
+	HeapTuple	tuple;
+	TableScanDesc scandesc;
+	ScanKeyData entry[1];
 
-	if (!YbTablegroupCatalogExists) {
+	if (!YbTablegroupCatalogExists)
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
+				 errmsg("tablegroup system catalog does not exist")));
 	}
 
 	/*
 	 * Look up the target tablegroup's OID, and get exclusive lock on it. We
 	 * need this for the same reasons as DROP TABLEGROUP.
 	 */
-	rel = heap_open(YbTablegroupRelationId, RowExclusiveLock);
+	rel = table_open(YbTablegroupRelationId, RowExclusiveLock);
 	ScanKeyInit(&entry[0],
 				Anum_pg_yb_tablegroup_grpname,
 				BTEqualStrategyNumber, F_NAMEEQ,
 				CStringGetDatum(oldname));
-	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	scandesc = table_beginscan_catalog(rel, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 	heap_endscan(scandesc);
 
@@ -468,10 +477,10 @@ RenameTablegroup(const char *oldname, const char *newname)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup \"%s\" does not exist",
-				 oldname)));
+						oldname)));
 	}
 
-	tablegroupoid = HeapTupleGetOid(tuple);
+	tablegroupoid = ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->oid;
 
 	/* must be owner or superuser */
 	if (!superuser() && !pg_tablegroup_ownercheck(tablegroupoid, GetUserId()))
@@ -502,7 +511,7 @@ RenameTablegroup(const char *oldname, const char *newname)
 	/*
 	 * Close pg_yb_tablegroup, but keep lock till commit.
 	 */
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	return address;
 }
@@ -513,33 +522,34 @@ RenameTablegroup(const char *oldname, const char *newname)
 ObjectAddress
 AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 {
-	Oid					tablegroupoid;
-	HeapTuple			tuple;
-	Relation			rel;
-	ScanKeyData			entry[1];
-	HeapScanDesc		scandesc;
-	Form_pg_yb_tablegroup	datForm;
-	ObjectAddress		address;
+	Oid			tablegroupoid;
+	HeapTuple	tuple;
+	Relation	rel;
+	ScanKeyData entry[1];
+	TableScanDesc scandesc;
+	Form_pg_yb_tablegroup datForm;
+	ObjectAddress address;
 
-	if (!YbTablegroupCatalogExists) {
+	if (!YbTablegroupCatalogExists)
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
+				 errmsg("tablegroup system catalog does not exist")));
 	}
 
-	rel = heap_open(YbTablegroupRelationId, RowExclusiveLock);
+	rel = table_open(YbTablegroupRelationId, RowExclusiveLock);
 	ScanKeyInit(&entry[0],
 				Anum_pg_yb_tablegroup_grpname,
 				BTEqualStrategyNumber, F_NAMEEQ,
 				CStringGetDatum(grpname));
-	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	scandesc = table_beginscan_catalog(rel, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup \"%s\" does not exist", grpname)));
 
-	tablegroupoid = HeapTupleGetOid(tuple);
+	tablegroupoid = ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->oid;
 	datForm = (Form_pg_yb_tablegroup) GETSTRUCT(tuple);
 
 	/*
@@ -602,7 +612,7 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 	heap_endscan(scandesc);
 
 	/* Close pg_yb_tablegroup, but keep lock till commit */
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	return address;
 }
@@ -615,47 +625,63 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
  * raised.
  */
 void
-ybAlterTablespaceForTablegroup(const char *grpname, Oid newTablespace)
+ybAlterTablespaceForTablegroup(const char *grpname, Oid newTablespace, const char *newname)
 {
-	Oid					tablegroupoid;
-	HeapTuple			tuple;
-	Relation			rel;
-	ScanKeyData			entry[1];
-	HeapScanDesc		scandesc;
-	Form_pg_yb_tablegroup	datForm;
+	Oid			tablegroupoid;
+	HeapTuple	tuple;
+	Relation	rel;
+	ScanKeyData entry[1];
+	TableScanDesc scandesc;
+	Form_pg_yb_tablegroup datForm;
 
 	if (!YbTablegroupCatalogExists)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
+				 errmsg("tablegroup system catalog does not exist")));
 	}
 
-	rel = heap_open(YbTablegroupRelationId, RowExclusiveLock);
+	rel = table_open(YbTablegroupRelationId, RowExclusiveLock);
 	ScanKeyInit(&entry[0],
 				Anum_pg_yb_tablegroup_grpname,
 				BTEqualStrategyNumber, F_NAMEEQ,
 				CStringGetDatum(grpname));
-	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	scandesc = table_beginscan_catalog(rel, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup \"%s\" does not exist", grpname)));
 
-	tablegroupoid = HeapTupleGetOid(tuple);
 	datForm = (Form_pg_yb_tablegroup) GETSTRUCT(tuple);
+	tablegroupoid = datForm->oid;
 
 	if (datForm->grptablespace != newTablespace)
 	{
-		datForm->grptablespace = newTablespace;
+		Datum		repl_val[Natts_pg_yb_tablegroup];
+		bool		repl_null[Natts_pg_yb_tablegroup];
+		bool		repl_repl[Natts_pg_yb_tablegroup];
+		HeapTuple	newtuple;
 
-		CatalogTupleUpdate(rel, &tuple->t_self, tuple);
+		memset(repl_null, false, sizeof(repl_null));
+		memset(repl_repl, false, sizeof(repl_repl));
+
+		repl_repl[Anum_pg_yb_tablegroup_grptablespace - 1] = true;
+		repl_val[Anum_pg_yb_tablegroup_grptablespace - 1] = newTablespace;
+
+		repl_repl[Anum_pg_yb_tablegroup_grpname - 1] = true;
+		repl_val[Anum_pg_yb_tablegroup_grpname - 1] =
+			DirectFunctionCall1(namein, CStringGetDatum(newname));
+
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
+		CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+		heap_freetuple(newtuple);
 	}
 
 	InvokeObjectPostAlterHook(YbTablegroupRelationId, tablegroupoid, 0);
 
 	heap_endscan(scandesc);
 
-	heap_close(rel, RowExclusiveLock);
+	table_close(rel, RowExclusiveLock);
 }

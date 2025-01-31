@@ -101,7 +101,11 @@ class SingleLocalityPool {
     }
   }
 
-  YBTransactionPtr Take(CoarseTimePoint deadline) {
+  YBTransactionPtr Take(
+      CoarseTimePoint deadline, ForceCreateTransaction force_create_txn) {
+    if (force_create_txn) {
+      return std::make_shared<YBTransaction>(&manager_, locality_);
+    }
     YBTransactionPtr result, new_txn;
     uint64_t old_taken;
     IncrementCounter(cache_queries_);
@@ -275,11 +279,13 @@ class TransactionPool::Impl {
   ~Impl() = default;
 
   YBTransactionPtr Take(
-      ForceGlobalTransaction force_global_transaction, CoarseTimePoint deadline) EXCLUDES(mutex_) {
+      ForceGlobalTransaction force_global_transaction, CoarseTimePoint deadline,
+      ForceCreateTransaction force_create_txn = ForceCreateTransaction::kFalse) EXCLUDES(mutex_) {
     const auto is_global = force_global_transaction ||
                            FLAGS_force_global_transactions ||
                            !manager_->PlacementLocalTransactionsPossible();
-    auto transaction = (is_global ? &global_pool_ : &local_pool_)->Take(deadline);
+    auto transaction =
+        (is_global ? &global_pool_ : &local_pool_)->Take(deadline, force_create_txn);
     if (FLAGS_TEST_track_last_transaction) {
       std::lock_guard lock(mutex_);
       last_transaction_ = transaction;
@@ -309,8 +315,9 @@ TransactionPool::~TransactionPool() {
 }
 
 YBTransactionPtr TransactionPool::Take(
-    ForceGlobalTransaction force_global_transaction, CoarseTimePoint deadline) {
-  return impl_->Take(force_global_transaction, deadline);
+    ForceGlobalTransaction force_global_transaction, CoarseTimePoint deadline,
+    ForceCreateTransaction force_create_txn) {
+  return impl_->Take(force_global_transaction, deadline, force_create_txn);
 }
 
 Result<YBTransactionPtr> TransactionPool::TakeAndInit(

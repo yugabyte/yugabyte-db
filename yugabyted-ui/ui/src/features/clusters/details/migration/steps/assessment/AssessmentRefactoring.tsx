@@ -1,26 +1,15 @@
 import React, { FC, useMemo } from "react";
-import { Box, Divider, Paper, Typography, makeStyles } from "@material-ui/core";
+import { Box, Divider, MenuItem, Link, makeStyles, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  LabelList,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  TooltipProps,
-  XAxis,
-  YAxis,
-} from "recharts";
-import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
-import type { RecommendedRefactoringGraph, UnsupportedSqlInfo } from "@app/api/src";
-import { MigrationAssessmentRefactoringTable } from "./AssessmentRefactoringTable";
+import type {
+  RefactoringCount,
+  UnsupportedSqlInfo,
+} from "@app/api/src";
+import { RefactoringGraph } from "../schema/RefactoringGraph";
+import { YBAccordion, YBSelect, YBTable } from "@app/components";
+import { MigrationRefactoringIssueSidePanel } from "./AssessmentRefactoringIssueSidePanel";
 
 const useStyles = makeStyles((theme) => ({
-  heading: {
-    marginBottom: theme.spacing(3),
-  },
   label: {
     color: theme.palette.grey[500],
     fontWeight: theme.typography.fontWeightMedium as number,
@@ -28,10 +17,13 @@ const useStyles = makeStyles((theme) => ({
     textTransform: "uppercase",
     textAlign: "left",
   },
-  fullWidth: {
-    width: "100%",
+  noGrow: {
+    alignSelf: "flex-start",
   },
   divider: {
+    marginTop: theme.spacing(2),
+  },
+  menuDivider: {
     margin: theme.spacing(1, 0, 1, 0),
   },
   tooltip: {
@@ -40,10 +32,16 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: theme.shape.borderRadius,
     boxShadow: theme.shadows[2],
   },
+  recommendationCard: {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    width: "100%",
+  },
 }));
 
 interface MigrationAssessmentRefactoringProps {
-  sqlObjects: RecommendedRefactoringGraph | undefined;
+  sqlObjects: RefactoringCount[] | undefined;
   unsupportedDataTypes: UnsupportedSqlInfo[] | undefined;
   unsupportedFeatures: UnsupportedSqlInfo[] | undefined;
   unsupportedFunctions: UnsupportedSqlInfo[] | undefined;
@@ -57,182 +55,212 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
+  const theme = useTheme();
 
-  const graphData = useMemo(() => {
-    if (!sqlObjects) {
-      return [];
-    }
+  const [typeFilter, setTypeFilter] = React.useState<string>("");
+  const [showOccurrences, setShowOccurrences] = React.useState<boolean>(false);
+  const [selectedIssue, setSelectedIssue] = React.useState<UnsupportedSqlInfo>();
 
-    return Object.entries(sqlObjects)
-      .filter(([_, value]) => (value?.automatic ?? 0) + (value?.manual ?? 0) > 0)
-      .map(([key, value]) => {
-        return {
-          objectType: key
-            .replace(/^_+|_+$/g, "")
-            .trim()
-            .toUpperCase()
-            .replaceAll("_", " "),
-          automaticDDLImport: value?.automatic ?? 0,
-          manualRefactoring: value?.manual ?? 0,
-        };
-      });
-  }, [sqlObjects]);
-
-  const barCategoryGap = 34;
-  const barSize = 22;
-  const graphHeight = graphData.length * 60 + barCategoryGap + barSize;
-
-  return (
-    <Paper>
-      <Box px={2} py={3}>
-        <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          className={classes.heading}
-        >
-          <Typography variant="h5">
-            {t("clusterDetail.voyager.planAndAssess.refactoring.heading")}
-          </Typography>
-        </Box>
-
-        <Box my={4}>
-          <ResponsiveContainer width="100%" height={graphHeight}>
-            <BarChart
-              data={graphData}
-              layout="vertical"
-              margin={{
-                right: 30,
-                left: 50,
-              }}
-              barCategoryGap={barCategoryGap}
-              barSize={barSize}
-            >
-              <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-              <XAxis type="number" />
-              <YAxis type="category" dataKey="objectType" textAnchor="start" dx={-90} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar
-                dataKey="automaticDDLImport"
-                fill="#2FB3FF"
-                stackId="stack"
-                isAnimationActive={false}
-              >
-                <LabelList
-                  dataKey="automaticDDLImport"
-                  position="insideRight"
-                  style={{ fill: "black" }}
-                  {...{
-                    formatter: (value: number) => value || null,
-                  }}
-                />
-              </Bar>
-              <Bar
-                dataKey="manualRefactoring"
-                fill="#FFA400"
-                stackId="stack"
-                isAnimationActive={false}
-              >
-                <LabelList
-                  dataKey="manualRefactoring"
-                  position="insideRight"
-                  style={{ fill: "black" }}
-                  {...{
-                    formatter: (value: number) => value || null,
-                  }}
-                />
-              </Bar>
-              <Legend
-                align="left"
-                content={({ payload }) => {
-                  if (!payload) {
-                    return null;
-                  }
-
-                  const formatter = (value: string) =>
-                    value
-                      .split(/(?=[A-Z][a-z])|(?<=[a-z])(?=[A-Z])/)
-                      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-                      .join(" ");
-
-                  return (
-                    <ul
-                      style={{
-                        listStyleType: "none",
-                        display: "flex",
-                        gap: "20px",
-                        paddingLeft: "70px",
-                      }}
-                    >
-                      {payload.map((entry) => (
-                        <li
-                          key={entry.value}
-                          style={{ display: "flex", alignItems: "center", gap: "10px" }}
-                        >
-                          <div
-                            style={{
-                              height: "16px",
-                              width: "16px",
-                              borderRadius: "2px",
-                              backgroundColor: entry.color,
-                            }}
-                          />
-                          <div style={{ color: "#4E5F6D" }}>{formatter(entry.value)}</div>
-                        </li>
-                      ))}
-                    </ul>
-                  );
-                }}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </Box>
-
-        <Divider />
-
-        <Box my={3}>
-          <Typography variant="h5">
-            {t("clusterDetail.voyager.planAndAssess.refactoring.conversionIssues")}
-          </Typography>
-        </Box>
-
-        <Box display="flex" flexDirection="column" gridGap={20}>
-          <MigrationAssessmentRefactoringTable
-            data={unsupportedDataTypes}
-            tableHeader={t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedDataType")}
-          />
-          <MigrationAssessmentRefactoringTable
-            data={unsupportedFeatures}
-            tableHeader={t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedFeature")}
-          />
-          <MigrationAssessmentRefactoringTable
-            data={unsupportedFunctions}
-            tableHeader={t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedFunction")}
-          />
-        </Box>
-      </Box>
-    </Paper>
+  const hasGraphData = useMemo(
+    () =>
+      !!sqlObjects?.filter(({ automatic, manual }) => (automatic ?? 0) + (manual ?? 0) > 0)?.length,
+    [sqlObjects]
   );
-};
 
-const CustomTooltip = ({ active, payload, label }: TooltipProps<ValueType, NameType>) => {
-  const classes = useStyles();
+  if (
+    !hasGraphData &&
+    !unsupportedDataTypes?.length &&
+    !unsupportedFeatures?.length &&
+    !unsupportedFunctions?.length
+  ) {
+    return null;
+  }
+//   const getIssueType = (issueType: string) => {
+//     const issueTypeMap: {[key: string]: string} = {
+//       "unsupported_features":
+//         t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.feature"),
+//       "unsupported_datatypes":
+//         t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.dataType"),
+//     }
+//     return issueTypeMap[issueType.toLowerCase()] ?? issueType;
+//   };
 
-  if (active && payload && payload.length) {
-    return (
-      <Box className={classes.tooltip}>
-        <Box mb={0.5}>
-          <Typography>{label}</Typography>
-        </Box>
-        {payload[0]?.value ? (
-          <Box color={payload[0].color}>Automatic DDL Import: {payload[0].value}</Box>
-        ) : null}
-        {payload[1]?.value ? (
-          <Box color={payload[1].color}>Manual Refactoring: {payload[1].value}</Box>
+//   const conversionIssuesData = useMemo(() => {
+//     return conversionIssues?.map((issue) => {
+//         issue.issueType = getIssueType(issue.issueType ?? "N/A");
+//         return issue;
+//     })?.filter((issue) => {
+//         return typeFilter === "" || typeFilter === issue.issueType;
+//     });
+//   }, [conversionIssues, typeFilter]);
+
+  const types = useMemo(() => {
+    const typeSet = new Set<string>();
+    if (unsupportedDataTypes?.length)
+      typeSet.add(t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.dataType"));
+    if (unsupportedFeatures?.length)
+      typeSet.add(t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.feature"));
+    if (unsupportedFunctions?.length)
+      typeSet.add(t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.function"));
+    return Array.from(typeSet);
+  }, [unsupportedDataTypes, unsupportedFeatures, unsupportedFunctions]);
+
+  const unsupportedObjectsData = useMemo(() => {
+    const includeFeatures = typeFilter === "" ||
+      typeFilter === t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.feature");
+    const includeDataTypes = typeFilter === "" ||
+      typeFilter === t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.dataType");
+    const includeFunctions = typeFilter === "" ||
+      typeFilter === t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.function");
+
+    const features = includeFeatures
+      ? unsupportedFeatures?.map((data) => ({
+          ...data,
+          issue_type:
+            t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.feature"),
+          sql_statement: data.objects?.length ? (data.objects[0].sql_statement || "N/A") : "N/A",
+        })) ?? []
+      : [];
+
+    const dataTypes = includeDataTypes
+      ? unsupportedDataTypes?.map((data) => ({
+          ...data,
+          issue_type:
+            t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.dataType"),
+          sql_statement: data.objects?.length ? (data.objects[0].sql_statement || "N/A") : "N/A",
+        })) ?? []
+      : [];
+
+    const functions = includeFunctions
+      ? unsupportedFunctions?.map((data) => ({
+          ...data,
+          issue_type:
+            t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.function"),
+          sql_statement: data.objects?.length ? (data.objects[0].sql_statement || "N/A") : "N/A",
+        })) ?? []
+      : [];
+
+    return features.concat(dataTypes, functions);
+  }, [unsupportedDataTypes, unsupportedFeatures, unsupportedFunctions, typeFilter]);
+
+  const columns = [
+    {
+      name: "unsupported_type",
+      label: t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.issue"),
+      options: {
+        setCellHeaderProps: () => ({ style: { width: "120px", padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "count",
+      label:
+        t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.occurrences"),
+      options: {
+        setCellHeaderProps: () => ({ style: { width: "130px", padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        customBodyRenderLite: (dataIndex: number) => {
+          if ((unsupportedObjectsData[dataIndex].count ?? 0) > 1) {
+            return (
+              <Link
+                onClick={() => {
+                  setSelectedIssue(unsupportedObjectsData[dataIndex]);
+                  setShowOccurrences(true);
+                }}
+              >
+                {unsupportedObjectsData[dataIndex].count}
+              </Link>
+            );
+          }
+          return unsupportedObjectsData[dataIndex].count;
+        }
+      },
+    },
+    {
+      name: "issue_type",
+      label:
+        t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.issueType"),
+      options: {
+        setCellHeaderProps: () => ({ style: { width: "120px", padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "sql_statement",
+      label:
+        t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.previewSqlStatement"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "docs_link",
+      label:
+        t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.workaround"),
+      options: {
+        setCellHeaderProps: () => ({ style: { width: "130px", padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        customBodyRender: (url: string) => (url
+            ? <Link href={url} target="_blank">
+                {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.linkToDocs")}
+              </Link>
+            : <>
+                {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.notAvailable")}
+              </>)
+      },
+    },
+  ];
+
+
+  return (<>
+    <YBAccordion
+      titleContent={
+          t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.heading")}
+      defaultExpanded
+      contentSeparator
+    >
+      <Box className={classes.recommendationCard}>
+        <RefactoringGraph sqlObjects={sqlObjects} />
+
+        {unsupportedDataTypes?.length ||
+        unsupportedFeatures?.length ||
+        unsupportedFunctions?.length ? (
+          <Box display="flex" flexDirection="column" gridGap={theme.spacing(3)}>
+            <Divider className={classes.divider}/>
+
+            <YBSelect
+              className={classes.noGrow}
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <MenuItem value="">
+                {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+                    "allIssueTypes")}
+              </MenuItem>
+              <Divider className={classes.menuDivider}/>
+              {types.map((type) => {
+                return (
+                  <MenuItem key={type} value={type}>
+                    {type}
+                  </MenuItem>
+                );
+              })}
+            </YBSelect>
+
+            <YBTable
+              data={unsupportedObjectsData}
+              columns={columns}
+              withBorder={false}
+            />
+          </Box>
         ) : null}
       </Box>
-    );
-  }
-
-  return null;
+    </YBAccordion>
+    <MigrationRefactoringIssueSidePanel
+      issue={selectedIssue}
+      open={showOccurrences}
+      onClose={() => setShowOccurrences(false)}
+    />
+  </>);
 };

@@ -9,7 +9,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.LdapDnToYbaRole;
+import com.yugabyte.yw.models.GroupMappingInfo;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
@@ -237,7 +237,6 @@ public class LdapUtil {
         groups.add(entry.getDn().toString());
       }
     } catch (LdapException | CursorException e) {
-      e.printStackTrace();
       log.error(
           "Error querying groups with base dn: {} and search filter: {}",
           ldapConfiguration.getLdapBaseDN(),
@@ -247,18 +246,23 @@ public class LdapUtil {
     return groups;
   }
 
-  private Role getRoleMappedToLdapGroup(String group, UUID customerUuid) {
+  private Role getRoleMappedToLdapGroup(
+      String group, UUID customerUuid, Set<UUID> groupMemberships) {
     Role role = null;
-    LdapDnToYbaRole ldapDnToYbaRole =
-        LdapDnToYbaRole.find
+    GroupMappingInfo info =
+        GroupMappingInfo.find
             .query()
             .where()
-            .eq("distinguished_name", group)
+            .ieq("identifier", group)
             .eq("customer_uuid", customerUuid)
+            .eq("type", "LDAP")
             .findOne();
 
-    if (ldapDnToYbaRole != null) {
-      role = ldapDnToYbaRole.ybaRole;
+    if (info != null) {
+      groupMemberships.add(info.getGroupUUID());
+      role =
+          Role.valueOf(
+              com.yugabyte.yw.models.rbac.Role.get(customerUuid, info.getRoleUUID()).getName());
     }
     return role;
   }
@@ -268,11 +272,12 @@ public class LdapUtil {
       String ybaUsername,
       LdapNetworkConnection connection,
       LdapConfiguration ldapConfiguration,
-      UUID customerUuid) {
+      UUID customerUuid,
+      Set<UUID> groupMemberships) {
     Role role = null;
     Set<String> groups = getGroups(ybaUsername, userEntry, connection, ldapConfiguration);
     for (String group : groups) {
-      Role groupRole = getRoleMappedToLdapGroup(group, customerUuid);
+      Role groupRole = getRoleMappedToLdapGroup(group, customerUuid, groupMemberships);
       role = Role.union(role, groupRole);
     }
     return role;
@@ -328,12 +333,11 @@ public class LdapUtil {
         }
 
         // Cursor.next returns true in some environments
-        if (!StringUtils.isEmpty(distinguishedName)
-            && getNameFromDN(distinguishedName).equals(email)) {
+        if (!StringUtils.isEmpty(distinguishedName)) {
           if (ldapConfiguration.isEnableDetailedLogs()) {
             log.debug("Successfully fetched user entry from LDAP Server {}", userEntry.toString());
           }
-          return new ImmutableTriple<Entry, String, String>(userEntry, distinguishedName, role);
+          break;
         }
       }
 
@@ -347,7 +351,7 @@ public class LdapUtil {
       log.error("LDAP query failed.", e);
       throw new PlatformServiceException(BAD_REQUEST, "LDAP search failed.");
     }
-    return new ImmutableTriple<Entry, String, String>(null, "", "");
+    return new ImmutableTriple<Entry, String, String>(userEntry, distinguishedName, role);
   }
 
   public LdapNetworkConnection createConnection(
@@ -397,6 +401,7 @@ public class LdapUtil {
   public Users authViaLDAP(String email, String password, LdapConfiguration ldapConfiguration)
       throws LdapException {
     Users users = new Users();
+    Set<UUID> groupMemberships = new HashSet<>();
     LdapNetworkConnection connection = null;
     try {
       String distinguishedName =
@@ -549,7 +554,12 @@ public class LdapUtil {
 
         Role roleFromGroupMappings =
             getRoleFromGroupMappings(
-                userEntry, email, connection, ldapConfiguration, users.getCustomerUUID());
+                userEntry,
+                email,
+                connection,
+                ldapConfiguration,
+                users.getCustomerUUID(),
+                groupMemberships);
 
         if (roleFromGroupMappings == null) {
           log.warn("No role mappings from LDAP group membership of user: " + email);
@@ -661,6 +671,7 @@ public class LdapUtil {
       if (ldapConfiguration.isEnableDetailedLogs()) {
         log.debug("Saving new user: {}", users);
       }
+      users.setGroupMemberships(groupMemberships);
       users.save();
 
       if (ldapConfiguration.isUseNewRbacAuthz()) {

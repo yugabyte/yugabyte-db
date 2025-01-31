@@ -517,9 +517,10 @@ public class CertsRotateTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     // RootCA update task
-    int expectedPosition = 15;
+    int expectedPosition = 16;
     if (rotateRootCA) {
       expectedPosition += 2;
       position = assertCommonTasks(subTasksByPosition, position, true, false);
@@ -622,9 +623,10 @@ public class CertsRotateTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    int expectedPosition = 80;
+    int expectedPosition = 81;
     int expectedNumberOfInvocations = 21;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     if (rotateRootCA) {
       expectedPosition += 150;
@@ -737,9 +739,10 @@ public class CertsRotateTest extends UpgradeTaskTest {
     if (isRolling) {
       assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     }
+    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     // RootCA update task
-    int expectedPosition = isRolling ? 80 : 16;
+    int expectedPosition = isRolling ? 81 : 17;
     // Cert update tasks
     position = assertCommonTasks(subTasksByPosition, position, false, false);
     // gflags update tasks

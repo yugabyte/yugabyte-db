@@ -323,7 +323,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
     shellResponse.code = ShellResponse.ERROR_CODE_EXECUTION_CANCELLED;
     when(mockTableManagerYb.createBackup(any())).thenReturn(shellResponse);
     TaskInfo taskInfo = submitTask(TableType.YQL_TABLE_TYPE);
-    List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID());
+    List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskInfo.getUuid());
     assertNotEquals(0, backupList.size());
     backupList.forEach((backup -> assertEquals(BackupState.Stopped, backup.getState())));
   }

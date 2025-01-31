@@ -18,3 +18,7 @@ properties:
       - Rolling
       - Non-rolling
       - Non-restart
+  roll_max_batch_size:
+    description: Suggested number of tservers to roll during upgrade if available.
+    $ref: "./RollMaxBatchSize.yaml"
+    x-yba-api-visibility: internal

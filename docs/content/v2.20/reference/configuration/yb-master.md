@@ -37,6 +37,10 @@ To display the online help, run `yb-master --help` from the YugabyteDB home dire
 ./bin/yb-master --help
 ```
 
+## All flags
+
+The following sections describe the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-Master flags](../all-flags-yb-master/).
+
 ## General flags
 
 ##### --version
@@ -504,6 +508,12 @@ Default: `false`
 
 ## Tablet splitting flags
 
+##### --max_create_tablets_per_ts
+
+The maximum number of tablets per tablet server that can be specified when creating a table. This also limits the number of tablets that can be created by tablet splitting.
+
+Default: `50`
+
 ##### --enable_automatic_tablet_splitting
 
 Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
@@ -526,7 +536,7 @@ Default: `1`
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [`--tablet_split_low_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `128_MB`
+Default: `128 MiB`
 
 ##### --tablet_split_high_phase_shard_count_per_node
 
@@ -538,19 +548,19 @@ Default: `24`
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "high" phase of automatic tablet splitting. See [`--tablet_split_high_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `10_GB`
+Default: `10 GiB`
 
 ##### --tablet_force_split_threshold_bytes
 
 The size threshold used to determine if a tablet should be split even if the table's number of shards puts it past the "high phase".
 
-Default: `100_GB`
+Default: `100 GiB`
 
 ##### --tablet_split_limit_per_table
 
 The maximum number of tablets per table for tablet splitting. Limitation is disabled if this value is set to 0.
 
-Default: `256`
+Default: `0`
 
 ##### --index_backfill_tablet_split_completion_timeout_sec
 
@@ -670,7 +680,7 @@ Default: `true`
 
 ## Security flags
 
-For details on enabling server-to-server encryption, see [Server-server encryption](../../../secure/tls-encryption/server-to-server/).
+For details on enabling encryption in transit, see [Encryption in transit](../../../secure/tls-encryption/).
 
 ##### --certs_dir
 
@@ -678,9 +688,15 @@ Directory that contains certificate authority, private key, and certificates for
 
 Default: `""` (uses `<data drive>/yb-data/master/data/certs`.)
 
+##### --certs_for_client_dir
+
+The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
+
+Default: `""` (Use the same directory as certs_dir.)
+
 ##### --allow_insecure_connections
 
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled.
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [use_node_to_node_encryption](#use-node-to-node-encryption) to be enabled and [use_client_to_server_encryption](#use-client-to-server-encryption) to be enabled.
 
 Default: `true`
 
@@ -690,9 +706,17 @@ Adds certificate entries, including IP addresses and hostnames, to log for hands
 
 Default: `false`
 
+##### --use_client_to_server_encryption
+
+Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs.
+
+Default: `false`
+
 ##### --use_node_to_node_encryption
 
-Enables server-server or node-to-node encryption between YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) flag enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) flag must be disabled.
+Enables server-server (node-to-node) encryption between YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-TServer servers must also have their [--use_node_to_node_encryption](../yb-tserver/#use-node-to-node-encryption) flag enabled.
+
+When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
 
 Default: `false`
 
@@ -730,6 +754,32 @@ Default: `DEFAULTS`
 
 For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
 
+##### --ssl_protocols
+
+Specifies an explicit allow-list of TLS protocols for YugabyteDB's internal RPC communication.
+
+Default: An empty string, which is equivalent to allowing all protocols except "ssl2" and "ssl3".
+
+You can pass a comma-separated list of strings, where the strings can be one of "ssl2", "ssl3", "tls10", "tls11", "tls12", and "tls13".
+
+You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, set the flag to tls12 as follows:
+
+```sh
+--ssl_protocols = tls12
+```
+
+To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set to tls12, tls13, and all available subsequent versions.
+
+```sh
+--ssl_protocols = tls12,tls13
+```
+
+In addition, as this setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag as follows:
+
+```sh
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
+```
+
 ## Change data capture (CDC) flags
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
@@ -747,6 +797,12 @@ Default: `0` (Use the same default number of tablets as for regular tables.)
 WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
 
 Default: `14400` (4 hours)
+
+##### --enable_tablet_split_of_cdcsdk_streamed_tables
+
+Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
+
+Default: `true`
 
 ##### --enable_truncate_cdcsdk_table
 

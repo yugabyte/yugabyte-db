@@ -190,6 +190,14 @@ $(document).ready(() => {
       $(event.currentTarget.parentNode).find('.open').toggleClass('open');
     });
 
+    $(document).on('click', '.products-dropdown .selected', (event) => {
+      $(event.currentTarget).toggleClass('open');
+    });
+
+    $(document).on('click', '.products-dropdown .dropdown-submenu', (event) => {
+      $(event.currentTarget.parentNode).find('.open').toggleClass('open');
+    });
+
     $(document).on('click', '.mobile-menu', () => {
       $('.page-header').toggleClass('open');
       $('.mobile-menu').toggleClass('open');
@@ -352,7 +360,7 @@ $(document).ready(() => {
    * Change all page tabs when single tab is changed.
    */
   (() => {
-    $('.td-content .nav-tabs-yb .nav-link').each((index, element) => {
+    $('.td-content ul.nav .nav-link').each((index, element) => {
       let tabId = element.id;
       if (tabId) {
         const regex = /(?<name>.*)-[0-9]+-tab/;
@@ -365,7 +373,7 @@ $(document).ready(() => {
       }
     });
 
-    $(document).on('click', '.td-content .nav-tabs-yb .nav-link', (event) => {
+    $(document).on('click', '.td-content .nav[role="tablist"] .nav-link', (event) => {
       if (event.target && event.originalEvent && event.originalEvent.isTrusted) {
         let tabId = event.target.getAttribute('id');
 
@@ -376,7 +384,15 @@ $(document).ready(() => {
             tabId = `${found.groups.name}-tab`;
           }
 
-          $(`.td-content .nav-tabs-yb .nav-link.${tabId}`).trigger('click');
+          $('.td-content .nav[role="tablist"]').each((index, element) => {
+            if ($(element).next('.tab-content').children(`.tab-pane[aria-labelledby="${tabId}"]`).length > 0) {
+              $('li', element).children('.nav-link').removeClass('active');
+              $('li', element).children(`.nav-link.${tabId}`).addClass('active');
+
+              $(element).next('.tab-content').children('.tab-pane').removeClass('active show');
+              $(element).next('.tab-content').children(`.tab-pane[aria-labelledby="${tabId}"]`).addClass('active show');
+            }
+          });
         }
       }
     });
@@ -505,6 +521,90 @@ $(document).ready(() => {
       });
     }
   });
+
+  /**
+   Sort option in table.
+   */
+  (() => {
+    const tables = document.querySelectorAll('.td-content .table-responsive table.sortable');
+    tables.forEach(table => {
+      const headersEmpty = table.querySelectorAll('th:empty');
+      headersEmpty.forEach((innerDiv) => {
+        innerDiv.classList.add('empty-th');
+      });
+
+      const headers = table.querySelectorAll('th');
+      const tbody = table.tBodies[0];
+      const totalRows = tbody.querySelectorAll('tr');
+
+      let sortOrder = 1;
+      if (totalRows.length > 1) {
+        headers.forEach((header, index) => {
+          const sortSpan = document.createElement('span');
+          const tdsEmpty = table.querySelectorAll(`td:nth-child(${index + 1})`);
+
+          let emptyCellsCount = 0;
+          tdsEmpty.forEach((emptyCell) => {
+            if (emptyCell.textContent.trim() !== '') {
+              emptyCellsCount += 1;
+            }
+          });
+
+          if (emptyCellsCount === 0) {
+            table.querySelector(`thead th:nth-child(${index + 1})`).classList.add('empty-th');
+          }
+
+          sortSpan.textContent = 'Sort';
+          sortSpan.classList.add('sort-btn');
+          header.appendChild(sortSpan);
+          sortSpan.addEventListener('click', (ev) => {
+            ev.target.classList.toggle('sorted');
+            sortTableByColumn(table, index, sortOrder);
+            sortOrder *= -1;
+          });
+        });
+      }
+    });
+
+    function sortTableByColumn(table, columnIndex, sortOrder) {
+      const tbody = table.tBodies[0];
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const sortedRows = rows.sort((a, b) => {
+        let aText = '';
+        let bText = '';
+        let returnVal = '';
+
+        if (a.cells[columnIndex] && a.cells[columnIndex].textContent) {
+          aText = a.cells[columnIndex].textContent.replace(/[,\-(]/g, '').trim();
+        }
+
+        if (b.cells[columnIndex] && b.cells[columnIndex].textContent) {
+          bText = b.cells[columnIndex].textContent.replace(/[,\-(]/g, '').trim();
+        }
+
+        if (aText === '' && bText === '') {
+          returnVal = 0;
+        } else if (aText === '') {
+          returnVal = 1;
+        } else if (bText === '') {
+          returnVal = -1;
+        } else {
+          returnVal = sortOrder * aText.localeCompare(bText, 'en', {
+            numeric: true,
+            sensitivity: 'base',
+          });
+        }
+
+        return returnVal;
+      });
+
+      while (tbody.firstChild) {
+        tbody.removeChild(tbody.firstChild);
+      }
+
+      tbody.append(...sortedRows);
+    }
+  })();
 
   if ($('.component-box').length > 0) {
     $('.component-box li p a').each(function () {

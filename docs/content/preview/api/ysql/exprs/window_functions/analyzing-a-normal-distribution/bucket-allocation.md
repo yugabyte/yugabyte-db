@@ -4,14 +4,14 @@ linkTitle: Bucket allocation scheme
 headerTitle: The bucket allocation scheme
 description: The bucket allocation scheme. Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
-  preview:
+  preview_api:
     identifier: bucket-allocation
     parent: analyzing-a-normal-distribution
     weight: 10
 type: docs
 ---
 
-It might seem that the built-in function `width_bucket()` ([here](https://www.postgresql.org/docs/11/functions-math.html#FUNCTIONS-MATH-FUNC-TABLE) in the PostgreSQL documentation) is tailor-made for this task. But there's a snag.
+It might seem that the built-in function `width_bucket()` ([here](https://www.postgresql.org/docs/15/functions-math.html#FUNCTIONS-MATH-FUNC-TABLE) in the PostgreSQL documentation) is tailor-made for this task. But there's a snag.
 
 The values in the column _t4.dp_score"_ lie in this so-called closed-closed interval `[0, 100]`—expressed like this in SQL:
 ```

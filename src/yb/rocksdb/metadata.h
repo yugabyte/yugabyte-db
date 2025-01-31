@@ -37,6 +37,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/enums.h"
 
+#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/types.h"
 
 namespace google { namespace protobuf {
@@ -52,13 +53,6 @@ namespace rocksdb {
 struct ColumnFamilyMetaData;
 struct LevelMetaData;
 struct SstFileMetaData;
-
-class UserFrontier;
-
-// Frontier should be copyable, but should still preserve its polymorphic nature. We cannot use
-// shared_ptr here, because we are planning to modify the copied value. If we used shared_ptr and
-// modified the copied value, the original value would also change.
-typedef yb::clone_ptr<UserFrontier> UserFrontierPtr;
 
 void UpdateUserFrontier(UserFrontierPtr* value, const UserFrontierPtr& update,
                         UpdateUserValueType type);
@@ -119,29 +113,37 @@ inline std::ostream& operator<<(std::ostream& out, const UserFrontier& frontier)
   return out << frontier.ToString();
 }
 
+class UserFrontiers;
+using UserFrontiersPtr = std::unique_ptr<UserFrontiers>;
+
 // Abstract interface to a pair of user defined frontiers - smallest and largest.
 class UserFrontiers {
  public:
-  virtual std::unique_ptr<UserFrontiers> Clone() const = 0;
+  virtual UserFrontiersPtr Clone() const = 0;
   std::string ToString() const;
   virtual const UserFrontier& Smallest() const = 0;
   virtual const UserFrontier& Largest() const = 0;
+
+  virtual UserFrontier& Smallest() = 0;
+  virtual UserFrontier& Largest() = 0;
 
   virtual void MergeFrontiers(const UserFrontiers& rhs) = 0;
 
   virtual ~UserFrontiers() {}
 };
 
+void UpdateFrontiers(UserFrontiersPtr& frontiers, const UserFrontiers& update);
+
 template<class Frontier>
 class UserFrontiersBase : public rocksdb::UserFrontiers {
  public:
-  const rocksdb::UserFrontier& Smallest() const override { return smallest_; }
-  const rocksdb::UserFrontier& Largest() const override { return largest_; }
+  const UserFrontier& Smallest() const override { return smallest_; }
+  const UserFrontier& Largest() const override { return largest_; }
 
-  Frontier& Smallest() { return smallest_; }
-  Frontier& Largest() { return largest_; }
+  Frontier& Smallest() override { return smallest_; }
+  Frontier& Largest() override { return largest_; }
 
-  std::unique_ptr<rocksdb::UserFrontiers> Clone() const override {
+  UserFrontiersPtr Clone() const override {
     return std::make_unique<UserFrontiersBase>(*this);
   }
 

@@ -86,11 +86,7 @@ class TSPicker {
   TSPicker() {}
   virtual ~TSPicker() {}
 
-  // Sets *ts_desc to the tablet server to contact for the next RPC.
-  //
-  // This assumes that TSDescriptors are never deleted by the master,
-  // so the caller does not take ownership of the returned pointer.
-  virtual Status PickReplica(TSDescriptor** ts_desc) = 0;
+  virtual Result<TSDescriptorPtr> PickReplica() = 0;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(TSPicker);
@@ -103,7 +99,7 @@ class PickSpecificUUID : public TSPicker {
   PickSpecificUUID(Master* master, std::string ts_uuid)
       : master_(master), ts_uuid_(std::move(ts_uuid)) {}
 
-  Status PickReplica(TSDescriptor** ts_desc) override;
+  Result<TSDescriptorPtr> PickReplica() override;
 
  private:
   Master* const master_;
@@ -118,7 +114,7 @@ class PickLeaderReplica : public TSPicker {
  public:
   explicit PickLeaderReplica(const TabletInfoPtr& tablet);
 
-  Status PickReplica(TSDescriptor** ts_desc) override;
+  Result<TSDescriptorPtr> PickReplica() override;
 
  private:
   const TabletInfoPtr tablet_;
@@ -127,7 +123,7 @@ class PickLeaderReplica : public TSPicker {
 // A background task which continuously retries sending an RPC to a master or tserver.
 class RetryingRpcTask : public server::RunnableMonitoredTask {
  public:
-  RetryingRpcTask(Master *master,
+  RetryingRpcTask(Master* master,
                   ThreadPool* callback_pool,
                   AsyncTaskThrottlerBase* async_task_throttler);
 
@@ -138,7 +134,8 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
-  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override;
+  server::MonitoredTaskState AbortAndReturnPrevState(
+      const Status& status, bool call_task_finisher = true) override;
 
  protected:
   // Send an RPC request and register a callback.
@@ -308,7 +305,7 @@ class RetryingTSRpcTask : public RetryingRpcTask {
   virtual Status PickReplica() override;
 
   const std::unique_ptr<TSPicker> replica_picker_;
-  TSDescriptor* target_ts_desc_ = nullptr;
+  TSDescriptorPtr target_ts_desc_ = nullptr;
 
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
   std::shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
@@ -416,6 +413,7 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTaskWithTable {
                      ThreadPool *callback_pool,
                      const std::string& permanent_uuid,
                      const TabletInfoPtr& tablet,
+                     const TabletInfo::ReadLock& tablet_lock,
                      const std::vector<SnapshotScheduleId>& snapshot_schedules,
                      LeaderEpoch epoch,
                      CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers);
@@ -658,6 +656,7 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
  private:
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  virtual void HandleInsertPackedSchema(tablet::ChangeMetadataRequestPB& req) { return; }
 
   TransactionId transaction_id_ = TransactionId::Nil();
   const xrepl::StreamId cdc_sdk_stream_id_ = xrepl::StreamId::Nil();
@@ -683,6 +682,25 @@ class AsyncBackfillDone : public AsyncAlterTable {
   bool SendRequest(int attempt) override;
 
   const std::string table_id_;
+};
+
+class AsyncInsertPackedSchemaForXClusterTarget : public AsyncAlterTable {
+ public:
+  // For colocated alters, `table` should be the table we are modifying (ie not the parent table).
+  AsyncInsertPackedSchemaForXClusterTarget(
+      Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+      const scoped_refptr<TableInfo>& table, const SchemaPB& packed_schema, LeaderEpoch epoch)
+      : AsyncAlterTable(
+            master, callback_pool, tablet, table, TransactionId::Nil(), std::move(epoch)),
+        packed_schema_(packed_schema) {}
+
+  std::string type_name() const override { return "Insert packed schema for xCluster target"; }
+
+ protected:
+  void HandleInsertPackedSchema(tablet::ChangeMetadataRequestPB& req) override;
+
+ private:
+  SchemaPB packed_schema_;
 };
 
 // Send a Truncate() RPC request.
@@ -857,7 +875,8 @@ class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
  public:
   AsyncAddTableToTablet(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      const scoped_refptr<TableInfo>& table, LeaderEpoch epoch);
+      const scoped_refptr<TableInfo>& table, LeaderEpoch epoch,
+      const std::shared_ptr<std::atomic<size_t>>& task_counter);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kAddTableToTablet;
@@ -877,6 +896,7 @@ class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
   const TabletId tablet_id_;
   tserver::AddTableToTabletRequestPB req_;
   tserver::AddTableToTabletResponsePB resp_;
+  std::shared_ptr<std::atomic<size_t>> task_counter_;
 };
 
 // Task to remove a table from a tablet. Catalog Manager uses this task to send the request to the
@@ -1094,6 +1114,60 @@ class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
   HybridTime restore_ht_;
   tserver::ClonePgSchemaResponsePB resp_;
   ClonePgSchemaCallbackType callback_;
+};
+
+class AsyncClearMetacache : public RetrySpecificTSRpcTask {
+ public:
+  using ClearMetacacheCallbackType = std::function<Status()>;
+  AsyncClearMetacache(
+      Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
+      const std::string& namespace_id, ClearMetacacheCallbackType callback);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kClearMetaCache;
+  }
+
+  std::string type_name() const override { return "Clear all meta-caches of a tserver"; }
+
+  std::string description() const override;
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  // Not associated with a tablet.
+  TabletId tablet_id() const override { return TabletId(); }
+
+ private:
+  std::string namespace_id;
+  tserver::ClearMetacacheResponsePB resp_;
+  ClearMetacacheCallbackType callback_;
+};
+
+class AsyncEnableDbConns : public RetrySpecificTSRpcTask {
+ public:
+  using EnableDbConnsCallbackType = std::function<Status(Status)>;
+  AsyncEnableDbConns(
+      Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
+      const std::string& target_db_name, EnableDbConnsCallbackType callback);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kEnableDbConns;
+  }
+
+  std::string type_name() const override { return "Enable DB connections"; }
+
+  std::string description() const override;
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  // Not associated with a tablet.
+  TabletId tablet_id() const override { return TabletId(); }
+
+ private:
+  std::string target_db_name_;
+  tserver::EnableDbConnsResponsePB resp_;
+  EnableDbConnsCallbackType callback_;
 };
 
 } // namespace master

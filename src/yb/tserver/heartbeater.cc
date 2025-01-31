@@ -44,6 +44,7 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/bind.h"
@@ -343,6 +344,8 @@ Status Heartbeater::Thread::SetupRegistration(master::TSRegistrationPB* reg) {
   if (tablet_overhead_limit > 0) {
     resources->set_tablet_overhead_ram_in_bytes(tablet_overhead_limit);
   }
+  VersionInfo::GetVersionInfoPB(reg->mutable_version_info());
+
   return Status::OK();
 }
 
@@ -410,6 +413,10 @@ Status Heartbeater::Thread::TryHeartbeat() {
       req.set_ysql_db_catalog_versions_fingerprint(*fingerprint);
     }
   }
+
+  RETURN_NOT_OK(server_->XClusterPopulateMasterHeartbeatRequest(
+      req, last_hb_response_.needs_full_tablet_report()));
+
   for (auto& data_provider : data_providers_) {
     data_provider->AddData(last_hb_response_, &req);
   }
@@ -463,6 +470,11 @@ Status Heartbeater::Thread::TryHeartbeat() {
       auto universe_uuid = VERIFY_RESULT(UniverseUuid::FromString(resp.universe_uuid()));
       RETURN_NOT_OK(server_->ValidateAndMaybeSetUniverseUuid(universe_uuid));
     }
+    if (resp.has_op_lease_update()) {
+      WARN_NOT_OK(
+          server_->BootstrapDdlObjectLocks(resp.op_lease_update()),
+          "Error bootstrapping object locks. Not expected.");
+    }
 
     if (resp.has_error()) {
       switch (resp.error().code()) {
@@ -477,8 +489,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
           break;
         }
         default:
-          return StatusFromPB(resp.error().status());
-
+          auto status = StatusFromPB(resp.error().status());
+          if (resp.is_fatal_error()) {
+            // yb-master has requested us to terminate the process immediately.
+            LOG(FATAL) << "Unable to join universe: " << status;
+          }
+          return status;
       }
     }
 
@@ -560,10 +576,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
       VLOG_WITH_FUNC(2) << "got no master catalog version data";
     }
   } else {
-    // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In
-    // non-per-db mode, we do not use db_catalog_version_data.
-    DCHECK(!last_hb_response_.has_db_catalog_version_data());
     if (last_hb_response_.has_ysql_catalog_version()) {
+      DCHECK(!last_hb_response_.has_db_catalog_version_data());
       if (FLAGS_log_ysql_catalog_versions) {
         VLOG_WITH_FUNC(1) << "got master catalog version: "
                           << last_hb_response_.ysql_catalog_version()
@@ -580,6 +594,32 @@ Status Heartbeater::Thread::TryHeartbeat() {
         server_->SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
                                        last_hb_response_.ysql_catalog_version());
       }
+    } else if (last_hb_response_.has_db_catalog_version_data()) {
+      // --ysql_enable_db_catalog_version_mode is still false on this tserver but master
+      // already has --ysql_enable_db_catalog_version_mode=true. This can happen during
+      // rolling upgrade from an old release where this gflag defaults to false to a new
+      // release where this gflag defaults to true: the change of this gflag from false
+      // to true happens on master first.
+      // This can also happen when such an upgrade is rolled back: where yb-tservers are
+      // first rolled back so the gflag changes to false before yb-masters.
+      // Here we take care of both cases in the same way: extracting the global catalog
+      // versions from last_hb_response_.db_catalog_version_data().
+      if (FLAGS_log_ysql_catalog_versions) {
+        VLOG_WITH_FUNC(1) << "got master db catalog version data: "
+                          << last_hb_response_.db_catalog_version_data().ShortDebugString();
+      }
+      const auto& version_data = last_hb_response_.db_catalog_version_data();
+
+      // The upgrade of the pg_yb_catalog_version table to one row per database happens in
+      // the finalization phase of cluster upgrade, at that time all the tservers should have
+      // completed rolling upgrade and have --ysql_enable_db_catalog_version_mode=true.
+      // Since we still have FLAGS_ysql_enable_db_catalog_version_mode=false, the table
+      // must still only have one row for template1.
+      DCHECK_EQ(version_data.db_catalog_versions_size(), 1);
+      DCHECK_EQ(version_data.db_catalog_versions(0).db_oid(), kTemplate1Oid);
+
+      server_->SetYsqlCatalogVersion(version_data.db_catalog_versions(0).current_version(),
+                                     version_data.db_catalog_versions(0).last_breaking_version());
     }
   }
 

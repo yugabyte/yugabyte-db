@@ -1,51 +1,46 @@
 import { useState } from 'react';
-import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
+import { Box, Typography, useTheme } from '@material-ui/core';
 import { AxiosError } from 'axios';
-import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
+import { FormProvider, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 
 import {
   editXClusterConfigTables,
-  fetchTablesInUniverse,
   fetchTaskUntilItCompletes,
-  fetchUniverseDiskUsageMetric
+  fetchXClusterConfig,
+  isBootstrapRequired
 } from '../../../../actions/xClusterReplication';
 import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components';
 import {
   api,
   drConfigQueryKey,
-  runtimeConfigQueryKey,
   universeQueryKey,
   xClusterQueryKey
 } from '../../../../redesign/helpers/api';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
+import { XClusterConfigAction, XClusterConfigType, XClusterTableStatus } from '../../constants';
 import {
-  BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
-  XClusterConfigAction,
-  XClusterConfigType,
-  XCLUSTER_UNIVERSE_TABLE_FILTERS
-} from '../../constants';
-import {
-  getTablesForBootstrapping,
+  formatUuidForXCluster,
+  getCategorizedNeedBootstrapPerTableResponse,
+  getNoSetupBootstrapRequiredTableUuids,
   getXClusterConfigTableType,
-  parseFloatIfDefined,
   shouldAutoIncludeIndexTables
 } from '../../ReplicationUtils';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
 import { CurrentFormStep } from './CurrentFormStep';
 import { getTableUuid } from '../../../../utils/tableUtils';
-import { RuntimeConfigKey } from '../../../../redesign/helpers/constants';
 
-import { Universe, UniverseNamespace, YBTable } from '../../../../redesign/helpers/dtos';
-import { XClusterConfig } from '../../dtos';
+import { TableType, Universe, UniverseNamespace } from '../../../../redesign/helpers/dtos';
+import { XClusterConfig, XClusterConfigNeedBootstrapPerTableResponse } from '../../dtos';
+import { CategorizedNeedBootstrapPerTableResponse } from '../../XClusterTypes';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
 interface CommonEditTablesModalProps {
-  xClusterConfig: XClusterConfig;
+  xClusterConfigUuid: string;
   modalProps: YBModalProps;
 }
 
@@ -58,25 +53,20 @@ type EditTablesModalProps =
   | (CommonEditTablesModalProps & { isDrInterface: false });
 
 export interface EditTablesFormValues {
-  tableUuids: string[];
   namespaceUuids: string[];
-
+  tableUuids: string[];
   storageConfig: StorageConfigOption;
+  skipBootstrap: boolean;
 }
 
 export const FormStep = {
   SELECT_TABLES: 'selectTables',
-  CONFIGURE_BOOTSTRAP: 'configureBootstrap'
+  BOOTSTRAP_SUMMARY: 'bootstrapSummary'
 } as const;
 export type FormStep = typeof FormStep[keyof typeof FormStep];
 
-const useStyles = makeStyles(() => ({
-  secondarySubmitButton: {
-    marginLeft: 'auto'
-  }
-}));
-
 const MODAL_NAME = 'EditTablesModal';
+const TRANSLATION_KEY_PREFIX_QUERY_ERROR = 'queryError';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.editTablesModal';
 const TRANSLATION_KEY_PREFIX_SELECT_TABLE = 'clusterDetail.xCluster.selectTable';
 const TRANSLATION_KEY_PREFIX_XCLUSTER = 'clusterDetail.xCluster';
@@ -91,11 +81,12 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     title: string;
     body: string;
   } | null>(null);
-  const [bootstrapRequiredTableUUIDs, setBootstrapRequiredTableUUIDs] = useState<string[]>([]);
+  const [
+    categorizedNeedBootstrapPerTableResponse,
+    setCategorizedNeedBootstrapPerTableResponse
+  ] = useState<CategorizedNeedBootstrapPerTableResponse | null>(null);
   const [isTableSelectionValidated, setIsTableSelectionValidated] = useState<boolean>(false);
-  const [skipBootstrapping, setSkipBootStrapping] = useState<boolean>(false);
 
-  const classes = useStyles();
   const theme = useTheme();
   const queryClient = useQueryClient();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
@@ -103,44 +94,49 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     defaultValues: {}
   });
 
-  const { modalProps, xClusterConfig } = props;
+  const { modalProps, xClusterConfigUuid } = props;
+
+  // We always want to fetch a fresh xCluster config before presenting the user with
+  // xCluster table actions (add/remove/restart). This is because it gives the backend
+  // an opportunity to sync with the DB and add/drop tables as needed.
+  const xClusterConfigFullQuery = useQuery(
+    xClusterQueryKey.detail(xClusterConfigUuid),
+    () => fetchXClusterConfig(xClusterConfigUuid),
+    { refetchOnMount: 'always' }
+  );
   const sourceUniverseQuery = useQuery<Universe>(
-    universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
-    () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
+    universeQueryKey.detail(xClusterConfigFullQuery.data?.sourceUniverseUUID),
+    () => api.fetchUniverse(xClusterConfigFullQuery.data?.sourceUniverseUUID),
+    { enabled: !!xClusterConfigFullQuery.data }
   );
-  const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
-    () =>
-      fetchTablesInUniverse(
-        xClusterConfig.sourceUniverseUUID,
-        XCLUSTER_UNIVERSE_TABLE_FILTERS
-      ).then((response) => response.data)
-  );
+
   const sourceUniverseNamespacesQuery = useQuery<UniverseNamespace[]>(
-    universeQueryKey.namespaces(xClusterConfig.sourceUniverseUUID),
-    () => api.fetchUniverseNamespaces(xClusterConfig.sourceUniverseUUID)
-  );
-  const customerUuid = localStorage.getItem('customerId') ?? '';
-  const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.customerScope(customerUuid), () =>
-    api.fetchRuntimeConfigs(customerUuid, true)
+    universeQueryKey.namespaces(xClusterConfigFullQuery.data?.sourceUniverseUUID),
+    () => api.fetchUniverseNamespaces(xClusterConfigFullQuery.data?.sourceUniverseUUID)
   );
 
   const editTableMutation = useMutation(
     (formValues: EditTablesFormValues) => {
+      const bootstrapRequiredTableUuids =
+        categorizedNeedBootstrapPerTableResponse?.bootstrapTableUuids ?? [];
       return props.isDrInterface
-        ? api.updateTablesInDr(props.drConfigUuid, {
-            tables: formValues.tableUuids
-          })
-        : editXClusterConfigTables(xClusterConfig.uuid, {
+        ? xClusterConfigFullQuery.data?.type === XClusterConfigType.DB_SCOPED
+          ? api.updateDbsInDr(props.drConfigUuid, {
+              dbs: formValues.namespaceUuids.map(formatUuidForXCluster)
+            })
+          : api.updateTablesInDr(props.drConfigUuid, {
+              tables: formValues.tableUuids
+            })
+        : editXClusterConfigTables(xClusterConfigUuid, {
             tables: formValues.tableUuids,
-            autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfig),
-            ...(!skipBootstrapping &&
-              bootstrapRequiredTableUUIDs.length > 0 && {
+            autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfigFullQuery.data),
+            ...(!formValues.skipBootstrap &&
+              bootstrapRequiredTableUuids.length > 0 && {
                 bootstrapParams: {
-                  tables: bootstrapRequiredTableUUIDs,
-                  allowBootstrapping: true,
+                  tables: bootstrapRequiredTableUuids,
+                  allowBootstrap: true,
                   backupRequestParams: {
-                    storageConfigUUID: formValues.storageConfig.value.uuid
+                    storageConfigUUID: formValues.storageConfig?.value.uuid ?? ''
                   }
                 }
               })
@@ -151,8 +147,9 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
         const invalidateQueries = () => {
           if (props.isDrInterface) {
             queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUuid));
           }
-          queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
+          queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUuid));
         };
         const handleTaskCompletion = (error: boolean) => {
           if (error) {
@@ -191,14 +188,12 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
   );
   const modalTitle = t('title');
   if (
+    xClusterConfigFullQuery.isLoading ||
+    xClusterConfigFullQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
-    sourceUniverseTablesQuery.isLoading ||
-    sourceUniverseTablesQuery.isIdle ||
     sourceUniverseNamespacesQuery.isLoading ||
-    sourceUniverseNamespacesQuery.isIdle ||
-    runtimeConfigQuery.isLoading ||
-    runtimeConfigQuery.isIdle
+    sourceUniverseNamespacesQuery.isIdle
   ) {
     return (
       <YBModal title={modalTitle} submitTestId={`${MODAL_NAME}-SubmitButton`} {...modalProps}>
@@ -207,20 +202,29 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     );
   }
 
-  const xClusterConfigTableType = getXClusterConfigTableType(
-    xClusterConfig,
-    sourceUniverseTablesQuery.data
-  );
+  if (xClusterConfigFullQuery.isError) {
+    return (
+      <YBModal title={modalTitle} submitTestId={`${MODAL_NAME}-SubmitButton`} {...modalProps}>
+        <YBErrorIndicator
+          customErrorMessage={t('failedToFetchXClusterConfig', {
+            keyPrefix: TRANSLATION_KEY_PREFIX_QUERY_ERROR,
+            xClusterConfigUuid: xClusterConfigUuid
+          })}
+        />
+      </YBModal>
+    );
+  }
+  const xClusterConfig = xClusterConfigFullQuery.data;
+
+  const xClusterConfigTableType = getXClusterConfigTableType(xClusterConfig);
   const sourceUniverseUuid = xClusterConfig.sourceUniverseUUID;
   const targetUniverseUuid = xClusterConfig.targetUniverseUUID;
   if (
     !sourceUniverseUuid ||
     !targetUniverseUuid ||
     sourceUniverseQuery.isError ||
-    sourceUniverseTablesQuery.isError ||
     sourceUniverseNamespacesQuery.isError ||
-    !xClusterConfigTableType ||
-    runtimeConfigQuery.isError
+    !xClusterConfigTableType
   ) {
     const errorMessage = !xClusterConfig.sourceUniverseUUID
       ? t('error.undefinedSourceUniverseUuid')
@@ -228,8 +232,6 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       ? t('error.undefinedTargetUniverseUuid')
       : !xClusterConfigTableType
       ? t('error.undefinedXClusterTableType', { keyPrefix: TRANSLATION_KEY_PREFIX_XCLUSTER })
-      : runtimeConfigQuery.isError
-      ? t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })
       : t('error.fetchSourceUniverseDetailsFailure');
     return (
       <YBModal title={modalTitle} submitTestId={`${MODAL_NAME}-SubmitButton`} {...modalProps}>
@@ -238,13 +240,14 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     );
   }
 
-  const sourceUniverseTables = sourceUniverseTablesQuery.data;
   const sourceUniverseNamespaces = sourceUniverseNamespacesQuery.data;
   const {
     defaultSelectedTableUuids,
     defaultSelectedNamespaceUuids,
-    sourceDroppedTableUuids
-  } = classifyTablesAndNamespaces(xClusterConfig, sourceUniverseTables, sourceUniverseNamespaces);
+    unreplicatedTableInReplicatedNamespace,
+    tableUuidsDroppedOnSource,
+    tableUuidsDroppedOnTarget
+  } = classifyTablesAndNamespaces(xClusterConfig, sourceUniverseNamespaces);
 
   if (
     formMethods.formState.defaultValues &&
@@ -287,8 +290,10 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
   };
 
-  const sourceUniverse = sourceUniverseQuery.data;
-  const onSubmit = async (formValues: EditTablesFormValues, skipBootstrapping: boolean) => {
+  const noSetupBootstrapRequiredTableUuids = new Set<string>(
+    getNoSetupBootstrapRequiredTableUuids(xClusterConfig.tableDetails)
+  );
+  const onSubmit = async (formValues: EditTablesFormValues) => {
     switch (currentFormStep) {
       case FormStep.SELECT_TABLES: {
         setSelectionError(null);
@@ -313,27 +318,27 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           return;
         }
 
-        setSkipBootStrapping(skipBootstrapping);
-        if (skipBootstrapping) {
-          return editTableMutation.mutateAsync(formValues);
-        }
-
         if (!isTableSelectionValidated) {
-          let bootstrapTableUuids: string[] | null = null;
+          let xClusterConfigNeedBootstrapPerTableResponse: XClusterConfigNeedBootstrapPerTableResponse = {};
           const hasSelectionError = false;
 
-          const tableUuidsToAdd = formValues.tableUuids.filter(
-            (tableUuid) => !props.xClusterConfig.tables.includes(tableUuid)
+          const tableUuidsToVerifyBootstrapRequirement = formValues.tableUuids.filter(
+            (tableUuid) => !noSetupBootstrapRequiredTableUuids.has(tableUuid)
           );
-          if (tableUuidsToAdd.length) {
+          if (tableUuidsToVerifyBootstrapRequirement.length) {
             try {
-              bootstrapTableUuids = await getTablesForBootstrapping(
-                tableUuidsToAdd,
+              xClusterConfigNeedBootstrapPerTableResponse = await isBootstrapRequired(
                 sourceUniverseUuid,
                 targetUniverseUuid,
-                sourceUniverseTables,
-                xClusterConfig.type
+                tableUuidsToVerifyBootstrapRequirement,
+                xClusterConfig.type,
+                true /* includeDetails */
               );
+              const categorizedNeedBootstrapPerTableResponse = getCategorizedNeedBootstrapPerTableResponse(
+                xClusterConfigNeedBootstrapPerTableResponse
+              );
+
+              setCategorizedNeedBootstrapPerTableResponse(categorizedNeedBootstrapPerTableResponse);
             } catch (error: any) {
               toast.error(
                 <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
@@ -364,63 +369,34 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
                 })
               });
             }
+          } else {
+            // If we're not adding tables, we should clear the need bootstrap response so bootstrapRequiredUuids is empty.
+            setCategorizedNeedBootstrapPerTableResponse(null);
           }
 
-          if (bootstrapTableUuids?.length && bootstrapTableUuids?.length > 0) {
-            setBootstrapRequiredTableUUIDs(bootstrapTableUuids);
-
-            // Validate that the source universe has at least the recommeneded amount of
-            // disk space if bootstrapping is required.
-            const currentUniverseNodePrefix = sourceUniverse.universeDetails.nodePrefix;
-            const diskUsageMetric = await fetchUniverseDiskUsageMetric(currentUniverseNodePrefix);
-            const freeSpaceTrace = diskUsageMetric.disk_usage.data.find(
-              (trace) => trace.name === 'free'
-            );
-            const freeDiskSpace = parseFloatIfDefined(
-              freeSpaceTrace?.y[freeSpaceTrace.y.length - 1]
-            );
-
-            if (freeDiskSpace !== undefined && freeDiskSpace < BOOTSTRAP_MIN_FREE_DISK_SPACE_GB) {
-              setSelectionWarning({
-                title: t('warning.insufficientDiskSpace.title', {
-                  keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
-                }),
-                body: t('warning.insufficientDiskSpace.body', {
-                  keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE,
-                  bootstrapMinFreeDiskSpaceGb: BOOTSTRAP_MIN_FREE_DISK_SPACE_GB
-                })
-              });
-            }
-          }
           if (hasSelectionError === false) {
             setIsTableSelectionValidated(true);
           }
-          return;
+          return tableUuidsToVerifyBootstrapRequirement.length > 0
+            ? setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY)
+            : editTableMutation.mutateAsync(formValues);
         }
-
-        if (bootstrapRequiredTableUUIDs.length > 0) {
-          setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
-          return;
-        } else {
-          return editTableMutation.mutateAsync(formValues);
-        }
+        return tableUuidsToVerifyBootstrapRequirement.length > 0
+          ? setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY)
+          : editTableMutation.mutateAsync(formValues);
       }
-      case FormStep.CONFIGURE_BOOTSTRAP:
+      case FormStep.BOOTSTRAP_SUMMARY:
         return editTableMutation.mutateAsync(formValues);
       default:
         return assertUnreachableCase(currentFormStep);
     }
   };
-  const onFormSubmit: SubmitHandler<EditTablesFormValues> = async (formValues) =>
-    onSubmit(formValues, false);
-  const onSkipBootstrapAndSubmit: SubmitHandler<EditTablesFormValues> = async (formValues) =>
-    onSubmit(formValues, true);
 
   const handleBackNavigation = () => {
     switch (currentFormStep) {
       case FormStep.SELECT_TABLES:
         return;
-      case FormStep.CONFIGURE_BOOTSTRAP:
+      case FormStep.BOOTSTRAP_SUMMARY:
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
       default:
@@ -428,45 +404,73 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     }
   };
 
-  const getSubmitlabel = () => {
+  const selectedTableUuids = formMethods.watch('tableUuids');
+  const isFormDisabled = formMethods.formState.isSubmitting;
+  const tableUuidsToVerifyBootstrapRequirement = selectedTableUuids.filter(
+    (tableUuid) => !noSetupBootstrapRequiredTableUuids.has(tableUuid)
+  );
+  const getSubmitLabel = () => {
     switch (currentFormStep) {
       case FormStep.SELECT_TABLES:
-        return isTableSelectionValidated
-          ? bootstrapRequiredTableUUIDs.length > 0
-            ? t(
-                `step.selectTables.submitButton.configureBootstrap.${
-                  props.isDrInterface ? 'dr' : 'xCluster'
-                }`
-              )
-            : t('applyChanges', { keyPrefix: 'common' })
-          : t('step.selectTables.submitButton.validateSelection');
-      case FormStep.CONFIGURE_BOOTSTRAP:
+        return tableUuidsToVerifyBootstrapRequirement.length > 0
+          ? t(
+              `step.selectTables.submitButton.bootstrapSummary.${
+                props.isDrInterface ? 'dr' : 'xCluster'
+              }`
+            )
+          : t('applyChanges', { keyPrefix: 'common' });
+      case FormStep.BOOTSTRAP_SUMMARY:
         return t('applyChanges', { keyPrefix: 'common' });
       default:
         return assertUnreachableCase(currentFormStep);
     }
   };
 
-  const submitLabel = getSubmitlabel();
-  const selectedTableUuids = formMethods.watch('tableUuids');
+  const submitLabel = getSubmitLabel();
   const selectedNamespaceUuids = formMethods.watch('namespaceUuids');
-  const isFormDisabled = formMethods.formState.isSubmitting;
-  const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
-  const isSkipBootstrappingEnabled = runtimeConfigEntries.some(
-    (config: any) =>
-      config.key === RuntimeConfigKey.ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING && config.value === 'true'
-  );
+
+  const formStepProps = {
+    currentFormStep,
+    isFormDisabled,
+    sourceUniverseUuid: sourceUniverseUuid,
+    tableSelectProps: {
+      configAction: XClusterConfigAction.MANAGE_TABLE,
+      isDrInterface: props.isDrInterface,
+      selectedNamespaceUuids: selectedNamespaceUuids,
+      selectedTableUuids: selectedTableUuids,
+      selectionError,
+      selectionWarning,
+      initialNamespaceUuids: defaultSelectedNamespaceUuids ?? [],
+      setSelectedNamespaceUuids: setSelectedNamespaceUuids,
+      setSelectedTableUuids: setSelectedTableUuids,
+      sourceUniverseUuid: sourceUniverseUuid,
+      tableType: xClusterConfigTableType,
+      targetUniverseUuid: targetUniverseUuid,
+      xClusterConfigUuid: xClusterConfig.uuid,
+      xClusterConfigType: xClusterConfig.type,
+      unreplicatedTableInReplicatedNamespace: unreplicatedTableInReplicatedNamespace,
+      tableUuidsDroppedOnSource: tableUuidsDroppedOnSource,
+      tableUuidsDroppedOnTarget: tableUuidsDroppedOnTarget
+    },
+    categorizedNeedBootstrapPerTableResponse: categorizedNeedBootstrapPerTableResponse
+  };
   return (
     <YBModal
       title={modalTitle}
       submitLabel={submitLabel}
       buttonProps={{ primary: { disabled: isFormDisabled } }}
-      onSubmit={formMethods.handleSubmit(onFormSubmit)}
+      onSubmit={formMethods.handleSubmit(onSubmit)}
       submitTestId={`${MODAL_NAME}-SubmitButton`}
       isSubmitting={formMethods.formState.isSubmitting}
-      showSubmitSpinner={currentFormStep === FormStep.SELECT_TABLES || !skipBootstrapping}
+      showSubmitSpinner={currentFormStep === FormStep.SELECT_TABLES}
       maxWidth="xl"
-      size={currentFormStep === FormStep.SELECT_TABLES ? 'fit' : 'md'}
+      size={
+        ([FormStep.SELECT_TABLES, FormStep.BOOTSTRAP_SUMMARY] as FormStep[]).includes(
+          currentFormStep
+        )
+          ? 'fit'
+          : 'md'
+      }
       overrideWidth="960px"
       footerAccessory={
         <>
@@ -475,46 +479,19 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
               {t('back', { keyPrefix: 'common' })}
             </YBButton>
           )}
-          {currentFormStep === FormStep.SELECT_TABLES &&
-            !props.isDrInterface &&
-            isSkipBootstrappingEnabled && (
-              <YBButton
-                className={classes.secondarySubmitButton}
-                variant="secondary"
-                onClick={formMethods.handleSubmit(onSkipBootstrapAndSubmit)}
-                showSpinner={formMethods.formState.isSubmitting && skipBootstrapping}
-                disabled={isFormDisabled}
-              >
-                {t('step.selectTables.submitButton.skipBootstrapping')}
-              </YBButton>
-            )}
         </>
       }
       {...modalProps}
     >
       <FormProvider {...formMethods}>
         <CurrentFormStep
-          currentFormStep={currentFormStep}
-          isFormDisabled={isFormDisabled}
-          isDrInterface={props.isDrInterface}
-          storageConfigUuid={props.isDrInterface ? props.storageConfigUuid : undefined}
-          tableSelectProps={{
-            configAction: XClusterConfigAction.MANAGE_TABLE,
-            isDrInterface: props.isDrInterface,
-            selectedNamespaceUuids: selectedNamespaceUuids,
-            selectedTableUuids: selectedTableUuids,
-            selectionError,
-            selectionWarning,
-            initialNamespaceUuids: defaultSelectedNamespaceUuids ?? [],
-            setSelectedNamespaceUuids: setSelectedNamespaceUuids,
-            setSelectedTableUuids: setSelectedTableUuids,
-            sourceUniverseUuid: sourceUniverseUuid,
-            tableType: xClusterConfigTableType,
-            targetUniverseUuid: targetUniverseUuid,
-            xClusterConfigUuid: xClusterConfig.uuid,
-            isTransactionalConfig: xClusterConfig.type === XClusterConfigType.TXN,
-            sourceDroppedTableUuids: sourceDroppedTableUuids
-          }}
+          {...(props.isDrInterface
+            ? {
+                isDrInterface: true,
+                storageConfigUuid: props.storageConfigUuid
+              }
+            : { isDrInterface: false })}
+          {...formStepProps}
         />
       </FormProvider>
     </YBModal>
@@ -533,33 +510,72 @@ const getDefaultFormValues = (
 
 export const classifyTablesAndNamespaces = (
   xClusterConfig: XClusterConfig,
-  sourceUniverseTables: YBTable[],
   sourceUniverseNamespaces: UniverseNamespace[]
 ) => {
   const selectedTableUuids = new Set<string>();
-  const sourceDroppedTableUuids = new Set<string>();
   const selectedNamespaceUuid = new Set<string>();
-  const tableUuidToTable = Object.fromEntries(
-    sourceUniverseTables.map((table) => [getTableUuid(table), table])
-  );
+  const unreplicatedTableInReplicatedNamespace = new Set<string>();
+  const tableUuidsDroppedOnSource = new Set<string>();
+  const tableUuidsDroppedOnTarget = new Set<string>();
+
   const namespaceToNamespaceUuid = Object.fromEntries(
     sourceUniverseNamespaces.map((namespace) => [namespace.name, namespace.namespaceUUID])
   );
-  // Classify every table as selected or dropped by checking for a match on the source universe.
-  xClusterConfig.tables.forEach((tableUuid) => {
-    const sourceUniverseTable = tableUuidToTable[tableUuid];
 
-    if (sourceUniverseTable) {
-      // The xCluster config table still exists on the source universe.
-      selectedTableUuids.add(tableUuid);
-      selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceUniverseTable.keySpace]);
-    } else {
-      sourceDroppedTableUuids.add(tableUuid);
+  xClusterConfig.tableDetails.forEach((tableDetail) => {
+    const sourceTableInfo = tableDetail.sourceTableInfo;
+    const tableUuid = tableDetail.tableId;
+
+    // Preselect all tables which are in the xCluster config and still exist on the source universe.
+    switch (tableDetail.status) {
+      case XClusterTableStatus.DROPPED_FROM_SOURCE:
+        tableUuidsDroppedOnSource.add(tableUuid);
+        return;
+      case XClusterTableStatus.DROPPED_FROM_TARGET:
+        // We treat tables which are dropped on the target as unconfigured but preselected.
+        // This means there is no action needed from the user. We will be checking the bootstrapping requirement
+        // and just adding the table to the config (unless the user deselects the table of course).
+        if (sourceTableInfo) {
+          selectedTableUuids.add(getTableUuid(sourceTableInfo));
+          selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceTableInfo.keySpace]);
+
+          // If the main table is preselected, then we will preselect the index tables as well.
+          sourceTableInfo.indexTableIDs?.forEach((indexTableId) =>
+            selectedTableUuids.add(indexTableId)
+          );
+        }
+        tableUuidsDroppedOnTarget.add(tableUuid);
+        return;
+      case XClusterTableStatus.DROPPED:
+        tableUuidsDroppedOnSource.add(tableUuid);
+        tableUuidsDroppedOnTarget.add(tableUuid);
+        return;
+      case XClusterTableStatus.EXTRA_TABLE_ON_SOURCE:
+        // These are of interest in the YSQL case because all tables in a namespace should be replicated to
+        // avoid issues with backup and restore which is limited to DB scope.
+        // The backup and restore limitation is not present for YCQL.
+        if (sourceTableInfo?.tableType === TableType.PGSQL_TABLE_TYPE) {
+          unreplicatedTableInReplicatedNamespace.add(tableUuid);
+        }
+        return;
+      default:
+        if (sourceTableInfo) {
+          selectedTableUuids.add(getTableUuid(sourceTableInfo));
+          selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceTableInfo.keySpace]);
+
+          // If the main table is preselected, then we will preselect the index tables as well.
+          sourceTableInfo.indexTableIDs?.forEach((indexTableId) =>
+            selectedTableUuids.add(indexTableId)
+          );
+        }
     }
   });
+
   return {
     defaultSelectedTableUuids: Array.from(selectedTableUuids),
-    sourceDroppedTableUuids: sourceDroppedTableUuids,
-    defaultSelectedNamespaceUuids: Array.from(selectedNamespaceUuid)
+    defaultSelectedNamespaceUuids: Array.from(selectedNamespaceUuid),
+    unreplicatedTableInReplicatedNamespace,
+    tableUuidsDroppedOnSource,
+    tableUuidsDroppedOnTarget
   };
 };

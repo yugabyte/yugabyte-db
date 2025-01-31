@@ -46,9 +46,10 @@ set(DOCKV_SRCS
     subdocument.cc
     value.cc
     value_packing_v2.cc
+    vector_id.cc
     )
 
-set(DOCKV_DEPS dockv_proto yb_common yb_pggate_util yb_util)
+set(DOCKV_DEPS dockv_proto vector_index yb_common yb_pggate_util yb_util)
 
 ADD_YB_LIBRARY(yb_dockv
         SRCS ${DOCKV_SRCS}

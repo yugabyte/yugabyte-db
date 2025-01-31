@@ -10,6 +10,12 @@ Delete a storage configuration in YugabyteDB Anywhere
 yba storage-config delete [flags]
 ```
 
+### Examples
+
+```
+yba storage-config delete --name <storage-configuration-name>
+```
+
 ### Options
 
 ```

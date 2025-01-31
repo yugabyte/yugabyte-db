@@ -33,6 +33,7 @@ class YBMenuItem extends Component {
 export default class TopNavBar extends Component {
   handleLogout = (event) => {
     clearCredentials();
+    sessionStorage.clear();
     this.props.logoutProfile();
   };
 

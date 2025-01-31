@@ -29,6 +29,7 @@
 #include "access/relscan.h"
 #include "access/sdir.h"
 #include "access/sysattr.h"
+#include "access/yb_scan.h"
 #include "access/ybgin.h"
 #include "access/ybgin_private.h"
 #include "catalog/pg_collation.h"
@@ -41,6 +42,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
+#include "utils/yb_like_support.h"
 
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -260,7 +262,7 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 	Oid			opfamily;
 	Oid			oproid;
 
-	/* make_greater_string cannot accurately handle non-C collations. */
+	/* yb_make_greater_string cannot accurately handle non-C collations. */
 	if (!lc_collate_is_c(colloid))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -286,7 +288,7 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 		elog(ERROR, "no < operator for opfamily %u", opfamily);
 	fmgr_info(get_opcode(oproid), &ltproc);
 	prefix_const = text_to_const(prefix, colloid);
-	return make_greater_string(prefix_const, &ltproc, colloid);
+	return yb_make_greater_string(prefix_const, &ltproc, colloid);
 }
 
 static void
@@ -297,7 +299,7 @@ ybginSetupBindsForPrefix(TupleDesc tupdesc, YbginScanOpaque ybso,
 	GinScanOpaque so = (GinScanOpaque) ybso;
 	Oid			colloid;
 	Oid			typoid;
-	YBCPgExpr	expr_start,
+	YbcPgExpr	expr_start,
 				expr_end;
 
 	colloid = so->ginstate.supportCollation[0];
@@ -307,7 +309,7 @@ ybginSetupBindsForPrefix(TupleDesc tupdesc, YbginScanOpaque ybso,
 								typoid,
 								colloid,
 								entry->queryKey,
-								false /* is_null */);
+								false /* is_null */ );
 
 	greaterstr = get_greaterstr((Datum) entry->queryKey,
 								typoid,
@@ -318,9 +320,9 @@ ybginSetupBindsForPrefix(TupleDesc tupdesc, YbginScanOpaque ybso,
 								  typoid,
 								  colloid,
 								  greaterstr->constvalue,
-								  false /* is_null */);
+								  false /* is_null */ );
 		HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybso->handle,
-													 1 /* attr_num */,
+													 1 /* attr_num */ ,
 													 expr_start,
 													 true,
 													 expr_end,
@@ -329,10 +331,10 @@ ybginSetupBindsForPrefix(TupleDesc tupdesc, YbginScanOpaque ybso,
 	}
 	else
 		HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybso->handle,
-													 1 /* attr_num */,
+													 1 /* attr_num */ ,
 													 expr_start,
 													 true,
-													 NULL /* attr_value_end */,
+													 NULL /* attr_value_end */ ,
 													 true));
 }
 
@@ -432,16 +434,16 @@ ybginSetupBinds(IndexScanDesc scan)
 	}
 	else
 	{
-		YBCPgExpr	expr;
+		YbcPgExpr	expr;
 
 		/* Bind the one scan entry to the index column. */
 		expr = YBCNewConstant(ybso->handle,
 							  TupleDescAttr(tupdesc, 0)->atttypid,
 							  so->ginstate.supportCollation[0],
 							  entry->queryKey,
-							  false /* is_null */);
+							  false /* is_null */ );
 		HandleYBStatus(YBCPgDmlBindColumn(ybso->handle,
-										  1 /* attr_num */,
+										  1 /* attr_num */ ,
 										  expr));
 	}
 }
@@ -501,7 +503,7 @@ ybginExecSelect(IndexScanDesc scan, ScanDirection dir)
 	if (ScanDirectionIsForward(dir))
 		HandleYBStatus(YBCPgSetForwardScan(ybso->handle, true));
 
-	HandleYBStatus(YBCPgExecSelect(ybso->handle, NULL /* exec_params */));
+	HandleYBStatus(YBCPgExecSelect(ybso->handle, NULL /* exec_params */ ));
 }
 
 /*
@@ -551,7 +553,7 @@ ybginFetchNextHeapTuple(IndexScanDesc scan)
 	Datum	   *values;
 	HeapTuple	tuple = NULL;
 	TupleDesc	tupdesc;
-	YBCPgSysColumns syscols;
+	YbcPgSysColumns syscols;
 	YbginScanOpaque ybso = (YbginScanOpaque) scan->opaque;
 
 	/*
@@ -574,9 +576,7 @@ ybginFetchNextHeapTuple(IndexScanDesc scan)
 
 		tuple->t_tableOid = RelationGetRelid(scan->heapRelation);
 		if (syscols.ybctid != NULL)
-			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
-		if (syscols.oid != InvalidOid)
-			HeapTupleSetOid(tuple, syscols.oid);
+			HEAPTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybctid);
 	}
 	pfree(values);
 	pfree(nulls);

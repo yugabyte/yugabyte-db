@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,22 +17,29 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertNotEquals;
+import static org.yb.AssertionWrappers.assertThrows;
 import static org.yb.AssertionWrappers.assertTrue;
 
+import com.google.common.net.HostAndPort;
 import com.yugabyte.util.PSQLException;
 import java.sql.BatchUpdateException;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.master.MasterDdlOuterClass.AlterTableRequestPB.StepOrBuilder;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgBatch extends BasePgSQLTest {
@@ -49,12 +56,15 @@ public class TestPgBatch extends BasePgSQLTest {
     flagMap.put("yb_enable_read_committed_isolation", "true");
     // TODO: Remove this override when wait queues are enabled by default.
     flagMap.put("enable_wait_queues", "true");
+    // Easier debugging.
+    flagMap.put("ysql_log_statement", "all");
     return flagMap;
   }
 
   protected void setUpTable(int numRows, IsolationLevel isolationLevel) throws Throwable {
     try (Statement s = connection.createStatement()) {
       s.execute("DROP TABLE IF EXISTS t");
+      waitForTServerHeartbeatIfConnMgrEnabled();
       s.execute("CREATE TABLE t(k int PRIMARY KEY, v int)");
       s.execute(String.format("INSERT INTO t SELECT generate_series(1, %d), 0", numRows));
     }
@@ -142,6 +152,56 @@ public class TestPgBatch extends BasePgSQLTest {
     testTransparentRestartHelper(5, RC);
     testTransparentRestartHelper(5, RR);
     testTransparentRestartHelper(5, SR);
+  }
+
+  @Test
+  public void testSchemaMismatchRetry() throws Throwable {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
+    setUpTable(2, RR);
+    try (Connection c1 = getConnectionBuilder().connect();
+        Connection c2 = getConnectionBuilder().connect();
+        Statement s1 = c1.createStatement();
+        Statement s2 = c2.createStatement()) {
+      // Run UPDATE statement for the sole purpose of a caching catalog version.
+      s1.execute("UPDATE t SET v=2 WHERE k=0");
+      // With connection manager in round robin mode, UPDATE statement would run on backend 1,
+      // the below SELECT * statement will run on backend 2, ALTER TABLE on backend 3 and
+      // UPDATE batch statements on backend 1 again as in the test without connection manager.
+      // The next "UPDATE t SET v=2 WHERE k=0" is to bring test parity with connection manager.
+      if (isTestRunningWithConnectionManager()) {
+        s1.execute("UPDATE t SET v=2 WHERE k=0");
+      }
+      // Add more than one statement to the batch to ensure that
+      // YB treats this as batched execution mode.
+      for (int i = 1; i <= 2; i++) {
+        s1.addBatch(String.format("UPDATE t SET v=2 WHERE k=%d", i));
+      }
+      // Disable heartbeats so that catalog version is not propagated.
+      for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+        assertTrue(miniCluster.getClient().setFlag(
+            hp, "TEST_tserver_disable_heartbeat", "true", true));
+      }
+      // Causes a schema version mismatch error on the next UPDATE statement.
+      // Execute ALTER in a different session c2 so as not to invalidate
+      // the catalog cache of c1 until the next heartbeat with the master.
+      s2.execute("ALTER TABLE t ALTER COLUMN v SET NOT NULL");
+
+      // The s1 statement uses the cached catalog version but the schema is changed by the
+      // ALTER TABLE statement above. The s1 statement execution should cause the schema mismatch
+      // error. The schema mismatch error is not retried internally in batched execution mode.
+      assertThrows(
+          "Internal retries are not supported in batched execution mode",
+           BatchUpdateException.class, () -> s1.executeBatch());
+    }
+  }
+
+  @After
+  public void resetFlags() throws Throwable {
+    // Re-enable heartbeats.
+    for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+      assertTrue(miniCluster.getClient().setFlag(
+          hp, "TEST_tserver_disable_heartbeat", "false", true));
+    }
   }
 
   @Test
@@ -369,5 +429,64 @@ public class TestPgBatch extends BasePgSQLTest {
     testMultipleStatementsPerQueryHelper(true, false, RC);
     testMultipleStatementsPerQueryHelper(true, false, RR);
     testMultipleStatementsPerQueryHelper(true, false, SR);
+  }
+
+  protected void SetupTxnSnapshotTest(IsolationLevel isolationLevel) throws Throwable {
+    String enable_pg_export_snapshot_gFlag = "ysql_enable_pg_export_snapshot";
+    Map<String, String> extra_tserver_flags = new HashMap<String, String>();
+    extra_tserver_flags.put("allowed_preview_flags_csv", enable_pg_export_snapshot_gFlag);
+    extra_tserver_flags.put(enable_pg_export_snapshot_gFlag, "true");
+    restartClusterWithFlags(Collections.emptyMap(), extra_tserver_flags);
+
+    setUpTable(11, isolationLevel);
+  }
+
+  @Test
+  public void testExportTxnSnapshot() throws Throwable {
+    IsolationLevel isolationLevel = RR;
+    SetupTxnSnapshotTest(isolationLevel);
+
+    try (Connection c1 = getConnectionBuilder().connect(); Statement s1 = c1.createStatement();
+        Connection c = getConnectionBuilder().connect(); Statement s = c.createStatement()) {
+      s.execute("BEGIN TRANSACTION ISOLATION LEVEL " + isolationLevel.sql);
+      s.addBatch("SELECT pg_export_snapshot()");
+      for (int i = 1; i < 5; i++) {
+        s.addBatch(String.format("UPDATE t SET v=2 WHERE k=%d", i));
+      }
+      s.addBatch("UPDATE t SET v=2 WHERE k IN (5,6,7,8)");
+      for (int i = 9; i < 12; i++) {
+        s.addBatch(String.format("UPDATE t SET v=2 WHERE k=%d", i));
+      }
+      assertThrows("cannot export/import a snapshot in Batch Execution.",
+          BatchUpdateException.class, () -> s.executeBatch());
+    }
+  }
+
+  @Test
+  public void testImportTxnSnapshot() throws Throwable {
+    IsolationLevel isolationLevel = RR;
+    SetupTxnSnapshotTest(isolationLevel);
+
+    try (Connection c1 = getConnectionBuilder().connect(); Statement s1 = c1.createStatement();
+        Connection c = getConnectionBuilder().connect(); Statement s = c.createStatement()) {
+      s1.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+
+      ResultSet rs = s1.executeQuery("SELECT pg_export_snapshot()");
+      assertTrue(rs.next());
+      String snapshotId = rs.getString(1);
+      LOG.info(String.format("Snapshot Exported: %s", snapshotId));
+
+      s.execute("BEGIN TRANSACTION ISOLATION LEVEL " + isolationLevel.sql);
+      s.addBatch(String.format("SET TRANSACTION SNAPSHOT '%s'", snapshotId));
+      for (int i = 1; i < 5; i++) {
+        s.addBatch(String.format("UPDATE t SET v=2 WHERE k=%d", i));
+      }
+      s.addBatch("UPDATE t SET v=2 WHERE k IN (5,6,7,8)");
+      for (int i = 9; i < 12; i++) {
+        s.addBatch(String.format("UPDATE t SET v=2 WHERE k=%d", i));
+      }
+      assertThrows("cannot export/import a snapshot in Batch Execution.",
+          BatchUpdateException.class, () -> s.executeBatch());
+    }
   }
 }

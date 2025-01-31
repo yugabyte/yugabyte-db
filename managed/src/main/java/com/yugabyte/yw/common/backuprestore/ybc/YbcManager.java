@@ -11,6 +11,7 @@ import com.google.inject.Singleton;
 import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.FileHelperService;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -47,6 +49,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -109,10 +112,11 @@ public class YbcManager {
   private final KubernetesManagerFactory kubernetesManagerFactory;
   private final FileHelperService fileHelperService;
   private final StorageUtilFactory storageUtilFactory;
+  private final GFlagsValidation gFlagsValidation;
 
   private static final int WAIT_EACH_ATTEMPT_MS = 5000;
   private static final int WAIT_EACH_SHORT_ATTEMPT_MS = 2000;
-  private static final int MAX_RETRIES = 10;
+  private static final int MAX_SHORT_RETRIES = 10;
   private static final int MAX_NUM_RETRIES = 20;
   private static final long INITIAL_SLEEP_TIME_IN_MS = 1000L;
   private static final long INCREMENTAL_SLEEP_TIME_IN_MS = 2000L;
@@ -126,7 +130,8 @@ public class YbcManager {
       NodeManager nodeManager,
       KubernetesManagerFactory kubernetesManagerFactory,
       FileHelperService fileHelperService,
-      StorageUtilFactory storageUtilFactory) {
+      StorageUtilFactory storageUtilFactory,
+      GFlagsValidation gFlagsValidation) {
     this.ybcClientService = ybcClientService;
     this.customerConfigService = customerConfigService;
     this.confGetter = confGetter;
@@ -135,6 +140,7 @@ public class YbcManager {
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.fileHelperService = fileHelperService;
     this.storageUtilFactory = storageUtilFactory;
+    this.gFlagsValidation = gFlagsValidation;
   }
 
   // Enum for YBC throttle param type.
@@ -554,7 +560,7 @@ public class YbcManager {
           BackupServiceTaskDeleteRequest.newBuilder().setTaskId(taskID).build();
       BackupServiceTaskDeleteResponse taskDeleteResponse = null;
       int numRetries = 0;
-      while (numRetries < MAX_RETRIES) {
+      while (numRetries < MAX_SHORT_RETRIES) {
         taskDeleteResponse = ybcClient.backupServiceTaskDelete(taskDeleteRequest);
         if (!taskDeleteResponse.getStatus().getCode().equals(ControllerStatus.IN_PROGRESS)) {
           break;
@@ -609,7 +615,7 @@ public class YbcManager {
           BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
       BackupServiceTaskResultResponse downloadSuccessMarkerResultResponse = null;
       int numRetries = 0;
-      while (numRetries < MAX_RETRIES) {
+      while (numRetries < MAX_SHORT_RETRIES) {
         downloadSuccessMarkerResultResponse =
             ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
         if (!(downloadSuccessMarkerResultResponse
@@ -994,11 +1000,37 @@ public class YbcManager {
       NodeDetails nodeDetails,
       String ybcSoftwareVersion,
       Map<String, String> ybcGflagsMap) {
-    ReleaseManager.ReleaseMetadata releaseMetadata =
-        releaseManager.getYbcReleaseByVersion(
-            ybcSoftwareVersion,
-            OsType.LINUX.toString().toLowerCase(),
-            Architecture.x86_64.name().toLowerCase());
+    // We will run uname -m to get the architecture of the node
+    // Ideally all nodes in the cluster should be same but
+    // we may support mixed mode clusters in future
+    // This logic should still work for them.
+    List<String> unameCommandArgs = Arrays.asList("uname", "-m");
+    String architecture =
+        kubernetesManagerFactory
+            .getManager()
+            .performYbcAction(
+                config,
+                nodeDetails.cloudInfo.kubernetesNamespace,
+                nodeDetails.cloudInfo.kubernetesPodName,
+                "yb-controller",
+                unameCommandArgs);
+    ReleaseManager.ReleaseMetadata releaseMetadata;
+    if ("x86_64".equals(architecture)) {
+      releaseMetadata =
+          releaseManager.getYbcReleaseByVersion(
+              ybcSoftwareVersion,
+              OsType.LINUX.toString().toLowerCase(),
+              Architecture.x86_64.name().toLowerCase());
+    } else if ("aarch64".equals(architecture)) {
+      releaseMetadata =
+          releaseManager.getYbcReleaseByVersion(
+              ybcSoftwareVersion,
+              OsType.EL8.toString().toLowerCase(),
+              Architecture.aarch64.name().toLowerCase());
+    } else {
+      throw new RuntimeException("Unsupported architecture: " + architecture);
+    }
+
     String ybcPackage = releaseMetadata.filePath;
     UUID providerUUID =
         UUID.fromString(universe.getCluster(nodeDetails.placementUuid).userIntent.provider);
@@ -1061,6 +1093,10 @@ public class YbcManager {
   }
 
   public void waitForYbc(Universe universe, Set<NodeDetails> nodeDetailsSet) {
+    waitForYbc(universe, nodeDetailsSet, MAX_NUM_RETRIES);
+  }
+
+  public void waitForYbc(Universe universe, Set<NodeDetails> nodeDetailsSet, int numRetries) {
     String certFile = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     String errMsg = "";
@@ -1096,14 +1132,14 @@ public class YbcManager {
                 "Node IP: {} Ping not complete. Sleeping for {} millis", nodeIp, waitTimeInMillis);
             Duration duration = Duration.ofMillis(waitTimeInMillis);
             Thread.sleep(duration.toMillis());
-            if (numTries <= MAX_NUM_RETRIES) {
+            if (numTries <= numRetries) {
               LOG.info("Node IP: {} Ping not complete. Continuing", nodeIp);
               continue;
             }
           }
-          if (numTries > MAX_NUM_RETRIES) {
+          if (numTries > numRetries) {
             LOG.info("Node IP: {} Ping failed. Exceeded max retries", nodeIp);
-            errMsg = String.format("Exceeded max retries: %s", MAX_NUM_RETRIES);
+            errMsg = String.format("Exceeded max retries: %s", numRetries);
             isYbcConfigured = false;
             break;
           } else if (pingResp.getSequence() != seqNum) {
@@ -1134,6 +1170,8 @@ public class YbcManager {
       Map<String, String> gflags,
       UpgradeTaskType type,
       UpgradeTaskSubType subType) {
+    UserIntent userIntent =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     // Add the universe uuid.
     params.setUniverseUUID(universe.getUniverseUUID());
@@ -1146,8 +1184,9 @@ public class YbcManager {
     params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
     params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
 
-    UserIntent userIntent =
-        universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+    if (UniverseTaskBase.isYsqlMajorUpgradeStateInPreFinalizeState(universe, gFlagsValidation)) {
+      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
+    }
 
     // Add testing flag.
     params.itestS3PackagePath = universe.getUniverseDetails().itestS3PackagePath;
@@ -1164,6 +1203,7 @@ public class YbcManager {
     // Sets the isMaster field
     params.isMaster = node.isMaster;
     params.enableYSQL = userIntent.enableYSQL;
+    params.enableConnectionPooling = userIntent.enableConnectionPooling;
     params.enableYCQL = userIntent.enableYCQL;
     params.enableYCQLAuth = userIntent.enableYCQLAuth;
     params.enableYSQLAuth = userIntent.enableYSQLAuth;
@@ -1177,7 +1217,7 @@ public class YbcManager {
     params.enableYEDIS = userIntent.enableYEDIS;
 
     params.setEnableYbc(universe.getUniverseDetails().isEnableYbc());
-    params.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
+    params.setYbcSoftwareVersion(getStableYbcVersion());
     params.installYbc = universe.getUniverseDetails().installYbc;
     params.setYbcInstalled(universe.getUniverseDetails().isYbcInstalled());
     params.ybcGflags = gflags;

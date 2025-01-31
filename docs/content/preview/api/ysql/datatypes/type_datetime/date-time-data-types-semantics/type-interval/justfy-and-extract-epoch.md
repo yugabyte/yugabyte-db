@@ -4,7 +4,7 @@ headerTitle: The justify() and extract(epoch ...) functions for interval values
 linkTitle: Justify() and extract(epoch...)
 description: Describes the functions justify_hours(interval), justify_days(interval), justify_interval(interval), and extract(epoch from interval_value). [YSQL]
 menu:
-  preview:
+  preview_api:
     identifier: justfy-and-extract-epoch
     parent: type-interval
     weight: 35
@@ -331,7 +331,7 @@ The function finishes without error, showing that, for the _interval_ values use
 
 ## The extract(epoch from interval_value) built-in function
 
-The [PostgreSQL documentation](https://www.postgresql.org/docs/11/functions-datetime.html#FUNCTIONS-DATETIME-EXTRACT) specifies the semantics of _extract(epoch from interval_value)_ thus:
+The [PostgreSQL documentation](https://www.postgresql.org/docs/15/functions-datetime.html#FUNCTIONS-DATETIME-EXTRACT) specifies the semantics of _extract(epoch from interval_value)_ thus:
 
 - [the function returns] the total number of seconds in the _interval_ [value].
 

@@ -313,7 +313,7 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(tablet_id, server_->permanent_uuid()), tablet::Primary::kTrue,
       table_id, ns_id, table_id, table_type, schema_with_ids, qlexpr::IndexMap(),
-      boost::none /* index_info */, 0 /* schema_version */, partition.first, "" /* pg_table_id */,
+      std::nullopt /* index_info */, 0 /* schema_version */, partition.first, "" /* pg_table_id */,
       tablet::SkipTableTombstoneCheck::kFalse);
 
   return ResultToStatus(server_->tablet_manager()->CreateNewTablet(
@@ -360,6 +360,16 @@ FsManager& MiniTabletServer::fs_manager() const {
 MetricEntity& MiniTabletServer::metric_entity() const {
   CHECK(started_);
   return *server_->metric_entity();
+}
+
+const MemTrackerPtr& MiniTabletServer::mem_tracker() const {
+  CHECK(started_);
+  return server_->mem_tracker();
+}
+
+HybridTime MiniTabletServer::Now() const {
+  CHECK(started_);
+  return server_->clock()->Now();
 }
 
 } // namespace tserver

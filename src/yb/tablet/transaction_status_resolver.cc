@@ -130,7 +130,7 @@ class TransactionStatusResolver::Impl {
     client->LookupTabletById(
         tablet_id_and_queue.first,
         nullptr /* table */,
-        master::IncludeInactive::kFalse,
+        master::IncludeHidden::kFalse,
         master::IncludeDeleted::kTrue,
         std::min(deadline_, TransactionRpcDeadline()),
         std::bind(&Impl::LookupTabletDone, this, _1),
@@ -234,7 +234,7 @@ class TransactionStatusResolver::Impl {
 
     if (!status.ok()) {
       LOG_WITH_PREFIX(WARNING) << "Failed to request transaction statuses: " << status;
-      if (status.IsAborted()) {
+      if (status.IsAborted() || status.IsShutdownInProgress()) {
         Complete(status);
       } else {
         Execute();
@@ -270,6 +270,10 @@ class TransactionStatusResolver::Impl {
           response.deadlock_reason(i).code() != AppStatusPB::OK) {
         // response contains a deadlock specific error.
         status_info.expected_deadlock_status = StatusFromPB(response.deadlock_reason(i));
+      }
+      if (response.pg_session_req_version().size() > i &&
+          !response.pg_session_req_version(i)) {
+        status_info.pg_session_req_version = response.pg_session_req_version(i);
       }
 
       if (PREDICT_FALSE(response.aborted_subtxn_set().empty())) {

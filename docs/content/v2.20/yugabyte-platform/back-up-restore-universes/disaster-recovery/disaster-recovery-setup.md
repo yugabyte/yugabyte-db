@@ -23,10 +23,21 @@ Create two universes, the DR primary universe which will serve reads and writes,
 Ensure the universes have the following characteristics:
 
 - Both universes are running the same version of YugabyteDB (v2.18.0.0 or later).
-- Both universes have the same encryption in transit settings. Encryption in transit is recommended, and you should create the DR primary and DR replica universes with TLS enabled.
+- Both universes have the same [encryption in transit](../../../security/enable-encryption-in-transit/) settings. Encryption in transit is recommended, and you should create the DR primary and DR replica universes with TLS enabled.
 - They can be backed up and restored using the same backup configuration.
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the DR replica universe. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
-- They have enough disk space. DR requires more disk space to store write ahead logs (WAL) in case of a network partition, or a temporary outage of the DR replica universe.
+- DR enables [Point-in-time-recovery](../../pitr/) (PITR) on the DR replica, requiring additional disk space for the replica.
+
+    PITR is used by DR during failover to restore the database to a consistent state. Note that if the DR replica universe already has PITR configured, that configuration is replaced by the DR configuration.
+
+    You can change the retention period for PITR used for DR by changing the following [runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/):
+
+    ```sh
+    yb.xcluster.transactional.pitr.default_retention_period
+    ```
+
+    The default value is 3 days.
+
 - Neither universe is already being used for xCluster replication.
 
 Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
@@ -116,7 +127,7 @@ The state of the system at time t = 50 ms is as follows:
 
 If a failover were to occur at this moment (t = 50 ms) the DR replica will be restored to its state as of the safe time (that is, t = .001 ms), meaning that T1 will be visible, but T3 will be hidden. T2 (which is still in transit) is currently not available on the DR Replica, and will be ignored when it arrives.
 
-In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1) and Repl_Lag(T3).
+In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1) and Repl_Lag(T2) (the transaction that is lagging the most).
 
 ### Tables
 
@@ -160,7 +171,7 @@ To create an alert:
 
 1. Click **Save** when you are done.
 
-When DR is set up, YugabyteDB automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from DR primary's databases under replication, but are not yet added or dropped from the YugabyteDB Anywhere DR configuration.
+When DR is set up, YugabyteDB Anywhere automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from DR primary's databases under replication, but are not yet added or dropped from the DR configuration.
 
 For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../../../alerts-monitoring/alert/).
 

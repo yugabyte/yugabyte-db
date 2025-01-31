@@ -96,6 +96,21 @@ The following tables describe metrics available via the YugabyteDB Anywhere UI.
 | YCQL Op Latency (Avg) | The average time of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | An alert should be issued when latency is close to or higher than your application SLA. | ![YCQL Op Latency](/images/yp/metrics4.png) |
 | YCQL Op Latency (P99) | The average time of the top 99% of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | If this value is significantly higher than expected, then it might be a cause for concern and you might want to issue an alert.<br>You should check whether or not there are consistent spikes in latency. | ![YCQL Op Latency P99](/images/yp/metrics5.png) |
 
+### Per process
+
+Per process metrics provide details about the distribution of resources among YBA agents, and is currently available for universes deployed on [cloud providers](../../configure-yugabyte-platform/aws/) or [on-premises](../../configure-yugabyte-platform/on-premises/). The metrics presented are not intended for alert purposes, but they can be used when examining alerts on other metrics.
+
+| Graph | Description | Example |
+| :------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
+| User CPU Seconds | The percentage of CPU utilization spent by the processor dedicated to executing process instructions in user space. | ![User CPU Seconds](/images/yp/metrics106.png) |
+| System CPU Seconds | The percentage of CPU utilization spent by processor to execute system calls in kernel space on behalf of a process. | ![System CPU Seconds](/images/yp/metrics107.png) |
+| Virtual Memory | Virtual memory size for a process. | ![Virtual Memory](/images/yp/metrics108.png) |
+| RSS Memory | The resident set size (RSS) for a process. This is the portion of memory occupied by a process that is held in main memory (RAM). | ![RSS Memory](/images/yp/metrics109.png) |
+| PSS Memory | The proportional set size (PSS) for a process. This is the total size of pages the process has in main memory (RAM), where each page is divided by the number of processes sharing it. This metric helps to calculate the total memory occupied by multiple processes more accurately. | ![PSS Memory](/images/yp/metrics110.png) |
+| IO Read | The I/O read bytes for a process, indicating the actual number of bytes retrieved from the storage layer by the process. | ![IO Read](/images/yp/metrics111.png) |
+| IO Write | The I/O write bytes for a process, specifying the actual number of bytes written to the storage layer by the process. | ![IO Write](/images/yp/metrics112.png) |
+| Open files | Number of open files for the process. | ![IO Write](/images/yp/metrics113.png) |
+
 ### Resource
 
 Resource metrics should be considered on a per-node basis.
@@ -118,6 +133,7 @@ Resource metrics should be considered on a per-node basis.
 | --------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------------- |
 | Total YSQL Ops / sec  | The number of various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Total YSQL Ops / sec](/images/yp/metrics101.png) |
 | YSQL Op Latency (Avg) | The average time taken by various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![YSQL Op Latency (Avg)](/images/yp/metrics102.png) |
+| Catalog Cache Misses | During YSQL query processing, system catalog (pg_catalog) tables that live on the YB-Master are cached on the local YSQL backend. This metric counts the number of YSQL catalog cache misses, where the data had to be fetched from the YB-Master. Also broken down by pg_catalog table that triggered the misses. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Catalog Cache Misses](/images/yp/metrics114.png) 
 
 ### YCQL advanced
 

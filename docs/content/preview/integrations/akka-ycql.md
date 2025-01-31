@@ -39,7 +39,7 @@ The following section illustrates how to run an Akka Persistence Cassandra based
 
 To use the [Akka Persistence Cassandra plugin](https://doc.akka.io/docs/akka-persistence-cassandra/current/overview.html), ensure that you have the following:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/).
 - Java Development Kit (JDK) 8, 11 or 17 installed. JDK installers for Linux and macOS can be downloaded from [Oracle](http://jdk.java.net/), [Adoptium (OpenJDK)](https://adoptium.net/), or [Azul Systems (OpenJDK)](https://www.azul.com/downloads/?package=jdk). Homebrew users on macOS can install using `brew install openjdk`.
 - [sbt](https://www.scala-sbt.org/1.x/docs/) is installed.
 
@@ -296,7 +296,7 @@ Note that it can take some time to view the output as all the keyspaces and tabl
 
 ### Verify the integration using ycqlsh
 
-Run [ycqlsh](../../admin/ycqlsh/) to connect to your database using the YCQL API as follows:
+Run [ycqlsh](../../api/ycqlsh/) to connect to your database using the YCQL API as follows:
 
 ```sh
 ./bin/ycqlsh localhost

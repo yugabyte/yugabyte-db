@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.common.Util.CONNECTION_POOLING_PREVIEW_VERSION;
+import static com.yugabyte.yw.common.Util.CONNECTION_POOLING_STABLE_VERSION;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -28,10 +30,13 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
@@ -68,6 +73,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -87,6 +93,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DB;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -207,7 +214,9 @@ public class UniverseCRUDHandler {
             || isRegionListUpdate(cluster, currentCluster)
             || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
             || isKubernetesVolumeUpdate(cluster, currentCluster)
-            || isKubernetesNodeSpecUpdate(cluster, currentCluster);
+            || isKubernetesNodeSpecUpdate(cluster, currentCluster)
+            || cluster.userIntent.enableExposingService
+                != currentCluster.userIntent.enableExposingService;
 
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
@@ -265,7 +274,7 @@ public class UniverseCRUDHandler {
             < cluster.userIntent.deviceInfo.volumeSize;
   }
 
-  private static boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
+  public static boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
     return currentCluster.userIntent.providerType == Common.CloudType.kubernetes
         && (!(Objects.equals(
                 currentCluster.userIntent.tserverK8SNodeResourceSpec,
@@ -355,7 +364,10 @@ public class UniverseCRUDHandler {
 
     userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
     userIntent.tserverGFlags = trimFlags(userIntent.tserverGFlags);
-    if (StringUtils.isEmpty(userIntent.accessKeyCode)) {
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    if (StringUtils.isEmpty(userIntent.accessKeyCode)
+        && !(userIntent.providerType.equals(Common.CloudType.onprem)
+            && provider.getDetails().skipProvisioning)) {
       userIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
     }
     try {
@@ -594,9 +606,7 @@ public class UniverseCRUDHandler {
       }
       validateRegionsAndZones(provider, c);
       // Configure the defaultimageBundle in case not specified.
-      if (c.userIntent.imageBundleUUID == null
-          && provider.getCloudCode().imageBundleSupported()
-          && !cloudEnabled) {
+      if (c.userIntent.imageBundleUUID == null && provider.getCloudCode().imageBundleSupported()) {
         if (provider.getImageBundles().size() > 0) {
           List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
           if (bundles.size() > 0) {
@@ -652,14 +662,22 @@ public class UniverseCRUDHandler {
           // Apply group uniformly to all clusters
           c.userIntent.specificGFlags.setGflagGroups(gflagGroups);
         }
-        // check gflag groups
-        c.userIntent.specificGFlags =
-            GFlagsUtil.processGFlagGroups(
-                c.userIntent.specificGFlags, c.userIntent.ybSoftwareVersion, gFlagsValidation);
         c.userIntent.masterGFlags =
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, c, taskParams.clusters);
         c.userIntent.tserverGFlags =
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.TSERVER, c, taskParams.clusters);
+        try {
+          String errMsg =
+              GFlagsUtil.checkPreviewGFlagsOnSpecificGFlags(
+                  c.userIntent.specificGFlags, gFlagsValidation, c.userIntent.ybSoftwareVersion);
+          if (errMsg != null) {
+            throw new PlatformServiceException(BAD_REQUEST, errMsg);
+          }
+        } catch (IOException e) {
+          LOG.error("Error while checking preview flags on the cluster: {}", c.uuid, e);
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Error while checking preview flags on cluster: " + c.uuid);
+        }
       } else {
         if (c.clusterType == ClusterType.ASYNC) {
           c.userIntent.specificGFlags = SpecificGFlags.constructInherited();
@@ -681,10 +699,7 @@ public class UniverseCRUDHandler {
                   userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
               >= 0) {
             taskParams.setEnableYbc(true);
-            taskParams.setYbcSoftwareVersion(
-                StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
-                    ? taskParams.getYbcSoftwareVersion()
-                    : ybcManager.getStableYbcVersion());
+            taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
           } else {
             taskParams.setEnableYbc(false);
             LOG.error(
@@ -702,10 +717,7 @@ public class UniverseCRUDHandler {
                   + confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion));
         } else {
           taskParams.setEnableYbc(true);
-          taskParams.setYbcSoftwareVersion(
-              StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
-                  ? taskParams.getYbcSoftwareVersion()
-                  : ybcManager.getStableYbcVersion());
+          taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         }
       } else {
         taskParams.setEnableYbc(false);
@@ -818,6 +830,51 @@ public class UniverseCRUDHandler {
       taskParams.otelCollectorEnabled =
           confGetter.getConfForScope(p, ProviderConfKeys.otelCollectorEnabled);
 
+      // Check runtime flag for connection pooling.
+      if (userIntent.enableConnectionPooling) {
+        boolean allowConnectionPooling =
+            confGetter.getGlobalConf(GlobalConfKeys.allowConnectionPooling);
+        if (!allowConnectionPooling) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Connection pooling is not allowed. Please set runtime flag"
+                  + " 'yb.universe.allow_connection_pooling' to true.");
+        }
+
+        if (Util.compareYBVersions(
+                taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion,
+                CONNECTION_POOLING_STABLE_VERSION,
+                CONNECTION_POOLING_PREVIEW_VERSION,
+                true)
+            < 0) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Connection pooling needs minimum stable version '%s' and preview version '%s'.",
+                  CONNECTION_POOLING_STABLE_VERSION, CONNECTION_POOLING_PREVIEW_VERSION));
+        }
+
+        if (taskParams.communicationPorts.ysqlServerRpcPort
+            == taskParams.communicationPorts.internalYsqlServerRpcPort) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "YSQL RPC port cannot be the same as internal YSQL RPC port");
+        }
+
+        if (userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+          if (taskParams.communicationPorts.ysqlServerRpcPort
+              != KubernetesCommandExecutor.DEFAULT_YSQL_SERVER_RPC_PORT) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Custom YSQL RPC port is not yet supported for Kubernetes universes.");
+          }
+          if (taskParams.communicationPorts.internalYsqlServerRpcPort
+              != KubernetesCommandExecutor.DEFAULT_INTERNAL_YSQL_SERVER_RPC_PORT) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Custom Internal YSQL RPC port is not yet supported for Kubernetes universes.");
+          }
+        }
+      }
+
       // update otel port
       int otelPort = confGetter.getConfForScope(p, ProviderConfKeys.otelCollectorMetricsPort);
       taskParams.communicationPorts.otelCollectorMetricsPort = otelPort;
@@ -894,6 +951,29 @@ public class UniverseCRUDHandler {
           universe.updateConfig(
               ImmutableMap.of(Universe.LABEL_K8S_RESOURCES, Boolean.toString(true)));
           checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
+          Provider primaryClusterProvider =
+              Provider.getOrBadRequest(UUID.fromString(primaryIntent.provider));
+          String serviceScope =
+              confGetter.getConfForScope(
+                  primaryClusterProvider, ProviderConfKeys.k8sUniverseDefaultServiceScope);
+          if (KubernetesUtil.shouldConfigureNamespacedService(taskParams, universe.getConfig())) {
+            if (serviceScope.equals("Namespaced")) {
+              // Default service scope should be 'Namespaced'
+              primaryIntent.defaultServiceScopeAZ = false;
+            }
+          }
+          if (KubernetesUtil.isNonRestartGflagsUpgradeSupported(
+              primaryCluster.userIntent.ybSoftwareVersion)) {
+            universe.updateConfig(
+                ImmutableMap.of(
+                    Universe.K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG, Boolean.toString(true)));
+          }
+          // Validate service endpoints
+          try {
+            KubernetesUtil.validateServiceEndpoints(taskParams, universe.getConfig());
+          } catch (IOException e) {
+            throw new RuntimeException("Failed to parse Kubernetes overrides!", e.getCause());
+          }
         } else {
           if (primaryCluster.userIntent.enableIPV6) {
             throw new PlatformServiceException(
@@ -936,6 +1016,8 @@ public class UniverseCRUDHandler {
             isNodeUIHttpsEnabled)) {
           universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
         }
+
+        maybeSetMemoryLimitGflags(customer, universe, primaryCluster);
       }
 
       // other configs enabled by default
@@ -959,6 +1041,7 @@ public class UniverseCRUDHandler {
           ImmutableMap.of(
               Universe.USE_CUSTOM_IMAGE,
               Boolean.toString(taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi))));
+
       universe.save();
 
       DB.commitTransaction();
@@ -1002,7 +1085,7 @@ public class UniverseCRUDHandler {
             + ":"
             + universe.getName());
 
-    return UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf());
+    return UniverseResp.create(universe, taskUUID, confGetter);
   }
 
   /**
@@ -1020,7 +1103,7 @@ public class UniverseCRUDHandler {
     if (u.isYbcEnabled()) {
       taskParams.installYbc = true;
       taskParams.setEnableYbc(true);
-      taskParams.setYbcSoftwareVersion(u.getUniverseDetails().getYbcSoftwareVersion());
+      taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       taskParams.setYbcInstalled(true);
       for (Cluster cluster : taskParams.clusters) {
         cluster.userIntent.ybcFlags =
@@ -1029,6 +1112,9 @@ public class UniverseCRUDHandler {
                 : u.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent.ybcFlags;
       }
     }
+
+    // Set helm naming style into params
+    taskParams.useNewHelmNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
 
     // Set existing LBs into taskParams
     taskParams.setExistingLBs(u.getUniverseDetails().clusters);
@@ -1115,15 +1201,8 @@ public class UniverseCRUDHandler {
     // Set the node exporter config based on the provider
     UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
     boolean installNodeExporter = universeDetails.extraDependencies.installNodeExporter;
-    int nodeExporterPort = universeDetails.communicationPorts.nodeExporterPort;
     String nodeExporterUser = universeDetails.nodeExporterUser;
     taskParams.extraDependencies.installNodeExporter = installNodeExporter;
-    taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
-
-    for (NodeDetails node : taskParams.nodeDetailsSet) {
-      node.nodeExporterPort = nodeExporterPort;
-    }
-
     if (installNodeExporter) {
       taskParams.nodeExporterUser = nodeExporterUser;
     }
@@ -1214,16 +1293,12 @@ public class UniverseCRUDHandler {
   }
 
   public List<UniverseResp> list(Customer customer) {
-    return UniverseResp.create(
-        customer, customer.getUniverses(), runtimeConfigFactory.globalRuntimeConf());
+    return UniverseResp.create(customer, customer.getUniverses(), confGetter);
   }
 
   public List<UniverseResp> findByName(Customer customer, String name) {
     return Universe.maybeGetUniverseByName(customer.getId(), name)
-        .map(
-            value ->
-                Collections.singletonList(
-                    UniverseResp.create(value, null, runtimeConfigFactory.globalRuntimeConf())))
+        .map(value -> Collections.singletonList(UniverseResp.create(value, null, confGetter)))
         .orElseGet(Collections::emptyList);
   }
 
@@ -1332,7 +1407,7 @@ public class UniverseCRUDHandler {
     if (universe.isYbcEnabled()) {
       taskParams.installYbc = true;
       taskParams.setEnableYbc(true);
-      taskParams.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
+      taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       taskParams.setYbcInstalled(true);
       for (Cluster cluster : taskParams.clusters) {
         cluster.userIntent.ybcFlags =
@@ -1341,6 +1416,9 @@ public class UniverseCRUDHandler {
                 : universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent.ybcFlags;
       }
     }
+
+    // Set helm naming style into params
+    taskParams.useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
 
     List<Cluster> newReadOnlyClusters = taskParams.getReadOnlyClusters();
     List<Cluster> newAddOnClusters = taskParams.getAddOnClusters();
@@ -1488,23 +1566,18 @@ public class UniverseCRUDHandler {
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     readOnlyCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
-      if (readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
-        SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
-        if (primaryGFlags != null) {
+      SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
+      if (primaryGFlags != null) {
+        if (readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
           readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
               primaryGFlags.getPerProcessFlags());
           readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
-          readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGFlags.getGflagGroups());
         }
+        readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGFlags.getGflagGroups());
       }
       List<Cluster> clusters = new ArrayList<>(universe.getUniverseDetails().clusters);
       clusters.add(readOnlyCluster);
       readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGflagGroups);
-      readOnlyCluster.userIntent.specificGFlags =
-          GFlagsUtil.processGFlagGroups(
-              readOnlyCluster.userIntent.specificGFlags,
-              readOnlyCluster.userIntent.ybSoftwareVersion,
-              gFlagsValidation);
       readOnlyCluster.userIntent.masterGFlags =
           GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, readOnlyCluster, clusters);
       readOnlyCluster.userIntent.tserverGFlags =
@@ -2271,8 +2344,24 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, "No changes that could be applied by EditUniverse");
     }
+
+    UniverseTaskParams.CommunicationPorts communicationPorts = taskParams.communicationPorts;
+    if (communicationPorts != null
+        && !Objects.equals(communicationPorts, universe.getUniverseDetails().communicationPorts)
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
+            == Common.CloudType.kubernetes) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot change communication ports for k8s universe");
+    }
+    boolean rfChangeEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableRFChange);
+
     for (Cluster newCluster : taskParams.clusters) {
       Cluster curCluster = universe.getCluster(newCluster.uuid);
+      if (curCluster.userIntent.replicationFactor != newCluster.userIntent.replicationFactor
+          && !rfChangeEnabled
+          && curCluster.clusterType == ClusterType.PRIMARY) {
+        throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
+      }
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
       Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);
@@ -2389,6 +2478,46 @@ public class UniverseCRUDHandler {
                     key, nodeName, curVal, newVal));
           }
         });
+  }
+
+  private void maybeSetMemoryLimitGflags(
+      Customer customer, Universe universe, Cluster primaryCluster) {
+
+    if (null == primaryCluster
+        || runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
+        || Util.compareYBVersions(
+                primaryCluster.userIntent.ybSoftwareVersion, "2024.2.0.0", "2.25.0.0", true)
+            < 0
+        || !primaryCluster.userIntent.providerType.isVM()
+        || primaryCluster.userIntent.dedicatedNodes) {
+      return;
+    }
+
+    Map<String, String> masterNewInstGflags =
+        new HashMap<>(
+            Map.of(
+                "enforce_tablet_replica_limits",
+                "true",
+                "split_respects_tablet_replica_limits",
+                "true"));
+    Map<String, String> tserverNewInstGFlags = new HashMap<>();
+
+    Map<String, String> memNewInstFlag = Map.of("use_memory_defaults_optimized_for_ysql", "true");
+    tserverNewInstGFlags.putAll(memNewInstFlag);
+    masterNewInstGflags.putAll(memNewInstFlag);
+
+    SpecificGFlags.PerProcessFlags newInstallGFlags = new SpecificGFlags.PerProcessFlags();
+    if (!tserverNewInstGFlags.isEmpty()) {
+      newInstallGFlags.value.put(ServerType.TSERVER, tserverNewInstGFlags);
+    }
+    if (!masterNewInstGflags.isEmpty()) {
+      newInstallGFlags.value.put(ServerType.MASTER, masterNewInstGflags);
+    }
+    LOG.info(
+        "Setting new install gflags to {} on universe {}",
+        newInstallGFlags.value,
+        universe.getName());
+    universe.setNewInstallGFlags(newInstallGFlags);
   }
 
   // This method enforces the user tags provided in runtime config.

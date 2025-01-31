@@ -17,14 +17,13 @@ set(YB_PCH_PREFIX docdb)
 
 YRPC_GENERATE(
         DOCDB_PROTO_SRCS DOCDB_PROTO_HDRS DOCDB_PROTO_TGTS
-        MESSAGES TRUE
         SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
         BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-        NO_SERVICE_PROTO_FILES docdb.proto)
+        NO_SERVICE_MESSAGES_PROTO_FILES docdb.proto)
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
-        DEPS protobuf yb_common_proto
+        DEPS protobuf yb_common_proto dockv_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
@@ -68,6 +67,7 @@ set(DOCDB_SRCS
         key_bounds.cc
         kv_debug.cc
         lock_batch.cc
+        lock_util.cc
         pgsql_operation.cc
         ql_rocksdb_storage.cc
         ql_rowwise_iterator_interface.cc
@@ -78,6 +78,7 @@ set(DOCDB_SRCS
         transaction_dump.cc
         transaction_status_cache.cc
         local_waiting_txn_registry.cc
+        vector_index.cc
         wait_queue.cc
         )
 
@@ -94,6 +95,7 @@ set(DOCDB_DEPS
         yb_pggate_util
         yb_pggate
         ql_util
+        vector_index
         yb_pgbackend
         )
 
@@ -135,7 +137,7 @@ ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docdb-ttl-test)
 ADD_YB_TEST(docdb-test-wrapper)
 ADD_YB_TEST(docrowwiseiterator-test)
-ADD_YB_TEST(external_intents_batch_writer-test)
+ADD_YB_TEST(non_transactional_batch_writer-test)
 ADD_YB_TEST(intent_iterator-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(scan_choices-test)
@@ -143,6 +145,7 @@ ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)
 ADD_YB_TEST(usearch_vector_index-test)
+ADD_YB_TEST(advisory_lock_doc_operation-test)
 
 if(YB_BUILD_FUZZ_TARGETS)
   # A library with common code shared between DocDB fuzz tests.

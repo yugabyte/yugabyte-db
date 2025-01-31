@@ -35,7 +35,6 @@ namespace rocksdb {
 struct CompactionInfo {
   uint64_t input_files_count;
   uint64_t input_bytes_count;
-  CompactionReason compaction_reason;
 };
 
 // Contains metrics related to a particular task state in the priority thread pool.
@@ -53,9 +52,17 @@ struct RocksDBTaskMetrics {
   scoped_refptr<yb::AtomicGauge<uint64_t>> compaction_input_bytes_removed_;
 
   void CompactionTaskAdded(const CompactionInfo& info) {
+    CompactionTaskAdded();
+    CompactionTaskInputAdded(info);
+  }
+
+  void CompactionTaskAdded() {
     if (compaction_tasks_added_) {
       compaction_tasks_added_->Increment();
     }
+  }
+
+  void CompactionTaskInputAdded(const CompactionInfo& info) {
     if (compaction_input_files_added_) {
       compaction_input_files_added_->IncrementBy(info.input_files_count);
     }
@@ -65,9 +72,17 @@ struct RocksDBTaskMetrics {
   }
 
   void CompactionTaskRemoved(const CompactionInfo& info) {
+    CompactionTaskRemoved();
+    CompactionTaskInputRemoved(info);
+  }
+
+  void CompactionTaskRemoved() {
     if (compaction_tasks_removed_) {
       compaction_tasks_removed_->Increment();
     }
+  }
+
+  void CompactionTaskInputRemoved(const CompactionInfo& info) {
     if (compaction_input_files_removed_) {
       compaction_input_files_removed_->IncrementBy(info.input_files_count);
     }
@@ -184,17 +199,17 @@ struct RocksDBPriorityThreadPoolMetrics {
 //     std::make_shared<rocksdb::RocksDBPriorityThreadPoolMetrics>(
 //          ROCKSDB_PRIORITY_THREAD_POOL_METRICS_INSTANCE(metric_entity));
 #define ROCKSDB_TASK_METRICS_INSTANCE(entity, name) { \
-    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<yb::AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _tasks_added)), uint64_t(0)), \
-    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<yb::AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _tasks_removed)), uint64_t(0)), \
-    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<yb::AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _input_files_added)), uint64_t(0)), \
-    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<yb::AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _input_files_removed)), uint64_t(0)), \
-    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<yb::AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _input_bytes_added)), uint64_t(0)), \
-    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<yb::AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _input_bytes_removed)), uint64_t(0)) \
 }
 

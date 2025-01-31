@@ -41,4 +41,8 @@ std::string PgObjectId::ToString() const {
   return YB_STRUCT_TO_STRING(database_oid, object_oid);
 }
 
+std::string YsqlFullTableName::ToString() const {
+  return YB_STRUCT_TO_STRING(namespace_name, schema_name, table_name);
+}
+
 }  // namespace yb

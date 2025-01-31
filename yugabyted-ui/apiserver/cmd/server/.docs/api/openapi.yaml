@@ -230,6 +230,78 @@ paths:
       summary: Get the Database assessment details
       tags:
       - voyager-info
+  /assessment_source_db_details:
+    get:
+      description: Get the Source Database SQL object details
+      operationId: GetAssessmentSourceDBInfo
+      parameters:
+      - description: uuid of the voyager migration task
+        explode: false
+        in: query
+        name: uuid
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/API_for_Source_DB_SQL_objects_metadata_page'
+          description: Response for migration assessment source db metadata page
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get the Source Database SQL object details
+      tags:
+      - voyager-info
+  /assessment_target_recommendation_details:
+    get:
+      description: Get the Target Database recommendation details
+      operationId: GetAssessmentTargetRecommendationInfo
+      parameters:
+      - description: uuid of the voyager migration task
+        explode: false
+        in: query
+        name: uuid
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/API_for_Target_Schema_recommendations_page'
+          description: Response for migration assessment target recommendation page
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get the Target Database recommendation details
+      tags:
+      - voyager-info
   /live_queries:
     get:
       description: Get the Live Queries in a Yugabyte Cluster
@@ -975,6 +1047,18 @@ components:
           schema:
             $ref: '#/components/schemas/API_for_migration_assessment_page'
       description: Response for migration assessment page
+    AssessmentSourceDbResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/API_for_Source_DB_SQL_objects_metadata_page'
+      description: Response for migration assessment source db metadata page
+    AssessmentTargetRecommendationResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/API_for_Target_Schema_recommendations_page'
+      description: Response for migration assessment target recommendation page
     LiveQueryResponse:
       content:
         application/json:
@@ -1090,13 +1174,31 @@ components:
       description: Information regarding a specific voyager migration task
       example:
         complexity: complexity
-        database_name: database_name
+        migration_type: migration_type
         migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        start_timestamp: start_timestamp
+        source_db:
+          schema: schema
+          database: database
+          port: port
+          engine: engine
+          ip: ip
+          version: version
+        target_cluster:
+          port: port
+          engine: engine
+          ip: ip
+          version: version
+        voyager:
+          os: os
+          avail_disk_bytes: avail_disk_bytes
+          machine_ip: machine_ip
+          exported_schema_location: exported_schema_location
+          export_dir: export_dir
         migration_phase: 0
-        source_db: source_db
         invocation_sequence: 6
+        progress: progress
         migration_name: migration_name
-        schema_name: schema_name
         invocation_timestamp: invocation_timestamp
         status: status
       properties:
@@ -1105,21 +1207,27 @@ components:
           type: string
         migration_name:
           type: string
+        migration_type:
+          type: string
         migration_phase:
           type: integer
         invocation_sequence:
           type: integer
         source_db:
-          type: string
+          $ref: '#/components/schemas/VoyagerMigrationDetails_source_db'
+        voyager:
+          $ref: '#/components/schemas/VoyagerMigrationDetails_voyager'
+        target_cluster:
+          $ref: '#/components/schemas/VoyagerMigrationDetails_target_cluster'
         complexity:
-          type: string
-        database_name:
-          type: string
-        schema_name:
           type: string
         status:
           type: string
+        progress:
+          type: string
         invocation_timestamp:
+          type: string
+        start_timestamp:
           type: string
       title: Voyager task details
       type: object
@@ -1128,23 +1236,59 @@ components:
       example:
         migrations:
         - complexity: complexity
-          database_name: database_name
+          migration_type: migration_type
           migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          start_timestamp: start_timestamp
+          source_db:
+            schema: schema
+            database: database
+            port: port
+            engine: engine
+            ip: ip
+            version: version
+          target_cluster:
+            port: port
+            engine: engine
+            ip: ip
+            version: version
+          voyager:
+            os: os
+            avail_disk_bytes: avail_disk_bytes
+            machine_ip: machine_ip
+            exported_schema_location: exported_schema_location
+            export_dir: export_dir
           migration_phase: 0
-          source_db: source_db
           invocation_sequence: 6
+          progress: progress
           migration_name: migration_name
-          schema_name: schema_name
           invocation_timestamp: invocation_timestamp
           status: status
         - complexity: complexity
-          database_name: database_name
+          migration_type: migration_type
           migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          start_timestamp: start_timestamp
+          source_db:
+            schema: schema
+            database: database
+            port: port
+            engine: engine
+            ip: ip
+            version: version
+          target_cluster:
+            port: port
+            engine: engine
+            ip: ip
+            version: version
+          voyager:
+            os: os
+            avail_disk_bytes: avail_disk_bytes
+            machine_ip: machine_ip
+            exported_schema_location: exported_schema_location
+            export_dir: export_dir
           migration_phase: 0
-          source_db: source_db
           invocation_sequence: 6
+          progress: progress
           migration_name: migration_name
-          schema_name: schema_name
           invocation_timestamp: invocation_timestamp
           status: status
       properties:
@@ -1194,6 +1338,7 @@ components:
         top_errors:
         - top_errors
         - top_errors
+        operating_system: operating_system
         top_suggestions:
         - top_suggestions
         - top_suggestions
@@ -1212,11 +1357,14 @@ components:
           items:
             $ref: '#/components/schemas/AssesmentComplexityInfo'
           type: array
+        operating_system:
+          type: string
       title: Details for Voyager migrations assesment
       type: object
     ErrorsAndSuggestionsDetails:
       description: Errors and suggestions details
       example:
+        issueType: issueType
         reason: reason
         GH: GH
         sqlStatement: sqlStatement
@@ -1225,6 +1373,8 @@ components:
         objectName: objectName
         objectType: objectType
       properties:
+        issueType:
+          type: string
         objectType:
           type: string
         objectName:
@@ -1241,11 +1391,229 @@ components:
           type: string
       title: Errors and Suggestions details
       type: object
+    UnsupportedSqlWithDetails:
+      description: Schema for Suggested refactoring tab in Migrate Schema page
+      example:
+        suggestions_errors:
+        - issueType: issueType
+          reason: reason
+          GH: GH
+          sqlStatement: sqlStatement
+          filePath: filePath
+          suggestion: suggestion
+          objectName: objectName
+          objectType: objectType
+        - issueType: issueType
+          reason: reason
+          GH: GH
+          sqlStatement: sqlStatement
+          filePath: filePath
+          suggestion: suggestion
+          objectName: objectName
+          objectType: objectType
+        unsupported_type: unsupported_type
+        count: 0
+      properties:
+        suggestions_errors:
+          items:
+            $ref: '#/components/schemas/ErrorsAndSuggestionsDetails'
+          type: array
+        unsupported_type:
+          type: string
+        count:
+          type: integer
+      title: Schema for Suggested refactoring tab in Migrate Schema page
+      type: object
+    RefactoringCount:
+      description: Count of automatic, manual and invalid SQL objects displayed in
+        Schema analysis page
+      example:
+        sql_object_type: sql_object_type
+        invalid: 5
+        automatic: 1
+        manual: 6
+      properties:
+        sql_object_type:
+          type: string
+        manual:
+          type: integer
+        automatic:
+          type: integer
+        invalid:
+          type: integer
+      title: Count of automatic, manual and invalid SQL objects
+      type: object
+    RecommendedRefactoringGraph:
+      description: Refectoring recommendations for migrating SQL objects
+      example:
+        refactor_details:
+        - sql_object_type: sql_object_type
+          invalid: 5
+          automatic: 1
+          manual: 6
+        - sql_object_type: sql_object_type
+          invalid: 5
+          automatic: 1
+          manual: 6
+      properties:
+        refactor_details:
+          items:
+            $ref: '#/components/schemas/RefactoringCount'
+          type: array
+      title: Refectoring recommendations per SQL object type
+      type: object
+    SchemaAnalysisReport:
+      description: Voyager data migration metrics details
+      example:
+        unsupported_features:
+        - suggestions_errors:
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          unsupported_type: unsupported_type
+          count: 0
+        - suggestions_errors:
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          unsupported_type: unsupported_type
+          count: 0
+        recommended_refactoring:
+          refactor_details:
+          - sql_object_type: sql_object_type
+            invalid: 5
+            automatic: 1
+            manual: 6
+          - sql_object_type: sql_object_type
+            invalid: 5
+            automatic: 1
+            manual: 6
+        unsupported_datatypes:
+        - suggestions_errors:
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          unsupported_type: unsupported_type
+          count: 0
+        - suggestions_errors:
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          unsupported_type: unsupported_type
+          count: 0
+        unsupported_functions:
+        - suggestions_errors:
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          unsupported_type: unsupported_type
+          count: 0
+        - suggestions_errors:
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          - issueType: issueType
+            reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          unsupported_type: unsupported_type
+          count: 0
+      properties:
+        unsupported_functions:
+          items:
+            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
+          type: array
+        unsupported_features:
+          items:
+            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
+          type: array
+        unsupported_datatypes:
+          items:
+            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
+          type: array
+        recommended_refactoring:
+          $ref: '#/components/schemas/RecommendedRefactoringGraph'
+      title: Schema Analysis report
+      type: object
     SqlObjectsDetails:
       description: Sql obejcts type and count
       example:
-        invalidCount: 6
-        totalCount: 0
+        invalidCount: 2
+        totalCount: 5
         objectNames: objectNames
         objectDetails: objectDetails
         objectType: objectType
@@ -1267,14 +1635,16 @@ components:
       example:
         import_schema: import_schema
         suggestions_errors:
-        - reason: reason
+        - issueType: issueType
+          reason: reason
           GH: GH
           sqlStatement: sqlStatement
           filePath: filePath
           suggestion: suggestion
           objectName: objectName
           objectType: objectType
-        - reason: reason
+        - issueType: issueType
+          reason: reason
           GH: GH
           sqlStatement: sqlStatement
           filePath: filePath
@@ -1285,17 +1655,400 @@ components:
         overall_status: overall_status
         analyze_schema: analyze_schema
         sql_objects:
-        - invalidCount: 6
-          totalCount: 0
+        - invalidCount: 2
+          totalCount: 5
           objectNames: objectNames
           objectDetails: objectDetails
           objectType: objectType
-        - invalidCount: 6
-          totalCount: 0
+        - invalidCount: 2
+          totalCount: 5
           objectNames: objectNames
           objectDetails: objectDetails
           objectType: objectType
         export_schema: export_schema
+        analysis_history:
+        - unsupported_features:
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          recommended_refactoring:
+            refactor_details:
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 1
+              manual: 6
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 1
+              manual: 6
+          unsupported_datatypes:
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          unsupported_functions:
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+        - unsupported_features:
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          recommended_refactoring:
+            refactor_details:
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 1
+              manual: 6
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 1
+              manual: 6
+          unsupported_datatypes:
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          unsupported_functions:
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+        current_analysis_report:
+          unsupported_features:
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          recommended_refactoring:
+            refactor_details:
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 1
+              manual: 6
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 1
+              manual: 6
+          unsupported_datatypes:
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          unsupported_functions:
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
+          - suggestions_errors:
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            - issueType: issueType
+              reason: reason
+              GH: GH
+              sqlStatement: sqlStatement
+              filePath: filePath
+              suggestion: suggestion
+              objectName: objectName
+              objectType: objectType
+            unsupported_type: unsupported_type
+            count: 0
       properties:
         migration_uuid:
           format: uuid
@@ -1311,6 +2064,12 @@ components:
         suggestions_errors:
           items:
             $ref: '#/components/schemas/ErrorsAndSuggestionsDetails'
+          type: array
+        current_analysis_report:
+          $ref: '#/components/schemas/SchemaAnalysisReport'
+        analysis_history:
+          items:
+            $ref: '#/components/schemas/SchemaAnalysisReport'
           type: array
         sql_objects:
           items:
@@ -1342,8 +2101,10 @@ components:
         status:
           type: integer
         count_live_rows:
+          format: int64
           type: integer
         count_total_rows:
+          format: int64
           type: integer
         invocation_timestamp:
           type: string
@@ -1418,12 +2179,16 @@ components:
         total_table_size: 1
       properties:
         table_size:
+          format: int64
           type: integer
         table_row_count:
+          format: int64
           type: integer
         total_table_size:
+          format: int64
           type: integer
         total_index_size:
+          format: int64
           type: integer
       title: Source Database details
       type: object
@@ -1437,14 +2202,19 @@ components:
         num_nodes: 5
       properties:
         num_nodes:
+          format: int64
           type: integer
         vcpu_per_node:
+          format: int64
           type: integer
         memory_per_node:
+          format: int64
           type: integer
         connections_per_node:
+          format: int64
           type: integer
         inserts_per_node:
+          format: int64
           type: integer
       title: Target cluster size recommendations
       type: object
@@ -1457,12 +2227,16 @@ components:
         no_of_sharded_tables: 7
       properties:
         no_of_colocated_tables:
+          format: int64
           type: integer
         total_size_colocated_tables:
+          format: int64
           type: integer
         no_of_sharded_tables:
+          format: int64
           type: integer
         total_size_sharded_tables:
+          format: int64
           type: integer
       title: Target YugabyteDB cluster schema recommendations
       type: object
@@ -1490,59 +2264,40 @@ components:
           $ref: '#/components/schemas/TargetSchemaRecommendations'
       title: Target YugabyteDB cluster size and schema recommendations
       type: object
-    RefactoringCount:
-      description: count for automatic and manual refactoring
+    UnsupportedSqlObjectData:
+      description: Unsupported SQL Object Data
       example:
-        automatic: 1
-        manual: 1
+        object_name: object_name
+        sql_statement: sql_statement
       properties:
-        manual:
-          type: integer
-        automatic:
-          type: integer
-      title: Count of automatic and manual refactoring
-      type: object
-    RecommendedRefactoringGraph:
-      description: Refectoring recommendations for migrating SQL objects
-      example:
-        view:
-          automatic: 1
-          manual: 1
-        function:
-          automatic: 1
-          manual: 1
-        sql_type:
-          automatic: 1
-          manual: 1
-        triggers:
-          automatic: 1
-          manual: 1
-        table:
-          automatic: 1
-          manual: 1
-      properties:
-        sql_type:
-          $ref: '#/components/schemas/RefactoringCount'
-        table:
-          $ref: '#/components/schemas/RefactoringCount'
-        view:
-          $ref: '#/components/schemas/RefactoringCount'
-        function:
-          $ref: '#/components/schemas/RefactoringCount'
-        triggers:
-          $ref: '#/components/schemas/RefactoringCount'
-      title: Refectoring recommendations per SQL object type
+        object_name:
+          type: string
+        sql_statement:
+          type: string
+      title: Unsupported SQL Object Data
       type: object
     UnsupportedSqlInfo:
       description: Unsupported SQL Info
       example:
         unsupported_type: unsupported_type
-        count: 6
+        objects:
+        - object_name: object_name
+          sql_statement: sql_statement
+        - object_name: object_name
+          sql_statement: sql_statement
+        count: 1
+        docs_link: docs_link
       properties:
         unsupported_type:
           type: string
         count:
           type: integer
+        objects:
+          items:
+            $ref: '#/components/schemas/UnsupportedSqlObjectData'
+          type: array
+        docs_link:
+          type: string
       title: Unsupported SQL Info
       type: object
     MigrationAssessmentReport:
@@ -1567,25 +2322,32 @@ components:
           recommendation_summary: recommendation_summary
         unsupported_features:
         - unsupported_type: unsupported_type
-          count: 6
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
+          count: 1
+          docs_link: docs_link
         - unsupported_type: unsupported_type
-          count: 6
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
+          count: 1
+          docs_link: docs_link
         recommended_refactoring:
-          view:
+          refactor_details:
+          - sql_object_type: sql_object_type
+            invalid: 5
             automatic: 1
-            manual: 1
-          function:
+            manual: 6
+          - sql_object_type: sql_object_type
+            invalid: 5
             automatic: 1
-            manual: 1
-          sql_type:
-            automatic: 1
-            manual: 1
-          triggers:
-            automatic: 1
-            manual: 1
-          table:
-            automatic: 1
-            manual: 1
+            manual: 6
+        assessment_status: true
         source_environment:
           total_memory: total_memory
           total_disk_size: total_disk_size
@@ -1593,9 +2355,21 @@ components:
           total_vcpu: total_vcpu
         unsupported_functions:
         - unsupported_type: unsupported_type
-          count: 6
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
+          count: 1
+          docs_link: docs_link
         - unsupported_type: unsupported_type
-          count: 6
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
+          count: 1
+          docs_link: docs_link
         source_database:
           table_size: 0
           total_index_size: 5
@@ -1603,10 +2377,24 @@ components:
           total_table_size: 1
         unsupported_data_types:
         - unsupported_type: unsupported_type
-          count: 6
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
+          count: 1
+          docs_link: docs_link
         - unsupported_type: unsupported_type
-          count: 6
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
+          count: 1
+          docs_link: docs_link
       properties:
+        assessment_status:
+          type: boolean
         summary:
           $ref: '#/components/schemas/AssessmentReportSummary'
         source_environment:
@@ -1630,6 +2418,119 @@ components:
             $ref: '#/components/schemas/UnsupportedSqlInfo'
           type: array
       title: Details of the migration assessment report
+      type: object
+    SqlObjectCount:
+      description: Count of specific Sql Object type in the source DB
+      example:
+        sql_type: sql_type
+        count: 0
+      properties:
+        sql_type:
+          type: string
+        count:
+          type: integer
+      title: Count of specific Sql Object type in the source DB
+      type: object
+    SqlObjectMetadata:
+      description: size, count, iops details of tables and indexes
+      example:
+        size: 1
+        object_name: object_name
+        sql_type: sql_type
+        iops: 5
+        row_count: 6
+      properties:
+        object_name:
+          type: string
+        sql_type:
+          type: string
+        row_count:
+          format: int64
+          type: integer
+        size:
+          format: int64
+          type: integer
+        iops:
+          format: int64
+          type: integer
+      title: metadata of specific Sql Object type in the source DB
+      type: object
+    AssessmentSourceDbObject:
+      description: Details about Source DB's SQL Objects
+      example:
+        sql_objects_metadata:
+        - size: 1
+          object_name: object_name
+          sql_type: sql_type
+          iops: 5
+          row_count: 6
+        - size: 1
+          object_name: object_name
+          sql_type: sql_type
+          iops: 5
+          row_count: 6
+        sql_objects_count:
+        - sql_type: sql_type
+          count: 0
+        - sql_type: sql_type
+          count: 0
+      properties:
+        sql_objects_count:
+          items:
+            $ref: '#/components/schemas/SqlObjectCount'
+          type: array
+        sql_objects_metadata:
+          items:
+            $ref: '#/components/schemas/SqlObjectMetadata'
+          type: array
+      title: Details about Source DB's SQL Objects
+      type: object
+    TargetRecommendationItem:
+      description: Target recommendation table metadata information
+      example:
+        schema_recommendation: schema_recommendation
+        disk_size: 5
+        table_name: table_name
+      properties:
+        table_name:
+          type: string
+        disk_size:
+          format: int64
+          type: integer
+        schema_recommendation:
+          type: string
+      title: Target recommendation table metadata information
+      type: object
+    AssessmentTargetRecommendationObject:
+      description: Details about Target table recommendations
+      example:
+        recommendation_details:
+        - schema_recommendation: schema_recommendation
+          disk_size: 5
+          table_name: table_name
+        - schema_recommendation: schema_recommendation
+          disk_size: 5
+          table_name: table_name
+        num_of_sharded_table: 1
+        total_size_colocated_tables: 6
+        total_size_sharded_tables: 5
+        num_of_colocated_tables: 0
+      properties:
+        num_of_colocated_tables:
+          type: integer
+        total_size_colocated_tables:
+          format: int64
+          type: integer
+        num_of_sharded_table:
+          type: integer
+        total_size_sharded_tables:
+          format: int64
+          type: integer
+        recommendation_details:
+          items:
+            $ref: '#/components/schemas/TargetRecommendationItem'
+          type: array
+      title: Details about Target table recommendations
       type: object
     LiveQueryResponseYSQLQueryItem:
       description: Schema for Live Query Response YSQL Query Item
@@ -2637,11 +3538,11 @@ components:
       - active_logical_connections
       - active_physical_connections
       - avg_wait_time_ns
-      - waiting_logical_connections
       - idle_physical_connections
       - qps
       - queued_logical_connections
       - tps
+      - waiting_logical_connections
       type: object
     ConnectionStats:
       items:
@@ -3122,6 +4023,7 @@ components:
           top_errors:
           - top_errors
           - top_errors
+          operating_system: operating_system
           top_suggestions:
           - top_suggestions
           - top_suggestions
@@ -3135,14 +4037,16 @@ components:
         data:
           import_schema: import_schema
           suggestions_errors:
-          - reason: reason
+          - issueType: issueType
+            reason: reason
             GH: GH
             sqlStatement: sqlStatement
             filePath: filePath
             suggestion: suggestion
             objectName: objectName
             objectType: objectType
-          - reason: reason
+          - issueType: issueType
+            reason: reason
             GH: GH
             sqlStatement: sqlStatement
             filePath: filePath
@@ -3153,17 +4057,400 @@ components:
           overall_status: overall_status
           analyze_schema: analyze_schema
           sql_objects:
-          - invalidCount: 6
-            totalCount: 0
+          - invalidCount: 2
+            totalCount: 5
             objectNames: objectNames
             objectDetails: objectDetails
             objectType: objectType
-          - invalidCount: 6
-            totalCount: 0
+          - invalidCount: 2
+            totalCount: 5
             objectNames: objectNames
             objectDetails: objectDetails
             objectType: objectType
           export_schema: export_schema
+          analysis_history:
+          - unsupported_features:
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            recommended_refactoring:
+              refactor_details:
+              - sql_object_type: sql_object_type
+                invalid: 5
+                automatic: 1
+                manual: 6
+              - sql_object_type: sql_object_type
+                invalid: 5
+                automatic: 1
+                manual: 6
+            unsupported_datatypes:
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            unsupported_functions:
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+          - unsupported_features:
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            recommended_refactoring:
+              refactor_details:
+              - sql_object_type: sql_object_type
+                invalid: 5
+                automatic: 1
+                manual: 6
+              - sql_object_type: sql_object_type
+                invalid: 5
+                automatic: 1
+                manual: 6
+            unsupported_datatypes:
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            unsupported_functions:
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+          current_analysis_report:
+            unsupported_features:
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            recommended_refactoring:
+              refactor_details:
+              - sql_object_type: sql_object_type
+                invalid: 5
+                automatic: 1
+                manual: 6
+              - sql_object_type: sql_object_type
+                invalid: 5
+                automatic: 1
+                manual: 6
+            unsupported_datatypes:
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            unsupported_functions:
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
+            - suggestions_errors:
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              - issueType: issueType
+                reason: reason
+                GH: GH
+                sqlStatement: sqlStatement
+                filePath: filePath
+                suggestion: suggestion
+                objectName: objectName
+                objectType: objectType
+              unsupported_type: unsupported_type
+              count: 0
       properties:
         data:
           $ref: '#/components/schemas/MigrateSchemaTaskInfo'
@@ -3191,25 +4478,32 @@ components:
             recommendation_summary: recommendation_summary
           unsupported_features:
           - unsupported_type: unsupported_type
-            count: 6
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
+            count: 1
+            docs_link: docs_link
           - unsupported_type: unsupported_type
-            count: 6
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
+            count: 1
+            docs_link: docs_link
           recommended_refactoring:
-            view:
+            refactor_details:
+            - sql_object_type: sql_object_type
+              invalid: 5
               automatic: 1
-              manual: 1
-            function:
+              manual: 6
+            - sql_object_type: sql_object_type
+              invalid: 5
               automatic: 1
-              manual: 1
-            sql_type:
-              automatic: 1
-              manual: 1
-            triggers:
-              automatic: 1
-              manual: 1
-            table:
-              automatic: 1
-              manual: 1
+              manual: 6
+          assessment_status: true
           source_environment:
             total_memory: total_memory
             total_disk_size: total_disk_size
@@ -3217,9 +4511,21 @@ components:
             total_vcpu: total_vcpu
           unsupported_functions:
           - unsupported_type: unsupported_type
-            count: 6
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
+            count: 1
+            docs_link: docs_link
           - unsupported_type: unsupported_type
-            count: 6
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
+            count: 1
+            docs_link: docs_link
           source_database:
             table_size: 0
             total_index_size: 5
@@ -3227,13 +4533,68 @@ components:
             total_table_size: 1
           unsupported_data_types:
           - unsupported_type: unsupported_type
-            count: 6
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
+            count: 1
+            docs_link: docs_link
           - unsupported_type: unsupported_type
-            count: 6
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
+            count: 1
+            docs_link: docs_link
       properties:
         data:
           $ref: '#/components/schemas/MigrationAssessmentReport'
       title: API for migration assessment page
+      type: object
+    API_for_Source_DB_SQL_objects_metadata_page:
+      example:
+        data:
+          sql_objects_metadata:
+          - size: 1
+            object_name: object_name
+            sql_type: sql_type
+            iops: 5
+            row_count: 6
+          - size: 1
+            object_name: object_name
+            sql_type: sql_type
+            iops: 5
+            row_count: 6
+          sql_objects_count:
+          - sql_type: sql_type
+            count: 0
+          - sql_type: sql_type
+            count: 0
+      properties:
+        data:
+          $ref: '#/components/schemas/AssessmentSourceDbObject'
+      title: API for Source DB SQL objects metadata page
+      type: object
+    API_for_Target_Schema_recommendations_page:
+      example:
+        data:
+          recommendation_details:
+          - schema_recommendation: schema_recommendation
+            disk_size: 5
+            table_name: table_name
+          - schema_recommendation: schema_recommendation
+            disk_size: 5
+            table_name: table_name
+          num_of_sharded_table: 1
+          total_size_colocated_tables: 6
+          total_size_sharded_tables: 5
+          num_of_colocated_tables: 0
+      properties:
+        data:
+          $ref: '#/components/schemas/AssessmentTargetRecommendationObject'
+      title: API for Target Schema recommendations page
       type: object
     Cluster_Nodes_Response:
       example:
@@ -3604,6 +4965,63 @@ components:
       required:
       - restore
       title: Restore Details
+      type: object
+    VoyagerMigrationDetails_source_db:
+      example:
+        schema: schema
+        database: database
+        port: port
+        engine: engine
+        ip: ip
+        version: version
+      properties:
+        ip:
+          type: string
+        port:
+          type: string
+        engine:
+          type: string
+        version:
+          type: string
+        database:
+          type: string
+        schema:
+          type: string
+      type: object
+    VoyagerMigrationDetails_voyager:
+      example:
+        os: os
+        avail_disk_bytes: avail_disk_bytes
+        machine_ip: machine_ip
+        exported_schema_location: exported_schema_location
+        export_dir: export_dir
+      properties:
+        machine_ip:
+          type: string
+        os:
+          type: string
+        avail_disk_bytes:
+          type: string
+        export_dir:
+          type: string
+        exported_schema_location:
+          type: string
+      type: object
+    VoyagerMigrationDetails_target_cluster:
+      example:
+        port: port
+        engine: engine
+        ip: ip
+        version: version
+      properties:
+        ip:
+          type: string
+        port:
+          type: string
+        engine:
+          type: string
+        version:
+          type: string
       type: object
     ApiError_error:
       properties:

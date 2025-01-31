@@ -13,6 +13,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertNotFound;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static play.test.Helpers.contentAsString;
@@ -72,8 +73,10 @@ public class HAControllerTest extends FakeDBApplication {
     assertOk(createResult);
 
     clusterKey = Json.parse(contentAsString(createClusterKey())).get("cluster_key").asText();
-    body = Json.newObject().put("cluster_key", clusterKey);
-    Result createResult2 = doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    JsonNode badBody = Json.newObject().put("cluster_key", clusterKey);
+    Result createResult2 =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", uri, authToken, badBody));
 
     assertBadRequest(createResult2, "An HA Config already exists");
   }

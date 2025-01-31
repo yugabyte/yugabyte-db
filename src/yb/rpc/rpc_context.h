@@ -67,13 +67,13 @@ class RpcCallParams {
  public:
   virtual ~RpcCallParams() = default;
 
-  virtual Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) = 0;
+  virtual Status ParseRequest(Slice param, const RefCntBuffer& buffer) = 0;
   virtual AnyMessageConstPtr SerializableResponse() = 0;
 };
 
 class RpcCallPBParams : public RpcCallParams {
  public:
-  Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) override;
+  Status ParseRequest(Slice param, const RefCntBuffer& buffer) override;
 
   AnyMessageConstPtr SerializableResponse() override;
 
@@ -108,7 +108,7 @@ class RpcCallPBParamsImpl : public RpcCallPBParams {
 
 class RpcCallLWParams : public RpcCallParams {
  public:
-  Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) override;
+  Status ParseRequest(Slice param, const RefCntBuffer& buffer) override;
   AnyMessageConstPtr SerializableResponse() override;
 
   virtual LightweightMessage& request() = 0;
@@ -310,6 +310,7 @@ class RpcContext {
 
   // Closes connection that received this request.
   void CloseConnection();
+  void ListenConnectionShutdown(const std::function<void()>& listener);
 
   std::string ToString() const;
 

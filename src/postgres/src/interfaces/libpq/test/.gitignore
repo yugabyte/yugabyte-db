@@ -1,3 +1,2 @@
-/uri-regress
-/regress.diff
-/regress.out
+/libpq_testclient
+/libpq_uri_regress

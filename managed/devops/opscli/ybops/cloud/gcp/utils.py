@@ -23,9 +23,10 @@ from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.utils import request_retry_decorator
 
 
-RESOURCE_BASE_URL = "https://www.googleapis.com/compute/beta/projects/"
+RESOURCE_BASE_URL = "https://www.googleapis.com/compute/v1/projects/"
 REGIONS_RESOURCE_URL_FORMAT = RESOURCE_BASE_URL + "{}/regions/{}"
-PRICING_JSON_URL = "https://cloudpricingcalculator.appspot.com/static/data/pricelist.json"
+PRICING_JSON_URL = os.environ.get("YB_GCP_PRICING_JSON_URL",
+                                  "https://downloads.yugabyte.com/gcp_price_list/pricelist_gcp.json")
 IMAGE_NAME_PREFIX = "CP-COMPUTEENGINE-VMIMAGE-"
 IMAGE_NAME_PREEMPTIBLE_SUFFIX = "-PREEMPTIBLE"
 OPERATION_WAIT_TIME = 5
@@ -554,7 +555,7 @@ class GoogleCloudAdmin():
         # account associated with the instance we're running on, if one exists.
         self.credentials = oauth2client.client.GoogleCredentials.get_application_default()
         self.compute = discovery.build(
-            "compute", "beta", credentials=self.credentials, num_retries=3)
+            "compute", "v1", credentials=self.credentials, num_retries=3)
         # If we have specified a GCE_PROJECT, use that, else, try the instance metadata, else fail.
         self.project = os.environ.get("GCE_PROJECT") or GcpMetadata.project()
         if self.project is None:
@@ -806,17 +807,21 @@ class GoogleCloudAdmin():
         return os.environ.get("GCE_SHARED_VPC_PROJECT", self.project)
 
     def get_pricing_map(self, ):
-        # Requests encounters an SSL bug when run on portal, so verify is set to false
-        pricing_url_response = requests.get(PRICING_JSON_URL, verify=False)
-        pricing_map_all = pricing_url_response.json()["gcp_price_list"]
-        pricing_map = {}
-        for key in pricing_map_all:
-            if key.startswith(IMAGE_NAME_PREFIX):
-                pricing_map[key] = pricing_map_all[key]
-        return pricing_map
+        try:
+            # Requests encounters an SSL bug when run on portal, so verify is set to false
+            pricing_url_response = requests.get(PRICING_JSON_URL, verify=False)
+            pricing_map_all = pricing_url_response.json()["gcp_price_list"]
+            pricing_map = {}
+            for key in pricing_map_all:
+                if key.startswith(IMAGE_NAME_PREFIX):
+                    pricing_map[key] = pricing_map_all[key]
+            return pricing_map
+        except Exception as e:
+            logging.warning("[app] Exception {} determining GCP pricing info".format(e))
+        return {}
 
     @gcp_request_limit_retry
-    def get_instances(self, zone, instance_name, get_all=False, filters=None):
+    def get_instances(self, zone, instance_name, get_all=False, filters=None, node_uuid=None):
         # TODO: filter should work to do (zone eq args.zone), but it doesn't right now...
         filter_params = []
         if filters:
@@ -848,6 +853,13 @@ class GoogleCloudAdmin():
             server_types = [i["value"] for i in metadata if i["key"] == "server_type"]
             node_uuid_tags = [i["value"] for i in metadata if i["key"] == "node-uuid"]
             universe_uuid_tags = [i["value"] for i in metadata if i["key"] == "universe-uuid"]
+            host_node_uuid = node_uuid_tags[0] if node_uuid_tags else None
+            # Matching label or no label for backward compatibility.
+            if host_node_uuid is not None and node_uuid is not None \
+                    and host_node_uuid != node_uuid:
+                logging.warning("VM {}({}) with node UUID {} is not found.".
+                                format(instance_name, host_node_uuid, node_uuid))
+                continue
             private_ip = None
             primary_subnet = None
             secondary_private_ip = None
@@ -886,7 +898,7 @@ class GoogleCloudAdmin():
                 zone=zone,
                 instance_type=machine_type,
                 server_type=server_types[0] if server_types else None,
-                node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
+                node_uuid=host_node_uuid,
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 launched_by=None,
                 launch_time=data.get("creationTimestamp"),

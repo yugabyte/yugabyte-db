@@ -1,14 +1,16 @@
 ---
-title: Deploy to two universes with transactional xCluster replication
-headerTitle: Transactional xCluster deployment
-linkTitle: Transactional xCluster
-description: Enable deployment using transactional (active-standby) replication between universes
-headContent: Transactional (active-standby) replication
+title: Deploy transactional xCluster replication
+headerTitle: Transactional xCluster
+linkTitle: Transactional
+description: Deploy using transactional (active-standby) replication between universes
+headContent: Deploy transactional (active-standby) replication
 menu:
   v2.20:
     parent: async-replication
     identifier: async-replication-transactional
-    weight: 20
+    weight: 10
+tags:
+  other: ysql
 type: docs
 ---
 
@@ -37,6 +39,8 @@ xCluster safe time is the transactionally consistent time across all tables in a
 
 - Supports only Active-Standby setups with transactional atomicity and global ordering.
 - Transactional consistency is currently not supported for YCQL, only for YSQL.
+
+For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
 
 ## Best practices
 

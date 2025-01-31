@@ -2,6 +2,7 @@
 
 global:
  scrape_interval:     ${interval}s
+ scrape_timeout:      ${interval}s
  evaluation_interval: ${interval}s
 
  external_labels:
@@ -11,6 +12,7 @@ global:
 scrape_configs:
  - job_name: "federate"
    scrape_interval: ${interval}s
+   scrape_timeout:  ${interval}s
    honor_labels: true
    metrics_path: '/federate'
    #if ($https == true)

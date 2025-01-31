@@ -31,6 +31,7 @@ import java.util.regex.Pattern;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -58,9 +59,10 @@ public class TestYbRoleProfile extends BasePgSQLTest {
   private static final Pattern ROLE_IS_LOCKED_OUT_RE = Pattern.compile(
       "FATAL: role .* is locked. Contact your database administrator.");
   private static final Pattern AUTHENTICATION_REJECTED_RE = Pattern.compile(
-      "FATAL: pg_hba.conf rejects connection for host .*, user .*, database \"yugabyte\", SSL off");
+      "FATAL: pg_hba.conf rejects connection for host .*, user .*, database \"yugabyte\","
+      + " no encryption");
   private static final Pattern NO_HBA_ENTRY_RE = Pattern.compile(
-      "FATAL: no pg_hba.conf entry for host .*, user .*, database \"yugabyte\", SSL off");
+      "FATAL: no pg_hba.conf entry for host .*, user .*, database \"yugabyte\", no encryption");
 
   private final ConnectionEndpoint connectionEndpoint;
 
@@ -259,12 +261,9 @@ public class TestYbRoleProfile extends BasePgSQLTest {
         connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
 
     /*
-    * There are two operations that might result in an error if the profile catalogs don't exist:
-    *  1. logging in, because auth.c tries to get the user's profile if it exists
-    *  2. running profile commands.
-    * We can simply test this by logging in (which should behave as normal) and running a command.
+    * Test that profiles work on the oldest available pg15 snapshot.
     */
-    recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
 
     try (Connection conn = getConnectionBuilder().withDatabase("template1")
                                                  .withTServer(0)
@@ -272,9 +271,7 @@ public class TestYbRoleProfile extends BasePgSQLTest {
                                                  .withPassword(DEFAULT_PG_PASS)
                                                  .connect();
          Statement stmt = conn.createStatement()) {
-      runInvalidQuery(stmt,
-                      "CREATE PROFILE p LIMIT FAILED_LOGIN_ATTEMPTS 3",
-                      "Login profile system catalogs do not exist");
+      stmt.execute("CREATE PROFILE p LIMIT FAILED_LOGIN_ATTEMPTS 3");
     }
   }
 

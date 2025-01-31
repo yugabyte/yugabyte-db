@@ -41,6 +41,9 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/retryable_requests.h"
 
+#include "yb/docdb/docdb_util.h"
+#include "yb/docdb/vector_index.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/strings/substitute.h"
@@ -86,6 +89,13 @@ DEFINE_RUNTIME_int32(committed_config_change_role_timeout_sec, 30,
              "Number of seconds to wait for the CHANGE_ROLE to be in the committed config before "
              "timing out. ");
 TAG_FLAG(committed_config_change_role_timeout_sec, hidden);
+
+DEFINE_RUNTIME_double(rbs_data_size_to_disk_space_ratio_threshold, 0.9,
+    "In client side of a remote bootstrap session, if the ratio of total rocksdb file size to "
+    "available disk space is more than the value, the remote bootstrap request will be rejected."
+    "Normally the value must be a positive number within the range (0, 1]. O means disable disk "
+    "space check.");
+TAG_FLAG(rbs_data_size_to_disk_space_ratio_threshold, hidden);
 
 DEFINE_test_flag(double, fault_crash_bootstrap_client_before_changing_role, 0.0,
                  "The remote bootstrap client will crash before closing the session with the "
@@ -206,6 +216,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     LOG_WITH_PREFIX(WARNING) << status;
     return status;
   }
+  Started();
 
   download_retryable_requests_ = GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
       resp.has_retryable_requests_file_flushed() && resp.retryable_requests_file_flushed();
@@ -219,18 +230,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     return s;
   }
 
-  LOG_WITH_PREFIX(INFO) << "Received superblock: " << resp.superblock().ShortDebugString();
+  YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 1)
+      << "Received superblock: " << resp.superblock().ShortDebugString();
   RETURN_NOT_OK(MigrateSuperblock(resp.mutable_superblock()));
 
   auto* kv_store = resp.mutable_superblock()->mutable_kv_store();
-  LOG_WITH_PREFIX(INFO) << "RocksDB files: " << yb::ToString(kv_store->rocksdb_files());
-  LOG_WITH_PREFIX(INFO) << "Snapshot files: " << yb::ToString(kv_store->snapshot_files());
-  if (first_wal_seqno_) {
-    LOG_WITH_PREFIX(INFO) << "First WAL segment: " << first_wal_seqno_;
-  } else {
-    LOG_WITH_PREFIX(INFO) << "Log files: " << yb::ToString(resp.deprecated_wal_segment_seqnos());
-  }
-
   const TableId table_id = resp.superblock().primary_table_id();
   const bool colocated = resp.superblock().colocated();
   auto& hosted_stateful_services = resp.superblock().hosted_stateful_services();
@@ -259,8 +263,6 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
 
   downloader_.Start(
       proxy_, resp.session_id(), MonoDelta::FromMilliseconds(resp.session_idle_timeout_millis()));
-  LOG_WITH_PREFIX(INFO) << "Began remote bootstrap session " << session_id()
-                        << " [Bootstrapping from " << rbs_source_role << "]";
 
   superblock_.reset(resp.release_superblock());
 
@@ -307,6 +309,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     // Replace wal_dir in the received superblock with our assigned wal_dir.
     superblock_->set_wal_dir(meta_->wal_dir());
 
+    RETURN_NOT_OK(CheckDiskSpace(*superblock_, meta_->data_root_dir()));
+
     // This will flush to disk, but we set the data state to COPYING above.
     RETURN_NOT_OK_PREPEND(meta_->ReplaceSuperBlock(*superblock_),
                           "Remote bootstrap unable to replace superblock on tablet " +
@@ -339,11 +343,21 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
         consensus::MakeTabletLogPrefix(tablet_id_, fs_manager().uuid()),
         tablet::Primary::kTrue, table_id, table.namespace_name(), table.table_name(),
         table.table_type(), schema, qlexpr::IndexMap(table.indexes()),
-        table.has_index_info() ? boost::optional<qlexpr::IndexInfo>(table.index_info())
-                               : boost::none,
+        table.has_index_info() ? std::optional<qlexpr::IndexInfo>(table.index_info())
+                               : std::nullopt,
         table.schema_version(), partition_schema, table.pg_table_id(),
         tablet::SkipTableTombstoneCheck(table.skip_table_tombstone_check()));
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
+
+    auto tablet_assigned_root_data_dir = VERIFY_RESULT(fs_manager().GetTabletPath(tablet_id_));
+    auto status = CheckDiskSpace(*superblock_, tablet_assigned_root_data_dir);
+    if (!status.ok()) {
+      if (ts_manager) {
+        ts_manager->UnregisterDataWalDir(table_id, tablet_id_, data_root_dir, wal_root_dir);
+      }
+      return status;
+    }
+
     auto create_result = RaftGroupMetadata::CreateNew(
         tablet::RaftGroupMetadataData{
             .fs_manager = &fs_manager(),
@@ -383,7 +397,14 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     superblock_->set_wal_dir(meta_->wal_dir());
   }
 
-  Started();
+  LOG_WITH_PREFIX(INFO) << "Received superblock: " << AsString(*superblock_);
+  if (first_wal_seqno_) {
+    LOG_WITH_PREFIX(INFO) << "First WAL segment: " << first_wal_seqno_;
+  } else {
+    LOG_WITH_PREFIX(INFO) << "Log files: " << AsString(wal_seqnos_);
+  }
+  LOG_WITH_PREFIX(INFO) << "Began remote bootstrap session " << session_id()
+                        << " [Bootstrapping from " << rbs_source_role << "]";
 
   if (meta) {
     *meta = meta_;
@@ -610,17 +631,24 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
         << "Downloaded file " << file_pb.name() << " of size " << file_pb.size_bytes()
         << " in " << elapsed.ToSeconds() << " seconds";
   }
-
   // To avoid adding new file type to remote bootstrap we move intents as subdir of regular DB.
-  auto intents_tmp_dir = JoinPathSegments(rocksdb_dir, tablet::kIntentsSubdir);
-  if (env().FileExists(intents_tmp_dir)) {
-    auto intents_dir = rocksdb_dir + tablet::kIntentsDBSuffix;
-    LOG_WITH_PREFIX(INFO) << "Moving intents DB: " << intents_tmp_dir << " => " << intents_dir;
-    RETURN_NOT_OK(env().RenameFile(intents_tmp_dir, intents_dir));
+  auto& env = this->env();
+  auto children = VERIFY_RESULT(env.GetChildren(rocksdb_dir, ExcludeDots::kTrue));
+  for (const auto& child : children) {
+    if (!child.starts_with(docdb::kVectorIndexDirPrefix) && child != tablet::kIntentsDirName) {
+      continue;
+    }
+    auto source_dir = JoinPathSegments(rocksdb_dir, child);
+    if (!env.DirExists(source_dir)) {
+      continue;
+    }
+    auto dest_dir = docdb::GetStorageDir(rocksdb_dir, child);
+    LOG_WITH_PREFIX(INFO) << "Moving " << source_dir << " => " << dest_dir;
+    RETURN_NOT_OK(env.RenameFile(source_dir, dest_dir));
   }
   if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
     // Persist directory so that recently downloaded files are accessible.
-    RETURN_NOT_OK(env().SyncDir(rocksdb_dir));
+    RETURN_NOT_OK(env.SyncDir(rocksdb_dir));
   }
   downloaded_rocksdb_files_ = true;
   return Status::OK();
@@ -711,6 +739,28 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
                           "Unable to make copy of consensus metadata");
   }
 
+  return Status::OK();
+}
+
+Status RemoteBootstrapClient::CheckDiskSpace(
+    const tablet::RaftGroupReplicaSuperBlockPB& new_superblock,
+    const string& rocksdb_dir) {
+  const auto max_size_ratio = FLAGS_rbs_data_size_to_disk_space_ratio_threshold;
+  if (PREDICT_FALSE(max_size_ratio <= 0)) {
+    return Status::OK();
+  }
+
+  uint64_t total_data_size_bytes = 0;
+  for (const auto& file : new_superblock.kv_store().rocksdb_files()) {
+    total_data_size_bytes += file.size_bytes();
+  }
+  const uint64 free_space_bytes =
+      VERIFY_RESULT(fs_manager().GetFreeSpaceBytes(rocksdb_dir));
+  if (total_data_size_bytes > free_space_bytes * max_size_ratio) {
+    return STATUS_FORMAT(IOError, "Not enough disk space for bootstrap. path: $0, "
+                         "free spaces: $1 bytes, need $2 bytes",
+                         rocksdb_dir, free_space_bytes, total_data_size_bytes);
+  }
   return Status::OK();
 }
 

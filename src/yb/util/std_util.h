@@ -13,14 +13,15 @@
 
 #pragma once
 
+#include <algorithm>
+#include <future>
+#include <type_traits>
+
 // Implementation of std functions we want to use, but cannot until we switch to newer C++.
 
 namespace yb {
 
-namespace std_util {
-
 // cmp_* code is based on examples from https://en.cppreference.com/w/cpp/utility/intcmp
-// TODO: remove once we switch to C++20:
 
 template <class T, class U>
 constexpr std::enable_if_t<std::is_signed<T>::value == std::is_signed<U>::value, bool> cmp_equal(
@@ -64,24 +65,70 @@ constexpr std::enable_if_t<!std::is_signed<T>::value && std::is_signed<U>::value
 
 template <class T, class U>
 constexpr bool cmp_not_equal(const T& t, const U& u) noexcept {
-  return !std_util::cmp_equal(t, u);
+  return !::yb::cmp_equal(t, u);
 }
 
 template <class T, class U>
 constexpr bool cmp_greater(const T& t, const U& u) noexcept {
-  return std_util::cmp_less(u, t);
+  return ::yb::cmp_less(u, t);
 }
 
 template <class T, class U>
 constexpr bool cmp_less_equal(const T& t, const U& u) noexcept {
-  return !std_util::cmp_greater(t, u);
+  return !::yb::cmp_greater(t, u);
 }
 
-template <class T, class U>
-constexpr bool cmp_greater_equal(const T& t, const U& u) noexcept {
-  return !std_util::cmp_less(t, u);
+template <class Pq>
+class ReverseHeapToVectorHelper {
+ public:
+  explicit ReverseHeapToVectorHelper(Pq& heap) : heap_(heap) {}
+
+  template <class Container>
+  operator Container() const {
+    Container result;
+    result.resize(heap_.size());
+    size_t index = heap_.size();
+    while (!heap_.empty()) {
+      result[--index] = heap_.top();
+      heap_.pop();
+    }
+    return result;
+  }
+ private:
+  Pq& heap_;
+};
+
+template <class Pq>
+ReverseHeapToVectorHelper<Pq> ReverseHeapToVector(Pq& pq) {
+  return ReverseHeapToVectorHelper<Pq>(pq);
 }
 
-}  // namespace std_util
+template <class It, class Value, class Cmp = std::less<void>>
+auto binary_search_iterator(
+    const It& begin, const It& end, const Value& value, const Cmp& cmp = Cmp()) {
+  auto it = std::lower_bound(begin, end, value, cmp);
+  return it == end || !cmp(value, *it) ? it : end;
+}
+
+template <class It, class Value, class Cmp, class Transform>
+auto binary_search_iterator(
+    const It& begin, const It& end, const Value& value, const Cmp& cmp,
+    const Transform& transform) {
+  auto it = std::lower_bound(begin, end, value, [cmp, transform](const auto& lhs, const auto& rhs) {
+    return cmp(transform(lhs), rhs);
+  });
+  return it == end || !cmp(value, transform(*it)) ? it : end;
+}
+
+template<class T>
+auto ValueAsFuture(T&& value) {
+  using Tp = std::remove_cvref_t<T>;
+  std::promise<Tp> promise;
+  promise.set_value(std::forward<T>(value));
+  return promise.get_future();
+}
+
+template <class T>
+using optional_ref = std::optional<std::reference_wrapper<T>>;
 
 } // namespace yb

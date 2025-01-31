@@ -307,6 +307,7 @@ message UpgradeYsqlResponsePB {
 message WaitForYsqlBackendsCatalogVersionRequestPB {
   optional uint32 database_oid = 1; // required
   optional uint64 catalog_version = 2; // required
+  optional int32 requestor_pg_backend_pid = 4; // optional
   // Previously known number of YSQL backends that have not reached the requested catalog version.
   // -1 means unknown.
   optional int32 prev_num_lagging_backends = 3; // required
@@ -354,7 +355,15 @@ message ClonePgSchemaRequestPB {
   optional bytes target_owner = 5;
 }
 
-message ClonePgSchemaResponsePB{
+message ClonePgSchemaResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message EnableDbConnsRequestPB {
+  optional bytes target_db_name = 1;
+}
+
+message EnableDbConnsResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
@@ -407,6 +416,8 @@ service TabletServerAdminService {
 
   // Create PG objects (database, tables and indexes) of the clone database.
   rpc ClonePgSchema(ClonePgSchemaRequestPB) returns (ClonePgSchemaResponsePB);
+
+  rpc EnableDbConns(EnableDbConnsRequestPB) returns (EnableDbConnsResponsePB);
 
   // For test purposes: returns TryAgain error until specified number of calls is done.
   rpc TestRetry(TestRetryRequestPB) returns (TestRetryResponsePB);

@@ -19,7 +19,7 @@ Clusters [replicated across regions](../../create-clusters-topology/#replicate-a
 
 You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients.
 
-Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](../../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to target the preferred region.
+Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](../../../../drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred region.
 
 When no region is preferred, YugabyteDB Aeon distributes requests equally across regions. You can set or change the preferred region after cluster creation.
 
@@ -52,7 +52,7 @@ To create a multi-region replicated cluster, on the **Clusters** page, click **A
 
 The **Create Cluster** wizard has the following pages:
 
-1. [General Settings](#general-settings)
+1. [General Settings](#general-and-database-settings)
 1. [Cluster Setup](#cluster-setup)
 1. [Network Access](#network-access)
 1. [Security](#security)
@@ -132,5 +132,5 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeo
 
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../../tutorials/build-apps/)
+- [Build an application](/preview/tutorials/build-apps/)
 - [Scale clusters](../../../cloud-clusters/configure-clusters/#replicate-across-regions-clusters)

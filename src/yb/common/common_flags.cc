@@ -39,7 +39,7 @@ DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kExternal, false, tr
     "If false, disables automatic tablet splitting driven from the yb-master side.");
 
 DEFINE_UNKNOWN_bool(log_ysql_catalog_versions, false,
-            "Log YSQL catalog events. For debugging purposes.");
+    "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
 DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022");
@@ -70,6 +70,11 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_db_catalog_version_mode, true,
 TAG_FLAG(ysql_enable_db_catalog_version_mode, advanced);
 TAG_FLAG(ysql_enable_db_catalog_version_mode, hidden);
 
+DEFINE_test_flag(bool, ysql_enable_db_logical_client_version_mode, true,
+    "Enable the per database logical client version mode, a DDL statement that only "
+    "affects the current database will only increment catalog version for "
+    "the current database.");
+
 DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, 5000,
     "For a WaitForYsqlBackendsCatalogVersion client-to-master RPC, the amount of time to reserve"
     " out of the RPC timeout to respond back to client. If margin is zero, client will determine"
@@ -85,7 +90,7 @@ DEFINE_NON_RUNTIME_uint32(master_ts_ysql_catalog_lease_ms, 10000, // 10s
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, advanced);
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, hidden);
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(
+DEFINE_NON_RUNTIME_bool(
     ysql_enable_colocated_tables_with_tablespaces, false,
     "Enable creation of colocated tables with a specified placement policy via a tablespace."
     "If true, creating a colocated table  will colocate the table on an implicit "
@@ -124,8 +129,13 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
     "Requires yb_enable_replication_commands to be true.");
 
 DEFINE_NON_RUNTIME_bool(TEST_ysql_hide_catalog_version_increment_log, false,
-                        "Hide catalog version increment log messages.");
+    "Hide catalog version increment log messages.");
 TAG_FLAG(TEST_ysql_hide_catalog_version_increment_log, hidden);
+
+DEFINE_test_flag(bool, enable_object_locking_for_table_locks, false,
+    "This test flag enables the object lock APIs provided by tservers and masters - "
+    "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
+    "implement pg table locks.");
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They
@@ -137,11 +147,15 @@ TAG_FLAG(TEST_ysql_hide_catalog_version_increment_log, hidden);
 // These are currently for use in a cloud-based deployment, but could be retrofitted to work for
 // an on-premise deployment as well, with datacenter, cluster and rack levels, for example.
 DEFINE_NON_RUNTIME_string(placement_cloud, "cloud1",
-              "The cloud in which this instance is started.");
+    "The cloud in which this instance is started.");
 DEFINE_NON_RUNTIME_string(placement_region, "datacenter1",
-              "The cloud region in which this instance is started.");
+    "The cloud region in which this instance is started.");
 DEFINE_NON_RUNTIME_string(placement_zone, "rack1",
-              "The cloud availability zone in which this instance is started.");
+    "The cloud availability zone in which this instance is started.");
+
+DEFINE_test_flag(bool, check_catalog_version_overflow, false,
+                 "Check whether received catalog version is unreasonably too big");
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;
@@ -160,7 +174,7 @@ bool RpcThrottleThresholdBytesValidator(const char* flag_name, int64 value) {
   // This validation depends on the value of other flag(s): consensus_max_batch_size_bytes.
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
 
-  if (yb::std_util::cmp_greater_equal(value, FLAGS_consensus_max_batch_size_bytes)) {
+  if (std::cmp_greater_equal(value, FLAGS_consensus_max_batch_size_bytes)) {
     LOG_FLAG_VALIDATION_ERROR(flag_name, value)
         << "Must be less than consensus_max_batch_size_bytes "
         << "(value: " << FLAGS_consensus_max_batch_size_bytes << ")";
@@ -186,12 +200,51 @@ DEFINE_RUNTIME_AUTO_bool(enable_xcluster_auto_flag_validation, kLocalPersisted, 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_atomicity_infra, kLocalPersisted, false, true,
     "Enables YSQL DDL atomicity");
 
-// NOTE: This flag guards proto changes and it is not safe to enable during an upgrade, or rollback
-// once enabled. If you want to change the default to true then you will have to make it a
-// kLocalPersisted AutoFlag.
-DEFINE_NON_RUNTIME_PREVIEW_bool(enable_pg_cron, false,
-    "Enables the pg_cron extension. Jobs will be run on a single tserver node. The node should be "
-    "assumed to be selected randomly.");
+DEFINE_NON_RUNTIME_string(certs_for_cdc_dir, "",
+    "The parent directory of where all certificates for xCluster source universes will "
+    "be stored, for when the source and target universes use different certificates. "
+    "Place the certificates for each source universe in "
+    "<certs_for_cdc_dir>/<source_cluster_uuid>/*.");
+
+DEFINE_NON_RUNTIME_int32(cdc_read_rpc_timeout_ms, 30 * 1000,
+    "Timeout used for CDC read rpc calls.  Reads normally occur cross-cluster.");
+TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
+
+// The flag is used both in DocRowwiseIterator and at PG side (needed for Cost Based Optimizer).
+// But it is not tagged with kPg as it would be used both for YSQL and YCQL (refer to GH #22371).
+DEFINE_NON_RUNTIME_bool(use_fast_backward_scan, true,
+    "Use backward scan optimization to build a row in the reverse order for YSQL.");
+
+DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
+                    "Enable the Auto Analyze service which automatically triggers ANALYZE to "
+                    "update table statistics for tables which have changed more than a "
+                    "configurable threshold.");
+TAG_FLAG(ysql_enable_auto_analyze_service, experimental);
+
+DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup,
+                        kLocalPersisted,
+                        false,
+                        true,
+                        "This flag needs to be true in order to support addition of dynamic tables "
+                        "along with removal of not of interest/expired tables from a CDCSDK "
+                        "stream.");
+TAG_FLAG(cdcsdk_enable_dynamic_table_addition_with_table_cleanup, advanced);
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_update_optimization_infra, kLocalPersisted, false, true,
+                            "Enables optimizations of YSQL UPDATE queries. This includes "
+                            "(but not limited to) skipping redundant secondary index updates "
+                            "and redundant constraint checks.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_skip_redundant_update_ops, true,
+                       "Enables the comparison of old and new values of columns specified in the "
+                       "SET clause of YSQL UPDATE queries to skip redundant secondary index "
+                       "updates and redundant constraint checks.");
+TAG_FLAG(ysql_yb_skip_redundant_update_ops, advanced);
+
+DEFINE_RUNTIME_bool(cdc_disable_sending_composite_values,
+                    true,
+                    "When this flag is set to true, cdc service will send null values for columns "
+                    "of composite types");
 
 namespace yb {
 

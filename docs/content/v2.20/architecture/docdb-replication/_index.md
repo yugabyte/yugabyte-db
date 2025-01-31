@@ -3,7 +3,6 @@ title: DocDB replication layer
 headerTitle: DocDB replication layer
 linkTitle: DocDB replication layer
 description: Learn how synchronous and asynchronous replication work in DocDB, including advanced features like xCluster replication and read replicas.
-image: /images/section_icons/architecture/concepts.png
 headcontent: Learn how synchronous and asynchronous replication work in DocDB.
 menu:
   v2.20:
@@ -17,7 +16,7 @@ This section describes how replication works in DocDB. The data in a DocDB table
 
 YugabyteDB also provides other advanced replication features. These include two forms of asynchronous replication of data:
 
-* **xCluster** - Data is asynchronously replicated between different YugabyteDB universes - both unidirectional replication (master-slave) or bidirectional replication across two universes.
+* **xCluster** - Data is asynchronously replicated between different YugabyteDB universes - both unidirectional replication (leader-follower) or bidirectional replication across two universes.
 * **Read replicas** - The in-universe asynchronous replicas are called read replicas.
 
 The YugabyteDB synchronous replication architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.

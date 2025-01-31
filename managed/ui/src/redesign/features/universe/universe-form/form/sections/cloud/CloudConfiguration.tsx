@@ -36,7 +36,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
   const { t } = useTranslation();
   const isLargeDevice = useMediaQuery('(min-width:1400px)');
 
-  const provider: YBProvider = useWatch({ name: PROVIDER_FIELD });
+  const provider = useWatch({ name: PROVIDER_FIELD });
 
   const providerRuntimeConfigQuery = useQuery(
     runtimeConfigQueryKey.providerScope(provider?.uuid),
@@ -56,6 +56,10 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
   const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG
   );
+  const isRfChangeEnabled = runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.RF_CHANGE_FEATURE_FLAG
+  )?.value === 'true';
+
   const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
   const isDedicatedNodesEnabled = !!(enableDedicatedNodesObject?.value === 'true');
 
@@ -63,6 +67,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
   const { clusterType, mode, universeConfigureTemplate, isViewMode } = useContext(
     UniverseFormContext
   )[0];
+
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isEditMode = mode === ClusterModes.EDIT; //Form is in edit mode
   const isEditPrimary = isEditMode && isPrimary; //Editing Primary Cluster
@@ -110,7 +115,8 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
           <TotalNodesField disabled={isViewMode} />
         </Box>
         <Box mt={2}>
-          <ReplicationFactor disabled={isEditMode} isPrimary={isPrimary} isViewMode={isViewMode} />
+          <ReplicationFactor disabled={isViewMode || (isEditPrimary && !isRfChangeEnabled)}
+                             isPrimary={isPrimary} isEditMode={isEditMode} />
         </Box>
         {isPrimary && isGeoPartitionEnabled && (
           <Box mt={2} display="flex" flexDirection="column">

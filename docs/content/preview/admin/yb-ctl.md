@@ -17,7 +17,7 @@ rightNav:
 
 ## Overview
 
-The yb-ctl utility provides a command line interface for administering local clusters used for development and learning. It invokes the [`yb-tserver`](../../reference/configuration/yb-tserver/) and [`yb-master`](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
+The yb-ctl utility provides a command line interface for administering local clusters used for development and learning. It invokes the [yb-tserver](../../reference/configuration/yb-tserver/) and [yb-master](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
 
 yb-ctl is meant for managing local clusters only. This means that a single host machine like a local laptop is used to simulate YugabyteDB clusters even though the YugabyteDB cluster can have 3 nodes or more. For creating multi-host clusters, follow the instructions in the [Deploy](../../deploy/) section.
 
@@ -35,7 +35,7 @@ yb-ctl is installed with YugabyteDB and is located in the `bin` directory of the
 
 ## Syntax
 
-Run `yb-ctl` commands from the YugabyteDB home directory.
+Run yb-ctl commands from the YugabyteDB home directory.
 
 ```sh
 ./bin/yb-ctl [ command ] [ flag1, flag2, ... ]
@@ -125,7 +125,7 @@ Shows the help message and then exits.
 
 ##### --binary_dir
 
-Specifies the directory in which to find the YugabyteDB `yb-master` and `yb-tserver` binary files.
+Specifies the directory in which to find the YugabyteDB yb-master and yb-tserver binary files.
 
 Default: `<yugabyte-installation-dir>/bin/`
 
@@ -151,7 +151,7 @@ For details and examples, see [Create a local cluster with custom flags](#create
 
 **Example**
 
-To enable [YSQL authentication](../../secure/enable-authentication/authentication-ysql/), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable_auth`](../../reference/configuration/yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
+To enable [YSQL authentication](../../secure/enable-authentication/authentication-ysql/), you can use the `--tserver_flags` flag to add the yb-tserver [`--ysql_enable_auth`](../../reference/configuration/yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
 
 ```sh
 $./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"
@@ -194,7 +194,7 @@ Default: `2`
 
 ##### --timeout-yb-admin-sec
 
-Timeout, in seconds, for operations that call `yb-admin` and wait on the cluster.
+Timeout, in seconds, for operations that call yb-admin and wait on the cluster.
 
 ##### --timeout-processes-running-sec
 
@@ -235,7 +235,7 @@ To create a local YugabyteDB cluster for development and learning, use the `yb-c
 
 To ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor. To expand or shrink the cluster, use the [add_node](#add-nodes) and [remove_node](#stop-and-remove-nodes) commands.
 
-Each of these initial nodes run a `yb-tserver` server and a `yb-master` server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
+Each of these initial nodes run a yb-tserver server and a yb-master server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
 
 If you are running YugabyteDB on your local computer, you can't run more than one cluster at a time. To set up a new local YugabyteDB cluster using yb-ctl, first [destroy the currently running cluster](#destroy-a-local-cluster).
 
@@ -396,7 +396,7 @@ The command `./bin/yb-ctl start_node 3` starts the third YB-TServer. This displa
 
 ## Default directories for local clusters
 
-YugabyteDB clusters created with the `yb-ctl` utility are created locally on the same host and simulate a distributed multi-host cluster.
+YugabyteDB clusters created using the yb-ctl utility are created locally on the same host and simulate a distributed multi-host cluster.
 
 ### Data directory
 
@@ -472,7 +472,7 @@ $ ./bin/yb-ctl add_node --placement_info "cloud1.region1.zone1"
 
 ### Create a local cluster with custom flags
 
-When you use `yb-ctl`, you can pass "custom" flags (flags unavailable directly in `yb-ctl`) to the YB-Master and YB-TServer servers.
+When you use yb-ctl, you can pass "custom" flags (flags unavailable directly in yb-ctl) to the YB-Master and YB-TServer servers.
 
 ```sh
 $ ./bin/yb-ctl --rf 1 create --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"

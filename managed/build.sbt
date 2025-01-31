@@ -155,16 +155,14 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "com.google.inject"            % "guice"                % "5.1.0",
-  "com.google.inject.extensions" % "guice-assistedinject" % "5.1.0",
   "org.postgresql" % "postgresql" % "42.3.9",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
   "org.codehaus.janino" % "janino" % "3.1.9",
-  "org.apache.commons" % "commons-lang3" % "3.14.0",
+  "org.apache.commons" % "commons-lang3" % "3.17.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
-  "org.apache.commons" % "commons-compress" % "1.26.0",
-  "org.apache.commons" % "commons-csv" % "1.10.0",
+  "org.apache.commons" % "commons-compress" % "1.27.1",
+  "org.apache.commons" % "commons-csv" % "1.13.0",
   "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
   "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
   "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
@@ -174,11 +172,11 @@ libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.8.11",
-  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.599",
+  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.768",
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
@@ -191,7 +189,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-identity" % "1.6.0",
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
-  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.28.0",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.43.0",
   "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0-beta.2",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
@@ -200,26 +198,30 @@ libraryDependencies ++= Seq(
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
   "io.prometheus" % "simpleclient_servlet" % "0.11.0",
   "org.glassfish.jaxb" % "jaxb-runtime" % "2.3.2",
-  "org.pac4j" %% "play-pac4j" % "9.0.2",
-  "org.pac4j" % "pac4j-oauth" % "4.5.7" exclude("commons-io" , "commons-io"),
-  "org.pac4j" % "pac4j-oidc" % "4.5.7" exclude("commons-io" , "commons-io"),
-  "org.playframework" %% "play-json" % "3.0.1",
+  // pac4j and nimbusds libraries need to be upgraded together.
+  "org.pac4j" %% "play-pac4j" % "11.0.0-PLAY2.8",
+  "org.pac4j" % "pac4j-oauth" % "5.7.7" exclude("commons-io" , "commons-io"),
+  "org.pac4j" % "pac4j-oidc" % "5.7.7"  exclude("commons-io" , "commons-io"),
+  "com.nimbusds" % "nimbus-jose-jwt" % "9.37.2",
+  "com.nimbusds" % "oauth2-oidc-sdk" % "10.1",
+  "org.playframework" %% "play-json" % "3.0.4",
   "commons-validator" % "commons-validator" % "1.8.0",
-  "org.apache.velocity" % "velocity-engine-core" % "2.3",
+  "org.apache.velocity" % "velocity-engine-core" % "2.4.1",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
-  "com.jayway.jsonpath" % "json-path" % "2.6.0",
+  "com.jayway.jsonpath" % "json-path" % "2.9.0",
   "commons-io" % "commons-io" % "2.15.1",
   "commons-codec" % "commons-codec" % "1.16.0",
-  "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",
-  "com.google.apis" % "google-api-services-iam" % "v1-rev20211104-1.32.1",
-  "com.google.cloud" % "google-cloud-compute" % "1.9.1",
-  "com.google.cloud" % "google-cloud-storage" % "2.2.1",
-  "com.google.cloud" % "google-cloud-kms" % "2.4.4",
-  "com.google.cloud" % "google-cloud-resourcemanager" % "1.4.0",
-  "com.google.cloud" % "google-cloud-logging" % "3.14.5",
-  "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
+  "com.google.apis" % "google-api-services-compute" % "v1-rev20241008-2.0.0",
+  "com.google.apis" % "google-api-services-iam" % "v1-rev20240918-2.0.0",
+  "com.google.cloud" % "google-cloud-compute" % "1.62.0",
+  "com.google.cloud" % "google-cloud-storage" % "2.43.2",
+  "com.google.cloud" % "google-cloud-kms" % "2.55.0",
+  "com.google.cloud" % "google-cloud-resourcemanager" % "1.54.0",
+  "com.google.cloud" % "google-cloud-logging" % "3.17.2",
+  "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
   "io.kamon" %% "kamon-bundle" % "2.5.9",
   "io.kamon" %% "kamon-prometheus" % "2.5.9",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -231,6 +233,7 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-model" % "6.8.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
+  "javax.xml.bind" % "jaxb-api" % "2.3.1",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
@@ -254,7 +257,8 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "2.0.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "2.0.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
-  "io.grpc" % "grpc-testing" % "1.48.0" % Test,
+  "io.grpc" % "grpc-testing" % "1.67.1" % Test,
+  "io.grpc" % "grpc-inprocess" % "1.67.1" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % Test,
@@ -682,7 +686,7 @@ lazy val pythonGenV2Client = project.in(file("client/python"))
 // Generate a Go API client.
 lazy val gogen = project.in(file("client/go"))
   .settings(
-    openApiInputSpec := "src/main/resources/swagger.json",
+    openApiInputSpec := "src/main/resources/swagger-all.json",
     openApiGeneratorName := "go",
     openApiOutputDir := "client/go/v1",
     openApiGenerateModelTests := SettingDisabled,
@@ -924,8 +928,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.91-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.98-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b1"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(
@@ -933,14 +937,9 @@ libraryDependencies ++= Seq(
   "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
-  "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
 
-dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.7"
-dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
-// SSO functionality only works on the older version of nimbusds.
-// Azure library upgrade tries to upgrade nimbusds to latest version.
-dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
+
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
@@ -968,7 +967,28 @@ dependencyOverrides += "jakarta.annotation" % "jakarta.annotation-api" % "1.3.5"
 dependencyOverrides += "jakarta.ws.rs" % "jakarta.ws.rs-api" % "2.1.6" % Test
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-jaxb-annotations" % "2.10.1" % Test
 
-val jacksonVersion         = "2.15.3"
+// This is a custom version, built based on 1.0.3 with the following commit added on top:
+// https://github.com/apache/pekko/commit/1e41829bf7abeec268b9a409f35051ed7f4e0090.
+// This is required to fix TLS infinite loop issue, which causes high CPU usage.
+// We can't use 1.1.0-M1 version yet, as it has the following issue:
+// https://github.com/playframework/playframework/pull/12662
+// Once the issue is fixed we should migrate back on stable version.
+val pekkoVersion         = "1.0.3-tls-loop-fix"
+
+val pekkoLibs = Seq(
+  "org.apache.pekko" %% "pekko-actor-typed",
+  "org.apache.pekko" %% "pekko-actor",
+  "org.apache.pekko" %% "pekko-protobuf-v3",
+  "org.apache.pekko" %% "pekko-serialization-jackson",
+  "org.apache.pekko" %% "pekko-slf4j",
+  "org.apache.pekko" %% "pekko-stream",
+)
+
+val pekkoOverrides = pekkoLibs.map(_ % pekkoVersion)
+
+dependencyOverrides ++= pekkoOverrides
+
+val jacksonVersion         = "2.17.1"
 
 val jacksonLibs = Seq(
   "com.fasterxml.jackson.core"       % "jackson-core",
@@ -1107,9 +1127,6 @@ val swaggerGenTest: TaskKey[Unit] = taskKey[Unit](
   "test generate swagger.json"
 )
 
-val swaggerJacksonVersion = "2.11.1"
-val swaggerJacksonOverrides = jacksonLibs.map(_ % swaggerJacksonVersion)
-
 lazy val swagger = project
   .dependsOn(root % "compile->compile;test->test")
   .settings(commonSettings)
@@ -1121,13 +1138,15 @@ lazy val swagger = project
       "com.github.dwickern" %% "swagger-play3.0" % "4.0.0"
     ),
 
-    dependencyOverrides ++= swaggerJacksonOverrides,
+    dependencyOverrides ++= pekkoOverrides,
+    dependencyOverrides ++= jacksonOverrides,
     dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0",
 
     swaggerGen := Def.taskDyn {
       // Consider generating this only in managedResources
       val swaggerJson = (root / Compile / resourceDirectory).value / "swagger.json"
       val swaggerStrictJson = (root / Compile / resourceDirectory).value / "swagger-strict.json"
+      val swaggerAllJson = (root / Compile / resourceDirectory).value / "swagger-all.json"
       Def.sequential(
         (Test / runMain )
           .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerJson"),
@@ -1138,6 +1157,8 @@ lazy val swagger = project
         // or use '--exclude_deprecated all' to drop all deprecated APIs
         (Test / runMain )
           .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerStrictJson --exclude_deprecated all"),
+        (Test / runMain )
+          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerAllJson --exclude_internal none")
       )
     }.value,
 
@@ -1186,7 +1207,7 @@ def runNpmInstall(implicit dir: File): Int =
     println("npm version: " + Process("npm" :: "--version" :: Nil).lineStream_!.head)
     println("npm config get: " + Process("npm" :: "config" :: "get" :: Nil).lineStream_!.head)
     println("npm cache verify: " + Process("npm" :: "cache" :: "verify" :: Nil).lineStream_!.head)
-    Process("npm" :: "ci" :: Nil, dir).!
+    Process("npm" :: "ci" :: "--legacy-peer-deps" :: Nil, dir).!
   }
 
 // Execute `npm run build` command to build the production build of the UI code. Return 0 if success.
@@ -1210,3 +1231,5 @@ uIBuild := (uIBuild dependsOn (buildDependentArtifacts)).value
  *  Make SBT packaging depend on the UI build hook.
  */
 Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(uIBuild).value
+
+addCommandAlias("api", "cleanV2ServerStubs;openApiProcessServer;compile")

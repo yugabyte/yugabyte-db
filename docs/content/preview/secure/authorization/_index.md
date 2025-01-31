@@ -3,8 +3,7 @@ title: Role-based access control in YugabyteDB
 headerTitle: Role-based access control
 linkTitle: Role-based access control
 description: Enable authorization using role-based access control in YugabyteDB.
-headcontent: Enable authorization using role-based access control in YugabyteDB.
-image: /images/section_icons/secure/authorization.png
+headcontent: Authorize users using role-based access control
 aliases:
   - /secure/authorization/
 menu:
@@ -15,60 +14,36 @@ menu:
 type: indexpage
 ---
 
-<div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="rbac-model/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
-        <div class="title">Overview</div>
-      </div>
-      <div class="body">
-          Understanding role-based access control (RBAC).
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-roles/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/create-roles.png" aria-hidden="true" />
-        <div class="title">Create roles</div>
-      </div>
-      <div class="body">
-          Create one or more roles.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ysql-grant-permissions/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
-        <div class="title">Grant privileges</div>
-      </div>
-      <div class="body">
-          Grant privileges to users and roles.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="row-level-security/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
-        <div class="title">Row-level security</div>
-      </div>
-      <div class="body">
-          Using row-level security (RLS) policies in YugabyteDB.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="column-level-security/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
-        <div class="title">Column-level security</div>
-      </div>
-      <div class="body">
-          Restricting column-level permissions in YugabyteDB.
-      </div>
-    </a>
-  </div>
-</div>
+{{<index/block>}}
+
+  {{<index/item
+    title="Overview"
+    body="Understanding role-based access control (RBAC)."
+    href="rbac-model/"
+    icon="fa-thin fa-user-group-crown">}}
+
+  {{<index/item
+    title="Create roles"
+    body="Create one or more roles."
+    href="create-roles/"
+    icon="fa-thin fa-user-group">}}
+
+  {{<index/item
+    title="Grant privileges"
+    body="Grant privileges to users and roles."
+    href="ysql-grant-permissions/"
+    icon="fa-thin fa-person-circle-check">}}
+
+  {{<index/item
+    title="Row-level security"
+    body="Using row-level security (RLS) policies in YugabyteDB."
+    href="row-level-security/"
+    icon="fa-thin fa-table-cells-row-lock">}}
+
+  {{<index/item
+    title="Column-level security"
+    body="Restricting column-level permissions in YugabyteDB."
+    href="column-level-security/"
+    icon="fa-thin fa-table-cells-column-lock">}}
+
+{{</index/block>}}

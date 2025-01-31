@@ -12,6 +12,7 @@
 //
 
 #include <vector>
+
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_manager.h"
 
@@ -26,6 +27,7 @@
 using namespace std::literals;
 
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_bool(TEST_use_custom_varz);
 
 namespace yb::pgwrapper {
 
@@ -33,6 +35,11 @@ YB_STRONGLY_TYPED_BOOL(WaitForTS);
 
 class PgMasterFailoverTest : public PgMiniTestBase {
  protected:
+  void SetUp() override {
+    // We need the following to be able to run yb-controller with internal mini cluster.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
+    PgMiniTestBase::SetUp();
+  }
   void ElectNewLeaderAfterShutdown();
   void TestNonRespondingMaster(WaitForTS wait_for_ts);
  public:

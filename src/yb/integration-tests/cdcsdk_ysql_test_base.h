@@ -12,6 +12,7 @@
 
 #pragma once
 #include <algorithm>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -26,6 +27,8 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/raft_consensus.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -49,6 +52,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
@@ -65,7 +69,7 @@ using std::pair;
 using std::string;
 using std::vector;
 
-DECLARE_int64(cdc_intent_retention_ms);
+DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_bool(stream_truncate_record);
@@ -119,6 +123,15 @@ DECLARE_bool(enable_cdcsdk_setting_get_changes_response_byte_limit);
 DECLARE_uint64(cdcsdk_vwal_getchanges_resp_max_size_bytes);
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_bool(TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal);
+DECLARE_bool(TEST_cdcsdk_add_indexes_to_stream);
+DECLARE_bool(TEST_cdcsdk_skip_stream_active_check);
+DECLARE_bool(TEST_cdcsdk_disable_drop_table_cleanup);
+DECLARE_bool(TEST_cdcsdk_disable_deleted_stream_cleanup);
+DECLARE_bool(cdcsdk_enable_cleanup_of_expired_table_entries);
+DECLARE_bool(TEST_cdcsdk_skip_processing_unqualified_tables);
+DECLARE_bool(TEST_cdcsdk_skip_table_removal_from_qualified_list);
+DECLARE_bool(cdc_disable_sending_composite_values);
+DECLARE_bool(cdc_use_byte_threshold_for_vwal_changes);
 
 namespace yb {
 
@@ -132,12 +145,16 @@ using rpc::RpcController;
 
 namespace cdc {
 
-YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo));
+YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo)(LessThan));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
 
 static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
 static constexpr uint64_t kVWALSessionId2 = std::numeric_limits<uint64_t>::max() / 2 + 1;
 static constexpr uint64_t kVWALSessionId3 = std::numeric_limits<uint64_t>::max() / 2 + 2;
+
+CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
+  return down_cast<CDCServiceImpl*>(tserver->GetCDCService().get());
+}
 
 class CDCSDKYsqlTest : public CDCSDKTestBase {
  public:
@@ -572,7 +589,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void VerifyTablesInStreamMetadata(
       const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
-      const std::string& timeout_msg);
+      const std::string& timeout_msg,
+      const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids =
+          std::nullopt);
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
 
@@ -619,9 +638,17 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const int expected_num_tablets = 2);
 
   void CheckTabletsInCDCStateTable(
-      const std::unordered_set<TabletId> expected_tablet_ids,
-      client::YBClient* client,
-      const xrepl::StreamId& stream_id = xrepl::StreamId::Nil());
+      const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
+      const xrepl::StreamId& stream_id = xrepl::StreamId::Nil(),
+      const std::string timeout_msg =
+          "Tablets in cdc_state for the stream doesnt match the expected set");
+
+  Result<int> GetStateTableRowCount();
+
+  Status VerifyStateTableAndStreamMetadataEntriesCount(
+      const xrepl::StreamId& stream_id, const size_t& state_table_entries,
+      const size_t& qualified_table_ids_count, const size_t& unqualified_table_ids_count,
+      const double& timeout, const std::string& timeout_msg);
 
   Result<std::vector<TableId>> GetCDCStreamTableIds(const xrepl::StreamId& stream_id);
 
@@ -646,7 +673,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void CDCSDKAlterWithSysCatalogCompaction(bool packed_row);
   void CDCSDKIntentsBatchReadWithAlterAndTabletLeaderSwitch(bool packed_row);
 
-  void WaitForCompaction(YBTableName table);
+  void WaitForCompaction(YBTableName table, bool expect_equal_entries_after_compaction = false);
   void VerifySnapshotOnColocatedTables(
       xrepl::StreamId stream_id,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
@@ -691,6 +718,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void PerformSingleAndMultiShardInserts(
       const int& num_batches, const int& inserts_per_batch, int apply_update_latency = 0,
       const int& start_index = 0);
+
+  std::vector<int> PerformSingleAndMultiShardInsertsInSeparateThreads(
+      int total_single_shard_txns, int total_multi_shard_txns, int batch_size,
+      PostgresMiniCluster* test_cluster, int additional_inserts = 0);
 
   void PerformSingleAndMultiShardQueries(
       const int& num_batches, const int& queries_per_batch, const string& query,
@@ -774,6 +805,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
       CDCSDKCheckpointPB checkpoint, GetChangesResponsePB* change_resp);
 
+  void TestCreateReplicationSlotWithLsnType(const std::string lsn_type);
+
+  void TestCreateReplicationSlotWithLsnTypeParam(const std::string lsn_type);
+
   void TestTableIdAndPkInCDCRecords(bool colocated_db);
 
   void VerifyTableIdAndPkInCDCRecords(
@@ -782,7 +817,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   std::string GetPubRefreshTimesString(vector<uint64_t> pub_refresh_times);
 
-  void TestNonUserTableShouldNotGetAddedToCDCStream (bool create_consistent_snapshot_stream);
+  void TestNonEligibleTableShouldNotGetAddedToCDCStream(bool create_consistent_snapshot_stream);
 
   Status ExecuteYBAdminCommand(
       const std::string& command_name, const std::vector<string>& command_args);
@@ -799,6 +834,32 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestValidationAndSyncOfCDCStateEntriesAfterUserTableRemoval(
       bool use_consistent_snapshot_stream);
+
+  void TestNonEligibleTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
+
+  void TestChildTabletsOfNonEligibleTableDoNotGetAddedToCDCStream(
+      bool use_consistent_snapshot_stream);
+
+  void TestRemovalOfColocatedTableFromCDCStream(bool start_removal_from_first_table);
+
+  void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
+
+  Status CreateTables(
+      const size_t num_tables, std::vector<YBTableName>* tables,
+      vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>* tablets,
+      std::optional<std::unordered_set<TableId>*> expected_tables = std::nullopt,
+      std::optional<std::unordered_set<TabletId>*> expected_tablets = std::nullopt);
+
+  // Get the log segments count on each peer of the given tablet.
+  void GetLogSegmentCountForTablet(
+      const TabletId& tablet_id, std::unordered_map<std::string, size_t>* log_segment_count);
+
+  // Get the intent entry & intent SST file count on each peer of the given tablet.
+  Status GetIntentEntriesAndSSTFileCountForTablet(
+      const TabletId& tablet_id, std::unordered_map<std::string, std::pair<int64_t, int64_t>>*
+                                        initial_intents_and_intent_sst_file_count);
+
+  void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
 };
 
 }  // namespace cdc

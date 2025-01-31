@@ -210,7 +210,8 @@ class AzureCloud(AbstractCloud):
         return self.get_admin().get_instance_types(regions)
 
     def get_host_info(self, args, get_all=False):
-        return self.get_admin().get_host_info(args.search_pattern, get_all)
+        return self.get_admin().get_host_info(args.search_pattern, get_all,
+                                              node_uuid=args.node_uuid)
 
     def get_device_names(self, args):
         return ["sd{}".format(chr(i)) for i in range(ord('c'), ord('c') + args.num_volumes)]
@@ -237,10 +238,15 @@ class AzureCloud(AbstractCloud):
     def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
         return self.get_admin().delete_dns_record_set(dns_zone_id, domain_name_prefix)
 
+    def delete_volumes(self, args):
+        tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        return self.get_admin().delete_disks(tags)
+
     def modify_tags(self, args):
         instance = self.get_host_info(args)
         if not instance:
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
+        # TODO this method is not present!
         modify_tags(args.region, instance["id"], args.instance_tags, args.remove_tags)
 
     def start_instance(self, host_info, server_ports):

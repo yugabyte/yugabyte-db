@@ -130,11 +130,15 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
                         config.putAll(zoneConfig);
                         config.put("zoneCode", zoneCodeNode);
 
-                        if (!config.containsKey("kubeConfigContent")) {
+                        // New providers have kubeConfigContent and
+                        // during edit we have kubeConfig if the
+                        // kubeconfig is unchanged.
+                        if (!config.containsKey("kubeConfigContent")
+                            && !config.containsKey("kubeConfig")) {
                           log.warn(
                               "No kubeconfig found at any level, using in-cluster credentials");
                           config.put(
-                              "kubeConfigContent",
+                              "kubeConfig",
                               // TODO: the jsonPath could be different
                               // like $.in-cluster-credentials?
                               Json.newObject().put("jsonPath", "$").put("value", ""));
@@ -185,7 +189,7 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
     try {
       regionToZone =
           KubernetesUtil.computeKubernetesRegionToZoneInfo(
-              ImmutableMap.of("KUBECONFIG", getStringValue(k8sInfo.get("kubeConfigContent"))),
+              ImmutableMap.of("KUBECONFIG", getStringValue(getKubeConfigNode(k8sInfo))),
               kubernetesManagerFactory);
     } catch (RuntimeException e) {
       if (e.getMessage().contains("Error from server (Forbidden): nodes")) {
@@ -220,7 +224,7 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
           kubernetesManagerFactory
               .getManager()
               .getStorageClass(
-                  ImmutableMap.of("KUBECONFIG", getStringValue(k8sInfo.get("kubeConfigContent"))),
+                  ImmutableMap.of("KUBECONFIG", getStringValue(getKubeConfigNode(k8sInfo))),
                   getStringValue(storageClassNode));
     } catch (RuntimeException e) {
       if (e.getMessage().contains("Error from server (NotFound): storageclasses")) {
@@ -259,13 +263,13 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
           kubernetesManagerFactory
               .getManager()
               .dbNamespaceExists(
-                  ImmutableMap.of("KUBECONFIG", getStringValue(k8sInfo.get("kubeConfigContent"))),
+                  ImmutableMap.of("KUBECONFIG", getStringValue(getKubeConfigNode(k8sInfo))),
                   getStringValue(namespaceNode));
     } catch (RuntimeException e) {
       if (e.getMessage().contains("error: failed to create secret secrets is forbidden")
           || e.getMessage().contains("Error from server (Forbidden): secrets is forbidden")) {
         validationErrors.put(
-            getJsonPath(k8sInfo.get("kubeConfigContent")),
+            getJsonPath(getKubeConfigNode(k8sInfo)),
             "Missing permission to create secrets in " + getStringValue(namespaceNode));
         return;
       }
@@ -282,7 +286,7 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
     // given preference in KubernetesCommandExecutor.
 
     Map<String, String> config =
-        ImmutableMap.of("KUBECONFIG", getStringValue(k8sInfo.get("kubeConfigContent")));
+        ImmutableMap.of("KUBECONFIG", getStringValue(getKubeConfigNode(k8sInfo)));
 
     JsonNode clusterIssuerNode = k8sInfo.get("certManagerClusterIssuer");
     if (clusterIssuerNode != null) {
@@ -332,6 +336,9 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
           validationErrors.put(
               getJsonPath(issuerNode),
               "Cluster doesn't have Issuer resource type, ensure cert-manager is installed");
+        } else if (e.getMessage().contains("Error from server (NotFound): namespaces")) {
+          validationErrors.put(
+              getJsonPath(namespaceNode), "Namespace doesn't exist in the cluster");
         } else if (e.getMessage().contains("Error from server (Forbidden): issuers")) {
           log.warn("Unable to validate cert-manager Issuer: {}", e.getMessage());
         } else {
@@ -361,5 +368,11 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
 
   private String getJsonPath(JsonNode node) {
     return node.get("jsonPath").asText();
+  }
+
+  private JsonNode getKubeConfigNode(Map<String, JsonNode> k8sInfo) {
+    // A new or modified kubeconfig is preferred
+    // i.e. kubeConfigContent
+    return k8sInfo.getOrDefault("kubeConfigContent", k8sInfo.get("kubeConfig"));
   }
 }

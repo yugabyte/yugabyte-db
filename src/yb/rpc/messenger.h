@@ -365,10 +365,13 @@ class Messenger : public ProxyContext {
 
   // Flag that we have at least on address with artificially broken connectivity.
   std::atomic<bool> has_broken_connectivity_ = {false};
+  mutable PerCpuRwMutex broken_connectivity_lock_;
 
   // Set of addresses with artificially broken connectivity.
-  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_from_ GUARDED_BY(lock_);
-  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_to_ GUARDED_BY(lock_);
+  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_from_
+      GUARDED_BY(broken_connectivity_lock_);
+  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_to_
+      GUARDED_BY(broken_connectivity_lock_);
 
   IoThreadPool io_thread_pool_;
   Scheduler scheduler_;
@@ -391,6 +394,8 @@ class Messenger : public ProxyContext {
 
   // Number of outbound connections to create per each destination server address.
   int num_connections_to_server_;
+
+  std::unique_ptr<ReactorMonitor> reactor_monitor_ GUARDED_BY(lock_);
 
 #ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK

@@ -4,7 +4,8 @@ headerTitle: Full-text search
 linkTitle: Full-text search
 headcontent: Learn how to do full-text search in YSQL
 description: Learn how to do full-text search in YSQL
-badges: ysql
+tags:
+  other: ysql
 menu:
   preview:
     identifier: full-text-search-ysql
@@ -285,7 +286,7 @@ In the current implementation of _ybgin_, only single query term lookups are all
 {{</warning>}}
 
 {{<note>}}
-When using GIN index with JSON data, you could index just a subdocument instead of the whole document using [jsonb_path_ops](../../../../explore/ysql-language-features/indexes-constraints/gin#using-opclass-jsonb_path_ops) for performance reasons.
+When using GIN index with JSON data, you could index just a subdocument instead of the whole document using [jsonb_path_ops](../../../../explore/ysql-language-features/indexes-constraints/gin/#using-opclass-jsonb-path-ops) for performance reasons.
 {{</note>}}
 
 ## Learn more

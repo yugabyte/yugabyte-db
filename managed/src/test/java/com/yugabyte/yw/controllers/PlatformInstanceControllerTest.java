@@ -39,6 +39,7 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Predicate;
@@ -279,7 +280,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     assertOk(createResult);
 
     // Exceed dns length 264 (total address length is 272 > 263)
-    final String expectedError = "Maximum length is 263";
+    final String expectedError = "error.maxLength";
     String longAddress = "http://" + StringUtils.repeat("abcdefghi.", 26) + ".com/";
     createResult =
         assertPlatformException(() -> createPlatformInstance(configUUID, longAddress, true, false));
@@ -389,14 +390,26 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     UUID configUUID = config.getUuid();
-    Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, true);
-    assertOk(createResult);
-    createResult = createPlatformInstance(configUUID, "http://def.com/", false, false);
-    assertOk(createResult);
-    JsonNode instanceJson = Json.parse(contentAsString(createResult));
-    PlatformInstance instance = Json.fromJson(instanceJson, PlatformInstance.class);
+    // Local active instance.
+    Result localCreateResult = createPlatformInstance(configUUID, "http://abc.com/", true, true);
+    assertOk(localCreateResult);
+    // Remote, standby instance.
+    Result remoteCreateResult = createPlatformInstance(configUUID, "http://def.com/", false, false);
+    assertOk(remoteCreateResult);
+    PlatformInstance remoteInstance =
+        Json.fromJson(Json.parse(contentAsString(remoteCreateResult)), PlatformInstance.class);
+    config.refresh();
+    // Clone the config to create a remote HA config.
+    HighAvailabilityConfig remoteHAConfig =
+        Json.fromJson(Json.toJson(config), HighAvailabilityConfig.class);
+    // Change isLocal for the remote node.
+    remoteHAConfig.getInstances().stream()
+        .sorted(Comparator.comparing(PlatformInstance::getIsLocal).reversed())
+        .forEach(i -> i.updateIsLocal(!i.getIsLocal()));
+    // Write out the updated remote config.
+    platformReplicationManager.saveLocalHighAvailabilityConfig(remoteHAConfig);
 
-    platformReplicationManager.promoteLocalInstance(instance);
+    platformReplicationManager.promoteLocalInstance(remoteInstance);
 
     platformReplicationManager.setFrequencyStartAndEnable(Duration.ofSeconds(1));
 

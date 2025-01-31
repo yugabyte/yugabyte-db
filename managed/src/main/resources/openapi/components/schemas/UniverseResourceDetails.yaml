@@ -1,0 +1,51 @@
+title: UniverseResourceDetails
+description: Universe resource details. Part of UniverseInfo.
+type: object
+required:
+  - az_list
+properties:
+  az_list:
+    description: Azs
+    type: array
+    items:
+      type: string
+    uniqueItems: true
+  ebs_price_per_hour:
+    description: EBS price per hour
+    type: number
+    format: double
+  gp3_free_piops:
+    description: gp3 free piops
+    type: integer
+    format: int32
+  gp3_free_throughput:
+    description: gp3 free throughput
+    type: integer
+    format: int32
+  mem_size_gb:
+    description: Memory GB
+    type: number
+    format: double
+  num_cores:
+    description: Numbers of cores
+    type: number
+    format: double
+  num_nodes:
+    description: Numbers of node
+    type: integer
+    format: int32
+  price_per_hour:
+    description: Price per hour
+    type: number
+    format: double
+  pricing_known:
+    description: Known pricing info
+    type: boolean
+  volume_count:
+    description: Volume count
+    type: integer
+    format: int32
+  volume_size_gb:
+    description: Volume in GB
+    type: integer
+    format: int32

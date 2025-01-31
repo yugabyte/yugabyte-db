@@ -25,11 +25,11 @@
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/dockv/intent.h"
 #include "yb/docdb/intent_iterator.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/transaction_dump.h"
 
 #include "yb/dockv/doc_key.h"
@@ -58,8 +58,7 @@ DEFINE_RUNTIME_uint64(max_next_calls_while_skipping_future_records, 3,
                       "After number of next calls is reached this limit, use seek to find non "
                       "future record.");
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::KeyBytes;
 using dockv::KeyEntryType;
@@ -70,6 +69,51 @@ namespace {
 
 const char kKeyEntryTypeMaxByte = dockv::KeyEntryTypeAsChar::kMaxByte;
 const char kKeyEntryTypeMinByte = dockv::KeyEntryTypeAsChar::kLowest;
+
+const char kStrongWriteTail[] = {
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
+
+const Slice kStrongWriteTailSlice = Slice(kStrongWriteTail, sizeof(kStrongWriteTail));
+
+char kEmptyKeyStrongWriteTail[] = {
+    KeyEntryTypeAsChar::kGroupEnd,
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
+
+const Slice kEmptyKeyStrongWriteTailSlice =
+    Slice(kEmptyKeyStrongWriteTail, sizeof(kEmptyKeyStrongWriteTail));
+
+const char kMaxIntentTypeTail[] = {
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    KeyEntryTypeAsChar::kMaxByte };
+
+const Slice kMaxIntentTypeTailSlice = Slice(kMaxIntentTypeTail, sizeof(kMaxIntentTypeTail));
+
+const char kEmptyKeyMaxIntentTypeTail[] = {
+    KeyEntryTypeAsChar::kGroupEnd,
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    KeyEntryTypeAsChar::kMaxByte };
+
+const Slice kEmptyKeyMaxIntentTypeTailSlice =
+    Slice(kEmptyKeyMaxIntentTypeTail, sizeof(kEmptyKeyMaxIntentTypeTail));
+
+inline Slice StrongWriteSuffix(Slice key) {
+  return key.empty() ? kEmptyKeyStrongWriteTailSlice : kStrongWriteTailSlice;
+}
+
+inline Slice StrongWriteSuffix(const dockv::KeyBytes& key) {
+  return StrongWriteSuffix(key.AsSlice());
+}
+
+inline Slice MaxIntentTypeSuffix(const dockv::KeyBytes& key) {
+  return key.empty() ? kEmptyKeyMaxIntentTypeTailSlice : kMaxIntentTypeTailSlice;
+}
+
+inline Slice AppendMaxIntentTypeSuffix(KeyBytes& key) {
+  key.AppendRawBytes(MaxIntentTypeSuffix(key));
+  return key.AsSlice();
+}
 
 void AppendEncodedDocHt(const EncodedDocHybridTime& encoded_doc_ht, KeyBuffer* buffer) {
   buffer->PushBack(KeyEntryTypeAsChar::kHybridTime);
@@ -132,16 +176,8 @@ inline bool IsKeyOrderedBefore(Slice key, Slice other_key) {
   }
 }
 
-inline size_t PrepareIntentSeekBackward(dockv::KeyBytes& key_bytes) {
-  const auto prefix_len = key_bytes.size();
-  key_bytes.AppendRawBytes(StrongWriteSuffix(key_bytes.AsSlice()));
-
-  // Provided key is the key whose latest record we need to point. Thus it is required to add
-  // kMaxByte to correctly position to the desired key as `docdb::SeekBackward()` seeks to
-  // a key, which is previous to the provided key.
-  key_bytes.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
-
-  return prefix_len;
+rocksdb::Statistics* GetIntentsDBStatistics(DocDBStatistics* statistics) {
+  return statistics ? statistics->IntentsDBStatistics() : nullptr;
 }
 
 } // namespace
@@ -162,8 +198,7 @@ IntentAwareIterator::IntentAwareIterator(
     const rocksdb::ReadOptions& read_opts,
     const ReadOperationData& read_operation_data,
     const TransactionOperationContext& txn_op_context,
-    const FastBackwardScan use_fast_backward_scan,
-    rocksdb::Statistics* intentsdb_statistics)
+    const FastBackwardScan use_fast_backward_scan)
     : read_time_(read_operation_data.read_time),
       encoded_read_time_(read_operation_data.read_time),
       txn_op_context_(txn_op_context),
@@ -173,14 +208,15 @@ IntentAwareIterator::IntentAwareIterator(
       transaction_status_cache_(
           txn_op_context_, read_operation_data.read_time, read_operation_data.deadline) {
   VTRACE(1, __func__);
-  VLOG(4) << "IntentAwareIterator, read_operation_data: " << read_operation_data.ToString()
+  VLOG(2) << "IntentAwareIterator, read_operation_data: " << read_operation_data.ToString()
           << ", txn_op_context: " << txn_op_context_ << ", " << TRACE_BOUNDS
           << ", use_fast_backward_scan: " << use_fast_backward_scan;
 
   if (txn_op_context) {
     intent_iter_ = docdb::CreateIntentsIteratorWithHybridTimeFilter(
-        doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds, &intent_upperbound_,
-        intentsdb_statistics);
+        doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds,
+        &intent_upperbound_, read_opts.cache_restart_block_keys,
+        GetIntentsDBStatistics(read_operation_data.statistics));
   }
   // WARNING: Is is important for regular DB iterator to be created after intents DB iterator,
   // otherwise consistency could break, for example in following scenario:
@@ -196,11 +232,12 @@ IntentAwareIterator::IntentAwareIterator(
 }
 
 void IntentAwareIterator::Seek(const dockv::DocKey &doc_key) {
-  Seek(doc_key.Encode(), Full::kFalse);
+  Seek(doc_key.Encode(), SeekFilter::kAll, Full::kFalse);
 }
 
-void IntentAwareIterator::Seek(Slice key, Full full) {
-  VLOG_WITH_FUNC(4) << "key: " << DebugDumpKeyToStr(key) << ", full: " << full;
+void IntentAwareIterator::Seek(Slice key, SeekFilter filter, Full full) {
+  VLOG_WITH_FUNC(4)
+      << "key: " << DebugDumpKeyToStr(key) << ", full: " << full << ", filter: " << filter;
   DOCDB_DEBUG_SCOPE_LOG(
       key.ToDebugString(),
       std::bind(&IntentAwareIterator::DebugDump, this));
@@ -210,7 +247,17 @@ void IntentAwareIterator::Seek(Slice key, Full full) {
 
   SeekTriggered();
 
-  SkipFutureRecords<Direction::kForward>(ROCKSDB_SEEK(&iter_, key));
+  [&] {
+    switch (filter) {
+      case SeekFilter::kAll:
+        SkipFutureRecords<Direction::kForward>(ROCKSDB_SEEK(&iter_, key));
+        return;
+      case SeekFilter::kIntentsOnly:
+        regular_entry_.Reset();
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(SeekFilter, filter);
+  }();
   if (intent_iter_.Initialized()) {
     if (!SetIntentUpperbound()) {
       return;
@@ -312,7 +359,7 @@ void IntentAwareIterator::SeekPastSubKey(Slice key) {
   FillEntry();
 }
 
-void IntentAwareIterator::SeekOutOfSubDoc(KeyBytes* key_bytes) {
+void IntentAwareIterator::SeekOutOfSubDoc(SeekFilter filter, KeyBytes* key_bytes) {
   VLOG_WITH_FUNC(4) << DebugDumpKeyToStr(*key_bytes);
   if (!status_.ok()) {
     return;
@@ -322,7 +369,17 @@ void IntentAwareIterator::SeekOutOfSubDoc(KeyBytes* key_bytes) {
 
   auto prefix_len = intent_iter_.Initialized()
       ? IntentPrepareSeek(*key_bytes, KeyEntryTypeAsChar::kMaxByte) : 0;
-  SkipFutureRecords<Direction::kForward>(docdb::SeekOutOfSubKey(key_bytes, &iter_));
+  [&] {
+    switch (filter) {
+      case SeekFilter::kAll:
+        SkipFutureRecords<Direction::kForward>(docdb::SeekOutOfSubKey(key_bytes, &iter_));
+        return;
+      case SeekFilter::kIntentsOnly:
+        regular_entry_.Reset();
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(SeekFilter, filter);
+  }();
   IntentSeekForward(prefix_len);
   FillEntry();
 }
@@ -340,6 +397,23 @@ void IntentAwareIterator::SeekToLastDocKey() {
     SeekTriggered();
   }
   FillEntry();
+}
+
+void IntentAwareIterator::SeekBeforeSubKey(Slice key) {
+  VLOG_WITH_FUNC(4) << DebugDumpKeyToStr(key);
+  if (!status_.ok()) {
+    return;
+  }
+
+  SeekTriggered();
+
+  SkipFutureRecords<Direction::kBackward>(docdb::SeekBackward(key, iter_));
+  if (intent_iter_.Initialized()) {
+    ResetIntentUpperbound();
+    SeekToSuitableIntent<Direction::kBackward>(docdb::SeekBackward(key, intent_iter_));
+  }
+
+  FillEntry</* kDescending */ true>();
 }
 
 // If we reach a different key, stop seeking.
@@ -546,11 +620,11 @@ void IntentAwareIterator::DoPrevDocKey(Slice doc_key) {
 
   SeekTriggered();
 
-  // TODO(#22373): Logically, we firstly need to check if regular entry is already positioned before
-  // the given doc_key, and if the position is correct, then it is required to check if current
-  // regular entry satisfies bounds. But we are rely on the fact that regular entry matches regular
-  // iterator's current entry and the combination of SeekBackward and SkipFutureRecords make all
-  // the necessary job to check if bounds are satisfied.
+  // TODO(fast-backward-scan) logically, we firstly need to check if regular entry is already
+  // positioned before the given doc_key, and if the position is correct, then it is required
+  // to check if current regular entry satisfies bounds. But we are rely on the fact that regular
+  // entry matches regular iterator's current entry and the combination of SeekBackward and
+  // SkipFutureRecords make all the necessary job to check if bounds are satisfied.
   SkipFutureRecords<Direction::kBackward>(docdb::SeekBackward(doc_key, iter_));
 
   if (intent_iter_.Initialized()) {
@@ -576,8 +650,15 @@ void IntentAwareIterator::SeekBackward(dockv::KeyBytes& key_bytes) {
   key_bytes.RemoveLastByte();
 
   if (intent_iter_.Initialized()) {
-    const auto prefix_len = PrepareIntentSeekBackward(key_bytes);
-    IntentSeekBackward(key_bytes);
+    const auto prefix_len = key_bytes.size();
+
+    // It is not possible to use backward seek to kStrongWrite intent type directly as backward
+    // seek expects an upper bound of the target key, but intent type set is a bitset and hence
+    // intent's type could be a subset of several values (including kStrongWrite). That's why
+    // it is required to use kMaxByte (via AppendMaxIntentTypeSuffix), and subsequent call to
+    // SeekToSuitableIntent() will consider only required intents, with kStrongWrite set.
+    IntentSeekBackward(AppendMaxIntentTypeSuffix(key_bytes));
+
     key_bytes.Truncate(prefix_len);
   }
 
@@ -602,7 +683,7 @@ void IntentAwareIterator::SeekToLatestSubDocKeyInternal() {
     return;
   }
   subdockey_slice.remove_suffix(1);
-  Seek(subdockey_slice);
+  Seek(subdockey_slice, SeekFilter::kAll);
 }
 
 void IntentAwareIterator::SeekToLatestDocKeyInternal() {
@@ -613,13 +694,23 @@ void IntentAwareIterator::SeekToLatestDocKeyInternal() {
   if (!HandleStatus(dockey_size)) {
     return;
   }
-  Seek(Slice(subdockey_slice.data(), *dockey_size));
+  Seek(Slice(subdockey_slice.data(), *dockey_size), SeekFilter::kAll);
 }
 
-void IntentAwareIterator::Revalidate() {
+void IntentAwareIterator::Revalidate(SeekFilter seek_filter) {
   VLOG_WITH_FUNC(4);
 
-  SkipFutureRecords<Direction::kForward>(iter_.Entry());
+  [&] {
+    switch (seek_filter) {
+      case SeekFilter::kAll:
+        SkipFutureRecords<Direction::kForward>(iter_.Entry());
+        return;
+      case SeekFilter::kIntentsOnly:
+        regular_entry_.Reset();
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(SeekFilter, seek_filter);
+  }();
   if (intent_iter_.Initialized()) {
     if (!SetIntentUpperbound()) {
       return;
@@ -637,6 +728,11 @@ bool IntentAwareIterator::IsRegularEntryOrderedBeforeResolvedIntent() const {
       regular_entry_.key, resolved_intent_sub_doc_key_encoded_.AsSlice());
 }
 
+Result<const FetchedEntry&> IntentAwareIterator::FetchNext() {
+  Next();
+  return Fetch();
+}
+
 Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
 #ifndef NDEBUG
   need_fetch_ = false;
@@ -651,18 +747,18 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
             << ", kind: " << (result.same_transaction ? 'S' : (IsEntryRegular() ? 'R' : 'I'))
             << ", with time: " << result.write_time.ToString()
             << ", while read bounds are: " << read_time_;
+
+    YB_TRANSACTION_DUMP(
+        Read, txn_op_context_ ? txn_op_context_.txn_status_manager->tablet_id() : TabletId(),
+        txn_op_context_ ? txn_op_context_.transaction_id : TransactionId::Nil(),
+        read_time_, CHECK_RESULT(result.write_time.Decode()), result.same_transaction,
+        result.key.size(), result.key, result.value.size(), result.value);
   } else {
     DCHECK(entry_source_ == nullptr);
     VLOG(4) << "Fetched key <INVALID>";
   }
 
-  YB_TRANSACTION_DUMP(
-      Read, txn_op_context_ ? txn_op_context_.txn_status_manager->tablet_id() : TabletId(),
-      txn_op_context_ ? txn_op_context_.transaction_id : TransactionId::Nil(),
-      read_time_, CHECK_RESULT(result.write_time.Decode()), result.same_transaction,
-      result.key.size(), result.key, result.value.size(), result.value);
-
-  return &result;
+  return result;
 }
 
 template <bool kDescending>
@@ -819,8 +915,8 @@ void IntentAwareIterator::SeekToSuitableIntent(const rocksdb::KeyValueEntry& ent
                             << intent_upperbound_.ToDebugHexString();
           // We are not calling RevalidateAfterUpperBoundChange here because it is only needed
           // during forward iteration, and is not needed immediately before a seek.
-          // TODO(#22556): It is not clear why SeekToLast for backward direction. It should be
-          // investigated in the context of mentioned GH. Also for the details refer to
+          // TODO(fast-backward-scan) it is not clear why SeekToLast for backward direction. It
+          // should be investigated in the context of mentioned GH. Also for the details refer to
           // https://phorge.dev.yugabyte.com/D7915.
           entry = &intent_iter_.SeekToLast();
           break;
@@ -1277,7 +1373,8 @@ HybridTime IntentAwareIterator::TEST_MaxSeenHt() const {
   return CHECK_RESULT(max_seen_ht_.Decode()).hybrid_time();
 }
 
-const EncodedDocHybridTime& IntentAwareIterator::GetIntentDocHybridTime(bool* same_transaction) {
+const EncodedDocHybridTime& IntentAwareIterator::GetIntentDocHybridTime(
+    bool* same_transaction) const {
   if (!intent_dht_from_same_txn_.is_min()) {
     if (same_transaction) {
       *same_transaction = true;
@@ -1319,5 +1416,8 @@ void IntentAwareIterator::DebugSeekTriggered() {
 }
 #endif
 
-}  // namespace docdb
-}  // namespace yb
+void AppendStrongWrite(KeyBytes* out) {
+  out->AppendRawBytes(StrongWriteSuffix(*out));
+}
+
+}  // namespace yb::docdb

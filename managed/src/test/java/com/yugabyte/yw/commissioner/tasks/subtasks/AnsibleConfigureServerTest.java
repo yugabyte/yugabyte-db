@@ -11,6 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -27,14 +28,14 @@ import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.client.ListMastersResponse;
-import org.yb.util.ServerInfo;
+import org.yb.client.ListMasterRaftPeersResponse;
+import org.yb.util.PeerInfo;
 
 @RunWith(JUnitParamsRunner.class)
 public class AnsibleConfigureServerTest extends FakeDBApplication {
@@ -42,24 +43,28 @@ public class AnsibleConfigureServerTest extends FakeDBApplication {
   private AvailabilityZone az;
   private Provider provider;
   private Universe universe;
-  private ListMastersResponse mockMastersResponse;
+  private ListMasterRaftPeersResponse mockMastersResponse;
 
   @Before
   public void setup() {
     defaultCustomer = ModelFactory.testCustomer();
     setupUniverse(Common.CloudType.onprem);
-    mockMastersResponse = mock(ListMastersResponse.class);
+    mockMastersResponse = mock(ListMasterRaftPeersResponse.class);
     when(mockService.getClient(any(), any())).thenReturn(mockYBClient);
-    List<ServerInfo> servers = new ArrayList<>();
+    List<PeerInfo> servers = new ArrayList<>();
     // IP for host-n1.
-    servers.add(new ServerInfo(UUID.randomUUID().toString(), "10.0.0.1", 9070, false, "NONE"));
+    PeerInfo peerInfo = new PeerInfo();
+    peerInfo.setLastKnownPrivateIps(
+        Collections.singletonList(HostAndPort.fromParts("10.0.0.1", 9070)));
+    peerInfo.setMemberType(PeerInfo.MemberType.VOTER);
+    servers.add(peerInfo);
     try {
       when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, ""));
-      when(mockYBClient.listMasters()).thenReturn(mockMastersResponse);
+      when(mockYBClient.listMasterRaftPeers()).thenReturn(mockMastersResponse);
     } catch (Exception e) {
       fail();
     }
-    when(mockMastersResponse.getMasters()).thenReturn(servers);
+    when(mockMastersResponse.getPeersList()).thenReturn(servers);
   }
 
   private void setupUniverse(Common.CloudType cloudType) {

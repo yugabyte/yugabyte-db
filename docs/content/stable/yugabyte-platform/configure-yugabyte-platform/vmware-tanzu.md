@@ -1,9 +1,9 @@
 ---
-title: Configure the VMware Tanzu cloud provider
+title: Configure the VMware Tanzu provider configuration
 headerTitle: Create Kubernetes provider configuration
 linkTitle: Kubernetes
 description: Configure the VMware Tanzu provider configuration
-headContent: For deploying universes on VMware Tanzu
+headContent: For deploying universes on Kubernetes
 menu:
   stable_yugabyte-platform:
     identifier: set-up-kubernetes-provider-2
@@ -45,7 +45,7 @@ Before you start, ensure that you have created the [kubeconfig file](../../prepa
 
 ## Configure TKG
 
-To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), navigate to **Configs > Infrastructure > VMware Tanzu**.
+To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), navigate to **Integrations > Infrastructure > VMware Tanzu**.
 
 This lists all currently configured VMware Tanzu providers.
 

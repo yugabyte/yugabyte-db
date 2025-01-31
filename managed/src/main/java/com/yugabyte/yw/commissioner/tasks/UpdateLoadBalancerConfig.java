@@ -1,6 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -16,6 +17,7 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import play.libs.Json;
 
 @Slf4j
 public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
@@ -37,22 +39,22 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
     log.info("Started {} task for univ uuid={}", getName(), taskParams().getUniverseUUID());
     Universe universe = getUniverse();
     try {
-      // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
-      // to prevent other updates from happening.
-      universe =
-          lockAndFreezeUniverseForUpdate(
-              taskParams().expectedUniverseVersion,
-              u -> {
-                // Get expected LB config
-                Map<LoadBalancerPlacement, LoadBalancerConfig> newLbMap =
-                    createLoadBalancerMap(taskParams(), null, null, null);
-                // Get current LB config
-                Map<ClusterAZ, String> currentLBs = taskParams().existingLBs;
-                // Add old LBs to newLbMap so that nodes are removed from old LBs
-                compareLBs(taskParams(), newLbMap, currentLBs);
-                // Create manage load balancer task
-                createManageLoadBalancerTasks(newLbMap);
-              });
+      // Lock the universe but don't freeze it because this task doesn't perform critical updates to
+      // universe metadata.
+      universe = lockUniverse(-1 /* expectedUniverseVersion */);
+
+      // Get expected LB config
+      Map<LoadBalancerPlacement, LoadBalancerConfig> newLbMap =
+          createLoadBalancerMap(taskParams(), null, null, null);
+
+      // Get current LB config
+      Map<ClusterAZ, String> currentLBs = taskParams().existingLBs;
+      // Add old LBs to newLbMap so that nodes are removed from old LBs
+      log.info("Original newLbMap {}, currentLBs {}", Json.toJson(newLbMap), currentLBs);
+      compareLBs(taskParams(), newLbMap, currentLBs);
+      log.info("After comparing, newLbMap {}, currentLBs {}", Json.toJson(newLbMap), currentLBs);
+      // Create manage load balancer task
+      createManageLoadBalancerTasks(newLbMap);
 
       // Update universe to new LB config
       Universe.UniverseUpdater updater =
@@ -60,6 +62,9 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
             updateUniverse(u, taskParams());
           };
       saveUniverseDetails(updater);
+
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       getRunnableTask().runSubTasks();
     } catch (Exception e) {

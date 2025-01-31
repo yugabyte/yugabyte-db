@@ -6,6 +6,7 @@ import { Box, Typography, useTheme } from '@material-ui/core';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { ToggleButton } from '@material-ui/lab';
 import i18next from 'i18next';
+import { useSelector } from 'react-redux';
 
 import {
   alertConfigQueryKey,
@@ -25,6 +26,7 @@ import {
 import {
   adaptMetricDataForRecharts,
   formatUuidFromXCluster,
+  getIsTransactionalAtomicityEnabled,
   getMetricTimeRange,
   getStrictestReplicationLagAlertThreshold
 } from '../../ReplicationUtils';
@@ -83,6 +85,7 @@ export const XClusterMetrics = ({
   );
   const [replicationLagMetricsSplitCount, setReplicationLagMetricsSplitCount] = useState<number>(5);
 
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   const [
     consumerSafeTimeLagMetricsNodeAggregation,
     setConsumerSafeTimeLagMetricsNodeAggregation
@@ -209,7 +212,8 @@ export const XClusterMetrics = ({
         ),
     () => api.fetchMetrics(consumerSafeTimeLagMetricRequestParams),
     {
-      enabled: !!targetUniverseQuery.data && xClusterConfig.type === XClusterConfigType.TXN,
+      enabled:
+        !!targetUniverseQuery.data && getIsTransactionalAtomicityEnabled(xClusterConfig.type),
       // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
       // queries will return the same data.
       staleTime: isFixedTimeRange ? Infinity : 0,
@@ -249,7 +253,8 @@ export const XClusterMetrics = ({
         ),
     () => api.fetchMetrics(consumerSafeTimeSkewMetricRequestParams),
     {
-      enabled: !!targetUniverseQuery.data && xClusterConfig.type === XClusterConfigType.TXN,
+      enabled:
+        !!targetUniverseQuery.data && getIsTransactionalAtomicityEnabled(xClusterConfig.type),
       // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
       // queries will return the same data.
       staleTime: isFixedTimeRange ? Infinity : 0,
@@ -300,7 +305,7 @@ export const XClusterMetrics = ({
   //              Tracking with PLAT-11663
   if (
     configReplicationLagMetricQuery.isError ||
-    (xClusterConfig.type === XClusterConfigType.TXN &&
+    (getIsTransactionalAtomicityEnabled(xClusterConfig.type) &&
       (consumerSafeTimeLagMetricsQuery.isError || consumerSafeTimeSkewMetricsQuery.isError))
   ) {
     return (
@@ -345,6 +350,14 @@ export const XClusterMetrics = ({
 
   const handleToggleShowAlertThresholdReferenceLine = () =>
     setShowAlertThresholdReferenceLIne(!showAlertThresholdReferenceLine);
+
+  const refetchMetrics = () => {
+    configReplicationLagMetricQuery.refetch();
+    if (!!targetUniverseQuery.data && getIsTransactionalAtomicityEnabled(xClusterConfig.type)) {
+      consumerSafeTimeLagMetricsQuery.refetch();
+      consumerSafeTimeSkewMetricsQuery.refetch();
+    }
+  };
 
   const namespaceUuidToNamespaceName = targetUniverseNamespaceQuery.data
     ? Object.fromEntries(
@@ -393,6 +406,7 @@ export const XClusterMetrics = ({
       namespaceUuidToNamespaceName
     )
   };
+
   return (
     <div>
       <Box display="flex">
@@ -403,7 +417,8 @@ export const XClusterMetrics = ({
               endMoment={customEndMoment}
               setStartMoment={(dateString: any) => setCustomStartMoment(moment(dateString))}
               setEndMoment={(dateString: any) => setCustomEndMoment(moment(dateString))}
-              handleTimeframeChange={configReplicationLagMetricQuery.refetch}
+              handleTimeframeChange={refetchMetrics}
+              timezone={currentUserTimezone}
             />
           )}
           <Dropdown id="LagGraphTimeRangeDropdown" pullRight>
@@ -420,6 +435,7 @@ export const XClusterMetrics = ({
           metric={configReplicationLagMetrics}
           title={t('graphTitle.asyncReplicationSentLag')}
           metricSettings={replicationLagMetricSettings}
+          unit={t('unitAbbreviation.milliseconds', { keyPrefix: 'common' })}
           namespaceUuidToNamespaceName={namespaceUuidToNamespaceName}
           referenceLines={
             maxAcceptableLag && showAlertThresholdReferenceLine
@@ -484,12 +500,13 @@ export const XClusterMetrics = ({
             </>
           }
         />
-        {xClusterConfig.type === XClusterConfigType.TXN && (
+        {getIsTransactionalAtomicityEnabled(xClusterConfig.type) && (
           <>
             <YBMetricGraph
               metric={consumerSafeTimeLagMetrics}
               title={t('graphTitle.consumerSafeTimeLag')}
               metricSettings={consumerSafeTimeLagMetricSettings}
+              unit={t('unitAbbreviation.milliseconds', { keyPrefix: 'common' })}
               namespaceUuidToNamespaceName={namespaceUuidToNamespaceName}
               graphHeaderAccessor={
                 <MetricsFilter
@@ -509,6 +526,7 @@ export const XClusterMetrics = ({
               metric={consumerSafeTimeSkewMetrics}
               title={t('graphTitle.consumerSafeTimeSkew')}
               metricSettings={consumerSafeTimeSkewMetricSettings}
+              unit={t('unitAbbreviation.milliseconds', { keyPrefix: 'common' })}
               namespaceUuidToNamespaceName={namespaceUuidToNamespaceName}
               graphHeaderAccessor={
                 <MetricsFilter

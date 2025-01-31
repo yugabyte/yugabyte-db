@@ -35,10 +35,13 @@
 #include <string>
 
 #include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/metadata.pb.h"
 
 namespace yb::consensus {
+
+const MicrosTime kInfiniteHybridTimeLeaseExpiration = HybridTime::kMax.GetPhysicalValueMicros();
 
 bool IsRaftConfigMember(const std::string& tserver_uuid, const RaftConfigPB& config);
 

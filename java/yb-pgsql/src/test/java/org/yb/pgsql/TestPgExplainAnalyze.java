@@ -96,6 +96,14 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testSeqScan() throws Exception {
+    // (DB-12699) Catalog read requests decrease in any warmup mode when
+    // connection manager is enabled, but not to the expected value of 0.
+    // Allow the test to run without warmed up connections for now.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+    if (isTestRunningWithConnectionManager()) {
+        setUp();
+    }
+
     try (Statement stmt = connection.createStatement()) {
       Checker checker = makeTopLevelBuilder()
           .storageReadRequests(Checkers.equal(5))
@@ -119,6 +127,14 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
       // Warm up the cache to get catalog requests out of the way.
       testExplain(String.format("SELECT * FROM %s", TABLE_NAME), null);
+
+      // Additionally warmup the cache for all backends when Connection Manager
+      // is in round-robin warmup mode.
+      if (isConnMgrWarmupRoundRobinMode()) {
+        for(int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+            testExplain(String.format("SELECT * FROM %s", TABLE_NAME), null);
+        }
+      }
 
       // Seq Scan (ybc_fdw ForeignScan)
       testExplain(String.format("SELECT * FROM %s", TABLE_NAME), checker);
@@ -333,12 +349,28 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testInsertValues() throws Exception {
+    // (DB-12699) Catalog read requests decrease in any warmup mode when
+    // connection manager is enabled, but not to the expected value of 0.
+    // Allow the test to run without warmed up connections for now.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+    if (isTestRunningWithConnectionManager()) {
+        setUp();
+    }
+
     try (Statement stmt = connection.createStatement()) {
       // reduce the batch size to avoid 0 wait time
       stmt.execute("SET ysql_session_max_batch_size = 4");
 
       // Warm up the cache to get catalog requests out of the way.
       testExplain(String.format("SELECT * FROM %s", TABLE_NAME), null);
+
+      // Additionally warmup the cache for all backends when Connection Manager
+      // is in round-robin warmup mode.
+      if (isConnMgrWarmupRoundRobinMode()) {
+        for(int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+            testExplain(String.format("SELECT * FROM %s", TABLE_NAME), null);
+        }
+      }
 
       ObjectChecker planChecker =
           makePlanBuilder()
@@ -721,6 +753,12 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testExplainAnalyzeOptions() throws Exception {
+    if (isTestRunningWithConnectionManager()) {
+        // (DB-12674) Allow tests to run in round-robin allocation mode when
+        // using a pool of warmed up connections to allow for deterministic results.
+        setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
+        setUp();
+    }
     String query = String.format("SELECT * FROM %s", TABLE_NAME);
     try (Statement stmt = connection.createStatement()) {
         setHideNonDeterministicFields(stmt, true);

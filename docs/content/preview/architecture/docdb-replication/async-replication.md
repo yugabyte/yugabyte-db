@@ -20,9 +20,9 @@ YugabyteDB's [synchronous replication](../replication/) can be used to tolerate 
 
 However, synchronous replication has two important drawbacks when used this way:
 
-- __High write latency__: each write must achieve consensus across at least two data centers, which means at least one round trip between data centers.  This can add tens or even hundreds of milliseconds of extra latency in a multi-region deployment.
+- _High write latency_: each write must achieve consensus across at least two data centers, which means at least one round trip between data centers.  This can add tens or even hundreds of milliseconds of extra latency in a multi-region deployment.
 
-- __Need for at least three data centers__: because consensus requires an odd number of fault domains so ties can be broken, at least three data centers must be used, which adds operational cost.
+- _Need for at least three data centers_: to tolerate the failure of `f` fault domains, you need at least `2f + 1` fault domains. So, to survive the loss of one data center, you need at least three data centers, which adds operational cost. See [fault tolerance](../replication/#fault-tolerance) for more information.
 
 As an alternative, YugabyteDB provides asynchronous replication that replicates data between two or more separate universes.  It does not suffer from the drawbacks of synchronous replication: because it is done in the background, it does not impact write latency, and because it does not use consensus it does not require a third data center.
 
@@ -161,14 +161,13 @@ Today, this is done by backing up the source universe and restoring it to the ta
 
 Ongoing work, [#17862](https://github.com/yugabyte/yugabyte-db/issues/17862), will replace using backup and restore here with directly copying RocksDB files between the source and target universes.  This will be more performant and flexible and remove the need for external storage like S3 to set up replication.
 
-
 ## Supported deployment scenarios
 
 xCluster currently supports active-active single-master and active-active multi-master deployments.
 
-### Active- active single-master
+### Active-active single-master
 
-Here the replication is unidirectional from a source universe to a target universe. The target universe is typically located in data centers or regions that are different from the source universe. The source universe can serve both reads and writes. The target universe can only serve reads. Since only the nodes in one universe can take writes this mode is referred to as single master. Note that within the source universe all nodes can serve writes.
+In this setup the replication is unidirectional from a source universe to a target universe. The target universe is typically located in data centers or regions that are different from the source universe. The source universe can serve both reads and writes. The target universe can only serve reads. Since only the nodes in one universe can take writes this mode is referred to as single master. Note that within the source universe all nodes can serve writes.
 
 Usually, such deployments are used for serving low-latency reads from the target universes, as well as for disaster recovery purposes.  When used primarily for disaster recovery purposes, these deployments are also called active-standby because the target universe stands by to take over if the source universe is lost.
 
@@ -244,7 +243,7 @@ After losing one universe, the other universe may be left with torn transactions
 
 ### Transactional-mode limitations
 
-With transactional mode,
+Transactional mode has the following limitations:
 
 - No writes are allowed in the target universe
 - Active-active multi-master is not supported
@@ -260,7 +259,7 @@ When the source universe is lost, an explicit decision must be made to switch ov
 ### DDL changes
 
 - Currently, DDL changes are not automatically replicated.  Applying commands such as `CREATE TABLE`, `ALTER TABLE`, and `CREATE INDEX` to the target universes is your responsibility.
-- `DROP TABLE` is not supported.  You must first disable replication for this table.
+- `DROP TABLE` is not supported in YCQL.  You must first disable replication for this table.
 - `TRUNCATE TABLE` is not supported.  This is an underlying limitation, due to the level at which the two features operate.  That is, replication is implemented on top of the Raft WAL files, while truncate is implemented on top of the RocksDB SST files.
 - In the future, it will be possible to propagate DDL changes safely to other universes.  This is tracked in [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
 
@@ -268,6 +267,10 @@ When the source universe is lost, an explicit decision must be made to switch ov
 
 - Technically, xCluster replication can be set up with Kubernetes-deployed universes.  However, the source and target must be able to communicate by directly referencing the pods in the other universe.  In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
 - Being able to have two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported, as per [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
+
+### Backups
+
+Backups are supported. However for backups on target clusters, if there is an active workload, consistency of the latest data is not guaranteed.
 
 ## Cross-feature interactions
 

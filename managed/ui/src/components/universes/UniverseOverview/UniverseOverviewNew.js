@@ -25,12 +25,14 @@ import {
   isDefinedNotNull
 } from '../../../utils/ObjectUtils';
 import {
-  isKubernetesUniverse,
+  getIsKubernetesUniverse,
   getPrimaryCluster,
   isDedicatedNodePlacement
 } from '../../../utils/UniverseUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
+import { DBLbState } from '../../../redesign/features/universe/universe-overview/DBLbState';
 import { DBVersionWidget } from '../../../redesign/features/universe/universe-overview/DBVersionWidget';
+import { MasterFailover } from '../../../redesign/features/universe/universe-actions/master-failover/MasterFailover';
 import { PreFinalizeBanner } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/components/PreFinalizeBanner';
 import { FailedBanner } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/components/FailedBanner';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -592,7 +594,7 @@ export default class UniverseOverviewNew extends Component {
 
   getDiskUsageWidget = (universeInfo) => {
     // For kubernetes the disk usage would be in container tab, rest it would be server tab.
-    const isKubernetes = isKubernetesUniverse(universeInfo);
+    const isKubernetes = getIsKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
     const subTab = isKubernetes ? 'container' : 'server';
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
@@ -647,7 +649,7 @@ export default class UniverseOverviewNew extends Component {
 
   getCPUWidget = (universeInfo, isRollBackFeatureEnabled) => {
     // For kubernetes the CPU usage would be in container tab, rest it would be server tab.
-    const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isItKubernetesUniverse = getIsKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
     const hasReadReplicaCluster = this.hasReadReplica(universeInfo);
     const subTab = isItKubernetesUniverse ? 'container' : 'server';
@@ -697,7 +699,7 @@ export default class UniverseOverviewNew extends Component {
   };
 
   getRegionMapWidget = (universeInfo) => {
-    const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isItKubernetesUniverse = getIsKubernetesUniverse(universeInfo);
     const {
       modal: { showModal, visibleModal },
       showUniverseOverviewMapModal,
@@ -841,11 +843,12 @@ export default class UniverseOverviewNew extends Component {
       updateAvailable,
       tasks,
       currentCustomer,
-      runtimeConfigs
+      runtimeConfigs,
+      universeLbState
     } = this.props;
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
-    const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isItKubernetesUniverse = getIsKubernetesUniverse(universeInfo);
     const universeDetails = universeInfo.universeDetails;
     const clusters = universeDetails?.clusters;
     const primaryCluster = getPrimaryCluster(clusters);
@@ -860,7 +863,12 @@ export default class UniverseOverviewNew extends Component {
 
     const isRollBackFeatureEnabled =
       runtimeConfigs?.data?.configEntries?.find(
-        (c) => c.key === 'yb.upgrade.enable_rollback_support'
+        (c) => c.key === RuntimeConfigKey.ENABLE_ROLLBACK_SUPPORT
+      )?.value === 'true';
+
+    const isMasterFailoverEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.ENABLE_AUTO_MASTER_FAILOVER
       )?.value === 'true';
 
     const isQueryMonitoringEnabled = localStorage.getItem('__yb_query_monitoring__') === 'true';
@@ -883,6 +891,11 @@ export default class UniverseOverviewNew extends Component {
               <FailedBanner universeData={universeInfo} taskDetail={failedTask} />
             </Row>
           )}
+        {isMasterFailoverEnabled && (
+          <Row className="p-16">
+            <MasterFailover universeData={universeInfo} />
+          </Row>
+        )}
         <Row>
           {isEnabled(currentCustomer.data.features, 'universes.details.overview.costs') &&
             this.getCostWidget(universeInfo)}
@@ -892,8 +905,12 @@ export default class UniverseOverviewNew extends Component {
                 higherVersionCount={updateAvailable}
                 isRollBackFeatureEnabled={isRollBackFeatureEnabled}
                 failedTaskDetails={failedTask}
-                isReleasesEnabled={this.props.isReleasesEnabled}
               />
+            )}
+          </Col>
+          <Col lg={4} md={6} sm={8} xs={12}>
+            {getPromiseState(universeLbState).isSuccess() && (
+              <DBLbState universeLbState={universeLbState?.data} />
             )}
           </Col>
         </Row>

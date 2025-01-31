@@ -63,13 +63,13 @@ $ tar -xzf ycsb.tar.gz
 $ cd YCSB
 ```
 
-Ensure that you have the YSQL shell [ysqlsh](../../admin/ysqlsh/) and that its location is included in the `PATH` variable, as follows:
+Ensure that you have the YSQL shell [ysqlsh](../../api/ysqlsh/) and that its location is included in the `PATH` variable, as follows:
 
 ```sh
 $ export PATH=$PATH:/path/to/ysqlsh
 ```
 
-You can find `ysqlsh` in your YugabyteDB installation's `bin` directory. For example:
+You can find ysqlsh in your YugabyteDB installation's `bin` directory. For example:
 
 ```sh
 $ export PATH=$PATH:/Users/yugabyte/code/bin

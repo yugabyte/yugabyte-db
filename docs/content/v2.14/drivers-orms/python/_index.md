@@ -3,7 +3,6 @@ title: Python drivers and ORMs
 headerTitle: Python
 linkTitle: Python
 description: Python Drivers and ORMs support for YugabyteDB.
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.14:
     identifier: python-drivers
@@ -48,8 +47,8 @@ To develop Python applications for YugabyteDB, you need the following:
   Create a python file by adding the `.py` extension to the filename. A virtual environment is also recommended to keep dependencies required by different projects separate. Make sure `pip` is also installed in the environment.
 
 - **YugabyteDB cluster**
-  - Create a free cluster on YugabyteDB Managed. Refer to [Use a cloud cluster](/preview/quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
+  - Create a free cluster on YugabyteDB Managed. Refer to [Use a cloud cluster](/preview/tutorials/quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/).
 
 ## Next steps
 

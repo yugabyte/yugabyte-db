@@ -6,6 +6,7 @@
 ####################################################################################################
 
 test: yb_catalog_version
+test: yb_alter_operator
 test: yb_boolean
 test: yb_disabled
 test: yb_errors

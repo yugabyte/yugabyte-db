@@ -35,6 +35,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Inject private RuntimeConfGetter confGetter;
 
+  private String replacementMasterName;
+
   @Inject
   protected StopNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -45,10 +47,11 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
     return (NodeTaskParams) taskParams;
   }
 
-  protected NodeDetails findNewMasterIfApplicable(Universe universe, NodeDetails currentNode) {
+  protected String findReplacementMasterIfApplicable(
+      Universe universe, NodeDetails currentNode, boolean pickNewNode) {
     boolean startMasterOnStopNode = confGetter.getGlobalConf(GlobalConfKeys.startMasterOnStopNode);
     if (startMasterOnStopNode && NodeActionFormData.startMasterOnStopNode) {
-      return super.findReplacementMaster(universe, currentNode);
+      return super.findReplacementMaster(universe, currentNode, pickNewNode);
     }
     return null;
   }
@@ -85,9 +88,12 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           Collections.singletonList(
               new UpgradeTaskBase.MastersAndTservers(
                   Collections.singletonList(currentNode), Collections.emptyList())),
-          null);
+          null,
+          false);
     }
     addBasicPrecheckTasks();
+    // Pick new only on first try.
+    replacementMasterName = findReplacementMasterIfApplicable(universe, currentNode, isFirstTry());
   }
 
   private void freezeUniverseInTxn(Universe universe) {
@@ -98,9 +104,11 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       throw new RuntimeException(msg);
     }
     if (node.isMaster) {
-      NodeDetails newMasterNode = findNewMasterIfApplicable(universe, node);
-      if (newMasterNode != null && newMasterNode.masterState == null) {
-        newMasterNode.masterState = MasterState.ToStart;
+      if (replacementMasterName != null) {
+        NodeDetails replacementMaster = universe.getNode(replacementMasterName);
+        if (replacementMaster.masterState == null) {
+          replacementMaster.masterState = MasterState.ToStart;
+        }
       }
       node.masterState = MasterState.ToStop;
     }
@@ -108,6 +116,9 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info(
         "Stop Node with name {} from universe uuid={}",
         taskParams().nodeName,
@@ -160,7 +171,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       createMasterReplacementTasks(
           universe,
           currentNode,
-          () -> findNewMasterIfApplicable(universe, currentNode),
+          () -> replacementMasterName == null ? null : universe.getNode(replacementMasterName),
           instanceExists,
           false /* ignore stop error */);
 

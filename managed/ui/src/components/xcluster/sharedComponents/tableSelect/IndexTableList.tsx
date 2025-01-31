@@ -9,16 +9,20 @@ import {
 import { SortOrder } from '../../../../redesign/helpers/constants';
 import { YBControlledSelect } from '../../../common/forms/fields';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
-import { formatBytes, isTableToggleable, tableSort } from '../../ReplicationUtils';
+import {
+  formatBytes,
+  getIsTransactionalAtomicityEnabled,
+  isTableToggleable,
+  tableSort
+} from '../../ReplicationUtils';
 import { TableNameCell } from './TableNameCell';
-import { XClusterConfigAction } from '../../constants';
+import { XClusterConfigAction, XClusterConfigType } from '../../constants';
 
 import {
   IndexTableReplicationCandidate,
   MainTableReplicationCandidate,
   TableReplicationCandidate
 } from '../../XClusterTypes';
-import { TableType } from '../../../../redesign/helpers/dtos';
 
 import styles from './IndexTableList.module.scss';
 
@@ -26,7 +30,7 @@ interface IndexTableListProps {
   mainTableReplicationCandidate: MainTableReplicationCandidate;
   xClusterConfigAction: XClusterConfigAction;
   isMainTableSelectable: boolean;
-  isTransactionalConfig: boolean;
+  xClusterConfigType: XClusterConfigType;
   selectedTableUuids: string[];
   handleTableSelect: (row: TableReplicationCandidate, isSelected: boolean) => void;
   handleTableGroupSelect: (isSelected: boolean, rows: TableReplicationCandidate[]) => boolean;
@@ -38,7 +42,7 @@ const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as co
 export const IndexTableList = ({
   mainTableReplicationCandidate,
   isMainTableSelectable,
-  isTransactionalConfig,
+  xClusterConfigType,
   selectedTableUuids,
   handleTableSelect,
   handleTableGroupSelect,
@@ -63,18 +67,19 @@ export const IndexTableList = ({
     mainTableReplicationCandidate.indexTables?.sort((a, b) =>
       tableSort<MainTableReplicationCandidate>(a, b, sortField, sortOrder, 'tableName')
     ) ?? [];
+  const isTransactionalAtomicityEnabled = getIsTransactionalAtomicityEnabled(xClusterConfigType);
   const untoggleableTableUuids = indexTableRows
     .filter(
       (table) =>
-        mainTableReplicationCandidate.tableType !== TableType.PGSQL_TABLE_TYPE ||
-        isTransactionalConfig ||
-        !isTableToggleable(table, xClusterConfigAction)
+        isTransactionalAtomicityEnabled ||
+        !isTableToggleable(table, xClusterConfigAction) ||
+        xClusterConfigAction !== XClusterConfigAction.MANAGE_TABLE
     )
     .map((table) => table.tableUUID);
   const isSelectable =
     isMainTableSelectable &&
-    !isTransactionalConfig &&
-    mainTableReplicationCandidate.tableType === TableType.PGSQL_TABLE_TYPE;
+    !isTransactionalAtomicityEnabled &&
+    xClusterConfigAction === XClusterConfigAction.MANAGE_TABLE;
   return (
     <div className={styles.expandComponent}>
       <BootstrapTable

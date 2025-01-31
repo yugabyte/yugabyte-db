@@ -68,20 +68,6 @@ ADD_YB_LIBRARY(pb_util_proto
   DEPS protobuf
   NONLINK_DEPS ${PB_UTIL_PROTO_TGTS})
 
-#######################################
-# version_info_proto
-#######################################
-
-PROTOBUF_GENERATE_CPP(
-  VERSION_INFO_PROTO_SRCS VERSION_INFO_PROTO_HDRS VERSION_INFO_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES version_info.proto)
-ADD_YB_LIBRARY(version_info_proto
-  SRCS ${VERSION_INFO_PROTO_SRCS}
-  DEPS protobuf
-  NONLINK_DEPS ${VERSION_INFO_PROTO_TGTS})
-
 ############################################################
 # Version stamp
 ############################################################
@@ -131,6 +117,7 @@ set(UTIL_SRCS
   concurrent_value.cc
   condition_variable.cc
   countdown_latch.cc
+  crash_point.cc
   crc.cc
   cross_thread_mutex.cc
   crypt.cc
@@ -165,7 +152,6 @@ set(UTIL_SRCS
   flags/flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
-  init.cc
   jsonreader.cc
   jsonwriter.cc
   jwt_util.cc
@@ -182,6 +168,7 @@ set(UTIL_SRCS
   memory/memory.cc
   metric_entity.cc
   metrics.cc
+  metrics_aggregator.cc
   metrics_writer.cc
   monotime.cc
   mutex.cc
@@ -214,6 +201,8 @@ set(UTIL_SRCS
   rw_semaphore.cc
   rwc_lock.cc
   shared_mem.cc
+  shmem/reserved_address_segment.cc
+  shmem/robust_mutex.cc
   signal_util.cc
   slice.cc
   slice_parts.cc
@@ -250,12 +239,12 @@ set(UTIL_SRCS
   user.cc
   uuid.cc
   varint.cc
-  version_info.cc
   write_buffer.cc
   yb_partition.cc
   ysql_binary_runner.cc
   zlib.cc
   callsite_profiling.cc
+  thread_holder.cc
   )
 
 set(UTIL_LIBS
@@ -274,7 +263,6 @@ set(UTIL_LIBS
   libev
   pb_util_proto
   protobuf
-  version_info_proto
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
   ${OPENSSL_SSL_LIBRARY})
@@ -301,13 +289,18 @@ ADD_YB_LIBRARY(yb_util
 
 add_dependencies(yb_util gen_version_info)
 
+configure_file(
+  ${CMAKE_SOURCE_DIR}/src/yb/gflag_allowlist.txt
+  ${CMAKE_BINARY_DIR}/gflag_allowlist.txt
+  COPYONLY)
+
 #######################################
 # yb_test_util
 #######################################
 
 ADD_YB_TEST_LIBRARY(
   yb_test_util
-  SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc
+  SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc
        multi_drive_test_env.cc
   DEPS gflags glog gmock gtest yb_util)
 
@@ -340,6 +333,7 @@ ADD_YB_TEST(byte_buffer-test)
 ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
+ADD_YB_TEST(crash_point-test)
 ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
 ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
@@ -352,6 +346,7 @@ ADD_YB_TEST(fast_varint-test)
 ADD_YB_TEST(flags/auto_flags-test)
 ADD_YB_TEST(flags/flag_tags-test)
 ADD_YB_TEST(flags/flags-test)
+ADD_YB_TEST(flags/flag_validators-test)
 ADD_YB_TEST(flags/flags_callback-test)
 ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
@@ -361,6 +356,7 @@ ADD_YB_TEST(jsonreader-test)
 ADD_YB_TEST(jwt_util-test)
 ADD_YB_TEST(jwtcpp_util-test)
 ADD_YB_TEST(lockfree-test)
+ADD_YB_TEST(logging-test)
 ADD_YB_TEST(lru_cache-test)
 ADD_YB_TEST(map-util-test)
 ADD_YB_TEST(memcmpable_varint-test LABELS no_tsan)
@@ -405,6 +401,8 @@ if (NOT "${YB_BUILD_TYPE}" STREQUAL "asan")
 endif()
 ADD_YB_TEST(scope_exit-test)
 ADD_YB_TEST(shared_mem-test)
+ADD_YB_TEST(shmem/reserved_address_segment-test)
+ADD_YB_TEST(shmem/robust_mutex-test)
 ADD_YB_TEST(slice-test)
 ADD_YB_TEST(spinlock_profiling-test)
 ADD_YB_TEST(split-test)
@@ -428,6 +426,7 @@ ADD_YB_TEST(user-test)
 ADD_YB_TEST(uuid-test)
 ADD_YB_TEST(varint-test)
 ADD_YB_TEST(write_buffer-test)
+ADD_YB_TEST(enums-test)
 
 #######################################
 # jsonwriter_test_proto

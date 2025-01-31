@@ -104,6 +104,7 @@ export const YBRadioGroup: FC<YBRadioGroupProps> = ({
   options = [],
   orientation = RadioGroupOrientation.VERTICAL,
   className,
+  value,
   ...muiRadioGroupProps
 }) => {
   const classes = useStyles();
@@ -126,6 +127,7 @@ export const YBRadioGroup: FC<YBRadioGroupProps> = ({
             control={
               <YBRadio
                 inputProps={{ 'data-testid': option['data-testid'] ?? `YBRadio-${option.value}` }}
+                checked={option.value === value}
               />
             }
             label={option.label}

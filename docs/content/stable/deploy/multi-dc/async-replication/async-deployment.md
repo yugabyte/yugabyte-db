@@ -1,14 +1,14 @@
 ---
 title: Deploy to two universes with xCluster replication
-headerTitle: xCluster deployment
-linkTitle: xCluster
-description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
-headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
+headerTitle: Non-transactional xCluster
+linkTitle: Non-transactional
+description: Deploy using non-transactional unidirectional (master-follower) or bidirectional (multi-master) replication between universes
+headContent: Non-transactional uni- (master-follower) and bi- (multi-master) directional replication
 menu:
   stable:
     parent: async-replication
     identifier: async-deployment
-    weight: 10
+    weight: 20
 type: docs
 ---
 
@@ -44,7 +44,7 @@ After you created the required tables, you can set up unidirectional replication
       ./bin/yb-admin -master_addresses <source_universe_master_addresses> list_tables include_table_id | grep table_name
       ```
 
-- Run the following `yb-admin` [`setup_universe_replication`](../../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
+- Run the following yb-admin [`setup_universe_replication`](../../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
 
     ```sh
     ./bin/yb-admin \
@@ -126,11 +126,11 @@ Replication lag is computed at the tablet level as follows:
 
 *hybrid_clock_time* is the hybrid clock timestamp on the source's tablet server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest record pulled from the source.
 
-To obtain information about the overall maximum lag, you should check `/metrics` or `/prometheus-metrics` for `async_replication_sent_lag_micros` or `async_replication_committed_lag_micros` and take the maximum of these values across each source's YB-TServer. For information on how to set up the Node Exporter and Prometheus manually, see [Prometheus integration](../../../../explore/observability/prometheus-integration/macos/).
+To obtain information about the overall maximum lag, you should check `/metrics` or `/prometheus-metrics` for `async_replication_sent_lag_micros` or `async_replication_committed_lag_micros` and take the maximum of these values across each source's YB-TServer. For information on how to set up the Node Exporter and Prometheus manually, see [Prometheus integration](../../../../explore/observability/prometheus-integration/).
 
 ### Replication status
 
-You can use `yb-admin` to return the current replication status. The `get_replication_status` command returns the replication status for all *consumer-side* replication streams. An empty `errors` field means the replication stream is healthy.
+You can use yb-admin to return the current replication status. The `get_replication_status` command returns the replication status for all *consumer-side* replication streams. An empty `errors` field means the replication stream is healthy.
 
 ```sh
 ./bin/yb-admin \
@@ -496,15 +496,15 @@ When new tables (or partitions) are created, to ensure that all changes from the
     Replication altered successfully
    ```
 
-#### Adding indexes
+#### Adding indexes in unidirectional replication
 
 To add a new index to an empty table, follow the same steps as described in [Adding Tables (or Partitions)](#adding-tables-or-partitions).
 
 However, to add a new index to a table that already has data, the following additional steps are required to ensure that the index has all the updates:
 
-1. Create an [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) - for example, `my_new index` on the source.
+1. Create the [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) - for example, `my_new_index` on the source.
 1. Wait for index backfill to finish. For more details, refer to YugabyteDB tips on [monitor backfill progress](https://yugabytedb.tips/?p=2215).
-1. Determine the table ID for `my_new index`.
+1. Determine the table ID for `my_new_index`.
 
    ```sql
    yb-admin
@@ -534,8 +534,8 @@ However, to add a new index to a table that already has data, the following addi
    table id: 000033e8000030008000000000004028, CDC bootstrap id: c8cba563e39c43feb66689514488591c
    ```
 
-1. Wait for replication to be 0 on the main table using the replication lag metrics described in [Replication lag](#replication-lag).
-1. Create an [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) on the target.
+1. Wait for replication lag to be 0 on the main table using the replication lag metrics described in [Replication lag](#replication-lag).
+1. Create the same [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) on the target.
 1. Wait for index backfill to finish. For more details, refer to YugabyteDB tips on [monitor backfill progress](https://yugabytedb.tips/?p=2215).
 1. Add the index to replication with the bootstrap ID from Step 4.
 
@@ -552,6 +552,12 @@ However, to add a new index to a table that already has data, the following addi
     ```output
     Replication altered successfully
     ```
+
+#### Adding indexes in bidirectional replication
+
+Stop all write traffic when adding a new index to a table that is bidirectionally replicated.
+
+Follow the same steps as described in [Adding indexes in unidirectional replication](#adding-indexes-in-unidirectional-replication), followed by bootstrapping the index on the target universe and adding it to the source universe (steps 4 and 8 in the opposite direction).
 
 ### Removing objects
 

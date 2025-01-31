@@ -3,7 +3,7 @@ import { Box, makeStyles } from '@material-ui/core';
 import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { YBPanelItem } from '../../panels';
-import { TroubleshootUniverse } from './TroubleshootUniverse';
+import { TroubleshootUniverseRegistrationDetails } from './TroubleshootUniverseRegistrationDetails';
 import {
   TroubleshootingAPI,
   QUERY_KEY as TROUBLESHOOTING_QUERY_KEY
@@ -62,13 +62,12 @@ export const TroubleshootRegistrationDetails = ({
   }
 
   return (
-    <TroubleshootUniverse
+    <TroubleshootUniverseRegistrationDetails
       universeUuid={universeUuid}
       appName={appName}
       timezone={timezone}
       apiUrl={`${TpListData?.[0]?.tpUrl}/api`}
-      platformUrl={TpListData?.[0]?.ybaUrl}
-      metricsUrl={TpListData?.[0]?.metricsUrl}
+      tpUuid={TpListData?.[0]?.uuid}
     />
   );
 };

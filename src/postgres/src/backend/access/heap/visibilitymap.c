@@ -3,7 +3,7 @@
  * visibilitymap.c
  *	  bitmap for tracking visibility of heap tuples
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,7 +17,8 @@
  *		visibilitymap_set	 - set a bit in a previously pinned page
  *		visibilitymap_get_status - get status of bits
  *		visibilitymap_count  - count number of bits set in visibility map
- *		visibilitymap_truncate	- truncate the visibility map
+ *		visibilitymap_prepare_truncate -
+ *			prepare for truncation of the visibility map
  *
  * NOTES
  *
@@ -87,8 +88,10 @@
 
 #include "access/heapam_xlog.h"
 #include "access/visibilitymap.h"
-#include "access/xlog.h"
+#include "access/xloginsert.h"
+#include "access/xlogutils.h"
 #include "miscadmin.h"
+#include "port/pg_bitutils.h"
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
 #include "storage/smgr.h"
@@ -115,47 +118,15 @@
 #define HEAPBLK_TO_MAPBYTE(x) (((x) % HEAPBLOCKS_PER_PAGE) / HEAPBLOCKS_PER_BYTE)
 #define HEAPBLK_TO_OFFSET(x) (((x) % HEAPBLOCKS_PER_BYTE) * BITS_PER_HEAPBLOCK)
 
-/* tables for fast counting of set bits for visible and frozen */
-static const uint8 number_of_ones_for_visible[256] = {
-	0, 1, 0, 1, 1, 2, 1, 2, 0, 1, 0, 1, 1, 2, 1, 2,
-	1, 2, 1, 2, 2, 3, 2, 3, 1, 2, 1, 2, 2, 3, 2, 3,
-	0, 1, 0, 1, 1, 2, 1, 2, 0, 1, 0, 1, 1, 2, 1, 2,
-	1, 2, 1, 2, 2, 3, 2, 3, 1, 2, 1, 2, 2, 3, 2, 3,
-	1, 2, 1, 2, 2, 3, 2, 3, 1, 2, 1, 2, 2, 3, 2, 3,
-	2, 3, 2, 3, 3, 4, 3, 4, 2, 3, 2, 3, 3, 4, 3, 4,
-	1, 2, 1, 2, 2, 3, 2, 3, 1, 2, 1, 2, 2, 3, 2, 3,
-	2, 3, 2, 3, 3, 4, 3, 4, 2, 3, 2, 3, 3, 4, 3, 4,
-	0, 1, 0, 1, 1, 2, 1, 2, 0, 1, 0, 1, 1, 2, 1, 2,
-	1, 2, 1, 2, 2, 3, 2, 3, 1, 2, 1, 2, 2, 3, 2, 3,
-	0, 1, 0, 1, 1, 2, 1, 2, 0, 1, 0, 1, 1, 2, 1, 2,
-	1, 2, 1, 2, 2, 3, 2, 3, 1, 2, 1, 2, 2, 3, 2, 3,
-	1, 2, 1, 2, 2, 3, 2, 3, 1, 2, 1, 2, 2, 3, 2, 3,
-	2, 3, 2, 3, 3, 4, 3, 4, 2, 3, 2, 3, 3, 4, 3, 4,
-	1, 2, 1, 2, 2, 3, 2, 3, 1, 2, 1, 2, 2, 3, 2, 3,
-	2, 3, 2, 3, 3, 4, 3, 4, 2, 3, 2, 3, 3, 4, 3, 4
-};
-static const uint8 number_of_ones_for_frozen[256] = {
-	0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 2, 2, 1, 1, 2, 2,
-	0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 2, 2, 1, 1, 2, 2,
-	1, 1, 2, 2, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 3, 3,
-	1, 1, 2, 2, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 3, 3,
-	0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 2, 2, 1, 1, 2, 2,
-	0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 2, 2, 1, 1, 2, 2,
-	1, 1, 2, 2, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 3, 3,
-	1, 1, 2, 2, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 3, 3,
-	1, 1, 2, 2, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 3, 3,
-	1, 1, 2, 2, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 3, 3,
-	2, 2, 3, 3, 2, 2, 3, 3, 3, 3, 4, 4, 3, 3, 4, 4,
-	2, 2, 3, 3, 2, 2, 3, 3, 3, 3, 4, 4, 3, 3, 4, 4,
-	1, 1, 2, 2, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 3, 3,
-	1, 1, 2, 2, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 3, 3,
-	2, 2, 3, 3, 2, 2, 3, 3, 3, 3, 4, 4, 3, 3, 4, 4,
-	2, 2, 3, 3, 2, 2, 3, 3, 3, 3, 4, 4, 3, 3, 4, 4
-};
+/* Masks for counting subsets of bits in the visibility map. */
+#define VISIBLE_MASK64	UINT64CONST(0x5555555555555555) /* The lower bit of each
+														 * bit pair */
+#define FROZEN_MASK64	UINT64CONST(0xaaaaaaaaaaaaaaaa) /* The upper bit of each
+														 * bit pair */
 
 /* prototypes for internal routines */
 static Buffer vm_readbuf(Relation rel, BlockNumber blkno, bool extend);
-static void vm_extend(Relation rel, BlockNumber nvmblocks);
+static void vm_extend(Relation rel, BlockNumber vm_nblocks);
 
 
 /*
@@ -408,18 +379,16 @@ void
 visibilitymap_count(Relation rel, BlockNumber *all_visible, BlockNumber *all_frozen)
 {
 	BlockNumber mapBlock;
+	BlockNumber nvisible = 0;
+	BlockNumber nfrozen = 0;
 
 	/* all_visible must be specified */
 	Assert(all_visible);
 
-	*all_visible = 0;
-	if (all_frozen)
-		*all_frozen = 0;
-
 	for (mapBlock = 0;; mapBlock++)
 	{
 		Buffer		mapBuffer;
-		unsigned char *map;
+		uint64	   *map;
 		int			i;
 
 		/*
@@ -436,30 +405,45 @@ visibilitymap_count(Relation rel, BlockNumber *all_visible, BlockNumber *all_fro
 		 * immediately stale anyway if anyone is concurrently setting or
 		 * clearing bits, and we only really need an approximate value.
 		 */
-		map = (unsigned char *) PageGetContents(BufferGetPage(mapBuffer));
+		map = (uint64 *) PageGetContents(BufferGetPage(mapBuffer));
 
-		for (i = 0; i < MAPSIZE; i++)
+		StaticAssertStmt(MAPSIZE % sizeof(uint64) == 0,
+						 "unsupported MAPSIZE");
+		if (all_frozen == NULL)
 		{
-			*all_visible += number_of_ones_for_visible[map[i]];
-			if (all_frozen)
-				*all_frozen += number_of_ones_for_frozen[map[i]];
+			for (i = 0; i < MAPSIZE / sizeof(uint64); i++)
+				nvisible += pg_popcount64(map[i] & VISIBLE_MASK64);
+		}
+		else
+		{
+			for (i = 0; i < MAPSIZE / sizeof(uint64); i++)
+			{
+				nvisible += pg_popcount64(map[i] & VISIBLE_MASK64);
+				nfrozen += pg_popcount64(map[i] & FROZEN_MASK64);
+			}
 		}
 
 		ReleaseBuffer(mapBuffer);
 	}
+
+	*all_visible = nvisible;
+	if (all_frozen)
+		*all_frozen = nfrozen;
 }
 
 /*
- *	visibilitymap_truncate - truncate the visibility map
- *
- * The caller must hold AccessExclusiveLock on the relation, to ensure that
- * other backends receive the smgr invalidation event that this function sends
- * before they access the VM again.
+ *	visibilitymap_prepare_truncate -
+ *			prepare for truncation of the visibility map
  *
  * nheapblocks is the new size of the heap.
+ *
+ * Return the number of blocks of new visibility map.
+ * If it's InvalidBlockNumber, there is nothing to truncate;
+ * otherwise the caller is responsible for calling smgrtruncate()
+ * to truncate the visibility map pages.
  */
-void
-visibilitymap_truncate(Relation rel, BlockNumber nheapblocks)
+BlockNumber
+visibilitymap_prepare_truncate(Relation rel, BlockNumber nheapblocks)
 {
 	BlockNumber newnblocks;
 
@@ -472,14 +456,12 @@ visibilitymap_truncate(Relation rel, BlockNumber nheapblocks)
 	elog(DEBUG1, "vm_truncate %s %d", RelationGetRelationName(rel), nheapblocks);
 #endif
 
-	RelationOpenSmgr(rel);
-
 	/*
 	 * If no visibility map has been created yet for this relation, there's
 	 * nothing to truncate.
 	 */
-	if (!smgrexists(rel->rd_smgr, VISIBILITYMAP_FORKNUM))
-		return;
+	if (!smgrexists(RelationGetSmgr(rel), VISIBILITYMAP_FORKNUM))
+		return InvalidBlockNumber;
 
 	/*
 	 * Unless the new size is exactly at a visibility map page boundary, the
@@ -500,7 +482,7 @@ visibilitymap_truncate(Relation rel, BlockNumber nheapblocks)
 		if (!BufferIsValid(mapBuffer))
 		{
 			/* nothing to do, the file was already smaller */
-			return;
+			return InvalidBlockNumber;
 		}
 
 		page = BufferGetPage(mapBuffer);
@@ -545,23 +527,13 @@ visibilitymap_truncate(Relation rel, BlockNumber nheapblocks)
 	else
 		newnblocks = truncBlock;
 
-	if (smgrnblocks(rel->rd_smgr, VISIBILITYMAP_FORKNUM) <= newnblocks)
+	if (smgrnblocks(RelationGetSmgr(rel), VISIBILITYMAP_FORKNUM) <= newnblocks)
 	{
 		/* nothing to do, the file was already smaller than requested size */
-		return;
+		return InvalidBlockNumber;
 	}
 
-	/* Truncate the unused VM pages, and send smgr inval message */
-	smgrtruncate(rel->rd_smgr, VISIBILITYMAP_FORKNUM, newnblocks);
-
-	/*
-	 * We might as well update the local smgr_vm_nblocks setting. smgrtruncate
-	 * sent an smgr cache inval message, which will cause other backends to
-	 * invalidate their copy of smgr_vm_nblocks, and this one too at the next
-	 * command boundary.  But this ensures it isn't outright wrong until then.
-	 */
-	if (rel->rd_smgr)
-		rel->rd_smgr->smgr_vm_nblocks = newnblocks;
+	return newnblocks;
 }
 
 /*
@@ -574,31 +546,29 @@ static Buffer
 vm_readbuf(Relation rel, BlockNumber blkno, bool extend)
 {
 	Buffer		buf;
+	SMgrRelation reln;
 
 	/*
-	 * We might not have opened the relation at the smgr level yet, or we
-	 * might have been forced to close it by a sinval message.  The code below
-	 * won't necessarily notice relation extension immediately when extend =
-	 * false, so we rely on sinval messages to ensure that our ideas about the
-	 * size of the map aren't too far out of date.
+	 * Caution: re-using this smgr pointer could fail if the relcache entry
+	 * gets closed.  It's safe as long as we only do smgr-level operations
+	 * between here and the last use of the pointer.
 	 */
-	RelationOpenSmgr(rel);
+	reln = RelationGetSmgr(rel);
 
 	/*
 	 * If we haven't cached the size of the visibility map fork yet, check it
 	 * first.
 	 */
-	if (rel->rd_smgr->smgr_vm_nblocks == InvalidBlockNumber)
+	if (reln->smgr_cached_nblocks[VISIBILITYMAP_FORKNUM] == InvalidBlockNumber)
 	{
-		if (smgrexists(rel->rd_smgr, VISIBILITYMAP_FORKNUM))
-			rel->rd_smgr->smgr_vm_nblocks = smgrnblocks(rel->rd_smgr,
-														VISIBILITYMAP_FORKNUM);
+		if (smgrexists(reln, VISIBILITYMAP_FORKNUM))
+			smgrnblocks(reln, VISIBILITYMAP_FORKNUM);
 		else
-			rel->rd_smgr->smgr_vm_nblocks = 0;
+			reln->smgr_cached_nblocks[VISIBILITYMAP_FORKNUM] = 0;
 	}
 
 	/* Handle requests beyond EOF */
-	if (blkno >= rel->rd_smgr->smgr_vm_nblocks)
+	if (blkno >= reln->smgr_cached_nblocks[VISIBILITYMAP_FORKNUM])
 	{
 		if (extend)
 			vm_extend(rel, blkno + 1);
@@ -646,6 +616,7 @@ vm_extend(Relation rel, BlockNumber vm_nblocks)
 {
 	BlockNumber vm_nblocks_now;
 	PGAlignedBlock pg;
+	SMgrRelation reln;
 
 	PageInit((Page) pg.data, BLCKSZ, 0);
 
@@ -661,27 +632,32 @@ vm_extend(Relation rel, BlockNumber vm_nblocks)
 	 */
 	LockRelationForExtension(rel, ExclusiveLock);
 
-	/* Might have to re-open if a cache flush happened */
-	RelationOpenSmgr(rel);
+	/*
+	 * Caution: re-using this smgr pointer could fail if the relcache entry
+	 * gets closed.  It's safe as long as we only do smgr-level operations
+	 * between here and the last use of the pointer.
+	 */
+	reln = RelationGetSmgr(rel);
 
 	/*
 	 * Create the file first if it doesn't exist.  If smgr_vm_nblocks is
 	 * positive then it must exist, no need for an smgrexists call.
 	 */
-	if ((rel->rd_smgr->smgr_vm_nblocks == 0 ||
-		 rel->rd_smgr->smgr_vm_nblocks == InvalidBlockNumber) &&
-		!smgrexists(rel->rd_smgr, VISIBILITYMAP_FORKNUM))
-		smgrcreate(rel->rd_smgr, VISIBILITYMAP_FORKNUM, false);
+	if ((reln->smgr_cached_nblocks[VISIBILITYMAP_FORKNUM] == 0 ||
+		 reln->smgr_cached_nblocks[VISIBILITYMAP_FORKNUM] == InvalidBlockNumber) &&
+		!smgrexists(reln, VISIBILITYMAP_FORKNUM))
+		smgrcreate(reln, VISIBILITYMAP_FORKNUM, false);
 
-	vm_nblocks_now = smgrnblocks(rel->rd_smgr, VISIBILITYMAP_FORKNUM);
+	/* Invalidate cache so that smgrnblocks() asks the kernel. */
+	reln->smgr_cached_nblocks[VISIBILITYMAP_FORKNUM] = InvalidBlockNumber;
+	vm_nblocks_now = smgrnblocks(reln, VISIBILITYMAP_FORKNUM);
 
 	/* Now extend the file */
 	while (vm_nblocks_now < vm_nblocks)
 	{
 		PageSetChecksumInplace((Page) pg.data, vm_nblocks_now);
 
-		smgrextend(rel->rd_smgr, VISIBILITYMAP_FORKNUM, vm_nblocks_now,
-				   pg.data, false);
+		smgrextend(reln, VISIBILITYMAP_FORKNUM, vm_nblocks_now, pg.data, false);
 		vm_nblocks_now++;
 	}
 
@@ -692,10 +668,7 @@ vm_extend(Relation rel, BlockNumber vm_nblocks)
 	 * to keep checking for creation or extension of the file, which happens
 	 * infrequently.
 	 */
-	CacheInvalidateSmgr(rel->rd_smgr->smgr_rnode);
-
-	/* Update local cache with the up-to-date size */
-	rel->rd_smgr->smgr_vm_nblocks = vm_nblocks_now;
+	CacheInvalidateSmgr(reln->smgr_rnode);
 
 	UnlockRelationForExtension(rel, ExclusiveLock);
 }

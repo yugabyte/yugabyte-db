@@ -10,11 +10,18 @@ List YugabyteDB Anywhere tasks
 yba task list [flags]
 ```
 
+### Examples
+
+```
+yba task list
+```
+
 ### Options
 
 ```
-      --task-uuid string   [Optional] UUID of the task.
-  -h, --help               help for list
+  -u, --uuid string            [Optional] UUID of the task.
+      --universe-name string   [Optional] The name of the universe whose tasks are to be listed.
+  -h, --help                   help for list
 ```
 
 ### Options inherited from parent commands

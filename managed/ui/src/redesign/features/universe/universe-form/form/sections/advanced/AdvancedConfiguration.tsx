@@ -1,14 +1,16 @@
-import { FC, useContext } from 'react';
+import { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWatch } from 'react-hook-form';
 import { Box, Typography } from '@material-ui/core';
 import {
   AccessKeysField,
   ARNField,
+  ConnectionPoolingField,
   DBVersionField,
   DeploymentPortsField,
   IPV6Field,
   NetworkAccessField,
+  PGCompatibiltyField,
   SystemDField
 } from '../../fields';
 import {
@@ -18,10 +20,10 @@ import {
   RunTimeConfigEntry,
   UniverseFormConfigurationProps
 } from '../../../utils/dto';
+import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 import { PROVIDER_FIELD } from '../../../utils/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
-import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 
 export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurationProps) => {
   const classes = useSectionStyles();
@@ -35,10 +37,9 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const isCreatePrimary = isCreateMode && isPrimary; //Editing Primary Cluster
   const isCreateRR = !newUniverse && isCreateMode && !isPrimary; //Adding Async Cluster to an existing Universe
 
-  // Value of runtime config key
-  const isReleasesEnabled =
+  const isConnectionPoolEnabled =
     runtimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.RELEASES_REDESIGN_UI_FEATURE_FLAG
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ENABLE_CONNECTION_POOLING
     )?.value === 'true';
 
   //field data
@@ -54,16 +55,16 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
     >
       <Typography variant="h4">{t('universeForm.advancedConfig.title')}</Typography>
       <Box display="flex" width="100%" mt={4}>
-        <DBVersionField disabled={!isCreatePrimary} isReleasesEnabled={isReleasesEnabled} />
+        <DBVersionField disabled={!isCreatePrimary} />
       </Box>
       {provider.code !== CloudType.kubernetes && (
         <Box display="flex" width="100%" mt={2}>
-          <AccessKeysField disabled={!isCreatePrimary && !isCreateRR} />
+          <AccessKeysField disabled={!isCreatePrimary && !isCreateRR} isEditMode={!isCreateMode} />
         </Box>
       )}
       {provider.code === CloudType.aws && (
         <Box display="flex" width="100%" mt={2}>
-          <ARNField disabled={!isCreatePrimary && !isCreateRR} />
+          <ARNField disabled={!isPrimary} />
         </Box>
       )}
       {provider.code === CloudType.kubernetes && (
@@ -76,13 +77,26 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
           </Box>
         </>
       )}
+      {isPrimary && (
+        <Box display="flex" width="100%" mt={2.5}>
+          <PGCompatibiltyField disabled={!isCreateMode} />
+        </Box>
+      )}
+      {isPrimary && isConnectionPoolEnabled && (
+        <Box display="flex" width="100%" mt={2.5}>
+          <ConnectionPoolingField disabled={!isCreateMode} />
+        </Box>
+      )}
       {provider.code !== CloudType.kubernetes && (
         <>
           <Box display="flex" width="100%" mt={2.5}>
             <SystemDField disabled={!isCreatePrimary} />
           </Box>
           <Box display="flex" width="100%" mt={2.5}>
-            <DeploymentPortsField disabled={!isCreatePrimary} isEditMode={!isCreateMode} />
+            <DeploymentPortsField
+              disabled={provider.code === CloudType.kubernetes}
+              isEditMode={!isCreateMode}
+            />
           </Box>
         </>
       )}

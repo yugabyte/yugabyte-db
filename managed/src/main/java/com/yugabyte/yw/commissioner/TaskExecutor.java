@@ -9,7 +9,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -18,6 +17,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.inject.Provider;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DrainableMap;
@@ -36,13 +36,14 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskErrorCode;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.YBAError;
+import com.yugabyte.yw.models.helpers.YBAError.Code;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Summary;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -65,10 +66,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.Builder;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
@@ -237,6 +242,17 @@ public class TaskExecutor {
   }
 
   /**
+   * It returns a boolean showing whether the task can be rolled back or not.
+   *
+   * <p>See {@link TaskExecutor#isTaskRetryable(Class)}
+   */
+  static boolean canTaskRollback(Class<? extends ITask> taskClass) {
+    checkNotNull(taskClass, "Task class must be non-null");
+    Optional<CanRollback> optional = CommonUtils.isAnnotatedWith(taskClass, CanRollback.class);
+    return optional.map(CanRollback::enabled).orElse(false);
+  }
+
+  /**
    * Returns the task type for the given task class.
    *
    * @param taskClass the given task class.
@@ -263,9 +279,7 @@ public class TaskExecutor {
     this.taskOwner = Util.getHostname();
     this.skipSubTaskAbortableCheck = true;
     shutdownHookHandler.addShutdownHook(
-        TaskExecutor.this,
-        (taskExecutor) -> taskExecutor.shutdown(Duration.ofMinutes(2)),
-        100 /* weight */);
+        this, taskExecutor -> taskExecutor.shutdown(Duration.ofMinutes(2)), 100 /* weight */);
     this.taskTypeMap = taskTypeMap;
     this.inverseTaskTypeMap = inverseTaskTypeMap;
   }
@@ -278,13 +292,11 @@ public class TaskExecutor {
       log.info("TaskExecutor is shutting down");
       runnableTasks.sealMap();
       Instant abortTime = Instant.now();
-      synchronized (runnableTasks) {
-        runnableTasks.forEach(
-            (uuid, runnable) -> {
-              runnable.setAbortTime(abortTime);
-              runnable.cancelWaiterIfAborted();
-            });
-      }
+      runnableTasks.forEach(
+          (uuid, runnable) -> {
+            runnable.setAbortTime(abortTime);
+            runnable.cancelWaiterIfAborted();
+          });
     }
     try {
       // Wait for all the RunnableTask to be done.
@@ -310,6 +322,15 @@ public class TaskExecutor {
     }
   }
 
+  /** Task params for creating a RunnableTask. */
+  @Builder
+  @Getter
+  public static class TaskParams {
+    private final TaskType taskType;
+    private final ITaskParams taskParams;
+    @Nullable private final UUID taskUuid;
+  }
+
   /**
    * Instantiates the task for the task class.
    *
@@ -324,36 +345,26 @@ public class TaskExecutor {
   /**
    * Creates a RunnableTask instance for a task with the given parameters.
    *
-   * @param taskType the task type.
-   * @param taskParams the task parameters.
+   * @param params the runnable task creation params.
+   * @return runnable task.
    */
-  public RunnableTask createRunnableTask(TaskType taskType, ITaskParams taskParams, UUID taskUUID) {
-    checkNotNull(taskType, "Task type must be set");
-    checkNotNull(taskParams, "Task params must be set");
-    ITask task = taskTypeMap.get(taskType).get();
-    task.initialize(taskParams);
-    return createRunnableTask(task, taskUUID);
+  public RunnableTask createRunnableTask(TaskParams params) {
+    checkNotNull(params, "Creation params cannot be null");
+    checkNotNull(params.getTaskType(), "Task type must be set");
+    checkNotNull(params.getTaskParams(), "Task params must be set");
+    ITask task = taskTypeMap.get(params.getTaskType()).get();
+    task.initialize(params.getTaskParams());
+    return createRunnableTask(task, null);
   }
 
-  /**
-   * Creates a RunnableTask instance for the given task.
-   *
-   * @param task the task.
-   */
-  public RunnableTask createRunnableTask(ITask task, UUID taskUUID) {
-    checkNotNull(task, "Task must be set");
-    try {
-      task.validateParams(task.isFirstTry());
-    } catch (PlatformServiceException e) {
-      log.error("Params validation failed for task " + task, e);
-      throw e;
-    } catch (Exception e) {
-      log.error("Params validation failed for task " + task, e);
-      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
-    }
+  /* Creates a RunnableTask instance for the given task. */
+  @VisibleForTesting
+  RunnableTask createRunnableTask(ITask task, UUID taskUUID) {
     TaskInfo taskInfo = createTaskInfo(task, taskUUID);
     taskInfo.setPosition(-1);
     taskInfo.save();
+    task.setTaskUUID(taskInfo.getUuid());
+    task.setUserTaskUUID(taskInfo.getUuid());
     return new RunnableTask(task, taskInfo);
   }
 
@@ -365,27 +376,44 @@ public class TaskExecutor {
    * @param taskExecutorService the ExecutorService for this task.
    */
   public UUID submit(RunnableTask runnableTask, ExecutorService taskExecutorService) {
-    checkTaskExecutorState();
-    checkHAFollowerState();
     checkNotNull(runnableTask, "Task runnable must not be null");
-    checkNotNull(taskExecutorService, "Task executor service must not be null");
-    UUID taskUUID = runnableTask.getTaskUUID();
-    runnableTasks.put(taskUUID, runnableTask);
     try {
-      runnableTask.updateScheduledTime();
-      runnableTask.future = taskExecutorService.submit(runnableTask);
+      checkNotNull(taskExecutorService, "Task executor service must not be null");
+      checkTaskExecutorState();
+      checkHAFollowerState();
+      ITask task = runnableTask.getTask();
+      try {
+        task.validateParams(task.isFirstTry());
+      } catch (PlatformServiceException e) {
+        log.error("Params validation failed for task " + task, e);
+        throw e;
+      } catch (Exception e) {
+        log.error("Params validation failed for task " + task, e);
+        throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+      }
+      UUID taskUUID = runnableTask.getTaskUUID();
+      runnableTasks.put(taskUUID, runnableTask);
+      try {
+        runnableTask.updateScheduledTime();
+        runnableTask.future = taskExecutorService.submit(runnableTask);
+        return taskUUID;
+      } catch (Exception e) {
+        // Update task state on submission failure.
+        runnableTasks.remove(taskUUID);
+        log.error("Error occurred in submitting the task", e);
+        String msg =
+            (e instanceof RejectedExecutionException)
+                ? "Task submission failed as too many tasks are running"
+                : "Error occurred during task submission for execution";
+        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
+      }
     } catch (Exception e) {
-      // Update task state on submission failure.
-      runnableTasks.remove(taskUUID);
       runnableTask.updateTaskDetailsOnError(TaskInfo.State.Failure, e);
-      log.error("Error occurred in submitting the task", e);
-      String msg =
-          (e instanceof RejectedExecutionException)
-              ? "Task submission failed as too many tasks are running"
-              : "Error occurred during task submission for execution";
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
+      if (e instanceof PlatformServiceException) {
+        throw (PlatformServiceException) e;
+      }
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-    return taskUUID;
   }
 
   // This waits for the parent task to complete indefinitely.
@@ -408,7 +436,7 @@ public class TaskExecutor {
       }
     } catch (ExecutionException e) {
       Throwables.propagate(e.getCause());
-    } catch (Exception e) {
+    } catch (Throwable e) {
       Throwables.propagate(e);
     }
   }
@@ -440,12 +468,7 @@ public class TaskExecutor {
     if (!force && !isTaskAbortable(task.getClass())) {
       throw new RuntimeException("Task " + task.getName() + " is not abortable");
     }
-    // Signal abort to the task.
-    if (runnableTask.getAbortTime() == null) {
-      // This is not atomic but it is ok.
-      runnableTask.setAbortTime(Instant.now());
-      runnableTask.cancelWaiterIfAborted();
-    }
+    runnableTask.abort(Duration.ZERO);
     // Update the task state in the memory and DB.
     runnableTask.compareAndSetTaskState(
         Sets.immutableEnumSet(State.Initializing, State.Created, State.Running), State.Abort);
@@ -459,7 +482,7 @@ public class TaskExecutor {
    * @return SubTaskGroup
    */
   public SubTaskGroup createSubTaskGroup(String name) {
-    return createSubTaskGroup(name, SubTaskGroupType.Invalid, false);
+    return createSubTaskGroup(name, SubTaskGroupType.Configuring, false);
   }
 
   /**
@@ -482,7 +505,8 @@ public class TaskExecutor {
    */
   public SubTaskGroup createSubTaskGroup(
       String name, ExecutorService executorService, boolean ignoreErrors) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup(name, SubTaskGroupType.Invalid, ignoreErrors);
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(name, SubTaskGroupType.Configuring, ignoreErrors);
     subTaskGroup.setSubTaskExecutor(executorService);
     return subTaskGroup;
   }
@@ -519,6 +543,7 @@ public class TaskExecutor {
         RedactingService.filterSecretFields(task.getTaskParams(), RedactionTarget.APIS));
     // Set the owner info.
     taskInfo.setOwner(taskOwner);
+    taskInfo.setVersion(Util.getYbaVersion());
     return taskInfo;
   }
 
@@ -534,8 +559,13 @@ public class TaskExecutor {
         () -> new IllegalStateException(String.format("Task(%s) is not present", taskUUID)));
   }
 
-  // Optionally returns the task runnable with the given task UUID.
-  private Optional<RunnableTask> maybeGetRunnableTask(UUID taskUUID) {
+  /**
+   * Returns an optional of the RunnableTask instance for the given task UUID if present.
+   *
+   * @param taskUUID the task UUID.
+   * @return optional of the RunnableTask.
+   */
+  public Optional<RunnableTask> maybeGetRunnableTask(UUID taskUUID) {
     return Optional.ofNullable(runnableTasks.get(taskUUID));
   }
 
@@ -570,7 +600,7 @@ public class TaskExecutor {
     private int position;
     // Optional executor service for the subtasks.
     private ExecutorService executorService;
-    private SubTaskGroupType subTaskGroupType = SubTaskGroupType.Invalid;
+    private SubTaskGroupType subTaskGroupType = SubTaskGroupType.Configuring;
 
     // It is instantiated internally.
     private SubTaskGroup(String name, SubTaskGroupType subTaskGroupType, boolean ignoreErrors) {
@@ -615,6 +645,10 @@ public class TaskExecutor {
 
     public String getName() {
       return name;
+    }
+
+    public SubTaskGroupType getSubTaskGroupType() {
+      return subTaskGroupType;
     }
 
     /** Returns the optional ExecutorService for the subtasks in this group. */
@@ -676,7 +710,7 @@ public class TaskExecutor {
             anyEx = (anyEx != null) ? anyEx : e.getCause();
             removeCompletedSubTask(iter, runnableSubTask, e.getCause());
             // Call parent task abort if abortOnFailure set.
-            if (abortOnFailure) {
+            if (abortOnFailure && !ignoreErrors) {
               runnableTask.setAbortTime(Instant.now());
               runnableTask.cancelWaiterIfAborted();
             }
@@ -688,7 +722,6 @@ public class TaskExecutor {
               log.trace("Task {} has taken {}ms", parentTaskUUID, elapsed.toMillis());
             }
             Duration timeout = runnableSubTask.getTimeLimit();
-            Instant abortTime = runnableTask.getAbortTime();
             // If the subtask execution takes long, it is interrupted.
             if (!timeout.isZero() && elapsed.compareTo(timeout) > 0) {
               anyEx = e;
@@ -697,18 +730,26 @@ public class TaskExecutor {
               // Update the subtask state to aborted if the execution timed out.
               runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
               removeCompletedSubTask(iter, runnableSubTask, e);
-            } else if (abortTime != null
-                && Duration.between(abortTime, Instant.now()).compareTo(defaultAbortTaskTimeout) > 0
-                && (skipSubTaskAbortableCheck
-                    || isTaskAbortable(runnableSubTask.getTask().getClass()))) {
-              future.cancel(true);
-              // Report aborted to the parent task.
-              // Update the subtask state to aborted if the execution timed out.
-              Throwable thisEx = new CancellationException(e.getMessage());
-              anyEx = (anyEx != null) ? anyEx : thisEx;
-              runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, thisEx);
-              removeCompletedSubTask(iter, runnableSubTask, anyEx);
+            } else if (skipSubTaskAbortableCheck
+                || isTaskAbortable(runnableSubTask.getTask().getClass())) {
+              if (runnableSubTask.isAbortTimeReached(defaultAbortTaskTimeout)) {
+                // Cancel waiter if it was not done previously.
+                runnableTask.cancelWaiterIfAborted();
+                future.cancel(true);
+                // Report aborted to the parent task.
+                // Update the subtask state to aborted if the execution timed out.
+                Throwable thisEx =
+                    new CancellationException(
+                        "Task " + runnableSubTask.getTaskType() + " is aborted");
+                anyEx = (anyEx != null) ? anyEx : thisEx;
+                runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, thisEx);
+                removeCompletedSubTask(iter, runnableSubTask, anyEx);
+              } else if (runnableSubTask.isAbortTimeReached(Duration.ZERO)) {
+                // Cancel waiter first.
+                runnableTask.cancelWaiterIfAborted();
+              }
             }
+
           } catch (CancellationException e) {
             anyEx = (anyEx != null) ? anyEx : e;
             runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
@@ -719,10 +760,10 @@ public class TaskExecutor {
             anyEx = (anyEx != null) ? anyEx : thisEx;
             runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, thisEx);
             removeCompletedSubTask(iter, runnableSubTask, anyEx);
-          } catch (Exception e) {
-            anyEx = e;
-            runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Failure, e);
-            removeCompletedSubTask(iter, runnableSubTask, e);
+          } catch (Throwable th) {
+            anyEx = th;
+            runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Failure, th);
+            removeCompletedSubTask(iter, runnableSubTask, th);
           }
         }
       }
@@ -813,6 +854,10 @@ public class TaskExecutor {
 
     public JsonNode get(String key) {
       return data.get(key);
+    }
+
+    public <T> void putObject(String key, T object) {
+      data.put(key, Json.toJson(object));
     }
 
     public <T> T get(String key, Class<T> clazz) {
@@ -918,19 +963,18 @@ public class TaskExecutor {
         }
         writeTaskWaitMetric(taskLabels, taskScheduledTime, taskStartTime);
         publishBeforeTask();
-        if (getAbortTime() != null) {
+        if (isAbortTimeReached(Duration.ZERO)) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
         }
         if (shouldRun(getTask())) {
           setTaskState(TaskInfo.State.Running);
           log.debug("Invoking run() of task {}", task.getName());
-          task.setTaskUUID(getTaskUUID());
           task.run();
         } else {
           isTaskSkipped = true;
           log.info("Skipping task {} beause it is set to not run", getTaskInfo());
         }
-      } catch (Exception e) {
+      } catch (Throwable e) {
         t = e;
       } finally {
         t = handleAfterRun(getTask(), t);
@@ -958,10 +1002,6 @@ public class TaskExecutor {
       }
     }
 
-    public synchronized boolean isTaskRunning() {
-      return taskInfo.getTaskState() == TaskInfo.State.Running;
-    }
-
     public synchronized boolean hasTaskCompleted() {
       return taskInfo.hasCompleted();
     }
@@ -972,7 +1012,11 @@ public class TaskExecutor {
     }
 
     public UUID getTaskUUID() {
-      return taskInfo.getTaskUUID();
+      return taskInfo.getUuid();
+    }
+
+    public TaskType getTaskType() {
+      return taskInfo.getTaskType();
     }
 
     // This is invoked from tasks to save the updated task details generally in transaction with
@@ -985,7 +1029,7 @@ public class TaskExecutor {
 
     protected abstract Map<String, String> getTaskMetricLabels();
 
-    protected abstract Instant getAbortTime();
+    protected abstract boolean isAbortTimeReached(@Nullable Duration graceTime);
 
     protected abstract TaskExecutionListener getTaskExecutionListener();
 
@@ -1005,10 +1049,6 @@ public class TaskExecutor {
 
     void updateScheduledTime() {
       taskScheduledTime = Instant.now();
-    }
-
-    TaskType getTaskType() {
-      return taskInfo.getTaskType();
     }
 
     synchronized void setPosition(int position) {
@@ -1044,17 +1084,22 @@ public class TaskExecutor {
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       taskInfo.refresh();
-      TaskError taskError = new TaskError();
-      // Method maskConfig does not modify the input as it makes a deep-copy.
-      String maskedTaskParams =
-          CommonUtils.maskConfig((ObjectNode) taskInfo.getTaskParams()).toString();
+      if (TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
+        log.info(
+            "Task {}({}) is already updated with error state {}",
+            taskInfo.getTaskType(),
+            taskInfo.getUuid(),
+            taskInfo.getTaskState());
+        return;
+      }
+      YBAError taskError = null;
+      // Method getRedactedParams does not modify the input as it makes a deep-copy.
+      String redactedTaskParams = taskInfo.getRedactedParams().toString();
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
-        taskError.setCode(TaskErrorCode.PLATFORM_SHUTDOWN);
-        taskError.setMessage("Platform shutdown");
+        taskError = new YBAError(Code.PLATFORM_SHUTDOWN, "Platform shutdown");
       } else if (t instanceof TaskExecutionException) {
         TaskExecutionException e = (TaskExecutionException) t;
-        taskError.setCode(e.getCode());
-        taskError.setMessage(e.getMessage());
+        taskError = new YBAError(e.getCode(), e.getMessage());
       } else {
         Throwable cause = t;
         // If an exception is eaten up by just wrapping the cause as RuntimeException(e),
@@ -1065,15 +1110,15 @@ public class TaskExecutor {
         String errorString =
             String.format(
                 "Failed to execute task %s, hit error:\n\n %s.",
-                StringUtils.abbreviate(maskedTaskParams, 500),
+                StringUtils.abbreviate(redactedTaskParams, 500),
                 StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
-        taskError.setMessage(errorString);
+        taskError = new YBAError(Code.INTERNAL_ERROR, errorString, cause.getMessage());
       }
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),
-          taskInfo.getTaskUUID(),
-          maskedTaskParams,
+          taskInfo.getUuid(),
+          redactedTaskParams,
           t);
 
       if (log.isDebugEnabled()) {
@@ -1112,7 +1157,7 @@ public class TaskExecutor {
     private final AtomicReference<TaskExecutionListener> taskExecutionListenerRef =
         new AtomicReference<>();
     // Time when the abort is set.
-    private volatile Instant abortTime;
+    private final AtomicReference<Supplier<Instant>> abortTimeSupplierRef = new AtomicReference<>();
 
     RunnableTask(ITask task, TaskInfo taskInfo) {
       super(task, taskInfo);
@@ -1140,12 +1185,11 @@ public class TaskExecutor {
     /** Invoked by the ExecutorService. Do not invoke this directly. */
     @Override
     public void run() {
-      UUID taskUUID = getTaskInfo().getTaskUUID();
+      UUID taskUUID = getTaskInfo().getUuid();
       try {
-        getTask().setUserTaskUUID(taskUUID);
         super.run();
-      } catch (Exception e) {
-        Throwables.propagate(e);
+      } catch (Throwable t) {
+        Throwables.propagate(t);
       } finally {
         // Remove the task.
         runnableTasks.remove(taskUUID);
@@ -1186,13 +1230,37 @@ public class TaskExecutor {
           getTaskInfo().getTaskType().name());
     }
 
-    @Override
-    protected Instant getAbortTime() {
+    private Instant getAbortTime() {
+      Supplier<Instant> supplier = abortTimeSupplierRef.get();
+      if (supplier == null) {
+        return null;
+      }
+      Instant abortTime = supplier.get();
+      if (abortTime == null) {
+        throw new IllegalStateException("Abort time must be set by the supplier");
+      }
       return abortTime;
     }
 
     private void setAbortTime(Instant abortTime) {
-      this.abortTime = abortTime;
+      abortTimeSupplierRef.set(() -> checkNotNull(abortTime, "Abort time must be set"));
+    }
+
+    /**
+     * Checks if the future abort time is reached with the additional graceTime if it is provided.
+     */
+    @Override
+    protected boolean isAbortTimeReached(@Nullable Duration graceTime) {
+      Instant abortTime = getAbortTime();
+      if (abortTime == null) {
+        return false;
+      }
+      long graceMillis = 0L;
+      Instant actualAbortTime = abortTime;
+      if (graceTime != null && (graceMillis = graceTime.toMillis()) > 0) {
+        actualAbortTime = actualAbortTime.plus(graceMillis, ChronoUnit.MILLIS);
+      }
+      return Instant.now().isAfter(actualAbortTime);
     }
 
     @Override
@@ -1205,11 +1273,29 @@ public class TaskExecutor {
       return getTaskUUID();
     }
 
-    public synchronized void doHeartbeat() {
-      log.trace("Heartbeating task {}", getTaskUUID());
-      TaskInfo taskInfo = TaskInfo.getOrBadRequest(getTaskUUID());
-      taskInfo.markAsDirty();
-      taskInfo.update();
+    // Fix the SubTaskGroupType by replacing the default 'Configuring' with the last non-default
+    // type if possible. Similar logic is done on serving the API response for task details.
+    private void fixSubTaskGroupType() {
+      SubTaskGroupType lastNonDefaultGroupType = SubTaskGroupType.Configuring;
+      for (SubTaskGroup subTaskGroup : subTaskGroups) {
+        if (subTaskGroup.getSubTaskCount() == 0) {
+          continue;
+        }
+        if (subTaskGroup.getSubTaskGroupType() == SubTaskGroupType.Configuring) {
+          log.warn(
+              "SubTaskGroupType is set to default '{}' for {}",
+              SubTaskGroupType.Configuring,
+              subTaskGroup.getName());
+        } else {
+          // Update it to the non default SubTaskGroupType.
+          lastNonDefaultGroupType = subTaskGroup.getSubTaskGroupType();
+        }
+        if (lastNonDefaultGroupType != subTaskGroup.getSubTaskGroupType()) {
+          // Current SubTaskGroupType is the default type which needs to be overridden.
+          log.info("Using the last SubTaskGroupType {}", lastNonDefaultGroupType);
+          subTaskGroup.setSubTaskGroupType(lastNonDefaultGroupType);
+        }
+      }
     }
 
     /**
@@ -1245,13 +1331,11 @@ public class TaskExecutor {
      * @param abortOnFailure boolean whether to abort peer subtasks on failure of one subtask.
      */
     public void runSubTasks(boolean abortOnFailure) {
-      RuntimeException anyRe = null;
+      Throwable anyThrowable = null;
       try {
+        fixSubTaskGroupType();
         for (SubTaskGroup subTaskGroup : subTaskGroups) {
           if (subTaskGroup.getSubTaskCount() == 0) {
-            // TODO Some groups are added without any subtasks in a task like
-            // CreateKubernetesUniverse.
-            // It needs to be fixed first before this can prevent empty groups from getting added.
             continue;
           }
           ExecutorService executorService = subTaskGroup.getSubTaskExecutorService();
@@ -1272,22 +1356,29 @@ public class TaskExecutor {
             }
           } catch (CancellationException e) {
             throw new CancellationException(subTaskGroup.toString() + " is cancelled.");
-          } catch (RuntimeException e) {
+          } catch (Throwable t) {
             if (subTaskGroup.ignoreErrors) {
-              log.error("Ignoring error for " + subTaskGroup, e);
+              log.error("Ignoring error for " + subTaskGroup, t);
+            } else if (t instanceof Error) {
+              // Error is propagated as it is.
+              throw (Error) t;
             } else {
               // Postpone throwing this error later when all the subgroups are done.
-              throw new RuntimeException(subTaskGroup + " failed.", e);
+              throw new RuntimeException(subTaskGroup + " failed.", t);
             }
-            anyRe = e;
+            anyThrowable = t;
           }
         }
       } finally {
         // Clear the subtasks so that new subtasks can be run from the clean state.
         subTaskGroups.clear();
       }
-      if (anyRe != null) {
-        throw new RuntimeException("One or more SubTaskGroups failed while running.", anyRe);
+      if (anyThrowable != null) {
+        if (anyThrowable instanceof Error) {
+          // Error is propagated as it is.
+          throw (Error) anyThrowable;
+        }
+        throw new RuntimeException("One or more SubTaskGroups failed while running.", anyThrowable);
       }
     }
 
@@ -1314,6 +1405,31 @@ public class TaskExecutor {
     void cancelWaiterIfAborted() {
       if (getAbortTime() != null) {
         waiterLatch.countDown();
+      }
+    }
+
+    // Restricted access to package level for internal use.
+    boolean isRunning() {
+      return runnableTasks.containsKey(getTaskUUID());
+    }
+
+    // Restricted access to package level for internal use.
+    // Sets a supplier for abort time on request.
+    void setAbortTimeSupplier(Supplier<Instant> abortTimeSupplier) {
+      abortTimeSupplierRef.compareAndSet(null, abortTimeSupplier);
+    }
+
+    // Restricted access to package level for internal use.
+    void abort(@Nullable Duration delay) {
+      Instant abortTime = Instant.now();
+      if (delay != null && delay.toMillis() > 0) {
+        abortTime = abortTime.plus(delay.toMillis(), ChronoUnit.MILLIS);
+      }
+      Instant currentAbortTime = getAbortTime();
+      // Signal abort to the task.
+      if (currentAbortTime == null || currentAbortTime.isAfter(abortTime)) {
+        log.info("Aborting task {} in {} secs", getTaskUUID(), abortTime);
+        setAbortTime(abortTime);
       }
     }
 
@@ -1352,8 +1468,6 @@ public class TaskExecutor {
 
     @Override
     public void run() {
-      // Sets the top-level user task UUID.
-      getTask().setUserTaskUUID(getUserTaskUUID());
       int currentAttempt = 0;
       int retryLimit = getTask().getRetryLimit();
 
@@ -1361,15 +1475,26 @@ public class TaskExecutor {
         try {
           super.run();
           break;
-        } catch (Exception e) {
+        } catch (Throwable t) {
+          if (t instanceof Error) {
+            // Error is propagated as it is.
+            throw (Error) t;
+          }
           if ((currentAttempt == retryLimit - 1)
-              || ExceptionUtils.hasCause(e, CancellationException.class)) {
-            throw e;
+              || ExceptionUtils.hasCause(t, CancellationException.class)) {
+            throw t;
           }
 
-          log.warn("Task {} attempt {} has failed", getTask(), currentAttempt);
-          if (!getTask().onFailure(getTaskInfo(), e)) {
-            throw e;
+          String redactedParams =
+              RedactingService.filterSecretFields(getTask().getTaskParams(), RedactionTarget.LOGS)
+                  .toString();
+          log.warn(
+              "Task {} with params {} attempt {} has failed",
+              getTask().getName(),
+              redactedParams,
+              currentAttempt);
+          if (!getTask().onFailure(getTaskInfo(), t)) {
+            throw t;
           }
         }
 
@@ -1389,8 +1514,8 @@ public class TaskExecutor {
     }
 
     @Override
-    protected synchronized Instant getAbortTime() {
-      return parentRunnableTask == null ? null : parentRunnableTask.getAbortTime();
+    protected synchronized boolean isAbortTimeReached(@Nullable Duration graceTime) {
+      return parentRunnableTask == null ? false : parentRunnableTask.isAbortTimeReached(graceTime);
     }
 
     @Override
@@ -1416,6 +1541,8 @@ public class TaskExecutor {
       getTaskInfo().setParentUuid(parentRunnableTask.getTaskUUID());
       getTaskInfo().setPosition(position);
       getTaskInfo().save();
+      getTask().setTaskUUID(getTaskInfo().getUuid());
+      getTask().setUserTaskUUID(parentRunnableTask.getTaskUUID());
     }
 
     @Override

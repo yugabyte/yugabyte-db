@@ -7,6 +7,8 @@ INSERT INTO t (SELECT 1, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 -- Add one more distinct value to catch bugs that arise only with more than one distinct value.
 INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 
+SET yb_explain_hide_non_deterministic_fields = true;
+
 -- Start with CROSS/INNER/LEFT/RIGHT/FULL joins.
 -- CROSS JOIN
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;
@@ -15,7 +17,6 @@ SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
 SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
 -- In the Distinct Index Scan of t2, there are 7 rows, not 6, because the tablet split ends up with 1, 1 represented in two tablets.
-SET yb_explain_hide_non_deterministic_fields = true;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;
 SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;
 -- LEFT JOIN

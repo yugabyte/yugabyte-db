@@ -50,13 +50,6 @@ DelayedTask::DelayedTask(StatusFunctor func, MonoDelta when, int64_t id,
 }
 
 void DelayedTask::Run(Reactor* reactor) {
-  const auto reactor_state = reactor->state();
-  if (reactor_state != ReactorState::kRunning) {
-    LOG(WARNING) << "Reactor " << reactor->name() << " is not running (state: " << reactor_state
-                 << "), not scheduling a delayed task.";
-    return;
-  }
-
   // Acquire lock to prevent task from being aborted in the middle of scheduling. In case abort
   // is be requested in the middle of scheduling, task will be aborted right after return from this
   // function.
@@ -151,7 +144,9 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
     func_(STATUS(Aborted, msg));
   } else {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Execute";
+    reactor->tick_.fetch_add(1);
     func_(Status::OK());
+    reactor->tick_.fetch_add(1);
   }
   // Clear the function to remove all captured resources.
   func_.clear();

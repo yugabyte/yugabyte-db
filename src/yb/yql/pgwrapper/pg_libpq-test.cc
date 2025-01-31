@@ -20,6 +20,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <regex>
 #include <thread>
 #include <string>
 #include <unordered_map>
@@ -78,7 +79,8 @@ using std::string;
 
 using namespace std::literals;
 
-DEFINE_NON_RUNTIME_int32(num_iter, 10000, "Number of iterations to run StaleMasterReads test");
+DEFINE_NON_RUNTIME_int32(num_iter, yb::RegularBuildVsSanitizers(10000, 1000),
+                         "Number of iterations to run StaleMasterReads test");
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);
 
@@ -87,6 +89,7 @@ METRIC_DECLARE_counter(transaction_not_found);
 
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_counter(rpc_inbound_calls_created);
+METRIC_DECLARE_counter(rpc_inbound_calls_failed);
 
 namespace yb {
 namespace pgwrapper {
@@ -965,27 +968,50 @@ TEST_F(PgLibPqTest, InTxnDelete) {
 }
 
 class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
+ protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgLibPqTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back(
         "--TEST_get_ysql_catalog_version_from_sys_catalog=true");
   }
+
+  Status ReadLatestCatalogVersion() {
+    auto conn = VERIFY_RESULT(Connect());
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+
+    uint64_t ver_orig;
+    RETURN_NOT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
+    for (int i = 1; i <= FLAGS_num_iter; i++) {
+      LOG(INFO) << "ITERATION " << i;
+      RETURN_NOT_OK(BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER"));
+      LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
+      uint64_t ver;
+      RETURN_NOT_OK(client->GetYsqlCatalogMasterVersion(&ver));
+      SCHECK_EQ(ver_orig + i, ver, IllegalState, "unexpected master catalog version");
+    }
+    return Status::OK();
+  }
 };
 
 TEST_F_EX(PgLibPqTest, StaleMasterReads, PgLibPqReadFromSysCatalogTest) {
-  auto conn = ASSERT_RESULT(Connect());
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(ReadLatestCatalogVersion());
+}
 
-  uint64_t ver_orig;
-  ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
-  for (int i = 1; i <= FLAGS_num_iter; i++) {
-    LOG(INFO) << "ITERATION " << i;
-    BumpCatalogVersion(1, &conn);
-    LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
-    uint64_t ver;
-    ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver));
-    ASSERT_EQ(ver_orig + i, ver);
+// A low max clock skew of 1.5ms is used to trigger the following scenario:
+// 1. A write to sys catalog table happens at time T2.
+// 2. A read from sys catalog table happens at read time T1 < T2, global limit T3 > T2.
+// 3. This causes a read restart error with restart time = safe time = T4 > T3.
+// 4. Prevent a case where the read is restarted with read time = T4 and global limit = T3 < T4.
+class PgLibPqLowClockSkewTest : public PgLibPqReadFromSysCatalogTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--max_clock_skew_usec=1500");
+    options->extra_master_flags.push_back("--max_clock_skew_usec=1500");
+    PgLibPqReadFromSysCatalogTest::UpdateMiniClusterOptions(options);
   }
+};
+
+TEST_F_EX(PgLibPqTest, MasterRestartReadPastGlobalLimit, PgLibPqLowClockSkewTest) {
+  ASSERT_OK(ReadLatestCatalogVersion());
 }
 
 TEST_F(PgLibPqTest, CompoundKeyColumnOrder) {
@@ -1341,7 +1367,7 @@ void PgLibPqTest::TestTableColocation(GetParentTableTabletLocation getParentTabl
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
-              master::IncludeInactive::kFalse,
+              master::IncludeHidden::kFalse,
               master::IncludeDeleted::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -1379,7 +1405,7 @@ void PgLibPqTest::TestTableColocation(GetParentTableTabletLocation getParentTabl
         client->LookupTabletById(
             colocated_tablet_id,
             colocated_table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2021,7 +2047,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
-              master::IncludeInactive::kFalse,
+              master::IncludeHidden::kFalse,
               master::IncludeDeleted::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2055,7 +2081,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2101,7 +2127,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
         client->LookupTabletById(
             tablegroup.tablet_id,
             tablegroup.table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2122,7 +2148,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2404,6 +2430,11 @@ class PgLibPqTestRF1: public PgLibPqTest {
   }
 };
 
+Result<int64> GetMasterMetric(const ExternalMaster& master, const MetricPrototype& metric_proto) {
+  return VERIFY_RESULT(master.GetMetric<int64>(
+      &METRIC_ENTITY_server, "yb.master", &metric_proto, "value"));
+}
+
 } // namespace
 
 // Test that the number of RPCs sent to master upon first connection is not too high.
@@ -2411,18 +2442,18 @@ class PgLibPqTestRF1: public PgLibPqTest {
 // Test uses RF1 cluster to avoid possible relelections which affects the number of RPCs received
 // by a master.
 TEST_F_EX(PgLibPqTest, NumberOfInitialRpcs, PgLibPqTestRF1) {
-  auto get_master_inbound_rpcs_created = [this]() -> Result<int64_t> {
-    int64_t m_in_created = 0;
-    for (const auto* master : this->cluster_->master_daemons()) {
-      m_in_created += VERIFY_RESULT(master->GetMetric<int64>(
-          &METRIC_ENTITY_server, "yb.master", &METRIC_rpc_inbound_calls_created, "value"));
+  auto get_master_inbound_rpcs_succeed = [cluster = cluster_.get()]() -> Result<int64_t> {
+    int64_t result = 0;
+    for (const auto* master : cluster->master_daemons()) {
+      result += VERIFY_RESULT(GetMasterMetric(*master, METRIC_rpc_inbound_calls_created)) -
+                VERIFY_RESULT(GetMasterMetric(*master, METRIC_rpc_inbound_calls_failed));
     }
-    return m_in_created;
+    return result;
   };
 
-  auto rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_created());
+  const auto rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_succeed());
   ASSERT_RESULT(Connect());
-  auto rpcs_during = ASSERT_RESULT(get_master_inbound_rpcs_created()) - rpcs_before;
+  const auto rpcs_during = ASSERT_RESULT(get_master_inbound_rpcs_succeed()) - rpcs_before;
 
   // Real-world numbers (debug build, local PC): 58 RPCs
   LOG(INFO) << "Master inbound RPC during connection: " << rpcs_during;
@@ -3166,10 +3197,7 @@ TEST_F(PgLibPqTest, CollationRangePresplit) {
 }
 
 Result<string> PgLibPqTest::GetPostmasterPidViaShell(pid_t backend_pid) {
-  string postmaster_pid;
-  if (!RunShellProcess(Format("ps -o ppid= $0", backend_pid), &postmaster_pid)) {
-    return STATUS_FORMAT(RuntimeError, "Failed to get postmaster pid via shell");
-  }
+  auto postmaster_pid = VERIFY_RESULT(RunShellProcess(Format("ps -o ppid= $0", backend_pid)));
 
   postmaster_pid.erase(
       std::remove(postmaster_pid.begin(), postmaster_pid.end(), '\n'), postmaster_pid.end());
@@ -3220,12 +3248,14 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_NOK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
   ASSERT_NOK(conn2.Fetch("SELECT 1"));
 
+#ifdef YB_TODO // yb_terminated_queries is not yet supported in PG15
   // validate that this query is added to yb_terminated_queries
   auto conn3 = ASSERT_RESULT(Connect());
   const string get_yb_terminated_queries =
     "SELECT query_text, termination_reason FROM yb_terminated_queries";
   auto row = ASSERT_RESULT((conn3.FetchRow<std::string, std::string>(get_yb_terminated_queries)));
   ASSERT_EQ(row, (decltype(row){"SELECT pg_stat_statements_reset()", "Terminated by SIGKILL"}));
+#endif
 }
 
 TEST_F_EX(PgLibPqTest,
@@ -3233,17 +3263,15 @@ TEST_F_EX(PgLibPqTest,
           PgLibPqYSQLBackendCrash) {
   string postmaster_pid = ASSERT_RESULT(GetPostmasterPid());
 
-  string message;
   for (int i = 0; i < 50; i++) {
     ASSERT_OK(WaitFor([postmaster_pid]() -> Result<bool> {
-      string count;
       // The Mac implementation of pgrep has a bug and requires -P before -f.
       // Otherwise, the -f argument is ignored.
-      RunShellProcess(Format("pgrep -P $0 -f 'YSQL webserver' | wc -l", postmaster_pid), &count);
+      auto count = VERIFY_RESULT(RunShellProcess(
+          Format("pgrep -P $0 -f 'YSQL webserver' | wc -l", postmaster_pid)));
       return count.find("1") != string::npos;
     }, 2500ms, "Webserver restarting..."));
-    ASSERT_TRUE(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid),
-                                &message));
+    ASSERT_OK(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid)));
   }
 }
 
@@ -3261,8 +3289,8 @@ TEST_F_EX(PgLibPqTest, YB_LINUX_ONLY_TEST(TestOomScoreAdjPGWebserver), PgLibPqYS
   string postmaster_pid = ASSERT_RESULT(GetPostmasterPid());
 
   // Get the webserver pid using postmaster pid
-  string webserver_pid;
-  RunShellProcess(Format("pgrep -f 'YSQL webserver' -P $0", postmaster_pid), &webserver_pid);
+  auto webserver_pid = ASSERT_RESULT(RunShellProcess(
+      Format("pgrep -f 'YSQL webserver' -P $0", postmaster_pid)));
   webserver_pid.erase(std::remove(webserver_pid.begin(), webserver_pid.end(), '\n'),
                       webserver_pid.end());
 
@@ -3274,7 +3302,7 @@ TEST_F_EX(PgLibPqTest, YB_LINUX_ONLY_TEST(TestOomScoreAdjPGWebserver), PgLibPqYS
   ASSERT_EQ(oom_score_adj, expected_webserver_oom_score);
 }
 
-TEST_F_EX(PgLibPqTest, YbTableProperties, PgLibPqTestRF1) {
+TEST_F_EX(PgLibPqTest, YbcTableProperties, PgLibPqTestRF1) {
   const string kDatabaseName = "yugabyte";
   const string kTableName = "test";
 
@@ -3582,7 +3610,8 @@ TEST_P(PgOidCollisionTest, MaterializedViewPgOidCollisionFromTservers) {
 // -- danger OID: 16385 (same as table id of deleted table tbl)
 // Conn2: CREATE TABLE danger (k INT, v INT);
 // Conn2: INSERT INTO danger SELECT i, i from generate_series(1, 100) i;
-TEST_P(PgOidCollisionTest, MetaCachePgOidCollisionFromTservers) {
+// This test will fail in DEBUG builds because table ID reuse will trigger certain DCHECK failure.
+TEST_P(PgOidCollisionTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MetaCachePgOidCollisionFromTservers)) {
   const bool ysql_enable_pg_per_database_oid_allocator = GetParam();
   RestartClusterWithOidAllocator(ysql_enable_pg_per_database_oid_allocator);
   const string dbname = "db2";
@@ -3880,8 +3909,8 @@ TEST_F(PgLibPqTest, TempTableViewFileCountTest) {
 
   // Check that only one file is present in this database and that corresponds to temp table foo.
   auto query = Format(
-      "SELECT pg_ls_dir('$0/pg_data/' || substring(pg_relation_filepath('$1') from '.*/')) = 't1_' "
-      "|| '$1'::regclass::oid::text;",
+      "SELECT pg_ls_dir('$0/pg_data/' || substring(pg_relation_filepath('$1') from '.*/')) ~  "
+      "('t[0-9]_' || '$1'::regclass::oid::text)",
       pg_ts->GetRootDir(), kTableName);
   auto values = ASSERT_RESULT(conn.FetchRows<bool>(query));
   ASSERT_EQ(values, decltype(values){true});
@@ -3902,11 +3931,11 @@ TEST_F(PgLibPqTest, TempTableMultiNodeNamespaceConflict) {
   auto* ts2 = cluster_->tserver_daemons()[1];
   auto conn1 = ASSERT_RESULT(PGConnBuilder({
         .host = ts1->bind_host(),
-        .port = ts1->pgsql_rpc_port(),
+        .port = ts1->ysql_port(),
       }).Connect());
   auto conn2 = ASSERT_RESULT(PGConnBuilder({
         .host = ts2->bind_host(),
-        .port = ts2->pgsql_rpc_port(),
+        .port = ts2->ysql_port(),
       }).Connect());
   ASSERT_OK(conn1.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName));
   ASSERT_OK(conn1.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName2));
@@ -3932,7 +3961,7 @@ TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
                "WHERE name = 'CacheMemoryContext'"s;
   string stable_result;
   for (int i = 0; i < 20; i++) {
-    BumpCatalogVersion(1, &conn1);
+    ASSERT_OK(BumpCatalogVersion(1, &conn1));
     // Wait for heartbeat to propagate the new catalog version to trigger
     // catalog cache refresh on conn2.
     SleepFor(2s);
@@ -3945,6 +3974,261 @@ TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
       // then this assertion would fail.
       ASSERT_EQ(result, stable_result);
     }
+  }
+}
+
+static std::optional<std::string> GetCatalogTableNameFromIndexName(const string& index_name) {
+  static const std::regex table_name_regex(
+      "(pg_publication_namespace|"
+      "pg_foreign_data_wrapper|"
+      "pg_largeobject_metadata|"
+      "pg_replication_origin|"
+      "pg_statistic_ext_data|"
+      "pg_yb_catalog_version|"
+      "pg_partitioned_table|"
+      "pg_subscription_rel|"
+      "pg_db_role_setting|"
+      "pg_publication_rel|"
+      "pg_yb_role_profile|"
+      "pg_foreign_server|"
+      "pg_event_trigger|"
+      "pg_foreign_table|"
+      "pg_parameter_acl|"
+      "pg_shdescription|"
+      "pg_statistic_ext|"
+      "pg_ts_config_map|"
+      "pg_yb_tablegroup|"
+      "pg_auth_members|"
+      "pg_subscription|"
+      "pg_user_mapping|"
+      "pg_yb_migration|"
+      "pg_default_acl|"
+      "pg_description|"
+      "pg_largeobject|"
+      "pg_publication|"
+      "pg_ts_template|"
+      "pg_constraint|"
+      "pg_conversion|"
+      "pg_init_privs|"
+      "pg_shseclabel|"
+      "pg_tablespace|"
+      "pg_yb_profile|"
+      "pg_aggregate|"
+      "pg_attribute|"
+      "pg_collation|"
+      "pg_extension|"
+      "pg_namespace|"
+      "pg_statistic|"
+      "pg_transform|"
+      "pg_ts_config|"
+      "pg_ts_parser|"
+      "pg_database|"
+      "pg_inherits|"
+      "pg_language|"
+      "pg_operator|"
+      "pg_opfamily|"
+      "pg_seclabel|"
+      "pg_sequence|"
+      "pg_shdepend|"
+      "pg_attrdef|"
+      "pg_opclass|"
+      "pg_rewrite|"
+      "pg_trigger|"
+      "pg_ts_dict|"
+      "pg_amproc|"
+      "pg_authid|"
+      "pg_depend|"
+      "pg_policy|"
+      "pg_class|"
+      "pg_index|"
+      "pg_range|"
+      "pg_amop|"
+      "pg_cast|"
+      "pg_enum|"
+      "pg_proc|"
+      "pg_type|"
+      "pg_am)_.*");
+
+  std::smatch match;
+  if (std::regex_search(index_name, match, table_name_regex)) {
+    return match[1].str();
+  }
+  return std::nullopt;
+}
+
+struct YsqlMetric {
+  std::string name;
+  std::unordered_map<std::string, std::string> labels;
+  int64_t value;
+  int64_t time;
+  std::string type;
+  std::string description;
+
+  YsqlMetric(
+      std::string name, std::unordered_map<std::string, std::string> labels, int64_t value,
+      int64_t time, std::string type = "", std::string description = "")
+      : name(std::move(name)),
+        labels(std::move(labels)),
+        value(value),
+        time(time),
+        type(type),
+        description(description) {}
+};
+
+static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics_output) {
+  // Splits a metric line into name, labels, value and timestamp.
+  // Example line:
+  // metric_name{label_1="value_1",label_2="value_2"} 123 456
+  const std::regex metric_regex(R"((\w+)\{([^}]+)\}\s+(\d+)\s+(\d+))");
+
+  // Splits the list of labels into individual label-value pairs.
+  const std::regex label_regex(R"((\w+)=\"([^\"]+)\")");
+
+  // Parses the HELP and TYPE lines into the metric name and the description/type.
+  // HELP and TYPE lines are formatted as:
+  // # HELP <metric_name> <description>
+  // # TYPE <metric_name> <type>
+  const std::regex help_regex(R"(# HELP (\S+) (.+))");
+  const std::regex type_regex(R"(# TYPE (\S+) (\w+))");
+
+  std::vector<YsqlMetric> parsed_metrics;
+  std::istringstream stream(metrics_output);
+  std::string line;
+  std::unordered_map<std::string, std::string> descriptions;
+  std::unordered_map<std::string, std::string> types;
+
+  while (std::getline(stream, line)) {
+    std::smatch help_match;
+    std::smatch type_match;
+    std::smatch metric_match;
+
+    if (std::regex_search(line, help_match, help_regex)) {
+      descriptions[help_match[1].str()] = help_match[2].str();
+    } else if (std::regex_search(line, type_match, type_regex)) {
+      types[type_match[1].str()] = type_match[2].str();
+    } else if (std::regex_search(line, metric_match, metric_regex)) {
+      std::unordered_map<std::string, std::string> labels;
+      const std::string labels_str = metric_match[2].str();
+      auto search_start = labels_str.cbegin();
+      std::smatch label_match;
+
+      while (std::regex_search(search_start, labels_str.cend(), label_match, label_regex)) {
+        labels[label_match[1].str()] = label_match[2].str();
+        search_start = label_match.suffix().first;
+      }
+
+      std::string metric_name = metric_match[1].str();
+
+      parsed_metrics.emplace_back(
+          metric_name, std::move(labels), std::stoll(metric_match[3].str()),
+          std::stoll(metric_match[4].str()), types[metric_name], descriptions[metric_name]);
+    }
+  }
+
+  return parsed_metrics;
+}
+
+// Parse metrics from the JSON output of the /metrics endpoint.
+// Ignores the "sum" field for each metric, as it is empty for the catcache metrics.
+static std::vector<YsqlMetric> ParseJsonMetrics(const std::string& metrics_output) {
+  std::vector<YsqlMetric> parsed_metrics;
+
+  // Parse the JSON string
+  rapidjson::Document document;
+  document.Parse(metrics_output.c_str());
+
+  EXPECT_TRUE(document.IsArray() && document.Size() > 0);
+  const auto& server = document[0];
+  EXPECT_TRUE(server.HasMember("metrics") && server["metrics"].IsArray());
+  const auto& metrics = server["metrics"];
+  for (const auto& metric : metrics.GetArray()) {
+    EXPECT_TRUE(
+        metric.HasMember("name") && metric.HasMember("count") && metric.HasMember("sum") &&
+        metric.HasMember("rows"));
+    std::unordered_map<std::string, std::string> labels;
+    if (metric.HasMember("table_name")) {
+      labels["table_name"] = metric["table_name"].GetString();
+    } else {
+      LOG(INFO) << "No table name found for metric: " << metric["name"].GetString();
+    }
+
+    parsed_metrics.emplace_back(
+        metric["name"].GetString(), std::move(labels), metric["count"].GetInt64(),
+        0  // JSON doesn't include timestamp
+    );
+  }
+
+  return parsed_metrics;
+}
+
+TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Make a new connection to see more cache misses (by default we will only
+  // preload the catalog caches for the first connection).
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
+  auto result = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+  ExternalTabletServer* ts = cluster_->tablet_server(0);
+  auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
+  EasyCurl c;
+  faststring buf;
+
+  auto prometheus_metrics_url =
+      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
+  ASSERT_OK(c.FetchURL(prometheus_metrics_url, &buf));
+  auto prometheus_metrics = ParsePrometheusMetrics(buf.ToString());
+
+  auto json_metrics_url =
+      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
+  ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
+  auto json_metrics = ParseJsonMetrics(buf.ToString());
+
+  for (const auto& metrics : {json_metrics, prometheus_metrics}) {
+    int64_t expected_total_cache_misses = 0;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+          metric.labels.find("table_name") == metric.labels.end()) {
+        expected_total_cache_misses = metric.value;
+        break;
+      }
+    }
+    ASSERT_GT(expected_total_cache_misses, 0);
+    LOG(INFO) << "Expected total cache misses: " << expected_total_cache_misses;
+
+    // Go through the per-index metrics and aggregate them by table.
+    int64_t total_index_cache_misses = 0;
+    std::unordered_map<std::string, int64_t> per_table_index_cache_misses;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+          metric.labels.find("table_name") != metric.labels.end()) {
+        auto table_name = GetCatalogTableNameFromIndexName(metric.labels.at("table_name"));
+        ASSERT_TRUE(table_name) << "Failed to get table name from index name: "
+                                << metric.labels.at("table_name");
+
+        per_table_index_cache_misses[*table_name] += metric.value;
+        total_index_cache_misses += metric.value;
+        LOG_IF(INFO, metric.value > 0) << "Index " << metric.labels.at("table_name") << " has "
+                                       << metric.value << " cache misses";
+      }
+    }
+    ASSERT_EQ(expected_total_cache_misses, total_index_cache_misses);
+
+    // Check that the sum of the cache misses for all the indexes on each table is equal to the
+    // table-level cache miss metric.
+    int64_t total_table_cache_misses = 0;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("CatalogCacheTableMisses") != std::string::npos) {
+        auto table_name = metric.labels.at("table_name");
+        ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
+            << "Expected sum of index cache misses for table " << table_name
+            << " to be equal to the table cache misses";
+        total_table_cache_misses += metric.value;
+        LOG_IF(INFO, metric.value > 0)
+            << "Table " << table_name << " has " << metric.value << " cache misses";
+      }
+    }
+    ASSERT_EQ(expected_total_cache_misses, total_table_cache_misses);
   }
 }
 
@@ -4076,9 +4360,8 @@ class PgPostmasterExitTest : public PgLibPqTest {
     // SIGKILL to a signal that can be caught and handled.
     RETURN_NOT_OK(WaitFor(
         [&backend_pid]() -> Result<bool> {
-          string output;
           // Ensure that the backend is no longer running.
-          return !RunShellProcess(Format("ps -p $0", backend_pid), &output);
+          return !RunShellProcess(Format("ps -p $0", backend_pid)).ok();
         },
         500ms, "Backend still running, should have exited"));
 
@@ -4112,6 +4395,219 @@ TEST_F(PgPostmasterExitTest, YB_LINUX_ONLY_TEST(SignalBackendOnPostmasterDeath))
 // This test validates that in an all environments, an idle backend exits when the postmaster exits.
 TEST_F(PgPostmasterExitTest, SignalIdleBackendOnPostmasterDeath) {
   ASSERT_OK(TestPostmasterExit());
+}
+
+TEST_F(PgLibPqTest, FillShellTypeDefinition) {
+  PGConn conn1 = ASSERT_RESULT(Connect());
+  PGConn conn2 = ASSERT_RESULT(Connect());
+  // Create a shell type.
+  ASSERT_OK(conn1.Execute(
+      R"#(
+CREATE TYPE base_type; -- create shell type
+CREATE FUNCTION base_type_in(cstring) RETURNS base_type
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2in';
+CREATE FUNCTION base_type_out(base_type) RETURNS cstring
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2out';
+CREATE FUNCTION base_type_recv(internal) RETURNS base_type
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2recv';
+CREATE FUNCTION base_type_send(base_type) RETURNS bytea
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2send';
+      )#"));
+
+  // Using a shell type as column type is an error. Note that shell type is now
+  // cached in conn2.
+  ASSERT_NOK(conn2.Execute("CREATE TABLE default_test (f1 base_type, f2 int)"));
+
+  // Fill the definition of the shell type.
+  ASSERT_OK(conn1.Execute(
+      R"#(
+CREATE TYPE base_type (
+   INPUT = base_type_in,
+   OUTPUT = base_type_out,
+   RECEIVE = base_type_recv,
+   SEND = base_type_send,
+   LIKE = smallint,
+   CATEGORY = 'N',
+   PREFERRED = FALSE,
+   DELIMITER = ',',
+   COLLATABLE = FALSE
+); -- fill definition
+      )#"));
+  // Wait for heartbeat to propagate the new catalog version to trigger
+  // catalog cache refresh on conn2.
+  SleepFor(2s);
+
+  // Now that the shell type definition is filled, we should not get an error any more.
+  ASSERT_OK(conn2.Execute("CREATE TABLE default_test (f1 base_type, f2 int)"));
+}
+
+TEST_F(PgLibPqTest, CollationWithPartitionedTable) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLESPACE n_tablespace LOCATION '/data_n'"));
+  ASSERT_OK(conn.Execute("CREATE TABLESPACE e_tablespace LOCATION '/data_e'"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE a"));
+  conn = ASSERT_RESULT(ConnectToDB("a"));
+  ASSERT_OK(conn.Execute("CREATE COLLATION numeric (provider = icu, locale = 'en-u-kn-true')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t(a text NOT NULL collate numeric) PARTITION BY RANGE(a)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_n PARTITION of t (a, PRIMARY KEY (a HASH)) "
+                         "FOR VALUES FROM ('A') TO ('Lzzzzz') TABLESPACE n_tablespace"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_e PARTITION of t (a, PRIMARY KEY (a HASH)) "
+                         "FOR VALUES FROM ('M') TO ('Zzzzzz') TABLESPACE e_tablespace"));
+  conn = ASSERT_RESULT(ConnectToDB("a"));
+}
+
+class PgLibPqBlockDangerousRolesTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_block_dangerous_roles=true");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, BlockDangerousRoles, PgLibPqBlockDangerousRolesTest) {
+  PGConn conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_yugabyte.Execute("CREATE USER admin WITH CREATEROLE ROLE yb_db_admin"));
+  PGConn conn_admin = ASSERT_RESULT(ConnectToDBAsUser("" /* db_name */, "admin"));
+  ASSERT_OK(conn_admin.Execute("CREATE ROLE r"));
+
+  for (const auto& granted_role : {"pg_read_all_data", "pg_write_all_data", "pg_read_server_files",
+                                   "pg_write_server_files", "pg_execute_server_program"}) {
+    LOG(INFO) << "granted_role: " << granted_role;
+    ASSERT_NOK_PG_ERROR_CODE(conn_admin.ExecuteFormat("GRANT $0 TO r", granted_role),
+                             YBPgErrorCode::YB_PG_INSUFFICIENT_PRIVILEGE);
+    ASSERT_OK(conn_yugabyte.ExecuteFormat("GRANT $0 to r", granted_role));
+    ASSERT_OK(conn_admin.ExecuteFormat("REVOKE $0 FROM r", granted_role));
+    // Avoid catalog version mismatch by refreshing session.
+    conn_yugabyte.Reset();
+    for (const auto& option : {"IN ROLE", "IN GROUP"}) {
+      LOG(INFO) << "option: " << option;
+      ASSERT_NOK_PG_ERROR_CODE(conn_admin.ExecuteFormat("CREATE ROLE invalid WITH $0 $1",
+                                                        option, granted_role),
+                               YBPgErrorCode::YB_PG_INSUFFICIENT_PRIVILEGE);
+      ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE ROLE \"invalid$0$1\" WITH $0 $1",
+                                            option, granted_role));
+    }
+    for (const auto& option : {"ROLE", "ADMIN"}) {
+      LOG(INFO) << "option: " << option;
+      // While it is bad if a user role has the privileges of a dangerous role, the opposite is ok.
+      ASSERT_OK(conn_admin.ExecuteFormat("CREATE ROLE valid$0$1 WITH $0 $1", option, granted_role));
+    }
+  }
+
+  for (const auto& granted_role : {"pg_checkpoint", "pg_read_all_stats", "yb_db_admin", "admin"}) {
+    LOG(INFO) << "granted_role: " << granted_role;
+    ASSERT_OK(conn_admin.ExecuteFormat("GRANT $0 TO r", granted_role));
+  }
+
+  // Avoid catalog version mismatch by refreshing session.
+  conn_admin.Reset();
+  ASSERT_OK(conn_admin.Execute("ALTER GROUP r ADD USER pg_read_all_data"));
+  ASSERT_OK(conn_admin.Execute("ALTER GROUP r DROP USER pg_read_all_data"));
+  ASSERT_OK(conn_admin.Execute("ALTER ROLE r WITH USER pg_read_all_data"));
+  ASSERT_NOK_PG_ERROR_CODE(conn_admin.Execute("ALTER GROUP pg_read_all_data ADD USER r"),
+                           YBPgErrorCode::YB_PG_RESERVED_NAME);
+  ASSERT_NOK_PG_ERROR_CODE(conn_admin.Execute("ALTER ROLE pg_read_all_data WITH USER r"),
+                           YBPgErrorCode::YB_PG_RESERVED_NAME);
+}
+
+class BatchInsertOnConflictTest : public PgLibPqTestRF1 {
+ protected:
+  void RunConflictingIOCTxn(PGConn& conn, IsolationLevel isolation_level, int32_t expected_price) {
+    thread_holder_.AddThreadFunctor([this, &conn, isolation_level, expected_price]() -> void {
+      ASSERT_OK(conn.StartTransaction(isolation_level));
+      ASSERT_OK(conn.Execute(kIOCQuery));
+      const int32_t price = ASSERT_RESULT(conn.FetchRow<int32_t>(
+          "SELECT price FROM products WHERE id = 1"));
+
+      ASSERT_EQ(price, expected_price);
+      ASSERT_OK(conn.CommitTransaction());
+    });
+  }
+
+  void StartMainTxn(PGConn& conn, IsolationLevel isolation_level = READ_COMMITTED) {
+    ASSERT_OK(conn.StartTransaction(isolation_level));
+    ASSERT_OK(conn.Execute("UPDATE products SET price = price + 5 WHERE id = 1"));
+  }
+
+  void CommitMainTxnAfterWait(PGConn& conn) {
+    std::this_thread::sleep_for(RandomUniformInt(1, 10) * 100ms);
+    ASSERT_OK(conn.CommitTransaction());
+  }
+
+  constexpr static auto kInsertOnConflictBatchSize = 1024;
+  const std::vector<IsolationLevel> kIsolationLevels = {
+    READ_COMMITTED, SNAPSHOT_ISOLATION, SERIALIZABLE_ISOLATION
+  };
+  const std::string kIOCQuery = "INSERT INTO products VALUES (1, 'oats', 10) ON CONFLICT (id) "
+                                "DO UPDATE SET price = products.price + 5";
+  TestThreadHolder thread_holder_;
+};
+
+TEST_F(BatchInsertOnConflictTest, InsertOnConflictWithQueryRestart) {
+  PGConn conn1 = ASSERT_RESULT(Connect());
+  PGConn conn2 = ASSERT_RESULT(Connect());
+  int32_t expected_price = 10;
+
+  // Setup
+  ASSERT_OK(conn1.Execute("DROP TABLE IF EXISTS products"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE products (id INT PRIMARY KEY, name TEXT, price INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO products VALUES (1, 'oats', 10)"));
+  ASSERT_OK(conn2.Execute(
+      Format("SET yb_insert_on_conflict_read_batch_size TO $0", kInsertOnConflictBatchSize)));
+
+  // Test that a query retried due to a kConflict error correctly clears the insert on conflict
+  // buffer between retries. Not clearing the buffer would result in an incorrect "command cannot
+  // affect row a second time" error.
+  for (IsolationLevel isolation_level : kIsolationLevels) {
+    expected_price += 10;
+    StartMainTxn(conn1);
+    RunConflictingIOCTxn(conn2, isolation_level, expected_price);
+    CommitMainTxnAfterWait(conn1);
+    thread_holder_.WaitAndStop(2s * kTimeMultiplier);
+  }
+}
+
+// https://github.com/yugabyte/yugabyte-db/issues/24320.
+TEST_F(PgLibPqTest, TableRewriteOidCollision) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_binary_restore = true"));
+  ASSERT_OK(conn.Execute("SET yb_ignore_pg_class_oids = false"));
+
+  uint32_t next_oid = 16384;
+
+  // Simulating some table/index restore operations.
+  for (const auto& table : {"t1", "t2", "t3"}) {
+    ASSERT_RESULT(conn.FetchFormat(
+      "SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('$0'::pg_catalog.oid)", next_oid++));
+    ASSERT_RESULT(conn.FetchFormat(
+      "SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('$0'::pg_catalog.oid)",
+      next_oid++));
+    ASSERT_RESULT(conn.FetchFormat(
+      "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('$0'::pg_catalog.oid)",
+      next_oid++));
+    // Restore table.
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(id int)", table));
+
+    ASSERT_RESULT(conn.FetchFormat(
+      "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
+      next_oid++));
+    // Restore first index of the table.
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 on $1(id)", table, table));
+
+    ASSERT_RESULT(conn.FetchFormat(
+      "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
+      next_oid++));
+    // Restore second index of the table.
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 on $1(id)", table, table));
+  }
+
+  // Turn off restore simulation and run regular "ALTER TABLE" operation.
+  ASSERT_OK(conn.ExecuteFormat("SET yb_binary_restore = false"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_ignore_pg_class_oids = true"));
+  // This DDL used to show "Duplicate table" error due to OID collision because the OID
+  // 16393 was already used by yugabyte.t2_idx2 and is reused as relfilenode for t3_idx1
+  // during table rewrite.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t3 ALTER COLUMN id TYPE TEXT"));
 }
 
 } // namespace pgwrapper

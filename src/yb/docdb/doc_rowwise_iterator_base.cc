@@ -63,12 +63,6 @@ Status StoreValue(
   return Status::OK();
 }
 
-/*Status StoreValue(
-    const Schema& schema, const dockv::ProjectedColumn& column, size_t col_idx,
-    dockv::DocKeyDecoder* decoder, dockv::PgTableRow* row) {
-  return row->DecodeKey(col_idx, decoder->mutable_input());
-}*/
-
 } // namespace
 
 DocRowwiseIteratorBase::DocRowwiseIteratorBase(
@@ -178,8 +172,8 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
   const bool is_fixed_point_get =
       !bounds.lower.empty() &&
       VERIFY_RESULT(HashedOrFirstRangeComponentsEqual(bounds.lower, bounds.upper));
-  const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER
-                                       : BloomFilterMode::DONT_USE_BLOOM_FILTER;
+  const auto bloom_filter = is_fixed_point_get ? BloomFilterOptions::Fixed(bounds.lower.AsSlice())
+                                               : BloomFilterOptions::Inactive();
 
   if (is_forward_scan_) {
     has_bound_key_ = !bounds.upper.empty();
@@ -190,10 +184,17 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
     has_bound_key_ = !bounds.lower.empty();
     if (has_bound_key_) {
       bound_key_ = bounds.lower;
+      // We use kLowest = 0 to mark -Inf bound. But there special entries like transaction apply
+      // record with value > 0.
+      // Since real table rows cannot have key before kNullLow, we could use it as bound
+      // instead of -Inf.
+      if (bound_key_.data()[0] == dockv::KeyEntryTypeAsChar::kLowest) {
+        bound_key_.data()[0] = dockv::KeyEntryTypeAsChar::kNullLow;
+      }
     }
   }
 
-  InitIterator(mode, bounds.lower.AsSlice(), doc_spec.QueryId(), CreateFileFilter(doc_spec));
+  InitIterator(bloom_filter, doc_spec.QueryId(), CreateFileFilter(doc_spec));
 
   if (has_bound_key_) {
     if (is_forward_scan_) {
@@ -285,6 +286,10 @@ Slice DocRowwiseIteratorBase::GetTupleId() const {
   return tuple_id;
 }
 
+Slice DocRowwiseIteratorBase::GetRowKey() const {
+  return row_key_;
+}
+
 void DocRowwiseIteratorBase::SeekTuple(Slice tuple_id) {
   // If cotable id / colocation id is present in the table schema, then
   // we need to prepend it in the tuple key to seek.
@@ -337,7 +342,7 @@ Status DocRowwiseIteratorBase::InitIterKey(Slice key, bool full_row) {
   if (!full_row) {
     const auto dockey_sizes = VERIFY_RESULT(DocKey::EncodedHashPartAndDocKeySizes(
         row_key_.AsSlice()));
-    row_key_.mutable_data()->Truncate(dockey_sizes.doc_key_size);
+    row_key_.data().Truncate(dockey_sizes.doc_key_size);
     hash_part_size = dockey_sizes.hash_part_size;
     key = row_key_;
   }
@@ -377,7 +382,6 @@ Status DocRowwiseIteratorBase::CopyKeyColumnsToRow(
 
 Status DocRowwiseIteratorBase::CopyKeyColumnsToRow(
     const dockv::ReaderProjection& projection, dockv::PgTableRow* row) {
-//  RETURN_NOT_OK(DoCopyKeyColumnsToRow(projection, row));
   if (!row) {
     return Status::OK();
   }
@@ -386,23 +390,6 @@ Status DocRowwiseIteratorBase::CopyKeyColumnsToRow(
   }
   return pg_key_decoder_->Decode(
       row_key_.AsSlice().WithoutPrefix(doc_read_context_.key_prefix_encoded_len()), row);
-/*
-  dockv::PgTableRow temp_row(row->projection());
-  CHECK_OK(doc_read_context_.pg_row_key_decoder().Decode(
-      row_key_.AsSlice().WithoutPrefix(doc_read_context_.key_prefix_encoded_len()),
-      &temp_row));
-  for (size_t i = 0; i != row->projection().num_key_columns; ++i) {
-    auto o1 = row->GetValueByIndex(i);
-    auto o2 = temp_row.GetValueByIndex(i);
-    if (!o1 || !o2) {
-      CHECK(!o1 && !o2) << "index: " << i;
-      continue;
-    }
-    auto v1 = o1->ToQLValuePB(row->projection().columns[i].data_type);
-    auto v2 = o1->ToQLValuePB(row->projection().columns[i].data_type);
-    CHECK_EQ(v1.ShortDebugString(), v2.ShortDebugString()) << "index: " << i;
-  }
-  return Status::OK();*/
 }
 
 template <class Row>

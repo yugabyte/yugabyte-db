@@ -42,6 +42,8 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/transaction_log.h"
 
+#include "yb/rocksutil/yb_rocksdb_logger.h"
+
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
@@ -176,7 +178,7 @@ class DeleteFileTest : public RocksDBTest {
     return dbfull()->TEST_FlushMemTable(/* wait = */ true);
   }
 
-  Result<std::vector<LiveFileMetaData>> AddFiles(int num_sst_files, int num_key_per_sst);
+  Result<std::vector<LiveFileMetaData>> AddFiles(int num_sst_files, int num_keys_per_sst);
 
   size_t TryDeleteFiles(
       const std::vector<LiveFileMetaData>& files, size_t max_files_to_delete,
@@ -396,10 +398,10 @@ TEST_F(DeleteFileTest, DeleteNonDefaultColumnFamily) {
 }
 
 Result<std::vector<LiveFileMetaData>> DeleteFileTest::AddFiles(
-    const int num_sst_files, const int num_key_per_sst) {
+    const int num_sst_files, const int num_keys_per_sst) {
   LOG(INFO) << "Writing " << num_sst_files << " SSTs";
   for (auto num = 0; num < num_sst_files; num++) {
-    AddKeys(num_key_per_sst, 0);
+    AddKeys(num_keys_per_sst, 0);
     RETURN_NOT_OK(FlushSync());
   }
   std::vector<LiveFileMetaData> metadata;
@@ -540,6 +542,42 @@ TEST_F(DeleteFileTest, DeleteWithBackgroundCompaction) {
 
     CloseDB();
   }
+}
+
+TEST_F(DeleteFileTest, DeleteWithConcurrentOptionsChange) {
+  const auto kNumSstFiles = 30;
+  const auto kNumKeysPerSst = 1000;
+
+  options_.info_log = std::make_shared<yb::YBRocksDBLogger>(options_.log_prefix);
+  options_.disable_auto_compactions = true;
+  options_.level0_stop_writes_trigger = kNumSstFiles + 10;
+  options_.level0_slowdown_writes_trigger = options_.level0_stop_writes_trigger;
+  ASSERT_OK(ReopenDB(/* create = */ true));
+
+  auto metadata = ASSERT_RESULT(AddFiles(kNumSstFiles, kNumKeysPerSst));
+
+  std::atomic<bool> stop_requested{false};
+
+  std::thread change_options([this, &stop_requested] {
+    // We don't care about actual max_sequential_skip_in_iterations, just changing it to reproduce
+    // tsan race when accessing options object.
+    int delta = 1;
+    while (!stop_requested) {
+      ASSERT_OK(db_->SetOptions(
+          {{"max_sequential_skip_in_iterations",
+            yb::AsString(options_.max_sequential_skip_in_iterations + delta)}}));
+      delta = -delta;
+    }
+  });
+
+  auto files_deleted = TryDeleteFiles(
+      metadata, /* max_files_to_delete = */ kNumSstFiles, StopOnMaxFilesDeleted::kTrue,
+      []{ return false; });
+
+  stop_requested = true;
+  change_options.join();
+
+  CloseDB();
 }
 
 } // namespace rocksdb

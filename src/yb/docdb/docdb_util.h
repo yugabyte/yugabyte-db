@@ -21,15 +21,13 @@
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/dockv/doc_path.h"
 
 #include "yb/master/master_replication.pb.h"
 
 #include "yb/rocksdb/compaction_filter.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value,
@@ -279,5 +277,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   ScopedRWOperation dummy_scoped_rw_operation_;
 };
 
-}  // namespace docdb
-}  // namespace yb
+std::string GetStorageDir(const std::string& data_dir, const std::string& storage);
+std::string GetStorageCheckpointDir(const std::string& data_dir, const std::string& storage);
+
+}  // namespace yb::docdb

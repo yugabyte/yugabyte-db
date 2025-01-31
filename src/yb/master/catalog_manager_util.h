@@ -16,15 +16,14 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yb/util/logging.h"
+#include "yb/common/entity_ids.h"
 
-#include "yb/consensus/consensus_fwd.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_snapshot_coordinator.h"
-#include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/ts_descriptor.h"
+
+#include "yb/util/status_callback.h"
 
 // Utility functions that can be shared between test and code for catalog manager.
 namespace yb {
@@ -119,7 +118,7 @@ class CatalogManagerUtil {
 
   template<class LoadState>
   static Status FillTableLoadState(const scoped_refptr<TableInfo>& table_info, LoadState* state) {
-    auto tablets = VERIFY_RESULT(table_info->GetTablets(IncludeInactive::kTrue));
+    auto tablets = VERIFY_RESULT(table_info->GetTabletsIncludeInactive());
 
     for (const auto& tablet : tablets) {
       // Ignore if tablet is not running.
@@ -179,6 +178,11 @@ class CatalogManagerUtil {
   static void FillTableInfoPB(
       const TableId& table_id, const std::string& table_name, const TableType& table_type,
       const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
+      tablet::TableInfoPB* pb);
+
+  static void FillTableInfoPB(
+      const TableId& table_id, const std::string& table_name, const TableType& table_type,
+      const SchemaPB& schema, uint32_t schema_version, const PartitionSchemaPB& partition_schema,
       tablet::TableInfoPB* pb);
 
  private:
@@ -250,6 +254,10 @@ inline bool IsTable(const SysTablesEntryPB& pb) {
 int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info);
 
 const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklist_leader);
+
+Status ExecutePgsqlStatements(
+    const std::string& database_name, const std::vector<std::string>& statements,
+    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback);
 
 } // namespace master
 } // namespace yb

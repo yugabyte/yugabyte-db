@@ -7,6 +7,7 @@ package gcp
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -19,13 +20,14 @@ import (
 
 // createGCPProviderCmd represents the provider command
 var createGCPProviderCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create a GCP YugabyteDB Anywhere provider",
-	Long:  "Create a GCP provider in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create a GCP YugabyteDB Anywhere provider",
+	Long:    "Create a GCP provider in YugabyteDB Anywhere",
 	Example: `yba provider gcp create -n dkumar-cli \
 	--network yugabyte-network \
-	--region region-name=us-west1,shared-subnet=<subnet> \
-	--region region-name=us-west2,shared-subnet=<subnet> \
+	--region region-name=us-west1::shared-subnet=<subnet> \
+	--region region-name=us-west2::shared-subnet=<subnet> \
 	--credentials <path-to-credentials-file>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
@@ -195,10 +197,15 @@ var createGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		requestBody := ybaclient.Provider{
-			Code: util.GetStringPointer(providerCode),
-			Name: util.GetStringPointer(providerName),
+		imageBundles, err := cmd.Flags().GetStringArray("image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
+		requestBody := ybaclient.Provider{
+			Code:          util.GetStringPointer(providerCode),
+			Name:          util.GetStringPointer(providerName),
+			ImageBundles:  buildGCPImageBundles(imageBundles),
 			AllAccessKeys: &allAccessKeys,
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
@@ -211,18 +218,15 @@ var createGCPProviderCmd = &cobra.Command{
 			},
 			Regions: buildGCPRegions(regions, allowed, version),
 		}
-		rCreate, response, err := authAPI.CreateProvider().
+		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: GCP", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
-		providerutil.WaitForCreateProviderTask(authAPI, providerName, providerUUID,
-			providerCode, taskUUID)
+		providerutil.WaitForCreateProviderTask(
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 
@@ -259,19 +263,35 @@ func init() {
 
 	createGCPProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the GCP provider. Minimum number of required "+
-			"regions = 1. Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,shared-subnet=<subnet-id>,yb-image=<custom-ami>,"+
+			"regions = 1. Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::shared-subnet=<subnet-id>::"+
 			"instance-template=<instance-templates-for-YugabyteDB-nodes>\". "+
 			formatter.Colorize("Region name and Shared subnet are required key-value pairs.",
 				formatter.GreenColor)+
 			" YB Image (AMI) and Instance Template are optional. "+
 			"Each region can be added using separate --region flags. "+
-			"Example: --region region-name=us-west1,shared-subnet=<shared-subnet-id>")
+			"Example: --region region-name=us-west1::shared-subnet=<shared-subnet-id>")
+
+	createGCPProviderCmd.Flags().StringArray("image-bundle", []string{},
+		"[Optional] Intel x86_64 image bundles associated with GCP provider. "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>::machine-image=<custom-ami>::"+
+			"ssh-user=<ssh-user>::ssh-port=<ssh-port>::default=<true/false>\". "+
+			formatter.Colorize(
+				"Image bundle name, machine image and SSH user are required key-value pairs.",
+				formatter.GreenColor)+
+			" The default SSH Port is 22. Default marks the image bundle as default for the provider. "+
+			"Each image bundle can be added using separate --image-bundle flag. "+
+			"Example: --image-bundle image-bundle-name=<image-bundle>::machine-image=<custom-ami>::"+
+			"ssh-user=<ssh-user>::ssh-port=22")
 
 	createGCPProviderCmd.Flags().String("ssh-user", "centos",
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createGCPProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port to access the YugabyteDB nodes.")
+	createGCPProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --image-bundle instead.")
+	createGCPProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --image-bundle instead.")
+
 	createGCPProviderCmd.Flags().String("custom-ssh-keypair-name", "",
 		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+
 			"If left empty, "+
@@ -315,7 +335,6 @@ func buildGCPRegions(regionStrings []string, allowed bool, version string) (
 			Details: &ybaclient.RegionDetails{
 				CloudInfo: &ybaclient.RegionCloudInfo{
 					Gcp: &ybaclient.GCPRegionCloudInfo{
-						YbImage:          util.GetStringPointer(region["yb-image"]),
 						InstanceTemplate: util.GetStringPointer(region["instance-template"]),
 					},
 				},
@@ -340,6 +359,63 @@ func buildGCPZones(sharedSubnet string) (res []ybaclient.AvailabilityZone) {
 		logrus.Fatalln(
 			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
+	}
+	return res
+}
+
+func buildGCPImageBundles(imageBundles []string) []ybaclient.ImageBundle {
+	imageBundleLen := len(imageBundles)
+	res := make([]ybaclient.ImageBundle, 0)
+	for _, i := range imageBundles {
+		bundle := providerutil.BuildImageBundleMapFromString(i, "add")
+		bundle = providerutil.DefaultImageBundleValues(bundle)
+
+		if _, ok := bundle["ssh-user"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"SSH User not specified in image bundle.\n",
+					formatter.RedColor))
+		}
+
+		if _, ok := bundle["machine-image"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize("Machine Image not specified in image bundle.\n",
+					formatter.RedColor))
+		}
+
+		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		if err != nil {
+			errMessage := err.Error() + " Using SSH Port as 22\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			sshPort = 22
+		}
+
+		defaultBundle, err := strconv.ParseBool(bundle["default"])
+		if err != nil {
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			defaultBundle = false
+		}
+		if imageBundleLen == 1 && !defaultBundle {
+			defaultBundle = true
+		}
+
+		imageBundle := ybaclient.ImageBundle{
+			Name:         util.GetStringPointer(bundle["name"]),
+			UseAsDefault: util.GetBoolPointer(defaultBundle),
+			Details: &ybaclient.ImageBundleDetails{
+				Arch:          util.GetStringPointer(bundle["arch"]),
+				GlobalYbImage: util.GetStringPointer(bundle["machine-image"]),
+				SshUser:       util.GetStringPointer(bundle["ssh-user"]),
+				SshPort:       util.GetInt32Pointer(int32(sshPort)),
+			},
+		}
+		res = append(res, imageBundle)
 	}
 	return res
 }

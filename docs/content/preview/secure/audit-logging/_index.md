@@ -20,24 +20,24 @@ Use audit logging to produce audit logs needed to comply with government, financ
     title="Manually trace statements"
     body="Trace executed statements in a session using session identifiers."
     href="trace-statements-ysql/"
-    icon="fa-solid fa-pen">}}
+    icon="fa-thin fa-list-check">}}
 
   {{<index/item
     title="Configure audit logging"
     body="Configure audit logging in YugabyteDB."
     href="audit-logging-ysql/"
-    icon="fa-solid fa-gear">}}
+    icon="fa-thin fa-gear">}}
 
   {{<index/item
     title="Session audit logging"
     body="Session audit logging in YSQL."
     href="session-audit-logging-ysql/"
-    icon="fa-solid fa-pen">}}
+    icon="fa-thin fa-check-double">}}
 
   {{<index/item
     title="Object audit logging"
     body="Object audit logging in YSQL."
     href="object-audit-logging-ysql/"
-    icon="fa-solid fa-pen">}}
+    icon="fa-thin fa-file-check">}}
 
 {{</index/block>}}

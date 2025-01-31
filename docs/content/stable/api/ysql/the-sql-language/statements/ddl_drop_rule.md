@@ -4,7 +4,7 @@ headerTitle: DROP RULE
 linkTitle: DROP RULE
 description: Use the DROP RULE statement to remove a rule.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_drop_rule
     parent: statements
 type: docs
@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP RULE` statement to remove a rule.
+Use the DROP RULE statement to remove a rule.
 
 ## Syntax
 
@@ -38,5 +38,6 @@ yugabyte=# DROP RULE t1_to_t2 ON t1;
 
 ## See also
 
-- [`CREATE RULE`](../ddl_create_rule)
-- [postgresql-docs-drop-rule](https://www.postgresql.org/docs/current/sql-droprule.html)
+- [CREATE RULE](../ddl_create_rule)
+
+[postgresql-docs-drop-rule]: https://www.postgresql.org/docs/11/sql-droprule.html

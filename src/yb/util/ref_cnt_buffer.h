@@ -21,6 +21,7 @@
 #include <atomic>
 #include <string>
 
+#include "yb/util/hash_util.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -214,6 +215,10 @@ struct RefCntPrefixHash {
     return inp.as_slice().hash();
   }
 };
+
+inline size_t hash_value(const RefCntPrefix& ref_cnt_prefix) noexcept {
+  return ref_cnt_prefix.as_slice().hash();
+}
 
 class RefCntSlice {
  public:

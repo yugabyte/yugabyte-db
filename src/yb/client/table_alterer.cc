@@ -71,8 +71,8 @@ YBTableAlterer* YBTableAlterer::SetTableProperties(const TableProperties& table_
   return this;
 }
 
-YBTableAlterer* YBTableAlterer::replication_info(const master::ReplicationInfoPB& ri) {
-  replication_info_ = std::make_unique<master::ReplicationInfoPB>(ri);
+YBTableAlterer* YBTableAlterer::replication_info(const ReplicationInfoPB& ri) {
+  replication_info_ = std::make_unique<ReplicationInfoPB>(ri);
   return this;
 }
 
@@ -140,10 +140,16 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
   }
 
   if (rename_to_) {
-    req->set_new_table_name(rename_to_->table_name());
+    if (rename_to_->has_table()) {
+      req->set_new_table_name(rename_to_->table_name());
 
-    if (rename_to_->has_namespace()) {
-      req->mutable_new_namespace()->set_name(rename_to_->namespace_name());
+      if (rename_to_->has_namespace()) {
+        req->mutable_new_namespace()->set_name(rename_to_->namespace_name());
+      }
+    }
+
+    if (rename_to_->has_pgschema_name()) {
+      req->set_pgschema_name(rename_to_->pgschema_name());
     }
   }
 

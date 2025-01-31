@@ -4,7 +4,7 @@ headerTitle: DROP CAST
 linkTitle: DROP CAST
 description: Use the DROP CAST statement to remove a cast.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_drop_cast
     parent: statements
 type: docs
@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP CAST` statement to remove a cast.
+Use the DROP CAST statement to remove a cast.
 
 ## Syntax
 
@@ -38,5 +38,6 @@ yugabyte=# DROP CAST (integer AS date);
 
 ## See also
 
-- [`CREATE CAST`](../ddl_create_cast)
-- [postgresql-docs-drop-cast](https://www.postgresql.org/docs/current/sql-dropcast.html)
+- [CREATE CAST](../ddl_create_cast)
+
+[postgresql-docs-drop-cast]: https://www.postgresql.org/docs/11/sql-dropcast.html

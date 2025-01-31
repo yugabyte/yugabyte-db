@@ -2,13 +2,13 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
-import static com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest.waitForTask;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
@@ -17,6 +17,7 @@ import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
@@ -63,8 +64,17 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         OLD_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + OLD_DB_VERSION + "/bin");
   }
 
+  protected SoftwareUpgradeParams getBaseUpgradeParams() {
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.expectedUniverseVersion = -1;
+    params.sleepAfterMasterRestartMillis = 10000;
+    params.sleepAfterTServerRestartMillis = 10000;
+    return params;
+  }
+
   @Test
   public void testSoftwareUpgradeWithNoRollbackSupport() throws InterruptedException {
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.skipVersionChecks.getKey(), "true");
     String downloadURL = String.format(OLD_DB_VERSION_URL, os, arch);
     downloadAndSetUpYBSoftware(os, arch, downloadURL, OLD_DB_VERSION);
     ybVersion = OLD_DB_VERSION;
@@ -77,10 +87,9 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
     initAndStartPayload(universe);
-    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
-    params.ybSoftwareVersion = DB_VERSION;
+    SoftwareUpgradeParams params = getBaseUpgradeParams();
     params.setUniverseUUID(universe.getUniverseUUID());
-    params.expectedUniverseVersion = -1;
+    params.ybSoftwareVersion = DB_VERSION;
     TaskInfo taskInfo =
         waitForTask(
             upgradeUniverseHandler.upgradeDBVersion(
@@ -107,10 +116,9 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(),
         "false",
         true);
-    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    SoftwareUpgradeParams params = getBaseUpgradeParams();
     params.ybSoftwareVersion = NEW_DB_VERSION;
     params.setUniverseUUID(universe.getUniverseUUID());
-    params.expectedUniverseVersion = -1;
     TaskInfo taskInfo =
         waitForTask(
             upgradeUniverseHandler.upgradeDBVersion(
@@ -147,10 +155,9 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(),
         "false",
         true);
-    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    SoftwareUpgradeParams params = getBaseUpgradeParams();
     params.ybSoftwareVersion = NEW_DB_VERSION;
     params.setUniverseUUID(universe.getUniverseUUID());
-    params.expectedUniverseVersion = -1;
     TaskInfo taskInfo =
         waitForTask(
             upgradeUniverseHandler.upgradeDBVersion(

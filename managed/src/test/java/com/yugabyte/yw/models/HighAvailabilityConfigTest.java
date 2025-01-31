@@ -116,7 +116,7 @@ public class HighAvailabilityConfigTest extends FakeDBApplication {
     assertOk(createResult);
     createResult = createPlatformInstance(configUUID, "http://def.com/", false, false);
     assertOk(createResult);
-    config = HighAvailabilityConfig.get(configUUID).get();
+    config = HighAvailabilityConfig.maybeGet(configUUID).get();
     assertEquals(GlobalState.AwaitingReplicas, config.computeGlobalState());
   }
 
@@ -133,7 +133,7 @@ public class HighAvailabilityConfigTest extends FakeDBApplication {
     Optional<PlatformInstance> remote =
         PlatformInstance.get(UUID.fromString(remotePlatformJson.get("uuid").asText()));
     remote.get().updateLastBackup(new Date());
-    config = HighAvailabilityConfig.get(configUUID).get();
+    config = HighAvailabilityConfig.maybeGet(configUUID).get();
     assertEquals(GlobalState.Operational, config.computeGlobalState());
   }
 
@@ -150,7 +150,7 @@ public class HighAvailabilityConfigTest extends FakeDBApplication {
     Optional<PlatformInstance> remote =
         PlatformInstance.get(UUID.fromString(remotePlatformJson.get("uuid").asText()));
     remote.get().updateLastBackup(new Date(System.currentTimeMillis() - (30 * 60 * 1000)));
-    config = HighAvailabilityConfig.get(configUUID).get();
+    config = HighAvailabilityConfig.maybeGet(configUUID).get();
     assertEquals(GlobalState.Error, config.computeGlobalState());
   }
 
@@ -175,7 +175,7 @@ public class HighAvailabilityConfigTest extends FakeDBApplication {
     remote = PlatformInstance.get(UUID.fromString(remotePlatformJson.get("uuid").asText()));
     remote.get().updateLastBackup(new Date());
 
-    config = HighAvailabilityConfig.get(configUUID).get();
+    config = HighAvailabilityConfig.maybeGet(configUUID).get();
     assertEquals(GlobalState.Warning, config.computeGlobalState());
   }
 
@@ -187,7 +187,7 @@ public class HighAvailabilityConfigTest extends FakeDBApplication {
     Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, false);
     assertOk(createResult);
 
-    config = HighAvailabilityConfig.get(configUUID).get();
+    config = HighAvailabilityConfig.maybeGet(configUUID).get();
     assertEquals(GlobalState.AwaitingReplicas, config.computeGlobalState());
   }
 
@@ -211,7 +211,7 @@ public class HighAvailabilityConfigTest extends FakeDBApplication {
     remote.promote();
 
     local.updateLastBackup(new Date());
-    config = HighAvailabilityConfig.get(configUUID).get();
+    config = HighAvailabilityConfig.maybeGet(configUUID).get();
     assertEquals(GlobalState.StandbyConnected, config.computeGlobalState());
   }
 
@@ -235,7 +235,7 @@ public class HighAvailabilityConfigTest extends FakeDBApplication {
     remote.promote();
 
     local.updateLastBackup(new Date(System.currentTimeMillis() - (30 * 60 * 1000)));
-    config = HighAvailabilityConfig.get(configUUID).get();
+    config = HighAvailabilityConfig.maybeGet(configUUID).get();
     assertEquals(GlobalState.StandbyDisconnected, config.computeGlobalState());
   }
 }

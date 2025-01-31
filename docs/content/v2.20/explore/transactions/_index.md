@@ -4,7 +4,6 @@ headerTitle: Transactions
 linkTitle: Transactions
 description: Transactions in YugabyteDB.
 headcontent: Transactions in YugabyteDB.
-image: /images/section_icons/explore/transactional.png
 menu:
   v2.20:
     identifier: explore-transactions
@@ -19,7 +18,7 @@ The following table summarizes the support for transactions across the YSQL and 
 | Property | YSQL | YCQL | Comments |
 | :------- | :--- | :--- | :------- |
 | Distributed transactions | Yes | Yes | Perform multi-row or multi-table transactions.<br/>An application can connect to any node of the cluster. |
-| Isolation levels | Serializable<br/>Snapshot | Snapshot | Repeatable read isolation level in PostgreSQL maps to snapshot isolation in YSQL. |
+| Isolation levels | Serializable<br/>Snapshot<br/>Read Committed | Snapshot | Repeatable read isolation level in PostgreSQL maps to snapshot isolation in YSQL. |
 | `AUTOCOMMIT = false` setting | Yes | No | The transaction must be expressed as one statement in YCQL. |
 
 <div class="row">
@@ -41,7 +40,7 @@ The following table summarizes the support for transactions across the YSQL and 
         <div class="title">Isolation levels</div>
       </div>
       <div class="body">
-        Serializable, Snapshot, and Read committed isolation in YugabyteDB.
+        Serializable, snapshot, and read committed isolation in YugabyteDB.
       </div>
     </a>
   </div>

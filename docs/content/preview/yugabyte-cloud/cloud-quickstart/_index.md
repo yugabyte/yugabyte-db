@@ -4,7 +4,6 @@ headerTitle: Quick start
 linkTitle: Quick start
 headcontent: Sign up for YugabyteDB Aeon and create a free Sandbox cluster
 description: Get started using YugabyteDB Aeon in less than five minutes.
-image: /images/section_icons/index/quick_start.png
 layout: single
 type: docs
 menu:
@@ -98,14 +97,14 @@ To connect to your cluster, do the following:
     The shell prompt appears and is ready to use.
 
     ```output
-    ysqlsh (11.2-YB-2.2.0.0-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
     SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
     Type "help" for help.
 
     yugabyte=>
     ```
 
-> The command line interface (CLI) being used is called [ysqlsh](/preview/admin/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/preview/api/ysql/). Cloud Shell also supports [ycqlsh](/preview/admin/ycqlsh/), a CLI for the [YCQL API](/preview/api/ycql/).
+> The command line interface (CLI) being used is called [ysqlsh](/preview/api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/preview/api/ysql/). Cloud Shell also supports [ycqlsh](/preview/api/ycqlsh/), a CLI for the [YCQL API](/preview/api/ycql/).
 >
 > For information on other ways to connect to your cluster, refer to [Connect to clusters](/preview/yugabyte-cloud/cloud-connect).
 
@@ -129,4 +128,4 @@ Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
 
 ### Choose your language
 
-{{< readfile "../../quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+{{< readfile "/preview/tutorials/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}

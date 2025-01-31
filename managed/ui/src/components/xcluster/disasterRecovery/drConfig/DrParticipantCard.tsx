@@ -1,5 +1,6 @@
 import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { useQuery } from 'react-query';
+import { Link } from 'react-router';
 
 import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { YBLoadingCircleIcon } from '../../../common/indicators';
@@ -14,6 +15,8 @@ import { PlacementRegion } from '../../../../redesign/helpers/dtos';
 interface DrParticipantCardProps {
   xClusterConfig: XClusterConfig;
   universeXClusterRole: UniverseXClusterRole;
+
+  width?: number;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -23,20 +26,27 @@ const useStyles = makeStyles((theme) => ({
     gap: theme.spacing(0.5),
 
     padding: theme.spacing(2),
-    width: '480px',
+    minWidth: (props: { width?: number }) => (props.width ? `${props.width}px` : '480px'),
     height: '80px',
 
     border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
     borderRadius: '8px',
     background: theme.palette.ybacolors.backgroundGrayLight
+  },
+  universeLink: {
+    color: theme.palette.common.black,
+    '&:hover': {
+      color: theme.palette.orange[500]
+    }
   }
 }));
 
 export const DrParticipantCard = ({
   xClusterConfig,
-  universeXClusterRole
+  universeXClusterRole,
+  width
 }: DrParticipantCardProps) => {
-  const classes = useStyles();
+  const classes = useStyles({ width });
   const theme = useTheme();
 
   const universeUuid =
@@ -67,7 +77,11 @@ export const DrParticipantCard = ({
           <YBLoadingCircleIcon />
         ) : (
           <>
-            <Typography variant="h5">{universeName}</Typography>
+            <Typography variant="h5">
+              <Link to={`/universes/${universeUuid}`} className={classes.universeLink}>
+                {universeName}
+              </Link>
+            </Typography>
           </>
         )}
         <Box marginLeft="auto">

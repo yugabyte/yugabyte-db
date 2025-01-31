@@ -16,7 +16,9 @@ import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 
@@ -25,6 +27,8 @@ import org.yb.CommonTypes.TableType;
 public class ConfigureDBApiParams extends UpgradeTaskParams {
 
   public boolean enableYSQL;
+
+  public boolean enableConnectionPooling;
 
   public boolean enableYSQLAuth;
 
@@ -39,6 +43,8 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
   public CommunicationPorts communicationPorts = new CommunicationPorts();
 
   public ServerType configureServer;
+
+  public Map<String, String> connectionPoolingGflags = new HashMap<>();
 
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
@@ -83,6 +89,11 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           && !StringUtils.isEmpty(ysqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot set password while YSQL auth is disabled.");
+      } else if (communicationPorts.ysqlServerHttpPort == communicationPorts.ysqlServerRpcPort
+          || communicationPorts.ysqlServerRpcPort == communicationPorts.internalYsqlServerRpcPort
+          || communicationPorts.internalYsqlServerRpcPort
+              == communicationPorts.ysqlServerHttpPort) {
+        throw new PlatformServiceException(BAD_REQUEST, "All YSQL ports must be different.");
       } else if (!enableYSQL) {
         // Ensure that user deletes all backup schedules, xcluster configs
         // and pitr configs before disabling YSQL.
@@ -108,6 +119,10 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           throw new PlatformServiceException(
               BAD_REQUEST, "Cannot disable YSQL if xcluster config exists");
         }
+        if (enableConnectionPooling) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot disable YSQL if connection pooling is enabled");
+        }
       }
     } else if (configureServer.equals(ServerType.YQLSERVER)) {
       if (changeInYsql) {
@@ -129,6 +144,8 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           && !StringUtils.isEmpty(ycqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot set password while YCQL auth is disabled.");
+      } else if (communicationPorts.yqlServerHttpPort == communicationPorts.yqlServerRpcPort) {
+        throw new PlatformServiceException(BAD_REQUEST, "All YCQL ports must be different.");
       } else if (!enableYCQL) {
         // Ensure that all backup schedules, xcluster configs
         // and pitr configs are deleted before disabling YCQL.

@@ -10,6 +10,12 @@ Delete a Kubernets provider in YugabyteDB Anywhere
 yba provider kubernetes delete [flags]
 ```
 
+### Examples
+
+```
+yba provider kubernetes delete --name <provider-name>
+```
+
 ### Options
 
 ```

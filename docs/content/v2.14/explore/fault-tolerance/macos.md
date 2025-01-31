@@ -71,7 +71,7 @@ For more information about the output of the workload applications, refer to [Yu
 
 You can check a lot of the per-node statistics by browsing to [tablet-servers](http://127.0.0.1:7000/tablet-servers). The total read and write IOPS per node are demonstrated by the following illustration:
 
-![Read and write IOPS with 3 nodes](/images/ce/fault-tolerance_evenly_distributed.png)
+![Read and write IOPS with 3 nodes](/images/ce/fault-tolerance-evenly-distributed.png)
 
 Note how both the reads and the writes are roughly the same across all the nodes, indicating uniform usage across the nodes.
 
@@ -88,7 +88,7 @@ Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see t
 
 The `Time since heartbeat` value for that node will keep increasing. After that number reaches 60s (1 minute), YugabyteDB changes the status of that node from `ALIVE` to `DEAD`. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
 
-![Read and write IOPS with 3rd node dead](/images/ce/fault_tolerance_dead_node.png)
+![Read and write IOPS with 3rd node dead](/images/ce/fault-tolerance-dead-node.png)
 
 ## Clean up
 

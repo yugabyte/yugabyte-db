@@ -5,7 +5,7 @@ linkTitle: Miscellaneous
 description: The semantics of the miscellaneous date-time functions. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  preview:
+  preview_api:
     identifier: miscellaneous
     parent: date-time-functions
     weight: 60
@@ -183,7 +183,7 @@ This is the result:
 
 See the section [The moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](../../date-time-data-types-semantics/type-interval/interval-arithmetic/moment-moment-overloads-of-minus/) for more information.
 
-The PostgreSQL documentation, in [Table 9.30. Date/Time Functions](https://www.postgresql.org/docs/11/functions-datetime.html#FUNCTIONS-DATETIME-TABLE), describes how _age()_ calculates its result thus:
+The PostgreSQL documentation, in [Table 9.30. Date/Time Functions](https://www.postgresql.org/docs/15/functions-datetime.html#FUNCTIONS-DATETIME-TABLE), describes how _age()_ calculates its result thus:
 
 > Subtract arguments, producing a "symbolic" result that uses years and months, rather than just days
 

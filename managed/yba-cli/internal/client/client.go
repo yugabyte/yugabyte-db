@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -28,9 +29,18 @@ var hostVersion = "0.1.0"
 
 // AuthAPIClient contains authenticated api client and customer UUID
 type AuthAPIClient struct {
+	RestClient   *RestAPIClient
 	APIClient    *ybaclient.APIClient
 	CustomerUUID string
 	ctx          context.Context
+	stop         context.CancelFunc
+}
+
+// RestAPIClient contains http client
+type RestAPIClient struct {
+	Client *http.Client
+	Host   string
+	Scheme string
 }
 
 // SetVersion assigns the version of YBA CLI
@@ -61,8 +71,9 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 	if len(host) == 0 {
 		logrus.Fatalln(
 			formatter.Colorize(
-				"No valid Host detected. "+
-					"Run \"yba auth\" or \"yba login\" to authenticate with YugabyteDB Anywhere.\n",
+				"No valid YugabyteDB Anywhere Host detected. "+
+					"Run \"yba auth\" or \"yba login\" to authenticate "+
+					"with YugabyteDB Anywhere or run the command with -H flag.\n",
 				formatter.RedColor))
 	}
 	url, err := ParseURL(host)
@@ -75,8 +86,11 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 	if len(apiToken) == 0 {
 		logrus.Fatalln(
 			formatter.Colorize(
-				"No valid API token detected. Run \"yba auth\" or \"yba login\" to "+
-					"authenticate with YugabyteDB Anywhere or run the command with -a flag.\n",
+				fmt.Sprintf(
+					"No valid API token detected for YugabyteDB Anywhere on %s. "+
+						"Run \"yba auth\" or \"yba login\" to "+
+						"authenticate with YugabyteDB Anywhere or run the command with -a flag.\n",
+					host),
 				formatter.RedColor))
 	}
 
@@ -87,16 +101,23 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, error) {
 
 	cfg := ybaclient.NewConfiguration()
+	restAPIClient := &RestAPIClient{
+		Client: &http.Client{Timeout: 30 * time.Second},
+		Host:   url.Host,
+	}
 	//Configure the client
 
 	cfg.Host = url.Host
 	cfg.Scheme = url.Scheme
 	if url.Scheme == "https" {
 		cfg.Scheme = "https"
+		restAPIClient.Scheme = "https"
 		tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 		cfg.HTTPClient = &http.Client{Transport: tr}
+		restAPIClient.Client.Transport = tr
 	} else {
 		cfg.Scheme = "http"
+		restAPIClient.Scheme = "http"
 	}
 
 	cfg.DefaultHeader = map[string]string{
@@ -105,12 +126,14 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 
 	apiClient := ybaclient.NewAPIClient(cfg)
 
-	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 
 	return &AuthAPIClient{
+		restAPIClient,
 		apiClient,
 		"",
 		ctx,
+		stop,
 	}, nil
 }
 
@@ -147,6 +170,7 @@ func ParseURL(host string) (*url.URL, error) {
 	return endpoint, err
 }
 
+// YBAMinimumVersion contains the minimum YBA version for stable and preview releases for a feature
 type YBAMinimumVersion struct {
 	Stable  string
 	Preview string
@@ -184,6 +208,7 @@ func (a *AuthAPIClient) CheckValidYBAVersion(versions YBAMinimumVersion) (bool,
 	return false, currentVersion, err
 }
 
+// IsCLISupported checks if the CLI version is supported
 func (a *AuthAPIClient) IsCLISupported() {
 	allowedVersions := YBAMinimumVersion{
 		Stable:  util.MinCLIStableVersion,
@@ -203,4 +228,6 @@ func (a *AuthAPIClient) IsCLISupported() {
 			allowedVersions.Preview)
 		logrus.Fatalln(formatter.Colorize(errMessage, formatter.RedColor))
 	}
+
+	SetHostVersion(version)
 }

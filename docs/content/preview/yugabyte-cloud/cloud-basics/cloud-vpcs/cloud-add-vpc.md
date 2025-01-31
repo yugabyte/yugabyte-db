@@ -20,6 +20,8 @@ A virtual private cloud (VPC) is a virtual network where you can deploy clusters
 
 For lowest latencies, create your VPC in the same region(s) as your applications. If you are connecting to your application via a private service endpoint, your cluster VPC must be located in the same region as the VPC endpoint to which you are linking.
 
+## Manage VPCs
+
 **VPCs** on the **VPC Network** tab of the **Networking** page displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, CIDR, number of peering connections, number of clusters deployed in the VPC, and status.
 
 ![VPCs](/images/yb-cloud/cloud-vpc.png)

@@ -4,7 +4,7 @@
  *	  Public header file for SP-GiST access method.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/spgist.h
@@ -16,13 +16,8 @@
 
 #include "access/amapi.h"
 #include "access/xlogreader.h"
-#include "fmgr.h"
 #include "lib/stringinfo.h"
 
-
-/* reloption parameters */
-#define SPGIST_MIN_FILLFACTOR			10
-#define SPGIST_DEFAULT_FILLFACTOR		80
 
 /* SPGiST opclass support function numbers */
 #define SPGIST_CONFIG_PROC				1
@@ -31,8 +26,9 @@
 #define SPGIST_INNER_CONSISTENT_PROC	4
 #define SPGIST_LEAF_CONSISTENT_PROC		5
 #define SPGIST_COMPRESS_PROC			6
+#define SPGIST_OPTIONS_PROC				7
 #define SPGISTNRequiredProc				5
-#define SPGISTNProc						6
+#define SPGISTNProc						7
 
 /*
  * Argument structs for spg_config method
@@ -136,7 +132,10 @@ typedef struct spgPickSplitOut
 typedef struct spgInnerConsistentIn
 {
 	ScanKey		scankeys;		/* array of operators and comparison values */
-	int			nkeys;			/* length of array */
+	ScanKey		orderbys;		/* array of ordering operators and comparison
+								 * values */
+	int			nkeys;			/* length of scankeys array */
+	int			norderbys;		/* length of orderbys array */
 
 	Datum		reconstructedValue; /* value reconstructed at parent */
 	void	   *traversalValue; /* opclass-specific traverse value */
@@ -159,6 +158,7 @@ typedef struct spgInnerConsistentOut
 	int		   *levelAdds;		/* increment level by this much for each */
 	Datum	   *reconstructedValues;	/* associated reconstructed values */
 	void	  **traversalValues;	/* opclass-specific traverse values */
+	double	  **distances;		/* associated distances */
 } spgInnerConsistentOut;
 
 /*
@@ -167,7 +167,10 @@ typedef struct spgInnerConsistentOut
 typedef struct spgLeafConsistentIn
 {
 	ScanKey		scankeys;		/* array of operators and comparison values */
-	int			nkeys;			/* length of array */
+	ScanKey		orderbys;		/* array of ordering operators and comparison
+								 * values */
+	int			nkeys;			/* length of scankeys array */
+	int			norderbys;		/* length of orderbys array */
 
 	Datum		reconstructedValue; /* value reconstructed at parent */
 	void	   *traversalValue; /* opclass-specific traverse value */
@@ -181,6 +184,8 @@ typedef struct spgLeafConsistentOut
 {
 	Datum		leafValue;		/* reconstructed original data, if any */
 	bool		recheck;		/* set true if operator must be rechecked */
+	bool		recheckDistances;	/* set true if distances must be rechecked */
+	double	   *distances;		/* associated distances */
 } spgLeafConsistentOut;
 
 
@@ -189,31 +194,36 @@ extern bytea *spgoptions(Datum reloptions, bool validate);
 
 /* spginsert.c */
 extern IndexBuildResult *spgbuild(Relation heap, Relation index,
-		 struct IndexInfo *indexInfo);
+								  struct IndexInfo *indexInfo);
 extern void spgbuildempty(Relation index);
 extern bool spginsert(Relation index, Datum *values, bool *isnull,
-		  ItemPointer ht_ctid, Relation heapRel,
-		  IndexUniqueCheck checkUnique,
-		  struct IndexInfo *indexInfo);
+					  ItemPointer ht_ctid, Relation heapRel,
+					  IndexUniqueCheck checkUnique,
+					  bool indexUnchanged,
+					  struct IndexInfo *indexInfo);
 
 /* spgscan.c */
 extern IndexScanDesc spgbeginscan(Relation rel, int keysz, int orderbysz);
 extern void spgendscan(IndexScanDesc scan);
 extern void spgrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
-		  ScanKey orderbys, int norderbys);
+					  ScanKey orderbys, int norderbys);
 extern int64 spggetbitmap(IndexScanDesc scan, TIDBitmap *tbm);
 extern bool spggettuple(IndexScanDesc scan, ScanDirection dir);
 extern bool spgcanreturn(Relation index, int attno);
 
 /* spgvacuum.c */
 extern IndexBulkDeleteResult *spgbulkdelete(IndexVacuumInfo *info,
-			  IndexBulkDeleteResult *stats,
-			  IndexBulkDeleteCallback callback,
-			  void *callback_state);
+											IndexBulkDeleteResult *stats,
+											IndexBulkDeleteCallback callback,
+											void *callback_state);
 extern IndexBulkDeleteResult *spgvacuumcleanup(IndexVacuumInfo *info,
-				 IndexBulkDeleteResult *stats);
+											   IndexBulkDeleteResult *stats);
 
 /* spgvalidate.c */
 extern bool spgvalidate(Oid opclassoid);
+extern void spgadjustmembers(Oid opfamilyoid,
+							 Oid opclassoid,
+							 List *operators,
+							 List *functions);
 
 #endif							/* SPGIST_H */

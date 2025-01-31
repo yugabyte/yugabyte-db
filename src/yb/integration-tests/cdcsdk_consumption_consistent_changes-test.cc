@@ -24,7 +24,6 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
     CDCSDKYsqlTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdcsdk_setting_get_changes_response_byte_limit) = true;
   }
 
@@ -84,6 +83,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplicitCheckpointForSingleSh
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 50;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -129,9 +129,123 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplicitCheckpointForSingleSh
   CheckRecordCount(get_consistent_changes_resp, expected_dml_records);
 }
 
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestMajorityReplicatedIndexPresentInClosedWalSegment) {
+  int num_tservers = 3;
+  int tablet_split_range_value = 10;
+  ASSERT_OK(SetUpWithParams(num_tservers, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test1 (id int, value_1 int, PRIMARY KEY (ID ASC)) SPLIT AT VALUES "
+      "(($0))",
+      tablet_split_range_value));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 2);
+  std::unordered_map<TabletId, master::TabletLocationsPB> tablets_locations_map;
+  for (const auto& tablet : tablets) {
+    tablets_locations_map[tablet.tablet_id()] = tablet;
+  }
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Perform 1 insert each on both the tablets and consume them so that the from_op_id moves past
+  // the initial DDL record on both the tablets. This is required so that the response safe time
+  // does not get set to the commit_time of this record as it is a relevant record for CDC.
+  ASSERT_OK(conn1.ExecuteFormat("INSERT INTO test1 VALUES (0, 0)"));
+  ASSERT_OK(conn1.ExecuteFormat("INSERT INTO test1 VALUES ($0, $0)", tablet_split_range_value));
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1));
+  int expected_dml_records = 2;
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, false /* init_virtual_wal */,
+      kVWALSessionId1));
+  LOG(INFO) << "Got " << get_consistent_changes_resp.records.size() << " records.";
+  // 2 * (BEGIN + DML + COMMIT )
+  ASSERT_EQ(get_consistent_changes_resp.records.size(), 6);
+
+  // We require some new WAL OPs on tablet-1 that are non-relevant to CDC. Hence, perform a txn on
+  // tablet-1 and abort it. All WAL OPs related to this aborted txn will be read but will be
+  // filtered out as they are not relevant for CDC.
+  int inserts_per_tablet = 4;
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  for (int i = 1; i <= inserts_per_tablet; i++) {
+    ASSERT_OK(conn1.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1)", i, i));
+  }
+  ASSERT_OK(conn1.Execute("ABORT"));
+
+  // Explicitly rollover on tablet-1 where the above aborted txn was performed. This is done so that
+  // the majority replicated opid & committed opid remains in segment-1 but active segment number
+  // points to segment-2.
+  // On tablet-1, WAL segment-1 should look as follows:
+  // 1.2 CHANGE METADATA OP
+  // 1.3 WRITE OP (single-shard txn)
+  // 1.4 WRITE OP (aborted multi-shard txn)
+  // 1.5 WRITE OP (aborted multi-shard txn)
+  // 1.6 WRITE OP (aborted multi-shard txn)
+  // 1.7 WRITE OP (aborted multi-shard txn)
+  log::SegmentSequence segments;
+  for (int i = 0; i < num_tservers; i++) {
+    for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+      auto tablet_id = peer->tablet_id();
+      auto raft_consensus = ASSERT_RESULT(peer->GetRaftConsensus());
+      if (tablets_locations_map.contains(tablet_id)) {
+        auto txn_participant = ASSERT_RESULT(peer->shared_tablet_safe())->transaction_participant();
+        ASSERT_OK(WaitFor(
+            [&]() -> Result<bool> {
+              if (txn_participant->GetNumRunningTransactions() == 0) {
+                return true;
+              }
+              return false;
+            },
+            MonoDelta::FromSeconds(60), "Timed out waiting for running txns reduce to 0"));
+        auto committed_op_id_index = raft_consensus->GetLastCommittedOpId().index;
+        if (committed_op_id_index >= 7) {
+          LOG(INFO) << "Aborted transactions performed on tablet_id: " << tablet_id;
+          ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
+          ASSERT_OK(WaitFor(
+              [&]() -> Result<bool> {
+                auto active_segment_number = peer->log()->active_segment_sequence_number();
+                RETURN_NOT_OK(peer->log()->GetSegmentsSnapshot(&segments));
+                if (active_segment_number == 2 && segments.size() == 2) {
+                  return true;
+                }
+                return false;
+              },
+              MonoDelta::FromSeconds(60),
+              "Timed out waiting for active segment number to increment"));
+        }
+      }
+    }
+  }
+
+  // Perform inserts on tablet-2.
+  for (int j = tablet_split_range_value + 1; j <= (tablet_split_range_value + inserts_per_tablet);
+       j++) {
+    ASSERT_OK(conn1.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1)", j, j));
+  }
+
+  // We should receive the inserts performed on tablet-2.
+  expected_dml_records = inserts_per_tablet;
+  get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, false /* init_virtual_wal */,
+      kVWALSessionId1));
+  LOG(INFO) << "Got " << get_consistent_changes_resp.records.size() << " records.";
+
+  auto last_record =
+      get_consistent_changes_resp.records[get_consistent_changes_resp.records.size() - 1];
+  VerifyLastRecordAndProgressOnSlot(stream_id, last_record);
+
+  CheckRecordsConsistencyFromVWAL(get_consistent_changes_resp.records);
+  CheckRecordCount(get_consistent_changes_resp, expected_dml_records, 0, 4);
+}
+
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplicitCheckpointForMultiShardTxn) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 100_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -527,6 +641,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestVWALRestartOnMultiThenSingleSha
   // 7. Consume records & verify we receive 6th txn.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 5_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 160;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -769,6 +884,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALRestartOnLongTxnsAckBegin
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithGenerateSeries) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 40;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 250;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
@@ -800,8 +916,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithMan
   ASSERT_EQ(tablets.size(), 3);
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
-  int num_batches = 50;
-  int inserts_per_batch = 100;
+  int num_batches = 50 / kTimeMultiplier;
+  int inserts_per_batch = 100 / kTimeMultiplier;
 
   std::thread t1(
       [&]() -> void { PerformSingleAndMultiShardInserts(num_batches, inserts_per_batch, 20); });
@@ -884,6 +1000,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithFor
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithAbortedTransactions) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_consistent_records) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 10;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -986,6 +1103,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithCol
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionOnMixTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 15;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 40;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
 
@@ -1066,6 +1184,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionOnMixTables) {
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKMakesProgressWithLongRunningTxn) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) =
       10 * 1000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
@@ -1129,6 +1248,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKMakesProgressWithLongRu
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
   google::SetVLOGLevel("cdc*", 0);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 40;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1));
@@ -1201,6 +1321,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConsistentSnapshotWithCDCSDKC
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatements) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
@@ -1258,6 +1379,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatementsAndRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
@@ -1344,6 +1466,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAlter) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
@@ -1402,13 +1525,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithTabletSplit) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1464,12 +1587,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithTab
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTabletSplitDuringConsumptionFromVWAL) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 25;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1546,12 +1669,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTabletSplitDuringConsumptionF
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRecordCountsAfterMultipleTabletSplits) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 25;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1630,12 +1753,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRecordCountsAfterMultipleTabl
 
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest, TestTabletSplitDuringConsumptionFromVWALWithRestart) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 25;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1722,13 +1845,13 @@ TEST_F(
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest,
     TestTabletSplitDuringConsumptionFromVWALWithRestartOnPartialAck) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 15;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 20;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -2186,6 +2309,7 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 20;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros) =
@@ -3002,6 +3126,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesSwitch) {
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConsumptionAfterDroppingTableNotInPublication) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 20;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -3051,7 +3176,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConsumptionAfterDroppingTable
     for (auto& entry : table_1_tablets) {
       expected_tablets.insert(entry.tablet_id());
     }
-    CDCStateTable cdc_state_table(test_client());
+    auto cdc_state_table = MakeCDCStateTable(test_client());
     Status s;
     auto table_range =
         ASSERT_RESULT(cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeAll(), &s));
@@ -3371,6 +3496,528 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureCreatingStreamsOfDiffe
   ASSERT_NOK(CreateConsistentSnapshotStreamWithReplicationSlot(
       "test_slot_2", CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
       kNamespaceName_2));
+}
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/23096.
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestPgReplicationSlotsWithReplicationCommandsDisabled) {
+  ASSERT_OK(SetUpWithParams(
+      /*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // View must work when the commands are disabled.
+  auto slots = ASSERT_RESULT(conn.Fetch("SELECT * FROM pg_replication_slots"));
+  ASSERT_EQ(PQntuples(slots.get()), 0);
+
+  // Enable so that we can create the replication slot. It isn't sufficient to just set the GFlag
+  // value since PG GUC values are passed on from the Tserver at the postmaster creation. So we need
+  // to also set the GUC value directly using the `SET` statement.
+  ASSERT_OK(conn.Execute("SET yb_enable_replication_commands TO true"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot("pg_replication_slots_without_replcmds"));
+
+  // Disable again and ensure that the view returns an empty response.
+  ASSERT_OK(conn.Execute("SET yb_enable_replication_commands TO false"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
+  slots = ASSERT_RESULT(conn.Fetch("SELECT * FROM pg_replication_slots"));
+  ASSERT_EQ(PQntuples(slots.get()), 0);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 100_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test1 (id int PRIMARY KEY, value_1 int) SPLIT INTO 3 TABLETS"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 3);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  int num_batches = 10;
+  int inserts_per_batch = 100;
+  for (int i = 0; i < num_batches; i++) {
+    ASSERT_OK(conn1.Execute("BEGIN"));
+    for (int j = i * inserts_per_batch; j < ((i + 1) * inserts_per_batch); j++) {
+      ASSERT_OK(conn1.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1)", j, j + 1));
+    }
+    ASSERT_OK(conn1.Execute("COMMIT"));
+  }
+
+  int expected_dml_records = num_batches * inserts_per_batch;
+  auto vwal1_result = GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */);
+
+  ASSERT_NOK(vwal1_result);
+  ASSERT_TRUE(vwal1_result.status().IsInternalError());
+  ASSERT_STR_CONTAINS(vwal1_result.status().message().ToBuffer(), "expired for Tablet");
+
+  // A new VWAL on the same stream should again receive the stream expired error.
+  auto vwal2_result = GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */,
+      kVWALSessionId2);
+
+  ASSERT_NOK(vwal2_result);
+  ASSERT_TRUE(vwal2_result.status().IsInternalError());
+  ASSERT_STR_CONTAINS(vwal2_result.status().message().ToBuffer(), "expired for Tablet");
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestIntentGC) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_stream_active_check) = true;
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test1 (id int PRIMARY KEY, value_1 int) SPLIT INTO 2 TABLETS"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 2);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  int num_batches = 50;
+  int inserts_per_batch = 2;
+  for (int i = 0; i < num_batches; i++) {
+    ASSERT_OK(conn1.Execute("BEGIN"));
+    for (int j = i * inserts_per_batch; j < ((i + 1) * inserts_per_batch); j++) {
+      ASSERT_OK(conn1.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1)", j, j + 1));
+    }
+    ASSERT_OK(conn1.Execute("COMMIT"));
+  }
+
+  // Sleep for UpdatePeersAndMetrics to move retention barriers that will lead to garbage collection
+  // of intents.
+  SleepFor(MonoDelta::FromSeconds(30 * kTimeMultiplier));
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+  bool received_gc_error = false;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto vwal1_result = GetConsistentChangesFromCDC(stream_id);
+
+        if (!vwal1_result.ok()) {
+          if (vwal1_result.status().IsInternalError() &&
+              vwal1_result.status().message().ToBuffer().find(
+                  "CDCSDK Trying to fetch already GCed intents") != std::string::npos) {
+            received_gc_error = true;
+            return true;
+          }
+        }
+
+        return false;
+      },
+      MonoDelta::FromSeconds(60), "Did not see Intents GC error"));
+
+  ASSERT_TRUE(received_gc_error);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocationWithIndexes) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 20;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(
+      1, 1, true /* colocated */, true /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // This array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
+  // that order.
+  int expected_count[] = {0, 501, 0, 0, 0, 0, 2, 2};
+
+  // Create a table.
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(key int primary key, value_1 int)", kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+
+  // Create an index.
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(value_1 ASC)", kTableName));
+
+  // Create a consistent snapshot stream.
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Perform 1 multi-shard txn and 1 single shard txn.
+  ASSERT_OK(WriteRowsHelperWithConn(0, 500, &test_cluster_, true, &conn));
+  ASSERT_OK(WriteRowsWithConn(500, 501, &test_cluster_, &conn));
+
+  auto checkpoint_before = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+
+  // We should receive DMLs corresponding to the above txns only. No records corresponding to the
+  // index table should be seen. Since we have reduced the batch size, GetChanges will be called
+  // multiple times.
+  auto gcc_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, 501, true /* init_virtual_wal */));
+
+  ASSERT_EQ(gcc_resp.records.size(), 505);
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], gcc_resp.record_count[i]);
+  }
+
+  // Assert that the checkpoint has moved forward.
+  auto checkpoint_after = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  ASSERT_EQ(checkpoint_before.size(), 1);
+  ASSERT_EQ(checkpoint_after.size(), 1);
+  ASSERT_GT(checkpoint_after[0].index, checkpoint_before[0].index);
+
+  // This GetConsistentChanges call will fetch an empty batch. The response will only contain
+  // safepoint records.
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    ASSERT_EQ(record.row_message().op(), RowMessage_Op_SAFEPOINT);
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCompactionWithReplicaIdentityDefault) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(SetUpWithParams(
+      /* replication_factor */ 3, /* num_masters */ 1, /* colocated */ false,
+      /* cdc_populate_safepoint_record */ true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY DEFAULT"));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto expected_row = ReadFromCdcStateTable(stream_id, tablets[0].tablet_id());
+  if (!expected_row.ok()) {
+    FAIL();
+  }
+  ASSERT_GE((*expected_row).op_id.term, 0);
+  ASSERT_GE((*expected_row).op_id.index, 0);
+  ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
+  ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
+
+  // Assert that the safe time is not invalid in the tablet_peers
+  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1));
+  int expected_dml_records = 1;
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, false /* init_virtual_wal */,
+      kVWALSessionId1));
+  LOG(INFO) << "Got " << get_consistent_changes_resp.records.size() << " records.";
+  // (BEGIN + DML + COMMIT )
+  ASSERT_EQ(get_consistent_changes_resp.records.size(), 3);
+
+  // Additional call to send explicit checkpoint
+  auto resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id, kVWALSessionId1));
+  ASSERT_EQ(resp.cdc_sdk_proto_records_size(), 0);
+
+  ASSERT_OK(UpdateRows(1 /* key */, 6 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 10 /* value */, &test_cluster_));
+  LOG(INFO) << "Sleep for UpdatePeersAndMetrics to move barriers";
+  SleepFor(MonoDelta::FromSeconds(2 * FLAGS_update_min_cdc_indices_interval_secs));
+  auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
+  auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
+  int count_after_compaction;
+  ASSERT_NOK(WaitFor(
+      [&]() {
+        auto result = test_cluster_.mini_cluster_->CompactTablets();
+        if (!result.ok()) {
+          return false;
+        }
+        count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+        if (count_after_compaction < count_before_compaction) {
+          return true;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(15), "Compaction is restricted for the stream."));
+  LOG(INFO) << "count_before_compaction: " << count_before_compaction
+            << " count_after_compaction: " << count_after_compaction;
+  ASSERT_EQ(count_after_compaction, count_before_compaction);
+
+  expected_dml_records = 2;
+  get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, false /* init_virtual_wal */,
+      kVWALSessionId1));
+  LOG(INFO) << "Got " << get_consistent_changes_resp.records.size() << " records.";
+  // 2 * (BEGIN + DML + COMMIT )
+  ASSERT_EQ(get_consistent_changes_resp.records.size(), 6);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTabletDeletionOfUnpolledTable) {
+  auto parent_tablet_deletion_task_interval = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) =
+      parent_tablet_deletion_task_interval;
+  ASSERT_OK(SetUpWithParams(
+      3 /* replication_factor */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  const uint32_t num_tablets = 1;
+  const uint32_t num_tables = 2;
+  vector<string> table_suffix = {"_1", "_2"};
+  vector<YBTableName> tables(num_tables);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(num_tables);
+
+  // Create two tables, each having one tablet.
+  for (uint32_t idx = 0; idx < num_tables; idx++) {
+    tables[idx] = ASSERT_RESULT(
+        CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[idx], num_tablets));
+    ASSERT_OK(test_client()->GetTablets(
+        tables[idx], 0, &tablets[idx], nullptr /* partition_list_version */));
+    ASSERT_EQ(tablets[idx].size(), num_tablets);
+  }
+
+  // Create a slot, and start a VWAL instance for test_table_1 only.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {tables[0].table_id()}, kVWALSessionId1));
+
+  // Get the state table entry of the tablet for test_table_2.
+  auto parent_tablet_row =
+      ASSERT_RESULT(ReadFromCdcStateTable(stream_id, tablets[1].Get(0).tablet_id()));
+
+  // Write 100 rows to test_table_2 and then split it.
+  ASSERT_OK(
+      WriteRowsHelper(0, 100, &test_cluster_, true, 2, (kTableName + table_suffix[1]).c_str()));
+  ASSERT_OK(WaitForFlushTables({tables[1].table_id()}, false, 1000, true));
+  WaitUntilSplitIsSuccesful(tablets[1].Get(0).tablet_id(), tables[1], 2);
+
+  // Sleep to ensure that parent tablet deletion task has run for atleast one iteration.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier * parent_tablet_deletion_task_interval));
+
+  // Get all the tablets including hidden tablets for test_table_2. We should get 3 tablets, i.e. 2
+  // children and 1 un-deleted hidden parent tablet, since the restart time is behind the tablet
+  // split time.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> get_tablets_res;
+  ASSERT_OK(test_client()->GetTablets(
+      tables[1], 3, &get_tablets_res, nullptr, RequireTabletsRunning::kFalse,
+      master::IncludeInactive::kTrue));
+  ASSERT_EQ(get_tablets_res.size(), 3);
+
+  // Now, we insert and consume records from test_table_1. This will move the restart time forward
+  // and eventually it will become greater than the tablet split time. As a result the hidden parent
+  // tablet will be deleted.
+  auto i = 0;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(WriteRowsHelper(
+            i, i + 100, &test_cluster_, true, 2, (kTableName + table_suffix[0]).c_str()));
+        auto get_consistent_changes_resp = VERIFY_RESULT(GetAllPendingTxnsFromVirtualWAL(
+            stream_id, {tables[0].table_id()}, 100 /* expected_dml_records*/,
+            false /* init_virtual_wal */));
+        get_tablets_res.Clear();
+        auto s = test_client()->GetTablets(
+            tables[1], 3, &get_tablets_res, nullptr, RequireTabletsRunning::kFalse,
+            master::IncludeInactive::kTrue);
+        i += 100;
+        SleepFor(MonoDelta::FromSeconds(5));
+        return get_tablets_res.size() == 2;
+      },
+      MonoDelta::FromSeconds(120 * kTimeMultiplier),
+      "Timed out waiting for hidden tablet deletion"));
+
+  // Assert that children tablet entries have the parent entry's checkpoint.
+  for (auto child_tablet : get_tablets_res) {
+    auto child_tablet_row =
+        ASSERT_RESULT(ReadFromCdcStateTable(stream_id, child_tablet.tablet_id()));
+    ASSERT_EQ(parent_tablet_row.op_id, child_tablet_row.op_id);
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTabletDeletionWithUnusedSlot) {
+  auto parent_tablet_deletion_task_interval = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) =
+      parent_tablet_deletion_task_interval;
+
+  ASSERT_OK(SetUpWithParams(
+      3 /* replication_factor */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create one table with single tablet.
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Create 2 slots, only one of them will be used for polling.
+  auto polled_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto unpolled_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Get the state table entries of the parent tablet.
+  auto parent_tablet_row_polled_stream =
+      ASSERT_RESULT(ReadFromCdcStateTable(polled_stream_id, tablets.Get(0).tablet_id()));
+  auto parent_tablet_row_unpolled_stream =
+      ASSERT_RESULT(ReadFromCdcStateTable(unpolled_stream_id, tablets.Get(0).tablet_id()));
+
+  ASSERT_OK(WriteRowsHelper(0, 10, &test_cluster_, true));
+
+  // Split the tablet.
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, true));
+  WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table, 2);
+
+  // Consume the 10 inserted records with the first slot.
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      polled_stream_id, {table.table_id()}, 10 /* expected_dml_records*/,
+      true /* init_virtual_wal */));
+
+  // Sleep to ensure that parent tablet deletion task has run for atleast one iteration.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier * parent_tablet_deletion_task_interval));
+
+  // Get all the tablets including hidden tablets. We should get 3 tablets, i.e 2 children and 1
+  // un-deleted hidden parent tablet, since one slot is unpolled leaving restart time across all
+  // slots behind the tablet split time.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> get_tablets_res;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 3, &get_tablets_res, nullptr, RequireTabletsRunning::kFalse,
+      master::IncludeInactive::kTrue));
+  ASSERT_EQ(get_tablets_res.size(), 3);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+
+  // Now, since cdc_wal_retention_time_secs has been set to zero, we will delete the hidden parent
+  // tablet as now cdc_wal_retention_time_secs interval has passed since the tablet split time.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        get_tablets_res.Clear();
+        auto s = test_client()->GetTablets(
+            table, 3, &get_tablets_res, nullptr, RequireTabletsRunning::kFalse,
+            master::IncludeInactive::kTrue);
+
+        return get_tablets_res.size() == 2;
+      },
+      MonoDelta::FromSeconds(120 * kTimeMultiplier),
+      "Timed out waiting for hidden tablet deletion"));
+
+  // Assert that children tablet entries have the parent entry's checkpoint.
+  for (auto child_tablet : get_tablets_res) {
+    auto child_tablet_row_polled_stream =
+        ASSERT_RESULT(ReadFromCdcStateTable(polled_stream_id, child_tablet.tablet_id()));
+    auto child_tablet_row_unpolled_stream =
+        ASSERT_RESULT(ReadFromCdcStateTable(unpolled_stream_id, child_tablet.tablet_id()));
+
+    ASSERT_EQ(parent_tablet_row_polled_stream.op_id, child_tablet_row_polled_stream.op_id);
+    ASSERT_EQ(parent_tablet_row_unpolled_stream.op_id, child_tablet_row_unpolled_stream.op_id);
+  }
+}
+
+// This test verifies that it is safe to add a table to polling list (publication) after its tablets
+// have been split and hidden tablets deleted.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAdditionAfterHiddenTabletDeletion) {
+  uint64_t publication_refresh_interval = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
+      publication_refresh_interval;
+
+  ASSERT_OK(SetUpWithParams(
+      3 /* replication_factor */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  const uint32_t num_tablets = 1;
+  const uint32_t num_tables = 2;
+  vector<string> table_suffix = {"_1", "_2"};
+  vector<YBTableName> tables(num_tables);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(num_tables);
+
+  // Create two tables, each having one tablet.
+  for (uint32_t idx = 0; idx < num_tables; idx++) {
+    tables[idx] = ASSERT_RESULT(
+        CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[idx], num_tablets));
+    ASSERT_OK(test_client()->GetTablets(
+        tables[idx], 0, &tablets[idx], nullptr /* partition_list_version */));
+    ASSERT_EQ(tablets[idx].size(), num_tablets);
+  }
+
+  // Create a slot.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Get the state table entry of the tablet for test_table_2.
+  auto parent_tablet_row =
+      ASSERT_RESULT(ReadFromCdcStateTable(stream_id, tablets[1].Get(0).tablet_id()));
+
+  // Write 100 rows to test_table_2 and then split it.
+  ASSERT_OK(
+      WriteRowsHelper(0, 100, &test_cluster_, true, 2, (kTableName + table_suffix[1]).c_str()));
+  ASSERT_OK(WaitForFlushTables({tables[1].table_id()}, false, 1000, true));
+  WaitUntilSplitIsSuccesful(tablets[1].Get(0).tablet_id(), tables[1], 2);
+
+  // Get all the tablets including hidden tablets for test_table_2. We should get 3 tablets, i.e. 2
+  // children and 1 un-deleted hidden parent tablet, since the restart time is behind the tablet
+  // split time.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> get_tablets_res;
+  ASSERT_OK(test_client()->GetTablets(
+      tables[1], 3, &get_tablets_res, nullptr, RequireTabletsRunning::kFalse,
+      master::IncludeInactive::kTrue));
+  ASSERT_EQ(get_tablets_res.size(), 3);
+
+  // Init Virtual Wal with only test_table_1.
+  ASSERT_OK(InitVirtualWAL(stream_id, {tables[0].table_id()}, kVWALSessionId1));
+
+  // Insert and consume records from test_table_1 so that its restart time moves ahead, leading to
+  // the deletion of hidden tablet belonging to test_table_2. Once the hidden tablet has been
+  // deleted, add test_table_2 to the polling list.
+  auto i = 0;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(WriteRowsHelper(
+            i, i + 100, &test_cluster_, true, 2, (kTableName + table_suffix[0]).c_str()));
+        auto get_consistent_changes_resp = VERIFY_RESULT(GetAllPendingTxnsFromVirtualWAL(
+            stream_id, {tables[0].table_id()}, 100 /* expected_dml_records*/,
+            false /* init_virtual_wal */));
+        get_tablets_res.Clear();
+        auto s = test_client()->GetTablets(
+            tables[1], 3, &get_tablets_res, nullptr, RequireTabletsRunning::kFalse,
+            master::IncludeInactive::kTrue);
+        i += 100;
+        SleepFor(MonoDelta::FromSeconds(5));
+        return get_tablets_res.size() == 2;
+      },
+      MonoDelta::FromSeconds(120 * kTimeMultiplier),
+      "Timed out waiting for hidden tablet deletion"));
+
+  // Assert that children tablet entries have the parent entry's checkpoint.
+  for (auto child_tablet : get_tablets_res) {
+    auto child_tablet_row =
+        ASSERT_RESULT(ReadFromCdcStateTable(stream_id, child_tablet.tablet_id()));
+    ASSERT_EQ(parent_tablet_row.op_id, child_tablet_row.op_id);
+  }
+
+  // Sleep to ensure that we receive a pub refresh record.
+  SleepFor(MonoDelta::FromSeconds(2 * publication_refresh_interval));
+
+  // Perform a txn inserting a record each in both the tables.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table_1 values (9999999,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table_2 values (9999999,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  ASSERT_TRUE(
+      change_resp.has_needs_publication_table_list_refresh() &&
+      change_resp.needs_publication_table_list_refresh() &&
+      change_resp.has_publication_refresh_time());
+  ASSERT_GT(change_resp.publication_refresh_time(), 0);
+
+  // Update the publication's tables list.
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {tables[0].table_id(), tables[1].table_id()}));
+
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {} /* table_ids */, 2 /* expected_dml_records*/, false /* init_virtual_wal */));
+
+  // We will receive the records from the above txn belonging to both the tables
+  ASSERT_EQ(
+      get_consistent_changes_resp.records[1].row_message().table(), kTableName + table_suffix[0]);
+  ASSERT_EQ(
+      get_consistent_changes_resp.records[2].row_message().table(), kTableName + table_suffix[1]);
 }
 
 }  // namespace cdc

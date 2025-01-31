@@ -2,9 +2,13 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.CONSISTENCY_CHECK_TABLE_NAME;
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static play.libs.Json.newObject;
 import static play.libs.Json.toJson;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,6 +16,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
@@ -21,6 +26,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -31,7 +37,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
@@ -52,14 +60,21 @@ public class YsqlQueryExecutor {
           "pg_read_all_stats",
           "pg_stat_scan_tables",
           "pg_signal_backend",
+          "pg_checkpoint",
           "pg_read_server_files",
           "pg_write_server_files",
           "pg_execute_server_program",
+          "pg_database_owner",
+          "pg_read_all_data",
+          "pg_write_all_data",
           "yb_extension",
           "yb_fdw",
           "yb_db_admin",
           "yugabyte",
           "yb_superuser");
+
+  private static final ImmutableSet<String> ADDITIONAL_ROLES_FOR_PRECREATED_DB_ADMIN =
+      ImmutableSet.of("pg_monitor");
 
   private static final String DEL_PG_ROLES_CMD_1 =
       "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
@@ -74,12 +89,16 @@ public class YsqlQueryExecutor {
 
   RuntimeConfigFactory runtimeConfigFactory;
   NodeUniverseManager nodeUniverseManager;
+  GFlagsValidation gFlagsValidation;
 
   @Inject
   public YsqlQueryExecutor(
-      RuntimeConfigFactory runtimeConfigFactory, NodeUniverseManager nodeUniverseManager) {
+      RuntimeConfigFactory runtimeConfigFactory,
+      NodeUniverseManager nodeUniverseManager,
+      GFlagsValidation gFlagsValidation) {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.nodeUniverseManager = nodeUniverseManager;
+    this.gFlagsValidation = gFlagsValidation;
   }
 
   private String wrapJsonAgg(String query) {
@@ -183,16 +202,6 @@ public class YsqlQueryExecutor {
   }
 
   public JsonNode executeQueryInNodeShell(
-      Universe universe, RunQueryFormData queryParams, NodeDetails node, boolean authEnabled) {
-    return executeQueryInNodeShell(
-        universe,
-        queryParams,
-        node,
-        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
-        authEnabled);
-  }
-
-  public JsonNode executeQueryInNodeShell(
       Universe universe, RunQueryFormData queryParams, NodeDetails node, long timeoutSec) {
 
     return executeQueryInNodeShell(
@@ -209,6 +218,37 @@ public class YsqlQueryExecutor {
       NodeDetails node,
       long timeoutSec,
       boolean authEnabled) {
+    return executeQueryInNodeShell(
+        universe,
+        queryParams,
+        node,
+        timeoutSec,
+        authEnabled,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
+  }
+
+  public JsonNode executeQueryInNodeShell(
+      Universe universe,
+      RunQueryFormData queryParams,
+      NodeDetails node,
+      boolean authEnabled,
+      boolean cpEnabled) {
+    return executeQueryInNodeShell(
+        universe,
+        queryParams,
+        node,
+        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
+        authEnabled,
+        cpEnabled);
+  }
+
+  public JsonNode executeQueryInNodeShell(
+      Universe universe,
+      RunQueryFormData queryParams,
+      NodeDetails node,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
     String queryType = getQueryType(queryParams.getQuery());
@@ -219,7 +259,13 @@ public class YsqlQueryExecutor {
       shellResponse =
           nodeUniverseManager
               .runYsqlCommand(
-                  node, universe, queryParams.getDbName(), queryString, timeoutSec, authEnabled)
+                  node,
+                  universe,
+                  queryParams.getDbName(),
+                  queryString,
+                  timeoutSec,
+                  authEnabled,
+                  cpEnabled)
               .processErrors("Ysql Query Execution Error");
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
@@ -328,14 +374,31 @@ public class YsqlQueryExecutor {
       }
     }
 
-    StringBuilder resetPgStatStatements = new StringBuilder();
-    resetPgStatStatements.append(DEL_PG_ROLES_CMD_2).append(" SELECT pg_stat_statements_reset(); ");
-    runUserDbCommands(resetPgStatStatements.toString(), data.dbName, universe);
-    LOG.info(
-        "Dropped unrequired roles and assigned permissions to the restricted user='{}' for"
-            + " universe='{}'",
-        data.username,
-        universe.getName());
+    Optional<Integer> universeYSQLVersion;
+    try {
+      universeYSQLVersion =
+          gFlagsValidation.getYsqlMajorVersion(
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+
+    } catch (IOException e) {
+      LOG.error("Error getting YSQL version for universe='{}'", universe.getName(), e);
+      throw new PlatformServiceException(
+          Http.Status.INTERNAL_SERVER_ERROR, "Error getting YSQL version for universe");
+    }
+    if (!universeYSQLVersion.isPresent() || universeYSQLVersion.get() <= 11) {
+      StringBuilder resetPgStatStatements = new StringBuilder();
+      resetPgStatStatements
+          .append(DEL_PG_ROLES_CMD_2)
+          .append(" SELECT pg_stat_statements_reset(); ");
+      runUserDbCommands(resetPgStatStatements.toString(), data.dbName, universe);
+      LOG.info(
+          "Dropped unrequired roles and assigned permissions to the restricted user='{}' for"
+              + " universe='{}'",
+          data.username,
+          universe.getName());
+    } else {
+      LOG.info("Skipping dropping roles for universe='{}'", universe.getName());
+    }
   }
 
   public void createUser(Universe universe, DatabaseUserFormData data) {
@@ -395,12 +458,38 @@ public class YsqlQueryExecutor {
         }
       }
 
-      allQueries.setLength(0);
-      allQueries.append(String.format("%s ", DEL_PG_ROLES_CMD_2));
-      runUserDbCommands(allQueries.toString(), data.dbName, universe);
-      LOG.info("Dropped unrequired roles");
+      Optional<Integer> universeYSQLVersion;
+      try {
+
+        universeYSQLVersion =
+            gFlagsValidation.getYsqlMajorVersion(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+
+      } catch (IOException e) {
+        LOG.error("Error getting YSQL version for universe='{}'", universe.getName(), e);
+        throw new PlatformServiceException(
+            Http.Status.INTERNAL_SERVER_ERROR, "Error getting YSQL version for universe");
+      }
+      if (!universeYSQLVersion.isPresent() || universeYSQLVersion.get() <= 11) {
+        allQueries.setLength(0);
+        allQueries.append(String.format("%s ", DEL_PG_ROLES_CMD_2));
+        runUserDbCommands(allQueries.toString(), data.dbName, universe);
+        LOG.info("Dropped unrequired roles");
+      } else {
+        LOG.info("Skipping dropping roles for universe='{}'", universe.getName());
+      }
 
       allQueries.setLength(0);
+      if (universeYSQLVersion.isPresent() && universeYSQLVersion.get() >= 15) {
+        query =
+            String.format(
+                "GRANT %s TO %s WITH ADMIN OPTION",
+                String.join(", ", ADDITIONAL_ROLES_FOR_PRECREATED_DB_ADMIN), DB_ADMIN_ROLE_NAME);
+        allQueries.append(String.format("%s; ", query));
+        query =
+            String.format("GRANT CREATE ON SCHEMA PUBLIC TO %s WITH GRANT OPTION", data.username);
+        allQueries.append(String.format("%s; ", query));
+      }
 
       versionMatch =
           universe.getVersions().stream()
@@ -455,6 +544,72 @@ public class YsqlQueryExecutor {
     return ysqlResponse;
   }
 
+  public static class ConsistencyInfoResp {
+    @JsonProperty("task_uuid")
+    private UUID taskUuid;
+
+    @JsonProperty("seq_num")
+    private int seqNum;
+
+    @JsonProperty("yw_uuid")
+    private UUID ywUuid;
+
+    @JsonProperty("yw_host")
+    private String ywHost;
+
+    public UUID getTaskUUID() {
+      return taskUuid;
+    }
+
+    public int getSeqNum() {
+      return seqNum;
+    }
+
+    public UUID getYwUUID() {
+      return ywUuid;
+    }
+
+    public String getYwHost() {
+      return ywHost;
+    }
+  }
+
+  public ConsistencyInfoResp getConsistencyInfo(Universe universe) throws RecoverableException {
+    NodeDetails node;
+    try {
+      node = CommonUtils.getServerToRunYsqlQuery(universe, true);
+    } catch (IllegalStateException e) {
+      LOG.warn("Could not find valid tserver querying consistency info.");
+      return null;
+    }
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.setDbName(SYSTEM_PLATFORM_DB);
+    ysqlQuery.setQuery(
+        String.format(
+            "SELECT seq_num, task_uuid, yw_uuid, yw_host FROM %s ORDER BY seq_num DESC LIMIT 1",
+            CONSISTENCY_CHECK_TABLE_NAME));
+    JsonNode response = executeQueryInNodeShell(universe, ysqlQuery, node);
+    int retries = 0;
+    while (response != null && response.has("error") && retries < 5) {
+      String match = String.format("relation \"%s\" does not exist", CONSISTENCY_CHECK_TABLE_NAME);
+      if (response.get("error").asText().contains(match)) {
+        throw new RecoverableException("consistency_check table does not exist");
+      }
+      node = CommonUtils.getARandomLiveOrToBeRemovedTServer(universe);
+      retries += 1;
+      response = executeQueryInNodeShell(universe, ysqlQuery, node);
+    }
+    if (response != null && response.has("result")) {
+      ObjectMapper mapper = new ObjectMapper();
+      try {
+        return mapper.treeToValue(response.get("result").get(0), ConsistencyInfoResp.class);
+      } catch (JsonProcessingException e) {
+        LOG.warn("Error parsing consistency info response: " + e.getMessage());
+      }
+    }
+    return null;
+  }
+
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
     ysqlQuery.setDbName(data.dbName);
@@ -483,5 +638,10 @@ public class YsqlQueryExecutor {
     query = "SELECT pg_stat_statements_reset();";
     allQueries.append(query);
     runUserDbCommands(allQueries.toString(), data.dbName, universe);
+  }
+
+  public void dropTable(Universe universe, String dbName, String tableName) {
+    String query = String.format("DROP TABLE if exists %s;", tableName);
+    runUserDbCommands(query, dbName, universe);
   }
 }

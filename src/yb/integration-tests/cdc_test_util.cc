@@ -16,8 +16,14 @@
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_state_table.h"
+
 #include "yb/client/xcluster_client.h"
+
 #include "yb/consensus/log.h"
+
+#include "yb/dockv/doc_key.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -31,10 +37,10 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
+#include "yb/util/std_util.h"
 #include "yb/util/test_macros.h"
 
-#include "yb/cdc/cdc_service.h"
-#include "yb/dockv/doc_key.h"
+DECLARE_int32(update_min_cdc_indices_interval_secs);
 
 namespace yb {
 namespace cdc {
@@ -100,7 +106,8 @@ void WaitUntilWalRetentionSecs(std::function<int()> get_wal_retention_secs,
                 << " for table " << table_name;
       return false;
     }
-  }, MonoDelta::FromSeconds(20), "Verify wal retention set on Producer."));
+  }, MonoDelta::FromSeconds(FLAGS_update_min_cdc_indices_interval_secs * 2),
+      "Verify wal retention set on Producer."));
 }
 
 void VerifyWalRetentionTime(MiniCluster* cluster,
@@ -114,9 +121,6 @@ void VerifyWalRetentionTime(MiniCluster* cluster,
       if (table_name.substr(0, table_name_start.length()) == table_name_start) {
         auto table_id = peer->tablet_metadata()->table_id();
         WaitUntilWalRetentionSecs([&peer]() { return peer->log()->wal_retention_secs(); },
-            expected_wal_retention_secs, table_name);
-        WaitUntilWalRetentionSecs(
-            [&peer]() { return peer->tablet_metadata()->wal_retention_secs(); },
             expected_wal_retention_secs, table_name);
         ntablets_checked++;
       }
@@ -177,5 +181,10 @@ Result<std::shared_ptr<xrepl::CDCSDKTabletMetrics>> GetCDCSDKTabletMetrics(
   SCHECK(tablet_peer, IllegalState, "Tablet not found", tablet_id);
   return cdc_service.GetCDCSDKTabletMetrics(*tablet_peer.get(), stream_id, create);
 }
+
+CDCStateTable MakeCDCStateTable(client::YBClient* client) {
+  return CDCStateTable(ValueAsFuture(client));
+}
+
 } // namespace cdc
 } // namespace yb

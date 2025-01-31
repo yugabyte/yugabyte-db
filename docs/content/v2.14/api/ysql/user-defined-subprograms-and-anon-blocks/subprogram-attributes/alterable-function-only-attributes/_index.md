@@ -122,7 +122,7 @@ Marking a function as _immutable_ expresses a promise that must hold good for th
 
 Nothing prevents you from lying. But doing so will, sooner or later, bring wrong results.
 
-See the section [Immutable function examples](../immutable-function-examples/).
+See the section [Immutable function examples](./immutable-function-examples/).
 
 ## On_null_input
 

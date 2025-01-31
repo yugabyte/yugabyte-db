@@ -45,16 +45,6 @@ message ProducerTabletListPB {
   repeated bytes end_key = 3;
 }
 
-message ProducerSchemaPB {
-  // The last Producer schema version that was EquivalentForDataCopy with this Consumer.
-  uint32 validated_schema_version = 1;
-  // The upcoming Producer schema for ingest.  If present, Consumer needs ALTER for compatibility.
-  uint32 pending_schema_version = 2;
-  SchemaPB pending_schema = 3;
-  // The last Consumer schema version that was EquivalentForDataCopy with this Producer
-  uint32 last_compatible_consumer_schema_version = 4;
-}
-
 message SchemaVersionsPB {
   uint32 current_producer_schema_version = 1;
   uint32 current_consumer_schema_version = 2;
@@ -68,7 +58,8 @@ message StreamEntryPB {
   string consumer_table_id = 2;
   string producer_table_id = 3;
   bool local_tserver_optimized = 4;
-  ProducerSchemaPB producer_schema = 5;
+  // ProducerSchemaPB producer_schema
+  reserved 5;
 
   // Producer consumer schema versions
   SchemaVersionsPB schema_versions = 6;
@@ -88,6 +79,8 @@ message ProducerEntryPB {
   bool disable_stream = 4; // [default = false] implicit in proto3
   uint32 compatible_auto_flag_config_version = 5; // [default = 0] implicit in proto3
   uint32 validated_auto_flags_config_version = 6; // [default = 0] implicit in proto3
+  // Whether automatic ddl mode is enabled for all streams in this replication group.
+  bool automatic_ddl_mode = 7;
 }
 
 // NOTE: Deprecated

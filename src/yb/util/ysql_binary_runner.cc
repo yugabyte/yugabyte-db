@@ -14,6 +14,7 @@
 #include <fstream>
 
 #include "yb/util/env.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/ysql_binary_runner.h"
 
@@ -77,6 +78,12 @@ const boost::regex UNQUOTED_DATABASE_RE("(^.*)\\s+DATABASE\\s+(\\S+)\\s+(.*)$");
 const boost::regex QUOTED_CONNECT_RE("^\\\\connect -reuse-previous=on \"dbname='(.*)'\"$");
 const boost::regex UNQUOTED_CONNECT_RE("^\\\\connect\\s+(\\S+)$");
 const boost::regex TABLESPACE_RE("^\\s*SET\\s+default_tablespace\\s*=.*$");
+
+std::string MakeDisallowConnectionsString(const std::string& new_db) {
+  return Format(
+      "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
+      "UPDATE pg_database SET datallowconn = false WHERE datname = '$0';", new_db);
+}
 }  // namespace
 
 std::string YsqlDumpRunner::ModifyLine(
@@ -94,12 +101,14 @@ std::string YsqlDumpRunner::ModifyLine(
   values.clear();
   if (boost::regex_split(std::back_inserter(values), modified_line, QUOTED_CONNECT_RE)) {
     std::string s = boost::replace_all_copy(new_db, "'", "\\'");
-    return "\\connect -reuse-previous=on \"dbname='" + s + "'\"";
+    return "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
+           MakeDisallowConnectionsString(new_db);
   }
   values.clear();
   if (boost::regex_split(std::back_inserter(values), modified_line, UNQUOTED_CONNECT_RE)) {
     std::string s = boost::replace_all_copy(new_db, "'", "\\'");
-    return "\\connect -reuse-previous=on \"dbname='" + s + "'\"";
+    return "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
+           MakeDisallowConnectionsString(new_db);
   }
   return modified_line;
 }
@@ -108,9 +117,25 @@ std::string YsqlDumpRunner::ModifyLine(
 //  Class YsqlshRunner.
 // ============================================================================
 
-Result<std::string> YsqlshRunner::ExecuteSqlScript(const std::string& sql_script_path) {
-  std::vector<std::string> args = {"--file=" + sql_script_path};
-  return VERIFY_RESULT(this->Run(args));
+Result<std::string> YsqlshRunner::ExecuteSqlScript(
+    const std::string& sql_script, const std::string& tmp_file_prefix) {
+  // Write the dump output to a file in order to execute it using ysqlsh.
+  std::unique_ptr<WritableFile> script_file;
+  std::string tmp_file_name;
+  RETURN_NOT_OK(Env::Default()->NewTempWritableFile(
+      WritableFileOptions(), tmp_file_prefix + "_XXXXXX", &tmp_file_name, &script_file));
+  RETURN_NOT_OK(script_file->Append(sql_script));
+  RETURN_NOT_OK(script_file->Close());
+  auto scope_exit = ScopeExit([tmp_file_name] {
+    if (Env::Default()->FileExists(tmp_file_name)) {
+      WARN_NOT_OK(
+          Env::Default()->DeleteFile(tmp_file_name),
+          Format("Failed to delete temporary sql script file $0.", tmp_file_name));
+    }
+  });
+
+  std::vector<std::string> args = {"--file=" + tmp_file_name, "--set", "ON_ERROR_STOP=on"};
+  return this->Run(args);
 }
 
 }  // namespace yb

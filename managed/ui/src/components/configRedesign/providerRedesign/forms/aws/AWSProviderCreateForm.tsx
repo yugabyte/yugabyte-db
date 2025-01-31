@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { AxiosError } from 'axios';
-import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
+import { Box, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -36,11 +36,11 @@ import {
   VPCSetupType,
   KeyPairManagement,
   KEY_PAIR_MANAGEMENT_OPTIONS,
-  ProviderOperation
+  ProviderOperation,
+  SshPrivateKeyInputType
 } from '../../constants';
 import { RegionList } from '../../components/RegionList';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
-import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { NTPConfigField } from '../../components/NTPConfigField';
 import {
   addItem,
@@ -79,6 +79,7 @@ import {
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 
 interface AWSProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -100,6 +101,8 @@ export interface AWSProviderCreateFormFieldValues {
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number;
+  sshPrivateKeyInputType: SshPrivateKeyInputType;
+  sshPrivateKeyContentText: string;
   sshPrivateKeyContent: File;
   sshUser: string;
   vpcSetupType: VPCSetupType;
@@ -144,9 +147,17 @@ const VALIDATION_SCHEMA = object().shape({
     is: AWSProviderCredentialType.ACCESS_KEY,
     then: string().required('Secret access key id is required.')
   }),
-  sshPrivateKeyContent: mixed().when('sshKeypairManagement', {
-    is: KeyPairManagement.SELF_MANAGED,
+  sshPrivateKeyContent: mixed().when(['sshKeypairManagement', 'sshPrivateKeyInputType'], {
+    is: (sshKeypairManagement, sshPrivateKeyInputType) =>
+      sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+      sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY,
     then: mixed().required('SSH private key is required.')
+  }),
+  sshPrivateKeyContentText: string().when(['sshKeypairManagement', 'sshPrivateKeyInputType'], {
+    is: (sshKeypairManagement, sshPrivateKeyInputType) =>
+      sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+      sshPrivateKeyInputType === SshPrivateKeyInputType.PASTE_KEY,
+    then: string().required('SSH private key is required.')
   }),
   hostedZoneId: string().when('enableHostedZone', {
     is: true,
@@ -192,6 +203,7 @@ export const AWSProviderCreateForm = ({
     providerCredentialType: AWSProviderCredentialType.ACCESS_KEY,
     regions: [] as CloudVendorRegionField[],
     skipKeyValidateAndUpload: false,
+    sshPrivateKeyInputType: SshPrivateKeyInputType.UPLOAD_KEY,
     sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
     sshPort: DEFAULT_SSH_PORT,
     vpcSetupType: VPCSetupType.EXISTING,
@@ -540,16 +552,10 @@ export const AWSProviderCreateForm = ({
                       fullWidth
                     />
                   </FormField>
-                  <FormField>
-                    <FieldLabel>SSH Private Key Content</FieldLabel>
-                    <YBDropZoneField
-                      name="sshPrivateKeyContent"
-                      control={formMethods.control}
-                      actionButtonText="Upload SSH Key PEM File"
-                      multipleFiles={false}
-                      showHelpText={false}
-                    />
-                  </FormField>
+                  <SshPrivateKeyFormField
+                    isFormDisabled={isFormDisabled}
+                    providerCode={ProviderCode.AWS}
+                  />
                 </>
               )}
             </FieldGroup>
@@ -661,14 +667,16 @@ const constructProviderPayload = async (
 ): Promise<YBProviderMutation> => {
   let sshPrivateKeyContent = '';
 
-  try {
-    sshPrivateKeyContent =
-      formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-      formValues.sshPrivateKeyContent
+  if (formValues.sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY) {
+    try {
+      sshPrivateKeyContent = formValues.sshPrivateKeyContent
         ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
         : '';
-  } catch (error) {
-    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    } catch (error) {
+      throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    }
+  } else {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContentText;
   }
   const allAccessKeysPayload = constructAccessKeysCreatePayload(
     formValues.sshKeypairManagement,

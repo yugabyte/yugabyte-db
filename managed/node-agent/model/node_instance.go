@@ -184,7 +184,12 @@ func (p Provider) Id() string {
 
 // String implements the method in DisplayInterface.
 func (p Provider) String() string {
-	return fmt.Sprintf("Provider ID: %s, Provider Name: %s", p.Uuid, p.Name)
+	return fmt.Sprintf("Provider ID: %s, Provider Name: %s", p.Uuid, p.Name())
+}
+
+// Name implements the method in DisplayInterface.
+func (p Provider) Name() string {
+	return p.BasicInfo.Name
 }
 
 // Id implements the method in DisplayInterface.
@@ -197,6 +202,11 @@ func (i NodeInstanceType) String() string {
 	return fmt.Sprintf("Instance Code: %s", i.InstanceTypeCode)
 }
 
+// Name implements the method in DisplayInterface.
+func (i NodeInstanceType) Name() string {
+	return i.InstanceTypeCode
+}
+
 // Id implements the method in DisplayInterface.
 func (r Region) Id() string {
 	return r.Code
@@ -207,6 +217,11 @@ func (r Region) String() string {
 	return fmt.Sprintf("Region ID: %s, Region Code: %s", r.Uuid, r.Code)
 }
 
+// Name implements the method in DisplayInterface.
+func (r Region) Name() string {
+	return r.BasicInfo.Name
+}
+
 // Id implements the method in DisplayInterface.
 func (z Zone) Id() string {
 	return z.Code
@@ -215,4 +230,9 @@ func (z Zone) Id() string {
 // String implements the method in DisplayInterface.
 func (z Zone) String() string {
 	return fmt.Sprintf("Zone ID: %s, Zone Code: %s", z.Uuid, z.Code)
+}
+
+// Name implements the method in DisplayInterface.
+func (z Zone) Name() string {
+	return z.BasicInfo.Name
 }

@@ -6,31 +6,39 @@ package backup
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 const (
-	defaultBackupListing = "table {{.BackupUUID}}\t{{.BaseBackupUUID}}\t{{.UniverseUUID}}\t{{.UniverseName}}" +
-		"\t{{.StorageConfigUUID}}\t{{.StorageConfigType}}\t{{.BackupType}}\t{{.ScheduleName}}" +
-		"\t{{.HasIncrementalBackups}}\t{{.State}}\t{{.CreateTime}}\t{{.CompletionTime}}\t{{.ExpiryTime}}"
+	defaultBackupListing = "table {{.BackupUUID}}\t{{.Universe}}" +
+		"\t{{.StorageConfiguration}}\t{{.StorageConfigurationType}}\t{{.KMSConfig}}\t{{.BackupType}}" +
+		"\t{{.State}}\t{{.CompletionTime}}"
 
-	backupUUIDHeader            = "Backup UUID"
-	baseBackupUUIDHeader        = "Base Backup UUID"
-	universeUUIDHeader          = "Universe UUID"
-	universeNameHeader          = "Universe Name"
-	storageConfigUUIDHeader     = "Storage Configuration UUID"
-	storageConfigTypeHeader     = "Storage Configuration Type"
-	backupTypeHeader            = "Backup Type"
+	// BackupUUIDHeader to display backup UUID
+	BackupUUIDHeader     = "Backup UUID"
+	baseBackupUUIDHeader = "Base Backup UUID"
+	// UniverseHeader to display universe UUID and Name
+	UniverseHeader = "Universe"
+	// StorageConfigHeader to display storage config
+	StorageConfigHeader     = "Storage Configuration"
+	storageConfigTypeHeader = "Storage Configuration Type"
+	// BackupTypeHeader to display backup type
+	BackupTypeHeader            = "Backup Type"
 	scheduleNameHeader          = "Schedule Name"
 	hasIncrementalBackupsHeader = "Has Incremental Backups"
-	stateHeader                 = "State"
-	expiryTimeHeader            = "Expiry Time"
-	createTimeHeader            = "Create Time"
-	completionTimeHeader        = "Completion Time"
+	// StateHeader to display state
+	StateHeader      = "State"
+	expiryTimeHeader = "Expiry Time"
+	// CompletionTimeHeader to display completion time
+	CompletionTimeHeader = "Completion Time"
+	categoryHeader       = "Category"
 )
 
 // Context for BackupResp outputs
@@ -43,7 +51,7 @@ type Context struct {
 // NewBackupFormat for formatting output
 func NewBackupFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultBackupListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -53,6 +61,27 @@ func NewBackupFormat(source string) formatter.Format {
 
 // Write renders the context for a list of backups
 func Write(ctx formatter.Context, backups []ybaclient.BackupResp) error {
+	// Check if the format is JSON or Pretty JSON
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
+		// Marshal the slice of backups into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(backups, "", "  ")
+		} else {
+			output, err = json.Marshal(backups)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling backups to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, backup := range backups {
 			err := format(&Context{b: backup})
@@ -71,36 +100,58 @@ func Write(ctx formatter.Context, backups []ybaclient.BackupResp) error {
 func NewBackupContext() *Context {
 	backupCtx := Context{}
 	backupCtx.Header = formatter.SubHeaderContext{
-		"BackupUUID":            backupUUIDHeader,
-		"BaseBackupUUID":        baseBackupUUIDHeader,
-		"UniverseUUID":          universeUUIDHeader,
-		"UniverseName":          universeNameHeader,
-		"StorageConfigUUID":     storageConfigUUIDHeader,
-		"StorageConfigType":     storageConfigTypeHeader,
-		"BackupType":            backupTypeHeader,
-		"ScheduleName":          scheduleNameHeader,
-		"HasIncrementalBackups": hasIncrementalBackupsHeader,
-		"State":                 stateHeader,
-		"ExpiryTime":            expiryTimeHeader,
-		"CreateTime":            createTimeHeader,
-		"CompletionTime":        completionTimeHeader,
+		"BackupUUID":               BackupUUIDHeader,
+		"BaseBackupUUID":           baseBackupUUIDHeader,
+		"Universe":                 UniverseHeader,
+		"StorageConfiguration":     StorageConfigHeader,
+		"StorageConfigurationType": storageConfigTypeHeader,
+		"BackupType":               BackupTypeHeader,
+		"ScheduleName":             scheduleNameHeader,
+		"HasIncrementalBackups":    hasIncrementalBackupsHeader,
+		"State":                    StateHeader,
+		"ExpiryTime":               expiryTimeHeader,
+		"CreateTime":               formatter.CreateTimeHeader,
+		"CompletionTime":           CompletionTimeHeader,
+		"KMSConfig":                formatter.KMSConfigHeader,
+		"Category":                 categoryHeader,
 	}
 	return &backupCtx
 }
 
 // BackupUUID fetches Backup UUID
 func (c *Context) BackupUUID() string {
-	return c.b.GetCommonBackupInfo().BackupUUID
+	commonBackupInfo := c.b.GetCommonBackupInfo()
+	return commonBackupInfo.GetBackupUUID()
 }
 
 // BaseBackupUUID fetches Base Backup UUID
 func (c *Context) BaseBackupUUID() string {
-	return c.b.GetCommonBackupInfo().BaseBackupUUID
+	commonBackupInfo := c.b.GetCommonBackupInfo()
+	return commonBackupInfo.GetBackupUUID()
 }
 
-// StorageConfigName fetches Storage Config Name
-func (c *Context) StorageConfigUUID() string {
-	return c.b.GetCommonBackupInfo().StorageConfigUUID
+// StorageConfiguration fetches Storage Config Name
+func (c *Context) StorageConfiguration() string {
+	commonBackupInfo := c.b.GetCommonBackupInfo()
+	for _, config := range StorageConfigs {
+		if strings.Compare(config.GetConfigUUID(), commonBackupInfo.GetStorageConfigUUID()) == 0 {
+			return fmt.Sprintf("%s(%s)", config.GetConfigName(), config.GetConfigUUID())
+		}
+	}
+	// get name too
+	return commonBackupInfo.GetStorageConfigUUID()
+}
+
+// KMSConfig fetches KMS Config
+func (c *Context) KMSConfig() string {
+	commonBackupInfo := c.b.GetCommonBackupInfo()
+	for _, k := range KMSConfigs {
+		if len(strings.TrimSpace(k.ConfigUUID)) != 0 &&
+			strings.Compare(k.ConfigUUID, commonBackupInfo.GetKmsConfigUUID()) == 0 {
+			return fmt.Sprintf("%s(%s)", k.Name, commonBackupInfo.GetKmsConfigUUID())
+		}
+	}
+	return commonBackupInfo.GetKmsConfigUUID()
 }
 
 // ExpiryTime fetches Expiry Time
@@ -108,9 +159,14 @@ func (c *Context) ExpiryTime() string {
 	expiryTime := c.b.GetExpiryTime()
 	if expiryTime.IsZero() {
 		return ""
-	} else {
-		return expiryTime.Format(time.RFC1123Z)
 	}
+	return expiryTime.Format(time.RFC1123Z)
+
+}
+
+// Category fetches Category
+func (c *Context) Category() string {
+	return c.b.GetCategory()
 }
 
 // BackupType fetches Backup Type
@@ -123,29 +179,35 @@ func (c *Context) ScheduleName() string {
 	return c.b.GetScheduleName()
 }
 
-// StorageConfigType fetches Storage Config Type
-func (c *Context) StorageConfigType() string {
+// StorageConfigurationType fetches Storage Config Type
+func (c *Context) StorageConfigurationType() string {
 	return c.b.GetStorageConfigType()
 }
 
 // HasIncrementalBackups fetches Has Incremental Backups
-func (c *Context) HasIncrementalBackups() bool {
-	return c.b.HasIncrementalBackups
+func (c *Context) HasIncrementalBackups() string {
+	return fmt.Sprintf("%t", c.b.HasIncrementalBackups)
 }
 
 // State fetches State
 func (c *Context) State() string {
-	return c.b.GetCommonBackupInfo().State
+	commonBackupInfo := c.b.GetCommonBackupInfo()
+	state := commonBackupInfo.GetState()
+	if strings.Compare(state, util.CompletedBackupState) == 0 ||
+		strings.Compare(state, util.StoppedBackupState) == 0 {
+		return formatter.Colorize(state, formatter.GreenColor)
+	}
+	if strings.Compare(state, util.FailedBackupState) == 0 ||
+		strings.Compare(state, util.FailedToDeleteBackupState) == 0 {
+		return formatter.Colorize(state, formatter.RedColor)
+	}
+	return formatter.Colorize(state, formatter.YellowColor)
+
 }
 
-// UniverseUUID fetches Universe UUID
-func (c *Context) UniverseUUID() string {
-	return c.b.GetUniverseUUID()
-}
-
-// UniverseName fetches Universe Name
-func (c *Context) UniverseName() string {
-	return c.b.GetUniverseName()
+// Universe fetches Universe UUID and name
+func (c *Context) Universe() string {
+	return fmt.Sprintf("%s(%s)", c.b.GetUniverseName(), c.b.GetUniverseUUID())
 }
 
 // CreateTime fetches Create Time
@@ -158,9 +220,8 @@ func (c *Context) CompletionTime() string {
 	completionTime := c.b.GetCommonBackupInfo().CompletionTime
 	if completionTime == nil {
 		return ""
-	} else {
-		return completionTime.Format(time.RFC1123Z)
 	}
+	return completionTime.Format(time.RFC1123Z)
 }
 
 // MarshalJSON function

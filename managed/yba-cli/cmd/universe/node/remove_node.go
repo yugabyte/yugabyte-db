@@ -15,10 +15,12 @@ import (
 
 // removeNodeCmd represents the universe command
 var removeNodeCmd = &cobra.Command{
-	Use:   "remove",
-	Short: "Remove a node instance to YugabyteDB Anywhere universe",
+	Use:     "remove",
+	Aliases: []string{"delete", "rm"},
+	Short:   "Remove a node instance to YugabyteDB Anywhere universe",
 	Long: "Remove a node instance from YugabyteDB Anywhere universe and move its data out.\n" +
 		"The same instance is not expected to be used for this cluster again.",
+	Example: `yba universe node remove --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {

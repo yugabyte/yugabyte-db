@@ -4,7 +4,7 @@ headerTitle: CREATE PROCEDURE
 linkTitle: CREATE PROCEDURE
 description: Use the CREATE PROCEDURE statement to create a procedure in a database.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_create_procedure
     parent: statements
 type: docs
@@ -13,7 +13,7 @@ type: docs
 {{< tip title="See the dedicated 'User-defined subprograms and anonymous blocks' section." >}}
 User-defined procedures are part of a larger area of functionality. See this major section:
 
-- [User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"](../../../user-defined-subprograms-and-anon-blocks/) 
+- [User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"](../../../user-defined-subprograms-and-anon-blocks/)
 {{< /tip >}}
 
 ## Synopsis
@@ -68,18 +68,18 @@ A procedure's _depends on extension_ attribute cannot be set using `CREATE [OR R
 - Set up an accounts table.
     ```plpgsql
     create schema s;
-    
+
     create table s.accounts (
       id integer primary key,
       name text not null,
       balance decimal(15,2) not null);
-    
+
     insert into s.accounts values (1, 'Jane', 100.00);
     insert into s.accounts values (2, 'John', 50.00);
-    
+
     select * from s.accounts order by 1;
     ```
-    
+
     ```output
      id | name | balance
     ----+------+---------
@@ -132,11 +132,11 @@ A procedure's _depends on extension_ attribute cannot be set using `CREATE [OR R
   ```output
   ERROR:  Sender and receiver cannot be the same
   ```
-  
+
   ```plpgsql
   call s.transfer(1, 2, -20.00);
   ```
-  
+
   ```output
   ERROR:  The transfer amount must be positive
   ```

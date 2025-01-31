@@ -2,6 +2,9 @@
 -- ARRAYS
 --
 
+-- directory paths are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
+
 CREATE TABLE arrtest (
 	a 			int2[],
 	b 			int4[][][],
@@ -11,6 +14,16 @@ CREATE TABLE arrtest (
 	f			char(5)[],
 	g			varchar(5)[]
 );
+
+CREATE TABLE array_op_test (
+	seqno		int4,
+	i			int4[],
+	t			text[]
+);
+
+\set filename :abs_srcdir '/data/array.data'
+COPY array_op_test FROM :'filename';
+ANALYZE array_op_test;
 
 --
 -- only the 'e' array is 0-based, the others are 1-based.
@@ -34,30 +47,33 @@ INSERT INTO arrtest (a, b[1:2][1:2], c, d, e, f, g)
 INSERT INTO arrtest (a, b[1:2], c, d[1:2])
    VALUES ('{}', '{3,4}', '{foo,bar}', '{bar,foo}');
 
+INSERT INTO arrtest (b[2]) VALUES(now());  -- error, type mismatch
 
-SELECT * FROM arrtest ORDER BY c[1];
+INSERT INTO arrtest (b[1:2]) VALUES(now());  -- error, type mismatch
+
+SELECT * FROM arrtest;
 
 SELECT arrtest.a[1],
           arrtest.b[1][1][1],
           arrtest.c[1],
           arrtest.d[1][1],
           arrtest.e[0]
-   FROM arrtest ORDER BY c[1];
+   FROM arrtest;
 
 SELECT a[1], b[1][1][1], c[1], d[1][1], e[0]
-   FROM arrtest ORDER BY c[1];
+   FROM arrtest;
 
 SELECT a[1:3],
           b[1:1][1:2][1:2],
           c[1:2],
           d[1:1][1:2]
-   FROM arrtest ORDER BY c[1];
+   FROM arrtest;
 
 SELECT array_ndims(a) AS a,array_ndims(b) AS b,array_ndims(c) AS c
-   FROM arrtest arr ORDER BY arr.c[1];
+   FROM arrtest;
 
 SELECT array_dims(a) AS a,array_dims(b) AS b,array_dims(c) AS c
-   FROM arrtest arr ORDER BY arr.c[1];
+   FROM arrtest;
 
 -- returns nothing
 SELECT *
@@ -78,24 +94,24 @@ UPDATE arrtest
   SET c[2:2] = '{"new_word"}'
   WHERE array_dims(c) is not null;
 
-SELECT a,b,c FROM arrtest arr ORDER BY arr.c[1];
+SELECT a,b,c FROM arrtest;
 
 SELECT a[1:3],
           b[1:1][1:2][1:2],
           c[1:2],
           d[1:1][2:2]
-   FROM arrtest arr ORDER BY arr.c[1];
+   FROM arrtest;
 
 SELECT b[1:1][2][2],
        d[1:1][2]
-   FROM arrtest arr ORDER BY arr.c[1];
+   FROM arrtest;
 
 INSERT INTO arrtest(a) VALUES('{1,null,3}');
-SELECT a FROM arrtest arr ORDER BY arr.c[1], arr.a[1];
+SELECT a FROM arrtest;
 UPDATE arrtest SET a[4] = NULL WHERE a[2] IS NULL;
-SELECT a FROM arrtest arr WHERE a[2] IS NULL ORDER BY arr.c[1];
+SELECT a FROM arrtest WHERE a[2] IS NULL;
 DELETE FROM arrtest WHERE a[2] IS NULL AND b IS NULL;
-SELECT a,b,c FROM arrtest arr ORDER BY arr.c[1];
+SELECT a,b,c FROM arrtest;
 
 -- test mixed slice/scalar subscripting
 select '{{1,2,3},{4,5,6},{7,8,9}}'::int[];
@@ -106,7 +122,7 @@ select ('[0:2][0:2]={{1,2,3},{4,5,6},{7,8,9}}'::int[])[1:2][2];
 --
 -- check subscription corner cases
 --
--- More subscripts than MAXDIMS(6)
+-- More subscripts than MAXDIM (6)
 SELECT ('{}'::int[])[1][2][3][4][5][6][7];
 -- NULL index yields NULL when selecting
 SELECT ('{{{1},{2},{3}},{{4},{5},{6}}}'::int[])[1][NULL][1];
@@ -122,32 +138,41 @@ UPDATE arrtest
 UPDATE arrtest
   SET c[1:NULL] = '{"can''t assign"}'
   WHERE array_dims(c) is not null;
+-- Un-subscriptable type
+SELECT (now())[1];
 
 -- test slices with empty lower and/or upper index
 CREATE TEMP TABLE arrtest_s (
-  id      int primary key,
   a       int2[],
   b       int2[][]
 );
-INSERT INTO arrtest_s VALUES (1, '{1,2,3,4,5}', '{{1,2,3}, {4,5,6}, {7,8,9}}');
-INSERT INTO arrtest_s VALUES (2, '[0:4]={1,2,3,4,5}', '[0:2][0:2]={{1,2,3}, {4,5,6}, {7,8,9}}');
+INSERT INTO arrtest_s VALUES ('{1,2,3,4,5}', '{{1,2,3}, {4,5,6}, {7,8,9}}');
+INSERT INTO arrtest_s VALUES ('[0:4]={1,2,3,4,5}', '[0:2][0:2]={{1,2,3}, {4,5,6}, {7,8,9}}');
 
-SELECT * FROM arrtest_s ORDER BY id;
-SELECT a[:3], b[:2][:2] FROM arrtest_s ORDER BY id;
-SELECT a[2:], b[2:][2:] FROM arrtest_s ORDER BY id;
-SELECT a[:], b[:] FROM arrtest_s ORDER BY id;
+SELECT * FROM arrtest_s;
+SELECT a[:3], b[:2][:2] FROM arrtest_s;
+SELECT a[2:], b[2:][2:] FROM arrtest_s;
+SELECT a[:], b[:] FROM arrtest_s;
 
 -- updates
 UPDATE arrtest_s SET a[:3] = '{11, 12, 13}', b[:2][:2] = '{{11,12}, {14,15}}'
   WHERE array_lower(a,1) = 1;
-SELECT * FROM arrtest_s ORDER BY id;
+SELECT * FROM arrtest_s;
 UPDATE arrtest_s SET a[3:] = '{23, 24, 25}', b[2:][2:] = '{{25,26}, {28,29}}';
-SELECT * FROM arrtest_s ORDER BY id;
+SELECT * FROM arrtest_s;
 UPDATE arrtest_s SET a[:] = '{11, 12, 13, 14, 15}';
-SELECT * FROM arrtest_s ORDER BY id;
+SELECT * FROM arrtest_s;
 UPDATE arrtest_s SET a[:] = '{23, 24, 25}';  -- fail, too small
-INSERT INTO arrtest_s VALUES(3, NULL, NULL);
+INSERT INTO arrtest_s VALUES(NULL, NULL);
 UPDATE arrtest_s SET a[:] = '{11, 12, 13, 14, 15}';  -- fail, no good with null
+
+-- we want to work with a point_tbl that includes a null
+-- YB note: but we also want to test YB tables instead of temporary tables, so
+-- create a new table in a new namespace instead.
+CREATE SCHEMA yb_tmp;
+SET search_path TO yb_tmp;
+CREATE TABLE point_tbl AS SELECT * FROM public.point_tbl;
+INSERT INTO POINT_TBL(f1) VALUES (NULL);
 
 -- check with fixed-length-array type, such as point
 SELECT f1[0:1] FROM POINT_TBL;
@@ -164,6 +189,10 @@ UPDATE point_tbl SET f1[0] = NULL WHERE f1::text = '(10,10)'::point::text RETURN
 UPDATE point_tbl SET f1[0] = -10, f1[1] = -10 WHERE f1::text = '(10,10)'::point::text RETURNING *;
 -- but not to expand the range
 UPDATE point_tbl SET f1[3] = 10 WHERE f1::text = '(-10,-10)'::point::text RETURNING *;
+
+DROP TABLE point_tbl; -- YB note: reset the changes from above.
+DROP SCHEMA yb_tmp; -- YB note: reset the changes from above.
+RESET search_path; -- YB note: reset the changes from above.
 
 --
 -- test array extension
@@ -312,6 +341,9 @@ SELECT ARRAY[[['hello','world']]] || ARRAY[[['happy','birthday']]] AS "ARRAY";
 SELECT ARRAY[[1,2],[3,4]] || ARRAY[5,6] AS "{{1,2},{3,4},{5,6}}";
 SELECT ARRAY[0,0] || ARRAY[1,1] || ARRAY[2,2] AS "{0,0,1,1,2,2}";
 SELECT 0 || ARRAY[1,2] || 3 AS "{0,1,2,3}";
+SELECT ARRAY[1.1] || ARRAY[2,3,4];
+SELECT array_agg(x) || array_agg(x) FROM (VALUES (ROW(1,2)), (ROW(3,4))) v(x);
+SELECT ROW(1,2) || array_agg(x) FROM (VALUES (ROW(3,4)), (ROW(5,6))) v(x);
 
 SELECT * FROM array_op_test WHERE i @> '{32}' ORDER BY seqno;
 SELECT * FROM array_op_test WHERE i && '{32}' ORDER BY seqno;
@@ -343,9 +375,9 @@ SELECT * FROM array_op_test WHERE t <@ '{}' ORDER BY seqno;
 
 -- array casts
 SELECT ARRAY[1,2,3]::text[]::int[]::float8[] AS "{1,2,3}";
-SELECT ARRAY[1,2,3]::text[]::int[]::float8[] is of (float8[]) as "TRUE";
+SELECT pg_typeof(ARRAY[1,2,3]::text[]::int[]::float8[]) AS "double precision[]";
 SELECT ARRAY[['a','bc'],['def','hijk']]::text[]::varchar[] AS "{{a,bc},{def,hijk}}";
-SELECT ARRAY[['a','bc'],['def','hijk']]::text[]::varchar[] is of (varchar[]) as "TRUE";
+SELECT pg_typeof(ARRAY[['a','bc'],['def','hijk']]::text[]::varchar[]) AS "character varying[]";
 SELECT CAST(ARRAY[[[[[['a','bb','ccc']]]]]] as text[]) as "{{{{{{a,bb,ccc}}}}}}";
 SELECT NULL::text[]::int[] AS "NULL";
 
@@ -392,9 +424,7 @@ select * from arr_tbl where f1 > '{1,2,3}' and f1 <= '{1,5,3}';
 select * from arr_tbl where f1 >= '{1,2,3}' and f1 < '{1,5,3}';
 
 -- test ON CONFLICT DO UPDATE with arrays
--- TODO(jason) Change the below to `create temp table` when issue #1999 is
--- resolved.
-create table arr_pk_tbl (pk int4 primary key, f1 int[]);
+create temp table arr_pk_tbl (pk int4 primary key, f1 int[]);
 insert into arr_pk_tbl values (1, '{1,2,3}');
 insert into arr_pk_tbl values (1, '{3,4,5}') on conflict (pk)
   do update set f1[1] = excluded.f1[1], f1[3] = excluded.f1[3]
@@ -547,6 +577,21 @@ select string_to_array('1,2,3,4,,6', ',');
 select string_to_array('1,2,3,4,,6', ',', '');
 select string_to_array('1,2,3,4,*,6', ',', '*');
 
+select v, v is null as "is null" from string_to_table('1|2|3', '|') g(v);
+select v, v is null as "is null" from string_to_table('1|2|3|', '|') g(v);
+select v, v is null as "is null" from string_to_table('1||2|3||', '||') g(v);
+select v, v is null as "is null" from string_to_table('1|2|3', '') g(v);
+select v, v is null as "is null" from string_to_table('', '|') g(v);
+select v, v is null as "is null" from string_to_table('1|2|3', NULL) g(v);
+select v, v is null as "is null" from string_to_table(NULL, '|') g(v);
+select v, v is null as "is null" from string_to_table('abc', '') g(v);
+select v, v is null as "is null" from string_to_table('abc', '', 'abc') g(v);
+select v, v is null as "is null" from string_to_table('abc', ',') g(v);
+select v, v is null as "is null" from string_to_table('abc', ',', 'abc') g(v);
+select v, v is null as "is null" from string_to_table('1,2,3,4,,6', ',') g(v);
+select v, v is null as "is null" from string_to_table('1,2,3,4,,6', ',', '') g(v);
+select v, v is null as "is null" from string_to_table('1,2,3,4,*,6', ',', '*') g(v);
+
 select array_to_string(NULL::int4[], ',') IS NULL;
 select array_to_string('{}'::int4[], ',');
 select array_to_string(array[1,2,3,4,NULL,6], ',');
@@ -604,6 +649,7 @@ select array_remove(array[1,2,2,3], 2);
 select array_remove(array[1,2,2,3], 5);
 select array_remove(array[1,NULL,NULL,3], NULL);
 select array_remove(array['A','CC','D','C','RR'], 'RR');
+select array_remove(array[1.0, 2.1, 3.3], 1);
 select array_remove('{{1,2,2},{1,4,3}}', 2); -- not allowed
 select array_remove(array['X','X','X'], 'X') = '{}';
 select array_replace(array[1,2,5,4],5,3);
@@ -704,3 +750,17 @@ SELECT width_bucket(5, '{}');
 SELECT width_bucket('5'::text, ARRAY[3, 4]::integer[]);
 SELECT width_bucket(5, ARRAY[3, 4, NULL]);
 SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]]);
+
+-- trim_array
+
+SELECT arr, trim_array(arr, 2)
+FROM
+(VALUES ('{1,2,3,4,5,6}'::bigint[]),
+        ('{1,2}'),
+        ('[10:16]={1,2,3,4,5,6,7}'),
+        ('[-15:-10]={1,2,3,4,5,6}'),
+        ('{{1,10},{2,20},{3,30},{4,40}}')) v(arr);
+
+SELECT trim_array(ARRAY[1, 2, 3], -1); -- fail
+SELECT trim_array(ARRAY[1, 2, 3], 10); -- fail
+SELECT trim_array(ARRAY[]::int[], 1); -- fail

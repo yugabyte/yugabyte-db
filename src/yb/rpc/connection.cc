@@ -82,6 +82,8 @@ DEFINE_test_flag(double, simulated_failure_to_send_call_probability, 0.0,
     "Probability of a simulated failure to send a call's data, which should result in connection "
     "being closed.");
 
+DEFINE_test_flag(bool, disable_connection_timeout, false,
+    "If true, disable connection timeout handling.");
 
 namespace yb::rpc {
 
@@ -178,6 +180,7 @@ bool Connection::Shutdown(const Status& provided_status) {
           ? STATUS_FORMAT(RuntimeError, "Connection shutdown called with OK status")
           : provided_status;
 
+  std::function<void()> shutdown_listener;
   {
     std::vector<OutboundDataPtr> outbound_data_being_processed;
     {
@@ -195,6 +198,7 @@ bool Connection::Shutdown(const Status& provided_status) {
 
       outbound_data_being_processed = std::move(outbound_data_to_process_);
       shutdown_status_ = status;
+      shutdown_listener = std::move(shutdown_listener_);
     }
 
     shutdown_time_.store(reactor_->cur_time(), std::memory_order_release);
@@ -222,9 +226,13 @@ bool Connection::Shutdown(const Status& provided_status) {
 
   timer_.Shutdown();
 
-  // TODO(bogdan): re-enable once we decide how to control verbose logs better...
-  // LOG_WITH_PREFIX(INFO) << "Connection::Shutdown completed, status: " << status;
+  VLOG_WITH_PREFIX(1) << "Connection::Shutdown completed, status: " << status;
   shutdown_completed_.store(true, std::memory_order_release);
+
+  if (shutdown_listener) {
+    shutdown_listener();
+  }
+
   return true;
 }
 
@@ -239,6 +247,9 @@ Status Connection::OutboundQueued() {
 }
 
 void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
+  if (PREDICT_FALSE(FLAGS_TEST_disable_connection_timeout)) {
+    return;
+  }
   DVLOG_WITH_PREFIX(5) << "Connection::HandleTimeout revents: " << revents
                        << " connected: " << stream_->IsConnected();
 
@@ -402,12 +413,7 @@ Result<size_t> Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bo
   }
 
   if (!batch) {
-    s = OutboundQueued();
-    if (!s.ok()) {
-      outbound_data->Transferred(s, shared_from_this());
-      // The connection shutdown has already been triggered by OutboundQueued.
-      return s;
-    }
+    RETURN_NOT_OK(OutboundQueued());
   }
 
   return *result;
@@ -716,6 +722,13 @@ std::string Connection::LogPrefix() const {
 void Connection::ReportQueueTime(MonoDelta delta) {
   if (handler_latency_outbound_transfer_) {
     handler_latency_outbound_transfer_->Increment(delta.ToNanoseconds());
+  }
+}
+
+void Connection::ListenShutdown(const std::function<void()>& listener) {
+  std::lock_guard lock(outbound_data_queue_mtx_);
+  if (!shutdown_initiated_) {
+    shutdown_listener_ = listener;
   }
 }
 

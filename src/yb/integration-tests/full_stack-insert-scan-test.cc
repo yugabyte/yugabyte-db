@@ -41,7 +41,6 @@
 
 #include "yb/gutil/casts.h"
 
-#include "yb/client/callbacks.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"

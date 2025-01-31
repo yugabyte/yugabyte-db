@@ -36,6 +36,7 @@ namespace yb {
 namespace master {
 
 struct LeaderEpoch;
+class YsqlManagerIf;
 
 // Used by the catalog manager to prepare an initial sys catalog snapshot.
 class InitialSysCatalogSnapshotWriter {
@@ -65,10 +66,8 @@ void SetDefaultInitialSysCatalogSnapshotFlags();
 // A one-time migration procedure for existing clusters to set is_ysql_catalog_table and
 // is_transactional flags to true on YSQL system catalog tables.
 Status MakeYsqlSysCatalogTablesTransactional(
-    TableIndex::TablesRange tables,
-    SysCatalogTable* sys_catalog,
-    SysConfigInfo* ysql_catalog_config,
-    const LeaderEpoch& epoch);
+    TableIndex::TablesRange tables, SysCatalogTable* sys_catalog,
+    YsqlManagerIf& ysql_manager, const LeaderEpoch& epoch);
 
 }  // namespace master
 }  // namespace yb

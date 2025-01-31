@@ -34,6 +34,7 @@ public class RestoreApiFilter {
   private Set<UUID> universeUUIDList;
   private Set<UUID> restoreUUIDList;
   private boolean onlyShowDeletedSourceUniverses;
+  private boolean showHidden;
 
   public RestoreFilter toFilter() {
     RestoreFilter.RestoreFilterBuilder builder = RestoreFilter.builder();
@@ -63,6 +64,9 @@ public class RestoreApiFilter {
     }
     if (onlyShowDeletedSourceUniverses) {
       builder.onlyShowDeletedSourceUniverses(onlyShowDeletedSourceUniverses);
+    }
+    if (showHidden) {
+      builder.showHidden(showHidden);
     }
 
     return builder.build();

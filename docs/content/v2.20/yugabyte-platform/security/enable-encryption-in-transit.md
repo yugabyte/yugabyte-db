@@ -15,7 +15,7 @@ type: docs
 
 YugabyteDB Anywhere allows you to protect data in transit by using the following:
 
-- Server-to-server encryption for intra-node communication between YB-Master and YB-TServer nodes.
+- Server-to-server encryption for inter-node communication between YB-Master and YB-TServer nodes.
 - Client-to-server encryption for communication between clients and nodes when using CLIs, tools, and APIs for YSQL and YCQL.
 - Encryption for communication between YugabyteDB Anywhere and other services, including LDAP, OIDC, Hashicorp Vault, Webhook, and S3 backup storage.
 
@@ -276,7 +276,7 @@ Each entry you provide for the CN or SAN must match the on-prem node as entered 
     If you face any issue with the above verification, you can customize the level of certificate validation while creating a universe that uses these certificates. Refer to [Customizing the verification of RPC server certificate by the client](https://www.yugabyte.com/blog/yugabytedb-server-to-server-encryption/#customizing-the-verification-of-rpc-server-certificate-by-the-client).
 
 {{< note >}}
-The client certificates and keys are required only if you intend to use [PostgreSQL certificate-based authentication](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html#:~:text=independent%20authentication%20option-,clientcert,-%2C%20which%20can%20be).
+The client certificates and keys are required only if you intend to use [PostgreSQL certificate-based authentication](https://www.postgresql.org/docs/11/auth-pg-hba-conf.html#:~:text=independent%20authentication%20option-,clientcert,-%2C%20which%20can%20be).
 {{< /note >}}
 
 ### Rotate custom CA-signed certificates
@@ -510,7 +510,7 @@ During the universe creation, you can enable TLS certificates issued by the cert
    - Click **Upload Root Certificate** and select the root certificate file that you prepared.
    - Click **Add** to make the certificate available.
 
-1. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
+1. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
 
    ![Add new region](/images/yp/security/kubernetes-cert-manager-add-region.png)
 

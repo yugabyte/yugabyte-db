@@ -39,8 +39,8 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_OK(Init("TestDml"));
 
   const char *tabname = "basic_table";
-  const YBCPgOid tab_oid = 2;
-  YBCPgStatement pg_stmt;
+  const YbcPgOid tab_oid = 2;
+  YbcPgStatement pg_stmt;
 
   // Create table in the connected database.
   int col_count = 0;
@@ -78,22 +78,22 @@ TEST_F(PggateTestCatalog, TestDml) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
-      YBCPgTransactionSetting::YB_TRANSACTIONAL));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
   int seed = 1;
-  YBCPgExpr expr_compid;
+  YbcPgExpr expr_compid;
   CHECK_YBC_STATUS(YBCTestNewConstantInt8(pg_stmt, 0, false, &expr_compid));
-  YBCPgExpr expr_empid;
+  YbcPgExpr expr_empid;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, seed, false, &expr_empid));
-  YBCPgExpr expr_depcnt;
+  YbcPgExpr expr_depcnt;
   CHECK_YBC_STATUS(YBCTestNewConstantInt2(pg_stmt, seed, false, &expr_depcnt));
-  YBCPgExpr expr_projcnt;
+  YbcPgExpr expr_projcnt;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, 100 + seed, false, &expr_projcnt));
-  YBCPgExpr expr_salary;
+  YbcPgExpr expr_salary;
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
-  YBCPgExpr expr_job;
+  YbcPgExpr expr_job;
   string job = strings::Substitute("Job_title_$0", seed);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
@@ -135,7 +135,7 @@ TEST_F(PggateTestCatalog, TestDml) {
                                   false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
-  YBCPgExpr colref;
+  YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
@@ -394,9 +394,9 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   const char *tabname = "basic_table";
   const char *copy_db_name = "pggate_test_copy";
-  const YBCPgOid copy_db_oid = 101;
-  const YBCPgOid tab_oid = 2;
-  YBCPgStatement pg_stmt;
+  const YbcPgOid copy_db_oid = 101;
+  const YbcPgOid tab_oid = 2;
+  YbcPgStatement pg_stmt;
 
   // Create sys catalog table in default database.
   LOG(INFO) << "Create database with source database";
@@ -422,10 +422,10 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
-      YBCPgTransactionSetting::YB_TRANSACTIONAL));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL));
 
-  YBCPgExpr expr_key;
-  YBCPgExpr expr_value;
+  YbcPgExpr expr_key;
+  YbcPgExpr expr_value;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, 0, false, &expr_key));
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, 10, false, &expr_value));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_key));
@@ -462,7 +462,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
                                   false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
-  YBCPgExpr colref;
+  YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
@@ -496,8 +496,8 @@ TEST_F(PggateTestCatalog, TestReserveOids) {
   // CREATE DATABASE ------------------------------------------------------------------------------
   LOG(INFO) << "Create database";
   const char *db_name = "pggate_reserve_oids";
-  const YBCPgOid db_oid = 101;
-  YBCPgStatement pg_stmt;
+  const YbcPgOid db_oid = 101;
+  YbcPgStatement pg_stmt;
 
   CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
       db_name, db_oid, kInvalidOid /* source_database_oid */,
@@ -509,8 +509,8 @@ TEST_F(PggateTestCatalog, TestReserveOids) {
   // Request next oid below the initial next oid above. Verify the range returned starts with the
   // initial range still.
   LOG(INFO) << "Reserve oids";
-  YBCPgOid begin_oid = 0;
-  YBCPgOid end_oid = 0;
+  YbcPgOid begin_oid = 0;
+  YbcPgOid end_oid = 0;
   CHECK_YBC_STATUS(YBCPgReserveOids(db_oid, 50 /* next_oid */, 100 /* count */,
                                     &begin_oid, &end_oid));
   EXPECT_EQ(begin_oid, 100);

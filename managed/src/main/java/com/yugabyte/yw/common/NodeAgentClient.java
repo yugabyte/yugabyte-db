@@ -12,17 +12,25 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentStub;
+import com.yugabyte.yw.nodeagent.Server.AbortTaskRequest;
+import com.yugabyte.yw.nodeagent.Server.DescribeTaskRequest;
+import com.yugabyte.yw.nodeagent.Server.DescribeTaskResponse;
 import com.yugabyte.yw.nodeagent.Server.DownloadFileRequest;
 import com.yugabyte.yw.nodeagent.Server.DownloadFileResponse;
 import com.yugabyte.yw.nodeagent.Server.ExecuteCommandRequest;
@@ -30,6 +38,10 @@ import com.yugabyte.yw.nodeagent.Server.ExecuteCommandResponse;
 import com.yugabyte.yw.nodeagent.Server.FileInfo;
 import com.yugabyte.yw.nodeagent.Server.PingRequest;
 import com.yugabyte.yw.nodeagent.Server.PingResponse;
+import com.yugabyte.yw.nodeagent.Server.PreflightCheckInput;
+import com.yugabyte.yw.nodeagent.Server.PreflightCheckOutput;
+import com.yugabyte.yw.nodeagent.Server.SubmitTaskRequest;
+import com.yugabyte.yw.nodeagent.Server.SubmitTaskResponse;
 import com.yugabyte.yw.nodeagent.Server.UpdateRequest;
 import com.yugabyte.yw.nodeagent.Server.UpdateResponse;
 import com.yugabyte.yw.nodeagent.Server.UpgradeInfo;
@@ -78,7 +90,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
@@ -88,6 +102,7 @@ import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.mapstruct.ap.internal.util.Strings;
+import org.slf4j.MDC;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 import play.libs.Json;
@@ -106,27 +121,34 @@ public class NodeAgentClient {
 
   private final Config appConfig;
   private final ChannelFactory channelFactory;
-
   private final RuntimeConfGetter confGetter;
+  // Late binding to prevent circular dependency.
+  private final com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider;
 
   @Inject
   public NodeAgentClient(
       Config appConfig,
       RuntimeConfGetter confGetter,
+      com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
       PlatformExecutorFactory platformExecutorFactory) {
     this(
         appConfig,
         confGetter,
+        nodeAgentEnablerProvider,
         platformExecutorFactory.createExecutor(
             "node_agent.grpc_executor",
             new ThreadFactoryBuilder().setNameFormat("NodeAgentGrpcPool-%d").build()));
   }
 
   public NodeAgentClient(
-      Config appConfig, RuntimeConfGetter confGetter, ExecutorService executorService) {
+      Config appConfig,
+      RuntimeConfGetter confGetter,
+      com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
+      ExecutorService executorService) {
     this(
         appConfig,
         confGetter,
+        nodeAgentEnablerProvider,
         config ->
             ChannelFactory.getDefaultChannel(
                 config,
@@ -135,9 +157,13 @@ public class NodeAgentClient {
   }
 
   public NodeAgentClient(
-      Config appConfig, RuntimeConfGetter confGetter, ChannelFactory channelFactory) {
+      Config appConfig,
+      RuntimeConfGetter confGetter,
+      com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
+      ChannelFactory channelFactory) {
     this.appConfig = appConfig;
     this.confGetter = confGetter;
+    this.nodeAgentEnablerProvider = nodeAgentEnablerProvider;
     this.channelFactory = channelFactory;
     this.cachedChannels =
         CacheBuilder.newBuilder()
@@ -184,10 +210,17 @@ public class NodeAgentClient {
 
         @Override
         public void start(ClientCall.Listener<RespT> responseListener, Metadata headers) {
-          log.trace("Setting authorizaton token in header for node agent {}", nodeAgentUuid);
+          log.trace("Setting custom headers for node agent {}", nodeAgentUuid);
+          String correlationId = MDC.get(LogUtil.CORRELATION_ID);
+          if (StringUtils.isEmpty(correlationId)) {
+            correlationId = UUID.randomUUID().toString();
+            log.debug("Using correlation ID {} for node agent {}", correlationId, nodeAgentUuid);
+          }
           Duration tokenLifetime = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentTokenLifetime);
           String token = NodeAgentClient.getNodeAgentJWT(nodeAgentUuid, tokenLifetime);
           headers.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), token);
+          headers.put(
+              Metadata.Key.of("x-request-id", Metadata.ASCII_STRING_MARSHALLER), correlationId);
           super.start(responseListener, headers);
         }
       };
@@ -210,7 +243,7 @@ public class NodeAgentClient {
       if (config.isEnableTls()) {
         try {
           String certPath = config.getCertPath().toString();
-          log.debug("Using cert path {} for node agent {}", certPath, config.nodeAgent.getUuid());
+          log.debug("Using cert path {} for node agent {}", certPath, config.nodeAgent);
           SslContext sslcontext =
               GrpcSslContexts.forClient()
                   .trustManager(CertificateHelper.getCertsFromFile(certPath))
@@ -227,18 +260,16 @@ public class NodeAgentClient {
         channelBuilder.withOption(
             ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) config.getConnectTimeout().toMillis());
       }
-      Map<String, ?> serviceConfig = getServiceConfig();
+      Map<String, ?> serviceConfig = getServiceConfig(NODE_AGENT_SERVICE_CONFIG_FILE);
       if (MapUtils.isNotEmpty(serviceConfig)) {
         channelBuilder.defaultServiceConfig(serviceConfig);
       }
       return channelBuilder.build();
     }
 
-    static Map<String, ?> getServiceConfig() {
+    public static Map<String, ?> getServiceConfig(String configFile) {
       try (InputStream inputStream =
-          ChannelFactory.class
-              .getClassLoader()
-              .getResourceAsStream(NODE_AGENT_SERVICE_CONFIG_FILE)) {
+          ChannelFactory.class.getClassLoader().getResourceAsStream(configFile)) {
         Map<String, ?> map =
             Json.mapper()
                 .readValue(
@@ -310,25 +341,36 @@ public class NodeAgentClient {
 
     @Override
     public String toString() {
-      return String.format("NodeAgent{uuid: %s, ip: %s}", nodeAgent.getUuid(), nodeAgent.getIp());
+      return nodeAgent.toString();
     }
   }
 
   @Slf4j
   static class BaseResponseObserver<T> implements StreamObserver<T> {
     private final String id;
+    private final String correlationId;
     private final CountDownLatch latch = new CountDownLatch(1);
     private Throwable throwable;
 
     BaseResponseObserver(String id) {
       this.id = id;
+      this.correlationId = MDC.get(LogUtil.CORRELATION_ID);
+    }
+
+    private void setCorrelationId() {
+      if (!StringUtils.isBlank(correlationId)) {
+        MDC.put(LogUtil.CORRELATION_ID, correlationId);
+      }
     }
 
     @Override
-    public void onNext(T response) {}
+    public void onNext(T response) {
+      setCorrelationId();
+    }
 
     @Override
     public void onError(Throwable throwable) {
+      setCorrelationId();
       this.throwable = throwable;
       latch.countDown();
       log.error("Error encountered for {} - {}", getId(), throwable.getMessage());
@@ -336,6 +378,7 @@ public class NodeAgentClient {
 
     @Override
     public void onCompleted() {
+      setCorrelationId();
       latch.countDown();
       log.info("Completed for {}", getId());
     }
@@ -380,6 +423,7 @@ public class NodeAgentClient {
 
     @Override
     public void onNext(ExecuteCommandResponse response) {
+      super.onNext(response);
       Marker fileMarker = MarkerFactory.getMarker("fileOnly");
       if (response.hasError()) {
         exitCode.set(response.getError().getCode());
@@ -441,8 +485,54 @@ public class NodeAgentClient {
     @Override
     public void onNext(DownloadFileResponse response) {
       try {
+        super.onNext(response);
         outputStream.write(response.getChunkData().toByteArray());
       } catch (IOException e) {
+        onError(e);
+      }
+    }
+  }
+
+  static class DescribeTaskResponseObserver<T> extends BaseResponseObserver<DescribeTaskResponse> {
+    private final Class<T> responseClass;
+    private final AtomicReference<T> resultRef;
+
+    DescribeTaskResponseObserver(String id, Class<T> responseClass) {
+      super(id);
+      this.responseClass = responseClass;
+      this.resultRef = new AtomicReference<>();
+    }
+
+    public T waitForResponse() {
+      super.waitFor();
+      return resultRef.get();
+    }
+
+    @Override
+    public void onNext(DescribeTaskResponse response) {
+      try {
+        super.onNext(response);
+        if (response.hasError()) {
+          com.yugabyte.yw.nodeagent.Server.Error error = response.getError();
+          onError(
+              new RuntimeException(
+                  String.format("Code: %d, Error: %s", error.getCode(), error.getMessage())));
+        } else {
+          if (response.hasOutput()) {
+            log.info(response.getOutput());
+          } else {
+            for (Map.Entry<FieldDescriptor, Object> entry : response.getAllFields().entrySet()) {
+              if (entry.getValue() == null) {
+                continue;
+              }
+              if (entry.getValue().getClass().isAssignableFrom(responseClass)) {
+                resultRef.set(responseClass.cast(entry.getValue()));
+                break;
+              }
+            }
+          }
+        }
+      } catch (Exception e) {
         onError(e);
       }
     }
@@ -484,23 +574,25 @@ public class NodeAgentClient {
     redactedVals.put(token, "REDACTED");
   }
 
-  public Optional<NodeAgent> maybeGetNodeAgent(String ip, Provider provider) {
-    if (isClientEnabled(provider)) {
+  public Optional<NodeAgent> maybeGetNodeAgent(
+      String ip, Provider provider, @Nullable Universe universe) {
+    if (isClientEnabled(provider, universe)) {
       Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(ip);
-      if (optional.isPresent() && optional.get().getState() != State.REGISTERING) {
+      if (optional.isPresent() && optional.get().isActive()) {
         return optional;
       }
     }
     return Optional.empty();
   }
 
-  public boolean isClientEnabled(Provider provider) {
-    return provider.getDetails().isEnableNodeAgent()
-        && confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
+  /* Passing universe allows more specific check for the universe. */
+  public boolean isClientEnabled(Provider provider, @Nullable Universe universe) {
+    return nodeAgentEnablerProvider.get().isNodeAgentClientEnabled(provider, universe);
   }
 
-  public boolean isAnsibleOffloadingEnabled(NodeAgent nodeAgent, Provider provider) {
-    if (!isClientEnabled(provider)) {
+  public boolean isAnsibleOffloadingEnabled(
+      NodeAgent nodeAgent, Provider provider, @Nullable Universe universe) {
+    if (!isClientEnabled(provider, universe)) {
       return false;
     }
     if (!confGetter.getConfForScope(provider, ProviderConfKeys.enableAnsibleOffloading)) {
@@ -556,15 +648,16 @@ public class NodeAgentClient {
     while (true) {
       try {
         PingResponse response = ping(nodeAgent);
-        nodeAgent.updateOffloadable(response.getServerInfo().getOffloadable());
+        nodeAgent.updateServerInfo(response.getServerInfo());
         return response;
       } catch (StatusRuntimeException e) {
+        nodeAgent.updateLastError(new YBAError(YBAError.Code.CONNECTION_ERROR, e.getMessage()));
         if (e.getStatus().getCode() != Code.UNAVAILABLE
             && e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
-          log.error("Error in connecting to Node agent {} - {}", nodeAgent.getIp(), e.getStatus());
+          log.error("Error in connecting to Node agent {} - {}", nodeAgent, e.getStatus());
           throw e;
         }
-        log.warn("Node agent {} is not reachable", nodeAgent.getIp());
+        log.warn("Node agent {} is not reachable", nodeAgent);
         if (stopwatch.elapsed().compareTo(timeout) > 0) {
           throw e;
         }
@@ -573,9 +666,9 @@ public class NodeAgentClient {
         } catch (InterruptedException ex) {
           throw new RuntimeException(ex);
         }
-        log.info("Retrying connection validation to node agent {}", nodeAgent.getIp());
+        log.info("Retrying connection validation to node agent {}", nodeAgent);
       } catch (RuntimeException e) {
-        log.error("Error in connecting to Node agent {} - {}", nodeAgent.getIp(), e.getMessage());
+        log.error("Error in connecting to node agent {} - {}", nodeAgent, e.getMessage());
         throw e;
       }
     }
@@ -760,11 +853,62 @@ public class NodeAgentClient {
     return response.getHome();
   }
 
+  public void abortTask(NodeAgent nodeAgent, String taskId) {
+    ManagedChannel channel = getManagedChannel(nodeAgent, true);
+    try {
+      NodeAgentGrpc.newBlockingStub(channel)
+          .abortTask(AbortTaskRequest.newBuilder().setTaskId(taskId).build());
+    } catch (Exception e) {
+      // Ignore error.
+      log.error("Abort failed for task {} - {}", taskId, e.getMessage());
+    }
+  }
+
+  public PreflightCheckOutput runPreflightCheck(
+      NodeAgent nodeAgent, PreflightCheckInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder().setPreflightCheckInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), PreflightCheckOutput.class);
+  }
+
   public synchronized void cleanupCachedClients() {
     try {
       cachedChannels.cleanUp();
     } catch (RuntimeException e) {
-      log.error("Client cache cleanup failed {}", e);
+      log.error("Client cache cleanup failed {}", e.getMessage());
+    }
+  }
+
+  // Common method to submit async task and wait for the result.
+  private <T> T runAsyncTask(
+      NodeAgent nodeAgent, SubmitTaskRequest request, Class<T> responseClass) {
+    ManagedChannel channel = getManagedChannel(nodeAgent, true);
+    SubmitTaskResponse response = NodeAgentGrpc.newBlockingStub(channel).submitTask(request);
+    String taskId = response.getTaskId();
+    NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
+    String id = String.format("%s-%s", nodeAgent.getUuid(), taskId);
+    DescribeTaskRequest describeTaskRequest =
+        DescribeTaskRequest.newBuilder().setTaskId(taskId).build();
+    while (true) {
+      try {
+        log.info("Describing task {}", taskId);
+        DescribeTaskResponseObserver<T> responseObserver =
+            new DescribeTaskResponseObserver<>(id, responseClass);
+        stub.describeTask(describeTaskRequest, responseObserver);
+        return responseObserver.waitForResponse();
+      } catch (StatusRuntimeException e) {
+        if (e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
+          // Best effort to abort.
+          abortTask(nodeAgent, taskId);
+          log.error("Error in describing task for node agent {} - {}", nodeAgent, e.getStatus());
+          throw e;
+        } else {
+          log.info("Reconnecting to node agent {} to describe task {}", nodeAgent, taskId);
+        }
+      }
     }
   }
 

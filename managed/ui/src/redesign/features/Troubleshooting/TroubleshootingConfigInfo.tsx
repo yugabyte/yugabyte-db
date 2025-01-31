@@ -27,9 +27,12 @@ interface TroubleshootingConfigInfoProps {
   tpUrl: string;
   ybaUrl: string;
   metricsUrl: string;
+  metricsScrapePeriodSecs: number;
   inUseStatus: boolean;
   tpUuid: string;
   customerUUID: string;
+  apiToken: string;
+  tpApiToken: string;
   onRefetchConfig: () => void;
 }
 
@@ -37,9 +40,12 @@ export const TroubleshootingConfigInfo = ({
   tpUrl,
   ybaUrl,
   metricsUrl,
+  metricsScrapePeriodSecs,
   tpUuid,
   customerUUID,
   inUseStatus,
+  apiToken,
+  tpApiToken,
   onRefetchConfig
 }: TroubleshootingConfigInfoProps) => {
   const { t } = useTranslation();
@@ -67,7 +73,10 @@ export const TroubleshootingConfigInfo = ({
     customerUUID,
     tpUrl,
     ybaUrl,
+    apiToken,
+    tpApiToken,
     metricsUrl,
+    metricsScrapePeriodSecs,
     tpUuid,
     inUseStatus
   };
@@ -99,6 +108,17 @@ export const TroubleshootingConfigInfo = ({
               {t('clusterDetail.troubleshoot.ybPlatformMetricsUrlLabel')}
             </YBLabel>
             <YBInput type="text" disabled value={metricsUrl} className={helperClasses.textBox} />
+          </Box>
+          <Box className={helperClasses.infoBox}>
+            <YBLabel dataTestId="TroubleshootConfigInfo-metricsScrapePeriodSecLabel" width="300px">
+              {t('clusterDetail.troubleshoot.metricsScrapePeriodSecLabel')}
+            </YBLabel>
+            <YBInput
+              type="text"
+              disabled
+              value={metricsScrapePeriodSecs}
+              className={helperClasses.textBox}
+            />
           </Box>
           <Box className={helperClasses.buttonBox}>
             <YBButton variant="primary" size="large" onClick={onEditTPConfigButtonClick}>

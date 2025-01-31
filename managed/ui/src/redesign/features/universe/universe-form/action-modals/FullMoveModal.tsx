@@ -1,10 +1,20 @@
 import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import pluralize from 'pluralize';
+import _ from 'lodash';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
+import { InstanceTags } from './InstanceTags';
+import { CommunicationPorts } from './CommunicationPorts';
 import { YBModal } from '../../../../components';
-import { getAsyncCluster, getPrimaryCluster } from '../utils/helpers';
+import {
+  getAdvancedConfigChanges,
+  getAsyncCluster,
+  getChangedPorts,
+  getPrimaryCluster,
+  getSecurityConfigChanges
+} from '../utils/helpers';
 import { Cluster, MasterPlacementMode, UniverseDetails } from '../utils/dto';
+import { isNonEmptyObject } from '../../../../../utils/ObjectUtils';
 
 const useStyles = makeStyles((theme: Theme) => ({
   greyText: {
@@ -43,7 +53,19 @@ export const FullMoveModal: FC<FMModalProps> = ({
   const classes = useStyles();
   const oldCluster = isPrimary ? getPrimaryCluster(oldConfigData) : getAsyncCluster(oldConfigData);
   const newCluster = isPrimary ? getPrimaryCluster(newConfigData) : getAsyncCluster(newConfigData);
-
+  const oldInstanceTags = oldCluster?.userIntent?.instanceTags;
+  const newInstanceTags = newCluster?.userIntent?.instanceTags;
+  const oldCommunicationPorts = oldConfigData?.communicationPorts;
+  const newCommunicationPorts = newConfigData?.communicationPorts;
+  const changedPorts = getChangedPorts(oldCommunicationPorts, newCommunicationPorts);
+  const securityConfigChanges = getSecurityConfigChanges(
+    getPrimaryCluster(oldConfigData),
+    getPrimaryCluster(newConfigData)
+  );
+  const advancedConfigChanges = getAdvancedConfigChanges(
+    getPrimaryCluster(oldConfigData),
+    getPrimaryCluster(newConfigData)
+  );
   const renderConfig = (cluster: Cluster, isNew: boolean) => {
     const { placementInfo, userIntent } = cluster;
     return (
@@ -92,6 +114,62 @@ export const FullMoveModal: FC<FMModalProps> = ({
             </Box>
           ))}
         </Box>
+        {!_.isEqual(oldInstanceTags, newInstanceTags) && (
+          <Box mt={2}>
+            {isNew ? (
+              <>{<InstanceTags tags={newInstanceTags!} />}</>
+            ) : (
+              <>{<InstanceTags tags={oldInstanceTags!} />}</>
+            )}
+          </Box>
+        )}
+        {securityConfigChanges?.hasChanged && (
+          <Box mt={2}>
+            {isNew ? (
+              <>
+                <b>{t('universeForm.fullMoveModal.assignPublicIP')}</b>
+                &nbsp;
+                {securityConfigChanges.isNewIPEnabled
+                  ? t('universeForm.fullMoveModal.enabled')
+                  : t('universeForm.fullMoveModal.disabled')}
+              </>
+            ) : (
+              <>
+                <b>{t('universeForm.fullMoveModal.assignPublicIP')}</b>
+                &nbsp;
+                {securityConfigChanges.isCurrentIPEnabled
+                  ? t('universeForm.fullMoveModal.enabled')
+                  : t('universeForm.fullMoveModal.disabled')}
+              </>
+            )}
+          </Box>
+        )}
+        {advancedConfigChanges?.hasChanged && (
+          <Box mt={2}>
+            {isNew ? (
+              <>
+                <b>{t('universeForm.fullMoveModal.instanceProfileARN')}</b>
+                &nbsp;
+                {advancedConfigChanges.newArnString}
+              </>
+            ) : (
+              <>
+                <b>{t('universeForm.fullMoveModal.instanceProfileARN')}</b>
+                &nbsp;
+                {advancedConfigChanges.currentArnString}
+              </>
+            )}
+          </Box>
+        )}
+        {isNonEmptyObject(changedPorts?.oldPorts) && isNonEmptyObject(changedPorts?.newPorts) && (
+          <Box mt={2}>
+            {isNew ? (
+              <>{<CommunicationPorts communicationPorts={changedPorts?.newPorts} />}</>
+            ) : (
+              <>{<CommunicationPorts communicationPorts={changedPorts?.oldPorts} />}</>
+            )}
+          </Box>
+        )}
       </Box>
     );
   };

@@ -71,6 +71,6 @@ INSERT INTO large_filter VALUES (0), (1);
 \set filter ':sixty AND :ten'
 \set query 'SELECT * FROM hashcode_rowfilter WHERE :filter ORDER BY i'
 :explain :is :query; :is :query;
--- TODO(#18360): fix output.
+-- #18360
 \set one 'yb_hash_code(k) > -1'
 :explain :is :query; :is :query;

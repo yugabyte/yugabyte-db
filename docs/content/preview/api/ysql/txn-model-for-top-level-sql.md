@@ -4,14 +4,14 @@ headerTitle: The transaction model for top-level SQL statements
 linkTitle: Transaction model for top-level SQL statements
 description: Explains how top-level SQL statements are executed each in its own transaction unless explicitly started with "begin;" or "start transaction;" [YSQL].
 menu:
-  preview:
+  preview_api:
     identifier: txn-model-for-top-level-sql
     parent: api-ysql
     weight: 20
 type: docs
 ---
 
-This section describes how top-level SQL statements, sent to the PostgreSQL server using TCP/IP, execute. The same model, of course, applies for how YugabyteDB's YSQL subsystem  executes such statements. The chapter [Frontend/Backend Protocol](https://www.postgresql.org/docs/11/protocol.html) in the PostgreSQL documentation describes how the server processes, and responds to, SQL statements that are sent this way. 
+This section describes how top-level SQL statements, sent to the PostgreSQL server using TCP/IP, execute. The same model, of course, applies for how YugabyteDB's YSQL subsystem  executes such statements. The chapter [Frontend/Backend Protocol](https://www.postgresql.org/docs/15/protocol.html) in the PostgreSQL documentation describes how the server processes, and responds to, SQL statements that are sent this way. 
 
 ## Client-side libraries and tools
 
@@ -19,7 +19,7 @@ Various client-side libraries are available to allow you to send and receive req
 - [libpq — C Library](https://www.postgresql.org/docs/current/libpq.html) (documented as part of the overall PostgreSQL documentation set);
 - [pgJDBC — the PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) from _postgresql.org_;
 - [psycopg — for Python](https://www.psycopg.org/);
-- and, of course, [_psql_](https://www.postgresql.org/docs/11/app-psql.html), the so-called PostgreSQL interactive terminal, together with the YugabyteDB equivalent, [_ysqlsh_](../../../admin/ysqlsh/).
+- and, of course, [_psql_](https://www.postgresql.org/docs/15/app-psql.html), the so-called PostgreSQL interactive terminal, together with the YugabyteDB equivalent, [_ysqlsh_](../../ysqlsh/).
 
 There are many others.
 
@@ -153,7 +153,7 @@ and _psql_ (and therefore _ysqlsh_) have the meta-command:
 \set AUTOCOMMIT { 'on' | 'off' }
 ```
 
-The [PostgreSQL documentation for _psql_](https://www.postgresql.org/docs/11/app-psql.html) describes it thus:
+The [PostgreSQL documentation for _psql_](https://www.postgresql.org/docs/15/app-psql.html) describes it thus:
 
 > The autocommit-off mode works by issuing an implicit BEGIN for you, just before any command that is not already in a transaction block and is not itself a BEGIN or other transaction-control command...
 

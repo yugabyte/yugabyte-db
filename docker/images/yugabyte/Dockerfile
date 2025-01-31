@@ -27,7 +27,6 @@ LABEL name="YugabyteDB" \
     vendor="Yugabyte Inc" \
     release=$RELEASE \
     version=$VERSION \
-    java_version=$JAVA_VERSION \
     summary="YugabytDB Image" \
     description="YugabyteDB is a free and open-source, distributed, relational, NewSQL database \
         management system designed to handle large amounts of data spanning across multiple \
@@ -41,8 +40,8 @@ ENV YB_DEVOPS_USE_PYTHON3=1
 WORKDIR $YB_HOME
 
 # Create some yum aliases for use in this Dockerfile
-ARG yum_install="yum install --disableplugin=subscription-manager"
-ARG yum_upgrade="yum upgrade --disableplugin=subscription-manager"
+ARG yum_install="yum install --disableplugin=subscription-manager -y"
+ARG yum_upgrade="yum upgrade --disableplugin=subscription-manager -y"
 
 # Add the almalinux8 package repo if we are building for ubi.
 RUN <<EOF
@@ -65,9 +64,14 @@ EOR
   fi
 EOF
 
+# Install hostname for ubi8 images.
+RUN if [[ "$BASE_IMAGE" == "registry.access.redhat.com/ubi8/ubi"* ]]; then \
+  $yum_install hostname; \
+  fi
+
 # Ensure our base system is fully up to date
 RUN set -x; \
-  $yum_upgrade -y \
+  $yum_upgrade \
   && rm -rf ~/.cache \
   && yum clean all && rm -rf /var/cache/yum
 
@@ -75,7 +79,7 @@ RUN set -x; \
 # this should leave us with python3.8 as the default python3
 # We need to explicitly remove the old pip wheel file to avoid tripping vulnerability scans
 RUN set -x ; \
-   $yum_install -y  \
+   $yum_install  \
       python38-devel \
       python38-pip \
       python38-psutil \
@@ -93,6 +97,7 @@ RUN set -x ; \
 RUN $yum_install -y \
       bind-utils \
       diffutils \
+      gettext \
       glibc-all-langpacks \
       glibc-langpack-en \
       glibc-locale-source \
@@ -159,7 +164,7 @@ RUN mkdir /licenses && \
       -o /licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 # Install azcopy
-ARG AZV=10.20.1
+ARG AZV=10.25.0
 RUN set -x; \
     [[ "$(uname -m)" == "aarch64" ]] && arch='arm64' || arch='amd64'; \
     pkg_name="azcopy_linux_${arch}_${AZV}"; \

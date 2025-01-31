@@ -55,6 +55,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.pac4j.play.LogoutController;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -74,6 +75,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Override
   protected Application provideApplication() {
+    LogoutController mockLogoutController = mock(LogoutController.class);
     when(mockConfig.getBoolean(HookController.ENABLE_CUSTOM_HOOKS_PATH)).thenReturn(true);
     when(mockConfig.getBoolean(HookController.ENABLE_SUDO_PATH)).thenReturn(true);
     when(mockConfig.getBoolean(HookController.ENABLE_API_HOOK_RUN_PATH)).thenReturn(true);
@@ -84,6 +86,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
+        .overrides(bind(LogoutController.class).toInstance(mockLogoutController))
         .overrides(
             bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();

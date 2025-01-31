@@ -65,6 +65,11 @@ class MockTableReader : public TableReader {
     return nullptr;
   }
 
+  DataBlockAwareIndexInternalIterator* NewDataBlockAwareIndexIterator(
+      const ReadOptions& read_options) override {
+    return nullptr;
+  }
+
   Status Get(const ReadOptions&, const Slice& key, GetContext* get_context,
              bool skip_filters = false) override;
 

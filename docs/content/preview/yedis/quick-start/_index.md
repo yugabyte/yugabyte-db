@@ -16,7 +16,7 @@ menu:
 type: indexpage
 ---
 
-After [creating a local cluster](../../quick-start/), follow the instructions below to test YugabyteDB's Redis-compatible [YEDIS](../api/) API.
+After [creating a local cluster](/preview/tutorials/quick-start/), follow the instructions below to test YugabyteDB's Redis-compatible [YEDIS](../api/) API.
 
 [**redis-cli**](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. For ease of use, YugabyteDB ships with the 4.0.1 version of redis-cli in its `bin` directory.
 
@@ -24,25 +24,25 @@ After [creating a local cluster](../../quick-start/), follow the instructions be
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
+    <a href="#macos" class="nav-link active" id="macos-tab" data-bs-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="false">
+    <a href="#linux" class="nav-link" id="linux-tab" data-bs-toggle="tab" role="tab" aria-controls="linux" aria-selected="false">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
     <li>
-    <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
+    <a href="#docker" class="nav-link" id="docker-tab" data-bs-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
       <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li>
-    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
+    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-bs-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>

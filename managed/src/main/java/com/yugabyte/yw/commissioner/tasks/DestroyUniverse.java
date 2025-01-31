@@ -36,7 +36,6 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -92,16 +91,8 @@ public class DestroyUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
+    Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
     try {
-      // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
-      // to prevent other updates from happening.
-      Universe universe;
-      if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1);
-      } else {
-        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
-      }
-
       // Delete xCluster configs involving this universe and put the locked universes to
       // lockedUniversesUuidList.
       createDeleteXClusterConfigSubtasksAndLockOtherUniverses();
@@ -350,12 +341,13 @@ public class DestroyUniverse extends UniverseTaskBase {
                 xClusterConfig,
                 false /* keepEntry */,
                 params().isForceDelete,
-                true /* deletePitrConfigs */);
-            if (Objects.nonNull(drConfig) && drConfig.getXClusterConfigs().size() == 1) {
-              createDeleteDrConfigEntryTask(drConfig)
-                  .setSubTaskGroupType(SubTaskGroupType.DeleteDrConfig);
-            }
+                true /* deleteSourcePitrConfigs */,
+                true /* deleteTargetPitrConfigs */);
           });
+
+      // When the last xCluster config associated with this DR config is deleted, the dr config
+      // entry will be deleted as well.
+
       log.debug("Subtasks created to delete these xCluster configs: {}", xClusterConfigs);
     } catch (Exception e) {
       log.error(

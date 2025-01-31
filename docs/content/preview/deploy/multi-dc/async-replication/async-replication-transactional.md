@@ -1,16 +1,18 @@
 ---
-title: Deploy to two universes with transactional xCluster replication
-headerTitle: Transactional xCluster deployment
-linkTitle: Transactional xCluster
-description: Enable deployment using transactional (active-standby) replication between universes
-headContent: Transactional (active-standby) replication
+title: Deploy transactional xCluster replication
+headerTitle: Transactional xCluster
+linkTitle: Transactional
+description: Deploy using transactional (active-standby) replication between universes
+headContent: Deploy transactional (active-standby) replication
 aliases:
   - /preview/deploy/multi-dc/async-replication-transactional/
 menu:
   preview:
     parent: async-replication
     identifier: async-replication-transactional
-    weight: 20
+    weight: 10
+tags:
+  other: ysql
 type: docs
 ---
 
@@ -26,19 +28,23 @@ The recovery time objective (RTO) is very low, as it only depends on the applica
 
 Transactional xCluster support further allows for the role of each universe to switch during planned and unplanned failover scenarios.
 
-The xCluster role is a property with values ACTIVE or STANDBY that determines and identifies the Primary (source) and Standby (target) universes:
-
-- ACTIVE: The active universe serves both reads & writes. Reads/writes happen as of the latest time and according to the chosen isolation levels.
-- STANDBY: The standby universe is meant for reads only. Reads happen as of xCluster safe time for the given database.
-
 xCluster safe time is the transactionally consistent time across all tables in a given database at which Reads are served. In the following illustration, T1 is a transactionally consistent time across all tables.
 
 ![Transactional xCluster](/images/deploy/xcluster/xcluster-transactional.png)
+
+## Setup
+
+Transactional xCluster can be set up in the following ways:
+
+- [Semi-automatic mode](../async-transactional-setup-dblevel/), providing operationally simpler setup and management of replication, as well as simpler steps for performing DDL changes.
+- [Manual mode](../async-transactional-setup/).
 
 ## Limitations
 
 - Supports only Active-Standby setups with transactional atomicity and global ordering.
 - Transactional consistency is currently not supported for YCQL, only for YSQL.
+
+For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
 
 ## Best practices
 

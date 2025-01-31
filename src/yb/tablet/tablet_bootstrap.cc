@@ -136,6 +136,9 @@ DEFINE_RUNTIME_bool(skip_flushed_entries_in_first_replayed_segment, true,
             "If applicable, only replay entries that are not flushed to RocksDB or necessary "
             "to bootstrap retryable requests in the first replayed wal segment.");
 
+DEFINE_RUNTIME_bool(use_bootstrap_intent_ht_filter, true,
+                    "Use min replay txn start time filter for bootstrap.");
+
 DECLARE_int32(retryable_request_timeout_secs);
 
 DEFINE_UNKNOWN_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
@@ -153,6 +156,10 @@ DEFINE_test_flag(bool, dump_docdb_after_tablet_bootstrap, false,
 
 DEFINE_test_flag(bool, play_pending_uncommitted_entries, false,
                  "Play all the pending entries present in the log even if they are uncommitted.");
+
+DEFINE_NON_RUNTIME_bool(skip_wal_replay_from_beginning_with_cdc, true,
+                        "If false, read all the WAL segments starting from the "
+                        "beginning instead of starting post the flushed entries.");
 
 DECLARE_bool(enable_flush_retryable_requests);
 
@@ -410,10 +417,10 @@ struct ReplayDecision {
 
   // This is true for transaction update operations that have already been applied to the regular
   // RocksDB but not to the intents RocksDB.
-  AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse;
+  docdb::StorageSet apply_to_storages = docdb::StorageSet::All();
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(should_replay, already_applied_to_regular_db);
+    return YB_STRUCT_TO_STRING(should_replay, apply_to_storages);
   }
 };
 
@@ -503,20 +510,22 @@ class TabletBootstrap {
     }
 
     std::optional<consensus::TabletBootstrapStatePB> bootstrap_state_pb = std::nullopt;
-    HybridTime min_running_ht = HybridTime::kInvalid;
+    HybridTime min_replay_txn_start_ht = HybridTime::kInvalid;
     if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) && data_.bootstrap_state_manager) {
       auto result = data_.bootstrap_state_manager->LoadFromDisk();
       if (result.ok()) {
         bootstrap_state_pb = std::move(*result);
 
-        const auto& bootstrap_state = data_.bootstrap_state_manager->bootstrap_state();
-        min_running_ht = bootstrap_state.GetMinRunningHybridTime();
+        if (GetAtomicFlag(&FLAGS_use_bootstrap_intent_ht_filter)) {
+          const auto& bootstrap_state = data_.bootstrap_state_manager->bootstrap_state();
+          min_replay_txn_start_ht = bootstrap_state.GetMinReplayTxnStartTime();
+        }
       } else if (!result.status().IsNotFound()) {
         return result.status();
       }
     }
 
-    const bool has_blocks = VERIFY_RESULT(OpenTablet(min_running_ht));
+    const bool has_blocks = VERIFY_RESULT(OpenTablet(min_replay_txn_start_ht));
 
     if (data_.retryable_requests) {
       const auto retryable_request_timeout_secs = meta_->IsSysCatalog()
@@ -618,7 +627,7 @@ class TabletBootstrap {
   }
 
   // Sets result to true if there was any data on disk for this tablet.
-  Result<bool> OpenTablet(HybridTime min_running_ht) {
+  Result<bool> OpenTablet(HybridTime min_replay_txn_start_ht) {
     CleanupSnapshots();
     // Use operator new instead of make_shared for creating the shared_ptr. That way, we would have
     // the shared_ptr's control block hold a raw pointer to the Tablet object as opposed to the
@@ -632,7 +641,7 @@ class TabletBootstrap {
 
     auto participant = tablet->transaction_participant();
     if (participant) {
-      participant->SetMinRunningHybridTimeLowerBound(min_running_ht);
+      participant->SetMinReplayTxnStartTimeLowerBound(min_replay_txn_start_ht);
     }
 
     // Doing nothing for now except opening a tablet locally.
@@ -848,17 +857,17 @@ class TabletBootstrap {
         metadata.wal_dir(),
         metadata.fs_manager()->uuid(),
         *tablet_->schema(),
-        metadata.schema_version(),
+        metadata.primary_table_schema_version(),
         tablet_->GetTableMetricsEntity(),
         tablet_->GetTabletMetricsEntity(),
         append_pool_,
         allocation_pool_,
         log_sync_pool_,
-        metadata.cdc_min_replicated_index(),
         &log_,
         data_.pre_log_rollover_callback,
         new_segment_allocation_callback,
-        create_new_segment));
+        create_new_segment,
+        data_.min_start_ht_running_txns_callback));
     // Disable sync temporarily in order to speed up appends during the bootstrap process.
     log_->DisableSync();
     return Status::OK();
@@ -967,14 +976,14 @@ class TabletBootstrap {
   // Replays the given committed operation.
   Status PlayAnyRequest(
       consensus::LWReplicateMsg* replicate,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+      const docdb::StorageSet& apply_to_storages) {
     const auto op_type = replicate->op_type();
     if (test_hooks_) {
-      test_hooks_->Replayed(OpId::FromPB(replicate->id()), already_applied_to_regular_db);
+      test_hooks_->Replayed(OpId::FromPB(replicate->id()), apply_to_storages);
     }
     switch (op_type) {
       case consensus::WRITE_OP:
-        return PlayWriteRequest(replicate, already_applied_to_regular_db);
+        return PlayWriteRequest(replicate, apply_to_storages);
 
       case consensus::CHANGE_METADATA_OP:
         return PlayChangeMetadataRequest(replicate);
@@ -989,7 +998,7 @@ class TabletBootstrap {
         return Status::OK();  // This is why it is a no-op!
 
       case consensus::UPDATE_TRANSACTION_OP:
-        return PlayUpdateTransactionRequest(replicate, already_applied_to_regular_db);
+        return PlayUpdateTransactionRequest(replicate, apply_to_storages);
 
       case consensus::SNAPSHOT_OP:
         return PlayTabletSnapshotRequest(replicate);
@@ -1108,29 +1117,37 @@ class TabletBootstrap {
   ReplayDecision ShouldReplayOperation(
       consensus::OperationType op_type,
       const int64_t index,
-      const int64_t regular_flushed_index,
-      const int64_t intents_flushed_index,
+      const DocDbOpIds& flushed_op_ids,
       const int64_t metadata_flushed_index,
       TransactionStatus txn_status,
       bool write_op_has_transaction) {
     if (op_type == consensus::UPDATE_TRANSACTION_OP) {
-      if (txn_status == TransactionStatus::APPLYING && index <= regular_flushed_index) {
+      if (txn_status == TransactionStatus::APPLYING) {
+        auto apply_to_storages = docdb::StorageSet::All();
+        if (index <= flushed_op_ids.regular.index) {
+          apply_to_storages.ResetRegularDB();
+        }
+        for (size_t idx = 0; idx != flushed_op_ids.vector_indexes.size(); ++idx) {
+          if (index <= flushed_op_ids.vector_indexes[idx].index) {
+            apply_to_storages.ResetVectorIndex(idx);
+          }
+        }
         // This was added as part of D17730 / #12730 to ensure we don't clean up transactions
         // before they are replicated to the CDC destination.
         //
         // TODO: Replaying even transactions that are flushed to both regular and intents RocksDB is
         // a temporary change. The long term change is to track write and apply operations
         // separately instead of a tracking a single "intents_flushed_index".
-        VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " "
-                                     << "regular_flushed_index: " << regular_flushed_index
-                                     << " intents_flushed_index: " << intents_flushed_index;
-        return {true, AlreadyAppliedToRegularDB::kTrue};
+        VLOG_WITH_PREFIX_AND_FUNC(3)
+            << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+            << ", apply_to_storages: " << apply_to_storages.ToString();
+        return {true, apply_to_storages};
       }
       // For other types of transaction updates, we ignore them if they have been flushed to the
       // regular RocksDB.
-      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
-                                   << "regular_flushed_index: " << regular_flushed_index;
-      return {index > regular_flushed_index};
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+      return {index > flushed_op_ids.regular.index};
     }
 
     if (metadata_flushed_index >= 0 && op_type == consensus::CHANGE_METADATA_OP) {
@@ -1142,25 +1159,24 @@ class TabletBootstrap {
 
     // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
     // trying to be resilient to violations of that assumption.
-    if (index <= std::min(regular_flushed_index, intents_flushed_index)) {
+    if (index <= std::min(flushed_op_ids.regular.index, flushed_op_ids.intents.index)) {
       // Never replay anything that is flushed to both regular and intents RocksDBs in a
       // transactional table.
-      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " "
-                                   << "regular_flushed_index: " << regular_flushed_index
-                                   << " intents_flushed_index: " << intents_flushed_index;
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
       return {false};
     }
 
     if (op_type == consensus::WRITE_OP && write_op_has_transaction) {
       // Write intents that have not been flushed into the intents DB.
-      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
-                                   << "intents_flushed_index: " << intents_flushed_index;
-      return {index > intents_flushed_index};
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+      return {index > flushed_op_ids.intents.index};
     }
 
-    VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
-                                 << "regular_flushed_index: " << regular_flushed_index;
-    return {index > regular_flushed_index};
+    VLOG_WITH_PREFIX_AND_FUNC(3)
+        << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+    return {index > flushed_op_ids.regular.index};
   }
 
   // Performs various checks based on the OpId, and decides whether to replay the given operation.
@@ -1173,8 +1189,7 @@ class TabletBootstrap {
     const auto decision = ShouldReplayOperation(
         op_type,
         replicate.id().index(),
-        replay_state_->stored_op_ids.regular.index,
-        replay_state_->stored_op_ids.intents.index,
+        replay_state_->stored_op_ids,
         meta_->LastFlushedChangeMetadataOperationOpId().index,
         // txn_status
         replicate.has_transaction_state()
@@ -1187,7 +1202,7 @@ class TabletBootstrap {
     VLOG_WITH_PREFIX_AND_FUNC(3) << "decision: " << AsString(decision);
     if (decision.should_replay) {
       RETURN_NOT_OK_PREPEND(
-          PlayAnyRequest(&replicate, decision.already_applied_to_regular_db),
+          PlayAnyRequest(&replicate, decision.apply_to_storages),
           Format(
             "Failed to play $0 request, replicate: { $1 }",
             OperationType_Name(op_type), replicate));
@@ -1528,9 +1543,11 @@ class TabletBootstrap {
     log::SegmentSequence segments;
     RETURN_NOT_OK(log_->GetSegmentsSnapshot(&segments));
 
-    // If any cdc stream is active for this tablet, we do not want to skip flushed entries.
+    // If any cdc stream is active for this tablet, we will read WAL from beginning when
+    // FLAGS_skip_wal_replay_from_beginning_with_cdc is set to false.
     bool should_skip_flushed_entries = FLAGS_skip_flushed_entries;
-    if (should_skip_flushed_entries && tablet_->transaction_participant()) {
+    if (!GetAtomicFlag(&FLAGS_skip_wal_replay_from_beginning_with_cdc) &&
+        should_skip_flushed_entries && tablet_->transaction_participant()) {
       if (tablet_->transaction_participant()->GetRetainOpId() != OpId::Invalid()) {
         should_skip_flushed_entries = false;
         LOG_WITH_PREFIX(WARNING) << "Ignoring skip_flushed_entries even though it is set, because "
@@ -1698,7 +1715,7 @@ class TabletBootstrap {
 
   Status PlayWriteRequest(
       consensus::LWReplicateMsg* replicate_msg,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+      const docdb::StorageSet& apply_to_storages) {
     SCHECK(replicate_msg->has_hybrid_time(), IllegalState,
            "A write operation with no hybrid time");
 
@@ -1724,8 +1741,7 @@ class TabletBootstrap {
       return Status::OK();
     }
 
-    auto apply_status = tablet_->ApplyRowOperations(
-        &operation, already_applied_to_regular_db);
+    auto apply_status = tablet_->ApplyRowOperations(&operation, apply_to_storages);
     // Failure is regular case, since could happen because transaction was aborted, while
     // replicating its intents.
     LOG_IF(INFO, !apply_status.ok()) << "Apply operation failed: " << apply_status;
@@ -1838,6 +1854,9 @@ class TabletBootstrap {
 
     TruncateOperation operation(tablet_, req);
 
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
+    operation.set_hybrid_time(HybridTime::FromPB(replicate_msg->hybrid_time()));
+
     Status s = tablet_->Truncate(&operation);
 
     RETURN_NOT_OK_PREPEND(s, "Failed to Truncate:");
@@ -1847,7 +1866,7 @@ class TabletBootstrap {
 
   Status PlayUpdateTransactionRequest(
       consensus::LWReplicateMsg* replicate_msg,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+      const docdb::StorageSet& apply_to_storages) {
     SCHECK(replicate_msg->has_hybrid_time(),
            Corruption, "A transaction update request must have a hybrid time");
 
@@ -1876,7 +1895,7 @@ class TabletBootstrap {
         .op_id = operation.op_id(),
         .hybrid_time = operation.hybrid_time(),
         .sealed = operation.request()->sealed(),
-        .already_applied_to_regular_db = already_applied_to_regular_db
+        .apply_to_storages = apply_to_storages,
       };
       return transaction_participant->ProcessReplicated(replicated_data);
     }

@@ -4,7 +4,7 @@ headerTitle: CREATE INDEX
 linkTitle: CREATE INDEX
 description: Use the CREATE INDEX statement to create an index on the specified columns of the specified table.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_create_index
     parent: statements
 type: docs
@@ -13,6 +13,10 @@ type: docs
 ## Synopsis
 
 Use the `CREATE INDEX` statement to create an index on the specified columns of the specified table. Indexes are primarily used to improve query performance.
+
+{{<note>}}
+In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed. Indexes are not colocated with the base table.
+{{</note>}}
 
 ## Syntax
 
@@ -143,7 +147,7 @@ For range-sharded indexes, you can use the `SPLIT AT VALUES` clause to set split
 CREATE TABLE tbl(
   a INT,
   b INT,
-  PRIMARY KEY(a ASC, b DESC);
+  PRIMARY KEY(a ASC, b DESC)
 );
 
 CREATE INDEX idx1 ON tbl(b ASC, a DESC) SPLIT AT VALUES((100), (200), (200, 5));

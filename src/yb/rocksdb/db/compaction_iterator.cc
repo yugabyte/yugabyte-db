@@ -73,7 +73,7 @@ CompactionIterator::CompactionIterator(
 void CompactionIterator::AddLiveRanges(const std::vector<std::pair<Slice, Slice>>& ranges) {
   for (auto it = ranges.rbegin(); it != ranges.rend(); ++it) {
     const auto& range = *it;
-    DCHECK(range.first.Less(range.second));
+    DCHECK(range.second.empty() || range.first.Less(range.second)) << AsString(range);
     if (!live_key_ranges_stack_.empty()) {
       DCHECK(live_key_ranges_stack_.back().first.GreaterOrEqual(range.second));
     }

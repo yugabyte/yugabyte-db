@@ -17,11 +17,11 @@ Because YugabyteDB's YSQL API is wire-compatible with PostgreSQL, Schema Evoluti
 
 ## Setup
 
-1. Start a YugabyteDB cluster. Refer to [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
+1. Start a YugabyteDB cluster. Refer to [YugabyteDB Prerequisites](../tools/#yugabytedb-prerequisites).
 1. Install Schema Evolution Manager following the [installation](https://github.com/mbryzek/schema-evolution-manager#installation) instructions from the GitHub repository.
 1. To connect to the YugabyteDB database, follow the [Getting Started](https://github.com/mbryzek/schema-evolution-manager#getting-started) steps.
 
-    Replace the connection string that you use to connect to the database for a cluster created with `yugabyted`, as per the following configuration:
+    Replace the connection string that you use to connect to the database for a cluster created with yugabyted, as per the following configuration:
 
     ```sh
     sem-init --dir /tmp/sample

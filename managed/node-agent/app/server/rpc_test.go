@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
@@ -241,7 +240,7 @@ func TestUploadFile(t *testing.T) {
 	client := pb.NewNodeAgentClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	file, err := ioutil.TempFile("/tmp", "node-agent")
+	file, err := os.CreateTemp("/tmp", "node-agent")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +310,7 @@ func TestDownloadFile(t *testing.T) {
 	client := pb.NewNodeAgentClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	file, err := ioutil.TempFile("/tmp", "node-agent")
+	file, err := os.CreateTemp("/tmp", "node-agent")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +418,7 @@ func TestMetric(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatal(err)
 	}

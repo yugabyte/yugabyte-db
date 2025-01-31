@@ -4,7 +4,6 @@ headerTitle: YCQL features
 linkTitle: YCQL features
 description: Explore core features in YCQL
 headcontent: Explore core features in YCQL
-image: /images/section_icons/api/ycql.png
 menu:
   preview:
     identifier: explore-ycql-language
@@ -26,7 +25,7 @@ The following table lists the most important YCQL features which you would find 
 
 | YCQL Feature | Description |
 | :----------- | :---------- |
-| [Data definition](../../api/ycql/#ddl-statements) | YCQL shell with `ycqlsh`, keysapces, tables, indexes, and types |
+| [Data definition](../../api/ycql/#ddl-statements) | YCQL shell with ycqlsh, keysapces, tables, indexes, and types |
 | [Data Types](../../api/ycql/#data-types) | String, numeric, frozen types, UUID, JSONB ... |
 | [Data Manipulation](../../api/ycql/#dml-statements) | `SELECT`, `INSERT`, `UPDATE`, `DELETE` ... |
 | [Expressions](../../api/ycql/#expressions) | Simple Values, Function calls, Subscript ... |

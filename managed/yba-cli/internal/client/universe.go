@@ -45,17 +45,43 @@ func (a *AuthAPIClient) UpgradeGFlags(uUUID string) (
 	return a.APIClient.UniverseUpgradesManagementApi.UpgradeGFlags(a.ctx, a.CustomerUUID, uUUID)
 }
 
+// UpgradeVMImage upgrades the VM image of the universe
+func (a *AuthAPIClient) UpgradeVMImage(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiUpgradeVMImageRequest) {
+	return a.APIClient.UniverseUpgradesManagementApi.UpgradeVMImage(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// UpgradeTLS upgrades the TLS settings of the universe
+func (a *AuthAPIClient) UpgradeTLS(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiUpgradeTlsRequest) {
+	return a.APIClient.UniverseUpgradesManagementApi.UpgradeTls(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// UpgradeCerts upgrades the TLS certs of the universe
+func (a *AuthAPIClient) UpgradeCerts(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiUpgradeCertsRequest) {
+	return a.APIClient.UniverseUpgradesManagementApi.UpgradeCerts(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // RestartUniverse for restart operation
 func (a *AuthAPIClient) RestartUniverse(uUUID string) (
 	ybaclient.UniverseUpgradesManagementApiApiRestartUniverseRequest) {
 	return a.APIClient.UniverseUpgradesManagementApi.RestartUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
+// SetUniverseKey to change universe EAR settings
+func (a *AuthAPIClient) SetUniverseKey(uUUID string) (
+	ybaclient.UniverseManagementApiApiSetUniverseKeyRequest,
+) {
+
+	return a.APIClient.UniverseManagementApi.SetUniverseKey(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // UniverseYBAVersionCheck checks if the new API request body can be used for the Create
 // Provider API
 func (a *AuthAPIClient) UniverseYBAVersionCheck() (bool, string, error) {
 	allowedVersions := YBAMinimumVersion{
-		Stable: util.YBAAllowUniverseMinVersion,
+		Stable:  util.YBAAllowUniverseMinVersion,
 		Preview: util.YBAAllowUniverseMinVersion,
 	}
 	allowed, version, err := a.CheckValidYBAVersion(allowedVersions)

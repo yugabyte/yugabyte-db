@@ -9,6 +9,7 @@ temp_certs_path=""
 key_path=""
 keyname=""
 hostname=""
+hostname_type=""
 
 show_help() {
   cat >&1 <<-EOT
@@ -47,6 +48,9 @@ node certs generation)
 
     --keyname, --kn, -kn
         Name of the key to be generated.
+
+    --hostname-type, --ht, -ht
+        Hostname type. Accepted vales: IP/DNS
 ---------------------------------------------------------------------------------------------------
 EOT
 }
@@ -103,8 +107,17 @@ generate_node_certs() {
 
     [ YugabyteDB_Node ]
     organizationName = Yugabyte
-    commonName = '"$hostname" > "$temp_certs_path"/node.conf
+    commonName = '"$hostname"'
 
+    [ req_ext ]
+    subjectAltName = @alt_names
+    [alt_names]' > "$temp_certs_path"/node.conf
+
+    if [[ $hostname_type == "DNS" ]]; then
+        echo 'DNS.1 = '"$hostname"'' >> "$temp_certs_path"/node.conf
+    else
+        echo 'IP.1 = '"$hostname"'' >> "$temp_certs_path"/node.conf
+    fi
 
     openssl genrsa -out "$temp_certs_path"/node."$hostname".key
     chmod 400 "$temp_certs_path"/node."$hostname".key
@@ -122,7 +135,9 @@ generate_node_certs() {
                 -outdir "$temp_certs_path" \
                 -in "$temp_certs_path"/node.csr \
                 -days 730 \
-                -batch
+                -batch \
+                -extfile "$temp_certs_path"/node.conf \
+                -extensions req_ext
 
     cp "$temp_certs_path"/ca.crt \
         "$temp_certs_path"/node."$hostname".key \
@@ -160,6 +175,10 @@ while [[ $# -gt 0 ]]; do
     ;;
     --hostname|--hn|-hn)
         hostname="$2"
+        shift
+    ;;
+    --hostname_type|--ht|-ht)
+        hostname_type="$2"
         shift
     ;;
     generate-key)

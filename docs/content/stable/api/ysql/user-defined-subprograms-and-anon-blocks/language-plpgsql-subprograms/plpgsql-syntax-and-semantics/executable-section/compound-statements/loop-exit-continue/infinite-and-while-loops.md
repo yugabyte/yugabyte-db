@@ -4,7 +4,7 @@ headerTitle: The "infinite loop" and the "while loop"
 linkTitle: Infinite and while loops
 description: Describes the syntax and semantics of the "infinite loop" and the "while loop" [YSQL]
 menu:
-  stable:
+  stable_api:
     identifier: infinite-and-while-loops
     parent: loop-exit-continue
     weight: 10
@@ -90,7 +90,7 @@ See also the section **[Cursor manipulation in PL/pgSQL](../../../basic-statemen
 This is the result:
 
 ```outout
- k  | v  
+ k  | v
 ----+----
   6 | 25
   7 | 30
@@ -140,7 +140,7 @@ begin
     from s.t
     where t.k between k_lo and k_hi
     order by t.k);
-    
+
   -- While loop --------------------------------------------
   fetch next from cur into k, v;
   while found loop
@@ -148,7 +148,7 @@ begin
     fetch next from cur into k, v;
   end loop;
   ----------------------------------------------------------
-  
+
   close cur;
 end;
 $body$;

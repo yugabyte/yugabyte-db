@@ -40,7 +40,6 @@
 #include <boost/range/algorithm_ext/erase.hpp>
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/once.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -134,10 +133,6 @@ using strings::Substitute;
 
 namespace {
 
-// The ancestor for all trackers. Every tracker is visible from the root down.
-shared_ptr<MemTracker> root_tracker;
-GoogleOnceType root_tracker_once = GOOGLE_ONCE_INIT;
-
 // Total amount of memory from calls to Release() since the last GC. If this
 // is greater than mem_tracker_tcmalloc_gc_release_bytes, this will trigger a tcmalloc gc.
 Atomic64 released_memory_since_gc;
@@ -186,58 +181,7 @@ std::string CreateMetricDescription(const MemTracker& mem_tracker) {
   return CreateMetricLabel(mem_tracker);
 }
 
-
-} // namespace
-
-class MemTracker::TrackerMetrics {
- public:
-  explicit TrackerMetrics(const MetricEntityPtr& metric_entity)
-      : metric_entity_(metric_entity) {
-  }
-
-  void Init(const MemTracker& mem_tracker) {
-    metric_ = metric_entity_->FindOrCreateMetric<AtomicGauge<int64_t>>(
-        std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
-            metric_entity_->prototype().name(), mem_tracker.metric_name(),
-            CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
-            CreateMetricDescription(mem_tracker), yb::MetricLevel::kInfo)),
-        static_cast<int64_t>(0));
-    // Consumption could be changed when gauge is created, so set it separately.
-    metric_->set_value(mem_tracker.consumption());
-  }
-
-  TrackerMetrics(TrackerMetrics&) = delete;
-  void operator=(const TrackerMetrics&) = delete;
-
-  ~TrackerMetrics() {
-    metric_entity_->Remove(metric_->prototype());
-  }
-
-  MetricEntityPtr metric_entity_;
-  scoped_refptr<AtomicGauge<int64_t>> metric_;
-};
-
-void MemTracker::PrintTCMallocConfigs() {
-#if YB_GOOGLE_TCMALLOC
-  LOG(INFO) << "TCMalloc per cpu caches active: "
-            << tcmalloc::MallocExtension::PerCpuCachesActive();
-  LOG(INFO) << "TCMalloc max per cpu cache size: "
-            << tcmalloc::MallocExtension::GetMaxPerCpuCacheSize();
-  LOG(INFO) << "TCMalloc max total thread cache bytes: "
-            << tcmalloc::MallocExtension::GetMaxTotalThreadCacheBytes();
-#endif  // YB_GOOGLE_TCMALLOC
-}
-
-void MemTracker::ConfigureTCMalloc() {
-  ::yb::ConfigureTCMalloc(MemTracker::GetRootTracker()->limit());
-  RegisterTCMallocTraceHooks();
-}
-
-void MemTracker::InitRootTrackerOnce() {
-  GoogleOnceInit(&root_tracker_once, &MemTracker::CreateRootTracker);
-}
-
-void MemTracker::CreateRootTracker() {
+std::shared_ptr<MemTracker> CreateRootTracker() {
   int64_t limit = FLAGS_memory_limit_hard_bytes;
   if (limit == 0) {
     // If no limit is provided, we'll use
@@ -267,9 +211,57 @@ void MemTracker::CreateRootTracker() {
 #endif
 
   LOG(INFO) << "Root memory limit is " << limit;
-  root_tracker = std::make_shared<MemTracker>(
+  return std::make_shared<MemTracker>(
       limit, "root", std::move(consumption_functor), nullptr /* parent */, AddToParent::kFalse,
       CreateMetrics::kFalse, std::string() /* metric_name */, IsRootTracker::kTrue);
+}
+
+} // namespace
+
+class MemTracker::TrackerMetrics {
+ public:
+  explicit TrackerMetrics(const MetricEntityPtr& metric_entity)
+      : metric_entity_(metric_entity) {
+  }
+
+  void Init(const MemTracker& mem_tracker) {
+    // The GaugePrototype object is owned by the AtomicGauge and is also shared with
+    // MetricsAggregator or PrometheusWriter when the metric is being aggregated.
+    metric_ = metric_entity_->FindOrCreateMetric<AtomicGauge<int64_t>>(
+        std::shared_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
+            metric_entity_->prototype().name(), mem_tracker.metric_name(),
+            CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
+            CreateMetricDescription(mem_tracker), yb::MetricLevel::kInfo)),
+        static_cast<int64_t>(0));
+    // Consumption could be changed when gauge is created, so set it separately.
+    metric_->set_value(mem_tracker.consumption());
+  }
+
+  TrackerMetrics(TrackerMetrics&) = delete;
+  void operator=(const TrackerMetrics&) = delete;
+
+  ~TrackerMetrics() {
+    metric_entity_->RemoveFromMetricMap(metric_->prototype());
+  }
+
+  MetricEntityPtr metric_entity_;
+  scoped_refptr<AtomicGauge<int64_t>> metric_;
+};
+
+void MemTracker::PrintTCMallocConfigs() {
+#if YB_GOOGLE_TCMALLOC
+  LOG(INFO) << "TCMalloc per cpu caches active: "
+            << tcmalloc::MallocExtension::PerCpuCachesActive();
+  LOG(INFO) << "TCMalloc max per cpu cache size: "
+            << tcmalloc::MallocExtension::GetMaxPerCpuCacheSize();
+  LOG(INFO) << "TCMalloc max total thread cache bytes: "
+            << tcmalloc::MallocExtension::GetMaxTotalThreadCacheBytes();
+#endif  // YB_GOOGLE_TCMALLOC
+}
+
+void MemTracker::ConfigureTCMalloc() {
+  ::yb::ConfigureTCMalloc(MemTracker::GetRootTracker()->limit());
+  RegisterTCMallocTraceHooks();
 }
 
 shared_ptr<MemTracker> MemTracker::CreateTracker(int64_t byte_limit,
@@ -473,7 +465,7 @@ bool MemTracker::UpdateConsumption(bool force) {
           &FLAGS_mem_tracker_update_consumption_interval_us));
       auto value = consumption_functor_();
       VLOG(1) << "Setting consumption of tracker " << id_ << " to " << value
-              << "from consumption functor";
+              << " from consumption functor";
       consumption_.set_value(value);
       if (metrics_) {
         metrics_->metric_->set_value(value);
@@ -528,12 +520,10 @@ bool MemTracker::TryConsume(int64_t bytes, MemTracker** blocking_mem_tracker) {
       if (!TryIncrementBy(bytes, tracker->limit_, &tracker->consumption_, tracker->metrics_)) {
         // One of the trackers failed, attempt to GC memory or expand our limit. If that
         // succeeds, TryUpdate() again. Bail if either fails.
-        if (!tracker->GcMemory(tracker->limit_ - bytes) ||
-            tracker->ExpandLimit(bytes)) {
-          if (!TryIncrementBy(bytes, tracker->limit_, &tracker->consumption_, tracker->metrics_)) {
-            break;
-          }
-        } else {
+        if (tracker->GcMemory(tracker->limit_ - bytes)) {
+          break;
+        }
+        if (!TryIncrementBy(bytes, tracker->limit_, &tracker->consumption_, tracker->metrics_)) {
           break;
         }
       }
@@ -738,7 +728,7 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
       if (did_gc) {
         current_consumption = GetUpdatedConsumption();
         if (current_consumption <= max_consumption) {
-          return true;
+          return false;
         }
       }
     }
@@ -818,13 +808,8 @@ void MemTracker::LogUpdate(bool is_consume, int64_t bytes) const {
   LOG(ERROR) << ss.str();
 }
 
-int64_t MemTracker::GetRootTrackerConsumption() {
-  InitRootTrackerOnce();
-  return root_tracker->consumption();
-}
-
-shared_ptr<MemTracker> MemTracker::GetRootTracker() {
-  InitRootTrackerOnce();
+const shared_ptr<MemTracker>& MemTracker::GetRootTracker() {
+  static auto root_tracker = CreateRootTracker();
   return root_tracker;
 }
 

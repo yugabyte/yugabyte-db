@@ -65,11 +65,12 @@ using TransactionConflictInfoPtr = std::shared_ptr<TransactionConflictInfo>;
 // in registering wait-for relationships to send to coordinators for deadlock detection.
 struct TransactionConflictData {
   TransactionId id;
-  TransactionConflictInfoPtr conflict_info;
-  TransactionStatus status;
   HybridTime commit_time;
-  uint64_t priority;
+  uint64_t priority = 0;
   Status failure;
+  TransactionStatus status = {};
+
+  TransactionConflictInfoPtr conflict_info;
   TabletId status_tablet = "";
 
   TransactionConflictData(TransactionId id_, const TransactionConflictInfoPtr& conflict_info_,
@@ -81,6 +82,24 @@ struct TransactionConflictData {
 
   std::string ToString() const;
 };
+
+// TransactionConflictData is dumped directly from memory when transaction dumping is enabled
+// (dump_transactions = true), so sizes and offsets of certain members, are important. If
+// something changes such that these checks fail, make sure to also update
+// python/yb/txndump/parser.py at the same time as updating these checks.
+#define YB_CHECK_FIELD_OFFSET_SIZE_HELPER(cls, field_name, offset, size) \
+    static_assert(offsetof(cls, field_name) == offset, \
+                  "Offset of " #field_name " is part of " #cls " ABI and must be " #offset); \
+    static_assert(sizeof(std::declval<cls>().field_name) == size, \
+                  "Size of " #field_name " is part of " #cls " ABI and must be " #size)
+
+YB_CHECK_FIELD_OFFSET_SIZE_HELPER(TransactionConflictData, id, 0, 16);
+YB_CHECK_FIELD_OFFSET_SIZE_HELPER(TransactionConflictData, commit_time, 16, 8);
+YB_CHECK_FIELD_OFFSET_SIZE_HELPER(TransactionConflictData, priority, 24, 8);
+YB_CHECK_FIELD_OFFSET_SIZE_HELPER(TransactionConflictData, failure, 32, 8);
+YB_CHECK_FIELD_OFFSET_SIZE_HELPER(TransactionConflictData, status, 40, 4);
+
+#undef YB_CHECK_FIELD_OFFSET_SIZE_HELPER
 
 // This class is responsible for managing conflicting transaction status during conflict resolution
 // and providing convenient access to TransactionData for all active conflicting transactions

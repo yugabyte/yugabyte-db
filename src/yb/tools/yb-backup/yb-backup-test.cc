@@ -111,120 +111,15 @@ TEST_F(YBBackupTest,
 }
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackup)) {
-  DoTestYSQLKeyspaceBackup(helpers::TableOp::kKeepTable);
-  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
-}
-
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackupWithDropTable)) {
-  DoTestYSQLKeyspaceBackup(helpers::TableOp::kDropTable);
-  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
-}
-
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithDropYugabyteDB)) {
-  DoTestYSQLKeyspaceBackup(helpers::TableOp::kDropDB);
+  DoTestYSQLKeyspaceBackup();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLMultiSchemaKeyspaceBackup)) {
-  DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp::kKeepTable);
+  DoTestYSQLMultiSchemaKeyspaceBackup();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLMultiSchemaKeyspaceBackupWithDropTable)) {
-  DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp::kDropTable);
-  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
-}
-
-TEST_F(YBBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLMultiSchemaKeyspaceBackupWithDropDB)) {
-  DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp::kDropDB);
-  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
-}
-
-// Create two schemas. Create a table with the same name and columns in each of them. Restore onto a
-// cluster where the schema names swapped. Restore should succeed because the tables are not found
-// in the ids check phase but later found in the names check phase.
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLSameIdDifferentSchemaName)) {
-  // Initialize data:
-  // - s1.mytbl: (1, 1)
-  // - s2.mytbl: (2, 2)
-  const auto schemas = {"s1"s, "s2"s};
-  for (const string& schema : schemas) {
-    ASSERT_NO_FATALS(CreateSchema(Format("CREATE SCHEMA $0", schema)));
-    ASSERT_NO_FATALS(CreateTable(
-        Format("CREATE TABLE $0.mytbl (k INT PRIMARY KEY, v INT)", schema)));
-    const string& substr = schema.substr(1, 1);
-    ASSERT_NO_FATALS(InsertOneRow(
-        Format("INSERT INTO $0.mytbl (k, v) VALUES ($1, $1)", schema, substr)));
-    ASSERT_NO_FATALS(RunPsqlCommand(
-        Format("SELECT k, v FROM $0.mytbl", schema),
-        Format(R"#(
-           k | v
-          ---+---
-           $0 | $0
-          (1 row)
-        )#", substr)));
-  }
-
-  // Do backup.
-  const string backup_dir = GetTempDir("backup");
-  ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
-
-  // Add extra data to show that, later, restore actually happened. This is not the focus of the
-  // test, but it helps us figure out whether backup/restore is to blame in the event of a test
-  // failure.
-  for (const string& schema : schemas) {
-    ASSERT_NO_FATALS(InsertOneRow(
-        Format("INSERT INTO $0.mytbl (k, v) VALUES ($1, $1)", schema, 3)));
-    ASSERT_NO_FATALS(RunPsqlCommand(
-        Format("SELECT k, v FROM $0.mytbl ORDER BY k", schema),
-        Format(R"#(
-           k | v
-          ---+---
-           $0 | $0
-           3 | 3
-          (2 rows)
-        )#", schema.substr(1, 1))));
-  }
-
-  // Swap the schema names.
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("ALTER SCHEMA $0 RENAME TO $1", "s1", "stmp"), "ALTER SCHEMA"));
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("ALTER SCHEMA $0 RENAME TO $1", "s2", "s1"), "ALTER SCHEMA"));
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("ALTER SCHEMA $0 RENAME TO $1", "stmp", "s2"), "ALTER SCHEMA"));
-
-  // Restore into the current "ysql.yugabyte" YSQL DB. Since we didn't drop anything, the ysql_dump
-  // step should fail to create anything, behaving as a no op. This means that the schema name swap
-  // will stay intact, as desired.
-  ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
-
-  // Check the table data. This is the main check of the test! Restore should make sure that schema
-  // names match.
-  //
-  // Table s1.mytbl was renamed to s2.mytbl: let's call the table id "x". Snapshot's table id x
-  // corresponds to s1.mytbl; active cluster's table id x corresponds to s2.mytbl. When importing
-  // snapshot s1.mytbl, we first look up table with id x and find active s2.mytbl. However, after
-  // checking s1 and s2 names mismatch, we disregard this attempt and move on to the second search,
-  // which matches names rather than ids. Then, we restore s1.mytbl snapshot to live s1.mytbl: the
-  // data on s1.mytbl will be (1, 1).
-  for (const string& schema : schemas) {
-    ASSERT_NO_FATALS(RunPsqlCommand(
-        Format("SELECT k, v FROM $0.mytbl", schema),
-        Format(R"#(
-           k | v
-          ---+---
-           $0 | $0
-          (1 row)
-        )#", schema.substr(1, 1))));
-  }
-
-  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
-}
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKeyspace)) {
   // Test hash-table.
@@ -286,7 +181,9 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
         Indexes:
             "orders_pkey" PRIMARY KEY, lsm (o_no HASH)
         Foreign-key constraints:
-            "orders_i_code_fkey" FOREIGN KEY (i_code, i_name) REFERENCES items(i_code, i_name)
+            "orders_i_code_i_name_fkey" FOREIGN KEY (i_code, i_name) REFERENCES items(i_code, )#"
+      "i_name)"
+      R"#(
             "orders_v_code_fkey" FOREIGN KEY (v_code) REFERENCES vendors(v_code)
       )#"
   ));
@@ -466,7 +363,9 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
         Indexes:
             "orders_pkey" PRIMARY KEY, lsm (o_no HASH)
         Foreign-key constraints:
-            "orders_i_code_fkey" FOREIGN KEY (i_code, i_name) REFERENCES items(i_code, i_name)
+            "orders_i_code_i_name_fkey" FOREIGN KEY (i_code, i_name) REFERENCES items(i_code, )#"
+      "i_name)"
+      R"#(
             "orders_v_code_fkey" FOREIGN KEY (v_code) REFERENCES vendors(v_code)
       )#"
   ));
@@ -512,6 +411,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYBBackupWrongUsage)) {
   ASSERT_NOK(RunBackupCommand(
       {"--backup_location", backup_dir, "--table", "new_" + table, "restore"}));
 
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -617,12 +517,9 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRangeSplitConstraint)
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table (and index) so that, on restore, running the ysql_dump file recreates the table
-  // (and index).
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore should notice that the index it creates from ysql_dump file (1 tablet) differs from
   // the external snapshot (3 tablets), so it should adjust to match the snapshot (3 tablets).
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -825,7 +722,10 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackupWithLB)
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithLearnerTS)) {
+// This test is disabled because its implementation relies on restoring over an existing YSQL
+// database, which is no longer allowed.  #23302 is the GitHub issue to fix this then undisable it
+// for non-sanitizer builds.
+TEST_F(YBBackupTest, DISABLED_TestYSQLBackupWithLearnerTS) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v INT)"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 200)"));
 
@@ -1034,6 +934,43 @@ TEST_F(YBBackupTest,
 TEST_F(YBBackupTest,
     YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreKeyspaceWithHyphenToSimpleKeyspace)) {
   DoTestYSQLKeyspaceWithHyphenBackupRestore("yugabyte-hyphen", "yugabyte_restored");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(TestColocatedTableUniqueConstraint)) {
+  const string table_name = "mytbl";
+  // Create colocated database.
+  ASSERT_RESULT(RunPsqlCommand("CREATE DATABASE demo WITH colocation=true"));
+
+  // Create table.
+  SetDbName("demo");
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT, v INT UNIQUE)", table_name)));
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 SELECT i, i FROM generate_series(1, 1000) i", table_name), 1000));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.demo", "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.demo_new", "restore"}));
+
+  SetDbName("demo_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(Format(
+      "/*+IndexOnlyScan($0)*/ SELECT v FROM $1 WHERE v <= 5 ORDER BY v", table_name, table_name),
+      R"#(
+         v
+        ---
+         1
+         2
+         3
+         4
+         5
+        (5 rows)
+      )#"
+  ));
+
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

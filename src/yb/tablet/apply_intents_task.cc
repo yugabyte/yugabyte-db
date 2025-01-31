@@ -71,17 +71,12 @@ void ApplyIntentsTask::Run() {
       continue;
     }
 
-    auto result = applier_.ApplyIntents(apply_data_);
-    if (!result.ok()) {
-      LOG_WITH_PREFIX(DFATAL)
-          << "Failed to apply intents " << apply_data_.ToString() << ": " << result.status();
-      break;
-    }
+    auto apply_data = applier_.ApplyIntents(apply_data_);
 
-    transaction_->SetApplyData(*result);
-    VLOG_WITH_PREFIX(2) << "Performed next apply step: " << result->ToString();
+    transaction_->SetApplyData(apply_data);
+    VLOG_WITH_PREFIX(2) << "Performed next apply step: " << apply_data.ToString();
 
-    if (!result->active()) {
+    if (!apply_data.active()) {
       break;
     }
   }

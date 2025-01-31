@@ -2,8 +2,10 @@
 \echo Use "CREATE EXTENSION vector" to load this file. \quit
 
 -- type
-
+SET yb_binary_restore TO true;
+SELECT binary_upgrade_set_next_pg_type_oid(8078);
 CREATE TYPE vector;
+SET yb_binary_restore TO false;
 
 CREATE FUNCTION vector_in(cstring, oid, integer) RETURNS vector
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
@@ -238,5 +240,17 @@ COMMENT ON ACCESS METHOD ybdummyann IS 'ybdummyann index access method';
 
 CREATE OPERATOR CLASS vector_l2_ops
 	DEFAULT FOR TYPE vector USING ybdummyann AS
+	OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
+	FUNCTION 1 vector_l2_squared_distance(vector, vector);
+
+CREATE FUNCTION ybhnswhandler(internal) RETURNS index_am_handler
+	AS 'MODULE_PATHNAME' LANGUAGE C;
+
+CREATE ACCESS METHOD ybhnsw TYPE INDEX HANDLER ybhnswhandler;
+
+COMMENT ON ACCESS METHOD ybhnsw IS 'ybhnsw index access method';
+
+CREATE OPERATOR CLASS vector_l2_ops
+	DEFAULT FOR TYPE vector USING ybhnsw AS
 	OPERATOR 1 <-> (vector, vector) FOR ORDER BY float_ops,
 	FUNCTION 1 vector_l2_squared_distance(vector, vector);

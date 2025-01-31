@@ -3,7 +3,6 @@ title: Install
 headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install
 description: Install YugabyteDB Anywhere and prepare universe nodes.
-image: fa-thin fa-wrench
 headcontent: Install YugabyteDB Anywhere to begin creating and managing deployments
 menu:
   stable_yugabyte-platform:
@@ -33,15 +32,15 @@ Kubernetes installations are performed and managed using the YugabyteDB Anywhere
 
 {{</index/block>}}
 
-### Replicated
+### Migrate from Replicated
 
-{{< warning title="Replicated end-of-life" >}}
+YugabyteDB Anywhere has ended support for installing using Replicated. For new installations of YugabyteDB Anywhere, use [YBA Installer](install-software/installer/).
 
-{{</warning >}}
+To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installer:
 
-YugabyteDB Anywhere is ending support for Replicated at the end of 2024. For new installations of YugabyteDB Anywhere, use [YBA Installer](install-software/installer/).
+1. If your YugabyteDB Anywhere Replicated installation is v2.18.5 or earlier, or v2.20.0, use Replicated to [upgrade your installation](../upgrade/upgrade-yp-replicated/) to v2.20.1.3 or later.
 
-To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installer, refer to [Migrate from Replicated](migrate-replicated/).
+1. [Migrate from Replicated](migrate-replicated/) using YBA Installer.
 
 {{<index/block>}}
 
@@ -50,11 +49,5 @@ To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installe
     body="Migrate an installation from Replicated to YBA Installer."
     href="migrate-replicated/"
     icon="fa-thin fa-truck">}}
-
-  {{<index/item
-    title="Replicated [Deprecated]"
-    body="Install YugabyteDB Anywhere software using Replicated."
-    href="install-replicated/"
-    icon="fa-thin fa-clone">}}
 
 {{</index/block>}}

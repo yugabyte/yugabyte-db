@@ -42,6 +42,7 @@ static const uint32_t kTemplate1Oid = 1;              // Hardcoded for template1
 
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
+extern const TableId kPgYbCatalogVersionTableIdPriorVersion;
 extern const TableId kPgTablespaceTableId;
 extern const TableId kPgSequencesDataTableId;
 extern const std::string kPgSequencesDataNamespaceId;
@@ -69,5 +70,16 @@ Result<uint32_t> GetPgsqlTablegroupOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTablegroupId(const TablegroupId& tablegroup_id);
 Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id);
+
+// NOTE: Only catalog table oids are allowed.
+TableId GetPriorVersionYsqlCatalogTableId(uint32_t database_oid, uint32_t table_oid);
+
+// If this is a YSQL catalog table, then is it the previous version?
+// Returns false for user tables.
+bool IsPriorVersionYsqlCatalogTable(const TableId& table_id);
+
+// If this is a YSQL catalog table, then is it the current version?
+// Returns false for user tables.
+bool IsCurrentVersionYsqlCatalogTable(const TableId& table_id);
 
 }  // namespace yb

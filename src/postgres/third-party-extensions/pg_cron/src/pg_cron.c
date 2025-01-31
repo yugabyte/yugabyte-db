@@ -151,8 +151,11 @@ static bool jobCanceled(CronTask *task);
 static bool jobStartupTimeout(CronTask *task, TimestampTz currentTime);
 static char* pg_cron_cmdTuples(char *msg);
 static void bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata);
+
 static long YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime);
 static void YbCheckLeadership(List *taskList, TimestampTz currentTime);
+static TimestampTz YbGetLastPersistedMinute(TimestampTz currentTime);
+static void YbPersistLastMinute();
 
 /* global settings */
 char *CronTableDatabaseName = "yugabyte";
@@ -171,7 +174,9 @@ static int RunningTaskCount = 0;
 static int MaxRunningTasks = 0;
 static int CronLogMinMessages = WARNING;
 static bool UseBackgroundWorkers = true;
+
 static int YbJobListRefreshSeconds = 60;
+static TimestampTz YbLastMinuteToPersist = 0;
 
 char  *cron_timezone = NULL;
 
@@ -221,6 +226,9 @@ _PG_init(void)
 						errhint("Add pg_cron to the shared_preload_libraries "
 								"configuration variable in postgresql.conf.")));
 	}
+
+	/* watch for invalidation events */
+	CacheRegisterRelcacheCallback(InvalidateJobCacheCallback, (Datum) 0);
 
 	DefineCustomStringVariable(
 		"cron.database_name",
@@ -587,9 +595,7 @@ PgCronLauncherMain(Datum arg)
 	/* Establish signal handlers before unblocking signals. */
 	pqsignal(SIGHUP, pg_cron_sighup);
 	pqsignal(SIGINT, SIG_IGN);
-	/* YB Note: Exit immediately. */
-	pqsignal(SIGTERM, die);
-	pqsignal(SIGQUIT, quickdie);
+	pqsignal(SIGTERM, pg_cron_sigterm);
 
 	/* We're now ready to receive signals */
 	BackgroundWorkerUnblockSignals();
@@ -640,7 +646,7 @@ PgCronLauncherMain(Datum arg)
 	}
 
 
-	CronLoopContext = AllocSetContextCreate(CurrentMemoryContext,
+	CronLoopContext = AllocSetContextCreate(GetCurrentMemoryContext(),
 											  "pg_cron loop context",
 											  ALLOCSET_DEFAULT_MINSIZE,
 											  ALLOCSET_DEFAULT_INITSIZE,
@@ -711,6 +717,13 @@ PgCronLauncherMain(Datum arg)
 
 		WaitForCronTasks(taskList);
 		ManageCronTasks(taskList, currentTime);
+
+		/*
+		 * YB Note: Persist the new minute after any new job run details runs
+		 * have been persisted. This ensures that on a crash we at the least log
+		 * a failed job run.
+		 */
+		YbPersistLastMinute();
 
 		MemoryContextReset(CronLoopContext);
 	}
@@ -795,7 +808,16 @@ StartAllPendingRuns(List *taskList, TimestampTz currentTime)
 
 	if (lastMinute == 0)
 	{
-		lastMinute = TimestampMinuteStart(currentTime);
+		if (IsYugaByteEnabled())
+		{
+			/* Get the persisted lastMinite so that we do no miss schedules when
+			 * the cron leader changes. */
+			lastMinute = YbGetLastPersistedMinute(currentTime);
+		}
+		else
+		{
+			lastMinute = TimestampMinuteStart(currentTime);
+		}
 	}
 
 	minutesPassed = MinutesPassed(lastMinute, currentTime);
@@ -858,6 +880,9 @@ StartAllPendingRuns(List *taskList, TimestampTz currentTime)
 	if (clockProgress != CLOCK_JUMP_BACKWARD)
 	{
 		lastMinute = TimestampMinuteStart(currentTime);
+
+		Assert(YbLastMinuteToPersist == 0);
+		YbLastMinuteToPersist = lastMinute;
 	}
 }
 
@@ -1317,6 +1342,9 @@ PollForTasks(List *taskList)
 static bool
 CanStartTask(CronTask *task)
 {
+	if (IsYugaByteEnabled() && !ybIsLeader)
+		return false;
+
 	return task->state == CRON_TASK_WAITING && task->pendingRunCount > 0 &&
 		   RunningTaskCount < MaxRunningTasks;
 }
@@ -1386,6 +1414,19 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 										cronJob->database,
 										cronJob->userName,
 										cronJob->command, GetCronStatus(CRON_STATUS_STARTING));
+
+			/*
+			 * YB Note: We need to persist the job run details for all tasks and
+			 * then the lastMinute before we can start execution. This ensures
+			 * at-most-once guarantees during failures, and that an aborted
+			 * run would be logged.
+			 * This will add an extra second to the job
+			 * run time. For interval jobs such a guarantee is not needed,
+			 * and the extra second will significantly affect the jobs so
+			 * run them immediately.
+			 */
+			if (IsYugaByteEnabled() && !task->secondsInterval)
+				break;
 		}
 
 		case CRON_TASK_START:
@@ -1853,7 +1894,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 				if (task->freeErrorMessage)
 				{
-					free(task->errorMessage);
+					pfree(task->errorMessage);
 				}
 			}
 			else
@@ -1929,7 +1970,7 @@ GetTaskFeedback(PGresult *result, CronTask *task)
 		case PGRES_BAD_RESPONSE:
 		case PGRES_FATAL_ERROR:
 		{
-			task->errorMessage = strdup(PQresultErrorMessage(result));
+			task->errorMessage = pstrdup(PQresultErrorMessage(result));
 			task->freeErrorMessage = true;
 			task->pollingStatus = 0;
 			task->state = CRON_TASK_ERROR;
@@ -2072,7 +2113,7 @@ ProcessBgwTaskFeedback(CronTask *task, bool running)
 					char *nonconst_tag;
 					char *cmdTuples;
 
-					nonconst_tag = strdup(tag);
+					nonconst_tag = pstrdup(tag);
 
 					if (CronLogRun)
 						UpdateJobRunDetail(task->runId, NULL, GetCronStatus(CRON_STATUS_SUCCEEDED), nonconst_tag, NULL, &end_time);
@@ -2083,7 +2124,7 @@ ProcessBgwTaskFeedback(CronTask *task, bool running)
 											 task->jobId, nonconst_tag, cmdTuples)));
 					}
 
-					free(nonconst_tag);
+					pfree(nonconst_tag);
 					break;
 				}
 			case 'A':
@@ -2118,8 +2159,6 @@ CronBackgroundWorker(Datum main_arg)
 
 	/* handle SIGTERM like regular backend */
 	pqsignal(SIGTERM, die);
-	/* YB Note: Exit immediately. */
-	pqsignal(SIGQUIT, quickdie);
 	BackgroundWorkerUnblockSignals();
 
 	/* Set up a memory context and resource owner. */
@@ -2382,6 +2421,14 @@ ExecuteSqlString(const char *sql)
 static bool
 jobCanceled(CronTask *task)
 {
+	if (IsYugaByteEnabled() && !ybIsLeader)
+	{
+		task->errorMessage = "pg_cron leader changed";
+		task->state = CRON_TASK_ERROR;
+		task->pollingStatus = 0;
+		return true;
+	}
+
     Assert(task->state == CRON_TASK_CONNECTING || \
             task->state == CRON_TASK_SENDING || \
             task->state == CRON_TASK_BGW_RUNNING || \
@@ -2495,4 +2542,24 @@ YbCheckLeadership(List *taskList, TimestampTz currentTime)
 			task->pendingRunCount = 0;
 		}
 	}
+}
+
+static TimestampTz
+YbGetLastPersistedMinute(TimestampTz currentTime)
+{
+	int64_t lastMinute = 0;
+	HandleYBStatus(YBCGetCronLastMinute(&lastMinute));
+	if (lastMinute == 0)
+		lastMinute = TimestampMinuteStart(currentTime);
+
+	return lastMinute;
+}
+
+static void
+YbPersistLastMinute()
+{
+	if (ybIsLeader && YbLastMinuteToPersist != 0)
+		HandleYBStatus(YBCSetCronLastMinute(YbLastMinuteToPersist));
+
+	YbLastMinuteToPersist = 0;
 }

@@ -25,7 +25,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "nodes/relation.h"
+#include "nodes/pathnodes.h"
 
 bytea *
 ybvectoroptions(Datum reloptions, bool validate)
@@ -79,4 +79,10 @@ bool
 ybvectorcanreturn(Relation index, int attno)
 {
 	return true;
+}
+
+bool
+ybvectorcopartitionedcanreturn(Relation index, int attno)
+{
+	return false;
 }

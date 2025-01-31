@@ -4,7 +4,7 @@
  * Utilities for Ysql Connection Manager/Yugabyte (Postgres layer) integration
  * that have to be defined on the PostgreSQL side.
  *
- * Copyright (c) YugaByteDB, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -30,19 +30,38 @@
 #pragma once
 
 /*
+ * `yb_is_auth_backend` is used to identify if the backend is spawned just for
+ * authentication purposes.
+ */
+extern bool yb_is_auth_backend;
+
+/*
  * `yb_is_client_ysqlconnmgr` is used to identify that the current connection is
  * created by a Ysql Connection Manager.
  */
 extern bool yb_is_client_ysqlconnmgr;
 
+/*
+ * `yb_is_parallel_worker` is used to identify that whether background worker is
+ * of parallel worker type.
+*/
+extern bool yb_is_parallel_worker;
+
 /* TODO (janand): Write a function to read/change yb_logical_client_shmem_key */
-extern int yb_logical_client_shmem_key;
+extern int	yb_logical_client_shmem_key;
 
 /*
  * `ysql_conn_mgr_sticky_object_count` is the count of the database objects
  * that require a sticky connection.
  */
-extern int ysql_conn_mgr_sticky_object_count;
+extern int	ysql_conn_mgr_sticky_object_count;
+
+/*
+ * `yb_ysql_conn_mgr_sticky_guc` is used to denote stickiness of a connection
+ * due to the setting of GUC variables that cannot be directly supported
+ * by Connection Manager.
+ */
+extern bool yb_ysql_conn_mgr_sticky_guc;
 
 /*
  * Check whether the connection is made from Ysql Connection Manager.
@@ -74,12 +93,15 @@ extern void YbHandleSetSessionParam(int yb_client_id);
 
 /*
  * Create the shared memory segment and send the shmem key to the client
- * connection as a HINT. 
- * NOTE: This function is only to be called during the
- * processing of `AUTHENTICATION PASSTHROUGH REQUEST` packet, once the `AUTH_OK`
- * packet is sent to the Ysql Connection Manager.
+ * connection as a HINT.
+ *
+ * NOTE: This function is only to be called during the authentication of a
+ *       logical connection via the YSQL Connection Manager.
+ * The authentication can happen via the `AUTHENTICATION PASSTHROUGH REQUEST`
+ * packet or the lightweight authentication backend.
  */
 extern void YbCreateClientId();
+extern void YbCreateClientIdWithDatabaseOid(Oid database_oid);
 
 extern void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname);
 

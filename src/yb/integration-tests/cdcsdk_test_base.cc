@@ -56,6 +56,7 @@ using std::string;
 
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_string(pgsql_proxy_bind_address);
+DECLARE_bool(cdc_enable_implicit_checkpointing);
 
 namespace yb {
 using client::YBClient;
@@ -162,6 +163,7 @@ Status CDCSDKTestBase::SetUpWithParams(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = cdc_populate_safepoint_record;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_implicit_checkpointing) = true;
   // Set max_replication_slots to a large value so that we don't run out of them during tests and
   // don't have to do cleanups after every test case.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;
@@ -402,24 +404,29 @@ void CDCSDKTestBase::InitCreateStreamRequest(
     CreateCDCStreamRequestPB* create_req,
     const CDCCheckpointType& checkpoint_type,
     const CDCRecordType& record_type,
-    const std::string& namespace_name) {
+    const std::string& namespace_name,
+    CDCSDKDynamicTablesOption dynamic_tables_option) {
   create_req->set_namespace_name(namespace_name);
   create_req->set_checkpoint_type(checkpoint_type);
   create_req->set_record_type(record_type);
   create_req->set_record_format(CDCRecordFormat::PROTO);
   create_req->set_source_type(CDCSDK);
+  create_req->mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
+      dynamic_tables_option);
 }
 
 // This creates a DB stream on the database kNamespaceName by default.
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
-    CDCCheckpointType checkpoint_type, CDCRecordType record_type, std::string namespace_name) {
+    CDCCheckpointType checkpoint_type, CDCRecordType record_type, std::string namespace_name,
+    CDCSDKDynamicTablesOption dynamic_tables_option) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 
-  InitCreateStreamRequest(&req, checkpoint_type, record_type, namespace_name);
+  InitCreateStreamRequest(
+      &req, checkpoint_type, record_type, namespace_name, dynamic_tables_option);
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
   if (resp.has_error()) {
@@ -502,14 +509,15 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStream(
     CDCSDKSnapshotOption snapshot_option,
     CDCCheckpointType checkpoint_type,
-    CDCRecordType record_type) {
+    CDCRecordType record_type,
+    std::string namespace_name) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 
-  InitCreateStreamRequest(&req, checkpoint_type, record_type);
+  InitCreateStreamRequest(&req, checkpoint_type, record_type, namespace_name);
   req.set_cdcsdk_consistent_snapshot_option(snapshot_option);
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
@@ -525,7 +533,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStream(
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamBasedOnCheckpointType(
     CDCCheckpointType checkpoint_type) {
-  return checkpoint_type == CDCCheckpointType::EXPLICIT ? CreateDBStreamWithReplicationSlot()
+  return checkpoint_type == CDCCheckpointType::EXPLICIT ? CreateConsistentSnapshotStream()
                                                         : CreateDBStream(IMPLICIT);
 }
 

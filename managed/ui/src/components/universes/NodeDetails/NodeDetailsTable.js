@@ -61,7 +61,8 @@ export default class NodeDetailsTable extends Component {
       currentUniverse,
       providers,
       isDedicatedNodes,
-      isKubernetesCluster
+      isKubernetesCluster,
+      accessKeys
     } = this.props;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
@@ -123,7 +124,8 @@ export default class NodeDetailsTable extends Component {
         <div>
           {isAlive ? successIcon : warningIcon}&nbsp;
           {isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp') ? (
-            isUniverseStatusGood ? (
+            isUniverseStatusGood &&
+            (isMaster ? isNonEmptyString(row.masterUUID) : isNonEmptyString(row.uuid)) ? (
               nodeProcessWithStatus
             ) : (
               nodeProcess
@@ -306,6 +308,8 @@ export default class NodeDetailsTable extends Component {
           clusterType={clusterType}
           isKubernetes={isKubernetes}
           isOnPremManuallyProvisioned={isOnPremManuallyProvisioned}
+          cluster={cluster}
+          accessKeys={accessKeys}
         />
       );
     };

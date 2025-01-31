@@ -7,7 +7,7 @@ menu:
   preview_integrations:
     identifier: caspio
     parent: development-platforms
-    weight: 900
+    weight: 200
 type: docs
 ---
 
@@ -17,7 +17,7 @@ You can access your PostgreSQL-compatible databases, such as YugabyteDB, by conn
 
 ## Connect
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../tools/#yugabytedb-prerequisites).
 
 To connect your YugabyteDB database to Caspio:
 

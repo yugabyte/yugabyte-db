@@ -72,10 +72,12 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_peer_lookup.h"
+#include "yb/tserver/ts_data_size_metrics.h"
 #include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
+#include "yb/util/lru_cache.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/threadpool.h"
@@ -152,6 +154,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status Init();
   Status Start();
 
+  void StartScheduledTask(rpc::Poller* task, const std::string& name, MonoDelta interval);
+
   Status RegisterServiceCallback(
       StatefulServiceKind service_kind, ConsensusChangeCallback callback);
 
@@ -159,7 +163,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Returns Status::OK if all tablets bootstrapped successfully. If
   // the bootstrap of any tablet failed returns the failure reason for
   // the first tablet whose bootstrap failed.
-  Status WaitForAllBootstrapsToFinish();
+  Status WaitForAllBootstrapsToFinish(MonoDelta timeout = MonoDelta());
 
   // Starts shutdown process.
   void StartShutdown();
@@ -533,6 +537,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status StartSubtabletsSplit(
       const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
 
+  Status DoApplyCloneTablet(
+      tablet::CloneOperation* operation, log::Log* raft_log,
+      std::optional<consensus::RaftConfigPB> committed_raft_config);
+
   // Creates tablet peer and schedules opening the tablet.
   // See CreateAndRegisterTabletPeer and OpenTablet.
   void CreatePeerAndOpenTablet(
@@ -619,6 +627,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
       const std::string& source_addr, const std::string& debug_session_string);
 
+  rpc::ThreadPool* VectorIndexThreadPool();
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -636,6 +646,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Map from tablet ID to tablet
   TabletMap tablet_map_ GUARDED_BY(mutex_);
+  // A cache of the most recently deleted tablets. Only includes tablets deleted with argument
+  // TABLET_DATA_DELETED. Used to reject certain requests on recently deleted tablets, such as
+  // StartRemoteBootstrap.
+  LRUCache<TabletId> deleted_tablet_ids_ GUARDED_BY(mutex_);
 
   // Map from table ID to count of children in data and wal directories.
   TableDiskAssignmentMap table_data_assignment_map_ GUARDED_BY(dir_assignment_mutex_);
@@ -727,6 +741,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
 
+  // Updates the metrics for the amount of active (non-retention / snapshot-related) and total data
+  // on the server, accounting for hardlinks.
+  std::unique_ptr<TsDataSizeMetrics> ts_data_size_metrics_;
+  std::unique_ptr<rpc::Poller> data_size_metric_updater_;
+
   std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
 
   std::unique_ptr<rpc::Poller> waiting_txn_registry_poller_;
@@ -758,6 +777,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Gauge for the number of tablet peers this TServer can support
   scoped_refptr<yb::AtomicGauge<int64_t>> ts_supportable_tablet_peers_metric_;
 
+  // Gauge tracking number of peers on this tserver actively undergoing RBS.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> num_tablet_peers_undergoing_rbs_;
+
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
       snapshot_schedule_allowed_history_cutoff_
@@ -781,6 +803,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   simple_spinlock metadata_cache_spinlock_;
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_holder_;
   std::atomic<client::YBMetaDataCache*> metadata_cache_;
+
+  std::mutex vector_index_thread_pool_mutex_;
+  AtomicUniquePtr<rpc::ThreadPool> vector_index_thread_pool_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

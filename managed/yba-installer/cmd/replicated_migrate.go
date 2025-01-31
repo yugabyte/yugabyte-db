@@ -102,7 +102,7 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		}
 		statInfo := info.Sys().(*syscall.Stat_t)
 		log.DebugLF(
-			fmt.Sprintf("Prometheus user:group ownership - '%s:%s'", statInfo.Uid, statInfo.Gid))
+			fmt.Sprintf("Prometheus user:group ownership - '%d:%d'", statInfo.Uid, statInfo.Gid))
 		state.Replicated.PrometheusFileUser = statInfo.Uid
 		state.Replicated.PrometheusFileGroup = statInfo.Gid
 
@@ -141,6 +141,13 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 				"storage_path %s. Please regenerate the config.", installRoot, replicatedInstallRoot))
 			log.Fatal("installRoot and replicated storage path cannot be the same")
 		}
+		if isSubdir, err := common.IsSubdirectory(replicatedInstallRoot, installRoot); err == nil {
+			if isSubdir {
+				log.Fatal(fmt.Sprintf(
+					"%s is a subdirectory of %s, please keep replicated and yba-installer completely separate",
+					installRoot, replicatedInstallRoot))
+			}
+		}
 		state.RootInstall = installRoot
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("before replicated migration, failed to update state: " + err.Error())
@@ -153,6 +160,10 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		if err := common.Install(ybaCtl.Version()); err != nil {
 			log.Fatal(fmt.Sprintf("error installing new ybactl %s: %s", ybaCtl.Version(), err.Error()))
 		}
+		if err := common.Initialize(); err != nil {
+			log.Fatal("error initializing common components: " + err.Error())
+		}
+
 		for _, name := range serviceOrder {
 			log.Info("About to migrate component " + name)
 			if err := services[name].MigrateFromReplicated(); err != nil {
@@ -265,7 +276,7 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 			}
 		}
 
-		common.PrintStatus(statuses...)
+		common.PrintStatus(state.CurrentStatus.String(), statuses...)
 		log.Info("Successfully installed YugabyteDB Anywhere!")
 
 		// Update state

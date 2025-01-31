@@ -35,14 +35,9 @@ set(YB_PCH_DEP_LIBS yb_test_util boost_program_options)
 
 set(LINK_LIBS
   yb_client
-  log
-  consensus
-  tserver
   yb_common
-  yb_fs
   yb_util
   gutil
-  tablet
   ${YB_BASE_LIBS}
 )
 
@@ -61,15 +56,19 @@ add_executable(yb-admin
 target_link_libraries(yb-admin
   yb-admin_lib
   master_error
+  master_util
   ${LINK_LIBS})
 
 add_library(yb-admin_lib
   yb-admin_client.cc
   yb-admin_util.cc)
-target_link_libraries(yb-admin_lib ${LINK_LIBS})
+target_link_libraries(yb-admin_lib
+  encryption
+  ${LINK_LIBS})
 
 add_executable(yb-ts-cli ts-cli.cc)
 target_link_libraries(yb-ts-cli
+  server_base_proto
   ${LINK_LIBS})
 
 add_executable(data-patcher data-patcher.cc)
@@ -234,3 +233,10 @@ set(YB_BACKUP_TEST_BASE_DEPS
 ADD_YB_TEST_LIBRARY(yb-backup-test_base
                     SRCS ${YB_BACKUP_TEST_BASE_SRCS}
                     DEPS ${YB_BACKUP_TEST_BASE_DEPS})
+
+add_executable(hnsw_tool hnsw_tool.cc)
+target_link_libraries(hnsw_tool boost_program_options yb_util yb_docdb vector_index)
+
+add_executable(clockbound_dump clockbound_dump.cc)
+target_link_libraries(clockbound_dump
+  clockbound yb_common yb_util)

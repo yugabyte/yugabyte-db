@@ -40,10 +40,12 @@ class TabletBootstrapStateFlusher :
  public:
   TabletBootstrapStateFlusher(
       const std::string& tablet_id,
+      TabletWeakPtr tablet,
       std::shared_ptr<consensus::RaftConsensus> raft_consensus,
       std::shared_ptr<TabletBootstrapStateManager> bootstrap_state_manager,
       std::unique_ptr<ThreadPoolToken> flush_bootstrap_state_pool_token)
       : tablet_id_(tablet_id),
+        tablet_(std::move(tablet)),
         raft_consensus_(raft_consensus),
         bootstrap_state_manager_(bootstrap_state_manager),
         flush_bootstrap_state_pool_token_(std::move(flush_bootstrap_state_pool_token)) {}
@@ -77,6 +79,7 @@ class TabletBootstrapStateFlusher :
   mutable std::condition_variable flush_cond_;
   std::atomic<TabletBootstrapFlushState> flush_state_{TabletBootstrapFlushState::kFlushIdle};
   TabletId tablet_id_;
+  TabletWeakPtr tablet_;
   std::shared_ptr<consensus::RaftConsensus> raft_consensus_;
   std::shared_ptr<TabletBootstrapStateManager> bootstrap_state_manager_;
   std::unique_ptr<ThreadPoolToken> flush_bootstrap_state_pool_token_;

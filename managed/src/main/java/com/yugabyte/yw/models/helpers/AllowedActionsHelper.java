@@ -14,16 +14,14 @@ import static com.yugabyte.yw.common.NodeActionType.START_MASTER;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -35,7 +33,6 @@ public class AllowedActionsHelper {
   private static final Logger LOG = LoggerFactory.getLogger(AllowedActionsHelper.class);
   private final Universe universe;
   private final NodeDetails node;
-  private Optional<TaskInfo> lastTaskInfoOptional;
 
   public AllowedActionsHelper(Universe universe, NodeDetails node) {
     this.universe = universe;
@@ -65,6 +62,16 @@ public class AllowedActionsHelper {
       LOG.trace(nodeActionAllowedErr);
       return false;
     }
+    if (universe
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent
+        .providerType
+        .equals(CloudType.kubernetes)) {
+      if (nodeActionType == NodeActionType.REPLACE) {
+        return false;
+      }
+    }
     return true;
   }
 
@@ -75,17 +82,14 @@ public class AllowedActionsHelper {
    * @return error string if the node is not allowed to perform the action otherwise null.
    */
   private String nodeActionErrOrNull(NodeActionType action) {
-    String errorMsg = resubmitActionErrOrNull(action);
-    if (errorMsg != null) {
-      return errorMsg;
-    }
     // Temporarily no validation for Hard Reboot task to unblock cloud.
     // Starting a discussion on desired impl of removeMasterErrOrNull and
     // removeSingleNodeErrOrNull. We will add validation after.
     if (action == NodeActionType.STOP
         || action == NodeActionType.REMOVE
-        || action == NodeActionType.REBOOT) {
-      errorMsg = removeProcessesErrOrNull(action);
+        || action == NodeActionType.REBOOT
+        || action == NodeActionType.DECOMMISSION) {
+      String errorMsg = removeProcessesErrOrNull(action);
       if (errorMsg != null) {
         return errorMsg;
       }
@@ -95,8 +99,8 @@ public class AllowedActionsHelper {
       }
     }
 
-    if (action == NodeActionType.DELETE) {
-      errorMsg = deleteSingleNodeErrOrNull(action);
+    if (action == NodeActionType.DELETE || action == NodeActionType.DECOMMISSION) {
+      String errorMsg = deleteSingleNodeErrOrNull(action);
       if (errorMsg != null) {
         return errorMsg;
       }
@@ -178,7 +182,8 @@ public class AllowedActionsHelper {
 
   private String deleteSingleNodeErrOrNull(NodeActionType action) {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    if ((cluster.clusterType == PRIMARY) && (node.state == NodeState.Decommissioned)) {
+    if ((cluster.clusterType == PRIMARY)
+        && ((node.state == NodeState.Decommissioned) || action == NodeActionType.DECOMMISSION)) {
       int nodesInCluster = universe.getUniverseDetails().getNodesInCluster(cluster.uuid).size();
       int minNodes =
           cluster.userIntent.dedicatedNodes
@@ -212,31 +217,6 @@ public class AllowedActionsHelper {
     }
     if (node.dedicatedTo != null) {
       return errorMsg(START_MASTER, "Node is dedicated, use START instead");
-    }
-    return null;
-  }
-
-  // Validates if it is a re-submission of the last failed task.
-  private String resubmitActionErrOrNull(NodeActionType action) {
-    if (action.isForDetached()) {
-      return null;
-    }
-    // Validate for universe actions only.
-    if (lastTaskInfoOptional == null) {
-      lastTaskInfoOptional = universe.maybeGetLastTaskInfo();
-    }
-    if (!lastTaskInfoOptional.isPresent()) {
-      return null;
-    }
-    TaskInfo lastTaskInfo = lastTaskInfoOptional.get();
-    // Verify that the same node action is re-submitted.
-    if (action.getCommissionerTask() != lastTaskInfo.getTaskType()) {
-      return errorMsg(
-          action, String.format("Task %s is still pending", lastTaskInfo.getTaskType()));
-    }
-    String nodeName = lastTaskInfo.getTaskParams().get("nodeName").textValue();
-    if (!Objects.equals(nodeName, node.nodeName)) {
-      return errorMsg(action, String.format("Node %s has a pending task", nodeName));
     }
     return null;
   }

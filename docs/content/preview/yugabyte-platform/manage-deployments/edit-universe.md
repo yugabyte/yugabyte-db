@@ -14,49 +14,80 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere allows you to expand a universe to add more nodes and shrink the universe to reduce the number of nodes.
+YugabyteDB Anywhere supports both horizontal and vertical scaling of your universe. If your workloads have increased, you can change to more powerful instance types or add nodes to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
 
-- For information on changing configuration flags, refer to [Edit configuration flags](../edit-config-flags/).
+-> For information on changing configuration flags, refer to [Edit configuration flags](../edit-config-flags/).
 
-- For information on changing user tags, refer to [Create and edit instance tags](../instance-tags/).
+-> For information on changing user tags, refer to [Create and edit instance tags](../instance-tags/).
 
-- For information on changing Kubernetes overrides, refer to [Edit Kubernetes overrides](../edit-helm-overrides/).
+-> For information on changing Kubernetes overrides, refer to [Edit Kubernetes overrides](../edit-helm-overrides/).
 
 ## Edit a universe
 
-To change the configuration of a universe, navigate to **Universes > UniverseName > Actions > Edit Universe**, as per the following illustration:
+To change the configuration of a universe, do the following:
 
-![Edit universe](/images/ee/edit-univ-220.png)
+1. Navigate to your universe and choose **Actions > Edit Universe** to display the **Edit universe** page.
 
-Using the **Edit Universe** page, you can modify the following:
+    ![Edit universe](/images/ee/edit-univ-220.png)
 
-- Regions - you can select any region configured in the provider used to deploy the universe
-- Number of nodes and Availability zones - as you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones
-- [Master placement](../../create-deployments/dedicated-master/)
-- Instance type and volume size - you can select instance types configured in the provider
-- [User tags](../instance-tags/)
+1. Update the configuration.
 
-YugabyteDB Anywhere performs these modifications through the [YB-Masters](../../../architecture/yb-master/) powering the universe. The YB-Masters ensure that the new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
+    Using the **Edit Universe** page, you can modify the following:
 
-Note that you can't change the replication factor of a universe.
+    - **Cloud Configuration**
+        - **Regions** - Select any region configured in the provider used to deploy the universe.
+        - [Master Placement](../../create-deployments/dedicated-master/).
+        - **Total Nodes** and **Availability Zones** - As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
+    - **Instance Configuration**
+        - **Instance Type** and **Volume Info Size** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
+        - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
+    - **Advanced Configuration**
+        - **Override Deployment Ports** - You can change the Master and TServer HTTP and RPC ports, and the Prometheus Node Exporter port.
 
-To change the number of nodes of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities, follow the instructions in [Expand the universe](../../security/enable-encryption-in-transit#expand-the-universe).
+    - [User Tags](../instance-tags/). Changing tags doesn't require any node restarts or data migration.
 
-### Smart resize
+    Note that you can't change the replication factor of a universe.
 
-For universes that use Google Cloud Provider (GCP), Amazon Web Services (AWS), or Microsoft Azure, YugabyteDB Anywhere allows you to change the VM images and increase the volume size without moving the data from the old nodes to the new nodes. This is known as smart resize and is subject to the following:
+1. Click **Save**.
 
-- For Azure universes, you can't increase the volume size for ultra SSDs.
+YugabyteDB automatically ensures that new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
 
-- To avoid potential data loss, you can't do a smart resize of instances with ephemeral disks. Smart resize _to_ ephemeral disks is supported.
+To change the number of nodes of universes created with an on-premises provider and secured with third-party certificates obtained from external certification authorities, you must first add the certificates to the nodes you will add to the universe. Refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-ca/). Ensure that the certificates are signed by the same external CA and have the same root certificate. In addition, ensure that you copy the certificates to the same locations that you originally used when creating the universe.
 
-- Smart resize cannot decrease the volume size.
+### Edit connection pooling
 
-- You can't do a smart resize if you change any options on the **Edit Universe** page other than the **Instance Type** and the size portion of the **Volume Info** field.
+{{<tags/feature/ea>}}If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).
 
-If you change the **Instance Type** or both the **Instance Type** and the **Volume Info** size and then click **Save**, YugabyteDB Anywhere gives you the option to either do a full migration of the universe and its data to new nodes, or do a smart resize, as per the following illustrations:
+While in Early Access, the feature is not available by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
-  ![Full or smart resize1](/images/ee/edit-univ-1.png)
-  ![Full or smart resize2](/images/ee/edit-univ-2.png)
+To enable or disable connection pooling on a universe:
+
+1. Navigate to your universe.
+1. Click **Actions > Edit Connection Pooling** to open the **Edit Connection Pooling** dialog.
+1. Enable or disable the **Built-In Connection Pooling** option.
+1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
+1. Click **Apply Changes**.
+
+## Smart resize
+
+Normally when resizing a universe, YugabyteDB moves the data from the old nodes to the new nodes. However, if the universe is deployed on AWS, GCP, or Azure using a [cloud provider configuration](../../configure-yugabyte-platform/aws/), you can perform some resizing operations without migrating the data. This is referred to as smart resize, and can be significantly faster than a full copy of the data.
+
+Smart resize is available for the following operations:
+
+- Change the Instance type.
+
+    Note that smart resize is not available when changing the instance type from an AWS EBS-backed instance type (like c5.xlarge) to a local storage-backed instance type (like i3.xlarge), or vice-versa.
+
+- Increase the Volume disk size.
+
+    Note that smart resize is not available with Azure ultra disks, or when decreasing the volume size.
+
+- Both together.
+
+In addition, smart resize isn't available if you change any options on the **Edit Universe** page in addition to the **Instance Type** and the size portion of the **Volume Info** field.
+
+When available, if you change the **Instance Type**, or both the **Instance Type** and **Volume Info** size, and then click **Save**, YugabyteDB Anywhere gives you the option to either migrate the universe and its data to new nodes, or do a smart resize.
+
+![Smart resize dialog](/images/ee/edit-univ-2.png)
 
 If you change only the **Volume Info** size and click **Save**, YugabyteDB Anywhere automatically performs a smart resize.

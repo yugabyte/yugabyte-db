@@ -59,6 +59,8 @@ DEFINE_test_flag(bool, wait_for_ysql_backends_catalog_version_take_leader_lock, 
     "Take leader lock in WaitForYsqlBackendsCatalogVersion.");
 DEFINE_test_flag(bool, ysql_backends_catalog_version_disable_abort_all_jobs, false,
     "Make YsqlBackendsManager::AbortAllJobs a no-op.");
+DEFINE_test_flag(bool, skip_wait_for_ysql_backends_catalog_version, false,
+    "Set WaitForYsqlBackendsCatalogVersion to immediately return success.");
 
 namespace yb {
 namespace master {
@@ -129,6 +131,10 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
     WaitForYsqlBackendsCatalogVersionResponsePB* resp,
     rpc::RpcContext* rpc) {
   LOG_WITH_FUNC(INFO) << req->ShortDebugString();
+  if (FLAGS_TEST_skip_wait_for_ysql_backends_catalog_version) {
+    resp->set_num_lagging_backends(0);
+    return Status::OK();
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_block_wait_for_ysql_backends_catalog_version)) {
     TestDoBlock(1 /* id */, __func__, __LINE__);
@@ -204,7 +210,8 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
       job->Touch();
     } else {
       job = std::make_shared<BackendsCatalogVersionJob>(
-          master_, callback_pool_, req->database_oid(), version);
+          master_, callback_pool_, req->database_oid(), version, req->requestor_ts_uuid(),
+          req->requestor_pg_backend_pid());
       jobs_[db_version] = job;
     }
   }
@@ -473,7 +480,8 @@ std::string BackendsCatalogVersionJob::description() const {
                                                                      num_lagging_backends));
 }
 
-MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(const Status& status) {
+MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(
+    const Status& status, bool call_task_finisher) {
   // At the time of writing D19621, there is no code path that reaches here.  This function is
   // implemented because it is needed for the superclass.
   LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "should not reach here";
@@ -767,6 +775,9 @@ bool BackendsCatalogVersionTS::SendRequest(int attempt) {
   if (auto job = job_.lock()) {
     req.set_database_oid(job->database_oid());
     req.set_catalog_version(job->target_version());
+    if (job->requestor_ts_uuid() == permanent_uuid()) {
+      req.set_requestor_pg_backend_pid(job->requestor_pg_backend_pid());
+    }
     req.set_prev_num_lagging_backends(prev_num_lagging_backends_);
   } else {
     AbortTask(STATUS(Aborted, "job was destroyed"));

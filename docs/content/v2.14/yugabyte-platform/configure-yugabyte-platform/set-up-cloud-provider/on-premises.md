@@ -72,13 +72,13 @@ Configuring the on-premises provider consists of a number of steps.
 
 You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, click either **Add Configuration** or **Edit Provider**, and then complete the fields of the **Provider Info** form shown in the following illustration:
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-1.png)
+![Configure On-Premises Provider Configuration](/images/ee/onprem/configure-onprem-1.png)
 
 - In the **Provider Name** field, supply the provider name, which is an internal tag that helps with organizing your providers, so you know where you want to deploy your YugabyteDB universes.
 
 - In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
 
-  If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually provision nodes](#manually-provision-nodes).
+  If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually provision nodes](#provision-nodes-manually).
 
 - In the **SSH Port** field, provide the port number of SSH client connections.
 
@@ -112,7 +112,7 @@ You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, 
 
 Complete the **Instance Types** fields, as per the following illustration, to provide node hardware configuration (CPU, memory, and volume information):
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-2.png)
+![Configure On-Premises Provider Configuration](/images/ee/onprem/configure-onprem-2.png)
 
 - Use the **Machine Type** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
 - Use the **Num Cores** field to define the number of cores to be assigned to a node.
@@ -124,7 +124,7 @@ Complete the **Instance Types** fields, as per the following illustration, to pr
 
 Complete the **Regions and Zones** fields, as per the following illustration, to provide the location of YugabyteDB nodes:
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
+![Configure On-Premises Provider Configuration](/images/ee/onprem/configure-onprem-3.png)
 
 YugabyteDB Anywhere will use these values during the universe creation.
 
@@ -132,11 +132,11 @@ YugabyteDB Anywhere will use these values during the universe creation.
 
 After finishing the provider configuration, click **Manage Instances** to provision as many nodes as your application requires.
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-4.png)
+![Configure On-Premises Provider Configuration](/images/ee/onprem/configure-onprem-4.png)
 
 For each node you want to add, click **Add Instances** to add a YugabyteDB node. You can use DNS names or IP addresses when adding instances (instance ID is an optional user-defined identifier).
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-5.png)
+![Configure On-Premises Provider Configuration](/images/ee/onprem/configure-onprem-5.png)
 
 Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` flag enabled.
 
@@ -144,7 +144,7 @@ Note that if you provide a hostname, the universe might experience issues commun
 
 To provision your nodes manually, you have the following two options:
 
-1. If the SSH user you provided has sudo privileges but requires a password, you can [run the preprovisioning script](#running-the-preprovisioning-script).
+1. If the SSH user you provided has sudo privileges but requires a password, you can [run the pre-provisioning script](#running-the-preprovisioning-script).
 2. If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#setting-up-database-nodes-manually).
 
 #### Running the preprovisioning script
@@ -192,7 +192,7 @@ For each node, perform the following:
 - [Set up time synchronization](#set-up-time-synchronization)
 - [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
 - [Preprovision the node](#preprovision-nodes-manually)
-- [Install Prometheus node exporter](#install-prometheus-node-exporter)
+- [Install Prometheus Node Exporter](#install-prometheus-node-exporter)
 - [Install backup utilities](#install-backup-utilities)
 - [Set crontab permissions](#set-crontab-permissions)
 - [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
@@ -222,7 +222,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 | TCP | 9042 | YCQL client |
 | TCP | 9090 | Prometheus server |
 | TCP | 9100 | YB tablet server RPC |
-| TCP | 9300 | Prometheus node exporter |
+| TCP | 9300 | Prometheus Node Exporter |
 | TCP | 12000 | YCQL HTTP (for DB statistics gathering) |
 | TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
 
@@ -344,12 +344,12 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
       sudo chmod 755 /data
       ```
 
-##### Install Prometheus node exporter
+##### Install Prometheus Node Exporter
 
-Download the 1.3.1 version of the Prometheus node exporter, as follows:
+Download the Prometheus Node Exporter, as follows:
 
 ```sh
-wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.1.linux-amd64.tar.gz
+wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
 ```
 
 If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.

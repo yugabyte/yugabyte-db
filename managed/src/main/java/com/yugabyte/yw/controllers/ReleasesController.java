@@ -1,10 +1,13 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
+import com.jayway.jsonpath.JsonPath;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.apiModels.CreateRelease;
@@ -39,6 +42,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -48,18 +52,17 @@ import play.mvc.Result;
 
 @Api(
     value = "New Release management",
-    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
-    hidden = true)
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class ReleasesController extends AuthenticatedController {
   @Inject ReleasesUtils releasesUtils;
+  @Inject GFlagsValidation gFlagsValidation;
 
   @ApiOperation(
       value = "Create a release",
       response = YBPCreateSuccess.class,
       nickname = "createNewRelease",
-      notes = "YbaApi Internal new releases list",
-      hidden = true) // TODO: remove hidden once complete.
+      notes = "WARNING: This is a preview API that could change: create a ybdb release")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Release",
@@ -74,7 +77,7 @@ public class ReleasesController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.1.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.3.0")
   public Result create(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     CreateRelease reqRelease =
@@ -117,6 +120,13 @@ public class ReleasesController extends AuthenticatedController {
                 BAD_REQUEST, "invalid artifact, no package url or package file id found");
           }
           release.addArtifact(artifact);
+          // Update sensitive gflags for redaction.
+          Set<String> sensitiveGflags =
+              gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion());
+          release.setSensitiveGflags(sensitiveGflags);
+          release.save();
+          RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
+              sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
         }
       }
       transaction.commit();
@@ -132,15 +142,14 @@ public class ReleasesController extends AuthenticatedController {
       response = ResponseRelease.class,
       responseContainer = "List",
       nickname = "listNewReleases",
-      notes = "YbaApi Internal new releases list",
-      hidden = true) // TODO: Remove hidden once complete
+      notes = "WARNING: This is a preview API that could change: list ybdb releases")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.1.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.3.0")
   public Result list(UUID customerUUID, @Nullable String deploymentType, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -181,14 +190,14 @@ public class ReleasesController extends AuthenticatedController {
       value = "Get a release",
       response = ResponseRelease.class,
       nickname = "getNewRelease",
-      notes = "YbaApi Internal new release get",
-      hidden = true)
+      notes = "WARNING: This is a preview API that could change: get a specific ybdb release")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.3.0")
   public Result get(UUID customerUUID, UUID releaseUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Release release = Release.getOrBadRequest(releaseUUID);
@@ -201,14 +210,14 @@ public class ReleasesController extends AuthenticatedController {
       value = "delete a release",
       response = YBPSuccess.class,
       nickname = "deleteNewRelease",
-      notes = "YbaApi Internal new release delete",
-      hidden = true)
+      notes = "WARNING: This is a preview API that could change: delete a ybdb release")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.3.0")
   public Result delete(UUID customerUUID, UUID releaseUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Release release = Release.get(releaseUUID);
@@ -235,8 +244,7 @@ public class ReleasesController extends AuthenticatedController {
       value = "Update a release",
       response = YBPSuccess.class,
       nickname = "updateNewRelease",
-      notes = "YbaApi Internal new releases update",
-      hidden = true) // TODO: remove hidden once complete.
+      notes = "WARNING: This is a preview API that could change: update or edit a ybdb release")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Release",
@@ -248,10 +256,10 @@ public class ReleasesController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.1.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.3.0")
   public Result update(UUID customerUUID, UUID releaseUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Release release = Release.getOrBadRequest(releaseUUID);

@@ -55,6 +55,10 @@ class SysCatalogWriter {
     return Mutate<require_check>(op_type, std::forward<Items>(items)...);
   }
 
+  Status Mutate(
+      int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
+      QLWriteRequestPB::QLStmtType op_type);
+
   Status ForceMutate(QLWriteRequestPB::QLStmtType op_type) {
     return Status::OK();
   }
@@ -73,6 +77,12 @@ class SysCatalogWriter {
                              const Schema& target_schema,
                              const uint32_t target_schema_version,
                              bool is_upsert);
+
+  // Delete a row in a Postgres sys catalog table.
+  Status DeleteYsqlTableRow(const Schema& schema,
+                            const qlexpr::QLTableRow& row,
+                            const TableId& table_id,
+                            const uint32_t schema_version);
 
   tserver::WriteRequestPB& req() {
     return *req_;

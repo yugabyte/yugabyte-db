@@ -126,7 +126,7 @@ You have an option to provide the following:
 
 - A custom Amazon Machine Image (AMI) ID to use in each region.
 
-  YugabyteDB Anywhere supports both x86 and ARM (aarch64) CPU architectures. See [Supported operating systems and architectures](../supported-os-and-arch/) for a complete list of supported operating systems. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
+  YugabyteDB Anywhere supports both x86 and ARM (aarch64) CPU architectures. See [Supported operating systems and architectures](../../supported-os-and-arch/) for a complete list of supported operating systems. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
 
   If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS).
 
@@ -169,6 +169,6 @@ If you are not already subscribed and have not accepted the **Terms and Conditio
 
 If that is the case, click **Accept Terms** and wait for the page to switch to a successful state. After the operation completes, or if you previously subscribed and accepted the terms, you should see the following:
 
-![Marketplace success](/images/ee/aws-setup/marketplace-success.png)
+![Marketplace success](/images/ee/aws-setup/marketplace-success-almalinux.png)
 
 Now, you are ready to create a YugabyteDB universe on AWS.

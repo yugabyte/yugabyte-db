@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect a node.js application using node-postgres Driver
 menu:
   preview:
-    identifier: postgres-node-driver
+    identifier: node-driver-2-postgres
     parent: nodejs-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 
@@ -115,9 +115,9 @@ const config = {
 }
 ```
 
-If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
-Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and other examples for setting up your connection strings when using SSL.
+Refer to [Configure SSL/TLS](../postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and other examples for setting up your connection strings when using SSL.
 
 ### Step 3: Write your application
 
@@ -202,7 +202,7 @@ const fs = require('fs');
 const config = {
   user: 'admin',
   database: 'yugabyte',
-  host: '22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io',
+  host: '22420e3a-768b-43da-8dcb-xxxxxx.aws.yugabyte.cloud',
   password: 'xxxxxx',
   port: 5433,
   // this object will be passed to the TLSSocket constructor
@@ -275,7 +275,4 @@ If there is no output or you get an error, verify the parameters included in the
 
 ## Learn more
 
-- [PostgreSQL node-postgres driver reference](../../../reference/drivers/nodejs/postgres-pg-reference/)
-- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- Build Node.js applications using [Sequelize ORM](../sequelize/)
-- Build Node.js applications using [Prisma ORM](../prisma/)
+[YugabyteDB smart drivers for YSQL](../../smart-drivers/)

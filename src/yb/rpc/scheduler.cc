@@ -197,6 +197,15 @@ IoService& Scheduler::io_service() {
 ScheduledTaskTracker::ScheduledTaskTracker(Scheduler* scheduler)
     : scheduler_(DCHECK_NOTNULL(scheduler)) {}
 
+ScheduledTaskTracker::~ScheduledTaskTracker() {
+  auto last_scheduled_task_id = last_scheduled_task_id_.load(std::memory_order_acquire);
+  if (last_scheduled_task_id != rpc::kInvalidTaskId) {
+    auto num_scheduled = num_scheduled_.load(std::memory_order_acquire);
+    LOG_IF(DFATAL, num_scheduled != kShutdownMark)
+        << "Shutdown did not complete on ScheduledTaskTracker";
+  }
+}
+
 void ScheduledTaskTracker::Abort() {
   auto last_scheduled_task_id = last_scheduled_task_id_.load(std::memory_order_acquire);
   if (last_scheduled_task_id != rpc::kInvalidTaskId) {

@@ -1,6 +1,7 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.models.Schedule.State;
+import com.yugabyte.yw.models.backuprestore.annotations.AllowedScheduleState;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -9,7 +10,8 @@ import io.swagger.annotations.ApiModelProperty;
 public class EditBackupScheduleParams {
 
   @ApiModelProperty(value = "State of the schedule")
-  public State status = State.Active;
+  @AllowedScheduleState(anyOf = {State.Active, State.Stopped})
+  public State status;
 
   @ApiModelProperty(value = "Frequency of the schedule")
   public Long frequency;

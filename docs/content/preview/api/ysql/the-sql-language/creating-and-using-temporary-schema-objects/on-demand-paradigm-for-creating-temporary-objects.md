@@ -4,7 +4,7 @@ headerTitle: Recommended on-demand paradigm for creating temporary objects
 linkTitle: Paradigm for creating temporary objects
 description: Describes the recommended on-demand paradigm for creating temporary objects—given that PostgreSQL has no native feature to perform actions when a session is created. [YSQL]
 menu:
-  preview:
+  preview_api:
     identifier: on-demand-paradigm-for-creating-temporary-objects
     parent: creating-and-using-temporary-schema-objects
     weight: 400
@@ -63,7 +63,7 @@ This is exactly what PL/SQL packages provide declaratively.
 
 Here's the solution:
 
-- Follow the recommendation given in the PostgreSQL documentation _[Porting from Oracle PL/SQL](https://www.postgresql.org/docs/11/plpgsql-porting.html)_ to model the "package" as a single schema (call it _pkg_ here) and to manage session-duration private state in temporary table(s). This recommendation implies locating all the subprograms that belong in the "package" in its _pkg_ schema. Of course, the temporary table(s), and any temporary supporting schema-objects that these need, will be created on-demand in the current session's temporary schema and will be referenced using the alias _pg_temp_.
+- Follow the recommendation given in the PostgreSQL documentation _[Porting from Oracle PL/SQL](https://www.postgresql.org/docs/15/plpgsql-porting.html)_ to model the "package" as a single schema (call it _pkg_ here) and to manage session-duration private state in temporary table(s). This recommendation implies locating all the subprograms that belong in the "package" in its _pkg_ schema. Of course, the temporary table(s), and any temporary supporting schema-objects that these need, will be created on-demand in the current session's temporary schema and will be referenced using the alias _pg_temp_.
 
   The recommendation also implies having all of these schema-objects, both permanent and temporary, owned by the same role.
 

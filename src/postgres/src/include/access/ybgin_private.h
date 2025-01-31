@@ -38,7 +38,7 @@ typedef struct YbginScanOpaqueData
 	 */
 	GinScanOpaqueData gin_scan_opaque;
 	/* The handle for the internal YB Select statement. */
-	YBCPgStatement handle;
+	YbcPgStatement handle;
 	/*
 	 * Whether the scan was executed so that later gettuple calls just fetch the
 	 * cached rows.

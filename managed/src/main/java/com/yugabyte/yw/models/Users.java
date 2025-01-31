@@ -5,18 +5,24 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.common.Util.NULL_UUID;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.encryption.HashBuilder;
 import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.DbArray;
 import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -27,14 +33,15 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -185,6 +192,9 @@ public class Users extends Model {
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
   private String oidcJwtAuthToken;
 
+  @DbArray(name = "group_memberships")
+  private Set<UUID> groupMemberships = new HashSet<>();
+
   public String getOidcJwtAuthToken() {
     return null;
   }
@@ -318,6 +328,28 @@ public class Users extends Model {
     return;
   }
 
+  /** Wrapper around save to make sure principal entity is created. */
+  @Transactional
+  @Override
+  public void save() {
+    super.save();
+    Principal principal = Principal.get(this.uuid);
+    if (principal == null) {
+      log.info("Adding Principal entry for user with email: " + this.email);
+      new Principal(this).save();
+    }
+  }
+
+  /** Wrapper around delete to make sure principal entity is deleted. */
+  @Transactional
+  @Override
+  public boolean delete() {
+    log.info("Deleting Principal entry for user with email: " + this.email);
+    Principal principal = Principal.getOrBadRequest(this.uuid);
+    principal.delete();
+    return super.delete();
+  }
+
   /**
    * Validate if the email and password combination is valid, we use this to authenticate the Users.
    *
@@ -380,14 +412,18 @@ public class Users extends Model {
    * @return apiToken
    */
   public String upsertApiToken() {
-    return upsertApiToken(null);
+    return upsertApiToken(apiTokenVersion);
   }
 
   public String upsertApiToken(Long version) {
+    String apiTokenFormatVersion = "3";
     UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
     usersLock.acquireLock(uuidToLock);
     try {
-      if (version != null && apiTokenVersion != null && !version.equals(apiTokenVersion)) {
+      if (version != null
+          && version != -1
+          && apiTokenVersion != null
+          && !version.equals(apiTokenVersion)) {
         throw new PlatformServiceException(BAD_REQUEST, "API token version has changed");
       }
       String apiTokenUnhashed = UUID.randomUUID().toString();
@@ -395,26 +431,9 @@ public class Users extends Model {
 
       apiTokenVersion = apiTokenVersion == null ? 1L : apiTokenVersion + 1;
       save();
-      return apiTokenUnhashed;
-    } finally {
-      usersLock.releaseLock(uuidToLock);
-    }
-  }
+      // new format of api token = apiTokenFormatVersion$userUUID$apiTokenUnhashed
+      return apiTokenFormatVersion + "." + uuid + "." + apiTokenUnhashed;
 
-  /**
-   * Get current apiToken or create a new one if not exists.
-   *
-   * @return apiToken
-   */
-  @JsonIgnore
-  public String getOrCreateApiToken() {
-    UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
-    usersLock.acquireLock(uuidToLock);
-    try {
-      if (StringUtils.isEmpty(apiToken)) {
-        upsertApiToken();
-      }
-      return apiToken;
     } finally {
       usersLock.releaseLock(uuidToLock);
     }
@@ -466,15 +485,65 @@ public class Users extends Model {
       return null;
     }
 
+    // Supporting the 3 formats of api token
+    // 1. apiToken (older format)
+    // 2. apiTokenFormatVersion$userUUID$apiToken (version 2 $ seperated format)
+    // 3. apiTokenFormatVersion.userUUID.apiToken (version 3 . seperated format)
+    // The 3rd format is better for shell based clients because dot is easier to escape than dollar
+    // The first format would lead to performance degradation in the case of more than 10 users
+    // Recommended to reissue the token (which will follow the third format)
+
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    boolean disableV1APIToken = runtimeConfGetter.getGlobalConf(GlobalConfKeys.disableV1APIToken);
     try {
-      List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
-      for (Users user : usersList) {
-        if (Users.hasher.isValid(apiToken, user.getApiToken())) {
-          return user;
+      boolean isOldFormat = true;
+      String regexSeparator = "";
+      if (apiToken.startsWith("2$", 0)) {
+        regexSeparator = "\\$";
+        isOldFormat = false;
+      } else if (apiToken.startsWith("3.", 0)) {
+        regexSeparator = "\\.";
+        isOldFormat = false;
+      }
+      if (!isOldFormat) {
+        // to authenticate new format of api token = apiTokenFormatVersion.userUUID.apiTokenUnhashed
+        String[] parts = apiToken.split(regexSeparator);
+        UUID userUUID = UUID.fromString(parts[1]);
+        String apiTokenUnhashed = parts[2];
+        Users userWithToken = find.query().where().eq("uuid", userUUID).findOne();
+        if (userWithToken != null) {
+          if (Users.hasher.isValid(apiTokenUnhashed, userWithToken.getApiToken())) {
+            return userWithToken;
+          }
+        }
+      } else {
+        if (disableV1APIToken) {
+          String errMessage =
+              "API Token version 1 is disabled. Please reissue the token. To allow this version of"
+                  + " token, please set yb.user.disable_v1_api_token config to false.";
+          throw new PlatformServiceException(UNAUTHORIZED, errMessage);
+        } else {
+          // to authenticate old format of api token with no seperator
+          LOG.warn("Using older API token format. Renew to improve performance.");
+          List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
+          long startTime = System.currentTimeMillis();
+          for (Users user : usersList) {
+            if (Users.hasher.isValid(apiToken, user.getApiToken())) {
+              LOG.info(
+                  "Authentication using API token. Completed time: {} ms",
+                  System.currentTimeMillis() - startTime);
+              return user;
+            }
+          }
+          LOG.info(
+              "Authentication using API token. Completed time: {} ms",
+              System.currentTimeMillis() - startTime);
         }
       }
       return null;
     } catch (Exception e) {
+      LOG.error("Error while authenticating API token", e);
       return null;
     }
   }
@@ -486,9 +555,13 @@ public class Users extends Model {
     save();
   }
 
-  public static String getAllEmailsForCustomer(UUID customerUUID) {
+  public static String getAllEmailDomainsForCustomer(UUID customerUUID) {
     List<Users> users = Users.getAll(customerUUID);
-    return users.stream().map(user -> user.getEmail()).collect(Collectors.joining(","));
+    return users.stream()
+        .map(user -> user.getEmail().substring(user.getEmail().indexOf("@") + 1))
+        .collect(Collectors.toSet())
+        .stream()
+        .collect(Collectors.joining(","));
   }
 
   public static List<Users> getAllReadOnly() {

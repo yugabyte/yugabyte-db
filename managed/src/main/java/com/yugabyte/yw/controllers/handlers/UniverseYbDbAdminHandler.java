@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.common.Util.CONNECTION_POOLING_PREVIEW_VERSION;
+import static com.yugabyte.yw.common.Util.CONNECTION_POOLING_STABLE_VERSION;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,14 +20,17 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
@@ -33,6 +38,7 @@ import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
@@ -65,6 +71,7 @@ public class UniverseYbDbAdminHandler {
   @Inject PasswordPolicyService policyService;
   @Inject RuntimeConfGetter confGetter;
   @Inject UniverseTableHandler tableHandler;
+  @Inject GFlagsValidation gFlagsValidation;
 
   public UniverseYbDbAdminHandler() {}
 
@@ -203,8 +210,64 @@ public class UniverseYbDbAdminHandler {
       ConfigureDBApiParams requestParams, Customer customer, Universe universe) {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    // Check runtime flag for connection pooling.
+    if (requestParams.enableConnectionPooling) {
+      boolean allowConnectionPooling =
+          confGetter.getGlobalConf(GlobalConfKeys.allowConnectionPooling);
+      if (!allowConnectionPooling) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Connection pooling is not allowed. Please set runtime flag"
+                + " 'yb.universe.allow_connection_pooling' to true.");
+      }
+
+      String softwareVersion =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      if (universe
+          .getUniverseDetails()
+          .softwareUpgradeState
+          .equals(SoftwareUpgradeState.PreFinalize)) {
+        if (universe.getUniverseDetails().prevYBSoftwareConfig != null) {
+          softwareVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+        }
+      }
+
+      if (Util.compareYBVersions(
+              softwareVersion,
+              CONNECTION_POOLING_STABLE_VERSION,
+              CONNECTION_POOLING_PREVIEW_VERSION,
+              true)
+          < 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Connection pooling needs minimum stable version '%s' and preview version '%s'.",
+                CONNECTION_POOLING_STABLE_VERSION, CONNECTION_POOLING_PREVIEW_VERSION));
+      }
+
+      if (universe
+          .getUniverseDetails()
+          .getPrimaryCluster()
+          .userIntent
+          .providerType
+          .equals(Common.CloudType.kubernetes)) {
+        if (requestParams.communicationPorts.ysqlServerRpcPort
+            != KubernetesCommandExecutor.DEFAULT_YSQL_SERVER_RPC_PORT) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Custom YSQL RPC port is not yet supported for Kubernetes universes.");
+        }
+        if (requestParams.communicationPorts.internalYsqlServerRpcPort
+            != KubernetesCommandExecutor.DEFAULT_INTERNAL_YSQL_SERVER_RPC_PORT) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Custom Internal YSQL RPC port is not yet supported for Kubernetes universes.");
+        }
+      }
+    }
     // Verify request params
     requestParams.verifyParams(universe, true);
+    gFlagsValidation.validateConnectionPoolingGflags(
+        universe, requestParams.connectionPoolingGflags);
     requestParams.validatePassword(policyService);
     requestParams.validateYSQLTables(universe, tableHandler);
     TaskType taskType =

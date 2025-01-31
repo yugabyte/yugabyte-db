@@ -2,7 +2,7 @@ package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import autovalue.shaded.com.google.common.annotations.VisibleForTesting;
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.apiModels.CreateRelease;
@@ -10,6 +10,7 @@ import io.ebean.DB;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.Transaction;
+import io.ebean.annotation.DbArray;
 import io.ebean.annotation.EnumValue;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -57,6 +58,10 @@ public class Release extends Model {
 
   @Column(nullable = false)
   private String releaseType;
+
+  @Column(name = "sensitive_gflags")
+  @DbArray
+  private Set<String> sensitiveGflags;
 
   public enum ReleaseState {
     ACTIVE,

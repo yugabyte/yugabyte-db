@@ -87,12 +87,12 @@ export const useSlowQueriesApi = ({ universeUUID, enabled, defaultStaleTime = 60
   };
 };
 
-export const hasSubstringMatch = (textString, patternString, caseSensitive = false) => {
+export const hasSubstringMatch = (text, pattern, caseSensitive = false) => {
   if (!caseSensitive) {
-    textString = textString.toLowerCase();
-    patternString = patternString.toLowerCase();
+    text = text.toLowerCase();
+    pattern = pattern.toLowerCase();
   }
-  return textString.includes(patternString);
+  return text.includes(pattern);
 };
 
 const hasTokenMatch = (query, token, keyMap) => {

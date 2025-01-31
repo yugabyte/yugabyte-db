@@ -23,6 +23,8 @@ export const YBInput: FC<YBInputProps> = ({ label, tooltip, trimWhitespace = tru
         if (props.onChange) {
           props.onChange(e);
         }
+      } else {
+        props.onBlur && props.onBlur(e);
       }
     }}
     label={

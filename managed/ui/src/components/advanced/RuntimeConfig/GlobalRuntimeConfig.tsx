@@ -5,7 +5,7 @@ import { ConfigData } from '../ConfigData';
 import '../AdvancedConfig.scss';
 
 export const GlobalRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
-  configTagFilter,
+  getRuntimeConfig,
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
@@ -19,10 +19,10 @@ export const GlobalRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
   return (
     <div className="global-runtime-config-container">
       <ConfigData
+        getRuntimeConfig={getRuntimeConfig}
         setRuntimeConfig={setRuntimeConfig}
         deleteRunTimeConfig={deleteRunTimeConfig}
         scope={RunTimeConfigScope.GLOBAL}
-        configTagFilter={configTagFilter}
       />
     </div>
   );

@@ -47,6 +47,7 @@ typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
 
 class EncryptionManager;
 
+class AsyncDeleteReplica;
 class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
@@ -70,6 +71,7 @@ class MasterReplicationProxy;
 class MasterSnapshotCoordinator;
 class MasterTestProxy;
 class NamespaceInfo;
+class ObjectLockInfoManager;
 class PermissionsManager;
 class RetryingTSRpcTask;
 class RetryingTSRpcTaskWithTable;
@@ -80,6 +82,7 @@ class SnapshotState;
 class SysCatalogTable;
 class SysConfigInfo;
 class SysRowEntries;
+class TablegroupInfo;
 class TestAsyncRpcManager;
 class TSDescriptor;
 class TSManager;
@@ -89,6 +92,8 @@ class XClusterManagerIf;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
 class YsqlBackendsManager;
+class YsqlManager;
+class YsqlManagerIf;
 class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
@@ -104,7 +109,7 @@ class AsyncTabletSnapshotOp;
 using AsyncTabletSnapshotOpPtr = std::shared_ptr<AsyncTabletSnapshotOp>;
 
 class CloneStateInfo;
-using CloneStateInfoPtr = scoped_refptr<CloneStateInfo>;
+using CloneStateInfoPtr = std::shared_ptr<CloneStateInfo>;
 
 class NamespaceInfo;
 using NamespaceInfoPtr = scoped_refptr<NamespaceInfo>;
@@ -121,9 +126,20 @@ using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestorati
 
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 
+// Used to indicate whether inactive tablets should be included in Rpcs such as GetTableLocations.
+// Inactive tablets are parents of split children, that may no longer be allowed to
+// server user read-write requests. Inactive tablets could be hidden.
+// Since include_inactive allows both parent and child tablets to be returned, the returned tablet
+// list could have overlapping partition key ranges.
 YB_STRONGLY_TYPED_BOOL(IncludeInactive);
+
+// Used to indicate whether hidden tables/tablets should be included.
+YB_STRONGLY_TYPED_BOOL(IncludeHidden);
+
 YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
 YB_STRONGLY_TYPED_BOOL(IsSystemObject);
+
+
 
 YB_DEFINE_ENUM(
     CollectFlag,

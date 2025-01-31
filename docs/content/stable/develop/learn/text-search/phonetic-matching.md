@@ -4,6 +4,8 @@ headerTitle: Phonetic search
 linkTitle: Phonetic search
 headcontent: Learn how to do phonetic matching in YSQL
 description: Learn how to do phonetic matching in YSQL
+tags:
+  other: ysql
 menu:
   stable:
     identifier: phonetic-matching-ysql
@@ -16,7 +18,7 @@ type: docs
 
 While looking up exact matches suffices for most scenarios, you need approximate matching in situations where you don't know the exact term you are searching for but may remember the phonetics of the term or parts of the term.
 
-For phonetic matching, YugabyteDB natively supports the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html), which provides multiple functions - Soundex, Metaphone, and Double Metaphone - which you can use to determine phonetic similarities between text.
+For phonetic matching, YugabyteDB natively supports the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html), which provides multiple functions - Soundex, Metaphone, and Double Metaphone - which you can use to determine phonetic similarities between text.
 
 ## Setup
 
@@ -35,7 +37,7 @@ CREATE TABLE IF NOT EXISTS words (
 Load some sample words into the table as follows:
 
 ```sql
-INSERT INTO words(word) VALUES 
+INSERT INTO words(word) VALUES
   ('anopisthographic'),('ambassadorship'),('ambuscader'),('ambiguity'),('ampycides'),
   ('anapaestically'),('anapests'),('anapsidan'),('unpsychic'),('anapsid'),
   ('unpessimistic'),('unepistolary'),('inabstracted'),('anapaest'),('unobstinate'),

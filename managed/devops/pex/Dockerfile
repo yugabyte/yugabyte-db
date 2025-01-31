@@ -1,5 +1,5 @@
 # Get the latest docker image
-FROM quay.io/pypa/manylinux2014_x86_64
+FROM quay.io/pypa/manylinux_2_28_x86_64
 
 # Perform general yum updates
 RUN yum --enablerepo=extras -y install epel-release python3-pip

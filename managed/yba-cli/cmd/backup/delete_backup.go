@@ -5,6 +5,7 @@
 package backup
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -17,9 +18,11 @@ import (
 
 // deleteBackupCmd represents the universe backup command
 var deleteBackupCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a YugabyteDB Anywhere universe backup",
-	Long:  "Delete an universe backup in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a YugabyteDB Anywhere universe backup",
+	Long:    "Delete an universe backup in YugabyteDB Anywhere",
+	Example: `yba backup delete --backup-info backup-uuid=<backup-uuid>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		backupInfoArray, err := cmd.Flags().GetStringArray("backup-info")
 		if err != nil {
@@ -32,11 +35,7 @@ var deleteBackupCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 		backupInfoArray, err := cmd.Flags().GetStringArray("backup-info")
 		if err != nil {
@@ -54,7 +53,11 @@ var deleteBackupCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		logrus.Infof("The backups have been submitted for deletion.\n")
+		logrus.Infof(
+			formatter.Colorize(
+				"The backups have been submitted for deletion.\n",
+				formatter.GreenColor),
+		)
 	},
 }
 
@@ -63,11 +66,13 @@ func buildBackupInfo(backupInfos []string) []ybaclient.DeleteBackupInfo {
 
 	for _, backupInfo := range backupInfos {
 		backupDetails := map[string]string{}
+		// not changing the separator here since these are known to be UUIDs
+		// comma is a safe separator for this case
 		for _, backupDetailString := range strings.Split(backupInfo, ",") {
 			kvp := strings.Split(backupDetailString, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in region description.",
+					formatter.Colorize("Incorrect format in backup info description.",
 						formatter.RedColor))
 			}
 			key := kvp[0]
@@ -104,8 +109,9 @@ func buildBackupInfo(backupInfos []string) []ybaclient.DeleteBackupInfo {
 func init() {
 	deleteBackupCmd.Flags().SortFlags = false
 	deleteBackupCmd.Flags().StringArray("backup-info", []string{},
-		"[Required] The info of the backups to be described. The backup-info is of the "+
-			"format backup-uuid=<backup_uuid>,storage-config-uuid=<storage-config-uuid>. The "+
-			"attribute backup-uuid is required.")
+		fmt.Sprintf("[Required] The info of the backups to be deleted. The backup-info is of the "+
+			"format backup-uuid=<backup_uuid>,storage-config-uuid=<storage-config-uuid>. %s.",
+			formatter.Colorize("Backup UUID is required.",
+				formatter.GreenColor)))
 	deleteBackupCmd.MarkFlagRequired("backup-info")
 }

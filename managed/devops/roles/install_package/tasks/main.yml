@@ -41,14 +41,14 @@
     - always
 
 - name: Retrieve package online
-  include: s3-download.yml
+  import_tasks: s3-download.yml
   tags:
     - download-software
     - itest
   when: not not itest_s3_package_path # itest_s3_package_path is defined and not ""
 
 - name: Download package
-  include: download-package.yml
+  import_tasks: download-package.yml
   become: yes
   become_method: sudo
   become_user: "{{ user_name }}"

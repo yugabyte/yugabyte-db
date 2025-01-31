@@ -12,7 +12,7 @@ import { isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../../uti
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { UniverseAction } from '../../../universes';
 import { isNotHidden } from '../../../../utils/LayoutUtils';
-import { getPrimaryCluster, isKubernetesUniverse } from '../../../../utils/UniverseUtils';
+import { getPrimaryCluster, getIsKubernetesUniverse } from '../../../../utils/UniverseUtils';
 import Wrench from '../../../../redesign/assets/wrench.svg';
 
 import './UniverseHealthCheckList.scss';
@@ -27,7 +27,7 @@ export const UniverseHealthCheckList = (props) => {
   const primaryCluster = getPrimaryCluster(
     props?.universe?.currentUniverse?.data?.universeDetails?.clusters
   );
-  const isK8universe = isKubernetesUniverse(currentUniverse.data);
+  const isK8universe = getIsKubernetesUniverse(currentUniverse.data);
   const useSystemd = primaryCluster?.userIntent?.useSystemd;
   let nodesCronStatus = <span />;
   const inactiveCronNodes = getNodesWithInactiveCrons(currentUniverse.data).join(', ');
@@ -63,7 +63,6 @@ export const UniverseHealthCheckList = (props) => {
       />
     ));
   }
-
 
   return (
     <YBPanelItem

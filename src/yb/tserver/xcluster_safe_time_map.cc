@@ -66,7 +66,7 @@ Result<std::optional<HybridTime>> XClusterSafeTimeMap::GetSafeTime(
   return safe_ht;
 }
 
-void XClusterSafeTimeMap::Update(XClusterNamespaceToSafeTimePBMap safe_time_map) {
+void XClusterSafeTimeMap::Update(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
   std::lock_guard l(xcluster_safe_time_map_mutex_);
   map_initialized_ = true;
   xcluster_safe_time_map_ = std::move(safe_time_map);

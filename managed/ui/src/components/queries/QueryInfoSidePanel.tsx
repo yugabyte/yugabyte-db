@@ -30,7 +30,7 @@ import {
 import { adaptHistogramData } from './helpers/utils';
 import { parseFloatIfDefined } from '../xcluster/ReplicationUtils';
 import { QueryApi } from '../../redesign/helpers/constants';
-import { formatDatetime, YBTimeFormats } from '../../redesign/helpers/DateUtils';
+import { formatDatetime, YB_LIVE_QUERY_TIMESTAMP_FORMAT, YBTimeFormats } from '../../redesign/helpers/DateUtils';
 
 interface QueryInfoSidePanelBaseProps {
   visible: boolean;
@@ -200,7 +200,8 @@ export const QueryInfoSidePanel = ({
       return formatDatetime(
         queryDataEntry,
         YBTimeFormats.YB_DEFAULT_TIMESTAMP,
-        currentUserTimezone
+        currentUserTimezone,
+        YB_LIVE_QUERY_TIMESTAMP_FORMAT
       );
     }
 

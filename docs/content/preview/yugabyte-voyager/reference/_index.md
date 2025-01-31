@@ -2,7 +2,6 @@
 title: Reference for YugabyteDB Voyager
 headerTitle: Reference
 linkTitle: Reference
-image: /images/section_icons/develop/learn.png
 headcontent: Command line interfaces (CLIs), data modeling strategies, and data type mapping reference.
 description: Learn about the CLI Reference, data modeling strategies, and data type mapping reference using YugabyteDB Voyager.
 type: indexpage
@@ -14,30 +13,30 @@ menu:
     weight: 105
 ---
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-voyager-cli/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">yb-voyager CLI</div>
-      </div>
-      <div class="body">
-        yb-voyager CLI commands, arguments, and SSL connectivity.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="yb-voyager CLI"
+    body="yb-voyager CLI commands, arguments, and SSL connectivity."
+    href="yb-voyager-cli//"
+    icon="/images/section_icons/architecture/concepts.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="datatype-mapping-mysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/reference/connectors/ecosystem-integrations.png" aria-hidden="true" />
-        <div class="title">Datatype mapping</div>
-      </div>
-      <div class="body">
-       Data type mapping from different source databases to YugabyteDB.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Datatype mapping"
+    body="Data type mapping from different source databases to YugabyteDB."
+    href="datatype-mapping-mysql/"
+    icon="/images/section_icons/reference/connectors/ecosystem-integrations.png">}}
 
-</div>
+  {{<index/item
+    title="Tune performance"
+    body="Optimize migration job performance using tuneable parameters with yb-voyager."
+    href="performance/"
+    icon="fa-light fa-chart-line-up">}}
+
+   {{<index/item
+    title="Diagnostics reporting"
+    body="Monitor migration diagnostics securely with yb-voyager commands."
+    href="diagnostics-report/"
+    icon="fa-sharp fa-light fa-stethoscope">}}
+
+{{</index/block>}}

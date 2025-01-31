@@ -52,6 +52,11 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 
+  @Override
+  public String getName() {
+    return super.getName() + "(" + taskParams().namespace + "/" + taskParams().podName + ")";
+  }
+
   // Number of iterations to wait for the pod to come up.
   private static final int MAX_ITERS = 10;
 
@@ -83,7 +88,12 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
         int iters = 0;
         boolean podReady;
         do {
-          podReady = isPodReady();
+          try {
+            podReady = isPodReady();
+          } catch (Exception e) {
+            LOG.info("Exception occurred (ignored) while waiting for pod: {}", e.getMessage());
+            podReady = false;
+          }
           iters++;
           if (podReady) {
             break;

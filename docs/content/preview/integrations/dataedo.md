@@ -16,7 +16,7 @@ Because YugabyteDB's YSQL API is wire-compatible with PostgreSQL, Dataedo can co
 
 ## Connect
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../tools/#yugabytedb-prerequisites).
 
 Follow the steps in [Dataedo documentation](https://dataedo.com/docs/connecting-to-postgresql) to connect the database.
 

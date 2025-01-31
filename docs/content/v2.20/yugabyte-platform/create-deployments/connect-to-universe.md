@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
+Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/11/app-psql.html) and third-party tools to connect.
 
 You can connect to the database on a universe in the following ways:
 
@@ -125,19 +125,19 @@ Use the ysqlsh, ycqlsh, and psql shells to connect to and interact with Yugabyte
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#ysqlsh" class="nav-link active" id="ysqlsh-tab" data-toggle="tab" role="tab" aria-controls="ysqlsh" aria-selected="true">
+    <a href="#ysqlsh" class="nav-link active" id="ysqlsh-tab" data-bs-toggle="tab" role="tab" aria-controls="ysqlsh" aria-selected="true">
       <i class="icon-postgres" aria-hidden="true"></i>
       ysqlsh
     </a>
   </li>
   <li>
-    <a href="#ycqlsh" class="nav-link" id="ycqlsh-tab" data-toggle="tab" role="tab" aria-controls="ycqlsh" aria-selected="false">
+    <a href="#ycqlsh" class="nav-link" id="ycqlsh-tab" data-bs-toggle="tab" role="tab" aria-controls="ycqlsh" aria-selected="false">
       <i class="icon-cassandra" aria-hidden="true"></i>
       ycqlsh
     </a>
   </li>
   <li>
-    <a href="#psql" class="nav-link" id="psql-tab" data-toggle="tab" role="tab" aria-controls="psql" aria-selected="false">
+    <a href="#psql" class="nav-link" id="psql-tab" data-bs-toggle="tab" role="tab" aria-controls="psql" aria-selected="false">
       <i class="icon-postgres" aria-hidden="true"></i>
       psql
     </a>
@@ -190,7 +190,7 @@ Replace the following:
 
   <div id="psql" class="tab-pane fade" role="tabpanel" aria-labelledby="psql-tab">
 
-To connect using [psql](https://www.postgresql.org/docs/current/app-psql.html), use the following connection string:
+To connect using [psql](https://www.postgresql.org/docs/11/app-psql.html), use the following connection string:
 
 ```sh
 ./psql --host=<HOST_ADDRESS> --port=5433 \
@@ -224,7 +224,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 
 Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
 
-For information on using popular third-party tools with YugabyteDB, see [Third party tools](../../../tools/).
+For information on using popular third-party tools with YugabyteDB, see [GUI clients](/preview/integrations/tools/).
 
 ## Run workloads
 

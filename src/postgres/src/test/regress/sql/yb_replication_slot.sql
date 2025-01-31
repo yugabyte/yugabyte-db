@@ -10,10 +10,11 @@ SET SESSION AUTHORIZATION 'regress_replicationslot_user';
 SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
 SELECT * FROM pg_create_logical_replication_slot('testslot2', 'pgoutput', false);
 SELECT * FROM pg_create_logical_replication_slot('testslot_test_decoding', 'test_decoding', false);
+SELECT * FROM pg_create_logical_replication_slot('testslot_hybrid_time', 'yboutput', false, false, 'HYBRID_TIME');
 
 -- Cannot do SELECT * since yb_stream_id, yb_restart_commit_ht changes across runs.
 SELECT slot_name, plugin, slot_type, database, temporary, active,
-    active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn
+    active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn, yb_lsn_type
 FROM pg_replication_slots
 ORDER BY slot_name;
 
@@ -45,6 +46,7 @@ SELECT * FROM pg_drop_replication_slot('testslot1');
 SELECT * FROM pg_drop_replication_slot('testslot2');
 SELECT * FROM pg_drop_replication_slot('testslot3');
 SELECT * FROM pg_drop_replication_slot('testslot_test_decoding');
+SELECT * FROM pg_drop_replication_slot('testslot_hybrid_time');
 SELECT slot_name, plugin, slot_type, database, temporary, active,
     active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn
 FROM pg_replication_slots;

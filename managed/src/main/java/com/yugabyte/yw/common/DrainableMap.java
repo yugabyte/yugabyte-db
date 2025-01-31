@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 
 /** A map which can notify a caller when it is empty after it is sealed (write is blocked). */
 public class DrainableMap<K, V> extends ForwardingMap<K, V> {
@@ -74,5 +75,10 @@ public class DrainableMap<K, V> extends ForwardingMap<K, V> {
       }
     }
     return removed;
+  }
+
+  @Override
+  public synchronized void forEach(BiConsumer<? super K, ? super V> action) {
+    delegate.forEach(action::accept);
   }
 }

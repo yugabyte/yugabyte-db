@@ -26,12 +26,13 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/lock_batch.h"
+#include "yb/docdb/lock_util.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
 
@@ -157,6 +158,7 @@ Status EnumerateIntents(
     const dockv::EnumerateIntentsCallback& functor,
     dockv::PartialRangeKeyIntents partial_range_key_intents);
 
+
 // replicated_batches_state format does not matter at this point, because it is just
 // appended to appropriate value.
 void PrepareTransactionWriteBatch(
@@ -261,5 +263,5 @@ void CombineExternalIntents(
     SubTransactionId subtransaction_id,
     ExternalIntentsProvider* provider);
 
-}  // namespace docdb
-}  // namespace yb
+} // namespace docdb
+} // namespace yb

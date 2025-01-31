@@ -34,6 +34,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -77,7 +78,9 @@ public class MetaMasterControllerTest extends FakeDBApplication {
       throws InterruptedException, ExecutionException, TimeoutException {
     String universeUUID = "11111111-2222-3333-4444-555555555555";
     Result result =
-        routeWithYWErrHandler(fakeRequest("GET", "/metamaster/universe/" + universeUUID));
+        routeWithYWErrHandler(
+            fakeRequest("GET", "/metamaster/universe/" + universeUUID)
+                .header(TokenAuthenticator.AUTH_TOKEN_HEADER, defaultUser.createAuthToken()));
     assertRestResult(result, false, BAD_REQUEST);
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -94,7 +97,10 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
     // Read the value back.
     Result result =
-        route(fakeRequest("GET", "/metamaster/universe/" + u.getUniverseUUID().toString()));
+        doRequestWithAuthToken(
+            "GET",
+            "/metamaster/universe/" + u.getUniverseUUID().toString(),
+            defaultUser.createAuthToken());
     assertRestResult(result, true, OK);
     // Verify that the correct data is present.
     JsonNode jsonNode = Json.parse(contentAsString(result));
@@ -157,7 +163,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceFailure() {
     Universe universe = getKubernetesUniverse(false);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
         .thenReturn(null);
 
     endpointPort.forEach(
@@ -168,14 +174,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
                   ImmutableList.of("10.0.0.1:" + value, "10.0.0.2:" + value, "10.0.0.3:" + value));
 
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
           assertEquals(expectedHostString, json.asText());
         });
@@ -186,21 +192,21 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceWithPodIP() {
     Universe universe = getKubernetesUniverse(false);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn("12.13.14.15");
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
+        .thenReturn(new HashSet<>(Arrays.asList("12.13.14.15")));
 
     endpointPortYSQL.forEach(
         (key, value) -> {
           String expectedHostString = "12.13.14.15:" + value;
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
           assertEquals(expectedHostString, json.asText());
         });
@@ -211,24 +217,28 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceWithPodIPMultiCluster() {
     Universe universe = getKubernetesUniverse(true);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn("12.13.14.15");
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
+        .thenReturn(new HashSet<>(Arrays.asList("12.13.14.15", "12.13.14.16")));
 
     endpointPort.forEach(
         (key, value) -> {
           String expectedHostString = "12.13.14.15:" + value;
-          String completeString = String.format("%s,%s", expectedHostString, expectedHostString);
+          String expectedHostString_2 = "12.13.14.16:" + value;
+          String completeString = String.format("%s,%s", expectedHostString_2, expectedHostString);
+          String completeString_2 =
+              String.format("%s,%s", expectedHostString, expectedHostString_2);
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
-          assertEquals(completeString, json.asText());
+          assertTrue(
+              completeString.equals(json.asText()) || completeString_2.equals(json.asText()));
         });
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -237,21 +247,21 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIP() {
     Universe universe = getKubernetesUniverse(false);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn("56.78.90.1");
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
+        .thenReturn(new HashSet<>(Arrays.asList("56.78.90.1")));
 
     endpointPort.forEach(
         (key, value) -> {
           String expectedHostString = "56.78.90.1:" + value;
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
           assertEquals(expectedHostString, json.asText());
         });
@@ -262,21 +272,21 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerHostname() {
     Universe universe = getKubernetesUniverse(false);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn("loadbalancer.hostname");
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
+        .thenReturn(new HashSet<>(Arrays.asList("loadbalancer.hostname")));
 
     endpointPort.forEach(
         (key, value) -> {
           String expectedHostString = "loadbalancer.hostname:" + value;
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
           assertEquals(expectedHostString, json.asText());
         });
@@ -287,21 +297,21 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIpAndHostname() {
     Universe universe = getKubernetesUniverse(false);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn("loadbalancer.hostname");
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
+        .thenReturn(new HashSet<>(Arrays.asList("loadbalancer.hostname")));
 
     endpointPort.forEach(
         (key, value) -> {
           String expectedHostString = "loadbalancer.hostname:" + value;
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
           assertEquals(expectedHostString, json.asText());
         });
@@ -325,14 +335,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                route(
-                    fakeRequest(
-                        "GET",
-                        "/api/customers/"
-                            + defaultCustomer.getUuid()
-                            + "/universes/"
-                            + universeUUID
-                            + (isYql ? "/yqlservers" : "/redisservers"))));
+                doRequestWithAuthToken(
+                    "GET",
+                    "/api/customers/"
+                        + defaultCustomer.getUuid()
+                        + "/universes/"
+                        + universeUUID
+                        + (isYql ? "/yqlservers" : "/redisservers"),
+                    defaultUser.createAuthToken()));
     assertRestResult(result, false, BAD_REQUEST);
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -342,14 +352,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", aws));
 
     Result r =
-        route(
-            fakeRequest(
-                "GET",
-                "/api/customers/"
-                    + defaultCustomer.getUuid()
-                    + "/universes/"
-                    + u1.getUniverseUUID()
-                    + (isYql ? "/yqlservers" : "/redisservers")));
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + u1.getUniverseUUID()
+                + (isYql ? "/yqlservers" : "/redisservers"),
+            defaultUser.createAuthToken());
     assertRestResult(r, true, OK);
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -361,14 +371,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
             u1.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithYSQLNodes(false));
 
     Result r =
-        route(
-            fakeRequest(
-                "GET",
-                "/api/customers/"
-                    + defaultCustomer.getUuid()
-                    + "/universes/"
-                    + u1.getUniverseUUID()
-                    + "/ysqlservers"));
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + u1.getUniverseUUID()
+                + "/ysqlservers",
+            defaultUser.createAuthToken());
     assertRestResult(r, true, OK);
     assertEquals("", Json.parse(contentAsString(r)).asText());
     assertAuditEntry(0, defaultCustomer.getUuid());
@@ -380,14 +390,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
         Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithYSQLNodes(true));
 
     Result r =
-        route(
-            fakeRequest(
-                "GET",
-                "/api/customers/"
-                    + defaultCustomer.getUuid()
-                    + "/universes/"
-                    + u1.getUniverseUUID()
-                    + "/ysqlservers"));
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + u1.getUniverseUUID()
+                + "/ysqlservers",
+            defaultUser.createAuthToken());
     assertRestResult(r, true, OK);
     assertEquals(
         "10.0.0.1:5433,10.0.0.2:5433,10.0.0.3:5433", Json.parse(contentAsString(r)).asText());

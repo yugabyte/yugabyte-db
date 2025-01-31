@@ -144,7 +144,8 @@ set(TSERVER_YRPC_LIBS
   protobuf
   remote_bootstrap_proto
   rpc_header_proto
-  tserver_proto)
+  tserver_proto
+  tserver_util)
 ADD_YB_LIBRARY(tserver_service_proto
   SRCS ${TSERVER_YRPC_SRCS}
   DEPS ${TSERVER_YRPC_LIBS}
@@ -187,6 +188,24 @@ ADD_YB_LIBRARY(pg_auto_analyze_service_proto
   NONLINK_DEPS ${TSERVER_YRPC_TGTS})
 
 #########################################
+# pg_cron_leader_service_proto
+#########################################
+
+YRPC_GENERATE(
+  TSERVER_YRPC_SRCS TSERVER_YRPC_HDRS TSERVER_YRPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES stateful_services/pg_cron_leader_service.proto)
+set(TSERVER_YRPC_LIBS
+  yrpc
+  yb_common_proto
+  protobuf)
+ADD_YB_LIBRARY(pg_cron_leader_service_proto
+  SRCS ${TSERVER_YRPC_SRCS}
+  DEPS ${TSERVER_YRPC_LIBS}
+  NONLINK_DEPS ${TSERVER_YRPC_TGTS})
+
+#########################################
 # tserver_util
 #########################################
 
@@ -195,7 +214,8 @@ set(TSERVER_UTIL_SRCS
   tserver_error.cc
   tserver_shared_mem.cc)
 set(TSERVER_UTIL_LIBS
-  yb_util)
+  yb_util
+  consensus_error)
 ADD_YB_LIBRARY(tserver_util
   SRCS ${TSERVER_UTIL_SRCS}
   DEPS ${TSERVER_UTIL_LIBS})
@@ -220,8 +240,10 @@ set(TSERVER_SRCS
   pg_mutation_counter.cc
   pg_response_cache.cc
   pg_sequence_cache.cc
+  pg_shared_mem_pool.cc
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
+  pg_txn_snapshot_manager.cc
   tserver_xcluster_context.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
@@ -239,6 +261,8 @@ set(TSERVER_SRCS
   tablet_server_options.cc
   tablet_service.cc
   tablet_validator.cc
+  ts_data_size_metrics.cc
+  ts_local_lock_manager.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   tserver_auto_flags_manager.cc
@@ -258,7 +282,8 @@ set(TSERVER_SRCS
   xcluster_poller_id.cc
   xcluster_poller_stats.cc
   xcluster_output_client.cc
-  xcluster_write_implementations.cc)
+  xcluster_write_implementations.cc
+  ysql_advisory_lock_table.cc)
 
 set(TSERVER_DEPS
   protobuf
@@ -350,12 +375,29 @@ add_library(tserver_test_util
 target_link_libraries(tserver_test_util tablet_test_util tserver yb_test_util yb_util)
 
 #########################################
+# tserver_mock
+#########################################
+
+set(tserver_mock_SRCS
+  tserver_xcluster_context_mock.cc)
+
+set(tserver_mock_LIBS
+  tserver
+  gmock
+  gtest)
+
+ADD_YB_LIBRARY(tserver_mock
+  SRCS ${tserver_mock_SRCS}
+  DEPS ${tserver_mock_LIBS})
+
+#########################################
 # tserver tests
 #########################################
 
 set(YB_TEST_LINK_LIBS
   rpc_test_util
   tserver
+  tserver_mock
   tserver_test_util
   yb_client # yb::client::YBTableName
   yb-tserver_util
@@ -366,6 +408,7 @@ ADD_YB_TEST(remote_bootstrap_rocksdb_session-test)
 ADD_YB_TEST(remote_bootstrap_service-test)
 ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
+ADD_YB_TEST(ts_local_lock_manager-test)
 ADD_YB_TEST(ts_tablet_manager-test)
 ADD_YB_TEST(header_manager_impl-test)
 ADD_YB_TEST(backup_service-test)

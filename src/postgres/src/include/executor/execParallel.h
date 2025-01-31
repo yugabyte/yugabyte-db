@@ -2,7 +2,7 @@
  * execParallel.h
  *		POSTGRES parallel execution interface
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -26,8 +26,9 @@ typedef struct ParallelExecutorInfo
 	PlanState  *planstate;		/* plan subtree we're running in parallel */
 	ParallelContext *pcxt;		/* parallel context we're using */
 	BufferUsage *buffer_usage;	/* points to bufusage area in DSM */
+	WalUsage   *wal_usage;		/* walusage area in DSM */
 	SharedExecutorInstrumentation *instrumentation; /* optional */
-	struct SharedJitInstrumentation *jit_instrumentation; /* optional */
+	struct SharedJitInstrumentation *jit_instrumentation;	/* optional */
 	dsa_area   *area;			/* points to DSA area in DSM */
 	dsa_pointer param_exec;		/* serialized PARAM_EXEC parameters */
 	bool		finished;		/* set true by ExecParallelFinish */
@@ -37,13 +38,13 @@ typedef struct ParallelExecutorInfo
 } ParallelExecutorInfo;
 
 extern ParallelExecutorInfo *ExecInitParallelPlan(PlanState *planstate,
-					 EState *estate, Bitmapset *sendParam, int nworkers,
-					 int64 tuples_needed);
+												  EState *estate, Bitmapset *sendParam, int nworkers,
+												  int64 tuples_needed);
 extern void ExecParallelCreateReaders(ParallelExecutorInfo *pei);
 extern void ExecParallelFinish(ParallelExecutorInfo *pei);
 extern void ExecParallelCleanup(ParallelExecutorInfo *pei);
 extern void ExecParallelReinitialize(PlanState *planstate,
-						 ParallelExecutorInfo *pei, Bitmapset *sendParam);
+									 ParallelExecutorInfo *pei, Bitmapset *sendParam);
 
 extern void ParallelQueryMain(dsm_segment *seg, shm_toc *toc);
 

@@ -19,9 +19,12 @@ import (
 
 // updateK8sProviderCmd represents the provider command
 var updateK8sProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update a Kubernetes YugabyteDB Anywhere provider",
-	Long:  "Update a Kubernetes provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update a Kubernetes YugabyteDB Anywhere provider",
+	Long:    "Update a Kubernetes provider in YugabyteDB Anywhere",
+	Example: `yba provider kuberenetes update --name <provider-name> \
+	--image-registry <image-registry>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -95,7 +98,7 @@ var updateK8sProviderCmd = &cobra.Command{
 		}
 		if len(strings.TrimSpace(providerType)) > 0 {
 			logrus.Debug("Updating kubernetes provider type\n")
-			k8sCloudInfo.SetKubernetesProvider(providerType)
+			k8sCloudInfo.SetKubernetesProvider(strings.ToLower(providerType))
 		}
 
 		imageRegistry, err := cmd.Flags().GetString("image-registry")
@@ -203,7 +206,7 @@ var updateK8sProviderCmd = &cobra.Command{
 		provider.SetRegions(providerRegions)
 		// End of Updating Regions
 
-		rUpdate, response, err := authAPI.EditProvider(provider.GetUuid()).
+		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
@@ -214,11 +217,8 @@ var updateK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rUpdate.GetResourceUUID()
-		taskUUID := rUpdate.GetTaskUUID()
-
 		providerutil.WaitForUpdateProviderTask(authAPI,
-			providerName, providerUUID, providerCode, taskUUID)
+			providerName, rTask, providerCode)
 	},
 }
 
@@ -245,13 +245,13 @@ func init() {
 
 	updateK8sProviderCmd.Flags().StringArray("add-region", []string{},
 		"[Optional] Add region associated with the Kubernetes provider."+
-			" Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,"+
-			"config-file-path=<path-for-the-kubernetes-region-config-file>,"+
-			"storage-class=<storage-class>,"+
-			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
-			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
-			"pod-address-template=<pod-address-template>,"+
+			" Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::"+
+			"config-file-path=<path-for-the-kubernetes-region-config-file>::"+
+			"storage-class=<storage-class>::"+
+			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>::"+
+			"cert-manager-issuer=<cert-manager-issuer>::domain=<domain>::namespace=<namespace>::"+
+			"pod-address-template=<pod-address-template>::"+
 			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Region name is a required key-value.",
 				formatter.GreenColor)+
@@ -262,13 +262,13 @@ func init() {
 
 	updateK8sProviderCmd.Flags().StringArray("add-zone", []string{},
 		"[Optional] Add zone associated to the Kubernetes Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>,"+
-			"config-file-path=<path-for-the-kubernetes-region-config-file>,"+
-			"storage-class=<storage-class>,"+
-			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
-			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
-			"pod-address-template=<pod-address-template>,"+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"zone-name=<zone-name>::region-name=<region-name>::"+
+			"config-file-path=<path-for-the-kubernetes-region-config-file>::"+
+			"storage-class=<storage-class>::"+
+			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>::"+
+			"cert-manager-issuer=<cert-manager-issuer>::domain=<domain>::namespace=<namespace>::"+
+			"pod-address-template=<pod-address-template>::"+
 			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Zone name and Region name are required values. ",
 				formatter.GreenColor)+
@@ -282,13 +282,13 @@ func init() {
 
 	updateK8sProviderCmd.Flags().StringArray("edit-region", []string{},
 		"[Optional] Edit region associated with the Kubernetes provider. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,"+
-			"config-file-path=<path-for-the-kubernetes-region-config-file>,"+
-			"storage-class=<storage-class>,"+
-			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
-			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
-			"pod-address-template=<pod-address-template>,"+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::"+
+			"config-file-path=<path-for-the-kubernetes-region-config-file>::"+
+			"storage-class=<storage-class>::"+
+			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>::"+
+			"cert-manager-issuer=<cert-manager-issuer>::domain=<domain>::namespace=<namespace>::"+
+			"pod-address-template=<pod-address-template>::"+
 			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Region name is a required key-value.",
 				formatter.GreenColor)+
@@ -299,13 +299,13 @@ func init() {
 
 	updateK8sProviderCmd.Flags().StringArray("edit-zone", []string{},
 		"[Optional] Edit zone associated to the Kubernetes Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>,"+
-			"config-file-path=<path-for-the-kubernetes-region-config-file>,"+
-			"storage-class=<storage-class>,"+
-			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
-			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
-			"pod-address-template=<pod-address-template>,"+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"zone-name=<zone-name>::region-name=<region-name>::"+
+			"config-file-path=<path-for-the-kubernetes-region-config-file>::"+
+			"storage-class=<storage-class>::"+
+			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>::"+
+			"cert-manager-issuer=<cert-manager-issuer>::domain=<domain>::namespace=<namespace>::"+
+			"pod-address-template=<pod-address-template>::"+
 			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Zone name and Region name are required values. ",
 				formatter.GreenColor)+
@@ -320,8 +320,8 @@ func init() {
 			"--remove-region definition. Removing a region removes the corresponding zones.")
 	updateK8sProviderCmd.Flags().StringArray("remove-zone", []string{},
 		"[Optional] Remove zone associated to the Kubernetes Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"zone-name=<zone-name>::region-name=<region-name>\". "+
 			formatter.Colorize("Zone name, Region name are required values. ",
 				formatter.GreenColor)+
 			"Each zone needs to be removed using a separate --remove-zone flag.")

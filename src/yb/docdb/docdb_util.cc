@@ -30,6 +30,7 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/env.h"
+#include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_trim.h"
 #include "yb/docdb/docdb_pgapi.h"
@@ -38,16 +39,9 @@ using std::string;
 using strings::Substitute;
 using std::vector;
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::DocPath;
-
-namespace {
-
-const std::string kEmptyLogPrefix;
-
-}
 
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value, const int pg_data_type,
@@ -83,7 +77,7 @@ rocksdb::DB* DocDBRocksDBUtil::intents_db() {
 }
 
 std::string DocDBRocksDBUtil::IntentsDBDir() {
-  return rocksdb_dir_ + ".intents";
+  return GetStorageDir(rocksdb_dir_, "intents");
 }
 
 Status DocDBRocksDBUtil::OpenRocksDB() {
@@ -177,10 +171,11 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     }
     ThreadSafeArena arena;
     LWKeyValueWriteBatchPB kv_write_batch(&arena);
-    dwb.TEST_CopyToWriteBatchPB(&kv_write_batch);
+    dwb.MoveToWriteBatchPB(&kv_write_batch);
     TransactionalWriter writer(
         kv_write_batch, hybrid_time, *current_txn_id_, txn_isolation_level_,
-        partial_range_key_intents, /* replicated_batches_state= */ Slice(), intra_txn_write_id_);
+        partial_range_key_intents, /* replicated_batches_state= */ Slice(), intra_txn_write_id_,
+        /* applier= */ nullptr);
     DirectWriteToWriteBatchHandler handler(rocksdb_write_batch);
     RETURN_NOT_OK(writer.Apply(&handler));
     intra_txn_write_id_ = writer.intra_txn_write_id();
@@ -586,5 +581,12 @@ Result<CompactionSchemaInfo> DocDBRocksDBUtil::ColocationPacking(
   return CotablePacking(Uuid::Nil(), schema_version, history_cutoff);
 }
 
-}  // namespace docdb
-}  // namespace yb
+std::string GetStorageDir(const std::string& data_dir, const std::string& storage) {
+  return Format("$0.$1", data_dir, storage);
+}
+
+std::string GetStorageCheckpointDir(const std::string& data_dir, const std::string& storage) {
+  return JoinPathSegments(data_dir, storage);
+}
+
+}  // namespace yb::docdb

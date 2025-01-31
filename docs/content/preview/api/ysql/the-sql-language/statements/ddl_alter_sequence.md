@@ -4,7 +4,7 @@ headerTitle: ALTER SEQUENCE
 linkTitle: ALTER SEQUENCE
 description: Use the ALTER SEQUENCE statement to change the definition of a sequence in the current schema.
 menu:
-  preview:
+  preview_api:
     identifier: ddl_alter_sequence
     parent: statements
 aliases:
@@ -70,6 +70,28 @@ If `CYCLE` is specified, the sequence will wrap around once it has reached `minv
 #### OWNED BY *table_name.table_column* | NONE
 
 It gives ownership of the sequence to the specified column (if any). This means that if the column (or the table to which it belongs to) is dropped, the sequence will be automatically dropped. If `NONE` is specified, any previous ownership will be deleted.
+
+#### SET LOGGED | UNLOGGED
+
+Change the sequence from unlogged to logged or vice-versa. Cannot be applied to a temporary sequence.
+
+Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default persistence.
+
+#### SET SCHEMA *schema_name*
+
+Change the schema of the sequence.
+
+#### OWNER TO  *new_owner* | *CURRENT_USER* | *SESSION_USER*
+
+Change the owner of the schema.
+
+CURRENT_USER - username of current execution context.
+
+SESSION_USER - username of current session.
+
+#### RENAME TO *new_name*
+
+Rename the sequence to the specified sequence name.
 
 ## Examples
 

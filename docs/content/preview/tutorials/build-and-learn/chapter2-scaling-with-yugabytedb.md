@@ -70,7 +70,7 @@ For a complete list of ports, refer to the [default ports](../../../reference/co
 
 Next, open a database connection and run a few SQL requests:
 
-1. Wait for the node to finish the initialization and connect to the container opening a database connection with the [ysqlsh](../../../admin/ysqlsh/) command-line tool:
+1. Wait for the node to finish the initialization and connect to the container opening a database connection with the [ysqlsh](../../../api/ysqlsh/) command-line tool:
 
     ```shell
     while ! docker exec -it yugabytedb-node1 postgres/bin/pg_isready -U yugabyte -h yugabytedb-node1; do sleep 1; done
@@ -248,14 +248,14 @@ Search for movie recommendations:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="#full-text-search" class="nav-link active" id="full-text-search-tab" data-toggle="tab"
+    <a href="#full-text-search" class="nav-link active" id="full-text-search-tab" data-bs-toggle="tab"
        role="tab" aria-controls="full-text-search" aria-selected="true">
       <img src="/icons/search.svg" alt="full-text search">
       Full-Text Search
     </a>
   </li>
   <li >
-    <a href="#similarity-search" class="nav-link" id="similarity-search-tab" data-toggle="tab"
+    <a href="#similarity-search" class="nav-link" id="similarity-search-tab" data-bs-toggle="tab"
        role="tab" aria-controls="similarity-search" aria-selected="false">
       <img src="/icons/openai-logomark.svg" alt="vector similarity search">
       Vector Similarity Search

@@ -25,6 +25,7 @@
 #include <stdio.h>
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <string>
@@ -42,6 +43,7 @@
 #include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/perf_context.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/statistics.h"
@@ -64,6 +66,7 @@
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "yb/rocksdb/utilities/checkpoint.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/string_util.h"
@@ -176,7 +179,7 @@ class Constructor {
                             const InternalKeyComparatorPtr& internal_comparator,
                             const stl_wrappers::KVMap& data) = 0;
 
-  virtual InternalIterator* NewIterator() const = 0;
+  virtual InternalIterator* NewIterator(const ReadOptions& ro = {}) const = 0;
 
   virtual const stl_wrappers::KVMap& data() { return data_; }
 
@@ -210,8 +213,11 @@ class BlockConstructor: public Constructor {
                             const stl_wrappers::KVMap& kv_map) override {
     delete block_;
     block_ = nullptr;
-    BlockBuilder builder(
-        table_options.block_restart_interval, table_options.data_block_key_value_encoding_format);
+
+    block_restart_interval_ = table_options.block_restart_interval;
+    key_value_encoding_format_ = table_options.data_block_key_value_encoding_format;
+
+    BlockBuilder builder(block_restart_interval_, key_value_encoding_format_);
 
     for (const auto& kv : kv_map) {
       builder.Add(kv.first, kv.second);
@@ -222,16 +228,20 @@ class BlockConstructor: public Constructor {
     contents.data = data_;
     contents.cachable = false;
     block_ = new Block(std::move(contents));
-    key_value_encoding_format_ = table_options.data_block_key_value_encoding_format;
+
     return Status::OK();
   }
-  InternalIterator* NewIterator() const override {
-    return block_->NewIterator(comparator_, key_value_encoding_format_);
+  InternalIterator* NewIterator(const ReadOptions& ro = {}) const override {
+    size_t restart_block_cache_capacity = ro.cache_restart_block_keys ? block_restart_interval_ : 0;
+    return block_->NewIterator(
+        comparator_, key_value_encoding_format_, /* iter = */ nullptr,
+        /* total_order_seek = */ true, restart_block_cache_capacity);
   }
 
  private:
   const Comparator* comparator_;
   KeyValueEncodingFormat key_value_encoding_format_;
+  int block_restart_interval_;
   std::string data_;
   Block* block_;
 
@@ -370,8 +380,7 @@ class TableConstructor: public Constructor {
         std::move(file_reader_), GetSink()->contents().size(), &table_reader_);
   }
 
-  InternalIterator* NewIterator() const override {
-    ReadOptions ro;
+  InternalIterator* NewIterator(const ReadOptions& ro = {}) const override {
     InternalIterator* iter = table_reader_->NewIterator(ro);
     if (convert_to_internal_key_) {
       return new KeyConvertingIterator(iter);
@@ -468,9 +477,9 @@ class MemTableConstructor: public Constructor {
     }
     return Status::OK();
   }
-  InternalIterator* NewIterator() const override {
+  InternalIterator* NewIterator(const ReadOptions& ro = {}) const override {
     return new KeyConvertingIterator(
-        memtable_->NewIterator(ReadOptions(), &arena_), true);
+        memtable_->NewIterator(ro, &arena_), true);
   }
 
   bool AnywayDeleteIterator() const override { return true; }
@@ -555,8 +564,8 @@ class DBConstructor: public Constructor {
     return Status::OK();
   }
 
-  InternalIterator* NewIterator() const override {
-    return new InternalIteratorFromIterator(db_->NewIterator(ReadOptions()));
+  InternalIterator* NewIterator(const ReadOptions& ro = {}) const override {
+    return new InternalIteratorFromIterator(db_->NewIterator(ro));
   }
 
   DB* db() const override { return db_; }
@@ -837,7 +846,9 @@ class HarnessTest : public RocksDBTest {
 
   void TestBackwardScan(const std::vector<std::string>& keys,
                         const stl_wrappers::KVMap& data) {
-    InternalIterator* iter = constructor_->NewIterator();
+    ReadOptions ro;
+    ro.cache_restart_block_keys = CacheRestartBlockKeys::kTrue;
+    InternalIterator* iter = constructor_->NewIterator(ro);
     ASSERT_TRUE(!iter->Valid());
     iter->SeekToLast();
     for (stl_wrappers::KVMap::const_reverse_iterator model_iter = data.rbegin();
@@ -2093,19 +2104,24 @@ std::string GenerateKey(int primary_key, int secondary_key, int padding_size, Ra
   return k;
 }
 
-void RunPerformanceTest(
+YB_DEFINE_ENUM(WorkloadType, (kScanForward)(kScanBackward)(kSeek));
+using WorkloadTypeSet = yb::EnumBitSet<WorkloadType>;
+
+uint64_t RunPerformanceTest(
+    WorkloadTypeSet workloads,
     size_t block_size,
-    const IndexType& idx_type,
-    bool run_scan_test,  // if false, runs seek tests.
+    IndexType idx_type,
     int restart_interval = 1,
-    int num_keys = 10000,
+    size_t num_keys = 10000,
     bool use_delta_encoding = false,
-    KeyValueEncodingFormat encoding_format =
-        KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix) {
+    KeyValueEncodingFormat encoding_format = KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix,
+    const ReadOptions& ro = {}) {
+  constexpr auto kBlockRestartInterval = 16;
   BlockBasedTableOptions table_options;
   table_options.index_type = idx_type;
   table_options.block_size = block_size;
   table_options.block_cache = NewLRUCache(1 * 1024 * 1024);
+  table_options.block_restart_interval = kBlockRestartInterval;
   table_options.index_block_restart_interval = restart_interval;
   table_options.min_keys_per_index_block = 100;
   table_options.use_delta_encoding = use_delta_encoding;
@@ -2114,7 +2130,7 @@ void RunPerformanceTest(
   TableConstructor table_constructor(BytewiseComparator());
   Random rnd(test::RandomSeed());
   Slice value_slice;
-  for (int i = 0; i < num_keys; i++) {
+  for (int i = 0; i < yb::narrow_cast<int>(num_keys); i++) {
     /*10 digits value is generated for primary and secondary key by GenerateKey*/
     auto key = GenerateKey(i, i + 1000, 32 - 10, &rnd);
     table_constructor.Add(key, value_slice);
@@ -2134,48 +2150,76 @@ void RunPerformanceTest(
   LOG(INFO) << "IndexType: " << idx_type << ", KeyCount: " << num_keys
             << ", BlockSize: " << block_size << ", RestartInterval: " << restart_interval
             << ", UseDeltaEncoding: " << use_delta_encoding << ", Encoding: " << encoding_format;
-  if (run_scan_test) {
-    LOG(INFO) << "Result order: Next, Prev in nanosecond";
-  } else {
-    LOG(INFO) << "Result order: Incr order, Incr order with gaps, Decr order, Decr order with "
-                 "gaps, Random seek, Random seek with gaps";
+  std::stringstream order_msg;
+  for (const auto wl : workloads) {
+    if (order_msg.tellp() > 0) order_msg << ", ";
+    switch (wl) {
+      case WorkloadType::kScanForward:
+        order_msg << "Next in nanosecond";
+        break;
+      case WorkloadType::kScanBackward:
+        order_msg << "Prev in nanosecond";
+        break;
+      case WorkloadType::kSeek:
+        order_msg << "Incr order, Incr order with gaps, Decr order, Decr order with "
+                     "gaps, Random seek, Random seek with gaps";
+        break;
+      default:
+        FATAL_INVALID_ENUM_VALUE(WorkloadType, wl);
+    }
   }
+  LOG(INFO) << "Result order: " << order_msg.str();
 
+  uint64_t time_taken = 0;
   unique_ptr<InternalIterator> iter;
   std::stringstream result;
   auto run_benchmark = [&](std::function<void()>&& callback, int multiplier = 1) {
-    iter.reset(table_constructor.NewIterator());
+    iter.reset(table_constructor.NewIterator(ro));
 
     auto start = Env::Default()->NowNanos();
     callback();
-    auto time_taken = (Env::Default()->NowNanos() - start);
-    auto per_key_ns = (time_taken * multiplier) / num_keys;
-    result << per_key_ns << ", ";
+    auto time_spent = (Env::Default()->NowNanos() - start);
+    auto per_key_ns = (time_spent * multiplier) / num_keys;
+    if (result.tellp() > 0) {
+      result << ", ";
+    }
+    result << per_key_ns;
+    return time_spent;
   };
 
-  if (run_scan_test) {
+  if (workloads.Test(WorkloadType::kScanForward)) {
     // Next scan text.
-    run_benchmark([&]() {
+    size_t counter = 0;
+    time_taken += run_benchmark([&]() {
       for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
         /*const auto k =*/ iter->key();
         /*const auto v =*/ iter->value();
+        ++counter;
       }
       ASSERT_OK(iter->status());
+      ASSERT_EQ(counter, num_keys);
       return;
     });
+  }
 
+  if (workloads.Test(WorkloadType::kScanBackward)) {
     // Prev scan text.
-    run_benchmark([&]() {
+    size_t counter = 0;
+    time_taken += run_benchmark([&]() {
       for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
         /*const auto k =*/ iter->key();
         /*const auto v =*/ iter->value();
+        ++counter;
       }
       ASSERT_OK(iter->status());
+      ASSERT_EQ(counter, num_keys);
       return;
     });
-  } else {
+  }
+
+  if (workloads.Test(WorkloadType::kSeek)) {
     // Increasing order.
-    run_benchmark([&]() {
+    time_taken += run_benchmark([&]() {
       for (size_t k = 0; k < keys.size(); k++) {
         iter->Seek(keys[k]);
       }
@@ -2184,7 +2228,7 @@ void RunPerformanceTest(
     });
 
     // Increasing order with gaps.
-    run_benchmark(
+    time_taken += run_benchmark(
         [&]() {
           for (size_t k = 0; k < keys.size(); k += 5) {
             iter->Seek(keys[k]);
@@ -2194,14 +2238,14 @@ void RunPerformanceTest(
         5);
 
     // Decreasing order.
-    run_benchmark([&]() {
+    time_taken += run_benchmark([&]() {
       for (int k = static_cast<int>(keys.size()) - 1; k >= 0; k--) {
         iter->Seek(keys[k]);
       }
     });
 
     // Decreasing order with gaps.
-    run_benchmark(
+    time_taken += run_benchmark(
         [&]() {
           for (int k = static_cast<int>(keys.size()) - 1; k >= 0; k -= 5) {
             iter->Seek(keys[k]);
@@ -2216,14 +2260,14 @@ void RunPerformanceTest(
     }
 
     // Random seek.
-    run_benchmark([&]() {
+    time_taken += run_benchmark([&]() {
       for (size_t k = 0; k < keys.size(); k++) {
         iter->Seek(keys_random[k]);
       }
     });
 
     // Random seek with gaps.
-    run_benchmark(
+    time_taken += run_benchmark(
         [&]() {
           for (size_t k = 0; k < keys.size(); k += 5) {
             iter->Seek(keys_random[k]);
@@ -2233,13 +2277,15 @@ void RunPerformanceTest(
   }
 
   LOG(INFO) << result.str();
+  return time_taken;
 }
 
 void TestSeekPerformance(
     size_t block_size, const IndexType& idx_type, int restart_interval = 1, int num_keys = 10000) {
+  const auto workload = WorkloadTypeSet{WorkloadType::kSeek};
   // Run every test 2 times.
-  RunPerformanceTest(block_size, idx_type, false /*run_scan_test*/, restart_interval, num_keys);
-  RunPerformanceTest(block_size, idx_type, false /*run_scan_test*/, restart_interval, num_keys);
+  RunPerformanceTest(workload, block_size, idx_type, restart_interval, num_keys);
+  RunPerformanceTest(workload, block_size, idx_type, restart_interval, num_keys);
 }
 
 void TestScanPerformance(
@@ -2248,32 +2294,121 @@ void TestScanPerformance(
     KeyValueEncodingFormat encoding_format =
         KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix) {
   IndexType idx_type = IndexType::kBinarySearch;
+  WorkloadTypeSet workload { WorkloadType::kScanForward, WorkloadType::kScanBackward };
+
   // Run every test 2 times.
   RunPerformanceTest(
-      block_size, IndexType::kBinarySearch, true /*run_scan_test*/, 1 /*restart_interval*/,
-      10000 /*num_keys*/, use_delta_encoding, encoding_format);
+      workload, block_size, IndexType::kBinarySearch, /* restart_interval = */ 1,
+      /* num_keys = */ 10000, use_delta_encoding, encoding_format);
   RunPerformanceTest(
-      block_size, IndexType::kBinarySearch, true /*run_scan_test*/, 1 /*restart_interval*/,
-      10000 /*num_keys*/, use_delta_encoding, encoding_format);
+      workload, block_size, IndexType::kBinarySearch, /* restart_interval = */ 1,
+      /* num_keys = */ 10000, use_delta_encoding, encoding_format);
+}
+
+// Supports only WorkloadType::kScanForward and WorkloadType::kScanBackward.
+void TestScanPerformance(
+    size_t num_repeats,
+    WorkloadType scan_type,
+    const ReadOptions& ro = {},
+    size_t num_keys = 100000,
+    size_t block_size = 32_KB,
+    bool use_delta_encoding = true,
+    KeyValueEncodingFormat encoding_format =
+        KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts,
+    IndexType idx_type = IndexType::kMultiLevelBinarySearch) {
+  const int index_restart_interval = 1;
+  uint64_t total_time = 0;
+  size_t num_runs = 0;
+
+  // A vector to store experiment times to calculate unbiased estimation of standard deviation.
+  std::vector<double> run_time_us;
+  run_time_us.reserve(num_runs);
+
+  WorkloadTypeSet workload { scan_type };
+  while (num_runs++ < num_repeats) {
+    auto time_taken = RunPerformanceTest(
+      workload, block_size, idx_type, index_restart_interval,
+      num_keys, use_delta_encoding, encoding_format, ro);
+    LOG(INFO) << "Run #" << num_runs << ": " << time_taken / 1000 << " us, "
+              << "per key: " << time_taken / num_keys << " ns";
+    total_time += time_taken;
+    run_time_us.push_back(static_cast<double>(time_taken) / 1000);
+  }
+
+  const auto total_avg = total_time / static_cast<double>(num_repeats);
+  const auto total_avg_us = total_avg / 1000;
+
+  // Calculate standard deviation.
+  double std_dev_us = 0.0;
+  double num_std_dev = 0.0;
+  double num_2x_std_dev = 0.0;
+  double num_3x_std_dev = 0.0;
+  if (num_repeats > 1) {
+    for (const auto rt : run_time_us) {
+      std_dev_us += std::pow(total_avg_us - rt, 2.0);
+    }
+    std_dev_us = std::sqrt(std_dev_us / (num_repeats - 1));
+    const double std_dev_2x = std_dev_us * 2;
+    const double std_dev_3x = std_dev_us * 3;
+    for (const auto rt : run_time_us) {
+      const auto delta = std::abs(rt - total_avg_us);
+      if (delta <= std_dev_us) {
+        ++num_std_dev;
+        ++num_2x_std_dev;
+        ++num_3x_std_dev;
+      } else if (delta <= std_dev_2x) {
+        ++num_2x_std_dev;
+        ++num_3x_std_dev;
+      } else if (delta <= std_dev_3x) {
+        ++num_3x_std_dev;
+      }
+    }
+    num_std_dev    /= num_repeats;
+    num_2x_std_dev /= num_repeats;
+    num_3x_std_dev /= num_repeats;
+  }
+
+
+  LOG(INFO) << "num keys: " << num_keys << ", "
+            << "avg time per key: " << total_avg / num_keys << " ns, "
+            << "avg time: " << total_avg_us << " us, "
+            << "std dev: "  << std_dev_us   << " us, "
+            << "hits in [avg - std dev, avg + 1x std dev]: "    << 100 * num_std_dev    << "%, "
+            << "hits in [avg - 2x std dev, avg + 2x std dev]: " << 100 * num_2x_std_dev << "%, "
+            << "hits in [avg - 3x std dev, avg + 3x std dev]: " << 100 * num_3x_std_dev << "%";
+}
+
+TEST_F(BlockBasedTableTest, DISABLED_ForwardScanPerformanceTest) {
+  TestScanPerformance(/* num_repeats = */ 1000, WorkloadType::kScanForward);
+}
+
+TEST_F(BlockBasedTableTest, DISABLED_BackwardScanPerformanceTest) {
+  TestScanPerformance(/* num_repeats = */ 1000, WorkloadType::kScanBackward);
+}
+
+TEST_F(BlockBasedTableTest, DISABLED_FastBackwardScanPerformanceTest) {
+  ReadOptions read_options;
+  read_options.cache_restart_block_keys = CacheRestartBlockKeys::kTrue;
+  TestScanPerformance(/* num_repeats = */ 1000, WorkloadType::kScanBackward, read_options);
 }
 
 TEST_F(BlockBasedTableTest, DISABLED_ScanPerformanceTest) {
   bool use_delta_encoding = true;
   KeyValueEncodingFormat encoding_format =
       KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts;
-  TestScanPerformance(8_KB, use_delta_encoding, encoding_format);
+  TestScanPerformance(8_KB,  use_delta_encoding, encoding_format);
   TestScanPerformance(16_KB, use_delta_encoding, encoding_format);
   TestScanPerformance(32_KB, use_delta_encoding, encoding_format);
   TestScanPerformance(64_KB, use_delta_encoding, encoding_format);
 }
 
 TEST_F(BlockBasedTableTest, DISABLED_IndexTypeSeekPerformanceTest) {
-  TestSeekPerformance(8_KB, IndexType::kBinarySearch);
+  TestSeekPerformance(8_KB,  IndexType::kBinarySearch);
   TestSeekPerformance(16_KB, IndexType::kBinarySearch);
   TestSeekPerformance(32_KB, IndexType::kBinarySearch);
   TestSeekPerformance(64_KB, IndexType::kBinarySearch);
 
-  TestSeekPerformance(8_KB, IndexType::kMultiLevelBinarySearch);
+  TestSeekPerformance(8_KB,  IndexType::kMultiLevelBinarySearch);
   TestSeekPerformance(16_KB, IndexType::kMultiLevelBinarySearch);
   TestSeekPerformance(32_KB, IndexType::kMultiLevelBinarySearch);
   TestSeekPerformance(64_KB, IndexType::kMultiLevelBinarySearch);
@@ -2894,6 +3029,43 @@ TEST_F(TableTest, MiddleOfMiddleKey) {
   delete db;
 }
 
+// Open the first DB and generate some keys. Then open the second DB using a checkpoint
+// from the first one. Verify that both databases share the same block cache key prefix.
+TEST_F(TableTest, YB_LINUX_ONLY_TEST(BlockCacheWithHardlink)) {
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 1024;
+  table_options.block_cache = NewLRUCache(16_MB / FLAGS_cache_single_touch_ratio);
+
+  rocksdb::Options options;
+  options.compaction_style = rocksdb::kCompactionStyleNone;
+  options.num_levels = 1;
+  options.create_if_missing = true;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+
+  const std::string kDBPath = test::TmpDir() + "/hardlink";
+  ASSERT_OK(DestroyDB(kDBPath, options));
+  rocksdb::DB* db;
+  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+  GenerateSSTFile(db, 0, 10);
+
+  const auto mkey = ASSERT_RESULT(db->GetMiddleKey());
+  const auto tw_1 = ASSERT_RESULT(db->TEST_GetLargestSstTableReader());
+  auto* table_reader_1 = dynamic_cast<BlockBasedTable*>(tw_1);
+  ASSERT_TRUE(table_reader_1->TEST_KeyInCache(ReadOptions(), mkey));
+
+  LOG(INFO) << "Opening checkpoint db";
+  auto checkpoint_dir = kDBPath + "/checkpoints";
+  ASSERT_OK(checkpoint::CreateCheckpoint(db, checkpoint_dir));
+  rocksdb::DB* checkpoint_db;
+  ASSERT_OK(rocksdb::DB::Open(options, checkpoint_dir, &checkpoint_db));
+  const auto tw_2 = ASSERT_RESULT(checkpoint_db->TEST_GetLargestSstTableReader());
+  auto* table_reader_2 = dynamic_cast<BlockBasedTable*>(tw_2);
+  ASSERT_TRUE(table_reader_2->TEST_KeyInCache(ReadOptions(), mkey));
+
+  delete db;
+  delete checkpoint_db;
+}
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

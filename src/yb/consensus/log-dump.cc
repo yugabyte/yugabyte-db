@@ -410,7 +410,6 @@ Status FilterLogSegment(const string& segment_path) {
       log_thread_pool.get(),
       log_thread_pool.get(),
       log_thread_pool.get(),
-      /* cdc_min_replicated_index */ 0,
       &log));
 
   auto read_entries = segment->ReadEntries();

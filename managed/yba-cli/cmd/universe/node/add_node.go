@@ -15,10 +15,12 @@ import (
 
 // addNodeCmd represents the universe command
 var addNodeCmd = &cobra.Command{
-	Use:   "add",
-	Short: "Add a node instance to YugabyteDB Anywhere universe",
+	Use:     "add",
+	Aliases: []string{"create"},
+	Short:   "Add a node instance to YugabyteDB Anywhere universe",
 	Long: "Add a node instance to YugabyteDB Anywhere universe.\n" +
 		"Add a previously removed (or not in-use) node to the cluster and balance data onto it.",
+	Example: `yba universe node add --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {

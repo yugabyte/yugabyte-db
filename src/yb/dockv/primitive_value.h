@@ -25,6 +25,8 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_datatype.h"
 
+#include "yb/common/vector_types.h"
+
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/util/algorithm_util.h"
@@ -52,6 +54,7 @@ class PrimitiveValue {
   static const PrimitiveValue kInvalid;
   static const PrimitiveValue kTombstone;
   static const PrimitiveValue kObject;
+  static const PrimitiveValue kNull;
 
   using Type = ValueEntryType;
 
@@ -241,6 +244,16 @@ class PrimitiveValue {
     write_time_ = write_time;
   }
 
+  template <class T>
+  static ValueBuffer Encoded(const T& t) {
+    ValueBuffer value;
+    AppendEncodedTo(t, value);
+    return value;
+  }
+
+  static Slice NullSlice();
+  static Slice TombstoneSlice();
+
  protected:
 
   static constexpr int64_t kUninitializedWriteTime = std::numeric_limits<int64_t>::min();
@@ -282,6 +295,9 @@ class PrimitiveValue {
   template <class PB>
   static PrimitiveValue DoFromQLValuePB(const PB& value);
 
+  template <class Vector, class Reader>
+  Status DecodeVector(
+      Slice slice, ValueEntryType value_type, Vector*& vector, const Reader& reader);
 
   // This is used in both the move constructor and the move assignment operator. Assumes this object
   // has not been constructed, or that the destructor has just been called.
@@ -310,5 +326,8 @@ void AppendEncodedValue(const QLValuePB& value, std::string* out);
 void AppendEncodedValue(const LWQLValuePB& value, ValueBuffer* out);
 size_t EncodedValueSize(const QLValuePB& value);
 size_t EncodedValueSize(const LWQLValuePB& value);
+
+Status ConsumeKeyEntryType(Slice& slice, KeyEntryType key_entry_type);
+Status ConsumeValueEntryType(Slice& slice, ValueEntryType value_entry_type);
 
 }  // namespace yb::dockv

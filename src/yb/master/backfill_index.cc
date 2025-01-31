@@ -18,60 +18,40 @@
 #include <sys/types.h>
 
 #include <algorithm>
-#include <bitset>
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <boost/optional.hpp>
 #include <boost/preprocessor/cat.hpp>
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/util/logging.h"
 
-#include "yb/dockv/partial_row.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 
-#include "yb/gutil/atomicops.h"
-#include "yb/gutil/callback.h"
 #include "yb/gutil/casts.h"
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/mathlimits.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/master_error.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/tserver_admin.proxy.h"
-
-#include "yb/util/flags.h"
-#include "yb/util/format.h"
-#include "yb/util/math_util.h"
-#include "yb/util/monotime.h"
-#include "yb/util/random_util.h"
-#include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
-#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
@@ -446,7 +426,7 @@ IndexPermissions NextPermission(IndexPermissions perm) {
 Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
     uint32_t current_version, const LeaderEpoch& epoch, bool respect_backfill_deferrals) {
-  DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table);
+  DVLOG(3) << __PRETTY_FUNCTION__ << " " << AsString(*indexed_table);
 
   const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
   const bool defer_backfill = !is_ysql_table && GetAtomicFlag(&FLAGS_defer_index_backfill);
@@ -500,14 +480,10 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
       DCHECK(l.data().pb.backfill_jobs_size() == 1) << "For now we only expect to have up to 1 "
                                                         "outstanding backfill job.";
       const BackfillJobPB& backfill_job = l.data().pb.backfill_jobs(0);
-      VLOG(3) << "Found an in-progress backfill-job " << yb::ToString(backfill_job);
+      VLOG(3) << "Found an in-progress backfill-job " << AsString(backfill_job);
       // Do not allow for any other indexes to piggy back with this backfill.
-      indexes_to_backfill.clear();
+      indexes_to_backfill.assign(backfill_job.indexes().begin(), backfill_job.indexes().end());
       deferred_indexes.clear();
-      for (int i = 0; i < backfill_job.indexes_size(); i++) {
-        const IndexInfoPB& idx_pb = backfill_job.indexes(i);
-        indexes_to_backfill.push_back(idx_pb);
-      }
     }
   }
 
@@ -524,7 +500,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
       indexes_to_backfill.size() > 1) {
     LOG(INFO) << "Batching of non-deferred index-backfill(s) is disabled. Will be only backfilling "
                  "one index at a time.";
-    indexes_to_backfill.erase(indexes_to_backfill.begin() + 1, indexes_to_backfill.end());
+    indexes_to_backfill.resize(1);
   }
 
   // For YSQL online schema migration of indexes, instead of master driving the schema changes,
@@ -615,7 +591,8 @@ std::string BackfillTableJob::description() const {
   }
 }
 
-MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState(const Status& status) {
+MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState(
+    const Status& status, bool call_task_finisher) {
   auto old_state = state();
   while (!IsStateTerminal(old_state)) {
     if (state_.compare_exchange_strong(old_state,
@@ -793,32 +770,18 @@ void BackfillTable::LaunchBackfillOrAbort() {
 Status BackfillTable::LaunchComputeSafeTimeForRead() {
   RSTATUS_DCHECK(!timestamp_chosen(), IllegalState, "Backfill timestamp already set");
 
-  if (master_->catalog_manager_impl()->IsTableXClusterConsumer(indexed_table_->id())) {
-    auto res = master_->xcluster_manager()->GetXClusterSafeTime(indexed_table_->namespace_id());
-    if (res.ok()) {
-      SCHECK(!res->is_special(), InvalidArgument, "Invalid xCluster safe time for namespace ",
-             indexed_table_->namespace_id());
+  std::vector<TableId> index_table_ids;
+  std::transform(
+      index_infos_.begin(), index_infos_.end(), std::back_inserter(index_table_ids),
+      [](const IndexInfoPB& idx_info) { return idx_info.table_id(); });
 
-      LOG_WITH_PREFIX(INFO) << "Using xCluster safe time " << *res << " as the backfill read time";
-      return SetSafeTimeAndStartBackfill(*res);
-    } else {
-      if (res.status().IsNotFound()) {
-        VLOG_WITH_PREFIX(1) << "Table does not belong to transactional replication, continue with "
-                               "GetSafeTimeForTablet";
-      } else {
-        return res.status();
-      }
-    }
+  auto opt_xcluster_backfill_time =
+      VERIFY_RESULT(master_->xcluster_manager()->TryGetXClusterSafeTimeForBackfill(
+          index_table_ids, indexed_table_, epoch()));
+
+  if (opt_xcluster_backfill_time) {
+    return SetSafeTimeAndStartBackfill(*opt_xcluster_backfill_time);
   }
-  // NOTE: Colocated indexes in a transactional xCluster will use the regular tablet safe time.
-  // Only the parent table is part of the xCluster replication, so new data that is added to the
-  // index on the source universe automatically flows to the target universe even before the index
-  // is created on it.
-  // We still need to run backfill since the WAL entries for the backfill are NOT replicated via
-  // xCluster. This is because both backfill entries and xCluster replicated entries use the same
-  // external HT field. To ensure transactional correctness we just need to pick a time higher than
-  // the time that was picked on the source side. Since the table is created on the source universe
-  // before the target this is always guaranteed to be true.
 
   auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
   num_tablets_.store(tablets.size(), std::memory_order_release);
@@ -946,11 +909,11 @@ Status BackfillTable::SetSafeTimeAndStartBackfill(const HybridTime& read_time) {
 }
 
 Status BackfillTable::WaitForTabletSplitting() {
-  auto* tablet_split_manager = master_->catalog_manager()->tablet_split_manager();
-  tablet_split_manager->DisableSplittingForBackfillingTable(indexed_table_->id());
+  auto& tablet_split_manager = master_->tablet_split_manager();
+  tablet_split_manager.DisableSplittingForBackfillingTable(indexed_table_->id());
   CoarseTimePoint deadline = CoarseMonoClock::Now() +
                              FLAGS_index_backfill_tablet_split_completion_timeout_sec * 1s;
-  while (!tablet_split_manager->IsTabletSplittingComplete(*indexed_table_,
+  while (!tablet_split_manager.IsTabletSplittingComplete(*indexed_table_,
                                                           false /* wait_for_parent_deletion */,
                                                           deadline)) {
     if (CoarseMonoClock::Now() > deadline) {
@@ -1141,8 +1104,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
       all_success ? MonitoredTaskState::kComplete : MonitoredTaskState::kFailed);
   RETURN_NOT_OK(ClearCheckpointStateInTablets());
   indexed_table_->ClearIsBackfilling();
-  master_->catalog_manager()->tablet_split_manager()
-      ->ReenableSplittingForBackfillingTable(indexed_table_->id());
+  master_->tablet_split_manager().ReenableSplittingForBackfillingTable(indexed_table_->id());
 
   VLOG(1) << "Sending alter table requests to the Indexed table";
   RETURN_NOT_OK(master_->catalog_manager_impl()->SendAlterTableRequest(indexed_table_, epoch_));
@@ -1154,7 +1116,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
 }
 
 Status BackfillTable::ClearCheckpointStateInTablets() {
-  auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
+  auto tablets = VERIFY_RESULT(indexed_table_->GetTablets(GetTabletsMode::kOrderByTabletId));
   for (const auto& tablet : tablets) {
     tablet->mutable_metadata()->StartMutation();
     auto& pb = tablet->mutable_metadata()->mutable_dirty()->pb;

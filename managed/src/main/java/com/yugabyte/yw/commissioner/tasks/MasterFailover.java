@@ -19,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 @Retryable
 public class MasterFailover extends UniverseDefinitionTaskBase {
 
+  private String replacementMasterName;
+
   @Inject
   protected MasterFailover(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -27,6 +29,28 @@ public class MasterFailover extends UniverseDefinitionTaskBase {
   @Override
   protected NodeTaskParams taskParams() {
     return (NodeTaskParams) taskParams;
+  }
+
+  private NodeDetails runBasicChecks(Universe universe) {
+    NodeDetails node = universe.getNode(taskParams().nodeName);
+    if (node == null) {
+      String errMsg =
+          String.format(
+              "Node %s is not found in universe %s",
+              taskParams().nodeName, universe.getUniverseUUID());
+      log.error(errMsg);
+      throw new RuntimeException(errMsg);
+    }
+    if (!node.isMaster && node.masterState != MasterState.ToStop) {
+      // On first try, isMaster must be set. On retry, masterState must be set to ToStop.
+      String errMsg =
+          String.format(
+              "Node %s must be a master in the universe %s",
+              taskParams().nodeName, universe.getUniverseUUID());
+      log.error(errMsg);
+      throw new RuntimeException(errMsg);
+    }
+    return node;
   }
 
   private void freezeUniverseInTxn(Universe universe) {
@@ -47,16 +71,10 @@ public class MasterFailover extends UniverseDefinitionTaskBase {
       log.error(errMsg);
       throw new RuntimeException(errMsg);
     }
-    NodeDetails newMasterNode = super.findReplacementMaster(universe, node);
-    if (newMasterNode == null) {
-      String errMsg =
-          String.format(
-              "No replacement is found for master %s in the universe %s",
-              taskParams().nodeName, universe.getUniverseUUID());
-      log.error(errMsg);
-      throw new RuntimeException(errMsg);
+    NodeDetails replacementMaster = universe.getNode(replacementMasterName);
+    if (replacementMaster.masterState == null) {
+      replacementMaster.masterState = MasterState.ToStart;
     }
-    newMasterNode.masterState = MasterState.ToStart;
     node.masterState = MasterState.ToStop;
   }
 
@@ -74,30 +92,23 @@ public class MasterFailover extends UniverseDefinitionTaskBase {
         throw new RuntimeException(errMsg);
       }
     }
-    NodeDetails node = universe.getNode(taskParams().nodeName);
-    if (node == null) {
-      String errMsg =
-          String.format(
-              "Node %s is not found in universe %s",
-              taskParams().nodeName, universe.getUniverseUUID());
-      log.error(errMsg);
-      throw new RuntimeException(errMsg);
-    }
-    if (isFirstTry()) {
-      if (!node.isMaster) {
-        String errMsg =
-            String.format(
-                "Node %s must be a master in the universe %s",
-                taskParams().nodeName, universe.getUniverseUUID());
-        log.error(errMsg);
-        throw new RuntimeException(errMsg);
-      }
-    }
+    runBasicChecks(universe);
   }
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    NodeDetails node = runBasicChecks(universe);
     super.addBasicPrecheckTasks();
+    // Pick new only on first try.
+    replacementMasterName = super.findReplacementMaster(universe, node, isFirstTry());
+    if (replacementMasterName == null) {
+      String errMsg =
+          String.format(
+              "No replacement is found for master %s in the universe %s",
+              taskParams().nodeName, universe.getUniverseUUID());
+      log.error(errMsg);
+      throw new RuntimeException(errMsg);
+    }
   }
 
   @Override
@@ -124,7 +135,9 @@ public class MasterFailover extends UniverseDefinitionTaskBase {
       createUpdateUniverseFieldsTask(
           u -> {
             NodeDetails unreachableNode = u.getNode(taskParams().nodeName);
-            unreachableNode.autoSyncMasterAddrs = updateMasterAddrsOnStoppedNode.get() == false;
+            // Always set it to true just in case master comes up before the sync so that it can be
+            // stopped.
+            unreachableNode.autoSyncMasterAddrs = true;
           });
       log.debug(
           "Update master addresses on stopped master node is {}", updateMasterAddrsOnStoppedNode);
@@ -135,10 +148,11 @@ public class MasterFailover extends UniverseDefinitionTaskBase {
       createMasterReplacementTasks(
           universe,
           currentNode,
-          () -> super.findReplacementMaster(universe, currentNode),
+          () -> replacementMasterName == null ? null : universe.getNode(replacementMasterName),
           super.instanceExists(taskParams()),
           true /*ignoreStopErrors*/,
-          updateMasterAddrsOnStoppedNode.get());
+          true /*ignoreMasterAddrsUpdateError*/,
+          true /*keepTserverRunning*/);
       createSetNodeStateTask(currentNode, NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       createSwamperTargetUpdateTask(false);

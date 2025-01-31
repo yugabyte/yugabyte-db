@@ -76,28 +76,30 @@ The `/prometheus-metrics` endpoint supports filtering metrics at both the table 
 
 ### Version
 
-
-| Parameter | Available From | Options | Default | Description |
-| :-------- | :------------- | :------ | :------ | :---------- |
-| `version` | 2.20.2.0 | `v1`, `v2` | `v1` | Determines the endpoint version and the type of regex filters it accepts. <ul><li> `v1`: The endpoint only accepts V1 filters. By default, the table level includes aggregated tablet metrics and table metrics, while the server level includes server metrics.</li><li> `v2`: The endpoint only accepts V2 filters. By default, the table level includes aggregated tablet metrics and table metrics, while the server level includes aggregated tablet metrics, aggregated table metrics, and server metrics.</li></ul> |
+| Parameter | Available From | Options | Description |
+| :-------- | :------------- | :------ | :---------- |
+| `version` | 2.20.2.0 | `v1` (default), `v2` | Determines the endpoint version and the type of regex filters it accepts. <ul><li> `v1`: The endpoint only accepts V1 filters. By default, the table level includes aggregated tablet metrics and table metrics, while the server level includes server metrics.</li><li> `v2`: The endpoint only accepts V2 filters. By default, the table level includes aggregated tablet metrics and table metrics, while the server level includes aggregated tablet metrics, aggregated table metrics, and server metrics.</li></ul> |
 
 ### V1 filters
-| Parameter | Available From | Options | Default | Description |
-| :-------- | :------------- | :------ | :------ | :---------- |
-| `priority_regex` | 2.9.1.0 | `.*`, Empty string, Customized regex | `.*` | Determines which tablet or table type metrics are emitted at the table level. Metrics are emitted if they match `priority_regex`. If `priority_regex=.*`, exposes all metrics at the table level, while an empty string results in no metrics being exposed. |
-| `metrics` | 2.7.2.0 | Customized CSV | Not provided | Specifies a CSV list of metrics to be scraped, regardless of level. Metrics not in this list will not be scraped. If this parameter is not provided, all metrics are scraped and then filtered by `priority_regex`. |
+
+| Parameter | Available From | Options | Description |
+| :-------- | :------------- | :------ | :---------- |
+| `priority_regex` | 2.9.1.0 | `.*` (default), Empty string, Customized&nbsp;regex | Determines which tablet or table type metrics are emitted at the table level. Metrics are emitted if they match `priority_regex`. If `priority_regex=.*`, exposes all metrics at the table level, while an empty string results in no metrics being exposed. |
+| `metrics` | 2.7.2.0 | Customized CSV<br>(No default) | Specifies a CSV list of metrics to be scraped, regardless of level. Metrics not in this list will not be scraped. If this parameter is not provided, all metrics are scraped and then filtered by `priority_regex`. |
 
 ### V2 filters
-| Parameter | Available From | Options | Default | Description |
-| :-------- | :------------- | :------ | :------ | :---------- |
-| `server_allowlist` | 2.20.2.0 | `ALL`, `NONE`, Customized regex | `ALL` | Determines which tablet, table, or server type metrics are emitted at the server level. Metrics are emitted if they match `server_allowlist` and do not match `server_blocklist`. |
-| `server_blocklist` | 2.20.2.0 | `ALL`, `NONE`, Customized regex | `NONE` | Specifies which server-level metrics are blocked. |
-| `table_allowlist` | 2.20.2.0 | `ALL`, `NONE`, Customized regex | `ALL` | Determines which tablet or table type metrics are emitted at the table level. Metrics are emitted if they match `table_allowlist` and do not match `table_blocklist`. |
-| `table_blocklist` | 2.20.2.0 | `ALL`, `NONE`, Customized regex | `NONE` | Specifies which table-level metrics are blocked. |
+
+| Parameter | Available From | Options | Description |
+| :-------- | :------------- | :------ | :---------- |
+| `server_allowlist` | 2.20.2.0 | `ALL` (default), `NONE`, Customized regex | Determines which tablet, table, or server type metrics are emitted at the server level. Metrics are emitted if they match `server_allowlist` and do not match `server_blocklist`. |
+| `server_blocklist` | 2.20.2.0 | `ALL`,<br>`NONE` (default), Customized&nbsp;regex | Specifies which server-level metrics are blocked. |
+| `table_allowlist` | 2.20.2.0 | `ALL` (default), `NONE`, Customized regex | Determines which tablet or table type metrics are emitted at the table level. Metrics are emitted if they match `table_allowlist` and do not match `table_blocklist`. |
+| `table_blocklist` | 2.20.2.0 | `ALL`,<br>`NONE` (default), Customized regex | Specifies which table-level metrics are blocked. |
 
 ### Other parameters
-| Parameter | Available From | Options | Default | Description |
-| :-------- | :------------- | :------ | :------ | :---------- |
-| `max_metric_entries` | 2.21.1.0 | Integer | Value of flag `max_prometheus_metric_entries` | Limits the number of Prometheus metric entries returned in each scrape. |
-| `show_help` | 2.18.4.0 | `true`, `false` | Value of flag `export_help_and_type_in_prometheus_metrics` | Determines whether to include each metric's #TYPE and #HELP in the Prometheus metrics output. |
-| `reset_histograms` | 2.17.1.0 | `true`, `false` | `true` | If set to `false`, percentiles will not be reset each time `/prometheus-metrics` is fetched. Conversely, if set to `true`, percentiles reset with each fetch. |
+
+| Parameter | Available From | Options | Description |
+| :-------- | :------------- | :------ | :---------- |
+| `max_metric_entries` | 2.21.1.0 | Integer. Default is the value of flag `max_prometheus_metric_entries` | Limits the number of Prometheus metric entries returned in each scrape. |
+| `show_help` | 2.18.4.0 | `true`, `false`. Default is the value of flag `export_help_and_type_in_prometheus_metrics` | Determines whether to include each metric's #TYPE and #HELP in the Prometheus metrics output. |
+| `reset_histograms` | 2.17.1.0 | `true`, `false`. Default is `true` | If `false`, percentiles are not reset each time `/prometheus-metrics` is fetched. If `true`, percentiles reset with each fetch. |

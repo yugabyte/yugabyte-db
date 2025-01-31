@@ -104,6 +104,7 @@ public class OtelCollectorConfigFormat {
     private String key;
     private String value;
     private String action;
+    private String from_attribute;
   }
 
   @Data

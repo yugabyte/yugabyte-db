@@ -3,7 +3,7 @@
  * username.c
  *	  get user name
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -30,21 +30,23 @@ static char user_id[MAXPGPATH] = "";
  * YugaByte added functionality
  * Returns the current user name using `id` system command
  */
-const char*
-read_user_id() {
-  if (user_id[0] != '\0') {
-  	return user_id;
-  }
-  if (exec_pipe_read_line("id -un", user_id, MAXPGPATH) != NULL) {
-    /* Trim trailing whitespace */
-    for (int i = strlen(user_id) - 1; i >= 0; i--) {
-      if (isspace(user_id[i])) {
-        user_id[i] = '\0';
-      }
-    }
-    return user_id;
-  }
-  return NULL;
+const char *
+read_user_id()
+{
+	if (user_id[0] != '\0')
+		return user_id;
+
+	if (exec_pipe_read_line("id -un", user_id, MAXPGPATH) != NULL)
+	{
+		/* Trim trailing whitespace */
+		for (int i = strlen(user_id) - 1; i >= 0; i--)
+		{
+			if (isspace(user_id[i]))
+				user_id[i] = '\0';
+		}
+		return user_id;
+	}
+	return NULL;
 }
 
 /*
@@ -64,23 +66,23 @@ get_user_name(char **errstr)
 	pw = getpwuid(user_id);
 	if (!pw)
 	{
-    /*
-     * This is a YugaByte workaround for failures to look up a user by uid
-     * an LDAP environment. This is probably caused by our Linuxbrew
-     * installation issues.
-     * (1) Read username using `id` system command.
-     * (2) If (1) fails, then read YB_PG_FALLBACK_SYSTEM_USER_NAME environment variable
-     */
-	  const char* username = read_user_id();
-	  if (username) {
-	    return username;
-	  }
+		/*
+		 * This is a YugaByte workaround for failures to look up a user by uid
+		 * an LDAP environment. This is probably caused by our Linuxbrew
+		 * installation issues.
+		 * (1) Read username using `id` system command.
+		 * (2) If (1) fails, then read YB_PG_FALLBACK_SYSTEM_USER_NAME environment variable
+		 */
+		const char *username = read_user_id();
 
-		const char* yb_fallback_user_name =
-			getenv("YB_PG_FALLBACK_SYSTEM_USER_NAME");
-		if (yb_fallback_user_name) {
+		if (username)
+			return username;
+
+		const char *yb_fallback_user_name = getenv("YB_PG_FALLBACK_SYSTEM_USER_NAME");
+
+		if (yb_fallback_user_name)
 			return yb_fallback_user_name;
-		}
+
 		*errstr = psprintf(_("could not look up effective user ID %ld: %s"),
 						   (long) user_id,
 						   errno ? strerror(errno) : _("user does not exist"));

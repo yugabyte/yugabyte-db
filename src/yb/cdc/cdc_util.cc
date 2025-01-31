@@ -13,8 +13,6 @@
 
 #include "yb/cdc/cdc_util.h"
 
-#include <boost/functional/hash.hpp>
-
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/util/format.h"
 
@@ -22,14 +20,6 @@ namespace yb::cdc {
 
 std::string TabletStreamInfo::ToString() const {
   return Format("{ stream_id: $1 tablet_id: $2 }", stream_id, tablet_id);
-}
-
-std::size_t TabletStreamInfo::Hash::operator()(const TabletStreamInfo& p) const noexcept {
-  std::size_t hash = 0;
-  boost::hash_combine(hash, p.stream_id);
-  boost::hash_combine(hash, p.tablet_id);
-
-  return hash;
 }
 
 }  // namespace yb::cdc

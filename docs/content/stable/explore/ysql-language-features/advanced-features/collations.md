@@ -6,13 +6,13 @@ menu:
   stable:
     identifier: advanced-features-collations
     parent: advanced-features
-    weight: 240
+    weight: 100
 type: docs
 ---
 
 ## Collation basics
 
-YSQL provides collation support. A _collation_ is a set of rules that define how to compare and sort character strings. YSQL's collation support is based on PostgreSQL with a few [limitations](#ysql-collation-limitations).
+YSQL provides collation support. A _collation_ is a set of rules that define how to compare and sort character strings. YSQL collation support is based on PostgreSQL with a few [limitations](#ysql-collation-limitations).
 
 As in PostgreSQL, most YSQL data types are not related to character strings and therefore are considered _not collatable_. For example:
 

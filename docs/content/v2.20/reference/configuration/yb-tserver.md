@@ -45,6 +45,10 @@ Displays help on all flags.
 
 Displays help on modules named by the specified flag value.
 
+## All flags
+
+The following sections describe the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-TServer flags](../all-flags-yb-tserver/).
+
 ## General flags
 
 ##### --flagfile
@@ -732,6 +736,22 @@ Default: `-1` (disables logging statement durations)
 
 Specifies the lowest YSQL message level to log.
 
+##### --ysql_output_buffer_size
+
+Size of YSQL layer output buffer, in bytes. YSQL buffers query responses in this output buffer until either a buffer flush is requested by the client or the buffer overflows.
+
+As long as no data has been flushed from the buffer, the database can retry queries on retryable errors. For example, you can increase the size of the buffer so that YSQL can retry [read restart errors](../../../architecture/transactions/read-committed/#read-restart-errors).
+
+Default: `262144` (256kB, type: int32)
+
+##### --ysql_yb_bnl_batch_size
+
+{{<tags/feature/ea>}} Sets the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 1
+
 ### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):
@@ -954,7 +974,7 @@ To upgrade from an older version that doesn't support RPC compression (such as 2
 
 ## Security flags
 
-For details on enabling client-server encryption, see [Client-server encryption](../../../secure/tls-encryption/client-to-server/).
+For details on enabling encryption in transit, see [Encryption in transit](../../../secure/tls-encryption/).
 
 ##### --certs_dir
 
@@ -962,17 +982,17 @@ Directory that contains certificate authority, private key, and certificates for
 
 Default: `""` (Uses `<data drive>/yb-data/tserver/data/certs`.)
 
-##### --allow_insecure_connections
-
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
-
-Default: `true`
-
 ##### --certs_for_client_dir
 
 The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
 
-Default: `""` (Use the same directory as for server-to-server communications.)
+Default: `""` (Use the same directory as certs_dir.)
+
+##### --allow_insecure_connections
+
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires the [use_node_to_node_encryption](#use-node-to-node-encryption) to be enabled and [use_client_to_server_encryption](#use-client-to-server-encryption) to be enabled.
+
+Default: `true`
 
 ##### --dump_certificate_entries
 
@@ -982,13 +1002,15 @@ Default: `false`
 
 ##### --use_client_to_server_encryption
 
-Use client-to-server, or client-server, encryption with YCQL.
+Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs.
 
 Default: `false`
 
 ##### --use_node_to_node_encryption
 
-Enable server-server or node-to-node encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
+Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [--use_node_to_node_encryption](../yb-master/#use-node-to-node-encryption) setting enabled.
+
+When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
 
 Default: `false`
 
@@ -1362,15 +1384,9 @@ Default: `1GB`
 
 ##### yb_bnl_batch_size
 
-Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+{{<tags/feature/ea>}} Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
-Default: 1024
-
-##### yb_enable_batchednl
-
-Enable or disable the query planner's use of Batched Nested Loop Join.
-
-Default: true
+Default: 1
 
 ##### yb_fetch_size_limit
 
@@ -1389,6 +1405,24 @@ Maximum number of rows returned in one response when the query layer fetches row
 See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
 
 Default: 1024
+
+##### yb_read_from_followers
+
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/).
+
+Default: false
+
+##### yb_follower_read_staleness_ms
+
+Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+
+Default: 30000 (30 seconds)
+
+##### default_transaction_read_only
+
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/).
+
+Default: false
 
 ##### default_transaction_isolation
 

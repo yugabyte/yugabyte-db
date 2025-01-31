@@ -28,29 +28,20 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.UUID;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.CommonTypes;
-import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.GetLoadMovePercentResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
-import org.yb.master.CatalogEntityInfo;
-import org.yb.util.ServerInfo;
+import org.yb.util.PeerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
-@Slf4j
 public class MasterFailoverTaskTest extends CommissionerBaseTest {
 
   private MockedStatic<MetricGroup> mockedMetricGroup;
@@ -117,21 +108,13 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
               }
               return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
             });
-
-    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
-        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-    ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
-        new ChangeMasterClusterConfigResponse(1112, "", null);
-    GetLoadMovePercentResponse mockGetLoadMovePercentResponse =
-        new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
-    ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
-    ServerInfo mockServerInfo =
-        new ServerInfo(
-            "uuid-1", "10.0.0.4", 7000, false, "TO_BE_ADDED", CommonTypes.PeerRole.FOLLOWER);
-    List<ServerInfo> mockerServerInfoList = new ArrayList();
-    mockerServerInfoList.add(mockServerInfo);
+    when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+        .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true"));
+    ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+    PeerInfo peerInfo = new PeerInfo();
+    peerInfo.setLastKnownPrivateIps(
+        Collections.singletonList(HostAndPort.fromParts("10.0.0.4", 7000)));
+    peerInfo.setMemberType(PeerInfo.MemberType.VOTER);
     mockedMetricGroup = Mockito.mockStatic(MetricGroup.class);
     mockedMetricGroup
         .when(() -> MetricGroup.getTabletFollowerLagMap(any()))
@@ -139,8 +122,8 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
 
     YBClient mockClient = mock(YBClient.class);
     try {
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
-      when(listMastersResponse.getMasters()).thenReturn(mockerServerInfoList);
+      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
+      when(listMastersResponse.getPeersList()).thenReturn(Collections.singletonList(peerInfo));
       when(mockClient.setFlag(any(), any(), any(), anyBoolean())).thenReturn(true);
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
@@ -152,6 +135,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
     }
     super.setLeaderlessTabletsMock();
     super.setFollowerLagMock();
+    super.setMockLiveTabletServers(mockClient, defaultUniverse);
   }
 
   @Test

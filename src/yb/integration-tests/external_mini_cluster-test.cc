@@ -157,7 +157,21 @@ TEST_F(EMCTest, TestYSQLShutdown) {
   opts.master_rpc_ports = master_peer_ports_;
   opts.enable_ysql = true;
 
+  // ASH collector creates a postgres backend, which fires an OpenTable RPC to open the
+  // pg_yb_role_profile relation. Sometimes, the ASH collector can start up after all
+  // the masters are dead and this RPC can get stuck because all the masters are dead.
+  // We need to reduce this RPC's timeout so that it times out and ASH collector can
+  // gracefully shutdown before max_graceful_shutdown_wait is over.
+  static constexpr int kYbAdminClientTimeoutOperationSec = 15;
+
+  opts.extra_master_flags.push_back(Format("--yb_client_admin_operation_timeout_sec=$0",
+      kYbAdminClientTimeoutOperationSec));
+  opts.extra_tserver_flags.push_back(Format("--yb_client_admin_operation_timeout_sec=$0",
+      kYbAdminClientTimeoutOperationSec));
+
   ExternalMiniCluster cluster(opts);
+  cluster.SetMaxGracefulShutdownWaitSec(kYbAdminClientTimeoutOperationSec * 4);
+
   ASSERT_OK(cluster.Start());
 
   cluster.Shutdown();

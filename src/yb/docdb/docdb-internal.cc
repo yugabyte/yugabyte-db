@@ -16,7 +16,6 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/dockv/value_type.h"
 
 namespace yb {

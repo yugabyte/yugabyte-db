@@ -33,11 +33,13 @@
 
 #include <memory>
 
+#include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/util/callsite_profiling.h"
@@ -65,12 +67,6 @@ DEFINE_RUNTIME_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
-DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
-                    "Enable the Auto Analyze service which automatically triggers ANALYZE to "
-                    "update table statistics for tables which have changed more than a "
-                    "configurable threshold.");
-TAG_FLAG(ysql_enable_auto_analyze_service, experimental);
-
 DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_start, false,
                  "Pause the bg tasks thread at the beginning of the loop.");
 
@@ -80,22 +76,29 @@ DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_end, false,
 DEFINE_test_flag(bool, cdcsdk_skip_processing_dynamic_table_addition, false,
                 "Skip finding unprocessed tables for cdcsdk streams");
 
+DEFINE_test_flag(bool, cdcsdk_skip_processing_unqualified_tables, false,
+                 "Skip the bg task that finds and removes unprocessed unqualified tables from "
+                 "cdcsdk streams.");
+
 DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
+DECLARE_bool(ysql_enable_auto_analyze_service);
+DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 
 namespace yb {
 namespace master {
 
 typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
 
-CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
+CatalogManagerBgTasks::CatalogManagerBgTasks(Master* master)
     : closing_(false),
       pending_updates_(false),
       cond_(&lock_),
       thread_(nullptr),
-      catalog_manager_(catalog_manager),
+      master_(master),
+      catalog_manager_(master->catalog_manager_impl()),
       load_balancer_duration_(METRIC_load_balancer_duration.Instantiate(
-          catalog_manager->master_->metric_entity())) {
+          master_->metric_entity())) {
 }
 
 void CatalogManagerBgTasks::Wake() {
@@ -174,7 +177,7 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(
 }
 
 void CatalogManagerBgTasks::ClearDeadTServerMetrics() const {
-  auto descs = catalog_manager_->master_->ts_manager()->GetAllDescriptors();
+  auto descs = master_->ts_manager()->GetAllDescriptors();
   for (auto& ts_desc : descs) {
     if (!ts_desc->IsLive()) {
       ts_desc->ClearMetrics();
@@ -199,6 +202,9 @@ void CatalogManagerBgTasks::Run() {
             "Failed to create Test Echo service");
       }
 
+      WARN_NOT_OK(catalog_manager_->ysql_manager_->CreateYbAdvisoryLocksTableIfNeeded(l.epoch()),
+                  "Failed to create YB advisory locks table");
+
       // TODO(auto-analyze, #19464): we allow enabling this service at runtime. We should also allow
       // disabling this service at runtime i.e., the service should stop on the tserver hosting it
       // when the flag is set to false.
@@ -212,6 +218,10 @@ void CatalogManagerBgTasks::Run() {
 
       // Cleanup old tasks from tracker.
       catalog_manager_->tasks_tracker_->CleanupOldTasks();
+
+      // Mark unresponsive tservers.
+      WARN_NOT_OK(catalog_manager_->master_->ts_manager()->MarkUnresponsiveTServers(l.epoch()),
+                  "Failed to update sys catalog with unresponsive tservers");
 
       TabletInfos to_delete;
       TableToTabletInfos to_process;
@@ -268,10 +278,10 @@ void CatalogManagerBgTasks::Run() {
         tables = std::vector(std::begin(tables_it), std::end(tables_it));
         tablet_info_map = *catalog_manager_->tablet_map_;
       }
-      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(
+      master_->tablet_split_manager().MaybeDoSplitting(
           tables, tablet_info_map, l.epoch());
 
-      WARN_NOT_OK(catalog_manager_->clone_state_manager()->Run(),
+      WARN_NOT_OK(master_->clone_state_manager().Run(),
           "Failed to run CloneStateManager: ");
 
       if (!to_delete.empty() || catalog_manager_->AreTablesDeletingOrHiding()) {
@@ -304,6 +314,53 @@ void CatalogManagerBgTasks::Run() {
         }
       }
 
+      {
+        if (FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
+          // Find if there are any non eligible tables (indexes, mat views) present in cdcsdk
+          // stream that are not associated with a replication slot.
+          TableStreamIdsMap non_user_tables_to_streams_map;
+          // In case of master leader restart or leadership changes, we would have scanned all
+          // streams (without replication slot) in ACTIVE/DELETING METADATA state for non eligible
+          // tables and marked such tables for removal in
+          // namespace_to_cdcsdk_non_eligible_table_map_.
+          Status s = catalog_manager_->FindCDCSDKStreamsForNonEligibleTables(
+              &non_user_tables_to_streams_map);
+
+          if (s.ok() && !non_user_tables_to_streams_map.empty()) {
+            s = catalog_manager_->ProcessTablesToBeRemovedFromCDCSDKStreams(
+                non_user_tables_to_streams_map, /* non_eligible_table_cleanup */ true, l.epoch());
+          }
+          if (!s.ok()) {
+            YB_LOG_EVERY_N(WARNING, 10)
+                << "Encountered failure while trying to remove non eligible "
+                   "tables from cdc_state table: "
+                << s.ToString();
+          }
+        }
+      }
+
+      {
+        if (FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup &&
+            !FLAGS_TEST_cdcsdk_skip_processing_unqualified_tables) {
+          TableStreamIdsMap tables_to_be_removed_streams_map;
+          Status s = catalog_manager_->FindCDCSDKStreamsForUnprocessedUnqualifiedTables(
+              &tables_to_be_removed_streams_map);
+
+          if (s.ok() && !tables_to_be_removed_streams_map.empty()) {
+            s = catalog_manager_->ProcessTablesToBeRemovedFromCDCSDKStreams(
+                tables_to_be_removed_streams_map, /* non_eligible_table_cleanup */ false,
+                l.epoch());
+          }
+
+          if (!s.ok()) {
+            YB_LOG_EVERY_N(WARNING, 10)
+                << "Encountered failure while trying to remove unqualified "
+                   "tables from stream metadata & updating cdc_state table: "
+                << s.ToString();
+          }
+        }
+      }
+
       // Ensure the master sys catalog tablet follows the cluster's affinity specification.
       if (FLAGS_sys_catalog_respect_affinity_task) {
         Status s = catalog_manager_->SysCatalogRespectLeaderAffinity();
@@ -313,10 +370,7 @@ void CatalogManagerBgTasks::Run() {
       }
 
       if (FLAGS_enable_ysql) {
-        // Start the tablespace background task.
         catalog_manager_->StartTablespaceBgTaskIfStopped();
-
-        // Start the pg catalog versions background task.
         catalog_manager_->StartPgCatalogVersionsBgTaskIfStopped();
       }
 
@@ -326,7 +380,7 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->GetXClusterManager()->RunBgTasks(l.epoch());
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
-      catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();
+      master_->ysql_backends_manager()->AbortInactiveJobs();
 
       // Set the universe_uuid field in the cluster config if not already set.
       WARN_NOT_OK(catalog_manager_->SetUniverseUuidIfNeeded(l.epoch()),
@@ -340,7 +394,7 @@ void CatalogManagerBgTasks::Run() {
         load_balancer_duration_->Reset();
         catalog_manager_->ResetMetrics();
         catalog_manager_->ResetTasksTrackers();
-        catalog_manager_->master_->ysql_backends_manager()->AbortAllJobs();
+        master_->ysql_backends_manager()->AbortAllJobs();
         was_leader_ = false;
       }
     }

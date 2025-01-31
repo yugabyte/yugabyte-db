@@ -3,8 +3,6 @@ title: Diagnostics reporting in YugabyteDB
 headerTitle: Diagnostics reporting
 linkTitle: Diagnostics reporting
 description: Enable diagnostics reporting and set collection levels on YB-Master and YB-TServer nodes.
-aliases:
-  - /preview/manage/diagnostics-reporting/
 menu:
   preview:
     identifier: diagnostics-reporting
@@ -15,7 +13,7 @@ type: docs
 
 By default, the [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes report cluster diagnostics to the Yugabyte diagnostics service every time a new cluster gets created and every hour thereafter.
 
-No data stored in YugabyteDB or personally identifiable information is collected or reported.
+The data is transferred over a secure connection. None of your data stored in YugabyteDB, or personally identifiable information is collected or reported.
 
 ## Data collected
 
@@ -33,7 +31,7 @@ The following data is collected:
 - Number of tablet servers (yb-tserver processes)
 - Number of tables
 - Number of tablets
-- Cluster configuration (gflags)
+- Cluster configuration (flags - non-string or non-sensitive only)
 - Host name (for each node where yb-master and yb-tserver processes are running)
 - Username (for each node where yb-master and yb-tserver processes are running)
 
@@ -116,7 +114,7 @@ You can add the following configuration flags while starting the [YB-Master](../
 
 | Flag | Default | Description |
 |:-----|:--------|:----------- |
-| `--callhome_collection_level` | `medium` | Collection level with possible values of `low`, `medium`, or `high`
-| `--callhome_interval_secs` | 3600 | Collection interval in seconds
-| `--callhome_url ` | `http://diagnostics.yugabyte.com` | Endpoint where diagnostics information is reported.
+| `--callhome_collection_level` | `medium` | Collection level with possible values of `low`, `medium`, or `high`. |
+| `--callhome_interval_secs` | 3600 | Collection interval in seconds. |
+| `--callhome_url ` | `https://diagnostics.yugabyte.com` | Endpoint where diagnostics information is reported. |
 | `--callhome_enabled` | `true` | Controls whether diagnostics information is collected and reported. Set to `false` to disable collection. |

@@ -11,13 +11,19 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/rbac"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/runtimeconfiguration"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/task"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/tools"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/user"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/xcluster"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/log"
 
@@ -68,7 +74,7 @@ func init() {
 	rootCmd.PersistentFlags().StringP("host", "H", "http://localhost:9000",
 		"YugabyteDB Anywhere Host")
 	rootCmd.PersistentFlags().StringP("apiToken", "a", "", "YugabyteDB Anywhere api token.")
-	rootCmd.PersistentFlags().StringP("output", "o", "table",
+	rootCmd.PersistentFlags().StringP("output", "o", formatter.TableFormatKey,
 		"Select the desired output format. Allowed values: table, json, pretty.")
 	rootCmd.PersistentFlags().StringP("logLevel", "l", "info",
 		"Select the desired log level format. Allowed values: debug, info, warn, error, fatal.")
@@ -92,12 +98,19 @@ func init() {
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(auth.LoginCmd)
 	rootCmd.AddCommand(auth.RegisterCmd)
-	rootCmd.AddCommand(releases.ReleasesCmd)
+	rootCmd.AddCommand(auth.HostCmd)
+	rootCmd.AddCommand(release.ReleaseCmd)
 	rootCmd.AddCommand(provider.ProviderCmd)
 	rootCmd.AddCommand(universe.UniverseCmd)
 	rootCmd.AddCommand(storageconfiguration.StorageConfigurationCmd)
 	rootCmd.AddCommand(backup.BackupCmd)
 	rootCmd.AddCommand(task.TaskCmd)
+	rootCmd.AddCommand(eit.EITCmd)
+	rootCmd.AddCommand(ear.EARCmd)
+	rootCmd.AddCommand(runtimeconfiguration.RuntimeConfigurationCmd)
+	rootCmd.AddCommand(rbac.RBACCmd)
+	rootCmd.AddCommand(user.UserCmd)
+	rootCmd.AddCommand(xcluster.XClusterCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
 	// Example for adding preview commands to the list of available commands
@@ -118,7 +131,7 @@ func Execute(version string) {
 
 func setDefaults() {
 	viper.SetDefault("host", "http://localhost:9000")
-	viper.SetDefault("output", "table")
+	viper.SetDefault("output", formatter.TableFormatKey)
 	viper.SetDefault("logLevel", "info")
 	viper.SetDefault("debug", false)
 	viper.SetDefault("disable-color", false)

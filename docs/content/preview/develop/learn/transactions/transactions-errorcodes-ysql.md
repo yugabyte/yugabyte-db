@@ -77,18 +77,6 @@ FATAL:  25P03: terminating connection due to idle-in-transaction timeout
 The client can reconnect to the server and retry the transaction.
 {{</note>}}
 
-## 40001: Serialization failure
-
-This error occurs when a transaction cannot be applied or progress further because of other conflicting transactions. For example, when multiple transactions are modifying the same key.
-
-```output
-ERROR:  40001: Operation expired: Transaction XXXX expired or aborted by a conflict
-```
-
-{{<lead link="../transactions-retries-ysql/#client-side-retry">}}
-Serialization failure errors can be retried by the client. See [Client-side retry](../transactions-retries-ysql/#client-side-retry).
-{{</lead>}}
-
 ## 2D000: Invalid transaction termination
 
 This error occurs when a transaction is terminated either by a `COMMIT` or a `ROLLBACK` in an invalid location. For example, when a `COMMIT` is issued inside a stored procedure that is called from inside a transaction.
@@ -103,7 +91,7 @@ ERROR:  2D000: invalid transaction termination
 
 ## 3B001: Invalid savepoint specification
 
-This error occurs when you try to `ROLLBACK` to or `RELEASE` a savepoint that has not been defined.
+This error occurs when you try to `ROLLBACK` to, or `RELEASE` a savepoint that has not been defined.
 
 ```output
 ERROR:  3B001: savepoint "FIRST_SAVE" does not exist
@@ -112,6 +100,62 @@ ERROR:  3B001: savepoint "FIRST_SAVE" does not exist
 {{<note>}}
 **3B001** errors are [Non-retriable](../transactions-retries-ysql/#non-retriable-errors). The transaction code needs to be fixed to specify the correct savepoint name to fix this error.
 {{</note>}}
+
+## 40001: Serialization failure
+
+This error occurs when a transaction cannot be applied or progress further because of other conflicting transactions. For example, when multiple transactions are modifying the same key.
+
+```output
+ERROR:  could not serialize access due to concurrent update (...)
+```
+
+{{<lead link="../transactions-retries-ysql/#client-side-retry">}}
+Serialization failure errors can be retried by the client. See [Client-side retry](../transactions-retries-ysql/#client-side-retry).
+{{</lead>}}
+
+## 40P01: Deadlock detected
+
+This error occurs when two or more transactions wait on each other to form a deadlock cycle. One or more of the transactions in the cycle are aborted and they fail with the following error.
+
+```output
+ERROR:  deadlock detected (...)
+```
+
+{{<lead link="../transactions-retries-ysql/#client-side-retry">}}
+Deadlock detected errors can be retried by the client. See [Client-side retry](../transactions-retries-ysql/#client-side-retry).
+{{</lead>}}
+
+## 42XXX - Syntax Error or Access Rule Violation
+
+Error codes starting with 42 typically relate to issues with SQL syntax, invalid references, or access permissions.
+
+{{<warning>}}
+Retrying these errors will likely have no effect unless the respective issue is fixed.
+{{</warning>}}
+
+Some of the errors are described in the following table:
+
+| Code  |                                          Issue                                          |
+| ----- | --------------------------------------------------------------------------------------- |
+| 42000 | Syntax Error or Access Rule Violation (general class)                                   |
+| 42601 | Syntax Error (invalid or unexpected SQL syntax)                                         |
+| 42501 | Insufficient Privilege (lack of necessary permissions to perform the operation)         |
+| 42846 | Cannot Coerce (incompatible data types in an operation or query)                        |
+| 42883 | Undefined Function (referencing a function that doesn't exist or is incorrectly called) |
+| 42P01 | Undefined Table (trying to reference a table that doesn't exist)                        |
+| 42P02 | Undefined Parameter (using a parameter that has not been defined)                       |
+| 42P03 | Duplicate Cursor (declaring a cursor that already exists)                               |
+| 42703 | Undefined Column (referencing a column that doesn't exist in the table)                 |
+| 42P04 | Duplicate Database (attempting to create a database that already exists)                |
+| 42P05 | Duplicate Prepared Statement (trying to prepare a statement that already exists)        |
+| 42P06 | Duplicate Schema (attempting to create a schema that already exists)                    |
+| 42P07 | Duplicate Table (attempting to create a table that already exists)                      |
+| 42P08 | Ambiguous Parameter (parameter is ambiguous in context)                                 |
+| 42P09 | Ambiguous Alias (alias is ambiguous, referring to multiple possible options)            |
+| 42P10 | Invalid Column Reference (column reference is incorrect or inappropriate)               |
+| 42P11 | Invalid Cursor Definition (cursor declaration is invalid)                               |
+| 42P12 | Invalid Database Definition (invalid database creation or operation)                    |
+| 42P13 | Invalid Function Definition (improper definition of a function)                         |
 
 ## Learn more
 

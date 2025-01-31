@@ -122,7 +122,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // complete by calling WaitInited().
   Status Init() override;
 
-  virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
+  virtual Status InitFlags(rpc::Messenger* messenger) override;
 
   virtual bool ShouldExportLocalCalls() override {
     return true;
@@ -149,6 +149,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
+  tablet::TSLocalLockManager* ts_local_lock_manager() const override {
+    return ts_local_lock_manager_.get();
+  }
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
 
@@ -187,6 +190,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
+  Status BootstrapDdlObjectLocks(const master::ClientOperationLeaseUpdatePB& lease_update);
 
   Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const EXCLUDES(lock_) override;
@@ -229,11 +233,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return publish_service_ptr_.get();
   }
 
-  void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version);
-  void SetYsqlDBCatalogVersions(const master::DBCatalogVersionDataPB& db_catalog_version_data);
+  void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) EXCLUDES(lock_);
+  void SetYsqlDBCatalogVersions(const master::DBCatalogVersionDataPB& db_catalog_version_data)
+      EXCLUDES(lock_);
 
   void get_ysql_catalog_version(uint64_t* current_version,
-                                uint64_t* last_breaking_version) const override {
+                                uint64_t* last_breaking_version) const EXCLUDES(lock_) override {
     std::lock_guard l(lock_);
     if (current_version) {
       *current_version = ysql_catalog_version_;
@@ -243,9 +248,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
-  void get_ysql_db_catalog_version(uint32_t db_oid,
-                                   uint64_t* current_version,
-                                   uint64_t* last_breaking_version) const override {
+  void get_ysql_db_catalog_version(
+      uint32_t db_oid,
+      uint64_t* current_version,
+      uint64_t* last_breaking_version) const EXCLUDES(lock_) override {
     std::lock_guard l(lock_);
     auto it = ysql_db_catalog_version_map_.find(db_oid);
     bool not_found = it == ysql_db_catalog_version_map_.end();
@@ -262,14 +268,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
-  std::optional<bool> catalog_version_table_in_perdb_mode() const {
+  std::optional<bool> catalog_version_table_in_perdb_mode() const EXCLUDES(lock_) {
     std::lock_guard l(lock_);
     return catalog_version_table_in_perdb_mode_;
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
-      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
+      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const EXCLUDES(lock_) override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -313,7 +319,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void RegisterCertificateReloader(CertificateReloader reloader) override;
 
-  const TserverXClusterContextIf& GetXClusterContext() const;
+  TserverXClusterContextIf& GetXClusterContext() const;
 
   PgMutationCounter& GetPgNodeLevelMutationCounter();
 
@@ -322,6 +328,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   encryption::UniverseKeyManager* GetUniverseKeyManager();
 
+  Status XClusterPopulateMasterHeartbeatRequest(
+      master::TSHeartbeatRequestPB& req, bool needs_full_tablet_report);
   Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
@@ -336,9 +344,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status ReloadKeysAndCertificates() override;
   std::string GetCertificateDetails() override;
 
-  PgClientServiceImpl* TEST_GetPgClientService() {
-    return pg_client_service_.lock().get();
-  }
+  PgClientServiceImpl* TEST_GetPgClientService();
+
+  PgClientServiceMockImpl* TEST_GetPgClientServiceMock();
 
   RemoteBootstrapServiceImpl* GetRemoteBootstrapService() {
     if (auto service_ptr = remote_bootstrap_service_.lock()) {
@@ -362,7 +370,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void ClearAllMetaCachesOnServer() override;
 
+  Status ClearMetacache(const std::string& namespace_id) override;
+
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
+
+  Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
+
+  Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) override;
 
   void TEST_SetIsCronLeader(bool is_cron_leader);
 
@@ -382,7 +396,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
 
+  Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
+
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
+
+  Result<pgwrapper::PGConn> CreateInternalPGConn(
+      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
 
   std::atomic<bool> initted_{false};
 
@@ -443,7 +462,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
-  tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_;
+  tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_ GUARDED_BY(lock_);
   // See same variable comments in CatalogManager.
   std::optional<bool> catalog_version_table_in_perdb_mode_{std::nullopt};
 
@@ -467,9 +486,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // RpcAndWebServerBase is shut down.
   std::weak_ptr<RemoteBootstrapServiceImpl> remote_bootstrap_service_;
 
+  struct PgClientServiceHolder;
+
   // An instance to pg client service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
-  std::weak_ptr<PgClientServiceImpl> pg_client_service_;
+  std::weak_ptr<PgClientServiceHolder> pg_client_service_;
 
   // Key to shared memory for ysql connection manager stats
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
@@ -511,7 +532,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
 
-  std::unique_ptr<stateful_service::PgCronLeaderService> pg_cron_leader_service_;
+  // Lock Manager to maintain table/object locking activity in memory.
+  std::unique_ptr<tablet::TSLocalLockManager> ts_local_lock_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

@@ -10,6 +10,12 @@ List AWS YugabyteDB Anywhere providers
 yba provider aws list [flags]
 ```
 
+### Examples
+
+```
+yba provider aws list
+```
+
 ### Options
 
 ```

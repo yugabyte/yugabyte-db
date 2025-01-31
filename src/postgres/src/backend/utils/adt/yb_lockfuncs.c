@@ -26,7 +26,7 @@
 
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
-#include "executor/ybcFunction.h"
+#include "executor/ybFunction.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "utils/array.h"
@@ -53,10 +53,10 @@ yb_lock_status(PG_FUNCTION_ARGS)
 	}
 
 	/*
-	 *  If this is not a superuser, do not return actual user data.
+	 *  If this is not a YB admin, do not return actual user data.
 	 *  TODO: Remove this as soon as we mask out user data.
 	 */
-	if (!superuser_arg(GetUserId()) || !IsYbDbAdminUser(GetUserId()))
+	if (!IsYbDbAdminUser(GetUserId()))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						errmsg("permission denied: user must must be a "
@@ -66,7 +66,7 @@ yb_lock_status(PG_FUNCTION_ARGS)
 
 	if (SRF_IS_FIRSTCALL())
 	{
-		TupleDesc	  tupdesc;
+		TupleDesc	tupdesc;
 		MemoryContext oldcontext;
 
 		/* create a function context for cross-call persistence */
@@ -79,7 +79,7 @@ yb_lock_status(PG_FUNCTION_ARGS)
 
 		/* build tupdesc for result tuples */
 		/* this had better match function's declaration in pg_proc.h */
-		tupdesc = CreateTemplateTupleDesc(YB_NUM_LOCK_STATUS_COLUMNS, false);
+		tupdesc = CreateTemplateTupleDesc(YB_NUM_LOCK_STATUS_COLUMNS);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "locktype",
 						   TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "database",
@@ -144,13 +144,13 @@ yb_lock_status(PG_FUNCTION_ARGS)
 	funcctx = SRF_PERCALL_SETUP();
 	yb_funcctx = funcctx->user_fctx;
 
-	Datum values[YB_NUM_LOCK_STATUS_COLUMNS];
-	bool  nulls[YB_NUM_LOCK_STATUS_COLUMNS];
+	Datum		values[YB_NUM_LOCK_STATUS_COLUMNS];
+	bool		nulls[YB_NUM_LOCK_STATUS_COLUMNS];
 
 	while (YbSRFGetNext(yb_funcctx, (uint64_t *) values, nulls))
 	{
-		HeapTuple tuple;
-		Datum	  result;
+		HeapTuple	tuple;
+		Datum		result;
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);

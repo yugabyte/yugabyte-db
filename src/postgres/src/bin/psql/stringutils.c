@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * src/bin/psql/stringutils.c
  */
@@ -11,8 +11,6 @@
 
 #include "common.h"
 #include "stringutils.h"
-
-#define PQmblenBounded(s, e)  strnlen(s, PQmblen(s, e))
 
 
 /*
@@ -284,6 +282,7 @@ strip_quotes(char *source, char quote, char escape, int encoding)
  * entails_quote -	any of these present?  need outer quotes
  * quote -			doubled within string, affixed to both ends
  * escape -			doubled within string
+ * force_quote -	if true, quote the output even if it doesn't "need" it
  * encoding -		the active character-set encoding
  *
  * Do not use this as a substitute for PQescapeStringConn().  Use it for
@@ -291,12 +290,13 @@ strip_quotes(char *source, char quote, char escape, int encoding)
  */
 char *
 quote_if_needed(const char *source, const char *entails_quote,
-				char quote, char escape, int encoding)
+				char quote, char escape, bool force_quote,
+				int encoding)
 {
 	const char *src;
 	char	   *ret;
 	char	   *dst;
-	bool		need_quotes = false;
+	bool		need_quotes = force_quote;
 
 	Assert(source != NULL);
 	Assert(quote != '\0');

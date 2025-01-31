@@ -1,0 +1,2 @@
+# src/test/regress/yb_pg_constraints_schedule
+test: yb_pg_constraints

@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -74,6 +75,18 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
               true /* isSoftwareRollbackAllowed */);
 
+          Universe universe = getUniverse();
+          boolean ysqlMajorVersionUpgrade =
+              gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, newVersion)
+                  && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+
+          if (ysqlMajorVersionUpgrade) {
+            throw new PlatformServiceException(
+                Status.BAD_REQUEST, "Cannot upgrade to this version with PG15 upgrade enabled");
+          }
+
+          String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
+
           // Create Kubernetes Upgrade Task
           createUpgradeTask(
               getUniverse(),
@@ -81,7 +94,7 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
               true,
               true,
               taskParams().isEnableYbc(),
-              taskParams().getYbcSoftwareVersion());
+              stableYbcVersion);
 
           createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID());
 
@@ -98,6 +111,11 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
           // Mark the final software version on the universe
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
+
+          if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+            createPodDisruptionBudgetPolicyTask(false /* deletePDB */)
+                .setSubTaskGroupType(getTaskSubGroupType());
+          }
 
           if (!taskParams().rollbackSupport) {
             createFinalizeUpgradeTasks(taskParams().upgradeSystemCatalog);

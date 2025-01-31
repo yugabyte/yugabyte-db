@@ -28,7 +28,7 @@ namespace docdb {
 // Implementation of YQLStorageIf with rocksdb as a backend. This is what all of our QL tables use.
 class QLRocksDBStorage : public YQLStorageIf {
  public:
-  explicit QLRocksDBStorage(const DocDB& doc_db);
+  explicit QLRocksDBStorage(const std::string& log_prefix, const DocDB& doc_db);
 
   //------------------------------------------------------------------------------------------------
   // CQL Support.
@@ -40,8 +40,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const qlexpr::QLScanSpec& spec,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<YQLRowwiseIteratorIf> *iter,
-      const docdb::DocDBStatistics* statistics = nullptr) const override;
+      std::unique_ptr<YQLRowwiseIteratorIf> *iter) const override;
 
   Status BuildYQLScanSpec(
       const QLReadRequestPB& request,
@@ -59,8 +58,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       const ReadOperationData& read_operation_data,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      YQLRowwiseIteratorIf::UniPtr* iter,
-      const docdb::DocDBStatistics* statistics = nullptr) const override;
+      YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
   Status InitIterator(DocRowwiseIterator* doc_iter,
                       const PgsqlReadRequestPB& request,
@@ -75,25 +73,31 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const dockv::DocKey& start_doc_key,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      YQLRowwiseIteratorIf::UniPtr* iter,
-      const docdb::DocDBStatistics* statistics = nullptr) const override;
+      YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
-  Status GetIteratorForYbctid(
+  Result<std::unique_ptr<YQLRowwiseIteratorIf>> GetIteratorForYbctid(
       uint64 stmt_id,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const ReadOperationData& read_operation_data,
-      const QLValuePB& min_ybctid,
-      const QLValuePB& max_ybctid,
+      const YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      YQLRowwiseIteratorIf::UniPtr* iter,
-      const docdb::DocDBStatistics* statistics = nullptr,
       SkipSeek skip_seek = SkipSeek::kFalse) const override;
+
+  Result<SampleBlocksData> GetSampleBlocks(
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      DocDbBlocksSamplingMethod blocks_sampling_method,
+      size_t num_blocks_for_sample) const override;
 
   std::string ToString() const override;
 
  private:
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+  const std::string log_prefix_;
   const DocDB doc_db_;
 };
 

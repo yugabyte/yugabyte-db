@@ -4,12 +4,17 @@ package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import play.data.validation.Constraints;
 
 /**
  * This class will be used by the API and UI Form Elements to validate constraints for the custom
  * certificate Data.
  */
+@ApiModel(
+    description =
+        "Certificate Params is used to validate constraints for the custom certificate Data")
 public class CertificateParams {
   @Constraints.Required() public String label;
 
@@ -19,6 +24,7 @@ public class CertificateParams {
 
   @Constraints.Required() public String certContent;
 
+  @ApiModelProperty(required = false)
   public String keyContent;
 
   public CertConfigType certType = CertConfigType.SelfSigned;
@@ -35,6 +41,7 @@ public class CertificateParams {
     public String clientKeyPath;
   }
 
+  @ApiModelProperty(required = false)
   public CustomCertInfo customCertInfo;
 
   /** This is used for accepting custom server certificates for Node-to-client communication. */
@@ -43,7 +50,9 @@ public class CertificateParams {
     public String serverKeyContent;
   }
 
+  @ApiModelProperty(required = false)
   public CustomServerCertData customServerCertData;
 
+  @ApiModelProperty(required = false)
   public HashicorpVaultConfigParams hcVaultCertParams;
 }

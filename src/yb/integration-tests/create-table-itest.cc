@@ -60,8 +60,8 @@ class CreateTableITest : public CreateTableITestBase {
   Result<pgwrapper::PGConn> ConnectToDB(
       const std::string& dbname, bool simple_query_protocol = false) {
     return pgwrapper::PGConnBuilder({
-      .host = cluster_->pgsql_hostport(0).host(),
-      .port = cluster_->pgsql_hostport(0).port(),
+      .host = cluster_->ysql_hostport(0).host(),
+      .port = cluster_->ysql_hostport(0).port(),
       .dbname = dbname
     }).Connect(simple_query_protocol);
   }
@@ -81,7 +81,7 @@ TEST_F(CreateTableITest, DISABLED_TestCreateRedisTable) {
                           Substitute("--placement_zone=$0", zone)};
   ASSERT_NO_FATALS(StartCluster(flags, flags, kNumReplicas));
 
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(kNumReplicas);
   auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
   auto* cloud_info = placement_block->mutable_cloud_info();
@@ -107,7 +107,7 @@ TEST_F(CreateTableITest, DISABLED_TestCreateWithPlacement) {
                           Substitute("--placement_zone=$0", zone)};
   ASSERT_NO_FATALS(StartCluster(flags, flags, kNumReplicas));
 
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(kNumReplicas);
   auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
   auto* cloud_info = placement_block->mutable_cloud_info();
@@ -874,7 +874,7 @@ TEST_F(CreateTableITest, OnlyMajorityReplicasWithPlacement) {
   LOG(INFO) << "Started an RF3 cluster with 3 tservers in c.r.z0,c.r.z1,c.r.z2 and 1 master";
 
   // Modify placement info to contain at least one replica in each of the three zones.
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   auto* placement_info = replication_info.mutable_live_replicas();
   PreparePlacementInfo({ {"z0", 1}, {"z1", 1}, {"z2", 1} }, 3, placement_info);
 
@@ -973,7 +973,7 @@ TEST_F(CreateTableITest, OnlyMajorityReplicasWithPlacement) {
   // Result: Create Table should succeed.
 
   // Increase the number of replicas to 5 with the same placement config.
-  master::ReplicationInfoPB replication_info2;
+  ReplicationInfoPB replication_info2;
   auto* placement_info2 = replication_info2.mutable_live_replicas();
   PreparePlacementInfo({ {"z0", 1}, {"z1", 1}, {"z2", 1} }, 5, placement_info2);
 
@@ -1015,7 +1015,7 @@ TEST_F(CreateTableITest, OnlyMajorityReplicasWithPlacement) {
   // Result: Create Table should succeed despite having 0 read replica nodes.
 
   // Modify Placement info to contain a read replica also.
-  master::ReplicationInfoPB replication_info3;
+  ReplicationInfoPB replication_info3;
   auto* placement_info3 = replication_info3.mutable_live_replicas();
   PreparePlacementInfo({ {"z0", 1}, {"z1", 1}, {"z2", 1} }, 5, placement_info3);
   auto* read_placement_info = replication_info3.add_read_replicas();
@@ -1027,7 +1027,7 @@ TEST_F(CreateTableITest, OnlyMajorityReplicasWithPlacement) {
   // Try creating a table. It should succeed.
   YBTableName table_name5(kNamespaceType, kNamespaceName, kTableName5);
   std::unique_ptr<client::YBTableCreator> table_creator5(client_->NewTableCreator());
-  ASSERT_OK(table_creator1->table_name(table_name5)
+  ASSERT_OK(table_creator5->table_name(table_name5)
                             .schema(&client_schema)
                             .num_tablets(kNumTablets)
                             .wait(true)
@@ -1108,6 +1108,9 @@ TEST_F(CreateTableITest, LazySuperblockFlushMultiTablePersistence) {
   // Minimize log retention.
   ts_flags.push_back("--log_min_segments_to_retain=1");
   ts_flags.push_back("--log_min_seconds_to_retain=0");
+
+  // Prevent the flag validator from failing when FLAGS_log_min_seconds_to_retain is also set to 0
+  ts_flags.push_back("--xcluster_checkpoint_max_staleness_secs=0");
 
   // Minimize log replay.
   ts_flags.push_back("--retryable_request_timeout_secs=0");

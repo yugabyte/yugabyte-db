@@ -16,6 +16,7 @@ package yb.master;
 
 option java_package = "org.yb.master";
 
+import "yb/common/common_net.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
@@ -177,6 +178,48 @@ message DdlLogResponsePB {
   repeated DdlLogEntryPB entries = 2;
 }
 
+message StartYsqlMajorCatalogUpgradeRequestPB {}
+
+message StartYsqlMajorCatalogUpgradeResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsYsqlMajorCatalogUpgradeDoneRequestPB {}
+
+message IsYsqlMajorCatalogUpgradeDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool done = 2;
+}
+
+message FinalizeYsqlMajorCatalogUpgradeRequestPB {}
+
+message FinalizeYsqlMajorCatalogUpgradeResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message RollbackYsqlMajorCatalogVersionRequestPB {}
+
+message RollbackYsqlMajorCatalogVersionResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message GetYsqlMajorCatalogUpgradeStateRequestPB {}
+
+enum YsqlMajorCatalogUpgradeState {
+  YSQL_MAJOR_CATALOG_UPGRADE_UNINITIALIZED = 0;
+  YSQL_MAJOR_CATALOG_UPGRADE_DONE = 1;
+  YSQL_MAJOR_CATALOG_UPGRADE_PENDING = 2;
+  YSQL_MAJOR_CATALOG_UPGRADE_IN_PROGRESS = 3;
+  YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK = 4;
+  YSQL_MAJOR_CATALOG_UPGRADE_ROLLBACK_IN_PROGRESS = 5;
+  YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK = 6;
+}
+
+message GetYsqlMajorCatalogUpgradeStateResponsePB {
+  optional MasterErrorPB error = 1;
+  optional YsqlMajorCatalogUpgradeState state = 2;
+}
+
 message CheckIfPitrActiveRequestPB {}
 
 message CheckIfPitrActiveResponsePB {
@@ -200,6 +243,8 @@ message AccessYsqlBackendsManagerTestRegisterResponsePB {
 message WaitForYsqlBackendsCatalogVersionRequestPB {
   optional uint32 database_oid = 1; // required
   optional uint64 catalog_version = 2; // required
+  optional bytes requestor_ts_uuid = 3; // required
+  optional int32 requestor_pg_backend_pid = 4; // required
 }
 
 message WaitForYsqlBackendsCatalogVersionResponsePB {
@@ -235,6 +280,40 @@ message GetMasterHeartbeatDelaysResponsePB {
   repeated MasterHeartbeatDelay heartbeat_delay = 2;
 }
 
+message DumpSysCatalogEntriesRequestPB {
+  optional SysRowEntryType entry_type = 1;
+  optional string entity_id_filter = 2;
+}
+
+message SysCatalogEntryDumpPB {
+  optional SysRowEntryType entry_type = 1;
+  optional string entity_id = 2;
+  optional string pb_debug_string = 3;
+}
+
+message DumpSysCatalogEntriesResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated SysCatalogEntryDumpPB entries = 2;
+}
+
+message WriteSysCatalogEntryRequestPB {
+  optional SysRowEntryType entry_type = 1;
+  optional string entity_id = 2;
+  optional string pb_debug_string = 3;
+
+  enum WriteOp {
+    SYS_CATALOG_INSERT = 1;
+    SYS_CATALOG_UPDATE = 2;
+    SYS_CATALOG_DELETE = 3;
+  }
+
+  optional WriteOp op_type = 4;
+}
+
+message WriteSysCatalogEntryResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterAdmin {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -268,6 +347,17 @@ service MasterAdmin {
 
   rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
 
+  rpc StartYsqlMajorCatalogUpgrade(StartYsqlMajorCatalogUpgradeRequestPB)
+      returns (StartYsqlMajorCatalogUpgradeResponsePB);
+  rpc IsYsqlMajorCatalogUpgradeDone(IsYsqlMajorCatalogUpgradeDoneRequestPB)
+      returns (IsYsqlMajorCatalogUpgradeDoneResponsePB);
+  rpc FinalizeYsqlMajorCatalogUpgrade(FinalizeYsqlMajorCatalogUpgradeRequestPB)
+      returns (FinalizeYsqlMajorCatalogUpgradeResponsePB);
+  rpc RollbackYsqlMajorCatalogVersion(RollbackYsqlMajorCatalogVersionRequestPB)
+      returns (RollbackYsqlMajorCatalogVersionResponsePB);
+  rpc GetYsqlMajorCatalogUpgradeState(GetYsqlMajorCatalogUpgradeStateRequestPB)
+      returns (GetYsqlMajorCatalogUpgradeStateResponsePB);
+
   rpc CheckIfPitrActive(CheckIfPitrActiveRequestPB)
       returns (CheckIfPitrActiveResponsePB);
 
@@ -275,4 +365,9 @@ service MasterAdmin {
       returns (AccessYsqlBackendsManagerTestRegisterResponsePB);
   rpc WaitForYsqlBackendsCatalogVersion(WaitForYsqlBackendsCatalogVersionRequestPB)
       returns (WaitForYsqlBackendsCatalogVersionResponsePB);
+
+  rpc DumpSysCatalogEntries(DumpSysCatalogEntriesRequestPB)
+      returns (DumpSysCatalogEntriesResponsePB);
+  rpc WriteSysCatalogEntry(WriteSysCatalogEntryRequestPB)
+      returns (WriteSysCatalogEntryResponsePB);
 }

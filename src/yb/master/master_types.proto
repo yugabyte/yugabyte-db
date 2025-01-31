@@ -17,6 +17,7 @@ package yb.master;
 option java_package = "org.yb.master";
 
 import "yb/common/common_types.proto";
+import "yb/common/version_info.proto";
 import "yb/common/wire_protocol.proto";
 
 enum RelationType {
@@ -48,6 +49,11 @@ enum SysRowEntryType {
   UNIVERSE_REPLICATION_BOOTSTRAP = 17;
   XCLUSTER_OUTBOUND_REPLICATION_GROUP = 18;
   CLONE_STATE = 19;
+  TSERVER_REGISTRATION = 20;
+  OBJECT_LOCK_ENTRY = 21;
+
+  // Each value must have a corresponding entry in CATALOG_ENTITY_TYPE_MAP of
+  // catalog_entity_types.h
 }
 
 // Master specific errors use this protobuf.
@@ -151,6 +157,8 @@ message MasterErrorPB {
 
     // The number of existing replication slots have reached `max_replication_slots`.
     REPLICATION_SLOT_LIMIT_REACHED = 41;
+
+    TABLET_SERVER_NOT_FOUND = 42;
   }
 
   // The error code.
@@ -201,6 +209,8 @@ message TSRegistrationPB {
 
   // Resources available at the tserver.
   optional ResourcesPB resources = 3;
+
+  optional VersionInfoPB version_info = 4;
 }
 
 message TServerMetricsPB {

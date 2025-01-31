@@ -19,6 +19,7 @@ import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
+import static org.junit.Assume.*;
 
 import java.io.File;
 import java.sql.Connection;
@@ -116,7 +117,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 600; // Usual time for a test ~90 seconds. But can be much more on Jenkins.
+    return 900; // Usual time for a test ~90 seconds. But can be much more on Jenkins.
   }
 
   @Override
@@ -707,6 +708,38 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testTablegroupAcls() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE USER user_1");
+      stmt.execute("GRANT CREATE ON SCHEMA public TO user_1");
+      stmt.execute("CREATE TABLEGROUP test_grant");
+      stmt.execute("GRANT ALL ON TABLEGROUP test_grant TO user_1");
+      stmt.execute("SET ROLE user_1");
+      stmt.execute("CREATE TABLE e(a text) TABLEGROUP test_grant");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("CREATE USER user_2");  // While user is yugabyte
+      stmt.execute("SET ROLE user_1");
+      stmt.execute("CREATE TABLE e2(a text) TABLEGROUP test_grant");
+      stmt.execute("SET ROLE user_2");
+      runInvalidQuery(stmt, "CREATE TABLE e3(a text) TABLEGROUP test_grant",
+                      "permission denied for tablegroup test_grant");
+    }
+  }
+
   private void doColocatedDatabaseRestoreToOriginalDB() throws Exception {
     String initialDBName = "yb_colocated";
     int num_tables = 2;
@@ -798,7 +831,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
       runInvalidQuery(
           stmt, "INSERT INTO test_tbl(id, b) VALUES(3, 6)",
-          "null value in column \"a\" violates not-null constraint");
+          "null value in column \"a\" of relation \"test_tbl\" violates not-null constraint");
 
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -1456,6 +1489,12 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testGeoPartitioningRestoringIntoExisting() throws Exception {
+    // The test fails with Connection Manager as it is expected that a new
+    // session would latch onto a new physical connection. Instead, two logical
+    // connections use the same physical connection, leading to unexpected
+    // results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     if (disableGeoPartitionedTests()) {
       return;
     }
@@ -1488,6 +1527,12 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
+    // The test fails with Connection Manager as it is expected that a new
+    // session would latch onto a new physical connection. Instead, two logical
+    // connections use the same physical connection, leading to unexpected
+    // results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     if (disableGeoPartitionedTests()) {
       return;
     }
@@ -2084,9 +2129,8 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       // Create orafce extension.
       stmt.execute("CREATE EXTENSION orafce");
-      // Test orafce function created in pg_catalog schema.
-      assertQuery(stmt, "SELECT pg_catalog.to_char(100)", new Row("100"));
-      // Test function in other schema.
+      // Test functions created in oracle schema.
+      assertQuery(stmt, "SELECT oracle.to_char(100)", new Row("100"));
       assertQuery(stmt, "SELECT oracle.substr('abcdef', 3)", new Row("cdef"));
       // Test operator.
       stmt.execute("SET search_path TO oracle, \"$user\", public");
@@ -2120,9 +2164,8 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
       // Test orafce after restore.
-      // Test orafce function created in pg_catalog schema.
-      assertQuery(stmt, "SELECT pg_catalog.to_char(100)", new Row("100"));
-      // Test function in other schema.
+      // Test functions created in oracle schema.
+      assertQuery(stmt, "SELECT oracle.to_char(100)", new Row("100"));
       assertQuery(stmt, "SELECT oracle.substr('abcdef', 3)", new Row("cdef"));
       // Test operator.
       stmt.execute("SET search_path TO oracle, \"$user\", public");
@@ -2620,6 +2663,53 @@ public class TestYbBackup extends BasePgSQLTest {
       // Verify data.
       assertQuery(stmt, query, new Row(200));
     }
+  }
+
+  @Test
+  public void testPartitionsWithConstaints() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      // Create partitioned tables with a unique constraint
+      stmt.execute("CREATE TABLE part_uniq_const(v1 INT, v2 INT) PARTITION BY RANGE(v1);");
+      stmt.execute("CREATE TABLE part_uniq_const_50_100 PARTITION OF " +
+        "part_uniq_const FOR VALUES FROM (50) TO (100)");
+      stmt.execute("CREATE TABLE part_uniq_const_30_50 PARTITION OF " +
+        "part_uniq_const FOR VALUES FROM (30) TO (50);");
+      stmt.execute("CREATE TABLE part_uniq_const_default PARTITION OF part_uniq_const DEFAULT;");
+      stmt.execute("ALTER TABLE part_uniq_const ADD CONSTRAINT " +
+        "part_uniq_const_unique UNIQUE (v1, v2);");
+      stmt.execute("INSERT INTO part_uniq_const VALUES (51, 100), (31, 200), (1, 1000);");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+    Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM part_uniq_const_default", new Row(1, 1000));
+      assertQuery(stmt, "SELECT * FROM part_uniq_const_50_100", new Row(51, 100));
+      assertQuery(stmt, "SELECT * FROM part_uniq_const_30_50", new Row(31, 200));
+
+      assertQuery(stmt,
+        "select tablename, indexname from pg_indexes where schemaname = 'public'",
+        new Row("part_uniq_const", "part_uniq_const_unique"),
+        new Row("part_uniq_const_30_50", "part_uniq_const_30_50_v1_v2_key"),
+        new Row("part_uniq_const_50_100", "part_uniq_const_50_100_v1_v2_key"),
+        new Row("part_uniq_const_default", "part_uniq_const_default_v1_v2_key")
+      );
+
+      assertQuery(stmt,
+        "select conname from pg_constraint where conrelid = 'part_uniq_const'::regclass::oid;",
+        new Row("part_uniq_const_unique")
+      );
+    }
+
   }
 
   /**

@@ -4,7 +4,6 @@ headerTitle: Indexes and constraints
 linkTitle: Indexes and constraints
 description: Using indexes and constraints in YugabyteDB
 headcontent: Explore indexes and constraints in YSQL and YCQL
-image: /images/section_icons/explore/monitoring.png
 menu:
   v2.18:
     identifier: explore-indexes-constraints
@@ -23,7 +22,7 @@ The following table lists different types of indexes and their support across th
 | :--- | :--- | :--- | :--- |
 | [Primary key](primary-key-ysql) | Yes | Yes | Unique key that identifies the row |
 | [Foreign key](foreign-key-ysql) | Yes | No | Link to a column in another table |
-| [Secondary index](secondary-indexes) | Yes | Yes | Index on columns other than the primary key |
+| [Secondary index](secondary-indexes-ysql) | Yes | Yes | Index on columns other than the primary key |
 | [Unique index](unique-index-ysql) | Yes | Yes | Set one or many columns to be unique |
 | [Multi-column index](secondary-indexes-ysql/#multi-column-index) | Yes | Yes | Index on multiple columns for faster scan with lesser rows |
 | [Partial index](partial-index-ysql) | Yes | Yes | Indexes that apply to only some rows of the table |

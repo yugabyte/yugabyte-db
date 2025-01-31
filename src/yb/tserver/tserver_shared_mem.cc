@@ -16,7 +16,6 @@
 #include <atomic>
 #include <mutex>
 
-#include <boost/interprocess/sync/interprocess_semaphore.hpp>
 #include <boost/interprocess/shared_memory_object.hpp>
 
 #include "yb/gutil/casts.h"
@@ -24,8 +23,10 @@
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/interprocess_semaphore.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/thread.h"
 
 DEFINE_test_flag(bool, pg_client_crash_on_shared_memory_send, false,
@@ -54,97 +55,8 @@ std::chrono::system_clock::time_point ToSystem(CoarseTimePoint tp) {
   return base + std::chrono::duration_cast<SystemClock::duration>(tp.time_since_epoch());
 }
 
-#if defined(BOOST_INTERPROCESS_POSIX_PROCESS_SHARED)
-class Semaphore {
- public:
-  explicit Semaphore(unsigned int initial_count) {
-    int ret = sem_init(&impl_, 1, initial_count);
-    CHECK_NE(ret, -1);
-  }
-
-  Semaphore(const Semaphore&) = delete;
-  void operator=(const Semaphore&) = delete;
-
-  ~Semaphore() {
-    CHECK_EQ(sem_destroy(&impl_), 0);
-  }
-
-  Status Post() {
-    return ResToStatus(sem_post(&impl_), "Post");
-  }
-
-  Status Wait() {
-    return ResToStatus(sem_wait(&impl_), "Wait");
-  }
-
-  template<class TimePoint>
-  Status TimedWait(const TimePoint &abs_time) {
-    // Posix does not support infinity absolute time so handle it here
-    if (boost::interprocess::ipcdetail::is_pos_infinity(abs_time)) {
-      return Wait();
-    }
-
-    auto tspec = boost::interprocess::ipcdetail::timepoint_to_timespec(abs_time);
-    int res = sem_timedwait(&impl_, &tspec);
-    if (res == 0) {
-      return Status::OK();
-    }
-    if (res > 0) {
-      // buggy glibc, copy the returned error code to errno
-      errno = res;
-    }
-    if (errno == ETIMEDOUT) {
-      static const Status timed_out_status = STATUS(TimedOut, "Timed out waiting semaphore");
-      return timed_out_status;
-    }
-    if (errno == EINTR) {
-      return Status::OK();
-    }
-    return ResToStatus(res, "TimedWait");
-  }
-
- private:
-  static Status ResToStatus(int res, const char* op) {
-    if (res == 0) {
-      return Status::OK();
-    }
-    return STATUS_FORMAT(RuntimeError, "$0 on semaphore failed: $1", op, errno);
-  }
-
-  sem_t impl_;
-};
-#else
-class Semaphore {
- public:
-  explicit Semaphore(unsigned int initial_count) : impl_(initial_count) {
-  }
-
-  Status Post() {
-    impl_.post();
-    return Status::OK();
-  }
-
-  Status Wait() {
-    impl_.wait();
-    return Status::OK();
-  }
-
-  template<class TimePoint>
-  Status TimedWait(const TimePoint &abs_time) {
-    if (!impl_.timed_wait(abs_time)) {
-      static const Status timed_out_status = STATUS(TimedOut, "Timed out waiting semaphore");
-      return timed_out_status;
-    }
-    return Status::OK();
-  }
-
- private:
-  boost::interprocess::interprocess_semaphore impl_;
-};
-#endif
-
 YB_DEFINE_ENUM(SharedExchangeState,
-               (kIdle)(kRequestSent)(kResponseSent)(kShutdown));
+               (kIdle)(kRequestSent)(kProcessingRequest)(kResponseSent)(kShutdown));
 
 class SharedExchangeHeader {
  public:
@@ -172,15 +84,24 @@ class SharedExchangeHeader {
 
   Status SendRequest(bool failed_previous_request, size_t size) {
     auto state = state_.load(std::memory_order_acquire);
-    if (!ReadyToSend(failed_previous_request)) {
+    if (!ReadyToSend(state, failed_previous_request)) {
       return STATUS_FORMAT(IllegalState, "Send request in wrong state: $0", state);
     }
     if (ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_pg_client_crash_on_shared_memory_send)) {
       LOG(FATAL) << "For test: crashing while sending request";
     }
-    state_.store(SharedExchangeState::kRequestSent, std::memory_order_release);
+    RETURN_NOT_OK(TransferState(state, SharedExchangeState::kRequestSent));
     data_size_ = size;
     return request_semaphore_.Post();
+  }
+
+  Status TransferState(SharedExchangeState old_state, SharedExchangeState new_state) {
+    SharedExchangeState actual_state = old_state;
+    if (state_.compare_exchange_strong(actual_state, new_state, std::memory_order_acq_rel)) {
+      return Status::OK();
+    }
+    return STATUS_FORMAT(
+        IllegalState, "Wrong state, $0 expected, but $1 found", old_state, actual_state);
   }
 
   bool ResponseReady() {
@@ -189,20 +110,22 @@ class SharedExchangeHeader {
 
   Result<size_t> FetchResponse(std::chrono::system_clock::time_point deadline) {
     RETURN_NOT_OK(DoWait(SharedExchangeState::kResponseSent, deadline, &response_semaphore_));
-    state_.store(SharedExchangeState::kIdle, std::memory_order_release);
+    RETURN_NOT_OK(TransferState(SharedExchangeState::kResponseSent, SharedExchangeState::kIdle));
     return data_size_;
   }
 
   void Respond(size_t size) {
     auto state = state_.load(std::memory_order_acquire);
-    if (state != SharedExchangeState::kRequestSent) {
+    if (state != SharedExchangeState::kProcessingRequest) {
       LOG_IF(DFATAL, state != SharedExchangeState::kShutdown)
           << "Respond in wrong state: " << AsString(state);
       return;
     }
 
     data_size_ = size;
-    state_.store(SharedExchangeState::kResponseSent, std::memory_order_release);
+    WARN_NOT_OK(
+        TransferState(SharedExchangeState::kProcessingRequest, SharedExchangeState::kResponseSent),
+        "Transfer state failed");
     WARN_NOT_OK(response_semaphore_.Post(), "Respond failed");
   }
 
@@ -210,6 +133,8 @@ class SharedExchangeHeader {
     RETURN_NOT_OK(DoWait(
         SharedExchangeState::kRequestSent, std::chrono::system_clock::time_point::max(),
         &request_semaphore_));
+    RETURN_NOT_OK(TransferState(
+        SharedExchangeState::kRequestSent, SharedExchangeState::kProcessingRequest));
     return data_size_;
   }
 
@@ -222,7 +147,7 @@ class SharedExchangeHeader {
   Status DoWait(
       SharedExchangeState expected_state,
       std::chrono::system_clock::time_point deadline,
-      Semaphore* semaphore) {
+      InterprocessSemaphore* semaphore) {
     auto state = state_.load(std::memory_order_acquire);
     for (;;) {
       if (state == SharedExchangeState::kShutdown) {
@@ -240,8 +165,8 @@ class SharedExchangeHeader {
     }
   }
 
-  Semaphore request_semaphore_{0};
-  Semaphore response_semaphore_{0};
+  InterprocessSemaphore request_semaphore_{0};
+  InterprocessSemaphore response_semaphore_{0};
   std::atomic<SharedExchangeState> state_{SharedExchangeState::kIdle};
   size_t data_size_;
   std::byte data_[0];
@@ -261,7 +186,8 @@ class SharedExchange::Impl {
  public:
   template <class T>
   Impl(T type, const std::string& instance_id, uint64_t session_id)
-      : session_id_(session_id),
+      : instance_id_(instance_id),
+        session_id_(session_id),
         owner_(std::is_same_v<T, boost::interprocess::create_only_t>),
         shared_memory_object_(type, MakeSharedMemoryName(instance_id, session_id).c_str(),
                               boost::interprocess::read_write) {
@@ -293,6 +219,10 @@ class SharedExchange::Impl {
       return nullptr;
     }
     return header->data();
+  }
+
+  const std::string& instance_id() const {
+    return instance_id_;
   }
 
   uint64_t session_id() const {
@@ -346,6 +276,7 @@ class SharedExchange::Impl {
     return *static_cast<SharedExchangeHeader*>(mapped_region_.get_address());
   }
 
+  const std::string instance_id_;
   const uint64_t session_id_;
   const bool owner_;
   boost::interprocess::shared_memory_object shared_memory_object_;
@@ -354,17 +285,29 @@ class SharedExchange::Impl {
   bool failed_previous_request_ = false;
 };
 
-SharedExchange::SharedExchange(const std::string& instance_id, uint64_t session_id, Create create) {
+Result<SharedExchange> SharedExchange::Make(
+      const std::string& instance_id, uint64_t session_id, Create create) {
   try {
+    std::unique_ptr<Impl> impl;
     if (create) {
-      impl_ = std::make_unique<Impl>(boost::interprocess::create_only, instance_id, session_id);
+      impl = std::make_unique<Impl>(boost::interprocess::create_only, instance_id, session_id);
     } else {
-      impl_ = std::make_unique<Impl>(boost::interprocess::open_only, instance_id, session_id);
+      impl = std::make_unique<Impl>(boost::interprocess::open_only, instance_id, session_id);
     }
+    return SharedExchange(std::move(impl));
   } catch (boost::interprocess::interprocess_exception& exc) {
-    LOG(FATAL) << "Failed to create shared exchange for " << instance_id << "/" << session_id
-               << ", mode: " << create << ", error: " << exc.what();
+    auto result = STATUS_FORMAT(
+        RuntimeError, "Failed to create shared exchange for $0/$1, mode: $2, error: $3",
+        instance_id, session_id, create, exc.what());
+    LOG(DFATAL) << result;
+    return result;
   }
+}
+
+SharedExchange::SharedExchange(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {
+}
+
+SharedExchange::SharedExchange(SharedExchange&& rhs) : impl_(std::move(rhs.impl_)) {
 }
 
 SharedExchange::~SharedExchange() = default;
@@ -419,17 +362,20 @@ void SharedExchange::SignalStop() {
   impl_->SignalStop();
 }
 
+const std::string& SharedExchange::instance_id() const {
+  return impl_->instance_id();
+}
+
 uint64_t SharedExchange::session_id() const {
   return impl_->session_id();
 }
 
 SharedExchangeThread::SharedExchangeThread(
-    const std::string& instance_id, uint64_t session_id, Create create,
+    SharedExchange exchange,
     const SharedExchangeListener& listener)
-    : exchange_(instance_id, session_id, create) {
+    : exchange_(std::move(exchange)) {
   CHECK_OK(Thread::Create(
-      "shared_exchange", Format("sh_xchng_$0", session_id), [this, listener] {
-    CDSAttacher cdc_attacher;
+      "shared_exchange", Format("sh_xchng_$0", exchange_.session_id()), [this, listener] {
     for (;;) {
       auto query_size = exchange_.Poll();
       if (!query_size.ok()) {
@@ -441,12 +387,26 @@ SharedExchangeThread::SharedExchangeThread(
       }
       listener(*query_size);
     }
+    ready_to_complete_ = true;
   }, &thread_));
 }
 
 SharedExchangeThread::~SharedExchangeThread() {
-  exchange_.SignalStop();
-  thread_->Join();
+  StartShutdown();
+  CompleteShutdown();
+}
+
+void SharedExchangeThread::StartShutdown() {
+  if (thread_) {
+    exchange_.SignalStop();
+  }
+}
+
+void SharedExchangeThread::CompleteShutdown() {
+  if (thread_) {
+    thread_->Join();
+    thread_ = nullptr;
+  }
 }
 
 bool TServerSharedData::IsCronLeader() const {
@@ -454,4 +414,9 @@ bool TServerSharedData::IsCronLeader() const {
   auto lease_end = cron_leader_lease_.load();
   return lease_end.Initialized() && lease_end > MonoTime::Now();
 }
+
+std::string MakeSharedMemoryBigSegmentName(const std::string& instance_id, uint64_t id) {
+  return MakeSharedMemoryPrefix(instance_id) + "_big_" + std::to_string(id);
+}
+
 } // namespace yb::tserver

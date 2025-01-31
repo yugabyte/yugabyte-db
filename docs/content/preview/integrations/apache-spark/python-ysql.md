@@ -48,7 +48,7 @@ The following tutorial describes how to use Python's Spark API `pyspark` with Yu
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/).
 - Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
 - [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
 
@@ -57,7 +57,7 @@ This tutorial assumes that you have:
 From your spark installation directory, use the following command to start `pyspark` shell, and pass the YugabyteDB driver package with the `--packages` parameter. The command fetches the YugabyteDB driver from local cache (if present), or installs the driver from [maven central](https://search.maven.org/).
 
 ```sh
-./bin/pyspark --packages com.yugabyte:jdbc-yugabytedb:42.3.5-yb-5
+./bin/pyspark --packages com.yugabyte:jdbc-yugabytedb:42.7.3-yb-1
 ```
 
 The Spark session should be available as follows:
@@ -81,7 +81,7 @@ SparkSession available as 'spark'.
 
 Create the database and table you will read and write to as follows:
 
-1. From your YugabyteDB installation directory, use [ysqlsh](../../../admin/ysqlsh/) shell to read and write directly to the database as follows:
+1. From your YugabyteDB installation directory, use [ysqlsh](../../../api/ysqlsh/) shell to read and write directly to the database as follows:
 
     ```sh
     ./bin/ysqlsh

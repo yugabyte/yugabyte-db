@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
@@ -27,6 +28,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -160,5 +162,14 @@ public class PitrConfig extends Model {
     String sqlStatement = "SELECT xcluster_uuid FROM xcluster_pitr WHERE pitr_uuid = :pitrUuid";
     List<SqlRow> sqlRow = DB.sqlQuery(sqlStatement).setParameter("pitrUuid", this.uuid).findList();
     return !sqlRow.isEmpty();
+  }
+
+  @JsonIgnore
+  public List<XClusterConfig> getXClusterConfigs() {
+    String sqlStatement = "SELECT xcluster_uuid FROM xcluster_pitr WHERE pitr_uuid = :pitrUuid";
+    List<SqlRow> sqlRow = DB.sqlQuery(sqlStatement).setParameter("pitrUuid", this.uuid).findList();
+    return sqlRow.stream()
+        .map(row -> XClusterConfig.getOrBadRequest(UUID.fromString(row.getString("xcluster_uuid"))))
+        .collect(Collectors.toList());
   }
 }

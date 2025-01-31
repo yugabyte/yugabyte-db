@@ -5,12 +5,12 @@ package util
 import (
 	"context"
 	"crypto"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -34,7 +34,7 @@ func SaveCerts(ctx context.Context, config *Config, cert string, key string, sub
 		return err
 	}
 	certFilepath := filepath.Join(certsDir, NodeAgentCertFile)
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		certFilepath,
 		[]byte(cert),
 		0644,
@@ -44,7 +44,7 @@ func SaveCerts(ctx context.Context, config *Config, cert string, key string, sub
 		return err
 	}
 	keyFilepath := filepath.Join(certsDir, NodeAgentKeyFile)
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		keyFilepath,
 		[]byte(key),
 		0644,
@@ -156,7 +156,7 @@ func ServerKeyPath(config *Config) string {
 // The JWT is signed using the key in the certs directory.
 func GenerateJWT(ctx context.Context, config *Config) (string, error) {
 	keyFilepath := ServerKeyPath(config)
-	privateKey, err := ioutil.ReadFile(keyFilepath)
+	privateKey, err := os.ReadFile(keyFilepath)
 	if err != nil {
 		FileLogger().Errorf(ctx, "Error while reading the private key: %s", err.Error())
 		return "", err
@@ -183,7 +183,7 @@ func GenerateJWT(ctx context.Context, config *Config) (string, error) {
 
 // PublicKeyFromCert extracts public key from a cert.
 func PublicKeyFromCert(ctx context.Context, certFilepath string) (crypto.PublicKey, error) {
-	bytes, err := ioutil.ReadFile(certFilepath)
+	bytes, err := os.ReadFile(certFilepath)
 	if err != nil {
 		FileLogger().Errorf(ctx, "Error while reading the certificate: %s", err.Error())
 		return nil, err
@@ -293,4 +293,24 @@ func VerifyJWT(ctx context.Context, config *Config, authToken string) (*jwt.MapC
 		}
 	}
 	return nil, fmt.Errorf("Invalid token")
+}
+
+// TlsConfig returns the common TLS config to be used.
+func TlsConfig(certs []tls.Certificate, nextProtos []string) *tls.Config {
+	whitelists := []uint16{}
+	for _, suites := range tls.CipherSuites() {
+		// Method excludes insecure ones but the check is just added to be more cautious.
+		if !suites.Insecure {
+			whitelists = append(whitelists, suites.ID)
+		}
+	}
+	tlsConfig := &tls.Config{
+		Certificates: certs,
+		MinVersion:   tls.VersionTLS12,
+		CipherSuites: whitelists,
+	}
+	if len(nextProtos) > 0 {
+		tlsConfig.NextProtos = nextProtos
+	}
+	return tlsConfig
 }

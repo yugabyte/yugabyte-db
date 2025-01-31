@@ -4,7 +4,7 @@ headerTitle: Rule 4
 linkTitle: 4 ~abbrevs.abbrev before ~names.name
 description: Substantiates the rule that a string that's intended to identify a UTC offset is resolved first in pg_timezone_abbrevs.abbrev and, only if this fails, then in pg_timezone_names.name. [YSQL]
 menu:
-  preview:
+  preview_api:
     identifier: rule-4
     parent: name-res-rules
     weight: 40
@@ -103,7 +103,7 @@ Predictably, this is the result:
 
 ## Who wins?
 
-The [PostgresSQL documentation](https://www.postgresql.org/docs/11/) does not provide the answer. But the question can be answered empirically if _MET_ (or another such string that occurs in both columns) maps to different _UTC_offset_ values in the two different columns. Try this:
+The [PostgresSQL documentation](https://www.postgresql.org/docs/15/) does not provide the answer. But the question can be answered empirically if _MET_ (or another such string that occurs in both columns) maps to different _UTC_offset_ values in the two different columns. Try this:
 
 ```plpgsql
 with

@@ -84,11 +84,7 @@ func NewRPCServer(
 			// Create a new listener with TLS for both RPC and metrics server.
 			listener = tls.NewListener(
 				listener,
-				&tls.Config{
-					Certificates: tlsConfig.Certificates,
-					MinVersion:   tls.VersionTLS12,
-					NextProtos:   []string{http2.NextProtoTLS, "http/1.1"},
-				},
+				util.TlsConfig(tlsConfig.Certificates, []string{"http/1.1", http2.NextProtoTLS}),
 			)
 		}
 	}
@@ -121,8 +117,10 @@ func NewRPCServer(
 		select {
 		case <-server.done:
 			return
+		default:
+			close(server.done)
 		}
-		close(server.done)
+
 	}()
 	// Start RPC server.
 	go func() {
@@ -132,8 +130,9 @@ func NewRPCServer(
 		select {
 		case <-server.done:
 			return
+		default:
+			close(server.done)
 		}
-		close(server.done)
 	}()
 	// Start the root listener.
 	go func() {
@@ -143,8 +142,9 @@ func NewRPCServer(
 		select {
 		case <-server.done:
 			return
+		default:
+			close(server.done)
 		}
-		close(server.done)
 	}()
 	return server, nil
 }
@@ -157,12 +157,7 @@ func loadTLSConfig() (*tls.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{serverCert},
-		ClientAuth:   tls.NoClientCert,
-		MinVersion:   tls.VersionTLS12,
-	}
-	return tlsConfig, nil
+	return util.TlsConfig([]tls.Certificate{serverCert}, nil), nil
 }
 
 func removeFileIfPresent(filename string) error {
@@ -207,21 +202,6 @@ func (server *RPCServer) Stop() {
 		server.listener.Close()
 	}
 	server.listener = nil
-}
-
-func (server *RPCServer) toPreflightCheckResponse(result any) (*pb.DescribeTaskResponse, error) {
-	nodeConfigs := []*pb.NodeConfig{}
-	err := util.ConvertType(result, &nodeConfigs)
-	if err != nil {
-		return nil, err
-	}
-	return &pb.DescribeTaskResponse{
-		Data: &pb.DescribeTaskResponse_PreflightCheckOutput{
-			PreflightCheckOutput: &pb.PreflightCheckOutput{
-				NodeConfigs: nodeConfigs,
-			},
-		},
-	}, nil
 }
 
 /* Implementation of gRPC methods start here. */
@@ -285,9 +265,10 @@ func (server *RPCServer) SubmitTask(
 	username := req.GetUser()
 	cmdInput := req.GetCommandInput()
 	if cmdInput != nil {
+		// Handle generic shell commands.
 		cmd := cmdInput.GetCommand()
 		shellTask := task.NewShellTaskWithUser("RemoteCommand", username, cmd[0], cmd[1:])
-		err := task.GetTaskManager().Submit(ctx, taskID, shellTask, nil)
+		err := task.GetTaskManager().Submit(ctx, taskID, shellTask)
 		if err != nil {
 			return res, status.Error(codes.Internal, err.Error())
 		}
@@ -295,6 +276,7 @@ func (server *RPCServer) SubmitTask(
 	}
 	preflightCheckInput := req.GetPreflightCheckInput()
 	if preflightCheckInput != nil {
+		// Handle preflight check RPC.
 		preflightCheckParam := &model.PreflightCheckParam{}
 		err := util.ConvertType(preflightCheckInput, &preflightCheckParam)
 		if err != nil {
@@ -303,8 +285,7 @@ func (server *RPCServer) SubmitTask(
 		}
 		preflightCheckHandler := task.NewPreflightCheckHandler(preflightCheckParam)
 		err = task.GetTaskManager().
-			Submit(ctx, taskID, preflightCheckHandler,
-				util.RPCResponseConverter(server.toPreflightCheckResponse))
+			Submit(ctx, taskID, preflightCheckHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running preflight check - %s", err.Error())
 			return res, status.Errorf(codes.Internal, err.Error())
@@ -404,7 +385,8 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 		// existing files. It simply truncates.
 		err = removeFileIfPresent(filename)
 		if err != nil {
-			util.FileLogger().Errorf(ctx, "Error in deleting existing file %s - %s", filename, err.Error())
+			util.FileLogger().Errorf(
+				ctx, "Error in deleting existing file %s - %s", filename, err.Error())
 			return status.Error(codes.Internal, err.Error())
 		}
 		util.FileLogger().Infof(ctx, "Setting file permission for %s to %o", filename, chmod)
@@ -423,11 +405,16 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 	}
 	// Flushes 4K bytes by default.
 	writer := bufio.NewWriter(file)
-	defer writer.Flush()
 	for {
 		req, err = stream.Recv()
 		if err == io.EOF {
-			break
+			err = writer.Flush()
+			if err == nil {
+				break
+			}
+			util.FileLogger().
+				Errorf(ctx, "Error in flushing data to file %s - %s", filename, err.Error())
+			return status.Error(codes.Internal, err.Error())
 		}
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in reading from stream - %s", err.Error())

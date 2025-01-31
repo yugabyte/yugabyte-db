@@ -151,7 +151,7 @@ TEST_F(TabletServerTest, TestServerClock) {
   RpcController controller;
 
   ASSERT_OK(generic_proxy_->ServerClock(req, &resp, &controller));
-  ASSERT_GT(mini_server_->server()->clock()->Now().ToUint64(), resp.hybrid_time());
+  ASSERT_GT(mini_server_->Now().ToUint64(), resp.hybrid_time());
 }
 
 TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
@@ -205,7 +205,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(server::SetFlagResponsePB::BAD_VALUE, resp.result());
-    ASSERT_STR_CONTAINS(resp.msg(), "Must be at least 1");
+    ASSERT_STR_CONTAINS(resp.msg(), "Must be greater than 0");
     ASSERT_EQ(12345, FLAGS_metrics_retirement_age_ms);
   }
 
@@ -317,11 +317,20 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=false", addr),
                 &buf));
   // Find our target metric and concatenate value zero to it. metric_instance_with_zero_value is a
-  // string looks like: handler_latency_yb_tserver_TabletServerService_Write{quantile=p50.....} 0
+  // string looks like: handler_latency_yb_tserver_TabletServerService_Write{...quantile=p50...} 0
   string page_content = buf.ToString();
-  std::size_t begin = page_content.find("handler_latency_yb_tserver_TabletServerService_Write"
-                                        "{quantile=\"p50\"");
-  std::size_t end = page_content.find("}", begin);
+  const auto kMetricLinePrefix = "handler_latency_yb_tserver_TabletServerService_Write{";
+  std::size_t begin = 0;
+  std::size_t end = 0;
+  while ((begin = page_content.find(kMetricLinePrefix, begin)) != std::string::npos) {
+    end = page_content.find("}", begin);
+    ASSERT_NE(end, std::string::npos);
+    if (page_content.find("quantile=\"p50\"", begin) < end) {
+      break;
+    }
+    begin = end + 1;
+  }
+  ASSERT_NE(begin, std::string::npos);
   string metric_instance_with_zero_value = page_content.substr(begin, end - begin + 1) + " 0";
 
   ASSERT_STR_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
@@ -412,14 +421,14 @@ TEST_F(TabletServerTest, TestInsert) {
   }
 
   // get the clock's current hybrid_time
-  HybridTime now_before = mini_server_->server()->clock()->Now();
+  HybridTime now_before = mini_server_->Now();
 
   rows_inserted = nullptr;
   ASSERT_OK(ShutdownAndRebuildTablet());
   VerifyRows(schema_, { KeyValue(1, 1), KeyValue(2, 1), KeyValue(1234, 5678) });
 
   // get the clock's hybrid_time after replay
-  HybridTime now_after = mini_server_->server()->clock()->Now();
+  HybridTime now_after = mini_server_->Now();
 
   // make sure 'now_after' is greater than or equal to 'now_before'
   ASSERT_GE(now_after.value(), now_before.value());
@@ -435,7 +444,7 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   // Advance current to some time in the future. we do 5 secs to make
   // sure this hybrid_time will still be in the future when it reaches the
   // server.
-  HybridTime current = mini_server_->server()->clock()->Now().AddMicroseconds(5000000);
+  HybridTime current = mini_server_->Now().AddMicroseconds(5000000);
 
   AddTestRowInsert(1234, 5678, "hello world via RPC", &req);
 
@@ -561,7 +570,7 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
   }
 
   // get the clock's current hybrid_time
-  HybridTime now_before = mini_server_->server()->clock()->Now();
+  HybridTime now_before = mini_server_->Now();
 
   ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(schema_,
@@ -569,7 +578,7 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
         KeyValue(1234, 2) });
 
   // get the clock's hybrid_time after replay
-  HybridTime now_after = mini_server_->server()->clock()->Now();
+  HybridTime now_after = mini_server_->Now();
 
   // make sure 'now_after' is greater that or equal to 'now_before'
   ASSERT_GE(now_after.value(), now_before.value());
@@ -869,7 +878,7 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   dockv::Partition partition;
   auto table_info = std::make_shared<tablet::TableInfo>(
       "TEST: ", tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId,
-      YQL_TABLE_TYPE, schema, qlexpr::IndexMap(), boost::none /* index_info */,
+      YQL_TABLE_TYPE, schema, qlexpr::IndexMap(), std::nullopt /* index_info */,
       0 /* schema_version */, partition_schema, "" /* pg_table_id */,
       tablet::SkipTableTombstoneCheck::kFalse);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
@@ -987,7 +996,7 @@ TEST_F(TabletServerTest, TestGFlagsCallHome) {
 #if YB_TCMALLOC_ENABLED
 TEST_F(TabletServerTest, TestUntrackedMemory) {
   auto server_metric_entity = mini_server_->server()->metric_entity();
-  ASSERT_TRUE(server_metric_entity->TEST_ContainMetricName("untracked_memory"));
+  ASSERT_TRUE(server_metric_entity->TEST_ContainsMetricName("untracked_memory"));
 
   const size_t kBufferSize = 10_MB;
   std::unique_ptr<char[]> alloc(new char[kBufferSize]);

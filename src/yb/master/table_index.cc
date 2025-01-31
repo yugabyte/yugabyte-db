@@ -27,19 +27,11 @@ scoped_refptr<TableInfo> TableIndex::FindTableOrNull(const TableId& id) const {
   return *result;
 }
 
-TableIndex::TablesRange TableIndex::GetAllTables() const {
-  return tables_.get<ColocatedUserTableTag>();
-}
-
-TableIndex::TablesRange TableIndex::GetPrimaryTables() const {
-  return tables_.get<ColocatedUserTableTag>().equal_range(false);
-}
-
 void TableIndex::Clear() {
   tables_.clear();
 }
 
-void TableIndex::AddOrReplace(const scoped_refptr<TableInfo>& table) {
+void TableIndex::AddOrReplace(const TableInfoPtr& table) {
   auto [pos, insertion_successful] = tables_.insert(table);
   if (!insertion_successful) {
     std::string first_id = (*pos)->id();

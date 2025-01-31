@@ -21,6 +21,7 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/human_readable.h"
 
 #include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
@@ -28,9 +29,11 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/server/monitored_task.h"
 
@@ -39,6 +42,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
 #include "yb/util/shared_lock.h"
 
@@ -110,9 +114,9 @@ TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
 DEFINE_RUNTIME_bool(
     split_respects_tablet_replica_limits, false,
-    "Whether to check the cluster tablet replica limit before splitting a tablet. If true, the "
-    "system will no longer split tablets when the limit machinery determines the cluster cannot "
-    "support any more tablet replicas.");
+    "Whether to check the universe tablet replica limit before splitting a tablet. When this flag "
+    "and enforce_tablet_replica_limits are both true, the system will no longer split tablets when "
+    "the limit machinery determines the universe cannot support any more tablet replicas.");
 TAG_FLAG(split_respects_tablet_replica_limits, advanced);
 
 METRIC_DEFINE_gauge_uint64(server, automatic_split_manager_time,
@@ -157,10 +161,11 @@ Status ValidateAgainstDisabledList(const IdType& id,
 } // namespace
 
 TabletSplitManager::TabletSplitManager(
-    CatalogManagerIf& catalog_manager,
+    Master& master,
     const scoped_refptr<MetricEntity>& master_metrics,
     const scoped_refptr<MetricEntity>& cluster_metrics):
-    catalog_manager_(catalog_manager),
+    master_(master),
+    catalog_manager_(*master.catalog_manager()),
     last_run_time_(CoarseDuration::zero()),
     automatic_split_manager_time_ms_(
         METRIC_automatic_split_manager_time.Instantiate(master_metrics, 0)),
@@ -224,11 +229,25 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
-  {
-    auto l = table->LockForRead();
-    if (l->started_deleting()) {
+  auto table_lock = table->LockForRead();
+  if (table_lock->started_deleting()) {
+    return STATUS_FORMAT(
+        NotSupported, "Table is deleted; ignoring for splitting. table: $0", *table);
+  }
+
+  if (table_lock->is_index() && table_lock->pb.index_info().has_vector_idx_options()) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for vector index tables, table: $0",
+        *table);
+  }
+
+  for (const auto& index : table_lock->pb.indexes()) {
+    if (index.has_vector_idx_options()) {
       return STATUS_FORMAT(
-          NotSupported, "Table is deleted; ignoring for splitting. table_id: $0", table->id());
+          NotSupported,
+          "Tablet splitting is not supported for tables indexed with vector index: $0",
+          *table);
     }
   }
 
@@ -237,7 +256,7 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   }
 
   // Check if this table is covered by a PITR schedule.
-  const auto& master_snapshot_coordinator = catalog_manager_.snapshot_coordinator();
+  const auto& master_snapshot_coordinator = master_.snapshot_coordinator();
   if (!FLAGS_enable_tablet_split_of_pitr_tables &&
       VERIFY_RESULT(master_snapshot_coordinator.IsTableCoveredBySomeSnapshotSchedule(*table))) {
     return STATUS_FORMAT(
@@ -246,33 +265,31 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         " some active PITR schedule, table_id: $0", table->id());
   }
 
-  if (table->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+  if (table_lock->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     return STATUS_FORMAT(
         NotSupported,
-        "Tablet splitting is not supported for transaction status tables, table_id: $0",
-        table->id());
+        "Tablet splitting is not supported for transaction status tables, table: $0",
+        *table);
   }
   if (table->is_system()) {
     return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for system table: $0 with table_id: $1",
-        table->name(), table->id());
+        NotSupported, "Tablet splitting is not supported for system table: $0", *table);
   }
   if (table->id() == kPgSequencesDataTableId) {
     return STATUS_FORMAT(
-        NotSupported, "Tablet splitting is not supported for Sequences table: $0 with table_id: $1",
-        table->name(), table->id());
+        NotSupported, "Tablet splitting is not supported for Sequences table: $0",
+        *table);
   }
-  if (table->GetTableType() == REDIS_TABLE_TYPE) {
+  if (table_lock->GetTableType() == REDIS_TABLE_TYPE) {
     return STATUS_FORMAT(
         NotSupported,
-        "Tablet splitting is not supported for YEDIS tables, table_id: $0", table->id());
+        "Tablet splitting is not supported for YEDIS tables, table: $0", *table);
   }
-  if (table->IsXClusterDDLReplicationTable()) {
+  if (table_lock->IsXClusterDDLReplicationTable()) {
     return STATUS_FORMAT(
         NotSupported,
-        "Tablet splitting is not supported for xCluster DDL Replication tables, table_id: $0",
-        table->id());
+        "Tablet splitting is not supported for xCluster DDL Replication tables, table: $0",
+        *table);
   }
 
   auto replication_info = VERIFY_RESULT(catalog_manager_.GetTableReplicationInfo(table));
@@ -285,9 +302,7 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
     }
   }
   if (!s.ok()) {
-    return STATUS_FORMAT(
-        IllegalState,
-        "Cannot create more tablets, table_id: $0. $1", table->id(), s.message());
+    return s.CloneAndPrepend(Format("Cannot create more tablets, table: $0", *table));
   }
 
   if (FLAGS_tablet_split_limit_per_table != 0 &&
@@ -295,12 +310,12 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
     // TODO(tsplit): Avoid tablet server of scanning tablets for the tables that already
     //  reached the split limit of tablet #6220
     return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::REACHED_SPLIT_LIMIT),
-                            "Too many tablets for the table, table_id: $0, limit: $1",
-                            table->id(), FLAGS_tablet_split_limit_per_table);
+                            "Too many tablets for the table, table: $0, limit: $1",
+                            *table, FLAGS_tablet_split_limit_per_table);
   }
   if (table->IsBackfilling()) {
     return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
-                            "Backfill operation in progress, table_id: $0", table->id());
+                            "Backfill operation in progress, table: $0", *table);
   }
 
   // Check if this table hosts stateful services. Only sys_catalog and ysql tables are currently
@@ -309,8 +324,8 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   if (!table->GetHostedStatefulServices().empty()) {
     return STATUS_EC_FORMAT(
         IllegalState, MasterError(MasterErrorPB::INVALID_REQUEST),
-        "Tablet splitting is not supported on tables that host stateful services, table_id: $0",
-        table->id());
+        "Tablet splitting is not supported on tables that host stateful services, table: $0",
+        *table);
   }
 
   return ValidatePartitioningVersion(*table);
@@ -498,14 +513,13 @@ Status AllReplicasHaveFinishedCompaction(const TabletReplicaMap& replicas) {
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf) {
   size_t live_replicas = 0;
-  for (const auto& pair : replicas) {
-    const auto& replica = pair.second;
+  for (const auto& [ts_uuid, replica] : replicas) {
     if (replica.member_type == consensus::PRE_VOTER) {
       return STATUS_FORMAT(NotSupported,
                            "One tablet peer is doing RBS as PRE_VOTER, "
                            "tablet_id: $1, peer_uuid: $2, current RAFT state: $3",
-                            tablet_id, pair.second.ts_desc->permanent_uuid(),
-                            RaftGroupStatePB_Name(pair.second.state));
+                            tablet_id, ts_uuid,
+                            RaftGroupStatePB_Name(replica.state));
     }
     if (replica.member_type == consensus::VOTER) {
       live_replicas++;
@@ -513,8 +527,8 @@ Status CheckLiveReplicasForSplit(
         return STATUS_FORMAT(NotSupported,
                              "At least one tablet peer not running, "
                              "tablet_id: $0, peer_uuid: $1, current RAFT state: $2",
-                             tablet_id, pair.second.ts_desc->permanent_uuid(),
-                             RaftGroupStatePB_Name(pair.second.state));
+                             tablet_id, ts_uuid,
+                             RaftGroupStatePB_Name(replica.state));
       }
     }
   }
@@ -667,7 +681,12 @@ class OutstandingSplitState {
   }
 
   void ProcessCandidates() {
-    VLOG(2) << Format("Processing $0 split candidates.", new_split_candidates_.size());
+    if (VLOG_IS_ON(4)) {
+      VLOG(4) << Format("Processing split candidates: $0", new_split_candidates_);
+    } else {
+      VLOG(2) << Format("Processing $0 split candidates", new_split_candidates_.size());
+    }
+
     // Add any new splits to the set of splits to schedule (while respecting the max number of
     // outstanding splits).
     if (!CanSplitMoreGlobal()) {
@@ -675,11 +694,19 @@ class OutstandingSplitState {
     }
 
     if (FLAGS_sort_automatic_tablet_splitting_candidates) {
-      auto threshold = FLAGS_tablet_split_min_size_ratio * largest_candidate_size_;
-      VLOG(3) << "Filtering out candidates smaller than " << threshold;
+      auto threshold = static_cast<uint64_t>(
+          FLAGS_tablet_split_min_size_ratio * largest_candidate_size_);
+      VLOG(3) << "Filtering out candidates smaller than "
+              << HumanReadableNumBytes::ToString(threshold);
       std::erase_if(
           new_split_candidates_,
-          [threshold](const auto& candidate) { return candidate.leader_sst_size < threshold; });
+          [threshold](const auto& candidate) {
+        if (candidate.leader_sst_size < threshold) {
+          VLOG(4) << "Rejected: " << candidate.ToString();
+          return true;
+        }
+        return false;
+      });
       sort(new_split_candidates_.begin(), new_split_candidates_.end(), LargestTabletFirst);
     }
     for (const auto& candidate : new_split_candidates_) {
@@ -713,6 +740,10 @@ class OutstandingSplitState {
   struct SplitCandidate {
     TabletInfoPtr tablet;
     uint64_t leader_sst_size;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(tablet, leader_sst_size);
+    }
   };
   // New split candidates. The chosen candidates are eventually added to splits_to_schedule.
   std::vector<SplitCandidate> new_split_candidates_;
@@ -732,7 +763,7 @@ class OutstandingSplitState {
 
   void TrackTserverSplits(const TabletId& tablet_id, const TabletReplicaMap& split_replicas) {
     for (const auto& location : split_replicas) {
-      VLOG(4) << Format("Tracking location $0 for split of tablet $1", location.first, tablet_id);
+      VLOG(4) << Format("Tracking location T $1 P $0", location.first, tablet_id);
       ts_to_ongoing_splits_[location.first].insert(tablet_id);
     }
   }
@@ -974,29 +1005,29 @@ void TabletSplitManager::MaybeDoSplitting(
 }
 
 Status TabletSplitManager::ProcessSplitTabletResult(
-    const TableId& split_table_id,
-    const SplitTabletIds& split_tablet_ids) {
+    const TableId& split_table_id, const SplitTabletIds& split_tablet_ids,
+    const LeaderEpoch& epoch) {
   // Since this can get called multiple times from DoSplitTablet (if a tablet split is retried),
   // everything here needs to be idempotent.
   LOG(INFO) << "Processing split tablet result for table " << split_table_id
             << ", split tablet ids: " << split_tablet_ids.ToString();
 
-  // Update the xCluster tablet mapping.
-  Status s =
-      catalog_manager_.UpdateXClusterConsumerOnTabletSplit(split_table_id, split_tablet_ids);
+  Status s = catalog_manager_.GetXClusterManager()->HandleTabletSplit(
+      split_table_id, split_tablet_ids, epoch);
   RETURN_NOT_OK_PREPEND(
       s, Format(
              "Encountered an error while updating the xCluster consumer tablet mapping. "
              "Table id: $0, Split Tablets: $1",
              split_table_id, split_tablet_ids.ToString()));
 
-  // Update the CDCSDK and xCluster producer tablet mapping.
   s = catalog_manager_.UpdateCDCProducerOnTabletSplit(split_table_id, split_tablet_ids);
   RETURN_NOT_OK_PREPEND(
       s, Format(
              "Encountered an error while updating the CDC producer metadata. Table id: $0, Split "
              "Tablets: $1",
              split_table_id, split_tablet_ids.ToString()));
+
+  TEST_SYNC_POINT("Tabletsplit::AddedChildrenTabletStateTableEntries");
 
   return Status::OK();
 }

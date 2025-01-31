@@ -1,6 +1,10 @@
 {{- /* All the pages should of the format: <name>.md, <name>-cloud.md, <name>-yba.md */ -}}
 {{- $tabs := default "local,cloud,anywhere" (.Get "list") -}}
 {{- $path := (path.Split $.Page.File).File -}}
+{{- $markdownPath := substr $path -3 }}
+{{- if ne $markdownPath ".md" }}
+{{- $path = printf "%s%s" $path ".md" -}}
+{{- end -}}
 {{- $active := "local" -}}
 {{- if strings.Contains $path "-cloud." -}}
 {{- $active = "cloud" -}}

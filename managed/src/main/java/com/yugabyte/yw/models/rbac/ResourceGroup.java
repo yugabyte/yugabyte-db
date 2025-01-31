@@ -3,10 +3,13 @@
 package com.yugabyte.yw.models.rbac;
 
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.models.GroupMappingInfo;
 import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -67,7 +70,8 @@ public class ResourceGroup {
     ResourceDefinition resourceDefinition;
     switch (usersRole) {
       case ConnectOnly:
-        // For connect only role, user should have access to only his user profile, nothing else.
+        // For connect only role, user should have access to only his user profile,
+        // nothing else.
         resourceDefinition =
             ResourceDefinition.builder()
                 .resourceType(ResourceType.USER)
@@ -77,24 +81,56 @@ public class ResourceGroup {
         defaultResourceGroup.resourceDefinitionSet.add(resourceDefinition);
         break;
       default:
-        // For all other built-in roles, we can default to all resource types in the resource group.
-        for (ResourceType resourceType : ResourceType.values()) {
-          if (resourceType.equals(ResourceType.OTHER)) {
-            resourceDefinition =
-                ResourceDefinition.builder()
-                    .resourceType(resourceType)
-                    .allowAll(false)
-                    .resourceUUIDSet(new HashSet<>(Arrays.asList(customerUUID)))
-                    .build();
-          } else {
-            resourceDefinition =
-                ResourceDefinition.builder().resourceType(resourceType).allowAll(true).build();
-          }
-          defaultResourceGroup.resourceDefinitionSet.add(resourceDefinition);
-        }
+        defaultResourceGroup.resourceDefinitionSet.addAll(
+            getResourceDefinitionsForNonConnectOnlyRoles(customerUUID));
         break;
     }
     return defaultResourceGroup;
+  }
+
+  public static ResourceGroup getSystemDefaultResourceGroup(
+      GroupMappingInfo info, Users.Role usersRole) {
+    ResourceGroup defaultResourceGroup = new ResourceGroup();
+    switch (usersRole) {
+        // Resource group for ConnectOnly role is user specific as it requires userUUID.
+        // ConnectOnly role binding will be added for all group members upon login, so it
+        // can be skipped for groups.
+      case ConnectOnly:
+        return null;
+      default:
+        defaultResourceGroup.resourceDefinitionSet.addAll(
+            getResourceDefinitionsForNonConnectOnlyRoles(info.getCustomerUUID()));
+    }
+    return defaultResourceGroup;
+  }
+
+  /**
+   * Get list of Resource Definitions which apply to all system roles except ConnectOnly.
+   *
+   * @param customerUUID
+   * @return
+   */
+  public static List<ResourceDefinition> getResourceDefinitionsForNonConnectOnlyRoles(
+      UUID customerUUID) {
+    List<ResourceDefinition> list = new ArrayList<>();
+    ResourceDefinition resourceDefinition;
+    // For all other built-in roles, we can default to all resource types in the
+    // resource group.
+    for (ResourceType resourceType : ResourceType.values()) {
+      if (resourceType.equals(ResourceType.OTHER)) {
+        resourceDefinition =
+            ResourceDefinition.builder()
+                .resourceType(resourceType)
+                .allowAll(false)
+                .resourceUUIDSet(new HashSet<>(Arrays.asList(customerUUID)))
+                .build();
+      } else {
+        resourceDefinition =
+            ResourceDefinition.builder().resourceType(resourceType).allowAll(true).build();
+      }
+      list.add(resourceDefinition);
+    }
+    return list;
   }
 
   /**

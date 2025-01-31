@@ -1,22 +1,28 @@
 ---
 title: YugabyteDB Anywhere on-premises node provisioning
-headerTitle: Provisioning on-premises nodes
-linkTitle: Provision nodes
+headerTitle: Legacy provisioning
+linkTitle: Legacy provisioning
 description: Software requirements for on-premises provider nodes.
-headContent: How to meet the software prerequisites with fully manual provisioning
+headContent: How to meet the software prerequisites for database nodes
+aliases:
+    - /preview/yugabyteplatform/prepare/server-nodes-software/software-on-premmanual/
 menu:
   preview_yugabyte-platform:
-    identifier: software-on-prem-3-manual
+    identifier: software-on-prem-4-manual
     parent: software-on-prem
     weight: 10
 type: docs
 ---
 
-{{<tip title="v2.20 and earlier">}}
-For instructions on preparing nodes for on-premises configurations in v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
-{{</tip>}}
+Legacy provisioning of on-premises nodes is deprecated. Provision your nodes using the [node agent script](../software-on-prem/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../software-on-prem-legacy/" class="nav-link">
+      How to Choose
+    </a>
+  </li>
+
   <li>
     <a href="../software-on-prem-auto/" class="nav-link">
       <i class="fa-regular fa-wand-magic-sparkles"></i>
@@ -140,6 +146,13 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
+    If you are using a RHEL CIS hardened image and want SSH access to database nodes, you need to manually add the `yugabyte` user to `sshd_config`.
+
+    ```sh
+    sudo sed -i '/^AllowUsers / s/$/ yugabyte/' /etc/ssh/sshd_config
+    sudo systemctl restart sshd
+    ```
+
 1. If the node is running SELinux and the home directory is not the default, set the correct SELinux ssh context, as follows:
 
     ```bash
@@ -236,9 +249,23 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
       sudo chmod 755 /data
       ```
 
+### Custom tmp directory for CIS hardened RHEL 8 or 9
+
+For CIS hardened RHEL 8 or 9, if you use the default `/tmp` directory, prechecks fail when deploying universes with an access denied error.
+
+To resolve this, create a custom `tmp` directory called `/new_tmp` on the database nodes:
+
+```sh
+sudo mkdir -p /new_tmp; sudo chown yugabyte:yugabyte -R /new_tmp
+```
+
+In addition, after you create the [on-premises provider](../../../configure-yugabyte-platform/on-premises-provider/), set the [provider runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.filepaths.remoteTmpDirectory` to `/new_tmp`.
+
+Finally, when creating universes using the provider, set YB-Master and YB-TServer [configuration flag](../../../manage-deployments/edit-config-flags/) `tmp_dir` to the custom `/new_tmp` directory.
+
 ## Install Prometheus Node Exporter
 
-Download the 1.3.1 version of the Prometheus Node Exporter, as follows:
+Download the Prometheus Node Exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
@@ -596,13 +623,13 @@ You must reboot the system for these two settings to take effect.
 
 ## Install node agent
 
-The node agent is used to manage communication between YugabyteDB Anywhere and the node. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes. For more information, refer to [Node agent](/preview/faq/yugabyte-platform/#node-agent) FAQ.
+The YugabyteDB Anywhere node agent is used to manage communication between YugabyteDB Anywhere and the node. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes. For more information, refer to [Node agent](/preview/faq/yugabyte-platform/#node-agent) FAQ.
 
 For automated and assisted manual provisioning, node agents are installed onto instances automatically when adding instances, or when running the pre-provisioning script using the `--install_node_agent` flag.
 
 Use the following procedure to install node agent for fully manual provisioning.
 
-To install the YugabyteDB node agent manually, as the `yugabyte` user, do the following:
+To install the node agent manually, as the `yugabyte` user, do the following:
 
 1. If you are re-provisioning the node (for example, you are [patching the Linux operating system](../../../manage-deployments/upgrade-nodes/), where node agent has previously been installed on the node), you need to [unregister the node agent](#unregister-node-agent) before installing node agent.
 

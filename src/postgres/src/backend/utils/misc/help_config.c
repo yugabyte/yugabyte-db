@@ -7,7 +7,7 @@
  * or GUC_DISALLOW_IN_FILE are not displayed, unless the user specifically
  * requests that variable by name
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/misc/help_config.c
@@ -16,7 +16,6 @@
  */
 #include "postgres.h"
 
-#include <float.h>
 #include <limits.h>
 #include <unistd.h>
 
@@ -34,7 +33,7 @@ typedef union
 	struct config_bool _bool;
 	struct config_real real;
 	struct config_int integer;
-	struct config_oid oid;
+	struct yb_config_oid oid;
 	struct config_string string;
 	struct config_enum _enum;
 } mixedStruct;

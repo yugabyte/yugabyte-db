@@ -57,6 +57,15 @@ class PgWire {
     buffer->Append(pointer_cast<const char*>(&bytes), sizeof(num_type));
   }
 
+  template<class NumType, class Writer>
+  static Status WriteInt(
+      const Writer& writer, NumType value, WriteBuffer *buffer,
+      const WriteBufferPos& pos) {
+    NumType bytes;
+    writer(&bytes, value);
+    return buffer->Write(pos, pointer_cast<const char*>(&bytes), sizeof(NumType));
+  }
+
   static void WriteBool(bool value, WriteBuffer *buffer);
   static void WriteInt8(int8_t value, WriteBuffer *buffer);
   static void WriteUint8(uint8_t value, WriteBuffer *buffer);
@@ -66,6 +75,7 @@ class PgWire {
   static void WriteInt32(int32_t value, WriteBuffer *buffer);
   static void WriteUint64(uint64_t value, WriteBuffer *buffer);
   static void WriteInt64(int64_t value, WriteBuffer *buffer);
+  static Status WriteInt64(int64_t value, WriteBuffer *buffer, const WriteBufferPos& pos);
   static void WriteFloat(float value, WriteBuffer *buffer);
   static void WriteDouble(double value, WriteBuffer *buffer);
 

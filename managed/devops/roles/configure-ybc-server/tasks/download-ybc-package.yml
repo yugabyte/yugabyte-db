@@ -13,6 +13,7 @@
     group: "{{ user_name }}"
   tags:
     - ybc-install
+    - reinstall-ybc
 
 - name: Download ybc package | Move unpacked tarball to "{{ tmp_ybc_package_location }}"
   copy:
@@ -21,6 +22,7 @@
     remote_src: True
   tags:
     - ybc-install
+    - reinstall-ybc
 
 - name: Download ybc package | Create release ybc directory
   file:
@@ -31,6 +33,7 @@
     group: "{{ user_name }}"
   tags:
     - ybc-install
+    - reinstall-ybc
 
 - name: Download ybc package | Clean up temporary ybc remote downloads
   file:
@@ -38,6 +41,7 @@
     state: absent
   tags:
     - ybc-install
+    - reinstall-ybc
 
 - name: Download ybc package | Unpack package "{{ tmp_ybc_package_location }}"
   unarchive:
@@ -48,6 +52,7 @@
     group: "{{ user_name }}"
   tags:
     - ybc-install
+    - reinstall-ybc
 
 - name: Download ybc package | Remove "{{ tmp_ybc_package_location }}"
   file:
@@ -55,3 +60,4 @@
     state: absent
   tags:
     - ybc-install
+    - reinstall-ybc

@@ -34,14 +34,14 @@ In our illustration, both rows are mapped to the same tablet `T1`. As you add mo
 
 ## Tablet splitting
 
-Once a tablet reaches a threshold size, the tablet splits into two. Many different scenarios can trigger a tablet to split, but for simplicity, we will stick to a threshold size of `4` rows.
+When a tablet reaches a threshold size, the tablet splits into two. Many different scenarios can trigger a tablet to split, but for simplicity, we will stick to a threshold size of `4` rows.
 
 Now, the tablet `T1` splits into two by creating a new tablet, `T2`. Tablet splitting is almost instantaneous and is transparent to the application. The newly created tablet will have leaders and followers.
 
 ![Split into two](/images/explore/scalability/sharding-single-tablet-split.png)
 
 {{<lead link="../../../architecture/docdb-sharding/tablet-splitting/#approaches-to-tablet-splitting">}}
-For more details on how tablets can be split and the various parameters that can affect them, see [Approaches to tablet splitting](../../../architecture/docdb-sharding/tablet-splitting/#approaches-to-tablet-splitting).
+For more details on tablet splitting, see [Approaches to tablet splitting](../../../architecture/docdb-sharding/tablet-splitting/#approaches-to-tablet-splitting).
 {{</lead>}}
 
 ## Rebalancing

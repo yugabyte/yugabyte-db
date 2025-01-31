@@ -42,6 +42,7 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
+#include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
@@ -83,7 +84,7 @@ DECLARE_uint64(initial_log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(max_group_replicate_batch_size);
-DECLARE_int32(protobuf_message_total_bytes_limit);
+DECLARE_uint32(protobuf_message_total_bytes_limit);
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_int32(retryable_request_timeout_secs);
 
@@ -191,12 +192,25 @@ class TabletPeerTest : public YBTabletTest {
             <<  "Failed to submit retryable requests task: " << s.ToString();
       }
     };
+
+    auto min_start_ht_running_txns_callback = [peer_weak_ptr]() {
+      auto peer = peer_weak_ptr.lock();
+      if (peer) {
+        return peer->GetMinStartHTRunningTxnsOrLeaderSafeTime();
+      }
+
+      LOG(WARNING) << "Tablet peer not found, so setting minimum start time of running txns to "
+                      "kInitial.";
+      return HybridTime::kInitial;
+    };
+
     ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(), metadata->wal_dir(),
                         metadata->fs_manager()->uuid(), *tablet()->schema(),
-                        metadata->schema_version(), table_metric_entity_.get(),
+                        metadata->primary_table_schema_version(), table_metric_entity_.get(),
                         tablet_metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
-                        log_thread_pool_.get(), metadata->cdc_min_replicated_index(), &log,
-                        pre_log_rollover_callback, new_segment_allocation_callback));
+                        log_thread_pool_.get(), &log,
+                        pre_log_rollover_callback, new_segment_allocation_callback,
+                        log::CreateNewSegment::kTrue, min_start_ht_running_txns_callback));
 
     auto bootstrap_state_manager = std::make_shared<TabletBootstrapStateManager>(
         tablet()->tablet_id(), metadata->fs_manager(), metadata->wal_dir());
@@ -533,6 +547,62 @@ TEST_F(TabletPeerTest, TestRollLogAfterTabletPeerShutdown) {
       ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse));
   auto s = tablet_peer_->log()->AsyncAllocateSegmentAndRollover();
   ASSERT_NOK_STR_CONTAINS(s, "Invalid log state");
+}
+
+void VerifyNonDecreasingTxnStartTimeInClosedSegments(const log::SegmentSequence& segments) {
+  VLOG(1) << "Found " << segments.size() << " log segments";
+  uint64_t prev_seg_min_start_time_running_txns = HybridTime::kInitial.ToUint64();
+  for (const auto& segment : segments) {
+    if (!segment->HasFooter()) {
+      VLOG(1) << "Footer for segment " << segment->header().sequence_number() << " not found";
+      continue;
+    }
+    ASSERT_TRUE(segment->footer().has_min_start_time_running_txns());
+    // Footer of all closed segments will have the tablet leader safe time as the
+    // min_start_time_running_txns as there are no running txns. Therefore,
+    // min_start_time_running_txns across closed segments will follow a non-decreasing order except
+    // for those segments which have kInitial as min_start_time_running_txns.
+    auto curr_seg_min_start_time_running_txns = segment->footer().min_start_time_running_txns();
+    VLOG(1) << "Footer for segment " << segment->header().sequence_number()
+            << " found with min_start_time_running_txns: " << curr_seg_min_start_time_running_txns;
+    bool min_start_time_in_order =
+        curr_seg_min_start_time_running_txns == HybridTime::kInitial.ToUint64() ||
+        curr_seg_min_start_time_running_txns >= prev_seg_min_start_time_running_txns;
+    ASSERT_TRUE(min_start_time_in_order);
+    if (curr_seg_min_start_time_running_txns != HybridTime::kInitial.ToUint64()) {
+      prev_seg_min_start_time_running_txns = segment->footer().min_start_time_running_txns();
+    }
+  }
+}
+
+TEST_F(TabletPeerTest, TestMinStartTimeRunningTxnsOnLogSegmentRollover) {
+  google::SetVLOGLevel("tablet_peer-test*", 1);
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+
+  Log* log = tablet_peer_->log();
+
+  log::SegmentSequence segments;
+  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+
+  ASSERT_EQ(1, segments.size());
+  ASSERT_OK(ExecuteInsertsAndRollLogs(3));
+  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(4, segments.size());
+  VerifyNonDecreasingTxnStartTimeInClosedSegments(segments);
+
+  ASSERT_OK(log->Close());
+
+  auto metadata = tablet()->metadata();
+
+  std::unique_ptr<log::LogReader> reader;
+  ASSERT_OK(log::LogReader::Open(
+      metadata->fs_manager()->env(), /* log_index */ nullptr, "Log reader: ", metadata->wal_dir(),
+      /* table_metric_entity = */ nullptr,
+      /* tablet_metric_entity = */ nullptr, &reader));
+
+  ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
+  VerifyNonDecreasingTxnStartTimeInClosedSegments(segments);
 }
 
 class TabletPeerProtofBufSizeLimitTest : public TabletPeerTest {

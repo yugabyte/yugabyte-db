@@ -14,49 +14,43 @@
 
 #pragma once
 
+#include <memory>
+#include <optional>
+#include <vector>
+
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
 #include "yb/yql/pggate/pg_select.h"
+#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_tools.h"
 
-namespace yb {
-namespace pggate {
-
-//--------------------------------------------------------------------------------------------------
-// SELECT FROM Secondary Index Table
-//--------------------------------------------------------------------------------------------------
+namespace yb::pggate {
 
 class PgSelectIndex : public PgSelect {
  public:
-  PgSelectIndex(PgSession::ScopedRefPtr pg_session,
-                const PgObjectId& table_id,
-                const PgObjectId& index_id,
-                const PgPrepareParameters *prepare_params,
-                bool is_region_local);
+  Result<std::optional<YbctidBatch>> FetchYbctidBatch();
 
-  // Prepare NESTED query for secondary index. This function is called when Postgres layer is
-  // accessing the IndexTable via an outer select (Sequential or primary scans)
-  Status PrepareSubquery(std::shared_ptr<LWPgsqlReadRequestPB> read_req);
+  [[nodiscard]] bool IsPgSelectIndex() const override { return true; }
 
-  Result<PgTableDescPtr> LoadTable() override;
+  static Result<std::unique_ptr<PgSelectIndex>> Make(
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id,
+      bool is_region_local, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req = {});
 
-  bool UseSecondaryIndex() const override;
+ protected:
+  explicit PgSelectIndex(const PgSession::ScopedRefPtr& pg_session);
 
-  // The output parameter "ybctids" are pointer to the data buffer in "ybctid_batch_".
-  virtual Result<bool> FetchYbctidBatch(const std::vector<Slice> **ybctids);
-
+ private:
   // Get next batch of ybctids from either PgGate::cache or server.
   Result<bool> GetNextYbctidBatch();
 
-  void set_is_executed(bool value) {
-    is_executed_ = value;
-  }
+  // Prepare NESTED query for secondary index. This function is called when Postgres layer is
+  // accessing the IndexTable via an outer select (Sequential or primary scans)
+  Status PrepareSubquery(
+        const PgObjectId& index_id, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req);
 
-  bool is_executed() {
-    return is_executed_;
-  }
-
- private:
-  // This secondary query should be executed just one time.
-  bool is_executed_ = false;
+  virtual Result<const std::vector<Slice>*> DoFetchYbctidBatch();
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

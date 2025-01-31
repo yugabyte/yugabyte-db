@@ -117,22 +117,29 @@ type TableColumnsDataTypes struct {
 
 type UnsupportedFeature struct {
     FeatureName string   `json:"FeatureName"`
-    ObjectNames []string `json:"ObjectNames"`
+    // ObjectNames []string `json:"ObjectNames"`
+    Objects            []ObjectInfo `json:"Objects"`
+    DocsLink           string       `json:"DocsLink,omitempty"`
+}
+
+type ObjectInfo struct {
+    ObjectName   string
+    SqlStatement string
 }
 
 type TableIndexStats struct {
     SchemaName      string  `json:"SchemaName"`
     ObjectName      string  `json:"ObjectName"`
-    RowCount        *int64  `json:"RowCount"` // Pointer to allows null values
-    ColumnCount     *int64  `json:"ColumnCount"`
-    Reads           *int64  `json:"Reads"`
-    Writes          *int64  `json:"Writes"`
-    ReadsPerSecond  *int64  `json:"ReadsPerSecond"`
-    WritesPerSecond *int64  `json:"WritesPerSecond"`
+    RowCount        int64  `json:"RowCount"` // Pointer to allows null values
+    ColumnCount     int64  `json:"ColumnCount"`
+    Reads           int64  `json:"Reads"`
+    Writes          int64  `json:"Writes"`
+    ReadsPerSecond  int64  `json:"ReadsPerSecond"`
+    WritesPerSecond int64  `json:"WritesPerSecond"`
     IsIndex         bool    `json:"IsIndex"`
     ObjectType      string  `json:"ObjectType"`
-    ParentTableName *string `json:"ParentTableName"`
-    SizeInBytes     *int64  `json:"SizeInBytes"`
+    ParentTableName string `json:"ParentTableName"`
+    SizeInBytes     int64  `json:"SizeInBytes"`
 }
 
 type Issue struct {
@@ -224,11 +231,11 @@ func calculateComplexity(databaseObjectList []DatabaseObject, issuesList []SqlIs
 
     var complexity string
     if totalComplexity >= 0 && totalComplexity <= 4 {
-        complexity = "EASY"
+        complexity = "LOW"
     } else if totalComplexity > 5 && totalComplexity <= 10 {
         complexity = "MEDIUM"
     } else {
-        complexity = "HARD"
+        complexity = "HIGH"
     }
     return complexity
 }

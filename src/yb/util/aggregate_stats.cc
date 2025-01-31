@@ -32,6 +32,11 @@ AggregateStats::AggregateStats(const AggregateStats& other):
     min_value_(other.min_value_.Load()),
     max_value_(other.max_value_.Load()) {}
 
+AggregateStats::~AggregateStats() {
+  aggregator_.SumIncrementBy(-total_sum_.Load());
+  aggregator_.CountIncrementBy(-total_count_.Load());
+}
+
 void AggregateStats::IncrementBy(int64_t value, uint64_t count) {
   current_sum_.IncrementBy(value * count);
   current_count_.IncrementBy(count);
@@ -67,13 +72,19 @@ double AggregateStats::MeanValue() const {
 
 void AggregateStats::Reset(PreserveTotalStats preserve_total) {
   if (preserve_total) {
-    total_sum_.IncrementBy(current_sum_.Exchange(0));
-    total_count_.IncrementBy(current_count_.Exchange(0));
+    int64_t previous_sum = current_sum_.Exchange(0);
+    int64_t previous_count = current_count_.Exchange(0);
+    total_sum_.IncrementBy(previous_sum);
+    total_count_.IncrementBy(previous_count);
+    aggregator_.SumIncrementBy(previous_sum);
+    aggregator_.CountIncrementBy(previous_count);
   } else {
     current_sum_.Store(0);
-    total_sum_.Store(0);
     current_count_.Store(0);
-    total_count_.Store(0);
+    int64_t previous_total_sum = total_sum_.Exchange(0);
+    int64_t previous_total_count = total_count_.Exchange(0);
+    aggregator_.SumIncrementBy(-previous_total_sum);
+    aggregator_.CountIncrementBy(-previous_total_count);
   }
   min_value_.Store(std::numeric_limits<int64_t>::max());
   max_value_.Store(std::numeric_limits<int64_t>::min());
@@ -84,6 +95,42 @@ void AggregateStats::Add(const AggregateStats& other) {
   current_count_.IncrementBy(other.total_count_.Load() + other.current_count_.Load());
   min_value_.StoreMin(other.min_value_.Load());
   max_value_.StoreMax(other.max_value_.Load());
+}
+
+Status AggregateStats::SetUpPreAggregationForPrometheus(
+    std::shared_ptr<AtomicInt<int64_t>> aggregated_prometheus_sum_value_holder,
+    std::shared_ptr<AtomicInt<int64_t>> aggregated_prometheus_count_value_holder) {
+  RETURN_NOT_OK(aggregator_.InitializeValueHolders(
+      aggregated_prometheus_sum_value_holder, aggregated_prometheus_count_value_holder));
+  aggregator_.SumIncrementBy(total_sum_.Load());
+  aggregator_.CountIncrementBy(total_count_.Load());
+  return Status::OK();
+}
+
+bool AggregateStats::IsPreAggregatedForPrometheus() const {
+  return aggregator_.HasValueHolders();
+}
+
+Status AggregateStats::Aggregator::InitializeValueHolders(
+    std::shared_ptr<AtomicInt<int64_t>> aggregated_prometheus_sum_value_holder,
+    std::shared_ptr<AtomicInt<int64_t>> aggregated_prometheus_count_value_holder) {
+  RSTATUS_DCHECK(!HasValueHolders(), IllegalState, "Aggregator value holders are already set.");
+
+  if (aggregated_prometheus_sum_value_holder != nullptr &&
+      aggregated_prometheus_count_value_holder != nullptr) {
+      sum_holder_ = std::move(aggregated_prometheus_sum_value_holder);
+      count_holder_ = std::move(aggregated_prometheus_count_value_holder);
+    return Status::OK();
+  }
+
+  RSTATUS_DCHECK(
+      (aggregated_prometheus_sum_value_holder == nullptr &&
+       aggregated_prometheus_count_value_holder == nullptr),
+      IllegalState,
+      "Both aggregated_prometheus_sum_value_holder and aggregated_prometheus_count_value_holder "
+      "must be either nullptr or have values."
+  );
+  return Status::OK();
 }
 
 } // namespace yb

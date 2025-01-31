@@ -10,6 +10,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodCondition;
@@ -37,7 +39,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -45,6 +46,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.AllArgsConstructor;
@@ -53,6 +55,7 @@ import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.CollectionUtils;
 import org.yaml.snakeyaml.Yaml;
 
 public abstract class KubernetesManager {
@@ -76,6 +79,12 @@ public abstract class KubernetesManager {
   private static final long DEFAULT_HELM_TEMPLATE_TIMEOUT_SECS = 1;
 
   private static final long HELM_UNINSTALL_RETRY = 5;
+
+  protected Function<ObjectMeta, ServerType> serverTypeLabelConverter =
+      (oM) ->
+          oM.getLabels().get("app.kubernetes.io/name").equals("yb-tserver")
+              ? ServerType.TSERVER
+              : ServerType.MASTER;
 
   /* helm interface */
   public void helmInstall(
@@ -210,6 +219,32 @@ public abstract class KubernetesManager {
 
     // Success case return the output file path.
     return tempOutputPath;
+  }
+
+  public void helmResume(
+      UUID universeUuid,
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      String helmReleaseName,
+      String namespace) {
+
+    String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+    List<String> commandList =
+        ImmutableList.of(
+            "helm",
+            "upgrade",
+            "--install",
+            helmReleaseName,
+            helmPackagePath,
+            "--debug",
+            "--reuse-values",
+            "--namespace",
+            namespace,
+            "--timeout",
+            getTimeout(universeUuid),
+            "--wait");
+    ShellResponse response = execCommand(config, commandList);
+    processHelmResponse(config, helmReleaseName, namespace, response);
   }
 
   public void helmUpgrade(
@@ -495,7 +530,8 @@ public abstract class KubernetesManager {
   private ShellResponse execCommand(
       Map<String, String> config, List<String> command, boolean logCmdOutput) {
     String description = String.join(" ", command);
-    return shellProcessHandler.run(command, config, logCmdOutput, description);
+    RedactionTarget target = RedactionTarget.HELM_VALUES;
+    return shellProcessHandler.run(command, config, logCmdOutput, description, target);
   }
 
   private ShellResponse execCommand(Map<String, String> config, List<String> command) {
@@ -605,7 +641,7 @@ public abstract class KubernetesManager {
   }
 
   public String getKubernetesServiceIPPort(ServerType type, Universe universe) {
-    List<String> allIPs = new ArrayList<>();
+    Set<String> allIPs = new HashSet<>();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UniverseDefinitionTaskParams.Cluster primary = universeDetails.getPrimaryCluster();
     // If no service is exposed, fail early.
@@ -646,14 +682,18 @@ public abstract class KubernetesManager {
                 false,
                 universeDetails.useNewHelmNamingStyle);
 
-        String ip =
+        Set<String> ips =
             getPreferredServiceIP(
                 config,
                 helmReleaseName,
                 namespace,
                 type == ServerType.MASTER,
-                universeDetails.useNewHelmNamingStyle);
-        if (ip == null) {
+                universe
+                    .getConfig()
+                    .getOrDefault(Universe.LABEL_K8S_RESOURCES, "false")
+                    .equals("true") /* k8sNewLabels */,
+                universe.getName());
+        if (CollectionUtils.isEmpty(ips)) {
           return null;
         }
 
@@ -674,7 +714,7 @@ public abstract class KubernetesManager {
           default:
             throw new IllegalArgumentException("Unexpected type " + type);
         }
-        allIPs.add(String.format("%s:%d", ip, rpcPort));
+        ips.stream().forEach(ip -> allIPs.add(String.format("%s:%d", ip, rpcPort)));
       }
       return String.join(",", allIPs);
     }
@@ -714,12 +754,13 @@ public abstract class KubernetesManager {
   /**
    * @return the first that exists of loadBalancer.hostname, loadBalancer.ip, clusterIp
    */
-  public abstract String getPreferredServiceIP(
+  public abstract Set<String> getPreferredServiceIP(
       Map<String, String> config,
       String universePrefix,
       String namespace,
       boolean isMaster,
-      boolean newNamingStyle);
+      boolean k8sNewLabels,
+      String universeName);
 
   public abstract List<Node> getNodeInfos(Map<String, String> config);
 
@@ -732,6 +773,9 @@ public abstract class KubernetesManager {
       String namespace,
       int numNodes,
       boolean newNamingStyle);
+
+  public abstract void PauseAllPodsInRelease(
+      Map<String, String> config, String universePrefix, String namespace, boolean newNamingStyle);
 
   public abstract void deleteStorage(
       Map<String, String> config, String universePrefix, String namespace);
@@ -790,7 +834,7 @@ public abstract class KubernetesManager {
       String srcFilePath,
       String destFilePath);
 
-  public abstract void performYbcAction(
+  public abstract String performYbcAction(
       Map<String, String> config,
       String namespace,
       String podName,
@@ -851,6 +895,9 @@ public abstract class KubernetesManager {
 
   public abstract String getKubeconfigCluster(Map<String, String> config);
 
+  public abstract boolean checkStatefulSetStatus(
+      Map<String, String> config, String namespace, String labelSelector, int replicaCount);
+
   public abstract void deleteUnusedPVCs(
       Map<String, String> config,
       String namespace,
@@ -861,4 +908,22 @@ public abstract class KubernetesManager {
 
   public abstract boolean resourceExists(
       Map<String, String> config, String resourceType, String resourceName, String namespace);
+
+  public abstract Map<ServerType, String> getServerTypeGflagsChecksumMap(
+      String namespace, String helmReleaseName, Map<String, String> config);
+
+  public abstract void deleteNamespacedService(
+      Map<String, String> config, String namespace, String universeName);
+
+  public abstract void deleteNamespacedService(
+      Map<String, String> config,
+      String namespace,
+      String universeName,
+      @Nullable Set<String> serviceNames);
+
+  public abstract void updateNamespacedServiceOwnership(
+      Map<String, String> config, String namespace, String universeName, String ownerReleaseName);
+
+  public abstract List<Service> getNamespacedServices(
+      Map<String, String> config, String namespace, String universeName);
 }

@@ -24,6 +24,14 @@ DROP TABLE partitioned_table;
 -- Implicit tablegroups must be deleted since it has no tables
 SELECT COUNT(*) FROM pg_yb_tablegroup;
 
+-- Test non-colocated children tables of a partitioned table
+CREATE TABLE partitioned_table2 (name varchar, region varchar, PRIMARY KEY(name, region)) PARTITION BY LIST(region);
+CREATE TABLE partition_in_dc1_2 PARTITION OF partitioned_table2 FOR VALUES IN ('region1')  WITH (COLOCATION=FALSE) TABLESPACE tsp1;
+\d partition_in_dc1_2;
+CREATE TABLE partition_in_dc2_2 PARTITION OF partitioned_table2 FOR VALUES IN ('region2') TABLESPACE tsp2;
+\d partition_in_dc2_2;
+DROP TABLE partitioned_table2;
+
 -- Users must be able to create tables in the implicit tablegroup as long as they have required permission.
 -- Requires permission to create table in schema and to create a table in the tablespace
 CREATE ROLE user1;
@@ -274,6 +282,30 @@ ALTER TABLE ALL IN TABLESPACE tsp2 COLOCATED WITH table1 SET TABLESPACE tsp3 CAS
 DROP TABLE table1;
 DROP TABLE table2;
 DROP TABLE table3;
+
+-- Explicitly specifying pg_default tablespace must not create a new tablegroup
+CREATE TABLE table1(a int);
+SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
+CREATE TABLE table2(a int) TABLESPACE pg_default;
+SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
+DROP TABLE table1;
+DROP TABLE table2;
+
+-- In pg_yb_tablegroup grpname should always be colocation_<grptablespace> (i.e. colocation_<tablespace_oid>)
+CREATE TABLE table1(a INT PRIMARY KEY, b INT, c INT) TABLESPACE tsp1;
+CREATE TABLE table2(a INT PRIMARY KEY, b INT, c INT) TABLESPACE tsp1;
+SELECT COUNT(*) FROM pg_yb_tablegroup WHERE grpname != 'default' AND (grpname = ('colocation_' || grptablespace)) ;
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp3 CASCADE;
+SELECT COUNT(*) FROM pg_yb_tablegroup WHERE grpname != 'default' AND (grpname = ('colocation_' || grptablespace)) ;
+DROP TABLE table1;
+DROP TABLE table2;
+
+-- Should not be able to move a single colocated table to other tablespace
+CREATE TABLE t1(a int) TABLESPACE tsp1;
+CREATE TABLE t2(a int) TABLESPACE tsp1;
+ALTER TABLE t1 SET TABLESPACE tsp2;
+DROP TABLE t1;
+DROP TABLE t2;
 
 -- A tablespace should not be dropped if any colocated tables are dependent on it
 CREATE TABLE t1 (a int) TABLESPACE tsp1;

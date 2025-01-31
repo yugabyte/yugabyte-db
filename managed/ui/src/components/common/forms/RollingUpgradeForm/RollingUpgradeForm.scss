@@ -55,10 +55,19 @@
   margin: 4px 0px 0px 4px;
 }
 
+.gflag-num-nodes-upgrade {
+  margin-top: 8px;
+}
+
+.gflag-num-nodes-upgrade,
 .gflag-delay {
   display: flex;
   flex-direction: row;
   align-items: center;
+}
+
+.glag-num-nodes-rr {
+  margin-left: 32px !important;
 }
 
 .gflag-err-msg {

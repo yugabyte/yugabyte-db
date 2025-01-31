@@ -10,6 +10,20 @@
 #include <odyssey.h>
 #include <time.h>
 
+static void clear_stats(struct ConnectionStats *yb_stats) {
+    for (int i = 1; i < YSQL_CONN_MGR_MAX_POOLS; i++) {
+        yb_stats[i].active_clients = 0;
+		yb_stats[i].queued_clients = 0;
+		yb_stats[i].waiting_clients = 0;
+		yb_stats[i].active_servers = 0;
+		yb_stats[i].idle_servers = 0;
+		yb_stats[i].sticky_connections = 0;
+		yb_stats[i].query_rate = 0;
+		yb_stats[i].transaction_rate = 0;
+		yb_stats[i].avg_wait_time_ns = 0;
+    }
+}
+
 void od_router_init(od_router_t *router, od_global_t *global)
 {
 	pthread_mutex_init(&router->lock, NULL);
@@ -226,17 +240,25 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 	uint64_t lifetime = route->rule->server_lifetime_us;
 	uint64_t server_life = *now_us - server->init_time_us;
 
-	/* Database is dropped */
+	/* Database or user is dropped */
 	if (yb_is_route_invalid(route))
 		goto expire_server;
 
 	if (!server->offline) {
+		/* Expire server if is marked for closing */
+		if (server->marked_for_close)
+			goto expire_server;
+
 		/* advance idle time for 1 sec */
 		if (server_life < lifetime &&
 		    server->idle_time < route->rule->pool->ttl) {
+			/* YB NOTE: the server is within the pool's ttl. */
 			server->idle_time++;
 			return 0;
 		}
+
+		/* YB NOTE: the server has crossed the pool's ttl. */
+		server->idle_time++;
 
 		/*
 		 * Do not expire more servers than we are allowed to connect at one time
@@ -246,10 +268,13 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 			return 0;
 
 		/*
-		 * Dont expire the server connection if the min size is reached.
+		 * Dont expire the server connection if the min size is reached and this
+		 * server hasn't been idle for >= 3 * ttl.
 		 */
-		if (od_server_pool_total(&route->server_pool) <=
-		    route->rule->min_pool_size)
+		if ((od_server_pool_total(&route->server_pool) <=
+		     route->rule->min_pool_size) &&
+		    server_life < lifetime &&
+		    server->idle_time < 3 * route->rule->pool->ttl)
 			return 0;
 	} // else remove server because we are forced to
 
@@ -340,6 +365,8 @@ void od_router_stat(od_router_t *router, uint64_t prev_time_us,
 		    od_route_pool_stat_cb_t callback, void **argv)
 {
 	od_router_lock(router);
+	od_instance_t *instance = argv[0];
+	clear_stats(instance->yb_stats);
 	od_route_pool_stat(&router->route_pool, prev_time_us,
 #ifdef PROM_FOUND
 			   metrics,
@@ -357,11 +384,16 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 	assert(startup->database.value_len);
 	assert(startup->user.value_len);
 	assert(client->yb_db_oid >= 0);
+	assert(client->yb_user_oid >= 0);
 
-	/* yb_db_oid for external client's can't be equal to 0 */
+	/*
+	 * yb_db_oid and yb_user_oid for external clients can't be equal to 
+	 * YB_CTRL_CONN_OID.
+	 */
 	if (client->type != OD_POOL_CLIENT_INTERNAL)
 	{
 		assert(client->yb_db_oid > YB_CTRL_CONN_OID);
+		assert(client->yb_user_oid > YB_CTRL_CONN_OID);
 	}
 
 	od_router_lock(router);
@@ -385,16 +417,11 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 
 	/* force settings required by route */
 	od_route_id_t id = { .yb_db_oid = client->yb_db_oid,
-			     .user = startup->user.value,
-			     .user_len = startup->user.value_len,
+			     .yb_user_oid = client->yb_user_oid,
 			     .physical_rep = false,
 			     .logical_rep = false,
 			     .yb_stats_index = -1 };
 
-	if (rule->storage_user) {
-		id.user = rule->storage_user;
-		id.user_len = strlen(rule->storage_user) + 1;
-	}
 	if (startup->replication.value_len != 0) {
 		if (strcmp(startup->replication.value, "database") == 0)
 			id.logical_rep = true;
@@ -425,16 +452,21 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 				rule->ldap_endpoint->ldap_search_pool,
 				ldap_server, OD_SERVER_IDLE);
 			od_ldap_endpoint_unlock(rule->ldap_endpoint);
-			id.user = client->ldap_storage_username;
-			id.user_len = client->ldap_storage_username_len + 1;
+
+			/* invalid after switching to OID based pool design */
+#ifndef YB_SUPPORT_FOUND
+			/* YB: commenting out code to avoid compiler errors */
+			// id.user = client->ldap_storage_username;
+			// id.user_len = client->ldap_storage_username_len + 1;
 			rule->storage_user = client->ldap_storage_username;
 			rule->storage_user_len =
 				client->ldap_storage_username_len;
 			rule->storage_password = client->ldap_storage_password;
 			rule->storage_password_len =
 				client->ldap_storage_password_len;
-			od_debug(&instance->logger, "routing", client, NULL,
-				 "route->id.user changed to %s", id.user);
+			// od_debug(&instance->logger, "routing", client, NULL,
+			//   "route->id.user changed to %s", id.user);
+#endif
 			break;
 		}
 		case LDAP_INSUFFICIENT_ACCESS: {
@@ -547,6 +579,130 @@ bool od_should_not_spun_connection_yet(int connections_in_pool, int pool_size,
 #define MAX_BUZYLOOP_RETRY 10
 
 /*
+ * Count the number of active routes i.e. routes with at least one in_use or
+ * pending client.
+ *
+ * IMPORTANT: The caller must not hold any locks on any of the routes.
+ */
+static uint32_t yb_count_all_active_routes(od_router_t *router, od_route_t *current_route) {
+	od_router_lock(router);
+
+	od_route_pool_t *pool = &router->route_pool;
+	od_list_t *i;
+	uint32_t active_routes = 0;
+	od_list_foreach(&pool->list, i)
+	{
+		od_route_t *route;
+		route = od_container_of(i, od_route_t, link);
+
+		if (yb_is_route_invalid(route))
+			continue;
+
+		/*
+		 * The current route must be counted as an active route since we have an
+		 * active request on it.
+		 */
+		if (od_route_id_compare(&route->id, &current_route->id)) {
+			active_routes++;
+			continue;
+		}
+
+		od_route_lock(route);
+		active_routes +=
+			(od_server_pool_total(&route->server_pool) +
+				 od_client_pool_total(&route->client_pool) >
+			 0) ? 1 : 0;
+		od_route_unlock(route);
+	}
+
+	od_router_unlock(router);
+	return active_routes;
+}
+
+/*
+ * Calculate the number of in_use backends (aka physical connection) across all
+ * routes.
+ *
+ * IMPORTANT: The caller must not hold any locks on any of the routes.
+ */
+static uint32_t yb_calculate_all_in_use_backends(od_router_t *router) {
+	od_router_lock(router);
+
+	od_route_pool_t *pool = &router->route_pool;
+	od_list_t *i;
+	uint32_t total_in_use_backends = 0;
+	od_list_foreach(&pool->list, i)
+	{
+		od_route_t *route;
+		route = od_container_of(i, od_route_t, link);
+
+		if (yb_is_route_invalid(route))
+			continue;
+
+		od_route_lock(route);
+		total_in_use_backends += od_server_pool_total(&route->server_pool);
+		od_route_unlock(route);
+	}
+
+	od_router_unlock(router);
+	return total_in_use_backends;
+}
+
+/*
+ * Return an idle server to close from a route different from the current route.
+ * The route must be exceeding the per_route_quota.
+ * Returns NULL if no such route is found.
+ *
+ * IMPORTANT: Must not hold a lock on any of the route before calling this
+ * function to avoid deadlocks.
+ *
+ * IMPORTANT: If the route is found, the caller must unlock the route after
+ * closing the idle server.
+ */
+static od_server_t *yb_get_idle_server_to_close(od_router_t *router,
+					 od_route_t *current_route,
+					 uint32_t per_route_quota)
+{
+	od_server_t *idle_server = NULL;
+	od_router_lock(router);
+
+	od_route_pool_t *pool = &router->route_pool;
+	od_list_t *i;
+	od_list_foreach(&pool->list, i)
+	{
+		od_route_t *route;
+		route = od_container_of(i, od_route_t, link);
+
+		if (od_route_id_compare(&route->id, &current_route->id) ||
+		    yb_is_route_invalid(route))
+			continue;
+
+		od_route_lock(route);
+		uint32_t route_yb_in_use =
+				od_server_pool_total(&route->server_pool);
+		if (route_yb_in_use > per_route_quota) {
+			idle_server = od_pg_server_pool_next(&route->server_pool,
+				OD_SERVER_IDLE);
+
+			/*
+			 * Note the lack of od_route_unlock(route) in this case.
+			 * The caller is responsible for unlocking the route once it is done
+			 * shutting down this server.
+			 */
+			if (idle_server) {
+				od_route_unlock(route);
+				od_router_unlock(router);
+				return idle_server;
+			}
+		}
+		od_route_unlock(route);
+	}
+
+	od_router_unlock(router);
+	return NULL;
+}
+
+/*
  * od_router_attach is a function used to attach a client object to a server object.
  * client_for_router represents the internal client used for
  * route matching and server attachment. On the other hand,
@@ -584,11 +740,60 @@ od_router_status_t od_router_attach(od_router_t *router,
 	od_server_t *server;
 	int busyloop_sleep = 0;
 	int busyloop_retry = 0;
+
+	const char *is_warmup_needed_flag = getenv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_MODE");
+	bool is_warmup_needed = false;
+	bool random_allot = false;
+
+	is_warmup_needed = is_warmup_needed_flag != NULL && strcmp(is_warmup_needed_flag, "none") != 0;
+	random_allot = is_warmup_needed && strcmp(is_warmup_needed_flag, "random") == 0;
+
+	od_debug(&instance->logger, "router-attach", client_for_router, NULL,
+		 "client_for_router logical client version = %d",
+		 client_for_router->logical_client_version);
+
 	for (;;) {
-		server = od_pg_server_pool_next(&route->server_pool,
+		if (version_matching) {
+
+			server = yb_od_server_pool_idle_version_matching(
+				&route->server_pool,
+				client_for_router->logical_client_version,
+				version_matching_connect_higher_version);
+
+			if (server)
+				goto attach;
+			else if (route->max_logical_client_version >
+					 client_for_router->logical_client_version &&
+				 !version_matching_connect_higher_version) {
+				od_debug(
+					&instance->logger, "router-attach",
+					client_for_router, NULL,
+					"old logical client, need to disconect, "
+					"max_logical_client_version of pool = %d, and version of client = %d",
+					route->max_logical_client_version,
+					client_for_router->logical_client_version);
+				od_route_unlock(route);
+				return OD_ROUTER_ERROR;
+			}
+		}
+
+		else if (is_warmup_needed) {
+			if (random_allot)
+				server = yb_od_server_pool_idle_random(&route->server_pool);
+			else /* round_robin allotment */
+				server = yb_od_server_pool_idle_last(&route->server_pool);
+
+			if (server &&
+			    (od_server_pool_total(&route->server_pool) >=
+			     route->rule->min_pool_size))
+				goto attach;
+		}
+		else {
+			server = od_pg_server_pool_next(&route->server_pool,
 						OD_SERVER_IDLE);
-		if (server)
-			goto attach;
+			if (server)
+				goto attach;
+		}
 
 		if (wait_for_idle) {
 			/* special case, when we are interested only in an idle connection
@@ -607,9 +812,27 @@ od_router_status_t od_router_attach(od_router_t *router,
 				od_atomic_u32_of(&router->servers_routing);
 			uint32_t max_routing = (uint32_t)route->rule->storage
 						       ->server_max_routing;
-			if (pool_size == 0 || connections_in_pool < pool_size) {
+
+			bool yb_is_slot_available = false;
+			if (instance->config.yb_enable_multi_route_pool) {
+				od_route_unlock(route);
+				uint32_t yb_total_acquired_slots =
+					yb_calculate_all_in_use_backends(router);
+				od_route_lock(route);
+				yb_is_slot_available =
+					yb_total_acquired_slots < (uint32_t) instance->config.yb_ysql_max_connections;
+			} else {
+				yb_is_slot_available = pool_size == 0 ||
+					connections_in_pool < pool_size;
+			}
+
+			if (yb_is_slot_available) {
 				if (od_should_not_spun_connection_yet(
-					    connections_in_pool, pool_size,
+					    connections_in_pool,
+						// TODO(#25284): The existing control of ramping up of connections utilizes
+						// the pool_size which isn't applicable in the multi route algorithm.
+						// Consider an alternative.
+						(instance->config.yb_enable_multi_route_pool) ? 0 : pool_size,
 					    (int)currently_routing,
 					    (int)max_routing)) {
 					// concurrent server connection in progress.
@@ -625,6 +848,44 @@ od_router_status_t od_router_attach(od_router_t *router,
 					// We are allowed to spun new server connection
 					break;
 				}
+			} else if (instance->config.yb_enable_multi_route_pool) {
+				// We have reached ysql_max_connections limit. We need to close
+				// a physical connection before we can start a new one.
+				// Find a route which has more entries than per_route_quota and
+				// get a machine from it if possible. If found, we close that
+				// machine, otherwise, we add ourselves to the pending count
+				// and wait.
+
+				// We need to unlock the route before we can call
+				// yb_count_all_active_routes and yb_get_idle_server_to_close
+				// functions.
+				od_route_unlock(route);
+				uint32_t num_active_routes =
+					yb_count_all_active_routes(router, route);
+				uint32_t per_route_quota =
+					(uint32_t)instance->config.yb_ysql_max_connections /
+						num_active_routes;
+				od_server_t *idle_server =
+					yb_get_idle_server_to_close(router, route, per_route_quota);
+				if (idle_server) {
+					// Close the server and make space for ourselves.
+					od_route_t *idle_route = idle_server->route;
+					od_pg_server_pool_set(&idle_route->server_pool,
+							      idle_server,
+							      OD_SERVER_UNDEF);
+					idle_server->route = NULL;
+					od_backend_close_connection(idle_server);
+					od_backend_close(idle_server);
+					od_route_unlock(idle_route);
+
+					// We are allowed to spun new server connection now that we
+					// have made space for ourselves.
+					od_route_lock(route);
+					break;
+				}
+
+				// No available idle servers. We have to wait.
+				od_route_lock(route);
 			}
 		}
 
@@ -656,16 +917,36 @@ od_router_status_t od_router_attach(od_router_t *router,
 		od_route_lock(route);
 	}
 
-	od_route_unlock(route);
-
 	/* create new server object */
-	server = od_server_allocate(
+	bool created_atleast_one = false;
+	while (is_warmup_needed &&
+		  (od_server_pool_total(&route->server_pool) < route->rule->min_pool_size))
+	{
+		server = od_server_allocate(
 		route->rule->pool->reserve_prepared_statement);
-	if (server == NULL)
-		return OD_ROUTER_ERROR;
-	od_id_generate(&server->id, "s");
-	server->global = client_for_router->global;
-	server->route = route;
+		if (server == NULL)
+			return OD_ROUTER_ERROR;
+		od_id_generate(&server->id, "s");
+		server->global = client_for_router->global;
+		server->route = route;
+		server->client = NULL;
+		od_pg_server_pool_set(&route->server_pool, server,
+						OD_SERVER_IDLE);
+		created_atleast_one = true;
+	}
+
+	od_route_unlock(route);
+	
+	if (!created_atleast_one)
+	{
+		server = od_server_allocate(
+		route->rule->pool->reserve_prepared_statement);
+		if (server == NULL)
+			return OD_ROUTER_ERROR;
+		od_id_generate(&server->id, "s");
+		server->global = client_for_router->global;
+		server->route = route;
+	}
 
 	od_route_lock(route);
 
@@ -718,15 +999,40 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	client->server = NULL;
 	server->client = NULL;
 	/*
+	 * When the server detaches after completing a transaction,
+	 * some queries are issued during the reset phase, which causes the
+	 * unnamed prepared statement plan cache to be dropped.
+     * As a result, it is necessary to remove the saved state
+	 * on Connection Manager.
+	 */
+	memset(&server->yb_unnamed_prep_stmt_client_id, 0,
+	       sizeof(server->yb_unnamed_prep_stmt_client_id));
+	/*
 	 * Drop the server connection if:
 	 * 	a. Server gets OFFLINE.
 	 * 	b. Client connection had used a query which required the connection to be STICKY.
 	 * 	   As of D26669, these queries are:
 	 * 			a. Creating TEMP TABLES.
 	 * 			b. Use of WITH HOLD CURSORS.
+	 *  c. Client connection is a logical or physical replication connection
+	 *  d. It took too long to reset state on the server.
 	 */
-	if (od_likely(!server->offline) && server->yb_sticky_connection == false) {
-		od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_IDLE);
+	if (od_likely(!server->offline) &&
+		!server->yb_sticky_connection &&
+		!server->reset_timeout) {
+		od_instance_t *instance = server->global->instance;
+		if (route->id.physical_rep || route->id.logical_rep) {
+			od_debug(&instance->logger, "expire-replication", NULL,
+				 server, "closing replication connection");
+			server->route = NULL;
+			od_backend_close_connection(server);
+			od_pg_server_pool_set(&route->server_pool, server,
+					      OD_SERVER_UNDEF);
+			od_backend_close(server);
+		} else {
+			od_pg_server_pool_set(&route->server_pool, server,
+					      OD_SERVER_IDLE);
+		}
 	} else {
 		od_instance_t *instance = server->global->instance;
 		od_debug(&instance->logger, "expire", NULL, server,

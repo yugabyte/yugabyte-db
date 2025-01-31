@@ -32,13 +32,13 @@ The source for this application can be found in the [Using ORMs with YugabyteDB]
 
 {{< tip title="YugabyteDB Aeon requires SSL" >}}
 
-Are you using YugabyteDB Aeon? Install the [prerequisites](../../../../tutorials/build-apps/cloud-add-ip/).
+Are you using YugabyteDB Aeon? Install the [prerequisites](/preview/tutorials/build-apps/cloud-add-ip/).
 
 {{</ tip >}}
 
 ## Prerequisites
 
-This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
+This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](/preview/tutorials/quick-start/).
 
 ## Clone the orm-examples repository
 
@@ -58,14 +58,14 @@ $ npm install
 
 ## Set up the database connection
 
-From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using the following command:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../../api/ysqlsh/) shell using the following command:
 
 ```sh
 $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -93,7 +93,7 @@ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
 
 If you have a YugabyteDB Aeon cluster, do the following:
 
-1. Download your [cluster certificate](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 1. Install OpenSSL, if not present.
 

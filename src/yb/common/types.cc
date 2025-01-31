@@ -84,6 +84,7 @@ class TypeInfoResolver {
     AddMapping<DataType::USER_DEFINED_TYPE>();
     AddMapping<DataType::FROZEN>();
     AddMapping<DataType::TUPLE>();
+    AddMapping<DataType::VECTOR>();
   }
 
   template<DataType type> void AddMapping() {
@@ -130,6 +131,10 @@ void DataTypeTraits<DataType::TIMEUUID>::AppendDebugStringForValue(
 bool TypeInfo::is_collection() const {
   return type == DataType::LIST || type == DataType::MAP || type == DataType::SET ||
          type == DataType::USER_DEFINED_TYPE;
+}
+
+bool TypeInfo::is_vector() const {
+  return type == DataType::VECTOR;
 }
 
 } // namespace yb

@@ -1,0 +1,49 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto3";
+
+package yb.vector_index;
+
+import "google/protobuf/any.proto";
+
+option java_package = "org.yb.vector_index";
+
+message VectorLSMBoundaryPB {
+  google.protobuf.Any user_frontier = 1;
+}
+
+// Information about added chunk.
+message VectorLSMChunkPB {
+  // Serial no is unique for all chunks created during vector lsm lifetime.
+  // Used in chunk filename and never changes.
+  uint64 serial_no = 1;
+
+  // Used to order chunks in the in-memory list.
+  // After compaction order_no of the first compacted chunk is used as order_no for the generated
+  // one.
+  // When new chunk is added it receives order_no past latest alive chunk.
+  uint64 order_no = 2;
+
+  VectorLSMBoundaryPB smallest = 4;
+  VectorLSMBoundaryPB largest = 5;
+}
+
+message VectorLSMUpdatePB {
+  // When reset is true, all previous updates should be ignored.
+  bool reset = 1;
+
+  // Chunks could be added and removed within the single update.
+  // But the same chunk cannot be added and removed within the single update.
+  repeated VectorLSMChunkPB add_chunks = 2;
+  repeated uint64 remove_chunks = 3;
+}

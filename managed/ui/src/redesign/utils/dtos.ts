@@ -18,7 +18,7 @@ export enum RunTimeConfigScope {
 }
 
 export interface RuntimeConfigScopeProps {
-  configTagFilter: string[];
+  getRuntimeConfig: (key: string, scope?: string) => void;
   fetchRuntimeConfigs: (scope?: string) => void;
   setRuntimeConfig: (key: string, value: string, scope?: string) => void;
   deleteRunTimeConfig: (key: string, scope?: string) => void;
@@ -213,17 +213,25 @@ export interface NodeAgentEntities {
   name: string;
   osType: string;
   port: number;
+  providerUuid: string;
   reachable: boolean;
   state: string;
   updatedAt: string;
   uuid: string;
+  universeUuid: string;
   version: string;
   versionMatched: boolean;
+
+  lastError?: {
+    code: string;
+    message: string;
+  };
 }
 
 export enum NodeAgentStatusList {
   READY = 'READY',
   REGISTERING = 'REGISTERING',
+  REGISTERED = 'REGISTERED',
   UPGRADE = 'UPGRADE',
   UPGRADED = 'UPGRADED'
 }
@@ -254,19 +262,19 @@ export interface TaskResponse {
 }
 
 export interface MetadataFields {
-	id: string;
-	name?: string;
-	customerId: string;
-	apiToken: string;
-	platformUrl: string;
-	metricsUrl: string;
-	metricsScrapePeriodSec: number;
-	dataMountPoints: string[];
-	otherMountPoints: string[];
-	lastSyncError?: string | null;
+  id: string;
+  name?: string;
+  customerId: string;
+  apiToken: string;
+  platformUrl: string;
+  metricsUrl: string;
+  metricsScrapePeriodSec: number;
+  dataMountPoints: string[];
+  otherMountPoints: string[];
+  lastSyncError?: string | null;
 }
 
 export interface UpdateMetadataFormFields {
-	apiToken: string;
-	metricsScrapePeriodSec: number;
+  apiToken: string;
+  metricsScrapePeriodSec: number;
 }

@@ -31,6 +31,8 @@ const (
 	jsonFormat         = "{{json .}}"
 	prettyFormat       = "{{. | toPrettyJson}}"
 
+	ListCommandKey = "list"
+
 	// default header use accross multiple formatter
 	// UniverseHeader
 	UniversesHeader = "Universes"
@@ -45,13 +47,23 @@ const (
 	// ProviderHeader
 	ProviderHeader = "Provider"
 	// StorageConfigurationHeader
-	StorageConfigurationHeader = "StorageConfiguration"
+	StorageConfigurationHeader = "Storage Configuration"
 	// CodeHeader
 	CodeHeader = "Code"
 	// UUIDHeader
 	UUIDHeader = "UUID"
 	// StatusHeader
 	StatusHeader = "Status"
+	// InUseHeader
+	InUseHeader = "In Use"
+	// KMSConfigHeader
+	KMSConfigHeader = "KMS configuration"
+	// CreateTimeHeader to display create time
+	CreateTimeHeader = "Create Time"
+	// UpdateTimeHeader to display update time
+	UpdateTimeHeader = "Update Time"
+	// TypeHeader to display type
+	TypeHeader = "Type"
 
 	// GreenColor for colored output
 	GreenColor = "green"
@@ -65,6 +77,9 @@ const (
 
 // Format is the format string rendered using the Context
 type Format string
+
+// Command represets the type of command being executed
+type Command string
 
 // IsTable returns true if the format is a table-type format
 func (f Format) IsTable() bool {
@@ -86,12 +101,20 @@ func (f Format) Contains(sub string) bool {
 	return strings.Contains(string(f), sub)
 }
 
+// IsListCommand returns true if the command is a list command
+func (c Command) IsListCommand() bool {
+	return string(c) == ListCommandKey
+}
+
 // Context contains information required by the formatter to print the output as desired.
 type Context struct {
 	// Output is the output stream to which the formatted string is written.
 	Output io.Writer
 	// Format is used to choose raw, table or custom format for the output.
 	Format Format
+
+	// Command is the command being executed
+	Command Command
 
 	// internal element
 	finalFormat string

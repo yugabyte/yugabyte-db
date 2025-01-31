@@ -4,7 +4,6 @@ headerTitle: Drivers and ORMs
 linkTitle: Drivers and ORMs
 description: Connect your applications with supported drivers and ORMs
 headcontent: Drivers and ORMs for YugabyteDB
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.14:
     identifier: drivers-orms
@@ -64,7 +63,7 @@ The following libraries are officially supported by YugabyteDB.
 | :--------- | :------------ | :----------- |
 | [PostgreSQL](nodejs/postgres-node-driver/) | Full | [CRUD Example](nodejs/postgres-node-driver/) |
 | [Sequelize](nodejs/sequelize/) | Full | [CRUD Example](nodejs/sequelize/) |
-| [Prisma](nodejs/prisma/) | Full | [CRUD Example](nodejs/prisma/)
+| [Prisma](nodejs/prisma/) | Full | [CRUD Example](nodejs/prisma/) |
 <!-- | TypeORM | Full |   | -->
 
 <!-- ### App Framework Support

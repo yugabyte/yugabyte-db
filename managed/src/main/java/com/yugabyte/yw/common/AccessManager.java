@@ -556,14 +556,19 @@ public class AccessManager extends DevopsBase {
     }
   }
 
-  public JsonNode deleteKeyByProvider(Provider provider, String keyCode, boolean deleteRemote) {
+  public JsonNode deleteKeyByProvider(Provider provider, AccessKey accessKey) {
     List<Region> regions = Region.getByProvider(provider.getUuid());
+    String keyCode = accessKey.getKeyCode();
+    boolean deleteRemote = accessKey.getKeyInfo().deleteRemote;
     if (regions == null || regions.isEmpty()) {
       return null;
     }
 
     if (Common.CloudType.valueOf(provider.getCode()) == Common.CloudType.aws) {
       ArrayNode ret = Json.mapper().getNodeFactory().arrayNode();
+      if (accessKey != null && accessKey.getKeyInfo().skipKeyValidateAndUpload) {
+        return ret;
+      }
       regions.stream()
           .map(r -> deleteKey(provider.getUuid(), r.getUuid(), keyCode, deleteRemote))
           .collect(Collectors.toList())

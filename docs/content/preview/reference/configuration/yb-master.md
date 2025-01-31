@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Use the `yb-master` binary and its flags to configure the [YB-Master](../../../architecture/yb-master/) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
+Use the yb-master binary and its flags to configure the [YB-Master](../../../architecture/yb-master/) server. The yb-master executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
@@ -37,6 +37,10 @@ To display the online help, run `yb-master --help` from the YugabyteDB home dire
 ./bin/yb-master --help
 ```
 
+## All flags
+
+The following sections describe the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-Master flags](../all-flags-yb-master/).
+
 ## General flags
 
 ##### --version
@@ -49,7 +53,7 @@ Specifies the configuration file to load flags from.
 
 ##### --master_addresses
 
-Specifies a comma-separated list of all RPC addresses for `yb-master` consensus-configuration.
+Specifies a comma-separated list of all RPC addresses for yb-master consensus-configuration.
 
 {{< note title="Note" >}}
 
@@ -63,7 +67,7 @@ Default: `127.0.0.1:7100`
 
 ##### --fs_data_dirs
 
-Specifies a comma-separated list of mount directories, where `yb-master` will add a `yb-data/master` data directory, `master.err`, `master.out`, and `pg_data` directory.
+Specifies a comma-separated list of mount directories, where yb-master will add a `yb-data/master` data directory, `master.err`, `master.out`, and `pg_data` directory.
 
 Required.
 
@@ -71,7 +75,7 @@ Changing the value of this flag after the cluster has already been created is no
 
 ##### --fs_wal_dirs
 
-Specifies a comma-separated list of directories, where `yb-master` will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
+Specifies a comma-separated list of directories, where yb-master will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
 
 Default: Same value as `--fs_data_dirs`
 
@@ -79,7 +83,7 @@ Default: Same value as `--fs_data_dirs`
 
 Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
 
-The values used must match on all `yb-master` and [`yb-tserver`](../yb-tserver/#rpc-bind-addresses) configurations.
+The values used must match on all yb-master and [yb-tserver](../yb-tserver/#rpc-bind-addresses) configurations.
 
 Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/master/conf/server.conf`. For example:
 
@@ -173,19 +177,31 @@ If enabled, indexes on the same (YCQL) table may be batched together during back
 
 Default: `true`
 
+##### --time_source
+
+Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+
+Default: `""`
+
 ## YSQL flags
 
 ##### --enable_ysql
 
 {{< note title="Note" >}}
 
-Ensure that `enable_ysql` values in `yb-master` configurations match the values in `yb-tserver` configurations.
+Ensure that `enable_ysql` values in yb-master configurations match the values in yb-tserver configurations.
 
 {{< /note >}}
 
 Enables the YSQL API when value is `true`.
 
 Default: `true`
+
+##### --enable_pg_cron
+
+Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
+
+Default: `false`
 
 ## Logging flags
 
@@ -217,7 +233,7 @@ Default: `false`
 
 ##### --log_dir
 
-The directory to write `yb-master` log files.
+The directory to write yb-master log files.
 
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
 
@@ -276,7 +292,7 @@ The memory division flags have multiple sets of defaults; which set of defaults 
 
 If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
-Default: `false`
+Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
 
 If this flag is true then the memory division flag defaults change to provide much more memory for Postgres; furthermore, they optimize for the node size.
 
@@ -360,7 +376,7 @@ Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-def
 
 ## Raft flags
 
-For a typical deployment, values used for Raft and the write ahead log (WAL) flags in `yb-master` configurations should match the values in [yb-tserver](../yb-tserver/#raft-flags) configurations.
+For a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-master configurations should match the values in [yb-tserver](../yb-tserver/#raft-flags) configurations.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -382,7 +398,7 @@ Note that it is not recommended to set the flag to true for masters as you canno
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds, is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
-For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+For read replica clusters, set the value to `10` in all yb-tserver and yb-master configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
 
@@ -404,11 +420,11 @@ Default: `500`
 
 ### Write ahead log (WAL) flags
 
-Ensure that values used for the write ahead log (WAL) in `yb-master` configurations match the values in `yb-tserver` configurations.
+Ensure that values used for the write ahead log (WAL) in yb-master configurations match the values in yb-tserver configurations.
 
 ##### --fs_wal_dirs
 
-The directory where the `yb-tserver` retains WAL files. May be the same as one of the directories listed in [`--fs_data_dirs`](#fs-data-dirs), but not a subdirectory of a data directory.
+The directory where the yb-tserver retains WAL files. May be the same as one of the directories listed in [`--fs_data_dirs`](#fs-data-dirs), but not a subdirectory of a data directory.
 
 Default: Same as `--fs_data_dirs`
 
@@ -460,7 +476,7 @@ Default: The default value in `2.18.1` is `-1` - feature is disabled by default.
 
 For information on YB-Master load balancing, see [Tablet assignments](../../../architecture/yb-master#tablet-assignments).
 
-For load balancing commands in `yb-admin`, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
+For load balancing commands in yb-admin, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
 
 ##### --enable_load_balancing
 
@@ -562,13 +578,13 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
   - For servers with up to two CPU cores, the default value is considered as `4`.
   - For three or more CPU cores, the default value is considered as `8`.
 
-Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+Local cluster installations created using yb-ctl and yb-docker-ctl use a default value of `2` for this flag.
 
-Clusters created using `yugabyted` always use a default value of `1`.
+Clusters created using yugabyted always use a default value of `1`.
 
 {{< note title="Note" >}}
 
-- This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 - If the value is set to *Default* (`-1`), then the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
 - The [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used on a per-table basis to override the `yb_num_shards_per_tserver` value.
 
@@ -589,13 +605,13 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
   - For servers with three or four CPU cores, the default value is considered as `4`.
   - Beyond four cores, the default value is considered as `8`.
 
-Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+Local cluster installations created using yb-ctl and yb-docker-ctl use a default value of `2` for this flag.
 
-Clusters created using `yugabyted` always use a default value of `1`.
+Clusters created using yugabyted always use a default value of `1`.
 
 {{< note title="Note" >}}
 
-- This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 - If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
 - The [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
 
@@ -605,7 +621,7 @@ Clusters created using `yugabyted` always use a default value of `1`.
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+For more details, see [clusters in colocated tables](../../../explore/colocation/).
 
 Default: `false`
 
@@ -613,13 +629,13 @@ Default: `false`
 
 Enables/disables blocking of requests which would bring the total number of tablets in the system over a limit. For more information, see [Tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
 
-Default: `false`. No limits will be enforced if this is false.
+Default: `true`. No limits are enforced if this is false.
 
 ##### split_respects_tablet_replica_limits
 
 If set, tablets will not be split if the total number of tablet replicas in the cluster after the split would exceed the limit after the split.
 
-Default: `false`
+Default: `true`
 
 ##### tablet_replicas_per_core_limit
 
@@ -635,6 +651,12 @@ Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tabl
 
 ## Tablet splitting flags
 
+##### --max_create_tablets_per_ts
+
+The maximum number of tablets per tablet server that can be specified when creating a table. This also limits the number of tablets that can be created by tablet splitting.
+
+Default: `50`
+
 ##### --enable_automatic_tablet_splitting
 
 Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
@@ -643,7 +665,7 @@ Default: `true`
 
 {{< note title="Important" >}}
 
-This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 
 {{< /note >}}
 
@@ -657,7 +679,7 @@ Default: `1`
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [`--tablet_split_low_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `128_MB`
+Default: `128 MiB`
 
 ##### --tablet_split_high_phase_shard_count_per_node
 
@@ -669,19 +691,19 @@ Default: `24`
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "high" phase of automatic tablet splitting. See [`--tablet_split_high_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `10_GB`
+Default: `10 GiB`
 
 ##### --tablet_force_split_threshold_bytes
 
 The size threshold used to determine if a tablet should be split even if the table's number of shards puts it past the "high phase".
 
-Default: `100_GB`
+Default: `100 GiB`
 
 ##### --tablet_split_limit_per_table
 
 The maximum number of tablets per table for tablet splitting. Limitation is disabled if this value is set to 0.
 
-Default: `256`
+Default: `0`
 
 ##### --index_backfill_tablet_split_completion_timeout_sec
 
@@ -793,7 +815,7 @@ Default: `true`
 
 ## Security flags
 
-For details on enabling server-to-server encryption, see [Server-server encryption](../../../secure/tls-encryption/server-to-server/).
+For details on enabling encryption in transit, see [Encryption in transit](../../../secure/tls-encryption/).
 
 ##### --certs_dir
 
@@ -801,9 +823,15 @@ Directory that contains certificate authority, private key, and certificates for
 
 Default: `""` (uses `<data drive>/yb-data/master/data/certs`.)
 
+##### --certs_for_client_dir
+
+The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
+
+Default: `""` (Use the same directory as certs_dir.)
+
 ##### --allow_insecure_connections
 
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled.
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [use_node_to_node_encryption](#use-node-to-node-encryption) to be enabled and [use_client_to_server_encryption](#use-client-to-server-encryption) to be enabled.
 
 Default: `true`
 
@@ -813,9 +841,17 @@ Adds certificate entries, including IP addresses and hostnames, to log for hands
 
 Default: `false`
 
+##### --use_client_to_server_encryption
+
+Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs.
+
+Default: `false`
+
 ##### --use_node_to_node_encryption
 
-Enables server-server or node-to-node encryption between YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) flag enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) flag must be disabled.
+Enables server-server (node-to-node) encryption between YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-TServer servers must also have their [--use_node_to_node_encryption](../yb-tserver/#use-node-to-node-encryption) flag enabled.
+
+When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
 
 Default: `false`
 
@@ -853,6 +889,32 @@ Default: `DEFAULTS`
 
 For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
 
+##### --ssl_protocols
+
+Specifies an explicit allow-list of TLS protocols for YugabyteDB's internal RPC communication.
+
+Default: An empty string, which is equivalent to allowing all protocols except "ssl2" and "ssl3".
+
+You can pass a comma-separated list of strings, where the strings can be one of "ssl2", "ssl3", "tls10", "tls11", "tls12", and "tls13".
+
+You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, set the flag to tls12 as follows:
+
+```sh
+--ssl_protocols = tls12
+```
+
+To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set to tls12, tls13, and all available subsequent versions.
+
+```sh
+--ssl_protocols = tls12,tls13
+```
+
+In addition, as this setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag as follows:
+
+```sh
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
+```
+
 ## Change data capture (CDC) flags
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
@@ -869,11 +931,13 @@ Default: `0` (Use the same default number of tablets as for regular tables.)
 
 WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
 
-Default: `14400` (4 hours)
+Default: `28800` (8 hours)
 
 ##### --enable_tablet_split_of_cdcsdk_streamed_tables
 
 Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
+
+Default: `true`
 
 ##### --enable_truncate_cdcsdk_table
 
@@ -881,22 +945,21 @@ By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. 
 
 Default: `false`
 
+##### --enable_tablet_split_of_replication_slot_streamed_tables
+
+Toggle automatic tablet splitting for tables under replication slot. Applicable only to CDC using the [PostgreSQL logical replication protocol](../../../develop/change-data-capture/using-logical-replication/).
+
+Default: `false`
+
 ## Metric export flags
 
-YB-Master metrics are available in Prometheus format atmax_prometheus_metric_entries
-`http://localhost:7000/prometheus-metrics`.
+YB-Master metrics are available in Prometheus format at `http://localhost:7000/prometheus-metrics`.
 
 ##### --export_help_and_type_in_prometheus_metrics
 
-This flag controls whether
-#TYPE and #HELP information is included as part of the Prometheus
-metrics output by default.
+This flag controls whether #TYPE and #HELP information is included as part of the Prometheus metrics output by default.
 
-To override this flag on a per-scrape basis, set the URL parameter
-`show_help` to `true` to include or to `false` to not include type and
-help information.  For example, querying
-`http://localhost:7000/prometheus-metrics?show_help=true` will return
-type and help information regardless of the setting of this flag.
+To override this flag on a per-scrape basis, set the URL parameter `show_help` to `true` to include, or to `false` to not include type and help information.  For example, querying `http://localhost:7000/prometheus-metrics?show_help=true` returns type and help information regardless of the setting of this flag.
 
 Default: `true`
 
@@ -904,8 +967,7 @@ Default: `true`
 
 Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
 
-To override this flag on a per-scrape basis, you can adjust the URL parameter
-`max_metric_entries`.
+To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
 
 Default: `UINT32_MAX`
 
@@ -980,6 +1042,16 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 {{< /note >}}
 
 ## Advanced flags
+
+##### --allowed_preview_flags_csv
+
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+
+By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+
+{{<warning>}}
+Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
+{{</warning>}}
 
 ##### --ysql_index_backfill_rpc_timeout_ms
 

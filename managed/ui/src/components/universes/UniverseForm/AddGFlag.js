@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import _ from 'lodash';
-import { useSelector } from 'react-redux';
+import { get } from 'lodash';
 import { Field } from 'formik';
 import clsx from 'clsx';
 import { ListGroupItem, ListGroup, Row, Col, Badge } from 'react-bootstrap';
@@ -15,12 +14,21 @@ import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 //Icons
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
+import WarningIcon from '../../../redesign/assets/warning-triangle.svg';
 // Styles
 import './UniverseForm.scss';
 
-const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
-  const featureFlags = useSelector((state) => state.featureFlags);
-  const { mode, server, dbVersion, existingFlags, isGFlagMultilineConfEnabled } = gFlagProps;
+const AUDIT_LOG_FLAG = 'ysql_pg_conf_csv';
+
+const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags = {} }) => {
+  const {
+    mode,
+    server,
+    dbVersion,
+    existingFlags,
+    isGFlagMultilineConfEnabled,
+    editMode
+  } = gFlagProps;
   const [searchVal, setSearchVal] = useState('');
   const [isLoading, setLoader] = useState(true);
   const [toggleMostUsed, setToggleMostUsed] = useState(true);
@@ -36,10 +44,13 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
 
   const handleFlagSelect = (flag) => {
     let flagvalue = null;
-    const existingFlagValue = _.get(
-      existingFlags.find((f) => f.Name === flag?.name),
-      server
-    );
+    const disabledFlagValue = get(disabledFlags, flag?.name, null);
+    const existingFlagValue =
+      disabledFlagValue ??
+      get(
+        existingFlags.find((f) => f.Name === flag?.name),
+        server
+      );
     // eslint-disable-next-line no-prototype-builtins
     const defaultKey = flag?.hasOwnProperty('current') ? 'current' : 'default'; // Guard condition to handle inconstintency in gflag metadata
     if (flag?.type === 'bool')
@@ -125,17 +136,68 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
 
   const infoText = (
     <div className="info-msg">
-      <img alt="--" src={Bulb} width="24" />
+      <img alt="Bulb" src={Bulb} width="24" />
       &nbsp;
       <span>
-        Start typing the Flag’s name in the search field above to find the Flag you are looking for
+        Start typing the Flag&apos;s name in the search field above to find the Flag you are looking
+        for
+      </span>
+    </div>
+  );
+
+  const pgBanner = (
+    <div className="pg-banner">
+      <img alt="Warning" src={WarningIcon} width="24" />
+      &nbsp;
+      <span>
+        You cannot update the disabled fields because these were set automatically via the Enhanced
+        Postgres Compatibility setting. To update these fields, please disable Enhanced Postgres
+        Compatibility (not recommended) and retry.
+      </span>
+    </div>
+  );
+
+  const getAuditLogLink = () => {
+    const path = window.location.href;
+    const pathArray = path.split('/');
+    const universeUrl = `${pathArray[3]}/${pathArray[4]}`;
+    return `/${universeUrl}/db-audit-log`;
+  };
+
+  const auditLogBanner = (
+    <div className="pg-banner">
+      <img alt="Warning" src={WarningIcon} width="24" />
+      &nbsp;
+      <span>
+        Set pgaudit parameters using the&nbsp;
+        <a
+          className="gflag-doc-link"
+          rel="noopener noreferrer"
+          href={getAuditLogLink()}
+          target="_blank"
+        >
+          YugabyteDB Anywhere UI
+        </a>
+        &nbsp; instead of via the ysql_pg_conf_flag. If you set pgaudit parameters using the flag,
+        the flag values take precedence and the values are not updated in the UI.
+        <br />
+        <a
+          className="gflag-doc-link"
+          rel="noopener noreferrer"
+          href={
+            'https://docs.yugabyte.com/preview/yugabyte-platform/alerts-monitoring/universe-logging'
+          }
+          target="_blank"
+        >
+          Learn more
+        </a>
       </span>
     </div>
   );
 
   const documentationLink = (
     <Row className="mt-16">
-      <img alt="--" src={BookOpen} width="12" />{' '}
+      <img alt="Book" src={BookOpen} width="12" />{' '}
       <a
         className="gflag-doc-link"
         rel="noopener noreferrer"
@@ -158,6 +220,7 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
       ? 'default'
       : 'target';
 
+    const disableInputs = get(disabledFlags, selectedFlag?.name, false);
     switch (flag?.type) {
       case 'bool':
         return (
@@ -173,6 +236,7 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
                       onChange={() => formProps.setFieldValue('flagvalue', target)}
                       value={`${target}`}
                       checked={`${target}` === `${formProps?.values['flagvalue']}`}
+                      disabled={disableInputs}
                     />{' '}
                     {`${target}`}{' '}
                     <span className="default-text">
@@ -197,7 +261,15 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
             />
           );
         } else {
-          return <Field name="flagvalue" type="text" label={valueLabel} component={YBFormInput} />;
+          return (
+            <Field
+              name="flagvalue"
+              type="text"
+              label={valueLabel}
+              component={YBFormInput}
+              disabled={disableInputs}
+            />
+          );
         }
 
       default:
@@ -209,6 +281,7 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
             label={valueLabel}
             component={YBFormInput}
             step="any"
+            disabled={disableInputs}
           />
         );
     }
@@ -283,6 +356,8 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
       const defaultKey = selectedFlag?.hasOwnProperty('current') ? 'current' : 'default';
       return (
         <>
+          {get(disabledFlags, selectedFlag?.name, false) && pgBanner}
+          {editMode && selectedFlag?.name === AUDIT_LOG_FLAG && auditLogBanner}
           <div className="gflag-detail-container">
             <span className="flag-detail-header">Flag Details</span>
             {renderFieldInfo('Name', selectedFlag?.name)}
@@ -328,7 +403,7 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
           <Col md={6} className="split-container">
             {renderFlagList()}
           </Col>
-          <Col md={6} className="split-container add-border-left">
+          <Col md={6} className="detail-container add-border-left">
             {renderFlagDetails()}
           </Col>
         </Row>

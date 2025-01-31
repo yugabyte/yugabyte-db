@@ -26,7 +26,9 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/result.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/tsan_util.h"
@@ -52,6 +54,7 @@ using yb::rpc::RpcController;
 using namespace std::literals;
 
 DECLARE_int32(ysql_log_min_duration_statement);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb {
 namespace pgwrapper {
@@ -165,10 +168,10 @@ using PgWrapperTestAuthSecure = PgWrapperTestHelper<ConnectionStrategy<true, tru
 
 TEST_F(PgWrapperTestAuth, TestConnectionAuth) {
   ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
+      "SELECT client_dn FROM pg_stat_ssl WHERE ssl=true",
       R"#(
-         clientdn
-        ----------
+         client_dn
+        -----------
         (0 rows)
       )#"
   ));
@@ -176,9 +179,9 @@ TEST_F(PgWrapperTestAuth, TestConnectionAuth) {
 
 TEST_F(PgWrapperTestSecure, TestConnectionTLS) {
   ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
+      "SELECT client_dn FROM pg_stat_ssl WHERE ssl=true",
       R"#(
-                clientdn
+                client_dn
         -------------------------
          /O=YugaByte/CN=yugabyte
         (1 row)
@@ -189,9 +192,9 @@ TEST_F(PgWrapperTestSecure, TestConnectionTLS) {
 
 TEST_F(PgWrapperTestAuthSecure, TestConnectionAuthTLS) {
   ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
+      "SELECT client_dn FROM pg_stat_ssl WHERE ssl=true",
       R"#(
-                clientdn
+                client_dn
         -------------------------
          /O=YugaByte/CN=yugabyte
         (1 row)
@@ -321,74 +324,99 @@ class PgWrapperOneNodeClusterTest : public PgWrapperTest {
   Result<PGConn> ConnectToDB(const std::string& dbname) const {
     return PGConnBuilder({
       .host = pg_ts->bound_rpc_addr().host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = dbname
     }).Connect();
   }
+
+  Status WaitForPostgresToStart(MonoDelta timeout) {
+    return WaitFor([this]() -> Result<bool> {
+      return ResultToStatus(RunPsqlCommand("SELECT 1")).ok();
+    }, timeout, "Postgres has started");
+  }
 };
 
-TEST_F(PgWrapperOneNodeClusterTest, TestPostgresPid) {
+TEST_F(PgWrapperOneNodeClusterTest, TestPostgresLockFiles) {
   MonoDelta timeout = 15s;
-  int tserver_count = 1;
 
-  std::string pid_file = JoinPathSegments(pg_ts->GetRootDir(), "pg_data", "postmaster.pid");
-  // Wait for postgres server to start and setup postmaster.pid file
-  ASSERT_OK(LoggedWaitFor(
-      [this, &pid_file] {
-        return env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to create postmaster.pid file"));
-  ASSERT_TRUE(env_->FileExists(pid_file));
+  const auto pid_file = JoinPathSegments(pg_ts->GetRootDir(), "pg_data", "postmaster.pid");
 
-  // Shutdown tserver and wait for postgres server to shut down and delete postmaster.pid file
-  pg_ts->Shutdown();
-  ASSERT_OK(LoggedWaitFor(
-      [this, &pid_file] {
-        return !env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to shutdown"));
-  ASSERT_FALSE(env_->FileExists(pid_file));
+  std::vector<std::string> lock_files;
+  lock_files.push_back(pid_file);
+  lock_files.emplace_back(
+      PgDeriveSocketLockFile(HostPort(pg_ts->bind_host(), pg_ts->pgsql_rpc_port())));
 
-  // Create empty postmaster.pid file and ensure that tserver can start up
-  // Use sync_on_close flag to ensure that the file is flushed to disk when tserver tries to read it
-  std::unique_ptr<RWFile> file;
-  RWFileOptions opts;
-  opts.sync_on_close = true;
-  opts.mode = Env::CREATE_IF_NON_EXISTING_TRUNCATE;
+  auto validate_files = [&lock_files, env = Env::Default()](bool exists) -> Status {
+    for (const auto& lock_file : lock_files) {
+      SCHECK_EQ(
+          exists, env->FileExists(lock_file), IllegalState,
+          Format("$0 file $1found", lock_file, (exists ? " not " : "")));
+    }
+    return Status::OK();
+  };
 
-  ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
-  ASSERT_OK(pg_ts->Start(false /* start_cql_proxy */));
-  ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
+  auto write_lock_files = [this, &lock_files](const std::string& data) -> Status {
+    // Use sync_on_close flag to ensure that the file is flushed to disk when tserver tries to read
+    // it.
+    RWFileOptions opts;
+    opts.sync_on_close = true;
+    opts.mode = Env::CREATE_IF_NON_EXISTING_TRUNCATE;
 
-  // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
-  pg_ts->Shutdown();
-  ASSERT_OK(LoggedWaitFor(
-      [this, &pid_file] {
-        return !env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to shutdown", 100ms));
-  ASSERT_FALSE(env_->FileExists(pid_file));
+    LOG(INFO) << "Writing lock files with data: \n'" << data << "'";
 
-  // Create postmaster.pid file with string pid (invalid) and ensure that tserver can start up
-  ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
-  ASSERT_OK(file->Write(0, "abcde\n" + pid_file));
-  ASSERT_OK(file->Close());
+    for (const auto& lock_file : lock_files) {
+      std::unique_ptr<RWFile> file;
+      RETURN_NOT_OK(env_->NewRWFile(opts, lock_file, &file));
+      if (!data.empty()) {
+        RETURN_NOT_OK(file->Write(0, data));
+      }
+      RETURN_NOT_OK(file->Close());
+    }
+    return Status::OK();
+  };
 
-  ASSERT_OK(pg_ts->Start(false /* start_cql_proxy */));
-  ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
+  auto restart_tserver_and_validate = [&](const std::string& lock_file_data) -> Status {
+    pg_ts->Shutdown();
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> { return validate_files(/*exists=*/false).ok(); }, timeout,
+        "Lock files to clear"));
 
-  // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
-  pg_ts->Shutdown();
-  ASSERT_OK(LoggedWaitFor(
-      [this, &pid_file] {
-        return !env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to shutdown", 100ms));
-  ASSERT_FALSE(env_->FileExists(pid_file));
+    RETURN_NOT_OK(write_lock_files(lock_file_data));
 
-  // Create postgres pid file with integer pid (valid) and ensure that tserver can start up
-  ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
-  ASSERT_OK(file->Write(0, "1002\n" + pid_file));
-  ASSERT_OK(file->Close());
+    RETURN_NOT_OK(pg_ts->Start(false /* start_cql_proxy */));
+    RETURN_NOT_OK(cluster_->WaitForTabletServerCount(GetNumTabletServers(), timeout));
+    RETURN_NOT_OK(WaitForPostgresToStart(timeout));
+    RETURN_NOT_OK(validate_files(/*exists=*/true));
 
-  ASSERT_OK(pg_ts->Start(false /* start_cql_proxy */));
-  ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
+    return Status::OK();
+  };
+
+  // Wait for postgres server to start and setup lock files.
+  ASSERT_OK(WaitForPostgresToStart(timeout));
+  ASSERT_OK(validate_files(/*exists=*/true));
+
+  // Test empty lock files.
+  ASSERT_OK(restart_tserver_and_validate(""));
+
+  // Test lock files with string pid (invalid).
+  ASSERT_OK(restart_tserver_and_validate("abcde\n" + pid_file));
+
+  const auto killMsg = "Killing older postgres process";
+
+  // Test lock files with a random integer pid (valid).
+  {
+    auto kill_mgs_watcher = StringWaiterLogSink(killMsg);
+    ASSERT_OK(restart_tserver_and_validate("1002\n" + pid_file));
+    ASSERT_FALSE(kill_mgs_watcher.IsEventOccurred());
+  }
+
+  // Test lock files with integer pid (our own pid) and ensure that tserver does not kill us.
+  {
+    const auto my_pid = getpid();
+    auto kill_mgs_watcher = StringWaiterLogSink(killMsg);
+    ASSERT_OK(restart_tserver_and_validate(Format("$0\n$1", my_pid, pid_file)));
+    ASSERT_FALSE(kill_mgs_watcher.IsEventOccurred());
+  }
 }
 
 class PgWrapperSingleNodeLongTxnTest : public PgWrapperOneNodeClusterTest {
@@ -618,6 +646,7 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_txn_locks_per_tablet=1000");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replication_commands=true");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replica_identity=true");
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_docdb_vector_type=false");
   }
 };
 
@@ -633,6 +662,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_txn_locks_per_tablet", "1000"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "true"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
 }
 
 class PgWrapperAutoFlagsTest : public PgWrapperFlagsTest {
@@ -665,6 +695,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "true"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "true"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(true /* expect_target_value */));
 }
@@ -686,8 +717,30 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(false /* expect_target_value */));
+}
+
+class ValidateYsqlPgConfCsvTest : public YBTest {};
+
+TEST_F_EX(PgWrapperFlagsTest, ValidateYsqlPgConfCsv, ValidateYsqlPgConfCsvTest) {
+  // Valid values
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, ""));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a =1 ,b 2"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1, b= 'String with spaces' "));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, R"(a=1,b='Special \'String''')"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1, # Comment out the bad pattern b='This won't work'"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1,b='String # with a comment'"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1,b'String with \\n string'"));
+
+  // Invalid values
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1, "two)"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1, "two")"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1,two "2")"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1,"tw"o")"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, "a=1,b='String with a \n char'"));
 }
 
 }  // namespace pgwrapper

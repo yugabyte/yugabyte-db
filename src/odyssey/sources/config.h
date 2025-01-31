@@ -33,7 +33,9 @@ struct od_config {
 	int log_config;
 	int log_session;
 	int log_query;
-	char *log_file;
+	char *log_dir;
+	int log_max_size;
+	int log_rotate_interval;
 	char *log_format;
 	int log_stats;
 	int log_general_stats_prom;
@@ -76,6 +78,12 @@ struct od_config {
 	int coroutine_stack_size;
 	char *hba_file;
 	od_list_t listen;
+
+	/* YB */
+	int yb_ysql_max_connections;
+	int yb_use_auth_backend;
+	int yb_optimized_extended_query_protocol;
+	int yb_enable_multi_route_pool;
 };
 
 void od_config_init(od_config_t *);

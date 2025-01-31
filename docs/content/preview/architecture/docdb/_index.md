@@ -3,7 +3,6 @@ title: DocDB storage layer
 headerTitle: DocDB storage layer
 linkTitle: DocDB - Storage layer
 description: Learn about the persistent storage layer of DocDB.
-image: fa-thin fa-database
 aliases:
   - /architecture/concepts/docdb/
   - /preview/docdb/persistence/

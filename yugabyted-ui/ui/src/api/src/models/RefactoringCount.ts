@@ -15,11 +15,17 @@
 
 
 /**
- * count for automatic and manual refactoring
+ * Count of automatic, manual and invalid SQL objects displayed in Schema analysis page
  * @export
  * @interface RefactoringCount
  */
 export interface RefactoringCount  {
+  /**
+   * 
+   * @type {string}
+   * @memberof RefactoringCount
+   */
+  sql_object_type?: string;
   /**
    * 
    * @type {number}
@@ -32,6 +38,12 @@ export interface RefactoringCount  {
    * @memberof RefactoringCount
    */
   automatic?: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof RefactoringCount
+   */
+  invalid?: number;
 }
 
 

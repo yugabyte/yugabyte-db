@@ -40,7 +40,10 @@ export const EditTPConfigDialog = ({
     defaultValues: {
       tpUrl: data.tpUrl,
       ybaUrl: data.ybaUrl,
-      metricsUrl: data.metricsUrl
+      metricsUrl: data.metricsUrl,
+      apiToken: data.apiToken,
+      tpApiToken: data.tpApiToken,
+      metricsScrapePeriodSecs: data.metricsScrapePeriodSecs
     },
     mode: 'onChange',
     reValidateMode: 'onChange'
@@ -77,7 +80,7 @@ export const EditTPConfigDialog = ({
       cancelLabel={t('common.cancel')}
       submitLabel={t('clusterDetail.troubleshoot.editDialog.updateButton')}
       size="md"
-      overrideHeight={'400px'}
+      overrideHeight={'480px'}
       titleSeparator
       enableBackdropDismiss
       dialogContentProps={{
@@ -168,6 +171,54 @@ export const EditTPConfigDialog = ({
                 type="text"
                 rules={{
                   required: t('clusterDetail.troubleshoot.urlRequired')
+                }}
+              />
+            </Box>
+          </Box>
+
+          <Box display="flex" flexDirection={'row'} mt={2}>
+            <YBLabel width="250px" dataTestId="RegisterTSService-Label">
+              {t('clusterDetail.troubleshoot.apiTokenLabel')}
+            </YBLabel>
+            <Box flex={1}>
+              <YBInputField
+                control={control}
+                name="apiToken"
+                style={{ width: '300px' }}
+                type="text"
+                rules={{
+                  required: t('clusterDetail.troubleshoot.apiTokenRequired')
+                }}
+              />
+            </Box>
+          </Box>
+
+          <Box display="flex" flexDirection={'row'} mt={2}>
+            <YBLabel width="250px" dataTestId="RegisterTSService-Label">
+              {t('clusterDetail.troubleshoot.tpApiTokenLabel')}
+            </YBLabel>
+            <Box flex={1}>
+              <YBInputField
+                control={control}
+                name="tpApiToken"
+                style={{ width: '300px' }}
+                type="text"
+              />
+            </Box>
+          </Box>
+
+          <Box display="flex" flexDirection={'row'} mt={2}>
+            <YBLabel width="250px" dataTestId="RegisterTSService-Label">
+              {t('clusterDetail.troubleshoot.metricsScrapePeriodSecLabel')}
+            </YBLabel>
+            <Box flex={1}>
+              <YBInputField
+                control={control}
+                name="metricsScrapePeriodSecs"
+                style={{ width: '300px' }}
+                type="text"
+                rules={{
+                  required: t('clusterDetail.troubleshoot.metricsScrapePeriodSecsRequired')
                 }}
               />
             </Box>

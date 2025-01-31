@@ -143,6 +143,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         " connections will share the same physical connection in a single threaded test if" +
         " no active transactions are there on the first connection";
 
+  protected static final String CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE =
+      "Test is designed in a way which requires every logical connection to have a dedicated " +
+      "physical connection. In the test backends are loaded with meta data of the object " +
+      "(tables) on executing DML with the premise (a) when withCachedMetadata is true, then " +
+      "the same backend processes the queries in a session (b) when withCachedMetadata is " +
+      "false, a new backend processes queries for a new connection (session). in both these " +
+      "cases the premise cannot be guaranteed when run with Connection Manager, hence skipping " +
+      "the tests with connection manager";
+
   protected static final String LESSER_PHYSICAL_CONNS =
       "Skipping this test with Ysql Connection Manager as logical connections " +
         "created are lesser than physical connections and the real maximum limit for creating " +
@@ -169,6 +178,41 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "variables at the beginning of transaction boundaries, causing erroneous results in " +
         "the test, leading to failure.";
 
+  protected static final String INCORRECT_CONN_STATE_BEHAVIOR =
+      "Skipping this test with Connection Manager enabled. The connections may not be in the " +
+        "expected state due to the way physical connections are attached and detached from " +
+        "logical connections, where certain setting changes should only exist in new connections.";
+
+  protected static final String CONFIGURABLE_DEBUG_LOGS_NEEDED =
+      "(DB-12742) Skipping this test with Connection Manager enabled. The test requires the " +
+        "ability to configure debug logs for connection manager to be at the same levels as " +
+        "tserver log levels.";
+
+  protected static final String LONG_PASSWORD_SUPPORT_NEEDED =
+      "(DB-10387) This test leads to certain I/O errors due to the usage of long passwords when " +
+        "Connection Manager is enabled. Skipping this test with Connection Manager enabled.";
+
+  protected static final String RECREATE_USER_SUPPORT_NEEDED =
+      "(DB-10760) This test needs stricter statistic updates for when roles are recreated when " +
+        "Connection Manager is enabled. Skipping this test with Connection Manager enabled " +
+        "until the relevant code is pushed to master.";
+
+  protected static final String EXTENSION_NOT_SUPPORTED =
+      "The extension being used as part of the test is not supported with connection manager.";
+
+  // Warmup modes for Connection Manager during test runs.
+  protected static enum ConnectionManagerWarmupMode {
+    NONE,
+    RANDOM,
+    ROUND_ROBIN
+  }
+
+  protected static ConnectionManagerWarmupMode warmupMode = ConnectionManagerWarmupMode.RANDOM;
+
+  protected static final int CONN_MGR_WARMUP_BACKEND_COUNT = 3;
+
+  protected static boolean ysql_conn_mgr_superuser_sticky = false;
+
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
   protected boolean startRedisProxy = false;
@@ -179,14 +223,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static final int DEFAULT_STATEMENT_TIMEOUT_MS = 30000;
 
-  protected static Map<String, String> FailOnConflictTestGflags = new HashMap<String, String>()
-    {
-      {
-          put("enable_wait_queues", "false");
-          // The retries are set to 2 to speed up the tests.
-          put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
-      }
-    };
+  // Assuming maximum control connection created will be 3 in any test where config reload is
+  // required.
+  protected static final int MAX_ATTEMPTS_TO_DESTROY_CONTROL_CONN = 3;
 
   protected static ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap =
       new ConcurrentSkipListSet<>();
@@ -237,6 +276,26 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /**
+   * Add ysql_pg_conf_csv flag values using this method to avoid clobbering existing values.
+   * @param flagMap the map of flags to mutate
+   * @param value the raw text to append to the ysql_pg_conf_csv flag value
+   */
+  protected static void appendToYsqlPgConf(Map<String, String> flagMap, String value) {
+    final String flagName = "ysql_pg_conf_csv";
+    if (flagMap.containsKey(flagName)) {
+      flagMap.put(flagName, flagMap.get(flagName) + "," + value);
+    } else {
+      flagMap.put(flagName, value);
+    }
+  }
+
+  protected static void setFailOnConflictFlags(Map<String, String> flagMap) {
+    flagMap.put("enable_wait_queues", "false");
+    // The retries are set to 2 to speed up the tests.
+    appendToYsqlPgConf(flagMap, maxQueryLayerRetriesConf(2));
+  }
+
+  /**
    * @return flags shared between tablet server and initdb
    */
   @Override
@@ -261,6 +320,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     flagMap.put("ysql_beta_features", "true");
     flagMap.put("ysql_enable_reindex", "true");
     flagMap.put("TEST_ysql_hide_catalog_version_increment_log", "true");
+    flagMap.put("ysql_conn_mgr_sequence_support_mode", "session");
 
     return flagMap;
   }
@@ -294,6 +354,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
+      builder.addCommonTServerFlag("ysql_conn_mgr_superuser_sticky",
+        Boolean.toString(ysql_conn_mgr_superuser_sticky));
+      builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
+        warmupMode.toString().toLowerCase());
     }
   }
 
@@ -339,6 +403,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     connection = createTestRole();
+    allowSchemaPublic();
     pgInitialized = true;
   }
 
@@ -351,6 +416,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     return getConnectionBuilder().connect();
+  }
+
+  private void allowSchemaPublic() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("GRANT ALL ON SCHEMA public TO public");
+    }
   }
 
   public void restartClusterWithFlags(
@@ -408,6 +479,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return miniCluster.getPostgresContactPoints().get(tserverIndex).getPort();
   }
 
+  public int getYsqlConnMgrPort(int tserverIndex) {
+    return miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex).getPort();
+  }
+
   @After
   public void cleanUpAfter() throws Exception {
     LOG.info("Cleaning up after {}", getCurrentTestMethodName());
@@ -427,6 +502,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       // TODO(dmitry): Workaround for #1721, remove after fix.
       stmt.execute("ROLLBACK");
       stmt.execute("DISCARD TEMP");
+
+      // TODO(tim): Workaround for DB-11127, remove after fix.
+      stmt.execute("RESET enable_seqscan");
+      stmt.execute("SET enable_bitmapscan = false");
     }
 
     cleanUpCustomDatabases();
@@ -445,6 +524,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
    */
   private void cleanUpCustomDatabases() throws Exception {
     LOG.info("Cleaning up custom databases");
+    if (isTestRunningWithConnectionManager()) {
+      waitForStatsToGetUpdated();
+    }
     try (Statement stmt = connection.createStatement()) {
       for (int i = 0; i < 2; i++) {
         try {
@@ -539,8 +621,61 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected boolean isTestRunningWithConnectionManager() {
+  protected static boolean isTestRunningWithConnectionManager() {
     return ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR;
+  }
+
+  /*
+   * On setting up a GUC variable using yb-ts-cli, it leads to reloading postgres config file at
+   * run time which is not supported with Ysql Connection Manager. In order to make a successfull
+   * connection, make as many connection attempts as there are control connections before setting
+   * GUC variable. The goal is to avoid using any control connection (for authentication) created
+   * before setting up a GUC variabe as it will be config reload prone. Therefore with every
+   * attempt a control connection will be destroyed and client connection will fail.
+   * Once all existing control connections are exhausted, any further attempt will lead to a
+   * successful connection as new control connection will be created with updated config
+   * file.
+   */
+
+  protected void closeControlConnOnReloadConfig(int attempts) {
+    assert(isTestRunningWithConnectionManager());
+
+    for (int i = 0;i < attempts;i++) {
+      try (Connection initialConnection = getConnectionBuilder().withUser(DEFAULT_PG_USER)
+                                                                .connect()) {
+        LOG.info("After few fail attempts, able to create connection with a new control " +
+                "connection created");
+        return;
+      }
+      catch (Exception e) {
+        LOG.info ("expected to fail");
+      }
+    }
+  }
+
+  protected
+  void enableStickySuperuserConnsAndRestartCluster() throws Exception {
+    if (!isTestRunningWithConnectionManager()) {
+      return;
+    }
+
+    ysql_conn_mgr_superuser_sticky = true;
+    restartCluster();
+  }
+
+  protected
+  void setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode wm) throws Exception {
+    if (!isTestRunningWithConnectionManager()) {
+      return;
+    }
+
+    warmupMode = wm;
+    restartCluster();
+  }
+
+  protected boolean isConnMgrWarmupRoundRobinMode() {
+    return isTestRunningWithConnectionManager() &&
+      warmupMode == ConnectionManagerWarmupMode.ROUND_ROBIN;
   }
 
   protected void recreateWithYsqlVersion(YsqlSnapshotVersion version) throws Exception {
@@ -583,6 +718,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   protected static int getPgBackendPid(Connection connection) {
+    if (isTestRunningWithConnectionManager()) {
+      // getBackendPID(), a JDBC api, caches the pid of the backend process at
+      // the time of creating a connection. With connection manager it do not
+      // return a valid pid as no dedicated backend process is attached to
+      // connection. Therefore execute sql query to find out.
+      assertTrue(warmupMode == ConnectionManagerWarmupMode.NONE);
+      try (Statement stmt = connection.createStatement()) {
+        ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid()");
+        assertTrue(rs.next());
+        return rs.getInt(1);
+      }
+      catch (Exception e) {
+        LOG.error("Got Exception while fetching pid with connection manager",
+                  e);
+        fail();
+        return -1;
+      }
+    }
     return toPgConnection(connection).getBackendPID();
   }
 
@@ -614,7 +767,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       YSQLStat ysqlStat = new Metrics(obj, true).getYSQLStat(statName);
       if (ysqlStat != null) {
         value.count += ysqlStat.calls;
-        value.value += ysqlStat.total_time;
+        value.value += ysqlStat.total_exec_time;
         value.rows += ysqlStat.rows;
       }
       scanner.close();
@@ -1567,7 +1720,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     throws SQLException {
 
     String query_plan = getQueryPlanString(stmt, query);
-    assertTrue(query_plan.contains("Merge Append"));
     assertTrue(query_plan.contains("Index Scan using " + index));
   }
 
@@ -1581,7 +1733,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     throws SQLException {
 
     String query_plan = getQueryPlanString(stmt, query);
-    assertTrue(query_plan.contains("Merge Append"));
     assertTrue(query_plan.contains("Index Only Scan using " + index));
   }
 
@@ -1930,6 +2081,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
   }
 
+  void waitForTServerHeartbeatIfConnMgrEnabled() throws InterruptedException {
+    if (isTestRunningWithConnectionManager()) {
+      waitForTServerHeartbeat();
+    }
+  }
+
   /** Run a query and check row-count. */
   public int runQueryWithRowCount(Statement stmt, String query, int expectedRowCount)
       throws Exception {
@@ -2163,6 +2320,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected long getNumDocdbRequests(Statement stmt, String query) throws Exception {
     // Executing query once just in case if master catalog cache is not refreshed
     stmt.execute(query);
+
+    // Execute query twice more to deterministically populate all caches if
+    // connection manager is enabled in round robin allocation mode.
+    // Additionally execute it once more to allow rotation onto a new physical
+    // connection before executing the subsequent queries.
+    if (isConnMgrWarmupRoundRobinMode()) {
+      for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+        stmt.execute(query);
+      }
+    }
     Long rpc_count_before =
       getTServerMetric("handler_latency_yb_tserver_PgClientService_Perform").count;
     stmt.execute(query);
@@ -2173,9 +2340,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   /** Creates a new tserver and returns its id. **/
   protected int spawnTServer() throws Exception {
-    int tserverId = miniCluster.getNumTServers();
-    miniCluster.startTServer(getTServerFlags());
-    return tserverId;
+    return spawnTServerWithFlags(new HashMap<String, String>());
   }
 
   /** Creates a new tserver with additional flags and returns its id. **/
@@ -2231,6 +2396,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                "-force",
                flag,
                value);
+    if (isTestRunningWithConnectionManager())
+      closeControlConnOnReloadConfig(MAX_ATTEMPTS_TO_DESTROY_CONTROL_CONN);
   }
 
   /*

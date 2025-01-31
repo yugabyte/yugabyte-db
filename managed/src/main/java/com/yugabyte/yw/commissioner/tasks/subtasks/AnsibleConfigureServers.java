@@ -29,6 +29,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -56,6 +57,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean isMasterInShellMode = false;
     public boolean isMaster = false;
     public boolean enableYSQL = false;
+    public boolean enableConnectionPooling = false;
+    public Map<String, String> connectionPoolingGflags = new HashMap<>();
     public boolean enableYCQL = false;
     public boolean enableYSQLAuth = false;
     public boolean enableYCQLAuth = false;
@@ -100,6 +103,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public AuditLogConfig auditLogConfig = null;
     public Map<String, String> ybcGflags = new HashMap<>();
     public boolean overrideNodePorts = false;
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    public int cgroupSize = 0;
     // Supplier for master addresses override which is invoked only when the subtask starts
     // execution.
     @JsonIgnore @Nullable public Supplier<String> masterAddrsOverride;
@@ -112,6 +117,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
       }
       return masterAddresses;
     }
+
+    public YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState = null;
   }
 
   @Override
@@ -140,6 +147,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             isChangeMasterConfigDone(universe, node, false, node.cloudInfo.private_ip);
       }
     }
+
     log.debug(
         "Reset master state is now {} for universe {}. It was {}",
         resetMasterState,

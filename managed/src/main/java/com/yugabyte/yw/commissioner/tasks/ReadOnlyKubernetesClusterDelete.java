@@ -66,16 +66,8 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
 
   @Override
   public void run() {
+    Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
     try {
-      // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
-      // to prevent other updates from happening.
-      Universe universe = null;
-      if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1);
-      } else {
-        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
-      }
-
       List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
       if (CollectionUtils.isEmpty(roClusters)) {
         String msg =
@@ -122,6 +114,14 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
           createSubTaskGroup(
               KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName());
       namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+
+      // Handle Namespaced services ownership change/delete
+      addHandleKubernetesNamespacedServices(
+              true /* readReplicaDelete */,
+              null /* universeParams */,
+              universe.getUniverseUUID(),
+              false /* handleOwnershipChanges */)
+          .setSubTaskGroupType(SubTaskGroupType.KubernetesHandleNamespacedService);
 
       // This value cannot be changed once set during the Universe
       // creation, so we don't allow users to modify it later during
@@ -192,6 +192,9 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       // Remove the async_replicas in the cluster config on master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+      // Update PDB policy for the universe.
+      createPodDisruptionBudgetPolicyTask(false /* deletePDB */, true /* reCreatePDB */);
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);

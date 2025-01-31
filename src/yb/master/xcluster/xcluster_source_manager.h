@@ -51,10 +51,6 @@ class XClusterSourceManager {
 
   std::optional<uint32> GetDefaultWalRetentionSec(const NamespaceId& namespace_id) const;
 
-  bool IsTableReplicated(const TableId& table_id) const EXCLUDES(tables_to_stream_map_mutex_);
-  bool DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const
-      EXCLUDES(tables_to_stream_map_mutex_);
-
   void PopulateTabletDeleteRetainerInfoForTabletDrop(
       const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const
       EXCLUDES(tables_to_stream_map_mutex_);
@@ -74,7 +70,8 @@ class XClusterSourceManager {
 
   Result<xrepl::StreamId> CreateNewXClusterStreamForTable(
       const TableId& table_id, cdc::StreamModeTransactional transactional,
-      const std::optional<SysCDCStreamEntryPB::State>& initial_state, const LeaderEpoch& epoch);
+      const std::optional<SysCDCStreamEntryPB::State>& initial_state, const LeaderEpoch& epoch,
+      StdStatusCallback callback);
 
  protected:
   XClusterSourceManager(
@@ -97,7 +94,8 @@ class XClusterSourceManager {
 
   Status CreateOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id,
-      const std::vector<NamespaceId>& namespace_ids, const LeaderEpoch& epoch);
+      const std::vector<NamespaceId>& namespace_ids, bool automatic_ddl_mode,
+      const LeaderEpoch& epoch);
 
   Status AddNamespaceToOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
@@ -115,9 +113,19 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& namespace_id) const;
 
+  Status EnsureSequenceUpdatesAreInWal(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<NamespaceId>& namespace_ids) const;
+
+  // If opt_table_names is empty, all tables in the namespace are returned.
   Result<std::optional<NamespaceCheckpointInfo>> GetXClusterStreams(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-      std::vector<std::pair<TableName, PgSchemaName>> opt_table_names) const;
+      const std::vector<std::pair<TableName, PgSchemaName>>& opt_table_names) const;
+
+  // Expects source_table_ids to be non-empty.
+  Result<std::optional<NamespaceCheckpointInfo>> GetXClusterStreamsForTableIds(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableId>& source_table_ids) const;
 
   Status CreateXClusterReplication(
       const xcluster::ReplicationGroupId& replication_group_id,
@@ -156,10 +164,22 @@ class XClusterSourceManager {
       const LeaderEpoch& epoch);
 
   std::vector<xcluster::ReplicationGroupId> GetXClusterOutboundReplicationGroups(
-      NamespaceId namespace_filter);
+      NamespaceId namespace_filter) const;
 
-  Result<std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>>
-  GetXClusterOutboundReplicationGroupInfo(const xcluster::ReplicationGroupId& replication_group_id);
+  struct XClusterOutboundReplicationGroupUserInfo {
+    std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>
+        namespace_table_map;
+    bool automatic_ddl_mode;
+  };
+
+  Result<XClusterOutboundReplicationGroupUserInfo> GetXClusterOutboundReplicationGroupInfo(
+      const xcluster::ReplicationGroupId& replication_group_id);
+
+  bool IsTableReplicated(const TableId& table_id) const EXCLUDES(tables_to_stream_map_mutex_);
+
+  Status ValidateSplitCandidateTable(const TableId& table_id) const;
+
+  bool IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const;
 
  private:
   friend class XClusterOutboundReplicationGroup;
@@ -189,6 +209,8 @@ class XClusterSourceManager {
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsForDbScoped(
       const std::vector<TableId>& table_ids, const LeaderEpoch& epoch);
+  Result<xrepl::StreamId> CreateNonTxnStreamForNewTable(
+      const TableId& table_id, const LeaderEpoch& epoch, StdStatusCallback callback);
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsInternal(
       const std::vector<TableId>& table_ids, SysCDCStreamEntryPB::State state,
@@ -225,6 +247,16 @@ class XClusterSourceManager {
       const TabletId& tablet_id, const HiddenTabletInfo& hidden_tablet,
       const std::vector<CDCStreamInfoPtr>& outbound_streams,
       std::vector<cdc::CDCStateTableKey>& entries_to_delete);
+
+  bool DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const
+      EXCLUDES(tables_to_stream_map_mutex_);
+
+  Status SetupDDLReplicationExtension(
+      const NamespaceId& namespace_id, StdStatusCallback callback) const;
+
+  Status DropDDLReplicationExtension(
+      const NamespaceId& namespace_id,
+      const xcluster::ReplicationGroupId& drop_replication_group_id) const;
 
   Master& master_;
   CatalogManager& catalog_manager_;

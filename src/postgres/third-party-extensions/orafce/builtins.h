@@ -56,6 +56,8 @@ extern PGDLLEXPORT Datum dbms_alert_set_defaults(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_alert_signal(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_alert_waitany(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_alert_waitone(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_alert_waitany_maxwait(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_alert_waitone_maxwait(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_alert_defered_signal(PG_FUNCTION_ARGS);
 
 /* from assert.c */
@@ -128,6 +130,9 @@ extern PGDLLEXPORT Datum ora_get_major_version_num(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_get_full_version_num(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_get_platform(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_get_status(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_greatest(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_least(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_sys_guid(PG_FUNCTION_ARGS);
 
 /* from pipe.c */
 extern PGDLLEXPORT Datum dbms_pipe_pack_message_text(PG_FUNCTION_ARGS);
@@ -229,6 +234,8 @@ extern PGDLLEXPORT Datum plvchr_is_kind_a(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plvchr_char_name(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum oracle_substr2(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum oracle_substr3(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum oracle_substrb2(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum oracle_substrb3(PG_FUNCTION_ARGS);
 
 /* from plvsubst.c */
 extern PGDLLEXPORT Datum plvsubst_string_array(PG_FUNCTION_ARGS);
@@ -262,6 +269,7 @@ extern PGDLLEXPORT Datum dbms_random_value_range(PG_FUNCTION_ARGS);
 /* from utility.c */
 extern PGDLLEXPORT Datum dbms_utility_format_call_stack0(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_utility_format_call_stack1(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_utility_get_time(PG_FUNCTION_ARGS);
 
 /* from oraguc.c */
 extern void PGDLLEXPORT _PG_init(void);
@@ -290,5 +298,45 @@ extern PGDLLEXPORT Datum nvarchar2recv(PG_FUNCTION_ARGS);
 /* from replace_empty_string.c */
 extern PGDLLEXPORT Datum orafce_replace_empty_strings(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_replace_null_strings(PG_FUNCTION_ARGS);
+
+/* from regexp.c */
+extern PGDLLEXPORT Datum orafce_regexp_instr(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_regexp_instr_no_start(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_regexp_instr_no_n(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_regexp_instr_no_endoption(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_regexp_instr_no_flags(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_regexp_instr_no_subexpr(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_textregexreplace_noopt(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_textregexreplace(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_textregexreplace_extended(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_textregexreplace_extended_no_n(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_textregexreplace_extended_no_flags(PG_FUNCTION_ARGS);
+
+/* from math.c */
+extern PGDLLEXPORT Datum orafce_reminder_smallint(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_reminder_int(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_reminder_bigint(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_reminder_numeric(PG_FUNCTION_ARGS);
+
+/* from dbms_sql.c */
+extern PGDLLEXPORT Datum dbms_sql_is_open(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_open_cursor(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_close_cursor(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_parse(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_bind_variable(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_bind_variable_f(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_bind_array_3(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_bind_array_5(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_define_column(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_define_array(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_execute(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_fetch_rows(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_execute_and_fetch(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_column_value(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_column_value_f(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_last_row_count(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_describe_columns(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_describe_columns_f(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_debug_cursor(PG_FUNCTION_ARGS);
 
 #endif

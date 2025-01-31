@@ -45,8 +45,8 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
 
   // Abort this task and return its state before it was successfully aborted. If the task
   // entered a different terminal state before we were able to abort it, return that state.
-  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override
-      EXCLUDES(schedule_task_mutex_);
+  server::MonitoredTaskState AbortAndReturnPrevState(
+      const Status& status, bool call_task_finisher = true) override EXCLUDES(schedule_task_mutex_);
 
   // Schedule a group of tasks and invoke the callback when all tasks in the group complete.
   // group_completion_cb is invoked with the first bad status if any of the tasks failed or an
@@ -54,6 +54,17 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
   // with a bad status.
   static Status StartTasks(
       const std::vector<MultiStepMonitoredTask*>& tasks, StdStatusCallback group_completion_cb);
+
+  template <typename T>
+  static Status StartTasks(
+      const std::vector<std::shared_ptr<T>>& tasks, StdStatusCallback group_completion_cb) {
+    std::vector<MultiStepMonitoredTask*> raw_tasks;
+    raw_tasks.reserve(tasks.size());
+    for (const auto& task : tasks) {
+      raw_tasks.push_back(task.get());
+    }
+    return StartTasks(raw_tasks, group_completion_cb);
+  }
 
  protected:
   explicit MultiStepMonitoredTask(ThreadPool& async_task_pool, rpc::Messenger& messenger);
@@ -87,7 +98,7 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
 
   void Complete();
 
-  std::string LogPrefix() { return Format("$0: ", description()); }
+  std::string LogPrefix() const;
 
   void ScheduleNextStep(std::function<Status()> next_step, std::string step_description)
       EXCLUDES(schedule_task_mutex_);

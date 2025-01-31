@@ -12,7 +12,6 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -130,19 +129,5 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
       unlockUniverseForUpdate(errorString);
       log.info("Finished {} task.", getName());
     }
-  }
-
-  private void setToBeRemovedState(NodeDetails currentNode) {
-    Set<NodeDetails> nodes = taskParams().nodeDetailsSet;
-    for (NodeDetails node : nodes) {
-      if (node.getNodeName() != null && node.getNodeName().equals(currentNode.getNodeName())) {
-        node.state = NodeState.ToBeRemoved;
-        return;
-      }
-    }
-    throw new RuntimeException(
-        String.format(
-            "Error setting node %s to ToBeRemoved state as node was not found",
-            currentNode.getNodeName()));
   }
 }

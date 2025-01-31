@@ -17,7 +17,6 @@
 
 #include "yb/ash/wait_state.h"
 
-#include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/rejection_score_source.h"
@@ -2726,6 +2725,7 @@ Executor::ExecutorTask& Executor::ExecutorTask::Bind(
   executor_ = executor;
   reset_async_calls_ = std::move(*reset_async_calls);
   wait_state_ = ash::WaitStateInfo::CurrentWaitState();
+  ASH_ENABLE_CONCURRENT_UPDATES();
   return *this;
 }
 

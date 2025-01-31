@@ -2,6 +2,8 @@ import { useState, ReactElement } from 'react';
 import _ from 'lodash';
 import * as Yup from 'yup';
 import clsx from 'clsx';
+import { useQuery } from 'react-query';
+import { toast } from 'react-toastify';
 import { useSelector } from 'react-redux';
 import { Box } from '@material-ui/core';
 import { useFieldArray } from 'react-hook-form';
@@ -25,6 +27,13 @@ import { useWhenMounted } from '../../../../../../helpers/hooks';
 import { validateGFlags } from '../../../../../../../actions/universe';
 import { Gflag } from '../../../utils/dto';
 import { MULTILINE_GFLAGS_ARRAY } from '../../../../../../../utils/UniverseUtils';
+import {
+  GFlagGroupObject,
+  getFlagsByGroupName
+} from '../../../../universe-actions/edit-gflags/GflagHelper';
+import { api, QUERY_KEY } from '../../../../../../utils/api';
+import { isVersionPGSupported } from '../../../utils/helpers';
+import { GFLAG_GROUPS } from '../../../../../../helpers/constants';
 //Icons
 import Edit from '../../../../../../assets/edit_pen.svg';
 import Close from '../../../../../../assets/close.svg';
@@ -48,6 +57,7 @@ interface GflagsFieldProps {
   isReadReplica: boolean;
   tableMaxHeight?: string;
   isGFlagMultilineConfEnabled: boolean;
+  isPGSupported: boolean;
 }
 
 interface SelectedOption {
@@ -109,7 +119,8 @@ export const GFlagsField = ({
   isReadOnly = false,
   isReadReplica = false,
   tableMaxHeight,
-  isGFlagMultilineConfEnabled
+  isGFlagMultilineConfEnabled,
+  isPGSupported
 }: GflagsFieldProps): ReactElement => {
   const { fields, append, insert, remove } = useFieldArray({
     name: fieldPath as any,
@@ -125,6 +136,18 @@ export const GFlagsField = ({
   const { t } = useTranslation();
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const enableRRGflags = featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
+
+  const { data: pgFlags, isLoading } = useQuery<GFlagGroupObject[]>(
+    [QUERY_KEY.getGflagGroups],
+    () => api.getGflagGroups(dbVersion, GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY),
+    {
+      enabled: isPGSupported && isVersionPGSupported(dbVersion)
+    }
+  );
+
+  const pgGroupFlags = isPGSupported
+    ? getFlagsByGroupName(pgFlags, GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY)
+    : {};
 
   //options Array -- TO DRY THE CODE
   const OPTIONS = [
@@ -513,11 +536,14 @@ export const GFlagsField = ({
           <AddGFlag
             formProps={formProps}
             updateJWKSDialogStatus={updateJWKSDialogStatus}
+            disabledFlags={pgGroupFlags}
             gFlagProps={{
               ...selectedProps,
               dbVersion,
               existingFlags: fields,
-              isGFlagMultilineConfEnabled
+              isGFlagMultilineConfEnabled,
+              editMode,
+              pgGroupFlags
             }}
           />
         );
@@ -557,6 +583,7 @@ export const GFlagsField = ({
           ' / ' +
           t('universeForm.gFlags.addFlag');
     }
+
     return (
       <YBModalForm
         title={modalTitle}
@@ -599,12 +626,19 @@ export const GFlagsField = ({
           <b>{dbVersion}</b>)
         </Alert>
       )}
-      <Box flexShrink={1} flexDirection="row">
+      {isLoading && <span>Loading Gflag groups ...</span>}
+      <Box flexShrink={1} mt={0.5} flexDirection="row">
         {!isReadOnly &&
           OPTIONS.map((option) => {
             const { optionName, ...rest } = option;
             return (
-              <DropdownButton {...rest} bsSize="small" id={optionName} key={optionName}>
+              <DropdownButton
+                {...rest}
+                bsSize="small"
+                id={optionName}
+                key={optionName}
+                disabled={isLoading}
+              >
                 {SERVER_LIST.filter((e) => e.visible).map((server) => {
                   const { serverName, label } = server;
                   const serverProps = {

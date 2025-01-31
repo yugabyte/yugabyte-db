@@ -64,7 +64,7 @@ COMMIT;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 SELECT yb_get_current_transaction_priority(); -- 0 since a distributed transaction hasn't started
 SELECT * FROM test; -- reads start a distributed txn in serializable isolation level
-SELECT yb_get_current_transaction_priority(); -- still 0
+SELECT yb_get_current_transaction_priority();
 COMMIT;
 
 -- (2) Showing yb_transaction_priority outside a transaction block

@@ -5,10 +5,12 @@ package com.yugabyte.yw.commissioner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.time.Duration;
 import java.util.UUID;
 
 public interface ITask extends Runnable {
@@ -17,6 +19,13 @@ public interface ITask extends Runnable {
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.TYPE)
   @interface Retryable {
+    boolean enabled() default true;
+  }
+
+  /** Annotation for a ITask class to enable/disable rollback on a Task Type. */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.TYPE)
+  @interface CanRollback {
     boolean enabled() default true;
   }
 
@@ -80,5 +89,11 @@ public interface ITask extends Runnable {
   void setUserTaskUUID(UUID userTaskUUID);
 
   /** Returns true if this task has been tried before, else false. */
-  public boolean isFirstTry();
+  boolean isFirstTry();
+
+  /**
+   * Returns the queuing wait time for the given task type and params. Return value of null means
+   * queuing is not enabled on this task.
+   */
+  Duration getQueueWaitTime(TaskType taskType, ITaskParams taskParams);
 }

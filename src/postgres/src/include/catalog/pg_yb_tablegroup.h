@@ -27,9 +27,10 @@
  */
 CATALOG(pg_yb_tablegroup,8036,YbTablegroupRelationId) BKI_ROWTYPE_OID(8038,YbTablegroupRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
+	Oid			oid;			/* oid */
 	NameData	grpname;		/* tablegroup name */
 	Oid			grpowner;		/* owner of tablegroup */
-	Oid			grptablespace;  /* tablespace of tablegroup */
+	Oid			grptablespace;	/* tablespace of tablegroup */
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 	aclitem		grpacl[1];		/* access permissions */
@@ -43,5 +44,7 @@ CATALOG(pg_yb_tablegroup,8036,YbTablegroupRelationId) BKI_ROWTYPE_OID(8038,YbTab
  * ----------------
  */
 typedef FormData_pg_yb_tablegroup *Form_pg_yb_tablegroup;
+
+DECLARE_UNIQUE_INDEX_PKEY(pg_yb_tablegroup_oid_index, 8037, YbTablegroupOidIndexId, on pg_yb_tablegroup using btree(oid oid_ops));
 
 #endif							/* PG_YB_TABLEGROUP_H */

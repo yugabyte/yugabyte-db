@@ -78,14 +78,15 @@ func ListStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode s
 	storageConfigs = storageConfigsCode
 
 	storageCtx := formatter.Context{
-		Output: os.Stdout,
-		Format: storageconfiguration.NewStorageConfigFormat(viper.GetString("output")),
+		Command: "list",
+		Output:  os.Stdout,
+		Format:  storageconfiguration.NewStorageConfigFormat(viper.GetString("output")),
 	}
 	if len(storageConfigs) < 1 {
-		if util.IsOutputType("table") {
-			logrus.Infoln("No storage configurations found\n")
+		if util.IsOutputType(formatter.TableFormatKey) {
+			logrus.Info("No storage configurations found\n")
 		} else {
-			logrus.Infoln("{}\n")
+			logrus.Info("[]\n")
 		}
 		return
 	}

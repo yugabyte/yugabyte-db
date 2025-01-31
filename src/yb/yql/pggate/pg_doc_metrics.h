@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,7 +33,7 @@ YB_DEFINE_ENUM(TableType, (SYSTEM)(USER)(INDEX));
 
 class PgDocMetrics {
  public:
-  explicit PgDocMetrics(YBCPgExecStatsState* state);
+  explicit PgDocMetrics(YbcPgExecStatsState& state);
 
   void ReadRequest(TableType relation, uint64_t wait_time);
   void WriteRequest(TableType relation);
@@ -69,7 +69,7 @@ class PgDocMetrics {
   };
 
  private:
-  YBCPgExecStatsState& state_;
+  YbcPgExecStatsState& state_;
 
   DISALLOW_COPY_AND_ASSIGN(PgDocMetrics);
 };

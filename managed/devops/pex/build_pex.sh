@@ -43,7 +43,7 @@ function generateMultiPlatformPex {
     ${pex_command_exec[*]}
 }
 
-# Repair the manylinux2014_x86_64 wheels present in the PEX file using auditwheel.
+# Repair the manylinux_2_28_x86_64 wheels present in the PEX file using auditwheel.
 # (extract the created PEX into a folder in order to do so). Note that macOS wheels
 # are not currently packaged into the created PEXfile, but might be so in the
 # future).
@@ -67,12 +67,12 @@ function repairPexWheels {
                 echo "Skipping non-platform wheel $whl"
             fi
     else
-        auditwheel repair --plat manylinux2014_x86_64 $whl --no-update-tags
+        auditwheel repair --plat manylinux_2_28_x86_64 $whl --no-update-tags
     fi
 done
 }
 
-# Reconstruct the repaired manylinux2014_x86_64 wheels back into the PEX
+# Reconstruct the repaired manylinux_2_28_x86_64 wheels back into the PEX
 # by using wheel unpack and renaming the wheel directories.
 function reconstructPex {
     extractedWheels=$POINTER

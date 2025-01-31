@@ -7,7 +7,7 @@ menu:
   preview_integrations:
     identifier: superblocks
     parent: development-platforms
-    weight: 900
+    weight: 400
 type: docs
 ---
 
@@ -17,7 +17,7 @@ Superblocks can connect to YugabyteDB as its underlying data source by creating 
 
 ## Connect
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../tools/#yugabytedb-prerequisites).
 
 To connect to YugabyteDB, create a new Postgres integration in Superblocks as follows:
 

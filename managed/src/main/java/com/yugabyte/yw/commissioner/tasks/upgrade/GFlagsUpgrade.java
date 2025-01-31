@@ -4,12 +4,15 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -74,8 +77,12 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   }
 
   @Override
-  protected void validateRerunParams(TaskInfo previousTaskInfo) {
-    Universe universe = getUniverse();
+  protected boolean checkSafeToRunOnRestriction(
+      Universe universe, TaskInfo previousTaskInfo, AllowedTasks allowedTasks) {
+    if (!allowedTasks.isRerun()) {
+      return true;
+    }
+    // Validate rerun task parameters against the old parameters from the previous task.
     GFlagsUpgradeParams prevTaskParams =
         Json.fromJson(previousTaskInfo.getTaskParams(), GFlagsUpgradeParams.class);
     // Cluster with GFlags from the previous task params.
@@ -141,6 +148,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
           "Gflags upgrade rerun must affect all server types and nodes changed by the previously"
               + " failed gflags operation");
     }
+    return true;
   }
 
   @Override
@@ -162,16 +170,37 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
           GFlagsUtil.getBaseGFlags(ServerType.MASTER, newCluster, newClusters.values());
       Map<String, String> tserverGflags =
           GFlagsUtil.getBaseGFlags(ServerType.TSERVER, newCluster, newClusters.values());
+      ObjectMapper mapper = new ObjectMapper();
+      String redactedMasterNewFlags =
+          RedactingService.filterSecretFields(
+                  mapper.valueToTree(masterGflags), RedactionTarget.LOGS)
+              .toString();
+      String redactedMasterOldFlags =
+          RedactingService.filterSecretFields(
+                  mapper.valueToTree(
+                      GFlagsUtil.getBaseGFlags(ServerType.MASTER, curCluster, curClusters)),
+                  RedactionTarget.LOGS)
+              .toString();
       log.debug(
           "Cluster {} master: new flags {} old flags {}",
           curCluster.clusterType,
-          masterGflags,
-          GFlagsUtil.getBaseGFlags(ServerType.MASTER, curCluster, curClusters));
+          redactedMasterNewFlags,
+          redactedMasterOldFlags);
+      String redactedTsNewFlags =
+          RedactingService.filterSecretFields(
+                  mapper.valueToTree(tserverGflags), RedactionTarget.LOGS)
+              .toString();
+      String redactedTsOldFlags =
+          RedactingService.filterSecretFields(
+                  mapper.valueToTree(
+                      GFlagsUtil.getBaseGFlags(ServerType.TSERVER, curCluster, curClusters)),
+                  RedactionTarget.LOGS)
+              .toString();
       log.debug(
           "Cluster {} tserver: new flags {} old flags {}",
           curCluster.clusterType,
-          tserverGflags,
-          GFlagsUtil.getBaseGFlags(ServerType.TSERVER, curCluster, curClusters));
+          redactedTsNewFlags,
+          redactedTsOldFlags);
 
       boolean changedByMasterFlags =
           curCluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
@@ -343,6 +372,14 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
       List<UniverseDefinitionTaskParams.Cluster> curClusters,
       UniverseDefinitionTaskParams.Cluster newCluster,
       Collection<UniverseDefinitionTaskParams.Cluster> newClusters) {
+    Universe targetUniverseState = getUniverse();
+    // Updating gflags in target universe state.
+    newClusters.forEach(cl -> targetUniverseState.getCluster(cl.uuid).userIntent = cl.userIntent);
+    UpgradeContext context =
+        UpgradeContext.builder()
+            .runBeforeStopping(true)
+            .targetUniverseState(targetUniverseState)
+            .build();
     switch (taskParams().upgradeOption) {
       case ROLLING_UPGRADE:
         createRollingUpgradeTaskFlow(
@@ -358,7 +395,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                     newClusters),
             masterNodes,
             tServerNodes,
-            RUN_BEFORE_STOPPING,
+            context,
             taskParams().isYbcInstalled());
         break;
       case NON_ROLLING_UPGRADE:
@@ -375,7 +412,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                     newClusters),
             masterNodes,
             tServerNodes,
-            RUN_BEFORE_STOPPING,
+            context,
             taskParams().isYbcInstalled());
         break;
       case NON_RESTART_UPGRADE:
@@ -403,7 +440,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             },
             masterNodes,
             tServerNodes,
-            DEFAULT_CONTEXT);
+            UpgradeContext.builder().targetUniverseState(targetUniverseState).build());
         break;
     }
   }

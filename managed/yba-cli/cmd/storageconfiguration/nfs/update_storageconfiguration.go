@@ -19,9 +19,12 @@ import (
 
 // updateNFSStorageConfigurationCmd represents the storage config command
 var updateNFSStorageConfigurationCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update an NFS YugabyteDB Anywhere storage configuration",
-	Long:  "Update an NFS storage configuration in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update an NFS YugabyteDB Anywhere storage configuration",
+	Long:    "Update an NFS storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config nfs update --name <storage-configuration-name> \
+	--new-name <new-storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

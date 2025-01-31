@@ -72,6 +72,9 @@ message WriteRequestPB {
   // A batch of Pgsql operations.
   repeated PgsqlWriteRequestPB pgsql_write_batch = 13;
 
+   // A batch of Pgsql locks.
+  repeated PgsqlLockRequestPB pgsql_lock_batch = 25;
+
   // A hybrid_time obtained by the client from a previous request.
   // TODO crypto sign this and propagate the signature along with
   // the hybrid_time.
@@ -367,6 +370,9 @@ message GetCompatibleSchemaVersionRequestPB {
 message GetCompatibleSchemaVersionResponsePB {
   optional TabletServerErrorPB error = 1;
   optional uint32 compatible_schema_version = 2;
+  // Added on Oct 2024 (v2025.1), will not be set for older versions.
+  // Value is set in the case of a schema mismatch.
+  optional uint32 latest_schema_version = 3;
 }
 
 message CheckTserverTabletHealthRequestPB {
@@ -388,9 +394,55 @@ message ClearAllMetaCachesOnServerRequestPB {}
 
 message ClearAllMetaCachesOnServerResponsePB {}
 
+message ClearMetacacheRequestPB {
+  // Only Ysql namespace can be cleared from metacache.
+  optional string namespace_id = 1;
+}
+
+message ClearMetacacheResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
 message ClearUniverseUuidRequestPB {
 }
 
 message ClearUniverseUuidResponsePB {
   optional TabletServerErrorPB error = 1;
+}
+
+message AcquireObjectLockRequestPB {
+  optional bytes txn_id = 1;
+  optional uint32 subtxn_id = 2;
+  repeated docdb.ObjectLockPB object_locks = 3;
+  // The field is used only on the master side. Master remembers which tserver requested the
+  // exclusive lock(s) so that it can issue a cleanup when the tserver looses its lease.
+  optional bytes session_host_uuid = 4;
+  // The lease epoch of the requesting tserver.
+  optional uint64 lease_epoch = 5;
+}
+
+message AcquireObjectLockResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message ReleaseObjectLockRequestPB {
+  optional bytes txn_id = 1;
+  // When set, only locks owned by the given subtxn id are released. If unset, releases
+  // all locks held by <txn_id> irrespective of value in 'release_all_locks'.
+  optional uint32 subtxn_id = 2;
+  // The lock_type in ObjectLockPB is irrelevant here.
+  repeated docdb.ObjectLockPB object_locks = 3;
+  // When set, releases locks on all objects owned by <txn_id, subtxn_id>.
+  optional bool release_all_locks = 4;
+  optional bytes session_host_uuid = 5;
+  // The lease epoch of the requesting tserver.
+  optional uint64 lease_epoch = 6;
+}
+
+message ReleaseObjectLockResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message DdlLockEntriesPB {
+  repeated AcquireObjectLockRequestPB lock_entries = 1;
 }

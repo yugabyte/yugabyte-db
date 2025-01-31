@@ -24,11 +24,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/tostring.h"
 
-DECLARE_int64(max_concurrent_restoration_rpcs);
-DECLARE_int64(max_concurrent_restoration_rpcs_per_tserver);
-
-namespace yb {
-namespace master {
+namespace yb::master {
 
 YB_DEFINE_ENUM(RestorePhase, (kInitial)(kPostSysCatalogLoad));
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogRestored);
@@ -42,6 +38,7 @@ struct TabletRestoreOperation {
   bool is_tablet_part_of_snapshot;
   std::optional<int64_t> db_oid;
   SnapshotScheduleId schedule_id;
+  int64_t serial_no;
 };
 
 using TabletRestoreOperations = std::vector<TabletRestoreOperation>;
@@ -113,6 +110,8 @@ class RestorationState : public StateWithTablets {
     return &master_metadata_;
   }
 
+  Result<bool> RestorationComplete() const;
+
   bool ShouldUpdate(const RestorationState& other) const {
     // Backward compatibility mode
     int64_t other_version = other.version() == 0 ? version() + 1 : other.version();
@@ -155,5 +154,4 @@ class RestorationState : public StateWithTablets {
   std::unordered_map<std::string, SysRowEntryType> master_metadata_;
 };
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

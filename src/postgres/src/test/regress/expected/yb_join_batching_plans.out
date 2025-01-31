@@ -183,11 +183,14 @@ EXPLAIN (COSTS OFF) SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND 
          Join Filter: ((t11.x = t12.y) AND (t10.r2 = t12.c2) AND (t10.r4 = t12.c4))
          ->  Nested Loop
                ->  Seq Scan on t11
-               ->  Index Only Scan using i_t on t10
-                     Index Cond: ((r1 = t11.c1) AND (r3 = t11.c3))
+               ->  Memoize
+                     Cache Key: t11.c1, t11.c3
+                     Cache Mode: logical
+                     ->  Index Only Scan using i_t on t10
+                           Index Cond: ((r1 = t11.c1) AND (r3 = t11.c3))
          ->  Materialize
                ->  Seq Scan on t12
-(10 rows)
+(13 rows)
 
 DROP TABLE t10;
 DROP TABLE t11;
@@ -598,17 +601,17 @@ create table tab2_p3 partition of tab2 for values from (20) to (maxvalue);
 create index i_tab2_r2 on tab2 (r2 asc);
 SET yb_bnl_batch_size = 1024;
 explain (costs off) /*+ Leading((tab1 tab2)) IndexScan(tab2) NestLoop(tab1 tab2) */ select * from tab1 join tab2 on tab1.r1 = tab2.r2;
-                          QUERY PLAN
---------------------------------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Nested Loop
-   Join Filter: (tab1.r1 = tab2_p1.r2)
+   Join Filter: (tab1.r1 = tab2.r2)
    ->  Seq Scan on tab1
    ->  Materialize
          ->  Append
-               ->  Index Scan using tab2_p1_r2_idx on tab2_p1
-               ->  Index Scan using tab2_p2_r2_idx on tab2_p2
-               ->  Index Scan using tab2_p3_r2_idx on tab2_p3
-               ->  Index Scan using tab2_p0_r2_idx on tab2_p0
+               ->  Index Scan using tab2_p1_r2_idx on tab2_p1 tab2_1
+               ->  Index Scan using tab2_p2_r2_idx on tab2_p2 tab2_2
+               ->  Index Scan using tab2_p3_r2_idx on tab2_p3 tab2_3
+               ->  Index Scan using tab2_p0_r2_idx on tab2_p0 tab2_4
 (9 rows)
 
 drop table tab2;
@@ -632,3 +635,44 @@ explain (costs off) /*+YbBatchedNL(tab1 tab2)*/ select * from tab1, tab2 where t
 
 drop table tab1;
 drop table tab2;
+CREATE TABLE t_part (i int, a int, b int) PARTITION BY RANGE (i);
+CREATE TABLE t_part1 PARTITION OF t_part FOR VALUES FROM (1) TO (200);
+CREATE TABLE t_part2 PARTITION OF t_part FOR VALUES FROM (200) TO (400);
+CREATE TABLE t_part3 PARTITION OF t_part FOR VALUES FROM (400) TO (600);
+CREATE TABLE t_part4 PARTITION OF t_part FOR VALUES FROM (600) TO (MAXVALUE);
+CREATE INDEX ON t_part (b);
+INSERT INTO t_part SELECT (i % 200) + 1,   ((i-1) / 4) * 4, i  FROM generate_series(1, 2500) i;
+INSERT INTO t_part SELECT (i % 200) + 201, ((i-1) / 4) * 4 + 1, i  FROM generate_series(1, 2500) i;
+INSERT INTO t_part SELECT (i % 200) + 401, ((i-1) / 4) * 4 + 2, i  FROM generate_series(1, 2500) i;
+INSERT INTO t_part SELECT (i % 200) + 601, ((i-1) / 4) * 4 + 3, i  FROM generate_series(1, 2500) i;
+CREATE TABLE t_nopart (i int, a int, b int);
+INSERT INTO t_nopart SELECT * FROM t_part;
+ANALYZE t_part;
+ANALYZE t_nopart;
+/*+
+  Leading((np p))
+  IndexScan(p)
+  Set(yb_enable_batchednl on)
+  Set(yb_bnl_batch_size 1024)
+  Set(enable_nestloop off)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(yb_prefer_bnl on)
+*/
+EXPLAIN (COSTS OFF)SELECT * FROM t_nopart np JOIN t_part p ON np.a = p.b and np.b < 1000 and p.i <= 201;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (np.a = p.b)
+   ->  Seq Scan on t_nopart np
+         Storage Filter: (b < 1000)
+   ->  Append
+         ->  Index Scan using t_part1_b_idx on t_part1 p_1
+               Index Cond: (b = ANY (ARRAY[np.a, $1, $2, ..., $1023]))
+               Storage Filter: (i <= 201)
+         ->  Index Scan using t_part2_b_idx on t_part2 p_2
+               Index Cond: (b = ANY (ARRAY[np.a, $1, $2, ..., $1023]))
+               Storage Filter: (i <= 201)
+(11 rows)

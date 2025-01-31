@@ -4,8 +4,8 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -37,6 +37,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -44,13 +45,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
-import org.yb.CommonTypes;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
-import org.yb.util.ServerInfo;
+import org.yb.util.PeerInfo;
 import play.libs.Json;
 
 public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
@@ -135,7 +134,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
               return res;
             })
         .when(mockYsqlQueryExecutor)
-        .executeQueryInNodeShell(any(), any(), any(), anyBoolean());
+        .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
     // Create hooks
     hook1 =
         Hook.create(
@@ -279,24 +278,20 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
       YBClient client, String masterLeaderIp, List<String> masters) {
     when(client.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost(masterLeaderIp));
     try {
-      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
+      ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+      List<PeerInfo> peerInfoList = new ArrayList<>();
+      for (String master : masters) {
+        PeerInfo peerInfo = new PeerInfo();
 
-      List<ServerInfo> serverInfos =
-          masters.stream()
-              .map(
-                  m ->
-                      new ServerInfo(
-                          UUID.randomUUID().toString(),
-                          m,
-                          0,
-                          m.equals(masterLeaderIp),
-                          "OK",
-                          m.equals(masterLeaderIp)
-                              ? CommonTypes.PeerRole.LEADER
-                              : CommonTypes.PeerRole.FOLLOWER))
-              .collect(Collectors.toList());
-      when(listMastersResponse.getMasters()).thenReturn(serverInfos);
-      when(client.listMasters()).thenReturn(listMastersResponse);
+        peerInfo.setLastKnownPrivateIps(
+            Collections.singletonList(HostAndPort.fromParts(master, 7100)));
+        peerInfo.setMemberType(PeerInfo.MemberType.VOTER);
+        peerInfoList.add(peerInfo);
+      }
+      when(listMastersResponse.getPeersList()).thenReturn(peerInfoList);
+      when(client.listMasterRaftPeers()).thenReturn(listMastersResponse);
+      when(client.getLeaderMasterHostAndPort())
+          .thenReturn(HostAndPort.fromParts(masterLeaderIp, 7100));
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

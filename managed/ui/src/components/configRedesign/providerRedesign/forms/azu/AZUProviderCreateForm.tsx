@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { array, mixed, object, string } from 'yup';
-import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
+import { Box, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { toast } from 'react-toastify';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
+
 import {
   RadioGroupOrientation,
   YBInputField,
@@ -21,7 +22,6 @@ import {
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { NTPConfigField } from '../../components/NTPConfigField';
 import { RegionList } from '../../components/RegionList';
-import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import {
   DEFAULT_SSH_PORT,
   KeyPairManagement,
@@ -30,7 +30,8 @@ import {
   ProviderCode,
   ProviderOperation,
   VPCSetupType,
-  AzuProviderCredentialType
+  AzuProviderCredentialType,
+  SshPrivateKeyInputType
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
 import {
@@ -70,6 +71,7 @@ import { api, hostInfoQueryKey } from '../../../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
 import { AZURE_FORM_MAPPERS } from './constants';
+import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 
 interface AZUProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -93,6 +95,8 @@ export interface AZUProviderCreateFormFieldValues {
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number;
+  sshPrivateKeyInputType: SshPrivateKeyInputType;
+  sshPrivateKeyContentText: string;
   sshPrivateKeyContent: File;
   sshUser: string;
   imageBundles: ImageBundle[];
@@ -105,6 +109,7 @@ export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
   ntpSetupType: NTPSetupType.CLOUD_VENDOR,
   providerName: '',
   regions: [] as CloudVendorRegionField[],
+  sshPrivateKeyInputType: SshPrivateKeyInputType.UPLOAD_KEY,
   sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
   sshPort: DEFAULT_SSH_PORT,
   providerCredentialType: AzuProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL
@@ -121,7 +126,7 @@ const VALIDATION_SCHEMA = object().shape({
     .required('Azure Client ID is required.')
     .matches(
       UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
     ),
   azuClientSecret: mixed().when('providerCredentialType', {
     is: AzuProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL,
@@ -131,23 +136,31 @@ const VALIDATION_SCHEMA = object().shape({
     .required('Azure Resource Group is required.')
     .matches(
       RG_REGEX,
-      "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"
+      'Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)'
     ),
   azuSubscriptionId: string()
     .required('Azure Subscription ID is required.')
     .matches(
       UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
     ),
   azuTenantId: string()
     .required('Azure Tenant ID is required.')
     .matches(
       UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
     ),
-  sshPrivateKeyContent: mixed().when('sshKeypairManagement', {
-    is: KeyPairManagement.SELF_MANAGED,
+  sshPrivateKeyContent: mixed().when(['sshKeypairManagement', 'sshPrivateKeyInputType'], {
+    is: (sshKeypairManagement, sshPrivateKeyInputType) =>
+      sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+      sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY,
     then: mixed().required('SSH private key is required.')
+  }),
+  sshPrivateKeyContentText: string().when(['sshKeypairManagement', 'sshPrivateKeyInputType'], {
+    is: (sshKeypairManagement, sshPrivateKeyInputType) =>
+      sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+      sshPrivateKeyInputType === SshPrivateKeyInputType.PASTE_KEY,
+    then: string().required('SSH private key is required.')
   }),
   hostedZoneId: string().when('enableHostedZone', {
     is: true,
@@ -164,16 +177,16 @@ const VALIDATION_SCHEMA = object().shape({
     )
   }),
   regions: array().min(1, 'Provider configurations must contain at least one region.'),
-  azuNetworkRG: string()
-    .matches(
-      RG_REGEX,
-      "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)")
-  ,
-  azuNetworkSubscriptionId: string()
-    .matches(
-      UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
-    )
+  azuNetworkRG: string().matches(RG_REGEX, {
+    message:
+      'Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)',
+    excludeEmptyString: true
+  }),
+  azuNetworkSubscriptionId: string().matches(UUID_REGEX, {
+    message:
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)',
+    excludeEmptyString: true
+  })
 });
 
 const FORM_NAME = 'AZUProviderCreateForm';
@@ -526,17 +539,10 @@ export const AZUProviderCreateForm = ({
                       fullWidth
                     />
                   </FormField>
-                  <FormField>
-                    <FieldLabel>SSH Private Key Content</FieldLabel>
-                    <YBDropZoneField
-                      name="sshPrivateKeyContent"
-                      control={formMethods.control}
-                      actionButtonText="Upload SSH Key PEM File"
-                      multipleFiles={false}
-                      showHelpText={false}
-                      disabled={isFormDisabled}
-                    />
-                  </FormField>
+                  <SshPrivateKeyFormField
+                    isFormDisabled={isFormDisabled}
+                    providerCode={ProviderCode.AZU}
+                  />
                 </>
               )}
             </FieldGroup>
@@ -623,12 +629,16 @@ const constructProviderPayload = async (
   formValues: AZUProviderCreateFormFieldValues
 ): Promise<YBProviderMutation> => {
   let sshPrivateKeyContent = '';
-  try {
-    sshPrivateKeyContent = formValues.sshPrivateKeyContent
-      ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-      : '';
-  } catch (error) {
-    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+  if (formValues.sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY) {
+    try {
+      sshPrivateKeyContent = formValues.sshPrivateKeyContent
+        ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+        : '';
+    } catch (error) {
+      throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    }
+  } else {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContentText;
   }
 
   const imageBundles = constructImageBundlePayload(formValues);
@@ -679,6 +689,12 @@ const constructProviderPayload = async (
             }),
             ...(regionFormValues.ybImage && {
               ybImage: regionFormValues.ybImage
+            }),
+            ...(regionFormValues.azuNetworkRGOverride && {
+              azuNetworkRGOverride: regionFormValues.azuNetworkRGOverride
+            }),
+            ...(regionFormValues.azuRGOverride && {
+              azuRGOverride: regionFormValues.azuRGOverride
             })
           }
         }

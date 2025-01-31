@@ -7,7 +7,7 @@ aliases:
   - /preview/tutorials/build-apps/go/cloud-ycql-go/
 menu:
   preview:
-    identifier: yb-pgx-driver-ycql
+    identifier: go-4-yb-pgx-driver-ycql
     parent: go-drivers
     weight: 500
 type: docs
@@ -47,7 +47,7 @@ To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon 
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](../../../quick-start/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](/preview/tutorials/quick-start/).
 - installed Go version 1.13 or later.
 
 ## Install the Yugabyte Go Driver for YCQL

@@ -170,7 +170,7 @@ TEST_F(YbGateTest, EreportAndLog) {
   // Log while forming ereport does not prevent making error status
   ASSERT_EQ(YbgStatusIsError(ybg_status), true);
   // Check the message and the argument are from ereport
-  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "Error message: %s");
+  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "error message: %s");
   EXPECT_STREQ(YbgStatusGetMessageArgs(ybg_status, nullptr)[0], "OK");
   YbgStatusDestroy(ybg_status);
 }
@@ -181,7 +181,7 @@ TEST_F(YbGateTest, EreportAndError) {
   ASSERT_EQ(YbgStatusIsError(ybg_status), true);
   // Check the message is from second ereport
   EXPECT_STREQ(YbgStatusGetMessage(ybg_status),
-               "Another ereport while composing an error");
+               "another ereport while composing an error");
   YbgStatusDestroy(ybg_status);
 }
 
@@ -190,7 +190,7 @@ TEST_F(YbGateTest, EreportAndTryCatch) {
   // Error while forming ereport is caught, so error status is successfully made
   ASSERT_EQ(YbgStatusIsError(ybg_status), true);
   // Check the error message and the argument are from ereport
-  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "Error message: %s");
+  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "error message: %s");
   EXPECT_STREQ(YbgStatusGetMessageArgs(ybg_status, nullptr)[0], "OK");
   YbgStatusDestroy(ybg_status);
 }
@@ -222,7 +222,7 @@ TEST_F(YbGateTest, TryCatchError) {
   ASSERT_EQ(YbgStatusIsError(ybg_status), true);
   // Check the status carries message from the second error
   EXPECT_STREQ(YbgStatusGetMessage(ybg_status),
-               "Another ereport while handling an error");
+               "another ereport while handling an error");
   YbgStatusDestroy(ybg_status);
 }
 
@@ -238,7 +238,7 @@ TEST_F(YbGateTest, NestedTryTryCatch) {
   // Nested error is caught, next ereport makes error status
   ASSERT_EQ(YbgStatusIsError(ybg_status), true);
   // Check the message is from the next error
-  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "Direct error");
+  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "direct error");
   YbgStatusDestroy(ybg_status);
 }
 
@@ -247,7 +247,7 @@ TEST_F(YbGateTest, NestedTryTryCatchRethrow) {
   // Nested error is caught, but rethrown, so it makes error status
   ASSERT_EQ(YbgStatusIsError(ybg_status), true);
   // Check the message is from the nested error
-  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "Nested PG_TRY with ereport");
+  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "nested PG_TRY with ereport");
   YbgStatusDestroy(ybg_status);
 }
 
@@ -263,7 +263,7 @@ TEST_F(YbGateTest, NestedCatchTryCatchRethrow) {
   // Nested error is caught and rethrown
   ASSERT_EQ(YbgStatusIsError(ybg_status), true);
   // Check the message is from the nested error
-  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "Nested PG_TRY with ereport");
+  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "nested PG_TRY with ereport");
   YbgStatusDestroy(ybg_status);
 }
 

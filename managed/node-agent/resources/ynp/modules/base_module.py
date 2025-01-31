@@ -5,6 +5,8 @@ import inspect
 
 class BaseYnpModule:
     registry = {}
+    run_template = "run.j2"
+    precheck_template = "precheck.j2"
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

@@ -90,8 +90,8 @@ class MetacacheRefreshITest : public MiniClusterTestWithClient<ExternalMiniClust
 
   Result<pgwrapper::PGConn> ConnectToDB(
       const std::string& dbname, bool simple_query_protocol = false) {
-    return pgwrapper::PGConnBuilder({.host = cluster_->pgsql_hostport(0).host(),
-                                     .port = cluster_->pgsql_hostport(0).port(),
+    return pgwrapper::PGConnBuilder({.host = cluster_->ysql_hostport(0).host(),
+                                     .port = cluster_->ysql_hostport(0).port(),
                                      .dbname = dbname})
         .Connect(simple_query_protocol);
   }
@@ -154,7 +154,7 @@ class MetacacheRefreshITest : public MiniClusterTestWithClient<ExternalMiniClust
     std::promise<Result<client::internal::RemoteTabletPtr>> tablet_lookup_promise;
     auto future = tablet_lookup_promise.get_future();
     client->LookupTabletById(
-        tablet_id, /* table =*/nullptr, master::IncludeInactive::kTrue,
+        tablet_id, /* table =*/nullptr, master::IncludeHidden::kTrue,
         master::IncludeDeleted::kFalse, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(1000),
         [&tablet_lookup_promise](const Result<client::internal::RemoteTabletPtr>& result) {
           tablet_lookup_promise.set_value(result);

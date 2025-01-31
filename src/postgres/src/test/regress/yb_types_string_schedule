@@ -1,0 +1,8 @@
+# src/test/regress/yb_types_string_schedule
+# This schedule is for non-ported tests only.
+
+test: yb_char
+test: yb_collate.icu.utf8
+test: yb_bytea
+test: yb_tsdicts
+test: yb_ts_remote_filter

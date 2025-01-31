@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"node-agent/model"
 	"node-agent/util"
@@ -567,7 +567,7 @@ func (handler *GetNodeAgentHandler) Result() *model.NodeAgent {
 // the response status code is not 200.
 // If the unmarshaling fails, converts the response body to string.
 func UnmarshalResponse(ctx context.Context, successTarget any, res *http.Response) (any, error) {
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	res.Body.Close()
 	if err != nil {
 		err = errors.New("Error reading the response body - " + err.Error())

@@ -203,12 +203,7 @@ tablet::Tablet* ReadQuery::tablet() const {
 }
 
 ReadHybridTime ReadQuery::FormRestartReadHybridTime(const HybridTime& restart_time) const {
-  DCHECK_GT(restart_time, read_time_.read);
-  VLOG(1) << "Restart read required at: " << restart_time << ", original: " << read_time_;
-  auto result = read_time_;
-  result.read = std::min(std::max(restart_time, safe_ht_to_read_), read_time_.global_limit);
-  result.local_limit = std::min(safe_ht_to_read_, read_time_.global_limit);
-  return result;
+  return read_time_.FormRestartReadHybridTime(restart_time, safe_ht_to_read_);
 }
 
 Status ReadQuery::PickReadTime(server::Clock* clock) {
@@ -465,10 +460,14 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
       read_time_.global_limit = read_time_.read;
     }
   } else {
-    HybridTime current_safe_time = HybridTime::kMin;
+    HybridTime current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
+      require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
+    // Read query is allowed to ignore ambiguity window for writes that
+    // occur after this moment.
+    if (current_safe_time < read_time_.local_limit) {
+      read_time_.local_limit = current_safe_time;
+    }
     if (IsPgsqlFollowerReadAtAFollower()) {
-      current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
-          require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
       if (GetAtomicFlag(&FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) &&
           current_safe_time < read_time_.read) {
         // We are given a read time. However, for Follower reads, it may be better
@@ -703,9 +702,8 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
   }
 
   if (!req_->pgsql_batch().empty()) {
-    ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(req_);
     size_t total_num_rows_read = 0;
-    for (PgsqlReadRequestPB& pgsql_read_req : *mutable_req->mutable_pgsql_batch()) {
+    for (const auto& pgsql_read_req : req_->pgsql_batch()) {
       tablet::PgsqlReadRequestResult result(&context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(

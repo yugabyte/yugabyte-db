@@ -10,7 +10,11 @@ import {
 import { PROVIDER_TYPES, BASE_URL } from '../config';
 import { NodeState } from '../redesign/helpers/dtos';
 
-export const MULTILINE_GFLAGS_ARRAY = ['ysql_hba_conf_csv', 'ysql_ident_conf_csv'];
+export const MULTILINE_GFLAGS_ARRAY = [
+  'ysql_hba_conf_csv',
+  'ysql_ident_conf_csv',
+  'ysql_pg_conf_csv'
+];
 
 const LDAP_KEYS = [
   'ldapserver',
@@ -27,7 +31,15 @@ const LDAP_KEYS = [
   'ldapurl'
 ];
 
-const JWT_KEYS = ['map', 'jwt_audiences', 'jwt_issuers', 'jwt_matching_claim_key', 'jwks'];
+const JWT_KEYS = [
+  'map',
+  'jwt_audiences',
+  'jwt_issuers',
+  'jwt_matching_claim_key',
+  'jwks',
+  'jwt_jwks_path',
+  'jwt_jwks_url'
+];
 
 export const CONST_VALUES = {
   JWT: 'jwt',
@@ -39,7 +51,8 @@ export const CONST_VALUES = {
   SINGLE_QUOTES_SEPARATOR: "'",
   COMMA_SEPARATOR: ',',
   EQUALS: '=',
-  JWKS: 'jwks'
+  JWKS_EQUALS: 'jwks=',
+  JWT_JWKS_URL: 'jwt_jwks_url'
 };
 
 export const GFLAG_EDIT = 'EDIT';
@@ -55,7 +68,8 @@ export const nodeInClusterStates = [
 
 export const MultilineGFlags = {
   YSQL_HBA_CONF_CSV: 'ysql_hba_conf_csv',
-  YSQL_IDENT_CONF_CSV: 'ysql_ident_conf_csv'
+  YSQL_IDENT_CONF_CSV: 'ysql_ident_conf_csv',
+  YSQL_PG_CONF_CSV: 'ysql_pg_conf_csv'
 };
 
 export function isNodeRemovable(nodeState) {
@@ -207,7 +221,7 @@ export function hasLiveNodes(universe) {
   return false;
 }
 
-export function isKubernetesUniverse(currentUniverse) {
+export function getIsKubernetesUniverse(currentUniverse) {
   return (
     isDefinedNotNull(currentUniverse.universeDetails) &&
     isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) &&
@@ -256,11 +270,45 @@ export const isOnpremUniverse = (universe) => {
   return isUniverseType(universe, 'onprem');
 };
 
-export const isPausableUniverse = (universe) => {
+const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = [
+  'g5',
+  'g6',
+  'g6e',
+  'gr6',
+  'i3',
+  'i3en',
+  'i4g',
+  'i4i',
+  'im4gn',
+  'is4gen',
+  'p5',
+  'p5e',
+  'trn1',
+  'trn1n',
+  'x1',
+  'x1e'
+];
+
+export const isEphemeralAwsStorageInstance = (instanceType) => {
   return (
-    isUniverseType(universe, 'aws') ||
+    INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]) ||
+    instanceType?.split?.('.')[0].includes('d')
+  );
+};
+
+export const isPausableUniverse = (universe) => {
+  if (isUniverseType(universe, 'aws')) {
+    return (
+      universe.universeDetails?.nodeDetailsSet?.find(
+        (n) => n !== null && !isEphemeralAwsStorageInstance(n.cloudInfo?.instance_type)
+      ) !== undefined ?? true
+    );
+  }
+
+  return (
     isUniverseType(universe, 'gcp') ||
-    isUniverseType(universe, 'azu')
+    isUniverseType(universe, 'azu') ||
+    isUniverseType(universe, 'kubernetes')
   );
 };
 
@@ -290,7 +338,8 @@ export const getProxyNodeAddress = (universeUUID, nodeIp, nodePort) => {
  *
  * @param GFlagInput The entire Gflag configuration enetered that needs to be unformatted
  */
-export const unformatConf = (GFlagInput) => {
+export const unformatConf = (formValues, GFlagInput) => {
+  const flagName = formValues?.flagname;
   // Regex expression to extract non-quoted comma
   const filteredGFlagInput = GFlagInput.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
   const unformattedConf = filteredGFlagInput?.map((GFlagRowConf, index) => {
@@ -316,8 +365,10 @@ export const unformatConf = (GFlagInput) => {
     }
 
     // Extract jwks content from the row input if it exists
-    if (GFlagRowConfSubset.includes(CONST_VALUES.JWKS)) {
-      const JWKSKey = GFlagRowConfSubset.substring(GFlagRowConfSubset.indexOf(CONST_VALUES.JWKS));
+    if (GFlagRowConfSubset.includes(CONST_VALUES.JWKS_EQUALS)) {
+      const JWKSKey = GFlagRowConfSubset.substring(
+        GFlagRowConfSubset.indexOf(CONST_VALUES.JWKS_EQUALS)
+      );
       if (isNonEmptyString(JWKSKey)) {
         GFlagRowConfSubset = GFlagRowConfSubset.replace(JWKSKey, '');
         GFlagRowConfSubset = GFlagRowConfSubset.trimEnd();
@@ -325,21 +376,34 @@ export const unformatConf = (GFlagInput) => {
       JWKSToken = JWKSKey.substring(JWKSKey.indexOf(CONST_VALUES.EQUALS) + 1);
     }
 
+    const content = isNonEmptyString(GFlagRowConfSubset) ? GFlagRowConfSubset : GFlagRowConf;
+    const isDisabled = isRowDisabled(formValues, flagName, content);
+
     return {
       id: `item-${index}`,
       index: index,
-      content: isNonEmptyString(GFlagRowConfSubset) ? GFlagRowConfSubset : GFlagRowConf,
+      content: content,
       error: false,
       showJWKSButton: isNonEmptyString(JWKSToken),
-      JWKSToken: JWKSToken
+      JWKSToken: JWKSToken,
+      disabled: isDisabled
     };
   });
 
   return unformattedConf;
 };
 
+export const isRowDisabled = (formValues, flagName, rowContent) => {
+  let isDisabled = false;
+  // When PG Parity is enabled, ensure the default values returned for pg_conf_csv by the API is disabled
+  const pgConfCsvPrefilledValue =
+    flagName === MultilineGFlags.YSQL_PG_CONF_CSV ? formValues?.pgGroupFlags?.ysql_pg_conf_csv : '';
+  isDisabled = !!pgConfCsvPrefilledValue?.includes(rowContent);
+  return isDisabled;
+};
+
 /**
-  * Format Configuration string based on rules here: 
+  * Format Configuration string based on rules here:
   * https://docs.yugabyte.com/preview/reference/configuration/yb-tserver/#ysql-hba-conf-csv
   *
   * @param GFlagInput Input entered in the text field
@@ -397,6 +461,7 @@ export const formatConf = (GFlagInput, searchTerm, JWKSToken) => {
 
     return initialLDAPConf + appendedLDAPConf + JWKS;
   }
+
   return GFlagInput;
 };
 
@@ -425,16 +490,6 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
     return { isAttributeInvalid, errorMessageKey, isWarning };
   }
 
-  // Raise error when there is jwt keyword but is no JWKS keyset associated with it
-  if (searchTerm === CONST_VALUES.JWT && (isEmptyString(JWKSKeyset) || !JWKSKeyset)) {
-    isAttributeInvalid = true;
-    isWarning = false;
-    errorMessageKey = isOIDCSupported
-      ? 'universeForm.gFlags.uploadKeyset'
-      : 'universeForm.gFlags.jwksNotSupported';
-    return { isAttributeInvalid, errorMessageKey, isWarning };
-  }
-
   const keywordLength = searchTerm.length;
   const isKeywordExist = GFlagInput.includes(searchTerm);
 
@@ -445,6 +500,20 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
     const keywordIndex = GFlagInput.indexOf(keywordList?.[0]);
     const keywordConf = GFlagInput?.substring(keywordIndex + 1 + keywordLength, GFlagInput.length);
     const attributes = keywordConf?.match(/(?:[^\s"|""]+|""[^"""]*"|")+/g);
+    const isJWTUrlExist = attributes?.some((input) => input.includes(CONST_VALUES.JWT_JWKS_URL));
+    const isJWKSKesysetEmpty = isEmptyString(JWKSKeyset) || !JWKSKeyset;
+
+    /*
+      Raise error when there is jwt keyword but is no JWT_JWKS_URL attribute present and Keyset is empty
+    */
+    if (searchTerm === CONST_VALUES.JWT && !isJWTUrlExist && isJWKSKesysetEmpty) {
+      isAttributeInvalid = true;
+      isWarning = false;
+      errorMessageKey = isOIDCSupported
+        ? 'universeForm.gFlags.uploadKeyset'
+        : 'universeForm.gFlags.jwksNotSupported';
+      return { isAttributeInvalid, errorMessageKey, isWarning };
+    }
 
     for (let index = 0; index < attributes?.length; index++) {
       const [attributeKey, ...attributeValues] = attributes[index]?.split(CONST_VALUES.EQUALS);

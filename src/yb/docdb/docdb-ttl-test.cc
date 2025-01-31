@@ -1057,32 +1057,32 @@ TEST_P(DocDBTestWrapper, TestUpdateDocWriteBatchTTL) {
   auto dwb = MakeDocWriteBatch();
   ThreadSafeArena arena;
   LWKeyValueWriteBatchPB kv_pb(&arena);
-  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  dwb.MoveToWriteBatchPB(&kv_pb);
   ASSERT_FALSE(kv_pb.has_ttl());
 
   // Write a subdoc with kMaxTtl, which should not show up in the the kv ttl.
   ASSERT_OK(InsertToWriteBatchWithTTL(&dwb, ValueControlFields::kMaxTtl));
-  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  dwb.MoveToWriteBatchPB(&kv_pb);
   ASSERT_FALSE(kv_pb.has_ttl());
 
   // Write a subdoc with 10s TTL, which should show up in the the kv ttl.
   ASSERT_OK(InsertToWriteBatchWithTTL(&dwb, 10s));
-  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  dwb.MoveToWriteBatchPB(&kv_pb);
   ASSERT_EQ(kv_pb.ttl(), 10 * MonoTime::kNanosecondsPerSecond);
 
   // Write a subdoc with 5s TTL, which should make the kv ttl unchanged.
   ASSERT_OK(InsertToWriteBatchWithTTL(&dwb, 5s));
-  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  dwb.MoveToWriteBatchPB(&kv_pb);
   ASSERT_EQ(kv_pb.ttl(), 10 * MonoTime::kNanosecondsPerSecond);
 
   // Write a subdoc with 15s TTL, which should show up in the the kv ttl.
   ASSERT_OK(InsertToWriteBatchWithTTL(&dwb, 15s));
-  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  dwb.MoveToWriteBatchPB(&kv_pb);
   ASSERT_EQ(kv_pb.ttl(), 15 * MonoTime::kNanosecondsPerSecond);
 
   // Write a subdoc with kMaxTTL, which should make the kv ttl unchanged.
   ASSERT_OK(InsertToWriteBatchWithTTL(&dwb, ValueControlFields::kMaxTtl));
-  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  dwb.MoveToWriteBatchPB(&kv_pb);
   ASSERT_EQ(kv_pb.ttl(), 15 * MonoTime::kNanosecondsPerSecond);
 }
 

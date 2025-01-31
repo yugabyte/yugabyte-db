@@ -13,6 +13,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -68,7 +69,7 @@ import org.mockito.junit.MockitoRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListTabletServersResponse;
 import play.libs.Json;
 
@@ -100,9 +101,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
       when(mockClient.listTabletServers()).thenReturn(mockResponse);
-      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
-      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+      when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
 
@@ -193,6 +194,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           TaskType.InstanceExistCheck, // only if it wasn't decommissioned.
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState, // to Adding
           TaskType.SetNodeStatus, // to Adding for 'To Be Added'
@@ -219,6 +221,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> ADD_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -249,6 +252,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
           TaskType.PreflightNodeCheck,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.SetNodeStatus,
@@ -291,6 +295,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
@@ -305,6 +310,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           TaskType.InstanceExistCheck,
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.SetNodeStatus,
@@ -341,6 +347,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -405,6 +412,25 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           taskDetails.get(0));
       position++;
     }
+  }
+
+  private void verifyMasterAddressUpdateAffectedNodes(
+      Map<Integer, List<TaskInfo>> subTasksByPosition, int expectedTotalNodes) {
+    int expectedSubTaskMatchCount = 2;
+    for (Map.Entry<Integer, List<TaskInfo>> entry : subTasksByPosition.entrySet()) {
+      if (entry.getValue().stream().anyMatch(t -> t.getTaskType() == TaskType.SetFlagInMemory)) {
+        JsonNode node = entry.getValue().get(0).getTaskParams().get("serverType");
+        assertTrue(node != null && !node.isNull());
+        if (node.asText().equalsIgnoreCase("TSERVER")) {
+          assertEquals(expectedTotalNodes, entry.getValue().size());
+          expectedSubTaskMatchCount--;
+        } else if (node.asText().equalsIgnoreCase("MASTER")) {
+          assertEquals(expectedTotalNodes, entry.getValue().size());
+          expectedSubTaskMatchCount--;
+        }
+      }
+    }
+    assertEquals(0, expectedSubTaskMatchCount);
   }
 
   @Test
@@ -501,7 +527,12 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     verify(mockNodeManager, never()).nodeCommand(any(), any());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
-        getNodeUpdater(DEFAULT_NODE_NAME, node -> node.isMaster = false));
+        getNodeUpdater(
+            DEFAULT_NODE_NAME,
+            node -> {
+              node.isMaster = false;
+              node.isTserver = false;
+            }));
 
     TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, 4);
     assertEquals(Success, taskInfo.getTaskState());
@@ -512,6 +543,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertAddNodeSequence(subTasksByPosition, false, true);
+    verifyMasterAddressUpdateAffectedNodes(subTasksByPosition, 3);
   }
 
   @Test

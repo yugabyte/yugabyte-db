@@ -17,7 +17,9 @@
 #include "yb/master/master_service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
+#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/util/flags.h"
@@ -39,6 +41,34 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
                     IsInitDbDoneResponsePB* resp,
                     rpc::RpcContext rpc) override {
     HANDLE_ON_LEADER_WITHOUT_LOCK(CatalogManager, IsInitDbDone);
+  }
+
+  void DumpSysCatalogEntries(
+      const DumpSysCatalogEntriesRequestPB* req, DumpSysCatalogEntriesResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    // We cannot use HANDLE_ON_LEADER since leader_status may be bad.
+
+    SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
+    if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
+      return;
+    }
+    auto s = server_->catalog_manager_impl()->DumpSysCatalogEntries(req, resp, &rpc);
+    CheckRespErrorOrSetUnknown(s, resp);
+    rpc.RespondSuccess();
+  }
+
+  void WriteSysCatalogEntry(
+      const WriteSysCatalogEntryRequestPB* req, WriteSysCatalogEntryResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    // We cannot use HANDLE_ON_LEADER since leader_status may be bad.
+
+    SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
+    if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
+      return;
+    }
+    auto s = server_->catalog_manager_impl()->WriteSysCatalogEntry(req, resp, &rpc);
+    CheckRespErrorOrSetUnknown(s, resp);
+    rpc.RespondSuccess();
   }
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
@@ -80,6 +110,15 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
   MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(
       YsqlBackendsManager,
       (WaitForYsqlBackendsCatalogVersion)
+  )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+      YsqlManager,
+      (StartYsqlMajorCatalogUpgrade)
+      (IsYsqlMajorCatalogUpgradeDone)
+      (FinalizeYsqlMajorCatalogUpgrade)
+      (RollbackYsqlMajorCatalogVersion)
+      (GetYsqlMajorCatalogUpgradeState)
   )
 };
 

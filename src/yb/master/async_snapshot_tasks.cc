@@ -27,6 +27,7 @@
 
 #include "yb/tserver/backup.proxy.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -35,6 +36,9 @@ DEFINE_test_flag(
     bool, simulate_long_restore, false,
     "Simulate a long restore failing to transition task to completion state if successful, thereby "
     "constantly retrying the RESTORE_ON_TABLET operation.");
+
+DEFINE_test_flag(bool, pause_issuing_tserver_snapshot_requests, false,
+                 "Whether to halt before issuing snapshot operations to tservers.");
 
 namespace yb {
 namespace master {
@@ -82,7 +86,7 @@ TabletId AsyncTabletSnapshotOp::tablet_id() const {
 }
 
 TabletServerId AsyncTabletSnapshotOp::permanent_uuid() const {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
+  return target_ts_desc_ != nullptr ? target_ts_desc_->id() : "";
 }
 
 bool AsyncTabletSnapshotOp::RetryAllowed(TabletServerErrorPB::Code code, const Status& status) {
@@ -136,49 +140,11 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
 
   if (state() != server::MonitoredTaskState::kComplete) {
     VLOG_WITH_PREFIX(1) << "TabletSnapshotOp task is not completed";
-    return;
   }
-
-  switch (operation_) {
-    case tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET: {
-      // TODO: this class should not know CatalogManager API,
-      //       remove circular dependency between classes.
-      master_->catalog_manager()->HandleCreateTabletSnapshotResponse(
-          tablet_.get(), resp_.has_error());
-      return;
-    }
-    case tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET: {
-      // TODO: this class should not know CatalogManager API,
-      //       remove circular dependency between classes.
-      master_->catalog_manager()->HandleRestoreTabletSnapshotResponse(
-          tablet_.get(), resp_.has_error());
-      return;
-    }
-    case tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET: {
-      // TODO: this class should not know CatalogManager API,
-      //       remove circular dependency between classes.
-      // HandleDeleteTabletSnapshotResponse handles only non transaction aware snapshots.
-      // So prevent log flooding for transaction aware snapshots.
-      if (!TryFullyDecodeTxnSnapshotId(snapshot_id_)) {
-        master_->catalog_manager()->HandleDeleteTabletSnapshotResponse(
-            snapshot_id_, tablet_.get(), resp_.has_error());
-      }
-      return;
-    }
-    case tserver::TabletSnapshotOpRequestPB::RESTORE_FINISHED:
-      return;
-    case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
-    case tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER: FALLTHROUGH_INTENDED;
-    case tserver::TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG: FALLTHROUGH_INTENDED;
-    case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
-    case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
-    case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
-  }
-
-  FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation, operation_);
 }
 
 bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
+  TEST_PAUSE_IF_FLAG(TEST_pause_issuing_tserver_snapshot_requests);
   tserver::TabletSnapshotOpRequestPB req;
   req.set_dest_uuid(permanent_uuid());
   req.add_tablet_id(tablet_->tablet_id());
@@ -227,6 +193,7 @@ AsyncTabletSnapshotOp::HandleReplicaLookupFailure(const Status& replica_lookup_s
 }
 
 void AsyncTabletSnapshotOp::Finished(const Status& status) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "status: " << status << ", resp: " << AsString(resp_);
   if (!callback_) {
     return;
   }
@@ -241,7 +208,7 @@ void AsyncTabletSnapshotOp::Finished(const Status& status) {
     }
     callback_(status);
   } else {
-    callback_(&resp_);
+    callback_(resp_);
   }
 }
 

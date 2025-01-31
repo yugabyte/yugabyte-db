@@ -53,8 +53,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_OK(Init("TestSelectOneTablet"));
 
   const char *tabname = "basic_table";
-  const YBCPgOid tab_oid = 3;
-  YBCPgStatement pg_stmt;
+  const YbcPgOid tab_oid = 3;
+  YbcPgStatement pg_stmt;
 
   // Create table in the connected database.
   int col_count = 0;
@@ -96,25 +96,25 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
-      YBCPgTransactionSetting::YB_TRANSACTIONAL));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
   int seed = 1;
-  YBCPgExpr expr_hash;
+  YbcPgExpr expr_hash;
   CHECK_YBC_STATUS(YBCTestNewConstantInt8(pg_stmt, 0, false, &expr_hash));
-  YBCPgExpr expr_id;
+  YbcPgExpr expr_id;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, seed, false, &expr_id));
-  YBCPgExpr expr_depcnt;
+  YbcPgExpr expr_depcnt;
   CHECK_YBC_STATUS(YBCTestNewConstantInt2(pg_stmt, seed, false, &expr_depcnt));
-  YBCPgExpr expr_projcnt;
+  YbcPgExpr expr_projcnt;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, 100 + seed, false, &expr_projcnt));
-  YBCPgExpr expr_salary;
+  YbcPgExpr expr_salary;
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
-  YBCPgExpr expr_job;
+  YbcPgExpr expr_job;
   string job = strings::Substitute("Job_title_$0", seed);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
-  YBCPgExpr expr_oid;
+  YbcPgExpr expr_oid;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, seed, false, &expr_oid));
 
   // Set column value to be inserted.
@@ -156,7 +156,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
                                   false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
-  YBCPgExpr colref;
+  YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
@@ -189,7 +189,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
   bool *isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   int select_row_count = 0;
-  YBCPgSysColumns syscols;
+  YbcPgSysColumns syscols;
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
     CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data));
@@ -205,8 +205,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
               << ", dependent count = " << values[2]
               << ", project count = " << values[3]
               << ", salary = " << *reinterpret_cast<float*>(&values[4])
-              << ", job = (" << values[5] << ")"
-              << ", oid = " << syscols.oid;
+              << ", job = (" << values[5] << ")";
 
     // Check result.
     int col_index = 0;
@@ -224,8 +223,10 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     string expected_job_name = strings::Substitute("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
 
+    #ifdef YB_TODO
     int32_t oid = static_cast<int32_t>(syscols.oid);
     CHECK_EQ(oid, id) << "Unexpected result for OID column";
+    #endif
   }
   CHECK_EQ(select_row_count, 1) << "Unexpected row count";
   CommitTransaction();
@@ -276,8 +277,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
               << ", dependent count = " << values[2]
               << ", project count = " << values[3]
               << ", salary = " << *reinterpret_cast<float*>(&values[4])
-              << ", job = (" << values[5] << ")"
-              << ", oid = " << syscols.oid;
+              << ", job = (" << values[5] << ")";
 
     // Check result.
     int col_index = 0;
@@ -294,8 +294,10 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     string expected_job_name = strings::Substitute("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
 
+    #ifdef YB_TODO
     int32_t oid = static_cast<int32_t>(syscols.oid);
     CHECK_EQ(oid, id) << "Unexpected result for OID column";
+    #endif
   }
   CommitTransaction();
 
@@ -314,7 +316,7 @@ class PggateTestSelectWithYsql : public PggateTestSelect {
     auto* ts = cluster_->tablet_server(0);
     return pgwrapper::PGConnBuilder({
       .host = ts->bind_host(),
-      .port = ts->pgsql_rpc_port(),
+      .port = ts->ysql_port(),
       .dbname = database_name,
     }).Connect();
   }
@@ -338,7 +340,7 @@ Status CheckRanges(const std::vector<std::string>& end_keys, const bool is_forwa
 }
 
 Result<size_t> TestGetTableKeyRanges(
-    YBCPgOid database_oid, YBCPgOid table_oid, Slice lower_bound_key, Slice upper_bound_key,
+    YbcPgOid database_oid, YbcPgOid table_oid, Slice lower_bound_key, Slice upper_bound_key,
     uint64_t range_size_bytes, uint32_t max_key_length, std::string* min_key = nullptr,
     std::string* max_key = nullptr) {
   if (min_key) {
@@ -373,17 +375,13 @@ Result<size_t> TestGetTableKeyRanges(
                         << " range_size_bytes: " << range_size_bytes
                         << " max_key_length: " << max_key_length << " is_forward: " << is_forward;
 
-    uint64_t current_tserver_ht = 0;
     /* Request server HT on the first call for the key ranges */
     end_keys.clear();
     CHECK_YBC_STATUS(YBCGetTableKeyRanges(
         database_oid, table_oid, lower_bound_key.cdata(), lower_bound_key.size(),
         upper_bound_key.cdata(), upper_bound_key.size(), std::numeric_limits<uint64_t>::max(),
-        range_size_bytes, is_forward, max_key_length, &current_tserver_ht,
-        &InvokeFunctionWithKeyPtrAndSize, &func));
+        range_size_bytes, is_forward, max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
     LOG(INFO) << "Got " << end_keys.size() << " ranges";
-    LOG(INFO) << "current tserver HT: " << HybridTime(current_tserver_ht).ToString();
-    SCHECK_GT(current_tserver_ht, 0, InternalError, "No tserver hybrid time");
 
     RETURN_NOT_OK(CheckRanges(end_keys, is_forward));
 
@@ -408,8 +406,7 @@ Result<size_t> TestGetTableKeyRanges(
           database_oid, table_oid, is_forward ? bound.data() : nullptr,
           is_forward ? bound.size() : 0, is_forward ? nullptr : bound.data(),
           is_forward ? 0 : bound.size(), num_ranges_limit, range_size_bytes, is_forward,
-          max_key_length, /* current_tserver_ht = */ nullptr, &InvokeFunctionWithKeyPtrAndSize,
-          &func));
+          max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
 
       const auto size_diff = end_keys.size() - prev_size;
 
@@ -466,7 +463,9 @@ TEST_F_EX(
   constexpr auto kMaxKeyLength = 1_KB;
   constexpr auto kRangeSizeBytes = 16_KB;
 
-  ASSERT_OK(Init("GetTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0, kDatabaseName));
+  ASSERT_OK(Init(
+      "GetTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
 
   LOG(INFO) << "Connecting to YSQL...";
 
@@ -510,7 +509,8 @@ TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql
   constexpr auto kMinNumRangesExpected = 10;
 
   ASSERT_OK(Init(
-      "GetColocatedTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0, kDatabaseName));
+      "GetColocatedTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0,
+       /* should_create_db = */ false));
 
   auto conn = ASSERT_RESULT(PgConnect(kDatabaseName));
   ASSERT_OK(

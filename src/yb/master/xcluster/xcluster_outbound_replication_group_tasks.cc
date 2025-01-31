@@ -13,15 +13,27 @@
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
+#include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 
 DEFINE_test_flag(bool, block_xcluster_checkpoint_namespace_task, false,
     "When enabled XClusterCheckpointNamespaceTask will be blocked");
 
+DECLARE_bool(TEST_xcluster_enable_sequence_replication);
+
 using namespace std::placeholders;
 
 namespace yb::master {
+
+namespace {
+
+bool IsRetryableError(const Status& status) {
+  return status.IsTryAgain() || status.IsServiceUnavailable() || status.IsNetworkError() ||
+         status.IsLeaderNotReadyToServe() || status.IsLeaderHasNoLease();
+}
+
+}  // namespace
 
 XClusterOutboundReplicationGroupTaskFactory::XClusterOutboundReplicationGroupTaskFactory(
     std::function<Status(const LeaderEpoch& epoch)> validate_epoch_func,
@@ -54,6 +66,55 @@ std::string XClusterCheckpointNamespaceTask::description() const {
 }
 
 Status XClusterCheckpointNamespaceTask::FirstStep() {
+  if (outbound_replication_group_.AutomaticDDLMode() &&
+      FLAGS_TEST_xcluster_enable_sequence_replication) {
+    // Ensure sequences_data table has been created and added to our tables to checkpoint.
+    // TODO: Consider making this async  so we don't have to burn a thread waiting.
+    RETURN_NOT_OK(outbound_replication_group_.helper_functions_.create_sequences_data_table_func());
+    TableId sequence_table_alias_id = xcluster::GetSequencesDataAliasForNamespace(namespace_id_);
+    RETURN_NOT_OK(outbound_replication_group_.AddTableToInitialBootstrapMapping(
+        namespace_id_, sequence_table_alias_id, epoch_));
+  }
+
+  return SetupDDLReplicationExtension();
+}
+
+Status XClusterCheckpointNamespaceTask::SetupDDLReplicationExtension() {
+  if (outbound_replication_group_.AutomaticDDLMode()) {
+    return outbound_replication_group_.SetupDDLReplicationExtension(
+        namespace_id_,
+        std::bind(
+            &XClusterCheckpointNamespaceTask::SetupDDLReplicationExtensionCallback, this, _1));
+  }
+
+  ScheduleNextStep(
+      std::bind(&XClusterCheckpointNamespaceTask::CreateStreams, this), "CreateStreams");
+
+  return Status::OK();
+}
+
+void XClusterCheckpointNamespaceTask::SetupDDLReplicationExtensionCallback(Status status) {
+  ScheduleNextStep(
+      std::bind(&XClusterCheckpointNamespaceTask::PrepareDDLQueueTable, this, std::move(status)),
+      "PrepareDDLQueueTable");
+}
+
+Status XClusterCheckpointNamespaceTask::PrepareDDLQueueTable(Status status) {
+  RETURN_NOT_OK_PREPEND(status, "Failed to setup xCluster DDL replication extension");
+
+  // If the DDL queue table was freshly created in the previous step, then we would have
+  // automatically created a stream for it and added it to the namespace map. However this table
+  // must be marked as part of the initial bootstrap so that it gets included in the target as part
+  // of the replication setup.
+  RETURN_NOT_OK(
+      outbound_replication_group_.SetDDLQueueTableIsPartOfInitialBootstrap(namespace_id_, epoch_));
+
+  ScheduleNextStep(
+      std::bind(&XClusterCheckpointNamespaceTask::CreateStreams, this), "CreateStreams");
+  return Status::OK();
+}
+
+Status XClusterCheckpointNamespaceTask::CreateStreams() {
   RETURN_NOT_OK(
       outbound_replication_group_.CreateStreamsForInitialBootstrap(namespace_id_, epoch_));
   ScheduleNextStep(
@@ -66,6 +127,8 @@ Status XClusterCheckpointNamespaceTask::CheckpointStreams() {
       namespace_id_, epoch_,
       std::bind(&XClusterCheckpointNamespaceTask::CheckpointStreamsCallback, this, _1));
 
+  // CheckpointStreamsForInitialBootstrap can fail with TryAgain if it cannot find the tablet
+  // leaders to send the rpc to.
   if (!status.ok() && status.IsTryAgain()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to checkpoint streams: " << status << ". Scheduling retry";
     ScheduleNextStepWithDelay(
@@ -92,6 +155,15 @@ Status XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed(
         std::bind(
             &XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed, this, std::move(result)),
         "MarkTablesAsCheckpointed", MonoDelta::FromMilliseconds(100));
+    return Status::OK();
+  }
+
+  if (!result && IsRetryableError(result.status())) {
+    LOG_WITH_PREFIX(INFO) << "Failed to checkpoint streams with retryable error: "
+                          << result.status() << ". Scheduling retry";
+    ScheduleNextStepWithDelay(
+        std::bind(&XClusterCheckpointNamespaceTask::CheckpointStreams, this), "CheckpointStreams",
+        GetDelayWithBackoff());
     return Status::OK();
   }
 

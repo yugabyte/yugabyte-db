@@ -10,6 +10,12 @@ List YugabyteDB Anywhere universes
 yba universe list [flags]
 ```
 
+### Examples
+
+```
+yba universe list
+```
+
 ### Options
 
 ```

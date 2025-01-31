@@ -4,7 +4,6 @@ headerTitle: Drivers and ORMs
 linkTitle: Drivers and ORMs
 description: Connect your applications with supported drivers and ORMs
 headcontent: Connect applications with your database
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.18:
     identifier: drivers-orms
@@ -117,8 +116,8 @@ The following libraries are officially supported by YugabyteDB.
 | [YugabyteDB Java Driver for YCQL (4.15)](java/ycql-4.x/) | Full | [CRUD](java/ycql-4.x) |
 | [Ebean](java/ebean/) | Full | [CRUD](java/ebean/) |
 | [Hibernate](java/hibernate/) | Full | [CRUD](java/hibernate/) |
-| [Spring Data YugabyteDB](../integrations/spring-framework/sdyb/) | Full | [CRUD](../integrations/spring-framework/sdyb/#examples) |
-| [Spring Data JPA](../integrations/spring-framework/sd-jpa/) | Full | [CRUD](../integrations/spring-framework/sd-jpa/#fundamentals) |
+| [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Full | [CRUD](/preview/integrations/spring-framework/sdyb/#examples) |
+| [Spring Data JPA](/preview/integrations/spring-framework/sd-jpa/) | Full | [CRUD](/preview/integrations/spring-framework/sd-jpa/#fundamentals) |
 | [MyBatis](java/mybatis/) | Full | [CRUD](java/mybatis/) |
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
@@ -144,7 +143,7 @@ The following libraries are officially supported by YugabyteDB.
 | :--------- | :------------ | :----------- |
 | [YugabyteDB Psycopg2 Smart Driver](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD](python/yugabyte-psycopg2/) |
 | [PostgreSQL Psycopg2 Driver](python/postgres-psycopg2/) | Full | [CRUD](python/postgres-psycopg2/) |
-| aiopg | Full | [Hello World](../develop/build-apps/python/ysql-aiopg/) |
+| aiopg | Full | |
 | [Django](python/django/) | Full | [CRUD](python/django/) |
 | [SQLAlchemy](python/sqlalchemy/) | Full | [CRUD](python/sqlalchemy/) |
 

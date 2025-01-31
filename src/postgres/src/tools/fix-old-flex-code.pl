@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/perl
 #----------------------------------------------------------------------
 #
 # fix-old-flex-code.pl
@@ -8,7 +8,7 @@
 # let's suppress it by inserting a dummy reference to the variable.
 # (That's exactly what 2.5.36 and later do ...)
 #
-# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/tools/fix-old-flex-code.pl
@@ -61,6 +61,6 @@ Usage: fix-old-flex-code.pl c-file-name
 fix-old-flex-code.pl modifies a flex output file to suppress
 an unused-variable warning that occurs with older flex versions.
 
-Report bugs to <pgsql-bugs\@postgresql.org>.
+Report bugs to <pgsql-bugs\@lists.postgresql.org>.
 EOM
 }

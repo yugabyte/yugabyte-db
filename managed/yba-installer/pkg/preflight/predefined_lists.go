@@ -11,12 +11,14 @@ var InstallChecks = []Check{
 	checks.Memory,
 	checks.Port,
 	checks.Python,
+	checks.OpenSSL,
 	checks.DiskAvail,
 	checks.License,
 	checks.DBConfigCheck,
 	checks.ValidateLocaleConfig,
 	checks.Prometheus,
 	checks.ReplicatedNotExists,
+	checks.SystemdUserSupported,
 }
 
 // InstallChecksWithPostgres adds onto the base list with postgres checks
@@ -30,12 +32,17 @@ var UpgradeChecks = []Check{
 	checks.Cpu,
 	checks.Memory,
 	checks.Python,
+	checks.OpenSSL,
 	checks.Prometheus,
+	checks.NonRootUpgradeCheck,
+	checks.ServicesRunningCheck,
+	checks.UpgradeConfigCheck,
 }
 
 var ReplicatedMigrateChecks = []Check{
 	checks.InstallNotExists,
 	checks.Python,
+	checks.OpenSSL,
 	checks.License,
 	checks.ValidateLocaleConfig,
 	checks.MigrateDiskCheck,

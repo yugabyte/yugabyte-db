@@ -20,6 +20,8 @@
 
 namespace yb {
 class HybridTime;
+struct PgObjectId;
+struct YsqlFullTableName;
 
 namespace tserver {
 class TserverXClusterContextIf {
@@ -29,10 +31,15 @@ class TserverXClusterContextIf {
 
   virtual Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const = 0;
 
-  virtual bool IsReadOnlyMode(const NamespaceId namespace_id) const = 0;
+  virtual bool IsReadOnlyMode(const NamespaceId& namespace_id) const = 0;
 
   virtual bool SafeTimeComputationRequired() const = 0;
-  virtual bool SafeTimeComputationRequired(const NamespaceId namespace_id) const = 0;
+  virtual bool SafeTimeComputationRequired(const NamespaceId& namespace_id) const = 0;
+
+  virtual Status SetSourceTableMappingForCreateTable(
+      const YsqlFullTableName& table_name, const PgObjectId& producer_table_id) = 0;
+  virtual void ClearSourceTableMappingForCreateTable(const YsqlFullTableName& table_name) = 0;
+  virtual PgObjectId GetXClusterSourceTableId(const YsqlFullTableName& table_name) const = 0;
 };
 
 }  // namespace tserver

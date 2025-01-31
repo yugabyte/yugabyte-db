@@ -70,7 +70,11 @@ export default class TaskProgress extends Component {
   }
 
   render() {
-    const { taskUUIDs, taskProgressData, type } = this.props;
+    const { taskUUIDs, taskProgressData, type, featureFlags } = this.props;
+    const isNewTaskDetailsUIEnabled = featureFlags?.test?.newTaskDetailsUI || featureFlags?.released?.newTaskDetailsUI;
+    if(isNewTaskDetailsUIEnabled) {
+      return <span />;
+    }
     const taskProgressPromise = getPromiseState(taskProgressData);
     if (taskUUIDs.length === 0) {
       return <span />;

@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
@@ -101,6 +102,9 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
 
     TestHelper.updateUniverseVersion(defaultUniverse, "2.21.0.0-b1");
   }
@@ -245,8 +249,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .addTasks(TaskType.PromoteAutoFlags)
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)
-        .addTasks(TaskType.RunYsqlUpgrade)
         .addTasks(TaskType.PromoteAutoFlags)
+        .addTasks(TaskType.RunYsqlUpgrade)
         .addTasks(TaskType.UpdateUniverseState)
         .verifyTasks(taskInfo.getSubTasks());
 
@@ -303,7 +307,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(enableYSQL, getPrecheckTasks(true))
         .addTasks(TaskType.UpdateUniverseState)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
@@ -528,7 +532,9 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     Set<String> expectedMasters = new HashSet<>(masterNames);
     // We do process inactive masters, so for each tserver we also process masters
+    // (but not for "onlyMasterUpdated" node)
     expectedMasters.addAll(tserverNames);
+    expectedMasters.remove(onlyMasterUpdated.getNodeName());
 
     assertEquals("Upgraded masters", expectedMasters, configuredMasters);
     assertEquals("Upgraded tservers", tserverNames, configuredTservers);

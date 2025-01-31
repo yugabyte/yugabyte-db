@@ -88,7 +88,7 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_int32(metrics_snapshotter_interval_ms, 30 * 1000,
+DEFINE_RUNTIME_int32(metrics_snapshotter_interval_ms, 30 * 1000,
              "Interval at which the metrics are snapshotted.");
 TAG_FLAG(metrics_snapshotter_interval_ms, advanced);
 
@@ -160,9 +160,6 @@ class MetricsSnapshotter::Thread {
     return log_prefix_;
   }
 
-  // Retrieves current cpu usage information.
-  Result<vector<uint64_t>> GetCpuUsage();
-
   // The server for which we are collecting metrics.
   TabletServer* const server_;
 
@@ -216,6 +213,44 @@ Status MetricsSnapshotter::Start() {
 Status MetricsSnapshotter::Stop() {
   return thread_->Stop();
 }
+
+Result<std::vector<double>> MetricsSnapshotter::GetCpuUsageInInterval(int ms) {
+  std::vector<double> cpu_usage;
+  auto cur_ticks1 = VERIFY_RESULT(GetCpuUsage());
+  bool get_cpu_success = std::all_of(
+      cur_ticks1.begin(), cur_ticks1.end(), [](uint64_t v) { return v > 0; });
+  if (!get_cpu_success) {
+    return STATUS_FORMAT(RuntimeError, "Failed to retrieve CPU ticks. Got "
+                          "[total_ticks, user-ticks, system_ticks]=$0.", cur_ticks1);
+  }
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+  auto cur_ticks2 = VERIFY_RESULT(GetCpuUsage());
+  get_cpu_success = std::all_of(
+      cur_ticks2.begin(), cur_ticks2.end(), [](uint64_t v) { return v > 0; });
+  if (!get_cpu_success) {
+    return STATUS_FORMAT(RuntimeError, "Failed to retrieve CPU ticks. Got "
+                        "[total_ticks, user-ticks, system_ticks]=$0.", cur_ticks2);
+  }
+
+  uint64_t total_ticks = cur_ticks2[0] - cur_ticks1[0];
+  uint64_t user_ticks = cur_ticks2[1] - cur_ticks1[1];
+  uint64_t system_ticks = cur_ticks2[2] - cur_ticks1[2];
+  if (total_ticks < 0) {
+    return STATUS_FORMAT(RuntimeError, "Failed to calculate CPU usage - "
+                        "invalid total CPU ticks: $0.", total_ticks);
+  } else if (total_ticks == 0) {
+    cpu_usage.emplace_back(0);
+    cpu_usage.emplace_back(0);
+  } else {
+    cpu_usage.emplace_back(static_cast<double>(user_ticks) / total_ticks);
+    cpu_usage.emplace_back(static_cast<double>(system_ticks) / total_ticks);
+  }
+
+  return cpu_usage;
+}
+
+
 
 ////////////////////////////////////////////////////////////
 // MetricsSnapshotter::Thread
@@ -337,7 +372,7 @@ Status MetricsSnapshotter::Thread::DoYsqlConnMgrMetricsSnapshot(const client::Ta
     return Status::OK();
   }
   // Below is a modified copy of the GetYsqlConnMgrStats function in
-  // pgsql_webserver_wrapper.cc.
+  // ybc_pg_webserver_wrapper.cc.
   std::vector<ConnectionStats> stats_list;
   auto shm_key = server_->GetYsqlConnMgrStatsShmemKey();
   if (shm_key == 0) {
@@ -449,14 +484,14 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
 
   if (tserver_metrics_whitelist_.contains(kMetricWhitelistItemCpuUsage)) {
     // Store the {total_ticks, user_ticks, and system_ticks}
-    auto cur_ticks = CHECK_RESULT(GetCpuUsage());
+    auto cur_ticks = CHECK_RESULT(MetricsSnapshotter::GetCpuUsage());
     bool get_cpu_success = std::all_of(
         cur_ticks.begin(), cur_ticks.end(), [](bool v) { return v > 0; });
     if (get_cpu_success && first_run_cpu_ticks_) {
       prev_ticks_ = cur_ticks;
       first_run_cpu_ticks_ = false;
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
-      cur_ticks = CHECK_RESULT(GetCpuUsage());
+      cur_ticks = CHECK_RESULT(MetricsSnapshotter::GetCpuUsage());
       get_cpu_success = std::all_of(
           cur_ticks.begin(), cur_ticks.end(), [](bool v) { return v > 0; });
     }
@@ -465,6 +500,7 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
       uint64_t total_ticks = cur_ticks[0] - prev_ticks_[0];
       uint64_t user_ticks = cur_ticks[1] - prev_ticks_[1];
       uint64_t system_ticks = cur_ticks[2] - prev_ticks_[2];
+      prev_ticks_ = cur_ticks;
       if (total_ticks <= 0) {
         YB_LOG_EVERY_N_SECS(ERROR, 120) << Format("Failed to calculate CPU usage - "
                                                  "invalid total CPU ticks: $0.", total_ticks);
@@ -510,7 +546,49 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
   return Status::OK();
 }
 
-Result<vector<uint64_t>> MetricsSnapshotter::Thread::GetCpuUsage() {
+Result<vector<uint64_t>> MetricsSnapshotter::GetMemoryUsage() {
+  uint64_t total_memory = 0, free_memory = 0, available_memory = 0;
+#ifdef __APPLE__
+  // Implementation for APPLE OS
+  // Retrieve physical memory information using sysctl
+  int mib[2];
+  mib[0] = CTL_HW;
+  mib[1] = HW_MEMSIZE;
+  int64_t physical_memory;
+  size_t length = sizeof(physical_memory);
+  if (sysctl(mib, 2, &physical_memory, &length, NULL, 0) != 0) {
+    return STATUS(RuntimeError, "Failed to retrieve physical memory information");
+  }
+  total_memory = physical_memory;
+  free_memory = 0; // Not available on macOS
+  available_memory = 0; // Not available on macOS
+#else
+  // Implementation for Linux
+  FILE* file = fopen("/proc/meminfo", "r");
+  if (!file) {
+    return STATUS(RuntimeError, "Failed to open /proc/meminfo");
+  }
+  char line[128];
+  while (fgets(line, sizeof(line), file)) {
+    if (strncmp(line, "MemTotal:", 9) == 0) {
+      sscanf(line + 9, "%lu", &total_memory);
+    } else if (strncmp(line, "MemFree:", 8) == 0) {
+      sscanf(line + 8, "%lu", &free_memory);
+    } else if (strncmp(line, "MemAvailable:", 13) == 0) {
+      sscanf(line + 13, "%lu", &available_memory);
+    }
+  }
+  fclose(file);
+  // proc meminfo reports in KB, convert to bytes
+  total_memory *= 1024;
+  free_memory *= 1024;
+  available_memory *= 1024;
+#endif
+  vector<uint64_t> ret = {total_memory, free_memory, available_memory};
+  return ret;
+}
+
+Result<vector<uint64_t>> MetricsSnapshotter::GetCpuUsage() {
   uint64_t total_ticks = 0, total_user_ticks = 0, total_system_ticks = 0;
 #ifdef __APPLE__
   host_cpu_load_info_data_t cpuinfo;
@@ -542,13 +620,13 @@ Result<vector<uint64_t>> MetricsSnapshotter::Thread::GetCpuUsage() {
     YB_LOG_EVERY_N_SECS(WARNING, 120) << Format("Failed to scan /proc/stat for cpu ticks. ",
                                                "Expected 4 inputs but got $0.", scanned);
   } else {
-    if (fclose(file)) {
-      YB_LOG_EVERY_N_SECS(WARNING, 120) << "Failed to close /proc/stat with errno: "
-                                        << strerror(errno);
-    }
     total_ticks = user_ticks + user_nice_ticks + system_ticks + idle_ticks;
     total_user_ticks = user_ticks + user_nice_ticks;
     total_system_ticks = system_ticks;
+  }
+  if (fclose(file)) {
+    YB_LOG_EVERY_N_SECS(WARNING, 120) << "Failed to close /proc/stat with errno: "
+                                      << strerror(errno);
   }
 #endif
   vector<uint64_t> ret = {total_ticks, total_user_ticks, total_system_ticks};

@@ -669,7 +669,7 @@ From any node, execute the following command.
 
 ```sh
 $ cd ~/tserver
-$ ./bin/ysqlsh <any-node-ip>
+$ ./bin/ysqlsh -h <any-node-ip>
 ```
 
 ```sql
@@ -699,7 +699,7 @@ Output should be the following:
 
 ### Cassandra-compatible YCQL API
 
-Connect to the cluster using the YCQL shell (`ycqlsh`) that comes installed in the `bin` directory. If you want to use `ycqlsh` from a different node, follow the steps found on the [ycqlsh](../../../../admin/cqlsh/) page.
+Connect to the cluster using the YCQL shell (`ycqlsh`) that comes installed in the `bin` directory. If you want to use `ycqlsh` from a different node, follow the steps found on the [ycqlsh](../../../../admin/ycqlsh/) page.
 
 From any node, execute the following command.
 
