@@ -175,14 +175,10 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, TestDdlsDuringUpgrade) {
   ASSERT_OK(RunDdlFunctions(kMixedModeTserverPg11));
 
   // Finalize upgrade without upgrading all tservers
-  ASSERT_OK(FinalizeYsqlMajorCatalogUpgrade());
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
   upgrade_state_ = UpgradeState::kAfterUpgrade;
 
-  ASSERT_OK(RunDdlFunctions(kMixedModeTserverPg15));
-
-  // Pg11 tserver should not be allowed to update the catalog after catalog upgrade has been
-  // finalized.
-  ASSERT_OK(RunDdlFunctions(kMixedModeTserverPg11, /*error_expected=*/true));
+  ASSERT_OK(RunDdlFunctions(std::nullopt));
 }
 
 // Make sure we cannot run DDLs during a failed upgrade.

@@ -105,8 +105,9 @@ using ProxyTuple = util::SharedPtrTuple<
   cdc::CDCServiceProxy,
   consensus::ConsensusServiceProxy>;
 
-struct PersistentTServerInfo
-    : public Persistent<SysTabletServerEntryPB> {};
+struct PersistentTServerInfo : public Persistent<SysTabletServerEntryPB> {
+  bool IsLive() const;
+};
 
 // Master-side view of a single tablet server.
 //

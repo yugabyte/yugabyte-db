@@ -62,6 +62,8 @@ DECLARE_bool(TEST_enable_ysql_operation_lease);
 namespace yb {
 namespace master {
 
+bool PersistentTServerInfo::IsLive() const { return pb.state() == SysTabletServerEntryPB::LIVE; }
+
 TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
                            RegisteredThroughHeartbeat registered_through_heartbeat,
                            CloudInfoPB&& local_cloud_info,
@@ -141,6 +143,11 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   l.mutable_data()->pb.set_instance_seqno(instance.instance_seqno());
   *l.mutable_data()->pb.mutable_registration() = registration.common();
   *l.mutable_data()->pb.mutable_resources() = registration.resources();
+  if (registration.has_version_info()) {
+    *l.mutable_data()->pb.mutable_version_info() = registration.version_info();
+  } else {
+    l.mutable_data()->pb.clear_version_info();
+  }
   l.mutable_data()->pb.set_state(
       registered_through_heartbeat ? SysTabletServerEntryPB::LIVE
                                    : SysTabletServerEntryPB::UNRESPONSIVE);
@@ -483,9 +490,7 @@ std::size_t TSDescriptor::NumTasks() const {
   return tablets_pending_delete_.size();
 }
 
-bool TSDescriptor::IsLive() const {
-  return LockForRead()->pb.state() == SysTabletServerEntryPB::LIVE;
-}
+bool TSDescriptor::IsLive() const { return LockForRead()->IsLive(); }
 
 bool TSDescriptor::IsLiveAndHasReported() const {
   return IsLive() && has_tablet_report();

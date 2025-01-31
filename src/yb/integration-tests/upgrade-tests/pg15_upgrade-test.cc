@@ -88,6 +88,21 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
   ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
   ASSERT_STR_NOT_CONTAINS(ysql_catalog_config, "catalog_version");
 
+  // We should not be allowed to finalize before upgrading all tservers.
+  ASSERT_NOK_STR_CONTAINS(
+      FinalizeYsqlMajorCatalogUpgrade(),
+      "Cannot finalize YSQL major catalog upgrade before all yb-tservers have been upgraded to the "
+      "current version: yb-tserver(s) not on the correct version");
+  // We should not be allowed to rollback before rolling back all tservers.
+  ASSERT_NOK_STR_CONTAINS(
+      RollbackYsqlMajorCatalogVersion(),
+      "Cannot rollback YSQL major catalog while yb-tservers are running on a newer YSQL major "
+      "version: yb-tserver(s) not on the correct version");
+
+  ASSERT_NOK_STR_CONTAINS(
+      PromoteAutoFlags(),
+      "Cannot promote non-volatile AutoFlags before YSQL major catalog upgrade is complete");
+
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
 
   {

@@ -162,10 +162,20 @@ IsOperationDoneResult YsqlInitDBAndMajorUpgradeHandler::IsYsqlMajorCatalogUpgrad
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::FinalizeYsqlMajorCatalogUpgrade(const LeaderEpoch& epoch) {
+  RETURN_NOT_OK_PREPEND(
+      master_.ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kVersionEQ),
+      "Cannot finalize YSQL major catalog upgrade before all yb-tservers have been upgraded to the "
+      "current version");
+
   return TransitionMajorCatalogUpgradeState(YsqlMajorCatalogUpgradeInfoPB::DONE, epoch);
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RollbackYsqlMajorCatalogVersion(const LeaderEpoch& epoch) {
+  RETURN_NOT_OK_PREPEND(
+      master_.ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kYsqlMajorVersionLT),
+      "Cannot rollback YSQL major catalog while yb-tservers are running on a newer YSQL major "
+      "version");
+
   // Since Rollback is synchronous, we can perform the state transitions inside the async
   // function. It also ensures there are no inflight operations when the rollback state transition
   // occurs.
@@ -628,6 +638,48 @@ Status YsqlInitDBAndMajorUpgradeHandler::CleanupPreviousYsqlMajorCatalog(const L
         false);
     RETURN_NOT_OK(l.UpsertAndCommit());
   }
+
+  return Status::OK();
+}
+
+Status YsqlInitDBAndMajorUpgradeHandler::ValidateTServerVersion(
+    const VersionInfoPB& ts_version) const {
+  // Dev note: Returning a bad status will cause the yb-tserver to FATAL.
+  const auto current_major_version = VersionInfo::YsqlMajorVersion();
+
+  if (!ysql_major_upgrade_in_progress_) {
+    // When not in YSQL major upgrade only tservers of the current version are allowed.
+    SCHECK_FORMAT(
+        VersionInfo::ValidateVersion(ts_version, ValidateVersionInfoOp::kYsqlMajorVersionEQ),
+        IllegalState,
+        "yb-tserver YSQL major version $0 does not match the cluster version $1. Restart the "
+        "yb-tserver in the correct version.",
+        ts_version.ysql_major_version(), current_major_version);
+
+    return Status::OK();
+  }
+
+  if (ysql_catalog_config_.GetMajorCatalogUpgradeState() ==
+      YsqlMajorCatalogUpgradeInfoPB::MONITORING) {
+    // During monitoring phase we allow the tservers to be in both previous and current version.
+    SCHECK_FORMAT(
+        VersionInfo::ValidateVersion(ts_version, ValidateVersionInfoOp::kYsqlMajorVersionLE),
+        IllegalState,
+        "yb-tserver YSQL major version $0 is too high. Restart the yb-tserver in a version less "
+        "than or equal to YSQL major version $1.",
+        ts_version.ysql_major_version(), current_major_version);
+
+    return Status::OK();
+  }
+
+  // During all other phases of the major upgrade, the tserver must be in the previous version.
+  SCHECK_FORMAT(
+      VersionInfo::ValidateVersion(ts_version, ValidateVersionInfoOp::kYsqlMajorVersionLT),
+      IllegalState,
+      "yb-tserver YSQL major version $0 is too high. Cluster is not in a state to accept "
+      "yb-tservers on a higher version yet. Restart the yb-tserver in the previous YSQL major "
+      "version",
+      ts_version.ysql_major_version());
 
   return Status::OK();
 }

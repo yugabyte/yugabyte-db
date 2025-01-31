@@ -23,6 +23,7 @@ namespace yb {
 
 class IsOperationDoneResult;
 class ThreadPool;
+class VersionInfoPB;
 
 namespace master {
 struct LeaderEpoch;
@@ -78,6 +79,8 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // completed.
   Status CleanupPreviousYsqlMajorCatalog(const LeaderEpoch& epoch);
   void ScheduleCleanupPreviousYsqlMajorCatalog(const LeaderEpoch& epoch);
+
+  Status ValidateTServerVersion(const VersionInfoPB& version) const;
 
  private:
   using DbNameToOidList = std::vector<std::pair<std::string, YbcPgOid>>;

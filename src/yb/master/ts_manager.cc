@@ -35,6 +35,7 @@
 #include <mutex>
 #include <vector>
 
+#include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/map-util.h"
@@ -69,6 +70,8 @@ DEFINE_RUNTIME_AUTO_bool(persist_tserver_registry, kLocalPersisted, false, true,
 DEFINE_test_flag(bool, enable_ysql_operation_lease, false,
     "Enables the client operation lease. The client operation lease must be held by a tserver to "
     "host pg sessions. It is refreshed by the master leader.");
+
+DEFINE_RUNTIME_bool(skip_tserver_version_checks, false, "Skip all tserver version checks");
 
 namespace yb::master {
 namespace {
@@ -535,6 +538,36 @@ Status TSManager::RemoveTabletServer(
     std::lock_guard map_l(map_lock_);
     servers_by_id_.erase(desc->id());
   }
+  return Status::OK();
+}
+
+Status TSManager::ValidateAllTserverVersions(ValidateVersionInfoOp op) const {
+  if (FLAGS_skip_tserver_version_checks) {
+    return Status::OK();
+  }
+
+  std::vector<std::string> invalid_tservers;
+  SharedLock l(map_lock_);
+  for (const auto& [ts_id, ts_dsc] : servers_by_id_) {
+    auto l = ts_dsc->LockForRead();
+    if (!l->IsLive()) {
+      // This is probably some old tserver that has been dead for hours. When it comes back up we
+      // will validate it, so it can be ignored here.
+      continue;
+    }
+    auto version_info_opt =
+        l->pb.has_version_info() ? std::optional(std::cref(l->pb.version_info())) : std::nullopt;
+    if (!VersionInfo::ValidateVersion(version_info_opt, op)) {
+      invalid_tservers.push_back(Format(
+          "[TS $0; Version $1]", ts_dsc->ToString(),
+          version_info_opt ? version_info_opt->get().ShortDebugString() : "<NA>"));
+    }
+  }
+
+  SCHECK_FORMAT(
+      invalid_tservers.empty(), IllegalState, "yb-tserver(s) not on the correct version: $0",
+      yb::ToString(invalid_tservers));
+
   return Status::OK();
 }
 

@@ -22,6 +22,7 @@ import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
+import "yb/common/version_info.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/master/master_types.proto";
@@ -979,4 +980,6 @@ message SysTabletServerEntryPB {
   optional bool live_client_operation_lease = 7;
 
   optional uint64 lease_epoch = 8;
+
+  optional VersionInfoPB version_info = 9;
 }
