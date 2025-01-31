@@ -163,16 +163,23 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                         faultTolerance = models.CLUSTERFAULTTOLERANCE_NODE
                 }
         }
-        // Determine if encryption at rest is enabled
-        // Checks cluster-config response encryption_info.encryption_enabled
+
+        // Get data from cluster config
         clusterConfigResponse := <-clusterConfigFuture
         isEncryptionAtRestEnabled := false
         var clusterReplicationFactor int32
+        var universeUuid string
+        var clusterUuid string
         if clusterConfigResponse.Error == nil {
                 resultConfig := clusterConfigResponse.ClusterConfig
+                // Determine if encryption at rest is enabled
                 isEncryptionAtRestEnabled = resultConfig.EncryptionInfo.EncryptionEnabled
+                // Get cluster RF
                 clusterReplicationFactor = int32(resultConfig.ReplicationInfo.
                                                    LiveReplicas.NumReplicas)
+                // Get universe and cluster uuids
+                universeUuid = resultConfig.UniverseUuid
+                clusterUuid = resultConfig.ClusterUuid
         } else {
             c.logger.Warnf("[clusterConfigResponse]: %s", clusterConfigResponse.Error.Error())
         }
@@ -417,6 +424,8 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                 },
             },
             Info: models.ClusterDataInfo{
+                UniverseUuid: universeUuid,
+                ClusterUuid: clusterUuid,
                 Metadata: models.EntityMetadata{
                     CreatedOn: &createdOn,
                     UpdatedOn: &createdOn,

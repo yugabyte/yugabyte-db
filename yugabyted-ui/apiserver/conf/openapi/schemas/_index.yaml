@@ -597,7 +597,11 @@ EncryptionInfo:
 ClusterDataInfo:
   type: object
   properties:
-    id:
+    universe_uuid:
+      description: The UUID of the universe
+      type: string
+      format: uuid
+    cluster_uuid:
       description: The UUID of the cluster
       type: string
       format: uuid
@@ -610,7 +614,8 @@ ClusterDataInfo:
     metadata:
       $ref: '#/EntityMetadata'
   required:
-    - id
+    - universe_uuid
+    - cluster_uuid
     - state
     - project_id
     - metadata
