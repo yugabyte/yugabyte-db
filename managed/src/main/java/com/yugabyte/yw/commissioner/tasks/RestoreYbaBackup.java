@@ -10,18 +10,29 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
+import java.io.File;
+import java.nio.file.Paths;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class RestoreYbaBackup extends AbstractTaskBase {
 
+  private final PlatformReplicationManager replicationManager;
+
   @Inject
-  protected RestoreYbaBackup(BaseTaskDependencies baseTaskDependencies) {
+  protected RestoreYbaBackup(
+      BaseTaskDependencies baseTaskDependencies, PlatformReplicationManager replicationManager) {
     super(baseTaskDependencies);
+    this.replicationManager = replicationManager;
   }
 
   public static class Params extends AbstractTaskParams {
@@ -36,7 +47,15 @@ public class RestoreYbaBackup extends AbstractTaskBase {
   @Override
   public void run() {
     RestoreYbaBackup.Params taskParams = taskParams();
-    log.info("Execution of RestoreYbaBackup with localPath " + taskParams.localPath);
+    File backupFile = Paths.get(taskParams.localPath).toFile();
+    if (!backupFile.exists()) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "could not find backup file " + taskParams.localPath);
+    }
+    if (!replicationManager.restoreBackup(backupFile)) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "YBA restore failed.");
+    }
+    Util.shutdownYbaProcess(0);
     return;
   }
 }
