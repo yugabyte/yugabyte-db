@@ -65,7 +65,7 @@ The following connection properties need to be added to enable load balancing:
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter.
 
-Following are other connection properties offered with the Rust smart driver:
+The following connection properties are also available for the Rust smart driver:
 
 - `fallback_to_topology_keys_only` - when set to true, the smart driver does not attempt to connect to servers outside of primary and fallback placements specified by the `topology_keys` property. By default, the driver falls back to any available server in the cluster. Default is false.
 
