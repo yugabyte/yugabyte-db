@@ -424,7 +424,8 @@ ClientAuthentication(Port *port)
 	 */
 	if (port->hba->clientcert)
 	{
-		if (YbIsClientYsqlConnMgr() && yb_auth_passthrough == true)
+		if (YbIsClientYsqlConnMgr() &&
+			(yb_auth_passthrough == true || yb_is_auth_backend == true))
 		{
 			/*
 			 * Ysql Connection Manager does not know what is the
@@ -433,7 +434,7 @@ ClientAuthentication(Port *port)
 			 */
 			ereport(FATAL,
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-					 errmsg("Cert authentication is not supported")));
+					 errmsg("cert authentication is not supported with connection manager")));
 			return;
 		}
 
