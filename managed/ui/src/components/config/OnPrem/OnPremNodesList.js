@@ -437,7 +437,7 @@ class OnPremNodesList extends Component {
               disabled={row.inUse || isNodeInUse}
             >
               <i className={`fa fa-trash`} />
-              Delete node
+              Delete Instance
             </MenuItem>
             {row.state === OnPremNodeState.DECOMMISSIONED && (
               <MenuItem onClick={self.showConfirmRecommissionNodeModal.bind(self, row)}>
@@ -553,9 +553,9 @@ class OnPremNodesList extends Component {
             );
           })
       : null;
-    const deleteConfirmationText = `Are you sure you want to delete node${
-      isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.nodeName
-        ? ' ' + this.state.nodeToBeDeleted.nodeName
+    const deleteConfirmationText = `Are you sure you want to delete instance${
+      isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.ip
+        ? ' ' + this.state.nodeToBeDeleted.ip
         : ''
     }?`;
     const recommisionNodeConfirmationText = `Are you sure you want to recommission node${
@@ -598,7 +598,7 @@ class OnPremNodesList extends Component {
             >
               <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} dataSort />
               <TableHeaderColumn dataField="instanceName" dataSort>
-                Node Name
+                Instance Name
               </TableHeaderColumn>
               <TableHeaderColumn dataField="ip" dataSort>
                 Address
@@ -654,7 +654,7 @@ class OnPremNodesList extends Component {
         </YBModal>
         <YBConfirmModal
           name={'confirmDeleteNodeInstance'}
-          title={'Delete Node'}
+          title={'Delete Instance'}
           hideConfirmModal={this.hideDeleteNodeModal}
           currentModal={'confirmDeleteNodeInstance'}
           visibleModal={visibleModal}
