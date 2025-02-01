@@ -33,12 +33,24 @@ rightNav:
 
 ##### Database
 
-- Production track updated to 2.20.8.0.
 - Innovation track updated to 2024.1.4.0.
-- Early Access track updated to 2024.2.0.0.
 - Preview track updated to 2.25.0.0.
 
+#### January 8, 2025
+
+##### Database
+
+- Production track updated to 2.20.8.0.
+- Innovation track updated to 2024.1.3.1.
+
 ### 2024
+
+#### December 18, 2024
+
+##### Database
+
+- Early Access track updated to 2024.2.0.0.
+- Innovation track updated to 2.20.8.0.
 
 #### November 29, 2024
 
