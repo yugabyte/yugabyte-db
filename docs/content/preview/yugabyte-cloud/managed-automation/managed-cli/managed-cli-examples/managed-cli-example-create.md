@@ -151,8 +151,7 @@ ybm cluster create \
   --credentials username=admin,password=password \
   --cloud-provider AWS \
   --cluster-type SYNCHRONOUS \
-  --node-config num-cores=4,disk-size-gb=200 \
-  --region-info region=ap-northeast-1,num-nodes=3 \
+  --region-info region=ap-northeast-1,num-nodes=3,num-cores=4,disk-size-gb=200  \
   --cluster-tier Dedicated \
   --fault-tolerance ZONE \
   --database-version Innovation \
