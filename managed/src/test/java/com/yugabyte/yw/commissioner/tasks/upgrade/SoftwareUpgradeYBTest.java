@@ -144,7 +144,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   public void testSoftwareUpgrade() throws IOException {
     updateDefaultUniverseTo5Nodes(true);
 
-    when(mockAutoFlagUtil.upgradeRequireFinalize(anyString(), anyString())).thenReturn(true);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.21.0.0-b2";

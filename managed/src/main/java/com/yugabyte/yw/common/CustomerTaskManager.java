@@ -426,7 +426,8 @@ public class CustomerTaskManager {
         if (Arrays.asList(TaskType.RollbackUpgrade, TaskType.RollbackKubernetesUpgrade)
             .contains(taskType)) {
           state = SoftwareUpgradeState.RollbackFailed;
-        } else if (taskType.equals(TaskType.FinalizeUpgrade)) {
+        } else if (Arrays.asList(TaskType.FinalizeKubernetesUpgrade, TaskType.FinalizeUpgrade)
+            .contains(taskType)) {
           state = SoftwareUpgradeState.FinalizeFailed;
         } else if (Arrays.asList(
                 TaskType.SoftwareUpgrade,
@@ -708,6 +709,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, ResizeNodeParams.class);
         break;
       case FinalizeUpgrade:
+      case FinalizeKubernetesUpgrade:
         taskParams = Json.fromJson(oldTaskParams, FinalizeUpgradeParams.class);
         break;
       case RollbackUpgrade:

@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -36,8 +37,6 @@ public class KubernetesPartitions {
   public static Iterable<KubernetesPartition> iterable(
       int numPods,
       UniverseTaskBase.ServerType serverType,
-      boolean masterChanged,
-      boolean tserverChanged,
       boolean isReadOnlyCluster,
       int numMasters,
       int numTservers,
@@ -48,8 +47,6 @@ public class KubernetesPartitions {
         new KubernetesPartitionsIterator(
             numPods,
             serverType,
-            masterChanged,
-            tserverChanged,
             isReadOnlyCluster,
             numMasters,
             numTservers,
@@ -62,8 +59,6 @@ public class KubernetesPartitions {
       implements Iterator<KubernetesPartitions.KubernetesPartition> {
     private final int numPods;
     private final UniverseTaskBase.ServerType serverType;
-    private final boolean masterChanged;
-    private final boolean tserverChanged;
     private final int numMasters;
     private final int numTservers;
     private final Function<Integer, String> podNameFunction;
@@ -76,8 +71,6 @@ public class KubernetesPartitions {
     public KubernetesPartitionsIterator(
         int numPods,
         UniverseTaskBase.ServerType serverType,
-        boolean masterChanged,
-        boolean tserverChanged,
         boolean isReadOnlyCluster,
         int numMasters,
         int numTservers,
@@ -86,8 +79,6 @@ public class KubernetesPartitions {
         Function<Integer, NodeDetails> nodeFunction) {
       this.numPods = numPods;
       this.serverType = serverType;
-      this.masterChanged = masterChanged;
-      this.tserverChanged = tserverChanged;
       this.numMasters = numMasters;
       this.numTservers = numTservers;
       this.podNameFunction = podNameFunction;
@@ -118,25 +109,16 @@ public class KubernetesPartitions {
         throw new IndexOutOfBoundsException();
       }
       int partition = Math.max(0, numPods - (index + 1) * rollStep);
-      // Upgrade the master pods individually for each deployment.
-      // Possible scenarios:
-      // 1) Upgrading masters.
-      //    a) The tservers have no changes. In that case, the tserver partition should
-      //       be 0.
-      //    b) The tservers have changes. In the case of an edit, the value should be
-      //       the old number of tservers (since the new will already have the updated values).
-      //       Otherwise, the value should be the number of existing pods (since we don't
-      //       want any pods to be rolled.)
-      // 2) Upgrading the tserver. In this case, the masters will always have already rolled.
-      //    So it is safe to assume for all current supported operations via upgrade,
-      //    this will be a no-op. But for future proofing, we try to model it the same way
-      //    as the tservers.
-      int masterPartition = masterChanged ? numMasters : 0;
-      int tserverPartition = tserverChanged ? numTservers : 0;
-      masterPartition =
-          serverType == UniverseTaskBase.ServerType.MASTER ? partition : masterPartition;
-      tserverPartition =
-          serverType == UniverseTaskBase.ServerType.TSERVER ? partition : tserverPartition;
+      int masterPartition =
+          Arrays.asList(UniverseTaskBase.ServerType.MASTER, UniverseTaskBase.ServerType.EITHER)
+                  .contains(serverType)
+              ? partition
+              : numMasters;
+      int tserverPartition =
+          Arrays.asList(UniverseTaskBase.ServerType.EITHER, UniverseTaskBase.ServerType.TSERVER)
+                  .contains(serverType)
+              ? partition
+              : numTservers;
 
       int prevPartition = numPods - index * rollStep;
       List<String> podNames = new ArrayList<>();

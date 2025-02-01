@@ -1008,7 +1008,7 @@ public class YbcManager {
     String architecture =
         kubernetesManagerFactory
             .getManager()
-            .performYbcAction(
+            .executeCommandInPodContainer(
                 config,
                 nodeDetails.cloudInfo.kubernetesNamespace,
                 nodeDetails.cloudInfo.kubernetesPodName,
@@ -1084,7 +1084,7 @@ public class YbcManager {
       Map<String, String> config, NodeDetails nodeDetails, List<String> commandArgs) {
     kubernetesManagerFactory
         .getManager()
-        .performYbcAction(
+        .executeCommandInPodContainer(
             config,
             nodeDetails.cloudInfo.kubernetesNamespace,
             nodeDetails.cloudInfo.kubernetesPodName,

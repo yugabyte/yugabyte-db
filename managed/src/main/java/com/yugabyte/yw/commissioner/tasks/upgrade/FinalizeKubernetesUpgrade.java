@@ -6,36 +6,31 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.Collections;
-import lombok.extern.slf4j.Slf4j;
 
-@Slf4j
 @Abortable
 @Retryable
-public class FinalizeUpgrade extends SoftwareUpgradeTaskBase {
+public class FinalizeKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
-  protected FinalizeUpgrade(
-      BaseTaskDependencies baseTaskDependencies, SoftwareUpgradeHelper softwareUpgradeHelper) {
-    super(baseTaskDependencies);
+  protected FinalizeKubernetesUpgrade(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
+    super(baseTaskDependencies, operatorStatusUpdaterFactory);
     this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @Override
-  public UserTaskDetails.SubTaskGroupType getTaskSubGroupType() {
-    return UserTaskDetails.SubTaskGroupType.FinalizingUpgrade;
-  }
-
-  @Override
-  public NodeDetails.NodeState getNodeState() {
-    return NodeDetails.NodeState.FinalizeUpgrade;
+  public SubTaskGroupType getTaskSubGroupType() {
+    return SubTaskGroupType.FinalizingUpgrade;
   }
 
   @Override
@@ -47,11 +42,6 @@ public class FinalizeUpgrade extends SoftwareUpgradeTaskBase {
   @Override
   protected FinalizeUpgradeParams taskParams() {
     return (FinalizeUpgradeParams) taskParams;
-  }
-
-  @Override
-  protected MastersAndTservers calculateNodesToBeRestarted() {
-    return new MastersAndTservers(Collections.emptyList(), Collections.emptyList());
   }
 
   @Override

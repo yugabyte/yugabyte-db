@@ -559,6 +559,11 @@ public enum TaskType {
       CustomerTask.TaskType.FinalizeUpgrade,
       CustomerTask.TargetType.Universe),
 
+  FinalizeKubernetesUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.FinalizeKubernetesUpgrade.class,
+      CustomerTask.TaskType.FinalizeUpgrade,
+      CustomerTask.TargetType.Universe),
+
   RollbackUpgrade(
       com.yugabyte.yw.commissioner.tasks.upgrade.RollbackUpgrade.class,
       CustomerTask.TaskType.RollbackUpgrade,

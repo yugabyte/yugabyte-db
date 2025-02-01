@@ -17,4 +17,6 @@ public interface YBClientService {
   void closeClient(YBClient client, String masterHostPorts);
 
   Optional<String> getServerVersion(YBClient client, String nodeIp, int port);
+
+  Optional<String> getYsqlMajorVersion(YBClient client, String nodeIp, int port);
 }

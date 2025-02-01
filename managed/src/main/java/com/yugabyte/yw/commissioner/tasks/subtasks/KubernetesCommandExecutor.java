@@ -55,6 +55,8 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.UpgradeDetails;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.provider.region.WellKnownIssuerKind;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Service;
@@ -227,6 +229,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public String newDiskSize;
     public boolean useNewTserverDiskSize;
     public boolean useNewMasterDiskSize;
+    public YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
 
     // Master addresses in multi-az case (to have control over different deployments).
     public String masterAddresses = null;
@@ -1216,6 +1219,27 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .equals("true")) {
       masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
+    if (primaryClusterIntent.enableYSQL) {
+      if (primaryClusterIntent.enableYSQLAuth) {
+        masterGFlags.put("ysql_enable_auth", "true");
+        if (masterGFlags.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)
+            && confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
+          /*
+           * Preprocess the ysql_hba_conf_csv flag for IdP specific use case.
+           * Refer Design Doc:
+           * https://docs.google.com/document/d/1SJzZJrAqc0wkXTCuMS7UKi1-5xEuYQKCOOa3QWYpMeM/edit
+           */
+          GFlagsUtil.processHbaConfFlagIfRequired(
+              null, masterGFlags, confGetter, taskUniverseDetails.getUniverseUUID());
+        }
+        GFlagsUtil.mergeCSVs(
+            masterGFlags,
+            Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust"),
+            GFlagsUtil.YSQL_HBA_CONF_CSV,
+            false);
+        masterGFlags.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
+      }
+    }
     if (!masterGFlags.isEmpty()) {
       gflagOverrides.put("master", masterGFlags);
     }
@@ -1248,6 +1272,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             (primaryClusterIntent.enableIPV6 ? "[::]:" : "0.0.0.0:")
                 + String.valueOf(internalYsqlServerRpcPort));
       }
+      if (taskParams().ysqlMajorVersionUpgradeState != null
+          && UpgradeDetails.ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG.contains(
+              taskParams().ysqlMajorVersionUpgradeState)) {
+        tserverGFlags.put(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, "11");
+      }
     }
 
     if (!primaryClusterIntent.enableYCQL) {
@@ -1256,8 +1285,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     tserverGFlags.put("start_redis_proxy", String.valueOf(primaryClusterIntent.enableYEDIS));
     if (primaryClusterIntent.enableYSQL && primaryClusterIntent.enableYSQLAuth) {
       tserverGFlags.put("ysql_enable_auth", "true");
-      Map<String, String> DEFAULT_YSQL_HBA_CONF_MAP =
-          Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
       if (tserverGFlags.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)
           && confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
         /*
@@ -1275,7 +1302,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 : taskUniverseDetails.getPrimaryCluster().uuid);
       }
       GFlagsUtil.mergeCSVs(
-          tserverGFlags, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV, false);
+          tserverGFlags,
+          Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust"),
+          GFlagsUtil.YSQL_HBA_CONF_CSV,
+          false);
       tserverGFlags.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {

@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
@@ -185,6 +186,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected CloudUtilFactory mockCloudUtilFactory;
   protected ReleasesUtils mockReleasesUtils;
   protected NodeAgentManager mockNodeAgentManager;
+  protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -320,6 +322,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockOperatorStatusUpdaterFactory = mock(OperatorStatusUpdaterFactory.class);
     mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
     mockNodeAgentManager = mock(NodeAgentManager.class);
+    mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -362,6 +365,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
                 .overrides(bind(NodeAgentManager.class).toInstance(mockNodeAgentManager))
+                .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))

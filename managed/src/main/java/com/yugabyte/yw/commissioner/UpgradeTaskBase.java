@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -271,11 +272,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error: ", getName(), t);
-      if (onFailureTask != null) {
-        log.info("Running on failure upgrade task");
-        onFailureTask.run();
-        log.info("Finished on failure upgrade task");
-      }
 
       if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
         Universe universe = getUniverse();
@@ -300,6 +296,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               createLoadBalancerStateChangeTask(true)
                   .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
             });
+      }
+      if (onFailureTask != null) {
+        log.info("Running on failure upgrade task");
+        onFailureTask.run();
+        log.info("Finished on failure upgrade task");
       }
       throw t;
     } finally {
@@ -1288,5 +1289,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     @Builder.Default boolean skipStartingProcesses = false;
     String targetSoftwareVersion;
     Consumer<NodeDetails> postAction;
+    YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
   }
 }

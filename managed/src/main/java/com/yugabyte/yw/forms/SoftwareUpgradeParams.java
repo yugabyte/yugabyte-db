@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -62,6 +63,17 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Software upgrade cannot be non restart.");
+    }
+
+    if (upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
+        && universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(CloudType.kubernetes)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Software upgrade cannot be non-rolling upgrade on Kubernetes.");
     }
 
     if (ybSoftwareVersion == null || ybSoftwareVersion.isEmpty()) {
