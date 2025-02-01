@@ -317,6 +317,11 @@ DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
 DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
             "Trust YSQL connections via the local socket from the yugabyte user.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
+    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and "
+    "11.");
+DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11));
+
 DECLARE_bool(enable_pg_cron);
 
 using gflags::CommandLineFlagInfo;

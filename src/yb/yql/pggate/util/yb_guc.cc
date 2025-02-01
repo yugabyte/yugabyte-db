@@ -81,3 +81,7 @@ uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
 
 int yb_read_after_commit_visibility = 0;
+
+bool yb_refresh_matview_in_place = false;
+
+int yb_major_version_upgrade_compatibility = 0;

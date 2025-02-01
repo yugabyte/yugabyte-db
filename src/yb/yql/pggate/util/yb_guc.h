@@ -191,6 +191,10 @@ extern int yb_walsender_poll_sleep_duration_empty_ms;
 
 extern int yb_read_after_commit_visibility;
 
+extern bool yb_refresh_matview_in_place;
+
+extern int yb_major_version_upgrade_compatibility;
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

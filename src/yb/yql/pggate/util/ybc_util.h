@@ -211,6 +211,10 @@ extern int yb_reorderbuffer_max_changes_in_memory;
  */
 extern int yb_explicit_row_locking_batch_size;
 
+extern bool yb_refresh_matview_in_place;
+
+extern int yb_major_version_upgrade_compatibility;
+
 /*
  * Ease transition to YSQL by reducing read restart errors for new apps.
  *
