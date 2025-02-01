@@ -19,6 +19,25 @@ rightNav:
 
 ## Change log
 
+### 2025
+
+#### January 30, 2025
+
+##### New features
+
+- YugabyteDB v2.25.0.0 featuring support for PostgreSQL 15 is now available for testing on the Preview database track. To test it out, [create a Sandbox](../cloud-basics/create-clusters/create-clusters-free/) cluster with the Database version set to the Preview track.
+  - [YugabyteDB v2.25.0.0 Release Notes](/preview/releases/ybdb-releases/v2.25/)
+  - [PostgreSQL 15 features](/preview/develop/pg15-features/)
+  - [YugabyteDB Levels Up with PG15 Features](https://www.yugabyte.com/blog/postgresql-compatibility-new-yugabytedb-pg15-features/)
+- Support for configuring custom identity providers for [federated authentication](../managed-security/managed-authentication/federated-custom/), to provide single sign-on access for your account users.
+
+##### Database
+
+- Production track updated to 2.20.8.0.
+- Innovation track updated to 2024.1.4.0.
+- Early Access track updated to 2024.2.0.0.
+- Preview track updated to 2.25.0.0.
+
 ### 2024
 
 #### November 29, 2024
