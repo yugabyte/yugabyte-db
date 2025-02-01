@@ -24,7 +24,7 @@ For information on Hasura, see the following:
 
 Before using Hasura with YugabyteDB, perform the following:
 
-- Install and start YugabyteDB, as described in [Quick Start Guide](/preview/tutorials/quick-start/).
+- Install and start YugabyteDB, as described in [Quick Start Guide](/preview/tutorials/quick-start/macos/).
 - Familiarize yourself with information on how to install and start Hasura on an existing database by reading [Run Hasura GraphQL Engine on Kubernetes](https://hasura.io/docs/latest/graphql/core/deployment/deployment-guides/kubernetes.html).
 
 To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL, except that the port should be `5433`.

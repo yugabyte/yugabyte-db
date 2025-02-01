@@ -18,7 +18,7 @@ This tutorial describes how to set up [JanusGraph](https://janusgraph.org/) to w
 
 To use JanusGraph with YugabyteDB, you need the following:
 
-- Install YugabyteDB and start a single node local cluster. Refer to [Quick start](/preview/tutorials/quick-start/).
+- Install YugabyteDB and start a single node local cluster. Refer to [Quick start](/preview/tutorials/quick-start/macos/).
 - JanusGraph. You can download from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial uses v0.6.2.
 
   ```sh

@@ -45,14 +45,14 @@ The first time you log in, YugabyteDB Aeon provides a welcome experience with a 
     title="Docs"
     description="Learn how to deploy and manage clusters in YugabyteDB Aeon."
     buttonText="YugabyteDB Aeon documentation"
-    buttonUrl="../../yugabyte-cloud/"
+    buttonUrl="/preview/yugabyte-cloud/"
   >}}
 
   {{< sections/bottom-image-box
     title="FAQ"
     description="Get answers to questions about YugabyteDB Aeon."
     buttonText="YugabyteDB Aeon FAQ"
-    buttonUrl="../../faq/yugabytedb-managed-faq/"
+    buttonUrl="/preview/faq/yugabytedb-managed-faq/"
   >}}
 {{< /sections/2-boxes >}}
 
