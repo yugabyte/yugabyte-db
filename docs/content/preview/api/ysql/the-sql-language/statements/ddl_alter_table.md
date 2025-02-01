@@ -22,8 +22,10 @@ Use the `ALTER TABLE` statement to change the definition of a table.
   alter_table,
   alter_table_action,
   alter_table_constraint,
+  alter_column_action,
   alter_column_constraint,
-  table_expr
+  table_expr,
+  sequence_options
 {{%/ebnf%}}
 
 <a name="table-expr-note"></a></br></br>
