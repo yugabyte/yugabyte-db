@@ -302,6 +302,7 @@ hotfixing
 http
 https
 Hudi
+hugepages
 idempotence
 idmapper
 Iglu
@@ -758,6 +759,7 @@ TypeScript
 Ubuntu
 UDTs
 ulimit
+ulimits
 unapplied
 unapprove
 unapproved
