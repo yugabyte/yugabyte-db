@@ -37,7 +37,9 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.YBClient;
+import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
 @Slf4j
 public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
@@ -442,6 +444,23 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
           "Error fetching version info on node: {} port: {} ", node.cloudInfo.private_ip, port, e);
     }
     return false;
+  }
+
+  protected YsqlMajorCatalogUpgradeState getYsqlMajorCatalogUpgradeState(Universe universe) {
+    try (YBClient client =
+        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateClientToNode())) {
+      GetYsqlMajorCatalogUpgradeStateResponse resp = client.getYsqlMajorCatalogUpgradeState();
+      if (resp.hasError()) {
+        log.error("Error while getting YSQL major version catalog upgrade state: ", resp);
+        throw new RuntimeException(
+            "Error while getting YSQL major version catalog upgrade state: "
+                + resp.getServerError().toString());
+      }
+      return resp.getState();
+    } catch (Exception e) {
+      log.error("Error while getting YSQL major version catalog upgrade state: ", e);
+      throw new RuntimeException(e);
+    }
   }
 
   protected void createGFlagsUpgradeTaskForYSQLMajorUpgrade(
