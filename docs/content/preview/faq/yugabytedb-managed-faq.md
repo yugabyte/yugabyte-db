@@ -80,7 +80,7 @@ A YugabyteDB Aeon account is limited to a single Sandbox cluster; you can add as
 If you want to continue testing YugabyteDB with more resource-intensive scenarios, you can:
 
 - [Request a free trial](../../yugabyte-cloud/managed-freetrial/) to try out bigger clusters with more resources.
-- Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](/preview/tutorials/quick-start/).
+- Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](/preview/tutorials/quick-start/macos/).
 - [Add a payment method](../../yugabyte-cloud/cloud-admin/cloud-billing-profile/) to upgrade to a fault-tolerant [single- or multi-region cluster](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
 
 ### Can I migrate my Sandbox to a Dedicated cluster?
@@ -133,7 +133,7 @@ Default YugabyteDB users and roles in YugabyteDB Aeon clusters
 
 ### Can I test YugabyteDB locally?
 
-To test locally, download and install YugabyteDB on a local machine. Refer to [Quick Start](/preview/tutorials/quick-start/). For accurate comparison with cloud, be sure to download the version that is running on YugabyteDB Aeon.
+To test locally, download and install YugabyteDB on a local machine. Refer to [Quick Start](/preview/tutorials/quick-start/macos/). For accurate comparison with cloud, be sure to download the version that is running on YugabyteDB Aeon.
 
 ## Support
 
@@ -202,7 +202,7 @@ You can connect to clusters in the following ways:
 
 Run the [ysqlsh](../../api/ysqlsh/) or [ycqlsh](../../api/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
 
-When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../yugabyte-cloud/cloud-quickstart/), with a series of pre-built queries for you to run.
+When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](/preview/yugabyte-cloud/cloud-quickstart/), with a series of pre-built queries for you to run.
 
   {{% /tab %}}
 

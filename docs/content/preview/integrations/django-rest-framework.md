@@ -16,7 +16,7 @@ This document describes how to use [Django REST framework](https://www.django-re
 
 To use Django with YugabyteDB, you need the following:
 
-- YugabyteDB version 2.7 or later; see [Quick Start](/preview/tutorials/quick-start/).
+- YugabyteDB version 2.7 or later; see [Quick Start](/preview/tutorials/quick-start/macos/).
 - [Python3](https://www.python.org/downloads/).
 - [Django backend for YugabyteDB](https://github.com/yugabyte/yb-django).
 - Django REST framework by executing the following command:
