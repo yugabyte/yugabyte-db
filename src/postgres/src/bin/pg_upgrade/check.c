@@ -1590,11 +1590,10 @@ yb_check_pushdown_is_disabled(PGconn *old_cluster_conn)
 
 	prep_status("Checking expression pushdown is disabled");
 
-	res = executeQueryOrDie(old_cluster_conn, "SHOW yb_enable_expression_pushdown");
+	res = executeQueryOrDie(old_cluster_conn, "SHOW yb_major_version_upgrade_compatibility");
 
-	if (strncmp(PQgetvalue(res, 0, 0), "off", 3))
-		pg_fatal("Expression pushdown (ysql_yb_enable_expression_pushdown) must "
-				 "be disabled during ysql major upgrade. See GH issue #24730\n");
+	if (strncmp(PQgetvalue(res, 0, 0), "11", 2))
+		pg_fatal("yb_major_version_upgrade_compatibility must be set to 11\n");
 
 	PQclear(res);
 

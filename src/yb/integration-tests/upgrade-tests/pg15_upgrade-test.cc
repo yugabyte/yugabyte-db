@@ -1438,11 +1438,12 @@ TEST_F(Pg15UpgradeTest, YbGinIndex) {
 }
 
 TEST_F(Pg15UpgradeTest, CheckPushdownIsDisabled) {
-  // Whether or not pushdown is enabled, pg_upgrade --check will not error.
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
+  // Whether or not yb_major_version_upgrade_compatibility is enabled, pg_upgrade --check will not
+  // error.
+  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "11"));
   ASSERT_OK(ValidateUpgradeCompatibility());
 
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "true"));
+  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "0"));
   ASSERT_OK(ValidateUpgradeCompatibility());
 
   // However, when we actually run the YSQL upgrade, pg_upgrade will error if pushdown is enabled.

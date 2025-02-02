@@ -82,13 +82,7 @@ class YsqlMajorUpgradeMatviewTest : public Pg15UpgradeTestBase {
 TEST_F(YsqlMajorUpgradeMatviewTest, TestMatView) {
   ASSERT_OK(UpgradeClusterToMixedMode());
 
-  ASSERT_NOK(InsertDataRefreshAndValidate(kMixedModeTserverPg11));
-
-  // TODO: Pending backport
-  ASSERT_OK(cluster_->SetFlag(
-      cluster_->tablet_server(kMixedModeTserverPg15), "ysql_yb_major_version_upgrade_compatibility",
-      "11"));
-
+  ASSERT_OK(InsertDataRefreshAndValidate(kMixedModeTserverPg11));
   ASSERT_OK(InsertDataRefreshAndValidate(kMixedModeTserverPg15));
 
   ASSERT_OK(FinalizeUpgradeFromMixedMode());

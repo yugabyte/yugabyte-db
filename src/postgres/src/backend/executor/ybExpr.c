@@ -495,8 +495,12 @@ yb_pushdown_walker(Node *node, List **colrefs)
 bool
 YbCanPushdownExpr(Expr *pg_expr, List **colrefs)
 {
-	/* respond with false if pushdown disabled in GUC */
-	if (!yb_enable_expression_pushdown)
+	/*
+	 * Respond with false if pushdown disabled in GUC, or during a YSQL major
+	 * upgrade.
+	 */
+	if (!yb_enable_expression_pushdown ||
+		yb_major_version_upgrade_compatibility > 0)
 		return false;
 
 	return !yb_pushdown_walker((Node *) pg_expr, colrefs);

@@ -109,10 +109,7 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
 };
 
 // From build versions.
-static constexpr auto kBuild_2_20_2_4 = "2.20.2.4";
-static constexpr auto kBuild_2024_1_0_1 = "2024.1.0.1";
-static constexpr auto kBuild_2024_2_0_0 = "2024.2.0.0";
-static constexpr auto kBuild_2024_2_1_0 = "2024.2.1.0";
+static constexpr auto kBuild_2024_2_2_0 = "2024.2.2.0";
 static constexpr auto kBuild_2_25_0_0 = "2.25.0.0";
 
 }  // namespace yb

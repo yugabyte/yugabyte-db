@@ -319,12 +319,8 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
                                    current_version_info_.ysql_major_version();
 
   if (IsYsqlMajorVersionUpgrade()) {
-    // TODO: Remove when support for expression pushdown in mixed mode is implemented.
-    RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
-
-    // TODO: Enable after flag is backported to older version.
-    // RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility",
-    // "11"));
+    RETURN_NOT_OK(
+        cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "11"));
   }
 
   return Status::OK();
@@ -513,9 +509,6 @@ Status UpgradeTestBase::FinalizeYsqlMajorCatalogUpgrade() {
   }
 
   if (IsYsqlMajorVersionUpgrade()) {
-    // TODO: Remove when support for expression pushdown in mixed mode is implemented.
-    RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "true"));
-
     RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "0"));
   }
 
