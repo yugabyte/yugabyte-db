@@ -1,4 +1,4 @@
-SET search_path TO documentdb_api,documentdb_core;
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
 SET documentdb.next_collection_id TO 2000;
 SET documentdb.next_collection_index_id TO 2000;
 -- replace document scenarios
@@ -34,10 +34,11 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 
 -- upsert case: no id specified creates a new ID
 SELECT (documentdb_api_internal.bson_update_document('{}', '{ "": { "b": 2 } }', '{}')).newDocument @? '{ "_id" : 1 }';
-ERROR:  operator does not exist: bson @? unknown
-LINE 1: ...nt('{}', '{ "": { "b": 2 } }', '{}')).newDocument @? '{ "_id...
-                                                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 -- upsert case: no id specified creates from filter
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "b": 2 } }', '{"$and": [ { "a": 1, "_id": 2.0 }]}');
                          bson_update_document                          
@@ -47,36 +48,42 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 
 -- upsert case: no id specified autogenerates when _id filter is not $eq.
 SELECT (documentdb_api_internal.bson_update_document('{}', '{ "": { "b": 2 } }', '{"$and": [ { "a": 1, "_id": { "$gt": 2.0 } }]}')).newDocument  @? '{ "_id" : 1 }';
-ERROR:  operator does not exist: bson @? unknown
-LINE 1: ..."a": 1, "_id": { "$gt": 2.0 } }]}')).newDocument  @? '{ "_id...
-                                                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 SELECT (documentdb_api_internal.bson_update_document('{}', '{ "": { "b": 2 } }', '{"$and": [ { "a": 1, "_id": { "$lt": 2.0 } }]}')).newDocument  @? '{ "_id" : 1 }';
-ERROR:  operator does not exist: bson @? unknown
-LINE 1: ..."a": 1, "_id": { "$lt": 2.0 } }]}')).newDocument  @? '{ "_id...
-                                                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 SELECT (documentdb_api_internal.bson_update_document('{}', '{ "": { "b": 2 } }', '{"$or": [ { "a": 1, "_id": 2.0 } ]}')).newDocument  @? '{ "_id" : 1 }';
-ERROR:  operator does not exist: bson @? unknown
-LINE 1: ...$or": [ { "a": 1, "_id": 2.0 } ]}')).newDocument  @? '{ "_id...
-                                                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 SELECT (documentdb_api_internal.bson_update_document('{}', '{ "": { "b": 2 } }', '{"$or": [ { "a": 1 }, { "_id": 3 } ] }')).newDocument @? '{ "_id" : 1 }';
-ERROR:  operator does not exist: bson @? unknown
-LINE 1: ...r": [ { "a": 1 }, { "_id": 3 } ] }')).newDocument @? '{ "_id...
-                                                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 -- would be nice to use the $type function.
 SELECT bson_get_value((documentdb_api_internal.bson_update_document('{}', '{ "": { "b": 2 } }', '{"$or": [ { "a": 1, "_id": 2.0 } ]}')).newDocument, '_id') @=  '{ "" : 2.0 }';
-ERROR:  operator does not exist: bson @= unknown
-LINE 1: ... { "a": 1, "_id": 2.0 } ]}')).newDocument, '_id') @=  '{ "" ...
-                                                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 SELECT bson_get_value((documentdb_api_internal.bson_update_document('{}', '{ "": { "b": 2 } }', '{"$or": [ { "a": 1 }, { "_id": 3 } ] }')).newDocument, '_id') @!= '{ "" : 3 }';
-ERROR:  operator does not exist: bson @!= unknown
-LINE 1: ..."a": 1 }, { "_id": 3 } ] }')).newDocument, '_id') @!= '{ "" ...
-                                                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 -- upsert case: _id collision between query and replace; errors out
 SELECT documentdb_api_internal.bson_update_document('{}', '{ "": { "_id": 3, "b": 2 } }', '{"$and": [ { "a": 1, "_id": 2.0 }]}');
 ERROR:  After applying the update, the (immutable) field '_id' was found to have been altered
@@ -2640,10 +2647,11 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {} }','{"_id": { "$in" : [[27]]}}');
 ERROR:  After applying the update to the document, the (immutable) field '_id' was found to be an array or array descendant.
 SELECT bson_dollar_project(newDocument, '{ "_id": 0 }') as newDocument from  documentdb_api_internal.bson_update_document('{}', '{ "": {"$set":{"y":31}}}','{"_id": { "$in" : [27,28,29]}}');
-ERROR:  function bson_dollar_project(bson, unknown) does not exist
-LINE 1: SELECT bson_dollar_project(newDocument, '{ "_id": 0 }') as n...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+            newdocument            
+-----------------------------------
+ { "y" : { "$numberInt" : "31" } }
+(1 row)
+
 -- $nor operator in query spec
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {"_id": 1, "b": 3} }', '{"$nor": [ { "_id": { "$eq" : 2}}]}');
                        bson_update_document                       

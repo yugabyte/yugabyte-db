@@ -7,21 +7,6 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', NULL, true)
 ERROR:  arg cannot be NULL
 SELECT documentdb_api_internal.create_indexes_non_concurrently(NULL, '{}', true);
 ERROR:  dbName cannot be NULL
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db');
-ERROR:  function documentdb_api_internal.create_indexes_non_concurrently(unknown) does not exist
-LINE 1: SELECT documentdb_api_internal.create_indexes_non_concurrent...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT documentdb_api_internal.create_indexes_non_concurrently(3);
-ERROR:  function documentdb_api_internal.create_indexes_non_concurrently(integer) does not exist
-LINE 1: SELECT documentdb_api_internal.create_indexes_non_concurrent...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>2);
-ERROR:  function documentdb_api_internal.create_indexes_non_concurrently(p_arg => integer) does not exist
-LINE 1: SELECT documentdb_api_internal.create_indexes_non_concurrent...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "unknown_field": []}', true);
 ERROR:  BSON field 'createIndexes.unknown_field' is an unknown field
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": null, "indexes": [{"key": {"a": 1, "": -1}, "name": "my_idx"}]}', true);

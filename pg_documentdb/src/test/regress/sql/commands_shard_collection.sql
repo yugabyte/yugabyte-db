@@ -44,7 +44,7 @@ SELECT documentdb_api.shard_collection('db','reshard', '{"value":"hashed"}', fal
 
 \d documentdb_data.documents_:reshard_collection_id
 
-SELECT documentdb_api.collection_table('db','reshard') AS db_shard_data_table_name \gset
+SELECT 'documentdb_data.documents_' || collection_id AS db_shard_data_table_name FROM documentdb_api_catalog.collections WHERE database_name = 'db' AND collection_name = 'reshard' \gset
 
 -- make plans (more) deterministic
 VACUUM (ANALYZE) :db_shard_data_table_name;

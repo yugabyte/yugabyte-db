@@ -1,4 +1,4 @@
-SET search_path TO documentdb_api,documentdb_core;
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
 SET documentdb.next_collection_id TO 2000;
 SET documentdb.next_collection_index_id TO 2000;
 

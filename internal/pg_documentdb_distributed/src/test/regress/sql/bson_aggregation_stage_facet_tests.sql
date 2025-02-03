@@ -20,7 +20,7 @@ SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection(
 -- Test filter generation 
 SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection('db', 'facet');
 
-SELECT bson_object_agg(document, true) FROM documentdb_api.collection('db', 'facet');
+SELECT bson_object_agg(document) FROM documentdb_api.collection('db', 'facet');
 
 -- Test full facetSQL sql
 WITH "stage0" as (

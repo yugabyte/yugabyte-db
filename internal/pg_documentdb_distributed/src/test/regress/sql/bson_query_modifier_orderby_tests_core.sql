@@ -1,8 +1,5 @@
 
 SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
-SET citus.next_shard_id TO 418960000;
-SET documentdb.next_collection_id TO 4189600;
-SET documentdb.next_collection_index_id TO 4189600;
 
 /* insert paths with nested objects arrays */
 SELECT documentdb_api.insert_one('db','bsonorderby', '{"_id": 9, "a" : { "b" : 1 } }', NULL);

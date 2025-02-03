@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # fail if trying to reference a variable that is not set.
-set -u
+set -u -e
 
 source="${BASH_SOURCE[0]}"
 diff=/usr/bin/diff
@@ -52,8 +52,17 @@ validationExceptions="/sql/documentdb_distributed_test_helpers.sql,/sql/public_a
 for validationFile in $(ls ./expected/*.out); do
     fileName=$(basename $validationFile);
     sqlFile="${fileName%.out}.sql";
-    sqlFilePath="$scriptDir/sql/$sqlFile";
     sqlExceptionStr="/sql/$sqlFile"
+
+    has_invalid_results=$(grep -E "No function matches the given name and argument types." $validationFile || true)
+    if [ "$has_invalid_results" != "" ]; then
+        if [ "$fileName" == "bson_deduplicate.out" ]; then
+            echo "Skipping $fileName"
+        else
+            echo "test file $validationFile has invalid function specification: '$has_invalid_results'";
+            exit 1
+        fi
+    fi
 
     # skip isolation test for now
     if [[ $fileName == isolation* ]]; then
@@ -65,13 +74,7 @@ for validationFile in $(ls ./expected/*.out); do
     fi;
 
     # Extract the actual collection ID (we'll use this to check for uniqueness).
-    collectionIdOutput=$(grep 'documentdb.next_collection_id' $sqlFilePath)
-
-    # Check if the sql file contains invalid schema names."
-    if grep -qE 'mongo_catalog|mongo_api_v1|mongo_data' "$sqlFilePath"; then
-        echo "Test file has invalid schema '${sqlFile}'";
-        exit 1
-    fi
+    collectionIdOutput=$(grep 'documentdb.next_collection_id' $validationFile)
 
     # Fail if not found.
     if [ "$collectionIdOutput" == "" ]; then
@@ -99,16 +102,17 @@ for validationFile in $(ls ./expected/*.out); do
         exit 1;
     fi
 
-    # Add it to the collection IDs being tracked.
-    aggregateCollectionIdStr="$aggregateCollectionIdStr :$collectionIdOutput:"
     if [[ "$maxCollectionIdStr" == "" ]]; then
         maxCollectionIdStr=$collectionIdOutput;
     elif [ $collectionIdOutput -gt $maxCollectionIdStr ]; then
         maxCollectionIdStr=$collectionIdOutput;
     fi
 
+    # Add it to the collection IDs being tracked.
+    aggregateCollectionIdStr="$aggregateCollectionIdStr :$collectionIdOutput:"
+
     # See if the index id is also set.
-    collectionIndexIdOutput=$(grep 'documentdb.next_collection_index_id' $sqlFilePath)
+    collectionIndexIdOutput=$(grep 'documentdb.next_collection_index_id' $validationFile)
     if [ "$collectionIndexIdOutput" == "" ]; then
         echo "Test file '${sqlFile}' does not set next_collection_index_id: consider setting documentdb.next_collection_index_id";
         exit 1;
@@ -122,7 +126,7 @@ for validationFile in $(ls ./expected/*.out); do
     fi
 
     # Validate citus.next_shard_id.
-    nextShardIdOutput=$(grep 'citus.next_shard_id' $sqlFilePath)
+    nextShardIdOutput=$(grep 'citus.next_shard_id' $validationFile)
     if [ "$nextShardIdOutput" == "" ]; then
         echo "Test file '${sqlFile}' does not set citus.next_shard_id: consider setting citus.next_shard_id";
         exit 1;

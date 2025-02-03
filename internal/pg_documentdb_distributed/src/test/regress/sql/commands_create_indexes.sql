@@ -7,9 +7,6 @@ SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog;
 ---- createIndexes - top level - parse error ----
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', NULL, true);
 SELECT documentdb_api_internal.create_indexes_non_concurrently(NULL, '{}', true);
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db');
-SELECT documentdb_api_internal.create_indexes_non_concurrently(3);
-SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>2);
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "unknown_field": []}', true);
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": null, "indexes": [{"key": {"a": 1, "": -1}, "name": "my_idx"}]}', true);
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": null}', true);

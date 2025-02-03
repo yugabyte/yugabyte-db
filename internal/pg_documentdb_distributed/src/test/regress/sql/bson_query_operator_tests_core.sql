@@ -1,6 +1,3 @@
-SET citus.next_shard_id TO 359680000;
-SET documentdb.next_collection_id TO 3596800;
-SET documentdb.next_collection_index_id TO 3596800;
 
 /* Insert with a.b being an object with various types*/
 SELECT documentdb_api.drop_collection('db','queryoperator');

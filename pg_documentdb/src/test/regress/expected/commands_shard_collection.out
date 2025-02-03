@@ -93,16 +93,9 @@ Indexes:
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = documentdb_api_internal.get_shard_key_value('{ "value" : "hashed" }'::bson, 5000::bigint, document))
 
-SELECT documentdb_api.collection_table('db','reshard') AS db_shard_data_table_name \gset
-ERROR:  function documentdb_api.collection_table(unknown, unknown) does not exist
-LINE 1: SELECT documentdb_api.collection_table('db','reshard') AS db...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT 'documentdb_data.documents_' || collection_id AS db_shard_data_table_name FROM documentdb_api_catalog.collections WHERE database_name = 'db' AND collection_name = 'reshard' \gset
 -- make plans (more) deterministic
 VACUUM (ANALYZE) :db_shard_data_table_name;
-ERROR:  syntax error at or near ":"
-LINE 1: VACUUM (ANALYZE) :db_shard_data_table_name;
-                         ^
 SELECT * FROM documentdb_test_helpers.get_collection_indexes('db', 'reshard') ORDER BY index_id;
  collection_id | index_id |                                          index_spec_as_bson                                          | index_is_valid 
 ---------------+----------+------------------------------------------------------------------------------------------------------+----------------

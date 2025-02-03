@@ -46,5 +46,4 @@ SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : 4 } }', '$');
 
 
 -- Invalid Arguments
-SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3] } }', 1);
 SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3] } }', '{"path":"$a.b", "preserveNullAndEmptyArrays":"a"}'::bson);

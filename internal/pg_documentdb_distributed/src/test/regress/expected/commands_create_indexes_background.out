@@ -24,21 +24,6 @@ SELECT * FROM documentdb_api.create_indexes_background('db', NULL);
 ERROR:  arg cannot be NULL
 SELECT * FROM documentdb_api.create_indexes_background(NULL, '{}');
 ERROR:  dbName cannot be NULL
-SELECT * FROM documentdb_api.create_indexes_background('db');
-ERROR:  function documentdb_api.create_indexes_background(unknown) does not exist
-LINE 1: SELECT * FROM documentdb_api.create_indexes_background('db')...
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM documentdb_api.create_indexes_background(3);
-ERROR:  function documentdb_api.create_indexes_background(integer) does not exist
-LINE 1: SELECT * FROM documentdb_api.create_indexes_background(3);
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM documentdb_api.create_indexes_background(p_arg=>2);
-ERROR:  function documentdb_api.create_indexes_background(p_arg => integer) does not exist
-LINE 1: SELECT * FROM documentdb_api.create_indexes_background(p_arg...
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM documentdb_api.create_indexes_background('db', '{"createIndexes": "collection_6", "unknown_field": []}');
                                                                                                         retval                                                                                                         | ok | requests 
 ---------------------------------------------------------------------

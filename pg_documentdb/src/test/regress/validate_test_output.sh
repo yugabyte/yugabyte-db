@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # fail if trying to reference a variable that is not set.
-set -u
+set -u -e
 
 source="${BASH_SOURCE[0]}"
 diff=/usr/bin/diff
@@ -22,11 +22,18 @@ aggregateCollectionIdStr=""
 maxCollectionIdStr=""
 
 validationExceptions="/sql/documentdb_test_helpers.sql /sql/public_api_schema.sql"
+
+echo "Validating test file output"
 for validationFile in $(ls $scriptDir/expected/*.out); do
     fileName=$(basename $validationFile);
     sqlFile="${fileName%.out}.sql";
-    sqlFilePath="$scriptDir/sql/$sqlFile";
     sqlExceptionStr="/sql/$sqlFile"
+
+    has_invalid_results=$(grep -E "No function matches the given name and argument types." $validationFile || true)
+    if [ "$has_invalid_results" != "" ]; then
+        echo "test file $validationFile has invalid function specification: '$has_invalid_results'";
+        exit 1
+    fi
 
     # skip isolation test for now
     if [[ $fileName == isolation* ]]; then
@@ -38,7 +45,7 @@ for validationFile in $(ls $scriptDir/expected/*.out); do
     fi;
 
     # Extract the actual collection ID (we'll use this to check for uniqueness).
-    collectionIdOutput=$(grep 'documentdb.next_collection_id' $sqlFilePath)
+    collectionIdOutput=$(grep 'documentdb.next_collection_id' $validationFile)
 
     # Fail if not found.
     if [ "$collectionIdOutput" == "" ]; then
@@ -71,7 +78,7 @@ for validationFile in $(ls $scriptDir/expected/*.out); do
     aggregateCollectionIdStr="$aggregateCollectionIdStr :$collectionIdOutput:"
 
     # See if the index id is also set.
-    collectionIndexIdOutput=$(grep 'documentdb.next_collection_index_id' $sqlFilePath)
+    collectionIndexIdOutput=$(grep 'documentdb.next_collection_index_id' $validationFile)
     if [ "$collectionIndexIdOutput" == "" ]; then
         echo "Test file '${sqlFile}' does not set next_collection_index_id: consider setting documentdb.next_collection_index_id";
         exit 1;

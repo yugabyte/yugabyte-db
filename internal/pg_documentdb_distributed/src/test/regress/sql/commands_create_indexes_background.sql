@@ -25,9 +25,6 @@ DELETE from documentdb_api_catalog.documentdb_index_queue;
 ---- createIndexes - top level - parse error ----
 SELECT * FROM documentdb_api.create_indexes_background('db', NULL);
 SELECT * FROM documentdb_api.create_indexes_background(NULL, '{}');
-SELECT * FROM documentdb_api.create_indexes_background('db');
-SELECT * FROM documentdb_api.create_indexes_background(3);
-SELECT * FROM documentdb_api.create_indexes_background(p_arg=>2);
 SELECT * FROM documentdb_api.create_indexes_background('db', '{"createIndexes": "collection_6", "unknown_field": []}');
 SELECT * FROM documentdb_api.create_indexes_background('db', '{"createIndexes": null, "indexes": [{"key": {"a": 1, "": -1}, "name": "my_idx"}]}');
 SELECT * FROM documentdb_api.create_indexes_background('db', '{"createIndexes": "collection_6", "indexes": null}');

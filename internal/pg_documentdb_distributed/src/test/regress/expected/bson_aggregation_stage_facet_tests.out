@@ -66,11 +66,12 @@ SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection(
  { "myarray" : [ { "_id" : { "$numberInt" : "1" }, "item" : "almonds", "price" : { "$numberInt" : "12" }, "quantity" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "2" }, "item" : "pecans", "price" : { "$numberInt" : "20" }, "quantity" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "3" }, "item" : "bread", "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "4" }, "item" : [ "almonds", "bread", "pecans" ], "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "5" }, "item" : "almonds", "price" : { "$numberInt" : "12" }, "quantity" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "6" }, "item" : "pecans", "price" : { "$numberInt" : "20" }, "quantity" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "7" }, "item" : "bread", "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "8" }, "item" : [ "almonds", "bread", "pecans" ], "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } } ] }
 (1 row)
 
-SELECT bson_object_agg(document, true) FROM documentdb_api.collection('db', 'facet');
-ERROR:  function bson_object_agg(bson, boolean) does not exist
-LINE 1: SELECT bson_object_agg(document, true) FROM documentdb_api.c...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT bson_object_agg(document) FROM documentdb_api.collection('db', 'facet');
+                                                                    bson_object_agg                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "item" : [ "almonds", "bread", "pecans" ], "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } }
+(1 row)
+
 -- Test full facetSQL sql
 WITH "stage0" as (
   SELECT 
