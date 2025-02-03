@@ -112,9 +112,21 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = 1 WHER
  Storage Flush Requests: 1
 (10 rows)
 
--- TODO: Fix bug here
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = h WHERE h = 1;
-ERROR:  missing column ybctid in DELETE request
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Update on pkey_only_table (actual rows=0 loops=1)
+   ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
+         Index Cond: (h = 1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(10 rows)
+
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = v1 WHERE h = 1;
                                        QUERY PLAN
 ----------------------------------------------------------------------------------------
