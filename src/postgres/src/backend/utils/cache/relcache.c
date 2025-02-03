@@ -3023,6 +3023,7 @@ YbPrefetchRequiredDataImpl(YbRunWithPrefetcherContext *ctx,
 		YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_PROC);
 	}
 
+	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_AUTHID);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_AUTH_MEMBERS);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_DATABASE);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS);

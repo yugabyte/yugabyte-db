@@ -867,4 +867,28 @@ TEST_F_EX(PgCatalogPerfTest, ForeignKeyRelcachePreloadTest, PgPreloadAdditionalC
   ASSERT_EQ(select_rpc_count, 24);
 }
 
+// The test checks that sys catalog table prefetching works well in case of login of user with
+// non-trivial connection permissions.
+TEST_F(PgCatalogPerfTest, RestrictedConnections) {
+  constexpr auto kNewUserName = "new_user"sv;
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE ROLE new_role;"
+        "GRANT CONNECT ON DATABASE yugabyte TO new_role;"
+        "CREATE ROLE $0 LOGIN;"
+        "GRANT new_role TO $0;"
+        "REVOKE CONNECT ON DATABASE yugabyte FROM PUBLIC", kNewUserName));
+    // Establish new connection to update relcache_file after catalog version change
+    conn = ASSERT_RESULT(Connect());
+  }
+
+  auto settings = MakeConnSettings();
+  // Disable reconnect to speedup failure detection
+  settings.connect_timeout = 1;
+  settings.user = kNewUserName;
+  // Make sure new user with non-trivial connection permissions is able to connect
+  ASSERT_OK(PGConnBuilder(settings).Connect());
+}
+
 } // namespace yb::pgwrapper
