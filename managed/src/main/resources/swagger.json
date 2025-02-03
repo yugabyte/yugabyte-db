@@ -5590,6 +5590,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "pitrConfigUUID" : {
+          "description" : "PITR Config UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -39859,79 +39864,6 @@
         "summary" : "Return results for the last health check",
         "tags" : [
           "Universe information"
-        ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/keyspaces/{tableType}/{keyspaceName}/clone" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "cloneNamespace",
-        "parameters" : [
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "cUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "uniUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "in" : "path",
-            "name" : "tableType",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "in" : "path",
-            "name" : "keyspaceName",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "in" : "query",
-            "name" : "request",
-            "required" : false
-          },
-          {
-            "description" : "post namespace clone",
-            "in" : "body",
-            "name" : "namespaceClone",
-            "required" : true,
-            "schema" : {
-              "$ref" : "#/definitions/CloneNamespaceParams"
-            }
-          }
-        ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [
-          {
-            "apiKeyAuth" : [ ]
-          }
-        ],
-        "summary" : "Create clone of a namespace in a universe",
-        "tags" : [
-          "PITR management"
         ]
       }
     },
