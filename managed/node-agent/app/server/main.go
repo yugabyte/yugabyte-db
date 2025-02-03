@@ -22,7 +22,7 @@ var (
 )
 
 func init() {
-	ctx = util.WithCorrelationID(context.Background(), util.NewUUID().String())
+	ctx = context.WithValue(context.Background(), util.CorrelationId, util.NewUUID().String())
 	ctx, cancelFunc = context.WithCancel(ctx)
 }
 

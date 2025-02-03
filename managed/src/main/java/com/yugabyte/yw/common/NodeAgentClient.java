@@ -220,7 +220,7 @@ public class NodeAgentClient {
           String token = NodeAgentClient.getNodeAgentJWT(nodeAgentUuid, tokenLifetime);
           headers.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), token);
           headers.put(
-              Metadata.Key.of("x-request-id", Metadata.ASCII_STRING_MARSHALLER), correlationId);
+              Metadata.Key.of("x-correlation-id", Metadata.ASCII_STRING_MARSHALLER), correlationId);
           super.start(responseListener, headers);
         }
       };
@@ -243,7 +243,7 @@ public class NodeAgentClient {
       if (config.isEnableTls()) {
         try {
           String certPath = config.getCertPath().toString();
-          log.debug("Using cert path {} for node agent {}", certPath, config.nodeAgent);
+          log.trace("Using cert path {} for node agent {}", certPath, config.nodeAgent);
           SslContext sslcontext =
               GrpcSslContexts.forClient()
                   .trustManager(CertificateHelper.getCertsFromFile(certPath))
@@ -251,7 +251,11 @@ public class NodeAgentClient {
           channelBuilder = channelBuilder.sslContext(sslcontext);
           channelBuilder.intercept(interceptor);
         } catch (SSLException e) {
-          throw new RuntimeException("SSL context creation for gRPC client failed", e);
+          String errMsg =
+              String.format(
+                  "SSL context creation for gRPC client failed for node agent %s", nodeAgent);
+          log.error(errMsg);
+          throw new RuntimeException(errMsg, e);
         }
       } else {
         channelBuilder = channelBuilder.usePlaintext();

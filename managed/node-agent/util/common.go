@@ -45,6 +45,7 @@ const (
 	GetVersionEndpoint      = "/api/app_version"
 	UpgradeScript           = "node-agent-installer.sh"
 	RequestIdHeader         = "x-request-id"
+	CorrelationIdHeader     = "x-correlation-id"
 
 	// Cert names.
 	NodeAgentCertFile = "node_agent.crt"
@@ -93,7 +94,10 @@ const (
 )
 
 const (
+	// CorrelationId is to correlate calls with YBA logs.
 	CorrelationId ContextKey = "correlation-id"
+	// RequestId is to track for a request on this server.
+	RequestId ContextKey = "request-id"
 )
 
 var (
@@ -337,17 +341,15 @@ func UserInfo(username string) (*UserDetail, error) {
 		User: userAcc, UserID: uint32(uid), GroupID: uint32(gid), IsCurrent: isCurrent}, nil
 }
 
-// CorrelationID returns the correlation ID from the context.
-func CorrelationID(ctx context.Context) string {
-	if v := ctx.Value(CorrelationId); v != nil {
-		return v.(string)
+// InheritTracingIDs inherits the tracing related info from a context.
+func InheritTracingIDs(fromCtx context.Context, toCtx context.Context) context.Context {
+	resultCtx := toCtx
+	for _, val := range TracingIDs {
+		if v := fromCtx.Value(val); v != nil {
+			resultCtx = context.WithValue(resultCtx, val, v.(string))
+		}
 	}
-	return ""
-}
-
-// WithCorrelationID creates a child context with correlation ID.
-func WithCorrelationID(ctx context.Context, corrId string) context.Context {
-	return context.WithValue(ctx, CorrelationId, corrId)
+	return resultCtx
 }
 
 // ConvertType converts a type from one to another.

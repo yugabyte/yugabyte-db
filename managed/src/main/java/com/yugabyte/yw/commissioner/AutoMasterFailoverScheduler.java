@@ -114,7 +114,7 @@ public class AutoMasterFailoverScheduler {
             Universe universe = universeOptional.get();
             switch (failoverJobType) {
               case DETECT_MASTER_FAILURE:
-                log.debug(
+                log.trace(
                     "Running master failure detection schedule for universe {}",
                     universe.getUniverseUUID());
                 scheduler.detectMasterFailure(customer, universe, runtime);
@@ -122,7 +122,7 @@ public class AutoMasterFailoverScheduler {
               case MASTER_FAILOVER:
               case SYNC_MASTER_ADDRS:
                 try {
-                  log.debug(
+                  log.trace(
                       "Running auto master failover for universe {}", universe.getUniverseUUID());
                   String detectScheduleName =
                       scheduler.getDetectMasterFailureScheduleName(universe);
@@ -137,7 +137,7 @@ public class AutoMasterFailoverScheduler {
                     return;
                   }
                   if (optional.get().getScheduleConfig().isDisabled()) {
-                    log.info(
+                    log.trace(
                         "Skipping master failover for universe {} as detection is disabled",
                         universe.getUniverseUUID());
                     return;
