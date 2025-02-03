@@ -580,7 +580,7 @@
 
 [[redirects]]
   from = "/preview/reference/drivers/yugabytedb-jdbc-driver/"
-  to = "/preview/reference/drivers/java/yugabyte-jdbc-reference/"
+  to = "/preview/drivers-orms/java/yugabyte-jdbc-reference/"
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
@@ -934,66 +934,59 @@
 
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-hibernate/"
-  to = "/preview/drivers-orms/orms/ysql-hibernate/"
+  to = "/preview/drivers-orms/orms/java/ysql-hibernate/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-ebean/"
-  to = "/preview/drivers-orms/orms/ysql-ebean/"
+  to = "/preview/drivers-orms/orms/java/ysql-ebean/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-spring-data/"
-  to = "/preview/drivers-orms/orms/ysql-spring-data/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/go/ysql-pg/"
-  to = "/preview/drivers-orms/orms/ysql-pg/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/go/ysql-gorm/"
-  to = "/preview/drivers-orms/orms/ysql-gorm/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/python/ysql-sqlalchemy/"
-  to = "/preview/drivers-orms/orms/ysql-sqlalchemy/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/python/ysql-django/"
-  to = "/preview/drivers-orms/orms/ysql-django/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/nodejs/ysql-sequelize/"
-  to = "/preview/drivers-orms/orms/ysql-sequelize/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/nodejs/ysql-prisma/"
-  to = "/preview/drivers-orms/orms/ysql-prisma/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/csharp/ysql-entity-framework/"
-  to = "/preview/drivers-orms/orms/ysql-entity-framework/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/csharp/ysql-dapper/"
-  to = "/preview/drivers-orms/orms/ysql-dapper/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/rust/ysql-diesel/"
-  to = "/preview/drivers-orms/orms/ysql-diesel/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/java/ysql-sdyb/"
-  to = "/preview/integrations/spring-framework/sdyb/"
+  to = "/preview/drivers-orms/orms/java/ysql-spring-data/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/go/ysql-pg/"
   to = "/preview/drivers-orms/go/pg/"
   force = true
-
-# Build an app for aiopg, now in integrations
-
+[[redirects]]
+  from = "/preview/develop/build-apps/go/ysql-gorm/"
+  to = "/preview/drivers-orms/orms/go/ysql-gorm/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/python/ysql-sqlalchemy/"
+  to = "/preview/drivers-orms/orms/python/ysql-sqlalchemy/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/python/ysql-django/"
+  to = "/preview/drivers-orms/orms/python/ysql-django/
+  force = true
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-aiopg/"
   to = "/preview/drivers-orms/python/aiopg/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/nodejs/ysql-sequelize/"
+  to = "/preview/drivers-orms/orms/nodejs/ysql-sequelize/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/nodejs/ysql-prisma/"
+  to = "/preview/drivers-orms/orms/nodejs/ysql-prisma/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/csharp/ysql-entity-framework/"
+  to = "/preview/drivers-orms/orms/csharp/ysql-entity-framework/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/csharp/ysql-dapper/"
+  to = "/preview/drivers-orms/orms/csharp/ysql-dapper/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/rust/ysql-diesel/"
+  to = "/preview/drivers-orms/orms/rust/ysql-diesel/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-sdyb/"
+  to = "/preview/integrations/spring-framework/sdyb/"
   force = true
 
 # Build an app was in quick-start, then develop, now in tutorials
