@@ -1280,4 +1280,6 @@ extern bool yb_ysql_conn_mgr_superuser_existed;
 
 extern Oid	YbGetDatabaseOidToIncrementCatalogVersion();
 
+extern bool yb_default_collation_resolved;
+
 #endif							/* PG_YB_UTILS_H */

@@ -2634,9 +2634,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		 * In Yugabyte mode, disallow some built-in operator classes if the column has non-C
 		 * collation.
 		 */
-		if (IsYugaByteEnabled() &&
-			YBIsCollationValidNonC(attcollation) &&
-			!kTestOnlyUseOSDefaultCollation)
+		if (IsYugaByteEnabled() && YBIsCollationValidNonC(attcollation))
 			YbCheckCollationRestrictions(attcollation, classOidP[attn]);
 
 		if (OidIsValid(ddl_userid))
