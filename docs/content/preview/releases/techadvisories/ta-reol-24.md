@@ -33,7 +33,7 @@ This means updates will no longer be available, preventing YugabyteDB Anywhere a
 Migrate your YugabyteDB Anywhere installation from Replicated by performing the following steps:
 
 1. Upgrade YugabyteDB Anywhere instances to the latest v2.18 or v2.20 using Replicated.
-1. Migrate from the Replicated-based install to a YBA Installer-based install using the [Migration Steps](../../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#migrate-from-replicated).
+1. [Migrate from the Replicated-based install to a YBA Installer-based install](../../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
 
 ## Details
 
