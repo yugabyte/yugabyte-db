@@ -7,6 +7,7 @@ import (
     "fmt"
     "io/ioutil"
     "math/big"
+    "net"
     "net/http"
     "net/url"
     "os"
@@ -298,9 +299,10 @@ func (h *HelperContainer) BuildMasterURLs(path string, params url.Values) ([]str
         return urlList, masterAddressesResponse.Error
     }
     for _, host := range masterAddressesResponse.HostList {
-        url, err := url.JoinPath(fmt.Sprintf("http://%s:%s", host, MasterUIPort), path)
+        url, err := url.JoinPath(fmt.Sprintf("http://%s", net.JoinHostPort(host, MasterUIPort)),
+            path)
         if err != nil {
-            h.logger.Warnf("failed to construct url for %s:%s with path %s: %s",
+            h.logger.Warnf("failed to construct url for host: %s port: %s with path %s: %s",
                 host, MasterUIPort, path, err.Error())
             continue
         }
@@ -362,9 +364,10 @@ func (h *HelperContainer) BuildMasterURLsAndAttemptGetRequests(
     masterAddressCache := MasterAddressCache.Get()
     h.logger.Debugf("got cached master addresses %v", masterAddressCache)
     for _, host := range masterAddressCache {
-        url, err := url.JoinPath(fmt.Sprintf("http://%s:%s", host, MasterUIPort), path)
+        url, err := url.JoinPath(fmt.Sprintf("http://%s", net.JoinHostPort(host, MasterUIPort)),
+            path)
         if err != nil {
-            h.logger.Warnf("failed to construct url for %s:%s with path %s",
+            h.logger.Warnf("failed to construct url for host: %s port: %s with path %s",
                 host, MasterUIPort, path)
             continue
         }
