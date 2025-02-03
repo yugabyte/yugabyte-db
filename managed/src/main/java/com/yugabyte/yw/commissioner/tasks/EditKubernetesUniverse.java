@@ -345,6 +345,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createResizeDiskTask(
           universe.getName(),
           curPlacement,
+          newCluster.uuid,
           existingMasterAddresses,
           newIntent,
           isReadOnlyCluster,
@@ -857,6 +858,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   protected void createResizeDiskTask(
       String universeName,
       KubernetesPlacement placement,
+      UUID clusterUUID,
       String masterAddresses,
       UserIntent userIntent,
       boolean isReadOnlyCluster,
@@ -898,6 +900,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           usePreviousGflagsChecksum,
           ServerType.TSERVER);
     }
+    // persist the disk size changes to the universe
+    createPersistResizeNodeTask(userIntent, clusterUUID, true /* onlyPersistDeviceInfo */);
   }
 
   /**

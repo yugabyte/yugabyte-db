@@ -1852,11 +1852,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to persist changes by ResizeNode task for specific clusters */
   public SubTaskGroup createPersistResizeNodeTask(UserIntent newUserIntent, UUID clusterUUID) {
+    return createPersistResizeNodeTask(
+        newUserIntent, clusterUUID, false /* onlyPersistDeviceInfo */);
+  }
+
+  public SubTaskGroup createPersistResizeNodeTask(
+      UserIntent newUserIntent, UUID clusterUUID, boolean onlyPersistDeviceInfo) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PersistResizeNode");
     PersistResizeNode.Params params = new PersistResizeNode.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.newUserIntent = newUserIntent;
     params.clusterUUID = clusterUUID;
+    params.onlyPersistDeviceInfo = onlyPersistDeviceInfo;
     PersistResizeNode task = createTask(PersistResizeNode.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
