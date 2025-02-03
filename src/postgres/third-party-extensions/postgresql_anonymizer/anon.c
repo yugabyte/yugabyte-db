@@ -200,7 +200,9 @@ pa_masking_policy_object_relabel(const ObjectAddress *object, const char *seclab
       if ( pg_strncasecmp(seclabel, "MASKED WITH FUNCTION", 20) == 0 ) {
           char * substr=malloc(strnlen(seclabel,PA_MAX_SIZE_MASKING_RULE));
           strncpy(substr, seclabel+21, strnlen(seclabel,PA_MAX_SIZE_MASKING_RULE));
-          if (pa_check_function(substr)) return;
+          bool yb_res = pa_check_function(substr);
+          free(substr);
+          if (yb_res) return;
           ereport(ERROR,
             (errcode(ERRCODE_INVALID_NAME),
             errmsg("'%s' is not a valid masking function", seclabel)));
@@ -211,7 +213,9 @@ pa_masking_policy_object_relabel(const ObjectAddress *object, const char *seclab
       if ( pg_strncasecmp(seclabel, "MASKED WITH VALUE", 17) == 0) {
           char * substr=malloc(strnlen(seclabel,PA_MAX_SIZE_MASKING_RULE));
           strncpy(substr, seclabel+18, strnlen(seclabel,PA_MAX_SIZE_MASKING_RULE));
-          if (pa_check_value(substr)) return;
+          bool yb_res = pa_check_value(substr);
+          free(substr);
+          if (yb_res) return;
           ereport(ERROR,
             (errcode(ERRCODE_INVALID_NAME),
             errmsg("'%s' is not a valid masking value", seclabel)));
@@ -1106,7 +1110,7 @@ pa_masking_value_for_att(Relation rel, FormData_pg_attribute * att, char * polic
   // A masking rule was found
   if (seclabel && pg_strncasecmp(seclabel, "MASKED WITH FUNCTION", 20) == 0)
   {
-    char * substr=malloc(strnlen(seclabel,PA_MAX_SIZE_MASKING_RULE));
+    char * substr=palloc(strnlen(seclabel,PA_MAX_SIZE_MASKING_RULE));
     strlcpy(substr, seclabel+21, strnlen(seclabel,PA_MAX_SIZE_MASKING_RULE));
     if (guc_anon_strict_mode) return pa_cast_as_regtype(substr, att->atttypid);
     return substr;
@@ -1114,7 +1118,7 @@ pa_masking_value_for_att(Relation rel, FormData_pg_attribute * att, char * polic
 
   if (seclabel && pg_strncasecmp(seclabel, "MASKED WITH VALUE", 17) == 0)
   {
-    char * substr=malloc(strnlen(seclabel,PA_MAX_SIZE_MASKING_RULE));
+    char * substr=palloc(strnlen(seclabel,PA_MAX_SIZE_MASKING_RULE));
     strlcpy(substr, seclabel+18, strnlen(seclabel,PA_MAX_SIZE_MASKING_RULE));
     if (guc_anon_strict_mode) return pa_cast_as_regtype(substr, att->atttypid);
     return substr;
