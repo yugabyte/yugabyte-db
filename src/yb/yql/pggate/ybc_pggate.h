@@ -424,6 +424,8 @@ YbcStatus YBCPgCreateIndexSetNumTablets(YbcPgStatement handle, int32_t num_table
 
 YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdxOptions *options);
 
+YbcStatus YBCPgCreateIndexSetHnswOptions(YbcPgStatement handle, int ef_construction, int m);
+
 YbcStatus YBCPgExecCreateIndex(YbcPgStatement handle);
 
 YbcStatus YBCPgNewDropIndex(YbcPgOid database_oid,

@@ -139,6 +139,8 @@ message PgVectorIdxOptionsPB {
   optional PgVectorIndexType idx_type = 2;
   optional uint32 dimensions = 3;
   optional uint32 column_id = 4;
+  optional uint32 hnsw_ef = 5;
+  optional uint32 hnsw_m = 6;
 }
 
 message PgVectorReadOptionsPB {

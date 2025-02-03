@@ -1160,6 +1160,11 @@ Status PgApiImpl::CreateIndexSetVectorOptions(PgStatement* handle, YbcPgVectorId
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle)).SetVectorOptions(options);
 }
 
+Status PgApiImpl::CreateIndexSetHnswOptions(PgStatement* handle, int ef_construction, int m) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle))
+      .SetHnswOptions(ef_construction, m);
+}
+
 Status PgApiImpl::ExecCreateIndex(PgStatement* handle) {
   return ExecDdlWithSyscatalogChanges<PgCreateIndex>(handle, *pg_session_);
 }

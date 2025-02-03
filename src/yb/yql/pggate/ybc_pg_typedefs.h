@@ -487,7 +487,8 @@ typedef struct {
   YbcPgVectorIdxType idx_type;
   uint32_t dimensions;
   uint32_t attnum;
-  // TODO(tanuj): Add vector index type-specific options
+  uint32_t hnsw_ef;
+  uint32_t hnsw_m;
 } YbcPgVectorIdxOptions;
 
 typedef struct {

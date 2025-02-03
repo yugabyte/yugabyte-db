@@ -1265,6 +1265,10 @@ YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdx
   return ToYBCStatus(pgapi->CreateIndexSetVectorOptions(handle, options));
 }
 
+YbcStatus YBCPgCreateIndexSetHnswOptions(YbcPgStatement handle, int ef_construction, int m) {
+  return ToYBCStatus(pgapi->CreateIndexSetHnswOptions(handle, ef_construction, m));
+}
+
 YbcStatus YBCPgExecCreateIndex(YbcPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateIndex(handle));
 }

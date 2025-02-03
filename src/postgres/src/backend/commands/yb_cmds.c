@@ -1268,7 +1268,7 @@ YBCCreateIndex(const char *indexName,
 
 	Assert(amroutine != NULL && amroutine->yb_ambindschema != NULL);
 	amroutine->yb_ambindschema(handle, indexInfo, indexTupleDesc, coloptions,
-							   opclassOids);
+							   opclassOids, reloptions);
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)

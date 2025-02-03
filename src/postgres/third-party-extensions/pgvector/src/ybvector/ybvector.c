@@ -36,6 +36,13 @@
 #include "postgres_ext.h"
 #include "utils/lsyscache.h"
 
+void
+YbVectorInit(void)
+{
+	YbHnswInit();
+}
+
+
 /*
  * makeBaseYbVectorHandler: Makes a handler that handles all functionality
  * common to YB vector index access methods.

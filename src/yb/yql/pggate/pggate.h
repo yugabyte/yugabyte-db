@@ -391,6 +391,8 @@ class PgApiImpl {
 
   Status CreateIndexSetVectorOptions(PgStatement *handle, YbcPgVectorIdxOptions *options);
 
+  Status CreateIndexSetHnswOptions(PgStatement *handle, int ef_construction, int m);
+
   Status CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
                                 YbcPgTypeEntity **types, uint64_t *data);
 
