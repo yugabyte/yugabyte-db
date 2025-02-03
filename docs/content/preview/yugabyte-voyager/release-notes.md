@@ -346,7 +346,7 @@ To bypass this issue, set the environment variable `REPORT_UNSUPPORTED_QUERY_CON
 
 ### Enhancements
 
-- The live migration workflow has been optimized for [Importing indexes and triggers](../migrate/live-migrate/#import-indexes-and-triggers) on the target YugabyteDB. Instead of creating indexes on target after cutover, they can now be created concurrently with the CDC phase of `import-data-to-target`. This ensures that the time consuming task of creating indexes on the target YugabyteDB is completed before the cutover process.
+- The live migration workflow has been optimized for [Importing indexes and triggers](../migrate/live-migrate/#import-data-to-target) on the target YugabyteDB. Instead of creating indexes on target after cutover, they can now be created concurrently with the CDC phase of `import-data-to-target`. This ensures that the time consuming task of creating indexes on the target YugabyteDB is completed before the cutover process.
 
 - The `--post-import-data` flag of import schema has been renamed to `--post-snapshot-import` to incorporate live migration workflows.
 
