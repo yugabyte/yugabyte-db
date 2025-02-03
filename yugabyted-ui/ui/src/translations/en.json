@@ -5,6 +5,7 @@
       "requiredField": "Required field",
       "clusters": "Clusters",
       "cluster": "Cluster",
+      "universe": "Universe",
       "databases": "Databases",
       "overview": "Overview",
       "analytics": "Analytics",
@@ -598,6 +599,7 @@
     },
     "clusterDetail": {
       "cluster": "Cluster",
+      "universe": "Universe",
       "migrations": "Migrations",
       "loadingTitle": "Hold tight while we create your cluster. This can take 15-20 minutes",
       "connect": "Connect",
@@ -731,6 +733,7 @@
         "totalDiskSize": "Total Disk Size",
         "authentication": "Authentication",
         "databaseVersion": "Database Version",
+        "universeUuid": "Universe UUID",
         "totalCores": "Total Cores",
         "totalNodes": "Total Nodes",
         "bootstrappingNodes": "Bootstrapping Nodes",

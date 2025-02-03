@@ -88,7 +88,7 @@ export const Header: FC = () => {
   // const queryClient = useQueryClient();
   const { data: clusterData } = useGetClusterQuery();
 
-  const clusterName = clusterData?.data?.spec.name || t("common.cluster");
+  const universeName = clusterData?.data?.spec.name || t("common.universe");
 
   // Get nodes
   const { data: nodesResponse } = useGetClusterNodesQuery({});
@@ -181,7 +181,7 @@ export const Header: FC = () => {
           </Badge>
         </Box>
         <Typography variant="h4" color="inherit">
-          {clusterName}
+          {universeName}
         </Typography>
         {hasReadReplica && (
           <Link
