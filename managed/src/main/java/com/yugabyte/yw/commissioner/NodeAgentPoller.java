@@ -516,9 +516,10 @@ public class NodeAgentPoller {
     String softwareVersion = nodeAgentManager.getSoftwareVersion();
     PollerTask pollerTask = getOrCreatePollerTask(nodeAgentUuid, lifetime, softwareVersion);
     if (pollerTask.checkVersion(nodeAgent)) {
-      log.debug("Node agent {} is already on the latest version", nodeAgent);
+      log.trace("Node agent {} is already on the latest version", nodeAgent);
       return false;
     }
+    log.info("Node agent {} version is stale", nodeAgent);
     try {
       nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
     } catch (RuntimeException e) {

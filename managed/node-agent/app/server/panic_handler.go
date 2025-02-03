@@ -21,19 +21,34 @@ func (ss *serverStream) Context() context.Context {
 	return ss.ctx
 }
 
-func withCorrelationID(srvCtx context.Context) context.Context {
-	corrId := ""
-	md, ok := metadata.FromIncomingContext(srvCtx)
-	if ok {
-		values := md[util.RequestIdHeader]
+func requestHeaderValue(md metadata.MD, header string) string {
+	var value string
+	if md != nil {
+		values := md[header]
 		if len(values) > 0 {
-			corrId = values[0]
+			value = values[0]
 		}
 	}
-	if corrId == "" {
-		corrId = util.NewUUID().String()
+	if value == "" {
+		value = util.NewUUID().String()
 	}
-	return util.WithCorrelationID(srvCtx, corrId)
+	return value
+}
+
+func withTracingIDs(srvCtx context.Context) context.Context {
+	md, ok := metadata.FromIncomingContext(srvCtx)
+	if !ok {
+		md = nil
+	}
+	ctx := srvCtx
+	for key, val := range util.TracingIDs {
+		ctx = context.WithValue(
+			ctx,
+			val,
+			requestHeaderValue(md, key),
+		)
+	}
+	return ctx
 }
 
 // UnaryPanicHandler returns the ServerOption to handle panic occurred in the
@@ -51,7 +66,7 @@ func UnaryPanicHandler() grpc.UnaryServerInterceptor {
 				err = status.Errorf(codes.Internal, "Internal error occurred")
 			}
 		}()
-		ctx = withCorrelationID(ctx)
+		ctx = withTracingIDs(ctx)
 		response, err = handler(ctx, req)
 		return
 	})
@@ -73,7 +88,7 @@ func StreamPanicHandler() grpc.StreamServerInterceptor {
 				err = status.Errorf(codes.Internal, "Internal error occurred")
 			}
 		}()
-		ctx = withCorrelationID(ctx)
+		ctx = withTracingIDs(ctx)
 		stream = &serverStream{stream, ctx}
 		err = handler(srv, stream)
 		return

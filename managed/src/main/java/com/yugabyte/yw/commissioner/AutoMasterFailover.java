@@ -41,6 +41,7 @@ import lombok.Getter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.yb.client.GetMasterHeartbeatDelaysResponse;
 import org.yb.client.YBClient;
@@ -102,7 +103,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
       boolean isFailoverEnabled =
           confGetter.getConfForScope(universe, UniverseConfKeys.enableAutoMasterFailover);
       if (!isFailoverEnabled) {
-        log.debug(
+        log.trace(
             "Skipping automated master failover for universe {} because it is disabled",
             universe.getUniverseUUID(),
             isFailoverEnabled);
@@ -110,7 +111,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
         return Optional.empty();
       }
       if (universe.getUniverseDetails().universePaused) {
-        log.debug(
+        log.trace(
             "Skipping automated master failover for universe {} because it is paused",
             universe.getUniverseUUID());
         // Let the creator of this schedule handle the life-cycle.
@@ -181,7 +182,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
   private Map.Entry<String, Long> validateAndGetMaybeFailedNodeName(
       Customer customer, Universe universe) {
     if (universe.getUniverseDetails().universePaused) {
-      log.debug(
+      log.trace(
           "Skipping automated master failover for universe {} because it is paused",
           universe.getUniverseUUID());
       return null;
@@ -192,10 +193,15 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
         ybService.getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
       checkClusterConsistency(universe, ybClient);
       Map<String, Long> maybeFailedMasters = getMaybeFailedMastersForUniverse(universe, ybClient);
-      log.info(
-          "Potentially failed masters for universe {}: {}",
-          universe.getUniverseUUID(),
-          maybeFailedMasters);
+      if (MapUtils.isEmpty(maybeFailedMasters)) {
+        log.trace(
+            "No potentially failed masters found for universe {}", universe.getUniverseUUID());
+      } else {
+        log.warn(
+            "Potentially failed masters for universe {}: {}",
+            universe.getUniverseUUID(),
+            maybeFailedMasters);
+      }
       if (maybeFailedMasters.size() > 1) {
         // Currently, we want to be conservative and only perform automated master failover if
         // there is only one failed master. In case there are more than one failed masters, we
@@ -356,7 +362,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
       Customer customer, Universe universe, boolean submissionCheck) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     if (universe.getUniverseDetails().universePaused) {
-      log.debug(
+      log.trace(
           "Skipping automated master failover for universe {} because it is paused",
           universe.getUniverseUUID());
       return Action.builder().actionType(ActionType.NONE).build();
@@ -481,7 +487,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
   @VisibleForTesting
   Map<String, Long> getFollowerLagMs(String ip, int port) {
     String endpoint = String.format(FOLLOWER_LAG_URL_FORMAT, ip, port);
-    log.info("Getting follower lag for endpoint {}", endpoint);
+    log.trace("Getting follower lag for endpoint {}", endpoint);
     try {
       JsonNode currentNodeMetricsJson = nodeUIApiHelper.getRequest(endpoint);
       JsonNode errors = currentNodeMetricsJson.get("error");
