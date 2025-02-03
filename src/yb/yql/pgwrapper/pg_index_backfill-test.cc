@@ -157,6 +157,18 @@ class PgIndexBackfillTest : public LibPqTestBase {
   std::unique_ptr<PGConn> conn_;
   TestThreadHolder thread_holder_;
 
+  std::string GenerateSplitClause(int num_rows, int num_tablets) {
+    std::string split_clause = "SPLIT AT VALUES (";
+    for (int i = 1; i < num_tablets; ++i) {
+      if (i > 1) {
+        split_clause += ", ";
+      }
+      split_clause += Format("($0)", i * num_rows / num_tablets + 1);
+    }
+    split_clause += ")";
+    return split_clause;
+  }
+
  private:
   Result<IndexStateFlags> GetIndexStateFlags(const std::string& index_name) {
     const std::string quoted_index_name = PqEscapeLiteral(index_name);
@@ -1309,48 +1321,75 @@ TEST_F_EX(PgIndexBackfillTest,
 //   - indisready
 //   - backfill
 //     - get safe time for read
-//                                                UPDATE a row of the indexed table
+//                                                UPDATE a few rows of the indexed table
 //     - do the actual backfill
 //   - indisvalid
-// The backfill should use the values before update when writing to the index.  The update should
+// The backfill should use the values before update when writing to the index.  The updates should
 // write and delete to the index because of permissions.  Since backfill writes with an ancient
-// timestamp, the update should appear to have happened after the backfill.
+// timestamp, the updates should appear to have happened after the backfill.
 TEST_F_EX(PgIndexBackfillTest,
           ReadTime,
           PgIndexBackfillBlockDoBackfill) {
+  constexpr auto kNumRows = 100;
+  constexpr auto kDeltaInCols = 10;
   ASSERT_OK(conn_->ExecuteFormat(
       "CREATE TABLE $0 (i int, j int, PRIMARY KEY (i ASC))", kTableName));
   ASSERT_OK(conn_->ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(0, 5), generate_series(10, 15))", kTableName));
+      "INSERT INTO $0 SELECT g, g + $1 FROM generate_series(1, $2) g",
+      kTableName, kDeltaInCols, kNumRows));
 
   // conn_ should be used by at most one thread for thread safety.
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin create thread";
     PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-    ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName));
+    constexpr auto kNumSplits = 10;
+    ASSERT_OK(create_conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 (j ASC) $2", kIndexName, kTableName,
+        GenerateSplitClause(kNumRows, kNumSplits)));
+    LOG(INFO) << "Done create thread";
   });
-  thread_holder_.AddThreadFunctor([this] {
+  std::set<int> updated_keys;
+  constexpr auto kNewDeltaInCols = 200;
+  thread_holder_.AddThreadFunctor([this, &updated_keys, kNewDeltaInCols] {
     LOG(INFO) << "Begin write thread";
     ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
 
-    LOG(INFO) << "Updating row";
-    ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = 3", kTableName));
-    LOG(INFO) << "Done updating row";
+    LOG(INFO) << "Updating rows";
+    while (updated_keys.size() < 10) {
+      unsigned int seed = SeedRandom();
+      updated_keys.insert((rand_r(&seed) % kNumRows) + 1);
+    }
+    for (auto key : updated_keys) {
+      ASSERT_OK(conn_->ExecuteFormat(
+        "UPDATE $0 SET j = i + $1 WHERE i = $2", kTableName, kNewDeltaInCols, key));
+    }
+    LOG(INFO) << "Updated rows: " << AsString(updated_keys);
 
     // It should still be in the backfill stage.
     ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(
         kIndexName, IndexStateFlags{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady})));
 
+    LOG(INFO) << "resume backfill";
     ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   });
   thread_holder_.JoinAll();
 
   // Index scan to verify contents of index table.
-  const std::string query = Format("SELECT * FROM $0 WHERE j = 113", kTableName);
-  ASSERT_OK(WaitForIndexScan(query));
-  const auto row = ASSERT_RESULT((conn_->FetchRow<int32_t, int32_t>(query)));
-  // Make sure that the update is visible.
-  ASSERT_EQ(row, (decltype(row){3, 113}));
+  for (int key : updated_keys) {
+    std::string query = Format("SELECT * FROM $0 WHERE j = $1", kTableName, key + kNewDeltaInCols);
+    ASSERT_OK(WaitForIndexScan(query));
+    const auto row = ASSERT_RESULT((conn_->FetchRow<int32_t, int32_t>(query)));
+    // Make sure that the update is visible.
+    ASSERT_EQ(row, (decltype(row){key, key + kNewDeltaInCols}));
+  }
+
+  // Make sure that the updated index keys have indeed been deleted.
+  for (int key : updated_keys) {
+    std::string query = Format("SELECT * FROM $0 WHERE j = $1", kTableName, key + kDeltaInCols);
+    ASSERT_OK(WaitForIndexScan(query));
+    const auto rows = ASSERT_RESULT((conn_->FetchRows<int32_t, int32_t>(query)));
+    ASSERT_EQ(rows.size(), 0);
+  }
 }
 
 // Make sure that updates at each stage of multi-stage CREATE INDEX work.  Simulate the following:
