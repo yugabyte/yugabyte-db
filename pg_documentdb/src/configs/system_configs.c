@@ -101,6 +101,9 @@ int MaxCustomCommandTimeout = DEFAULT_MAX_CUSTOM_COMMAND_TIMEOUT;
 #define DEFAULT_BLOCKED_ROLE_PREFIX_LIST ""
 char *BlockedRolePrefixList = DEFAULT_BLOCKED_ROLE_PREFIX_LIST;
 
+#define DEFAULT_CURRENT_OP_APPLICATION_NAME ""
+char *CurrentOpApplicationName = DEFAULT_CURRENT_OP_APPLICATION_NAME;
+
 void
 InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
 {
@@ -283,5 +286,12 @@ InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
 		gettext_noop("List of role prefixes that are blocked from being created/deleted. "
 					 "The list of role prefixes are comma separated."),
 		NULL, &BlockedRolePrefixList, DEFAULT_BLOCKED_ROLE_PREFIX_LIST,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomStringVariable(
+		psprintf("%s.current_op_application_name", newGucPrefix),
+		gettext_noop(
+			"Application name that is tracked for current_op. '' means track all"),
+		NULL, &CurrentOpApplicationName, DEFAULT_CURRENT_OP_APPLICATION_NAME,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

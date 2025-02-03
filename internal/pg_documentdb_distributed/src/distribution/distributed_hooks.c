@@ -32,6 +32,7 @@ extern bool UseLocalExecutionShardQueries;
 extern char *ApiDistributedSchemaName;
 
 extern bool EnableMetadataReferenceTableSync;
+extern char *DistributedOperationsQuery;
 
 /* Cached value for the current Global PID - can cache once
  * Since nodeId, Pid are stable.
@@ -599,4 +600,7 @@ InitializeDocumentDBDistributedHooks(void)
 
 	try_get_extended_version_refresh_query_hook = TryGetExtendedVersionRefreshQueryCore;
 	get_shard_ids_and_names_for_collection_hook = GetShardIdsAndNamesForCollectionCore;
+
+	DistributedOperationsQuery =
+		"SELECT * FROM pg_stat_activity LEFT JOIN pg_catalog.get_all_active_transactions() ON process_id = pid";
 }

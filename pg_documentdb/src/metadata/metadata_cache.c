@@ -2928,7 +2928,7 @@ BsonCurrentOpAggregationFunctionId(void)
 
 	if (Cache.BsonCurrentOpAggregationFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiSchemaName),
+		List *functionNameList = list_make2(makeString(ApiToApiInternalSchemaName),
 											makeString("current_op_aggregation"));
 		Oid paramOids[1] = { BsonTypeId() };
 		bool missingOK = false;

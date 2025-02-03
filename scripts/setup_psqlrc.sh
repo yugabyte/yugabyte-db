@@ -13,7 +13,7 @@ else
     echo "SET search_path TO documentdb_core,documentdb_api_catalog,public;" >> ~/.psqlrc
 fi
 
-if grep -Fq "bsonUseEJson" ~/.psqlrc; then
+if grep -Fq "documentdb_core.bsonUseEJson" ~/.psqlrc; then
     echo "BsonTextRepresentation already set"
 else
     echo "SET documentdb_core.bsonUseEJson TO true;" >> ~/.psqlrc

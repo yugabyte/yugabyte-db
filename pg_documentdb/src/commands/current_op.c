@@ -129,6 +129,16 @@ static void WriteGlobalPidOfLockingProcess(SingleWorkerActivity *activity,
 										   pgbson_writer *writer);
 static void WriteIndexSpec(SingleWorkerActivity *activity, pgbson_writer *commandWriter);
 
+extern char *CurrentOpApplicationName;
+
+
+/* Single node scenario - the global_pid can be assumed to be just the one for the coordinator */
+char *DistributedOperationsQuery =
+	"SELECT *, (10000000000 + pid)::int8 as global_pid FROM pg_stat_activity";
+
+/* Similar in logic to the distributed node-id calculation */
+const char *FirstLockingPidQuery =
+	"SELECT array_agg( (($2 / 10000000000) * 10000000000) + pid::integer) FROM unnest(pg_blocking_pids($1::integer)) pid LIMIT 1";
 
 /*
  * Command wrapper for CurrentOp. Tracks feature counter usage
@@ -212,7 +222,7 @@ CurrentOpAggregateCore(PG_FUNCTION_ARGS, TupleDesc descriptor,
 	MergeWorkerBsons(workerBsons, descriptor, tupleStore);
 
 	/* The index queue and build status is only valid on the coordinator - run this only here.
-	 * TODO: For MX support, this needs to be run_command_on_coordinator.
+	 * TODO: For MX support, this needs to be run_command_on_metadata_coordinator.
 	 */
 	AddFailedIndexBuilds(descriptor, tupleStore);
 }
@@ -397,21 +407,33 @@ WorkerGetBaseActivities()
 						   " EXTRACT(epoch FROM now() - pa.query_start)::bigint AS secs_running, "
 						   " pa.wait_event_type AS wait_event_type, "
 						   " pa.global_pid || ':' || (EXTRACT(epoch FROM pa.query_start) * 1000000)::numeric(20,0) AS op_id, "
-						   " EXTRACT(epoch FROM now() - pa.state_change)::bigint AS state_change_since "
-						   " FROM (SELECT * FROM pg_stat_activity LEFT JOIN pg_catalog.get_all_active_transactions() ON process_id = pid) pa LEFT JOIN lateral "
-						   " ( "
-						   "	SELECT c.relname::text AS collectionRawName "
-						   "	FROM pg_locks pl "
-						   "	JOIN pg_class c ON (pl.relation = c.oid) "
-						   "	JOIN pg_namespace nsp ON (c.relnamespace = nsp.oid) ");
+						   " EXTRACT(epoch FROM now() - pa.state_change)::bigint AS state_change_since FROM (");
+
+	appendStringInfoString(queryInfo, DistributedOperationsQuery);
+
+	/* To get the collections associated with the command join with locks */
+	appendStringInfoString(queryInfo, ") pa LEFT JOIN lateral "
+									  " ( "
+									  "	SELECT c.relname::text AS collectionRawName "
+									  "	FROM pg_locks pl "
+									  "	JOIN pg_class c ON (pl.relation = c.oid) "
+									  "	JOIN pg_namespace nsp ON (c.relnamespace = nsp.oid) ");
 
 	appendStringInfo(queryInfo,
-					 "	WHERE nsp.nspname = '%s' AND c.relkind = 'r' AND c.oid != '%s.changes'::regclass AND pl.pid = pa.pid LIMIT 1",
-					 ApiDataSchemaName, ApiDataSchemaName);
+					 "	WHERE nsp.nspname = '%s' AND c.relkind = 'r' AND pl.pid = pa.pid LIMIT 1",
+					 ApiDataSchemaName);
 
 	appendStringInfo(queryInfo,
-					 " ) e2 ON true WHERE (NOT query LIKE '%%%s.current_op%%') AND (application_name = 'MongoGateway-Data' OR application_name LIKE '%%%s')",
-					 ApiSchemaName, GetExtensionApplicationName());
+					 " ) e2 ON true WHERE (NOT query LIKE '%%%s.current_op%%') ",
+					 ApiToApiInternalSchemaName);
+
+	if (CurrentOpApplicationName != NULL &&
+		strlen(CurrentOpApplicationName) > 0)
+	{
+		appendStringInfo(queryInfo,
+						 " AND (application_name = '%s' OR application_name LIKE '%%%s')",
+						 CurrentOpApplicationName, GetExtensionApplicationName());
+	}
 
 	List *workerActivities = NIL;
 	SPIParseOpenOptions parseOptions =
@@ -759,6 +781,12 @@ DetectApiSchemaCommand(const char *topLevelQuery, const char *schemaName,
 							   activity->processedMongoCollection);
 		return "command";
 	}
+	else if (strstr(query, "_catalog.bson_aggregation_pipeline(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "aggregate", 9,
+							   activity->processedMongoCollection);
+		return "command";
+	}
 	else if (strstr(query, ".count_query(") == query)
 	{
 		PgbsonWriterAppendUtf8(commandWriter, "count", 5,
@@ -1000,6 +1028,7 @@ DetectMongoCollection(SingleWorkerActivity *activity)
 
 /*
  * GetIndexSpecForShardedCreateIndexQuery gets index_spec and collection_name for sharded CREATE INDEX query
+ *  TODO: Remove citus dependency here.
  */
 static IndexSpec *
 GetIndexSpecForShardedCreateIndexQuery(SingleWorkerActivity *activity)
@@ -1087,7 +1116,9 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 	/* This can be cleaned up to be better - but not in the current iteration */
 	StringInfo queryInfo = makeStringInfo();
 	appendStringInfo(queryInfo, " SELECT "
-								" %s.index_spec_as_current_op_command(coll.database_name, coll.collection_name, ci.index_spec) AS command, "
+								" coll.database_name AS database_name, "
+								" coll.collection_name AS collection_name, "
+								" ci.index_spec AS index_spec, "
 								" iq.index_cmd_status AS status, "
 								" COALESCE(iq.comment::text, '') AS comment, "
 								" coll.database_name || '.' || coll.collection_name AS ns "
@@ -1096,15 +1127,8 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 								" JOIN %s.collections AS coll ON (ci.collection_id = coll.collection_id) "
 								" WHERE iq.cmd_type = 'C' AND ( "
 								" iq.index_cmd_status = 3 "
-								" OR ( "
-								"   iq.index_cmd_status = 2 "
-								"   AND iq.global_pid IS NOT NULL "
-								"   AND iq.global_pid NOT IN ( "
-								"       SELECT distinct global_pid FROM citus_stat_activity WHERE global_pid IS NOT NULL "
-								"       ) "
-								"   ) "
-								" )", ApiInternalSchemaName, GetIndexQueueName(),
-					 ApiCatalogSchemaName, ApiCatalogSchemaName);
+								" )", GetIndexQueueName(), ApiCatalogSchemaName,
+					 ApiCatalogSchemaName);
 
 	SPIParseOpenOptions parseOptions =
 	{
@@ -1129,30 +1153,55 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 		}
 
 		bool isNull;
-		AttrNumber commandAttr = 1;
+		AttrNumber databaseAttr = 1;
 		Datum resultDatum = SPI_getbinval(SPI_tuptable->vals[0],
-										  SPI_tuptable->tupdesc, commandAttr,
+										  SPI_tuptable->tupdesc, databaseAttr,
 										  &isNull);
 		if (isNull)
 		{
 			continue;
 		}
 
-		pgbson *commandDoc = DatumGetPgBson(SPI_datumTransfer(resultDatum, false, -1));
+		char *databaseName = TextDatumGetCString(SPI_datumTransfer(resultDatum, false,
+																   -1));
 
-		AttrNumber statusAttr = 2;
+		AttrNumber collectionAttr = 2;
+		resultDatum = SPI_getbinval(SPI_tuptable->vals[0],
+									SPI_tuptable->tupdesc, collectionAttr,
+									&isNull);
+		if (isNull)
+		{
+			continue;
+		}
+
+		char *collectionName = TextDatumGetCString(SPI_datumTransfer(resultDatum, false,
+																	 -1));
+
+		AttrNumber indexSpecAttr = 3;
+		resultDatum = SPI_getbinval(SPI_tuptable->vals[0],
+									SPI_tuptable->tupdesc, indexSpecAttr,
+									&isNull);
+		if (isNull)
+		{
+			continue;
+		}
+
+		IndexSpec *indexSpec = DatumGetIndexSpec(SPI_datumTransfer(resultDatum, false,
+																   -1));
+
+		AttrNumber statusAttr = 4;
 		resultDatum = SPI_getbinval(SPI_tuptable->vals[0],
 									SPI_tuptable->tupdesc, statusAttr,
 									&isNull);
 		int32 status = DatumGetInt32(resultDatum);
 
-		AttrNumber commentAttr = 3;
+		AttrNumber commentAttr = 5;
 		resultDatum = SPI_getbinval(SPI_tuptable->vals[0],
 									SPI_tuptable->tupdesc, commentAttr,
 									&isNull);
 		char *comment = TextDatumGetCString(SPI_datumTransfer(resultDatum, false, -1));
 
-		AttrNumber nsAttr = 4;
+		AttrNumber nsAttr = 6;
 		resultDatum = SPI_getbinval(SPI_tuptable->vals[0],
 									SPI_tuptable->tupdesc, nsAttr,
 									&isNull);
@@ -1190,7 +1239,12 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 		PgbsonWriterInit(&finalWriter);
 		PgbsonWriterAppendUtf8(&finalWriter, "shard", 5, "defaultShard");
 		PgbsonWriterAppendUtf8(&finalWriter, "op", 2, "command");
-		PgbsonWriterAppendDocument(&finalWriter, "command", 7, commandDoc);
+
+		pgbson_writer commandWriter;
+		PgbsonWriterStartDocument(&finalWriter, "command", 7, &commandWriter);
+		WriteIndexSpecAsCurrentOpCommand(&commandWriter, databaseName, collectionName,
+										 indexSpec);
+		PgbsonWriterEndDocument(&finalWriter, &commandWriter);
 		PgbsonWriterAppendUtf8(&finalWriter, "type", 4, "op");
 		PgbsonWriterAppendUtf8(&finalWriter, "msg", 3, msg);
 		PgbsonWriterAppendBool(&finalWriter, "active", 6, false);
@@ -1212,6 +1266,7 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 /*
  * Gets the index progress data from pg_stat_progress_create_index and writes it out to the
  * "progress" document as well as builds a message for the top level currentOp.
+ * TODO: Remove citus dependency here.
  */
 static const char *
 WriteIndexBuildProgressAndGetMessage(SingleWorkerActivity *activity,
@@ -1308,10 +1363,6 @@ WriteIndexBuildProgressAndGetMessage(SingleWorkerActivity *activity,
 static void
 WriteGlobalPidOfLockingProcess(SingleWorkerActivity *activity, pgbson_writer *writer)
 {
-	const char *query =
-		"SELECT array_agg(pg_catalog.citus_calculate_gpid(pg_catalog.citus_nodeid_for_gpid($2), pid::integer)) "
-		" FROM unnest(pg_blocking_pids($1::integer)) pid LIMIT 1";
-
 	Oid argTypes[2] = { INT8OID, INT8OID };
 	Datum argValues[2] = {
 		Int64GetDatum(activity->stat_pid), Int64GetDatum(activity->global_pid)
@@ -1320,7 +1371,8 @@ WriteGlobalPidOfLockingProcess(SingleWorkerActivity *activity, pgbson_writer *wr
 	bool readOnly = true;
 
 	bool isNull = false;
-	Datum result = ExtensionExecuteQueryWithArgsViaSPI(query, 2, argTypes, argValues,
+	Datum result = ExtensionExecuteQueryWithArgsViaSPI(FirstLockingPidQuery, 2, argTypes,
+													   argValues,
 													   argNulls,
 													   readOnly, SPI_OK_SELECT, &isNull);
 
