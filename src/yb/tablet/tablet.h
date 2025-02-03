@@ -426,9 +426,6 @@ class Tablet : public AbstractTablet,
       CoarseTimePoint deadline = CoarseTimePoint::max(),
       docdb::SkipSeek skip_seek = docdb::SkipSeek::kFalse) const;
 
-  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
-      const TableId& table_id) const;
-
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> CreateCDCSnapshotIterator(
       const dockv::ReaderProjection& projection,
       const ReadHybridTime& time,

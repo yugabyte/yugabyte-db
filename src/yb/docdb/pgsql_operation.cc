@@ -137,6 +137,8 @@ DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "take finer column-level locks instead of locking the whole row. This may cause issues with "
     "data integrity for operations with implicit dependencies between columns.");
 
+DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
+                    "Whether to skip filter check during vector index search.");
 
 DECLARE_uint64(rpc_max_message_size);
 
@@ -900,6 +902,9 @@ class PgsqlVectorFilter {
   }
 
   Status Init(const PgsqlReadOperationData& data) {
+    if (FLAGS_vector_index_skip_filter_check) {
+      return Status::OK();
+    }
     std::vector<ColumnId> columns;
     ColumnId index_column = data.vector_index->column_id();
     for (const auto& col_ref : data.request.col_refs()) {
@@ -919,6 +924,9 @@ class PgsqlVectorFilter {
   }
 
   bool operator()(const vector_index::VectorId& vector_id) {
+    if (!row_) {
+      return true;
+    }
     auto key = dockv::VectorIdKey(vector_id);
     // TODO(vector_index) handle failure
     auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key.AsSlice()));

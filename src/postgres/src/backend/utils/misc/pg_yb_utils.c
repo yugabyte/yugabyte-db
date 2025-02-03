@@ -6129,7 +6129,8 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   InvalidOid /* colocation ID */ ,
 				   indexRel->rd_rel->reltablespace,
 				   newRelfileNodeId,
-				   YbGetRelfileNodeId(indexRel));
+				   YbGetRelfileNodeId(indexRel),
+				   NULL /* opclassOids */ );
 
 	table_close(indexedRel, ShareLock);
 

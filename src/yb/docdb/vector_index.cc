@@ -53,28 +53,44 @@ const std::string kVectorIndexDirPrefix = "vi-";
 namespace {
 
 template <template<class, class> class Factory, class LSM>
-auto VectorLSMFactory(size_t dimensions) {
+auto VectorLSMFactory(vector_index::DistanceKind distance_kind, size_t dimensions) {
   using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
-  return [dimensions] {
+  return [distance_kind, dimensions] {
     vector_index::HNSWOptions hnsw_options = {
       .dimensions = dimensions,
       .num_neighbors_per_vertex = FLAGS_vector_index_num_neighbors_per_vertex,
       .num_neighbors_per_vertex_base = FLAGS_vector_index_num_neighbors_per_vertex_base,
       .ef_construction = FLAGS_vector_index_ef_construction,
       .ef = FLAGS_vector_index_ef,
+      .distance_kind = distance_kind,
     };
     return FactoryImpl::Create(hnsw_options);
   };
 }
 
+vector_index::DistanceKind ConvertDistanceKind(PgVectorDistanceType dist_type) {
+  switch (dist_type) {
+    case PgVectorDistanceType::DIST_L2:
+      return vector_index::DistanceKind::kL2Squared;
+    case PgVectorDistanceType::DIST_IP:
+      return vector_index::DistanceKind::kInnerProduct;
+    case PgVectorDistanceType::DIST_COSINE:
+      return vector_index::DistanceKind::kCosine;
+    case PgVectorDistanceType::INVALID_DIST:
+      break;
+  }
+  FATAL_INVALID_ENUM_VALUE(PgVectorDistanceType, dist_type);
+}
+
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
 Result<typename vector_index::VectorLSMTypes<Vector, DistanceResult>::VectorIndexFactory>
-    GetVectorLSMFactory(PgVectorIndexType type, size_t dimensions) {
+    GetVectorLSMFactory(PgVectorIndexType type, vector_index::DistanceKind distance_kind,
+                        size_t dimensions) {
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
   switch (type) {
     case PgVectorIndexType::HNSW:
-      return VectorLSMFactory<vector_index::UsearchIndexFactory, LSM>(dimensions);
+      return VectorLSMFactory<vector_index::UsearchIndexFactory, LSM>(distance_kind, dimensions);
     case PgVectorIndexType::DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
@@ -115,8 +131,13 @@ Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
   };
 }
 
-size_t EncodeDistance(float distance) {
-  return bit_cast<uint32_t>(util::CanonicalizeFloat(distance));
+EncodedDistance EncodeDistance(float distance) {
+  uint32_t v = bit_cast<uint32_t>(distance);
+  if (v >> 31) {
+    return ~v;
+  } else {
+    return v ^ util::kInt32SignBitFlipMask;
+  }
 }
 
 template<vector_index::IndexableVectorType Vector,
@@ -154,7 +175,8 @@ class VectorIndexImpl : public VectorIndex {
       .log_prefix = log_prefix,
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
-          idx_options.idx_type(), idx_options.dimensions()))),
+          idx_options.idx_type(), ConvertDistanceKind(idx_options.dist_type()),
+          idx_options.dimensions()))),
       .points_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = &thread_pool,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
@@ -196,7 +218,13 @@ class VectorIndexImpl : public VectorIndex {
         .encoded_distance = EncodeDistance(entry.distance),
         .key = KeyBuffer(db_entry.value),
       });
+#ifndef NDEBUG
+      if (result.size() > 1) {
+        CHECK_GE(result.back().encoded_distance, result[result.size() - 2].encoded_distance);
+      }
+#endif
     }
+
     return result;
   }
 

@@ -312,6 +312,8 @@ using rocksdb::SequenceNumber;
 
 namespace yb::tablet {
 
+bool TEST_fail_on_seq_scan_with_vector_indexes = false;
+
 using strings::Substitute;
 
 using client::YBSession;
@@ -1785,15 +1787,6 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   return std::move(iter);
 }
 
-Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
-    const TableId& table_id) const {
-  const std::shared_ptr<tablet::TableInfo> table_info =
-      VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  CHECK(false);
-  dockv::ReaderProjection projection(table_info->schema());
-  return NewRowIterator(projection, {}, table_id);
-}
-
 Status Tablet::ApplyRowOperations(
     WriteOperation* operation, const docdb::StorageSet& apply_to_storages) {
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_write_batch_ms);
@@ -2182,6 +2175,11 @@ Status Tablet::DoHandlePgsqlReadRequest(
       if (pgsql_read_request.index_request().has_vector_idx_options()) {
         vector_index_table_id = index_table_id;
       }
+#ifndef NDEBUG
+    } else if (has_vector_indexes_.load(std::memory_order_relaxed)) {
+      CHECK(!TEST_fail_on_seq_scan_with_vector_indexes ||
+            pgsql_read_request.has_ybctid_column_value()) << pgsql_read_request.ShortDebugString();
+#endif
     }
     auto index_doc_read_context = !index_table_id.empty()
         ? VERIFY_RESULT(GetDocReadContext(index_table_id)) : nullptr;

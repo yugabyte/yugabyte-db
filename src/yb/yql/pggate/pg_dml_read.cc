@@ -34,6 +34,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/range.h"
 #include "yb/util/slice.h"
