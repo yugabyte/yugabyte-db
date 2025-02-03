@@ -419,7 +419,9 @@ CREATE TABLE anon.address (
   val TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.address CLUSTER ON address_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.address TO PUBLIC;
 GRANT SELECT ON SEQUENCE anon.address_oid_seq TO PUBLIC;
 --SELECT pg_catalog.pg_extension_config_dump('anon.address','');
@@ -434,7 +436,9 @@ CREATE TABLE anon.city (
   val TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.city CLUSTER ON city_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.city TO PUBLIC;
 GRANT SELECT ON SEQUENCE anon.city_oid_seq TO PUBLIC;
 
@@ -450,7 +454,9 @@ CREATE TABLE anon.company (
   val TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.company CLUSTER ON company_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.company TO PUBLIC;
 GRANT SELECT ON SEQUENCE anon.company_oid_seq TO PUBLIC;
 
@@ -466,7 +472,9 @@ CREATE TABLE anon.country (
   val TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.country CLUSTER ON country_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.country TO PUBLIC;
 GRANT SELECT ON SEQUENCE anon.country_oid_seq TO PUBLIC;
 
@@ -482,7 +490,9 @@ CREATE TABLE anon.email (
   val TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.email CLUSTER ON email_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.email TO PUBLIC;
 GRANT SELECT ON SEQUENCE anon.email_oid_seq TO PUBLIC;
 
@@ -498,7 +508,9 @@ CREATE TABLE anon.first_name (
   val TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.first_name CLUSTER ON first_name_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.first_name TO PUBLIC;
 GRANT SELECT ON SEQUENCE anon.first_name_oid_seq TO PUBLIC;
 
@@ -514,7 +526,9 @@ CREATE TABLE anon.iban (
   val TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.iban CLUSTER ON iban_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.iban TO PUBLIC;
 GRANT SELECT ON SEQUENCE anon.iban_oid_seq TO PUBLIC;
 
@@ -530,7 +544,9 @@ CREATE TABLE anon.last_name (
   val TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.last_name CLUSTER ON last_name_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.last_name TO PUBLIC;
 GRANT SELECT ON SEQUENCE anon.last_name_oid_seq TO PUBLIC;
 
@@ -546,7 +562,9 @@ CREATE TABLE anon.postcode (
   val TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.postcode CLUSTER ON postcode_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.postcode TO PUBLIC;
 GRANT SELECT ON SEQUENCE anon.postcode_oid_seq TO PUBLIC;
 
@@ -562,7 +580,9 @@ CREATE TABLE anon.siret (
   val TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.siret CLUSTER ON siret_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.siret TO PUBLIC;
 GRANT SELECT ON SEQUENCE anon.siret_oid_seq TO PUBLIC;
 
@@ -578,7 +598,9 @@ CREATE TABLE anon.lorem_ipsum (
   paragraph TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.lorem_ipsum CLUSTER ON lorem_ipsum_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.lorem_ipsum TO PUBLIC;
 GRANT SELECT ON SEQUENCE anon.lorem_ipsum_oid_seq TO PUBLIC;
 
@@ -602,8 +624,10 @@ CREATE TABLE anon.identifiers_category(
   anon_function TEXT
 );
 
+/* YB: unsupported
 ALTER TABLE anon.identifiers_category
   CLUSTER ON identifiers_category_name_key;
+*/ -- YB
 GRANT SELECT ON TABLE anon.identifiers_category TO PUBLIC;
 COMMENT ON TABLE anon.identifiers_category
 IS 'Generic identifiers categories based the HIPAA classification';
@@ -618,8 +642,10 @@ CREATE TABLE anon.identifier(
     REFERENCES anon.identifiers_category(name)
 );
 
+/* YB: unsupported
 ALTER TABLE anon.identifier
   CLUSTER ON identifier_pkey;
+*/ -- YB
 GRANT SELECT ON TABLE anon.identifier TO PUBLIC;
 COMMENT ON TABLE anon.identifier
 IS 'Dictionnary of common identifiers field names';
@@ -718,7 +744,9 @@ BEGIN
   END IF;
 
   -- clustering the table for better performance
+  /* YB: unsupported
   EXECUTE 'CLUSTER ' || dest_table;
+  */ -- YB
 
   RETURN TRUE;
 
