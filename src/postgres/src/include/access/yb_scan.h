@@ -280,9 +280,9 @@ extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
 extern void YbDmlAppendTargetRegularAttr(const FormData_pg_attribute *attr,
 										 YbcPgStatement handle);
 
-extern void YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
-										Relation index, bool xs_want_itup,
-										YbcPgStatement handle);
+extern void YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
+							TupleDesc tupdesc, Relation index,
+							bool xs_want_itup, YbcPgStatement handle);
 extern void YbDmlAppendTargets(List *colrefs, YbcPgStatement handle);
 
 extern void YbAppendPrimaryColumnRef(YbcPgStatement dml, YbcPgExpr colref);
