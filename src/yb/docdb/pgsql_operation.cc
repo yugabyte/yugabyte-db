@@ -111,7 +111,7 @@ DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
 
 // Disable packed row by default in debug builds.
 constexpr bool kYsqlEnablePackedRowTargetVal = !yb::kIsDebug;
-DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kLocalPersisted,
+DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kExternal,
                          !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
                          "Whether packed row is enabled for YSQL.");
 
