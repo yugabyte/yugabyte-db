@@ -177,7 +177,7 @@
 
 [[redirects]]
   from = "/preview/admin/cqlsh/"
-  to = "/preview/admin/ycqlsh/"
+  to = "/preview/api/ycqlsh/"
 
 [[redirects]]
   from = "/preview/admin/yb-master/"
@@ -208,112 +208,22 @@
   to = "/preview/api/ysql/"
 
 [[redirects]]
-  from = "/preview/api/redis/"
-  to = "/preview/yedis/"
-
-[[redirects]]
-  from = "/preview/api/redis/auth/"
-  to = "/preview/yedis/api/auth/"
-
-[[redirects]]
-  from = "/preview/api/redis/config/"
-  to = "/preview/yedis/api/config/"
-
-[[redirects]]
-  from = "/preview/api/redis/createdb/"
-  to = "/preview/yedis/api/createdb/"
-
-[[redirects]]
-  from = "/preview/api/redis/deletedb/"
-  to = "/preview/yedis/api/deletedb/"
-
-[[redirects]]
-  from = "/preview/api/redis/listdb/"
-  to = "/preview/yedis/api/listdb/"
-
-[[redirects]]
-  from = "/preview/api/redis/monitor/"
-  to = "/preview/yedis/api/monitor/"
-
-[[redirects]]
-  from = "/preview/api/redis/select/"
-  to = "/preview/yedis/api/select/"
+  from = "/preview/api/redis/*"
+  to = "/preview/yedis/api/:splat"
 
 [[redirects]]
   from = "/preview/api/ycql/quick-start/"
   to = "/preview/quick-start/explore/ycql/"
 
 [[redirects]]
-  from = "/preview/api/yedis/"
-  to = "/preview/yedis/"
+  from = "/preview/api/yedis/*"
+  to = "/preview/yedis/api/:splat"
 
 [[redirects]]
-  from = "/preview/api/yedis/auth/"
-  to = "/preview/yedis/api/auth/"
+  from = "/preview/api/ysql/commands/*"
+  to = "/preview/api/ysql/the-sql-language/statements/:splat"
 
-[[redirects]]
-  from = "/preview/api/yedis/config/"
-  to = "/preview/yedis/api/config/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/dcl_create_role/"
-  to = "/preview/api/ysql/the-sql-language/statements/dcl_create_role/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/dcl_create_user/"
-  to = "/preview/api/ysql/the-sql-language/statements/dcl_create_user/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/dcl_grant/"
-  to = "/preview/api/ysql/the-sql-language/statements/dcl_grant/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_database/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_database/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_extension/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_extension/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_function/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_function/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_index/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_function/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_sequence/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_sequence/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_table/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_table/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_drop_extension/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_drop_extension/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/dml_insert/"
-  to = "/preview/api/ysql/the-sql-language/statements/dml_insert/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/perf_execute/"
-  to = "/preview/api/ysql/the-sql-language/statements/perf_execute/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/perf_prepare/"
-  to = "/preview/api/ysql/the-sql-language/statements/perf_prepare/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/txn_begin/"
-  to = "/preview/api/ysql/the-sql-language/statements/txn_begin/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/txn_set/"
-  to = "/preview/api/ysql/the-sql-language/statements/txn_set/"
+# Architecture
 
 [[redirects]]
   from = "/preview/architecture/2dc-deployments/"
@@ -769,11 +679,11 @@
 
 [[redirects]]
   from = "/v2.14/tutorials/*"
-  to = "/preview/tutorials/azure/"
+  to = "/preview/tutorials/"
   force = true
 [[redirects]]
   from = "/v2.18/tutorials/*"
-  to = "/preview/tutorials/azure/"
+  to = "/preview/tutorials/"
   force = true
 
 [[redirects]]
@@ -958,7 +868,7 @@
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-django/"
-  to = "/preview/drivers-orms/orms/python/ysql-django/
+  to = "/preview/drivers-orms/orms/python/ysql-django/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-aiopg/"
