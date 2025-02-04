@@ -64,6 +64,16 @@ run_as_super_user() {
   else
     sudo "$@"
   fi
+  return $?
+}
+
+check_run_as_super_user() {
+  run_as_super_user "$@"
+  exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    echo "Command failed with exit code $exit_code - $@"
+    exit $exit_code
+  fi
 }
 
 # Function to run systemd commands as the target user
@@ -282,17 +292,17 @@ modify_selinux() {
   if command -v semanage >/dev/null 2>&1; then
     run_as_super_user semanage port -lC | grep -F "$NODE_PORT" >/dev/null 2>&1
     if [ "$?" -ne 0 ]; then
-      run_as_super_user semanage port -a -t http_port_t -p tcp "$NODE_PORT"
+      check_run_as_super_user semanage port -a -t http_port_t -p tcp "$NODE_PORT"
     fi
     run_as_super_user semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
     if [ "$?" -ne 0 ]; then
-      run_as_super_user semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
+      check_run_as_super_user semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
     fi
-    run_as_super_user restorecon -ir "$NODE_AGENT_HOME"
+    check_run_as_super_user restorecon -ir "$NODE_AGENT_HOME"
   else
     # Let it proceed as there can be policies to allow.
     echo "Command semanage does not exist. Defaulting to using chcon"
-    run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
+    check_run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
   fi
   set -e
 }
