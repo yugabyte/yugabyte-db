@@ -216,7 +216,6 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeAgent;
-import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Restore;
@@ -1967,28 +1966,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     for (NodeDetails node : nodes) {
-      // Check if the private ip for the node is set. If not, that means we don't have
-      // a clean state to delete the node. Log it, free up the onprem node
-      // so that the client can use the node instance to create another universe.
-      if (node.cloudInfo.private_ip == null) {
-        log.warn(
-            String.format(
-                "Node %s doesn't have a private IP. Skipping node delete.", node.nodeName));
-        if (node.cloudInfo.cloud.equals(
-            com.yugabyte.yw.commissioner.Common.CloudType.onprem.name())) {
-          try {
-            NodeInstance providerNode = NodeInstance.getByName(node.nodeName);
-            providerNode.setToFailedCleanup(universe, node);
-          } catch (Exception ex) {
-            log.warn("On-prem node {} doesn't have a linked instance ", node.nodeName);
-          }
-          continue;
-        }
-        if (node.nodeUuid == null) {
-          // No other way to identify the node.
-          continue;
-        }
-      }
       Cluster cluster = universe.getCluster(node.placementUuid);
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)

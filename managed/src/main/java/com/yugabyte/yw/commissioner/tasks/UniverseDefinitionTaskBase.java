@@ -34,7 +34,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
@@ -1342,34 +1341,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.setUniverseUUID(taskParams().getUniverseUUID());
     task.initialize(params);
     subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
-   * Creates a task that will always fail. Utility task to display preflight error messages.
-   *
-   * @param failedNodes : map of nodeName to associated error message
-   */
-  public SubTaskGroup createFailedPrecheckTask(Map<String, String> failedNodes) {
-    return createFailedPrecheckTask(failedNodes, false);
-  }
-
-  /**
-   * Creates a task that will always fail. Utility task to display preflight error messages.
-   *
-   * @param failedNodes : map of nodeName to associated error message
-   * @param reserveNodes : whether to reserve nodes for this universe for future use
-   */
-  public SubTaskGroup createFailedPrecheckTask(
-      Map<String, String> failedNodes, boolean reserveNodes) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("PrecheckNode");
-    PrecheckNode.Params params = new PrecheckNode.Params();
-    params.failedNodeNamesToError = failedNodes;
-    params.reserveNodes = reserveNodes;
-    PrecheckNode failedCheck = createTask(PrecheckNode.class);
-    failedCheck.initialize(params);
-    subTaskGroup.addSubTask(failedCheck);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

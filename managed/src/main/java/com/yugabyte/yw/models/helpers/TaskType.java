@@ -687,8 +687,6 @@ public enum TaskType {
 
   AnsibleCreateServer(com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer.class),
 
-  PrecheckNode(com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode.class),
-
   PrecheckNodeDetached(com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNodeDetached.class),
 
   AnsibleUpdateNodeInfo(com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo.class),
