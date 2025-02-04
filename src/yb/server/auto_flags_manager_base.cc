@@ -41,8 +41,8 @@ DEFINE_RUNTIME_AUTO_bool(TEST_auto_flags_initialized, kLocalPersisted, false, tr
     "AutoFlag that indicates initialization of AutoFlags. Not meant to be overridden.");
 TAG_FLAG(TEST_auto_flags_initialized, hidden);
 
-DEFINE_RUNTIME_AUTO_bool(TEST_auto_flags_new_install, kNewInstallsOnly, false, true,
-    "AutoFlag that indicates initialization of AutoFlags for new installs only.");
+DEFINE_RUNTIME_AUTO_bool(TEST_auto_flags_new_install, kExternal, false, true,
+    "DEPRECATED AutoFlag.");
 TAG_FLAG(TEST_auto_flags_new_install, hidden);
 
 DEFINE_NON_RUNTIME_int32(auto_flags_load_from_master_backoff_increment_ms, 100,
