@@ -36,9 +36,9 @@
 DEFINE_test_flag(uint64, address_segment_negotiator_initial_address, 0,
                  "Used for initial address for AddressSegmentNegotiator negotiation if nonzero.");
 
-// TSan address space is very constrained and hard to pick a good address range that is effectively
+// Sanitizer address space is constrained and hard to pick a good address range that is effectively
 // never used, so just allow it to search randomly without DFATAL.
-DEFINE_test_flag(bool, address_segment_negotiator_dfatal_map_failure, !yb::IsTsan(),
+DEFINE_test_flag(bool, address_segment_negotiator_dfatal_map_failure, !yb::IsSanitizer(),
                  "Whether to LOG(DFATAL) when picked address is already taken on either process.");
 
 namespace yb {
@@ -83,6 +83,9 @@ class NegotiatorSharedState {
   Result<NegotiatorState> Propose(void* addr) {
     auto expected = NegotiatorState::kReject;
     if (!state_.compare_exchange_strong(expected, NegotiatorState::kPropose)) {
+      if (expected == NegotiatorState::kShutdown) {
+        return STATUS(ShutdownInProgress, "Shutting down");
+      }
       return STATUS_FORMAT(IllegalState, "Bad state: $0", AsString(expected));
     }
     address_ = addr;
@@ -179,6 +182,16 @@ class AddressSegmentNegotiator::Impl {
       return std::move(*old_address_segment_);
     }
 
+    std::vector<void*> unused_addresses;
+    auto scope = ScopeExit([this, &unused_addresses] {
+      for (void* address : unused_addresses) {
+        if (munmap(address, region_size_) == -1) {
+          LOG(DFATAL) << "Failed to munmap() " << region_size_ << " bytes at " << address
+                      << ": " << strerror(errno);
+        }
+      }
+    });
+
     for (void* probe_address = InitialProbeAddress(); ; probe_address = GenerateProbeAddress()) {
       void* result =
           mmap(probe_address, region_size_, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE,
@@ -188,13 +201,7 @@ class AddressSegmentNegotiator::Impl {
             IOError, "mmap() failed to reserve $0 byte block of virtual memory: $1",
             region_size_, strerror(errno));
       }
-
-      auto scope = ScopeExit([this, result, probe_address] {
-        if (munmap(result, region_size_) == -1) {
-          LOG(DFATAL) << "Failed to munmap() " << region_size_ << " bytes at " << probe_address
-                      << ": " << strerror(errno);
-        }
-      });
+      unused_addresses.push_back(result);
 
       if (result != probe_address) {
         // We handle this case fine, but hitting this is an indicator that InitialProbeAddress()
@@ -218,7 +225,7 @@ class AddressSegmentNegotiator::Impl {
           LOG(FATAL) << "Invalid state kPropose in response";
           break;
         case NegotiatorState::kAccept:
-          scope.Cancel();
+          unused_addresses.pop_back();
           return ReservedAddressSegment(probe_address, region_size_);
         case NegotiatorState::kReject:
           // We handle this case fine, but hitting this is an indicator that InitialProbeAddress()

@@ -31,7 +31,7 @@ class ReservedAddressSegmentTest : public YBTest {
       const std::function<void(void)>& child_setup = {},
       const std::function<void(void)>& parent_setup = {},
       const std::function<void(ReservedAddressSegment)>& child_main = {}) {
-    AddressSegmentNegotiator negotiator{2_MB};
+    AddressSegmentNegotiator negotiator;
     RETURN_NOT_OK(negotiator.PrepareNegotiation(&address_segment_));
     int fd = negotiator.GetFd();
 
@@ -127,6 +127,26 @@ TEST_F(ReservedAddressSegmentTest, YB_DEBUG_ONLY_TEST(TestNegotitionCrash)) {
 
   thread->Join();
   ASSERT_NOK(status);
+}
+
+TEST_F(ReservedAddressSegmentTest, TestMultiple) {
+  constexpr size_t kNumSegments = 10;
+  std::vector<ReservedAddressSegment> segments;
+  segments.reserve(kNumSegments);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_address_segment_negotiator_dfatal_map_failure) = false;
+  for (size_t i = 0; i < kNumSegments; ++i) {
+    ASSERT_OK(PerformNegotiation());
+    segments.emplace_back(std::move(address_segment_));
+  }
+}
+
+TEST_F(ReservedAddressSegmentTest, TestNegotiationShutdown) {
+  AddressSegmentNegotiator negotiator{2_MB};
+  ASSERT_OK(negotiator.PrepareNegotiation());
+  ASSERT_OK(negotiator.Shutdown());
+  auto result = negotiator.NegotiateParent();
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsShutdownInProgress());
 }
 
 TEST_F(ReservedAddressSegmentTest, TestReserve) {
