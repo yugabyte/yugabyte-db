@@ -70,12 +70,6 @@ class UserKeyIterator : public Iterator {
     return STATUS(InvalidArgument, "Undentified property");
   }
 
-  bool ScanForward(
-      Slice upperbound, KeyFilterCallback* key_filter_callback,
-      ScanCallback* scan_callback) override {
-    LOG(FATAL) << "UserIterator::ScanForward is not supported";
-  }
-
   void RevalidateAfterUpperBoundChange() override {
     LOG(FATAL) << "UserIterator::RevalidateAfterUpperBoundChange is not supported";
   }

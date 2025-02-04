@@ -178,20 +178,6 @@ class IteratorWrapperBase {
     return Update(iter_->Prev());
   }
 
-  ScanForwardResult ScanForward(
-      const Comparator* user_key_comparator, const Slice& upperbound,
-      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
-    if (kSkipLastEntry) {
-      LOG(FATAL)
-          << "IteratorWrapperBase</* kSkipLastEntry = */ true>::ScanForward is not supported";
-    }
-    LOG_IF(DFATAL, !iter_) << "Iterator is invalid";
-    auto result =
-        iter_->ScanForward(user_key_comparator, upperbound, key_filter_callback, scan_callback);
-    Update(iter_->Entry());
-    return result;
-  }
-
   // Returns true iff iterator matches updated file filter.
   bool UpdateUserKeyForFilter(UserKeyFilterContext& context) {
     if (context.version <= last_checked_filter_version_) {
