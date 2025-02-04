@@ -125,9 +125,11 @@ PREREQS_ERROR_MSGS = {
             ' please free the port and restart the node.',
     'ycql_metric_port': 'YCQL metrics port {} is already in use. For accessing the YCQL metrics,' \
             ' please free the port and restart the node.',
+    'clockbound_fail': 'Failed to validate system configuration for clockbound. Please run ' \
+        'bin/configure_clockbound.sh script to install and configure clockbound.',
     'clockbound': 'Clockbound is recommended on AWS/Azure/GCP clusters.' \
-        ' It can reduce read restart errors significantly in concurrent workloads.' \
-        ' Relevant flag: --enhance_time_sync_via_clockbound.',
+        ' It can reduce read restart errors significantly in concurrent workloads. Please run ' \
+        'bin/configure_clockbound.sh script to install and configure clockbound.',
 }
 QUICK_START_LINKS = {
     'mac' : 'https://docs.yugabyte.com/preview/quick-start/',
@@ -683,7 +685,7 @@ def using_time_sync_service():
                   'aws.com', 'google.com']
 
     cmd = ['chronyc', 'sources']
-    out, err, ret_code = run_process(cmd, timeout=1, log_cmd=True)
+    out, _, ret_code = run_process(cmd, timeout=1, log_cmd=True)
     if ret_code == 0:
         for source in allow_list:
             if source in out:
@@ -693,7 +695,7 @@ def using_time_sync_service():
 
 def is_phc_configured():
     cmd = ['systemctl', 'status', 'clockbound']
-    out, err, retcode = run_process(cmd, timeout=1, log_cmd=True)
+    out, _, retcode = run_process(cmd, timeout=1, log_cmd=True)
     return retcode == 0 and 'PHC' in out
 
 # Check if ip is ipv6
@@ -740,9 +742,6 @@ class ControlScript(object):
         self.set_signals(self.kill_children)
         atexit.register(self.kill_children)
         Output.script_exit_func = self.kill_children
-
-        if self.configs.temp_data.get("enhance_time_sync_via_clockbound"):
-            self.assert_system_configured_for_clockbound()
 
         if self.configs.saved_data.get("read_replica"):
             self.start_rr_process()
@@ -2819,11 +2818,16 @@ class ControlScript(object):
             prereqs_warn_flag = True
 
         # TODO: Uncomment this block when clockbound becomes GA.
-        # # Configuring clockbound is strongly recommended for AWS clusters.
-        # if using_time_sync_service() and not self.configs.temp_data[
-        #         "enhance_time_sync_via_clockbound"]:
-        #     prereqs_warn.add('clockbound')
-        #     prereqs_warn_flag = True
+        # Configuring clockbound is strongly recommended for AWS clusters.
+        if not self.assert_system_configured_for_clockbound():
+            if self.configs.temp_data["enhance_time_sync_via_clockbound"]:
+                prereqs_failed.add('clockbound_fail')
+                prereqs_failed_flag = True
+            elif using_time_sync_service():
+                prereqs_warn.add('clockbound')
+                prereqs_warn_flag = True
+        else:
+            self.configs.temp_data["is_clockbound_configured"] = True
 
         (failed_ports, warning_ports, mandatory_port_available,
         recommended_port_available) = self.check_ports()
@@ -2904,13 +2908,13 @@ class ControlScript(object):
         # Get pre-req failures and warnings
         prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn, \
         mandatory_port_available, recommended_port_available = check
-        if prereqs_warn_flag:
-            if OS_NAME == "Linux":
-                help_links.append("- Quick start for Linux: " +
-                                  Output.make_underline(QUICK_START_LINKS['linux']))
-            else:
-               help_links.append("- Quick start for macOS: " +
-                                 Output.make_underline(QUICK_START_LINKS['mac']))
+        # if prereqs_warn_flag:
+        if OS_NAME == "Linux":
+            help_links.append("- Quick start for Linux: " +
+                                Output.make_underline(QUICK_START_LINKS['linux']))
+        else:
+            help_links.append("- Quick start for macOS: " +
+                                Output.make_underline(QUICK_START_LINKS['mac']))
 
         if not mandatory_port_available or not recommended_port_available:
             help_links.append("- Default ports: " + Output.make_underline(DEFAULT_PORTS_LINK))
@@ -3100,6 +3104,38 @@ class ControlScript(object):
                                                   master_rpc_port, master_addresses)
         was_already_setup = self.configs.saved_data.get("cluster_member", False)
 
+        warnings = []
+        warnings_for_ui = []
+        warning_help_msg=""
+        is_first_run = True
+
+        # Do the pre-req check before forming master and tserver commands
+        if is_first_run:
+            ulimits_failed = self.script.set_rlimits(print_info=True)
+            if ulimits_failed:
+                msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
+                ", ".join(ulimits_failed))
+                ulimit_warn_msg = msg + "Note {} will still run, although it may fail for " \
+                    "larger workloads. For more info, see {}".format(SCRIPT_NAME, CONFIG_LINK)
+                self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
+
+            prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
+
+            if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
+                Output.print_out(prereqs_check_result['msg'])
+            elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
+
+                warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
+                warning_help_msg = prereqs_check_result['msg']["help_msg"]
+
+                prereqs_check_result['msg'].pop("help_msg")
+                warnings_for_ui = []
+                for k in prereqs_check_result['msg'].keys():
+                    warnings_for_ui.extend([k])
+            elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
+                Output.print_and_log(prereqs_check_result['msg'])
+                sys.exit(1)
+
         common_gflags = self.get_common_flags()
 
         yb_master_cmd = self.get_master_cmd(common_gflags)
@@ -3125,7 +3161,6 @@ class ControlScript(object):
                 self.processes = {}
                 return
 
-        is_first_run = True
         callhome_thread = None
         masters_list_update_thread = None
         #Start the different thread for extracting the YBC binaries
@@ -3160,37 +3195,6 @@ class ControlScript(object):
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
-                # Output.init_animation("Running system checks...")
-                warnings = []
-                warnings_for_ui = []
-                warning_help_msg=""
-                ulimits_failed = self.script.set_rlimits(print_info=True)
-                if ulimits_failed:
-                    msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
-                    ", ".join(ulimits_failed))
-                    ulimit_warn_msg = msg + "Note {} will still run, although it may fail for " \
-                        "larger workloads. For more info, see {}".format(SCRIPT_NAME, CONFIG_LINK)
-                    self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
-
-                prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
-                # Output.update_animation(msg=prereqs_check_result['msg'],
-                #     status=prereqs_check_result['status'])
-                if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
-                    Output.print_out(prereqs_check_result['msg'])
-                elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
-
-                    warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
-                    warning_help_msg = prereqs_check_result['msg']["help_msg"]
-
-                    prereqs_check_result['msg'].pop("help_msg")
-                    warnings_for_ui = []
-                    for k in prereqs_check_result['msg'].keys():
-                        warnings_for_ui.extend([k])
-                elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
-                    Output.print_and_log(prereqs_check_result['msg'])
-                    sys.exit(1)
-
-
                 Output.init_animation("Starting the YugabyteDB Processes...")
 
                 self.post_install_yb()
@@ -3414,7 +3418,28 @@ class ControlScript(object):
         if join_ip:
             master_addresses  = "{}:{},{}".format(get_url_from_ip(join_ip),
                                                   master_rpc_port, master_addresses)
-        was_already_setup = self.configs.saved_data.get("cluster_member", False)
+
+        is_first_run = True
+        warnings = []
+        warning_help_msg=""
+        if is_first_run:
+            ulimits_failed = self.script.set_rlimits(print_info=True)
+            if ulimits_failed:
+                msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
+                ", ".join(ulimits_failed))
+                ulimit_warn_msg = msg + "Note {} will still run, although it may fail for " \
+                    "larger workloads. For more info, see {}".format(SCRIPT_NAME, CONFIG_LINK)
+                self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
+
+            prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
+            if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
+                Output.print_out(prereqs_check_result['msg'])
+            elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
+                warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
+                warning_help_msg = prereqs_check_result['msg']["help_msg"]
+            elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
+                Output.print_and_log(prereqs_check_result['msg'])
+                sys.exit(1)
 
         common_gflags = self.get_common_flags()
 
@@ -3436,7 +3461,6 @@ class ControlScript(object):
                 self.processes = {}
                 return
 
-        is_first_run = True
         callhome_thread = None
         masters_list_update_thread = None
         self.stop_callhome = False
@@ -3463,26 +3487,6 @@ class ControlScript(object):
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
-                warnings = []
-                warning_help_msg=""
-                ulimits_failed = self.script.set_rlimits(print_info=True)
-                if ulimits_failed:
-                    msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
-                    ", ".join(ulimits_failed))
-                    ulimit_warn_msg = msg + "Note {} will still run, although it may fail for " \
-                        "larger workloads. For more info, see {}".format(SCRIPT_NAME, CONFIG_LINK)
-                    self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
-
-                prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
-                if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
-                    Output.print_out(prereqs_check_result['msg'])
-                elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
-                    warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
-                    warning_help_msg = prereqs_check_result['msg']["help_msg"]
-                elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
-                    Output.print_and_log(prereqs_check_result['msg'])
-                    sys.exit(1)
-
                 Output.init_animation("Starting the YugabyteDB Processes...")
 
                 self.post_install_yb()
@@ -3652,14 +3656,18 @@ class ControlScript(object):
 
     def config_time_source_clockbound(self, flags):
         # Configure tserver flag time_source=clockbound
-        # when --enhance_time_sync_via_clockbound is set.
-        if self.configs.temp_data["enhance_time_sync_via_clockbound"]:
+        # when clockbound is installed and configured.
+        if self.configs.temp_data["is_clockbound_configured"]:
             # Check database configuration.
             time_source = self.get_flag_value(flags, "time_source")
             if time_source and time_source != "clockbound":
-                raise ValueError(
-                    "Cannot configure time_source with"
-                    " --enhance_time_sync_via_clockbound.")
+                if self.configs.temp_data["enhance_time_sync_via_clockbound"]:
+                    raise ValueError("--time_source gflag is already set to {}.".format(
+                        time_source) + "Cannot configure time_source with" +
+                        " --enhance_time_sync_via_clockbound.")
+                else:
+                    Output.log("--time_source gflag is already set to {}.".format(time_source) +
+                        " Cannot configure time_source to clockbound.")
 
             # Configure time_source=clockbound if not already.
             if not time_source:
@@ -4108,18 +4116,13 @@ class ControlScript(object):
         # Sets YW metrics to use local database.
         os.environ["USE_NATIVE_METRICS"] = "true"
 
+    # Returns true if the system has been configured for clock bound.
+    # Runs `configure_clockbound.sh --validate` and returns true if it returns 0.
     def assert_system_configured_for_clockbound(self):
-        Output.init_animation("Validating system config for clockbound...")
         configure_clockbound_path = find_binary_location("configure_clockbound.sh")
         cmd = ["bash", configure_clockbound_path, "--validate"]
-        out, err, retcode = run_process(cmd)
-        if retcode == 0:
-            Output.update_animation("System configured for clockbound.")
-        else:
-            Output.update_animation("Failed to validate system configuration for clockbound.",
-                                    status=Output.ANIMATION_FAIL)
-            Output.log_error_and_exit(
-                Output.make_red("ERROR") + ": Did you run configure_clockbound.sh script?")
+        _, _, retcode = run_process(cmd)
+        return retcode == 0
 
     # Runs post_install script for linux computers.
     def post_install_yb(self):
@@ -8600,6 +8603,7 @@ class Configs(object):
             "xcluster_target_addresses": "",
             "xcluster_bootstrap_done": "",
             "enhance_time_sync_via_clockbound": False,
+            "is_clockbound_configured": False,
         }
         self.config_file = config_file
 
