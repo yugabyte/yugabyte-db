@@ -598,10 +598,11 @@ Result<PgTableDescPtr> PgSession::DoLoadTable(
     return DoLoadTable(table_id, /* fail_on_cache_hit */ true, include_hidden);
   }
 
-  VLOG(4) << "Table cache MISS: " << table_id;
+  VLOG(4) << "Table cache MISS: " << table_id << " reopen = " << exists;
   auto table = VERIFY_RESULT(
-      pg_client_.OpenTable(table_id, exists, invalidate_table_cache_time_, include_hidden));
-  invalidate_table_cache_time_ = CoarseTimePoint();
+      pg_client_.OpenTable(
+        table_id, exists, table_cache_min_ysql_catalog_version_, include_hidden));
+
   if (exists) {
     cached_table_it->second = table;
   } else {
@@ -637,8 +638,12 @@ void PgSession::InvalidateTableCache(
   }
 }
 
-void PgSession::InvalidateAllTablesCache() {
-  invalidate_table_cache_time_ = CoarseMonoClock::now();
+void PgSession::InvalidateAllTablesCache(uint64_t min_ysql_catalog_version) {
+  if (table_cache_min_ysql_catalog_version_ >= min_ysql_catalog_version) {
+    return;
+  }
+
+  table_cache_min_ysql_catalog_version_ = min_ysql_catalog_version;
   table_cache_.clear();
 }
 

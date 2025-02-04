@@ -129,7 +129,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
 
   void InvalidateTableCache();
-  void InvalidateTableCache(const std::unordered_set<uint32_t>& db_oids_updated,
+  void InvalidateTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
                             const std::unordered_set<uint32_t>& db_oids_deleted);
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 

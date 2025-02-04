@@ -4287,7 +4287,7 @@ YBRefreshCache()
 	YBPreloadRelCache();
 
 	/* Also invalidate the pggate cache. */
-	HandleYBStatus(YBCPgInvalidateCache());
+	HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
 
 	yb_need_cache_refresh = false;
 

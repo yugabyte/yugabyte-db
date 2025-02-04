@@ -649,8 +649,8 @@ void YBCPgDeleteStatement(YbcPgStatement handle) {
   pgapi->DeleteStatement(handle);
 }
 
-YbcStatus YBCPgInvalidateCache() {
-  return ToYBCStatus(pgapi->InvalidateCache());
+YbcStatus YBCPgInvalidateCache(uint64_t min_ysql_catalog_version) {
+  return ToYBCStatus(pgapi->InvalidateCache(min_ysql_catalog_version));
 }
 
 const YbcPgTypeEntity *YBCPgFindTypeEntity(YbcPgOid type_oid) {
