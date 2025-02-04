@@ -53,6 +53,8 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [PostgreSQL 12 and later features](#postgresql-12-and-later-features)
 - [MERGE command](#merge-command)
 - [JSONB subscripting](#jsonb-subscripting)
+- [Events Listen / Notify](#events-listen-notify)
+- [Two-Phase Commit](#two-phase-commit)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -1342,6 +1344,8 @@ CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
 - [COPY FROM command with ON_ERROR](https://www.postgresql.org/about/featurematrix/detail/433/) option.
 - [Non-decimal integer literals](https://www.postgresql.org/about/featurematrix/detail/407/).
 - [Non-deterministic collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC).
+- [COMPRESSION clause](https://www.postgresql.org/docs/current/sql-createtable.html#SQL-CREATETABLE-PARMS-COMPRESSION) in TABLE Column for TOASTing method.
+- [CREATE DATABASE options](https://www.postgresql.org/docs/15/sql-createdatabase.html) (locale, collation, strategy and oid related).
 
 Apart from these, the following issues are supported in the YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25) release (preview release where YugabyteDB now supports PostgreSQL 15).
 
@@ -1462,3 +1466,127 @@ CREATE TABLE test_jsonb_chk (
     CHECK (data1->'key'<>'{}')
 );
 ```
+
+### Events Listen / Notify
+
+**GitHub**: Issue [#1872](https://github.com/yugabyte/yugabyte-db/issues/1872)
+
+**Description**: If your application queries or PL/pgSQL objects rely on **LISTEN/NOTIFY events** in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, LISTEN/NOTIFY events are a no-op in YugabyteDB, and any attempt to use them will trigger a warning instead of performing the expected event-driven operations:
+
+```sql
+WARNING:  LISTEN not supported yet and will be ignored
+```
+
+**Workaround**: Currently, there is no workaround.
+
+**Example:**
+
+```sql
+LISTEN my_table_changes;
+INSERT INTO my_table (name) VALUES ('Charlie');
+NOTIFY my_table_changes, 'New row added with name: Charlie';
+```
+
+### Two-Phase Commit
+
+**GitHub**: Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)
+
+**Description**: If your application queries or PL/pgSQL objects rely on **Two-Phase Commit** protocol that allows multiple distributed systems to work together in a transactional manner in the [source](https://www.postgresql.org/docs/current/two-phase.html) PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, Two-Phase Commit is not implemented in the YugabyteDB and will throw the following error when attempt to execute the commands:
+
+```sql
+ERROR:  PREPARE TRANSACTION not supported yet
+```
+
+**Workaround**: Currently, there is no workaround.
+
+## Limitations
+
+There are certain limitations when reporting issues in [assess-migration](../../reference/assess-migration/) and [analyze-schema](../../reference/schema-migration/analyze-schema/) commands:
+
+### Normalized queries in `pg_stat_statements`
+
+The `pg_stat_statements` extension in PostgreSQL tracks execution statistics of SQL queries by normalizing them. Since normalization removes the constants, the issues related to the constants for the following scenarios cannot be detected during assessment, and analyze:
+
+- `JSON_TABLE` usage in DML statements.
+- **Non-decimal integer literals** in DML statements
+- Two-Phase Commit (XA syntax) (Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084))
+
+**Example:**
+
+```sql
+--query stored in pg_stat_statements:
+SELECT $1 as binary; 
+
+--actual query:
+SELECT 0b101010 as binary;
+```
+
+### Transactional Queries in `pg_stat_statements`
+
+In `pg_stat_statements`, a single transaction is recorded as multiple separate query entries. This fragmentation makes it challenging to detect issues that occur within transaction boundaries, such as:
+
+- DDL operations within Transaction (Issue [#1404](https://github.com/yugabyte/yugabyte-db/issues/1404))
+
+**Example:**
+
+```sql
+yugabyte=# \d test
+Did not find any relation named "test".
+yugabyte=# BEGIN;
+BEGIN
+yugabyte=*# CREATE TABLE test(id int, val text);
+CREATE TABLE
+yugabyte=*# \d test
+                Table "public.test"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           |          | 
+ val    | text    |           |          | 
+yugabyte=*# ROLLBACK;
+ROLLBACK
+yugabyte=# \d test
+                Table "public.test"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           |          | 
+ val    | text    |           |          | 
+```
+
+### Determining the Type During Query Processing
+
+In complex queries, determining the type of data being handled is not always straightforward. This limitation affects the detection of **JSONB subscripting** in such queries, making it difficult to report issues accurately.
+
+**Example:**
+
+```sql
+select ab_data['name'] from (select data as ab_data from test_jsonb); --data is the JSONB column in test_jsonb table
+```
+
+### Parser Limitations
+
+The internal [Golang PostgreSQL parser](https://github.com/pganalyze/pg_query_go) used for schema analysis and migration assessment has certain limitations within PL/pgSQL blocks. This leads to not being able to detect issues on the statements embedded inside: Expressions, Conditions, Assignments, Loop variables, Function call arguments, and so on.
+
+**Example:**
+
+```sql
+CREATE OR REPLACE FUNCTION example() 
+RETURNS VOID AS $$
+DECLARE
+    x TEXT; -- Adjust the type based on jsonb value type
+BEGIN
+    x := (SELECT jsonb_column['value'] FROM orders WHERE id = 1);
+    -- Further processing logic here
+    RAISE NOTICE 'Extracted value: %', x;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+### Global Objects
+
+Global objects in PostgreSQL are database-level objects that are not tied to a specific schema. Some of these following objects are not fully supported in schema analysis and migration assessments for detecting issues.
+
+**Example:**
+
+- `CREATE ACCESS METHOD` / `ALTER ACCESS METHOD`
+- `CREATE SERVER`
+- `CREATE DATABASE` with certain options (for example, `ICU_LOCALE`, `LOCALE_PROVIDER`)
