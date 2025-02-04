@@ -231,7 +231,7 @@
 
 [[redirects]]
   from = "/preview/architecture/cdc-architecture/"
-  to = "/preview/architecture/docdb-replication/change-data-capture/"
+  to = "/preview/architecture/docdb-replication/cdc-logical-replication/"
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/"
@@ -1118,7 +1118,7 @@
 
 [[redirects]]
   from = "/:version/quick-start/*"
-  to = "/preview/tutorials/quick-start/"
+  to = "/preview/tutorials/quick-start/macos/"
   force = true
 
 [[redirects]]
@@ -1135,7 +1135,7 @@
 
 [[redirects]]
   from = "/quick-start/install/"
-  to = "/preview/tutorials/quick-start/#install-yugabytedb"
+  to = "/preview/tutorials/quick-start/macos/#install-yugabytedb"
   force = true
 
 [[redirects]]
@@ -1155,12 +1155,12 @@
 
 [[redirects]]
   from = "/:version/quick-start/install/*"
-  to = "/preview/tutorials/quick-start/#install-yugabytedb"
+  to = "/preview/tutorials/quick-start/macos/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/quick-start/create-local-cluster/"
-  to = "/preview/tutorials/quick-start/#create-a-local-cluster"
+  to = "/preview/tutorials/quick-start/macos/#create-a-local-cluster"
   force = true
 
 [[redirects]]
@@ -1180,12 +1180,7 @@
 
 [[redirects]]
   from = "/:version/quick-start/create-local-cluster/*"
-  to = "/preview/tutorials/quick-start/#create-a-local-cluster"
-  force = true
-
-[[redirects]]
-  from = "/:version/quick-start/create-local-cluster/*"
-  to = "/preview/tutorials/quick-start/#create-a-local-cluster"
+  to = "/preview/tutorials/quick-start/macos/#create-a-local-cluster"
   force = true
 
 # Foreign data wrappers from SQL features to Advanced features
@@ -1197,14 +1192,29 @@
 # Fault tolerance redirects
 
 [[redirects]]
-   from = "/preview/explore/fault-tolerance/*"
+   from = "/preview/explore/fault-tolerance/docker/"
+   to = "/preview/explore/fault-tolerance/macos/"
+[[redirects]]
+   from = "/preview/explore/fault-tolerance/linux/"
+   to = "/preview/explore/fault-tolerance/macos/"
+[[redirects]]
+   from = "/preview/explore/fault-tolerance/kubernetes/"
    to = "/preview/explore/fault-tolerance/macos/"
 
 # Prometheus integration redirects
 
 [[redirects]]
-   from = "/preview/explore/observability/prometheus-integration/*"
-   to = "/preview/explore/observability/prometheus-integration/macos/"
+   from = "/preview/explore/observability/prometheus-integration/macos/"
+   to = "/preview/explore/observability/prometheus-integration/"
+[[redirects]]
+   from = "/preview/explore/observability/prometheus-integration/docker/"
+   to = "/preview/explore/observability/prometheus-integration/"
+[[redirects]]
+   from = "/preview/explore/observability/prometheus-integration/linux/"
+   to = "/preview/explore/observability/prometheus-integration/"
+[[redirects]]
+   from = "/preview/explore/observability/prometheus-integration/kubernetes/"
+   to = "/preview/explore/observability/prometheus-integration/"
 
 ##########################################################
 # Catch-all for old links to /latest (now called /preview)
