@@ -1637,7 +1637,7 @@ yb_check_user_attributes(PGconn *old_cluster_conn, const char *user_name,
 	const char **role_attr;
 	bool		first_attribute = true;
 
-	prep_status("Checking '%s' user attibutes", user_name);
+	prep_status("Checking '%s' user attributes", user_name);
 
 	initPQExpBuffer(&buf);
 	for (role_attr = role_attrs; *role_attr != NULL; role_attr++)

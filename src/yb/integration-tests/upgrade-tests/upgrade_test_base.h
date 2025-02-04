@@ -61,11 +61,11 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   Status StartYsqlMajorCatalogUpgrade();
   Status WaitForYsqlMajorCatalogUpgradeToFinish();
 
-  Status FinalizeUpgrade();
+  virtual Status FinalizeUpgrade();
 
   Status PromoteAutoFlags(AutoFlagClass flag_class = AutoFlagClass::kExternal);
 
-  Status FinalizeYsqlMajorCatalogUpgrade();
+  virtual Status FinalizeYsqlMajorCatalogUpgrade();
 
   Status PerformYsqlUpgrade();
 

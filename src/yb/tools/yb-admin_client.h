@@ -331,6 +331,8 @@ class ClusterAdminClient {
 
   Status GetYsqlMajorCatalogUpgradeState();
 
+  Status FinalizeUpgrade(bool use_single_connection);
+
   // Set WAL retention time in secs for a table name.
   Status SetWalRetentionSecs(
     const client::YBTableName& table_name, const uint32_t wal_ret_secs);

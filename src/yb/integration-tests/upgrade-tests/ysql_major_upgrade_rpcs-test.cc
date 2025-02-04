@@ -107,8 +107,7 @@ class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
   Status ValidateYsqlMajorUpgradeCatalogStateViaYbAdmin(
       master::YsqlMajorCatalogUpgradeState state) {
     std::string output;
-    RETURN_NOT_OK(
-        cluster_->CallYbAdmin({"get_ysql_major_version_catalog_upgrade_state"}, 10min, &output));
+    RETURN_NOT_OK(cluster_->CallYbAdmin({"get_ysql_major_version_catalog_state"}, 10min, &output));
 
     switch (state) {
       case master::YSQL_MAJOR_CATALOG_UPGRADE_UNINITIALIZED:
@@ -429,15 +428,25 @@ class YsqlMajorUpgradeYbAdminTest : public Pg15UpgradeTestBase {
 
  protected:
   Status PerformYsqlMajorCatalogUpgrade() override {
-    return cluster_->CallYbAdmin({"ysql_major_version_catalog_upgrade"}, 10min);
+    return cluster_->CallYbAdmin({"upgrade_ysql_major_version_catalog"}, 10min);
   }
 
+  Status FinalizeYsqlMajorCatalogUpgrade() override {
+    return cluster_->CallYbAdmin({"finalize_ysql_major_version_catalog"}, 10min);
+  }
+
+  Status FinalizeUpgrade() override { return cluster_->CallYbAdmin({"finalize_upgrade"}, 10min); }
+
   Status RollbackYsqlMajorCatalogVersion() override {
-    return cluster_->CallYbAdmin({"rollback_ysql_major_version_upgrade"}, 10min);
+    return cluster_->CallYbAdmin({"rollback_ysql_major_version_catalog"}, 10min);
   }
 };
 
-TEST_F(YsqlMajorUpgradeYbAdminTest, Upgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
+TEST_F(YsqlMajorUpgradeYbAdminTest, Upgrade) {
+  ASSERT_OK(TestUpgradeWithSimpleTable());
+  // Finalize should be idempotent.
+  ASSERT_OK(FinalizeUpgrade());
+}
 
 TEST_F(YsqlMajorUpgradeYbAdminTest, Rollback) { ASSERT_OK(TestRollbackWithSimpleTable()); }
 
