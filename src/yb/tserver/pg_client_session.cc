@@ -380,7 +380,7 @@ Result<PgClientSessionOperations> PrepareOperations(
           auto new_read = std::make_unique<PgsqlReadRequestPB>(read);
           new_read->set_partition_key(key);
           auto read_op = std::make_shared<client::YBPgsqlReadOp>(
-              table, vector_index_sidecars.get(), new_read.get());
+              table, *vector_index_sidecars, new_read.get());
           ops.push_back(PgClientSessionOperation {
             .op = std::move(read_op),
             .vector_index_sidecars = nullptr,
@@ -389,7 +389,7 @@ Result<PgClientSessionOperations> PrepareOperations(
         }
         ops[first_idx].vector_index_sidecars = std::move(vector_index_sidecars);
       } else {
-        auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, sidecars, &read);
+        auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, *sidecars, &read);
         if (read_from_followers) {
           read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
         }
@@ -402,7 +402,7 @@ Result<PgClientSessionOperations> PrepareOperations(
     } else {
       auto& write = *op.mutable_write();
       RETURN_NOT_OK(GetTable(write.table_id(), table_cache, &table));
-      auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, sidecars, &write);
+      auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, *sidecars, &write);
       if (write_time) {
         write_op->SetWriteTime(write_time);
       }
@@ -558,8 +558,8 @@ struct PerformData {
     for (const auto& op : ops) {
       auto& op_resp = *responses.Add();
       op_resp.Swap(op.op->mutable_response());
-      if (op.op->has_sidecar()) {
-        op_resp.set_rows_data_sidecar(narrow_cast<int>(op.op->sidecar_index()));
+      if (const auto sidecar_index = op.op->sidecar_index(); sidecar_index) {
+        op_resp.set_rows_data_sidecar(narrow_cast<int>(*sidecar_index));
       }
       if (op_resp.has_paging_state()) {
         if (resp.has_catalog_read_time()) {
@@ -652,7 +652,7 @@ struct PerformData {
     for (const auto& op : ops) {
       // TODO(vector_index) Implement paging.
       results.emplace_back(
-          op.op->response(), front.vector_index_sidecars->Extract(op.op->sidecar_index()));
+          op.op->response(), front.vector_index_sidecars->Extract(*op.op->sidecar_index()));
     }
 
     // TODO(vector_index) Use heap with sift up functionality.
@@ -853,6 +853,13 @@ Result<PgReplicaIdentity> GetReplicaIdentityEnumValue(
 
 std::atomic<bool>& InUseAtomic(const SharedMemorySegmentHandle& handle) {
   return *pointer_cast<std::atomic<bool>*>(handle.address() - sizeof(std::atomic<bool>));
+}
+
+YsqlAdvisoryLocksTableLockId MakeAdvisoryLockId(uint32_t db_oid, const AdvisoryLockIdPB& lock_pb) {
+  return {.db_oid = db_oid,
+          .class_oid = lock_pb.classid(),
+          .objid = lock_pb.objid(),
+          .objsubid = lock_pb.objsubid()};
 }
 
 } // namespace
@@ -2232,7 +2239,7 @@ Status PgClientSession::ReadSequenceTuple(
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   RETURN_NOT_OK(session->TEST_ApplyAndFlush(psql_read));
 
-  CHECK_EQ(psql_read->sidecar_index(), 0);
+  CHECK_EQ(*psql_read->sidecar_index(), 0);
 
   Slice cursor;
   int64_t row_count = 0;
@@ -2565,10 +2572,10 @@ Status PgClientSession::AcquireAdvisoryLock(
       IllegalState, "Transaction on primary session is required.");
 
   auto& session = *primary_session_data->session;
-  // Set background transaction to achieve the folllowing:
+  // Set background transaction to achieve the following:
   // - When acquiring a session advisory lock, the session level txn should ignore conflicts with
   //   the current active regular/plain txn, if any.
-  // - When acquiring a txn advisory lock, the regular/plain txn should ingore conflicts with the
+  // - When acquiring a txn advisory lock, the regular/plain txn should ignore conflicts with the
   //   session level transaction, if exists.
   if (const auto& background_txn = background_session_data->transaction; background_txn) {
     auto background_txn_meta_res = background_txn->GetMetadata(deadline).get();
@@ -2578,11 +2585,8 @@ Status PgClientSession::AcquireAdvisoryLock(
 
   auto& txn = *primary_session_data->transaction;
   for (const auto& lock : req.locks()) {
-    auto lock_op = VERIFY_RESULT(advisory_locks_table().CreateLockOp(
-      req.db_oid(), lock.lock_id().classid(), lock.lock_id().objid(), lock.lock_id().objsubid(),
-      lock.lock_mode() == AdvisoryLockMode::LOCK_SHARE
-          ? PgsqlLockRequestPB::PG_LOCK_SHARE : PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      req.wait(), &context->sidecars()));
+    auto lock_op = VERIFY_RESULT(advisory_locks_table().MakeLockOp(
+      MakeAdvisoryLockId(req.db_oid(), lock.lock_id()), lock.lock_mode(), req.wait()));
     VLOG(4) << "Applying lock op: " << lock_op->ToString();
     session.Apply(lock_op);
   }
@@ -2599,7 +2603,7 @@ Status PgClientSession::ReleaseAdvisoryLock(
     rpc::RpcContext* context) {
   VLOG(2) << "Servicing ReleaseAdvisoryLock: " << req.ShortDebugString();
   SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
-  // Release Advisory lock api is only invoked for session asvisory locks.
+  // Release Advisory lock api is only invoked for session advisory locks.
   const auto& session_data =
       VERIFY_RESULT_REF(BeginPgSessionLevelTxnIfNecessary(context->GetClientDeadline()));
   DCHECK(session_data.session && session_data.transaction)
@@ -2608,17 +2612,11 @@ Status PgClientSession::ReleaseAdvisoryLock(
   auto& txn = *session_data.transaction;
   if (req.locks_size()) {
     for (const auto& lock : req.locks()) {
-      auto unlock_op = VERIFY_RESULT(advisory_locks_table().CreateUnlockOp(
-          req.db_oid(), lock.lock_id().classid(), lock.lock_id().objid(), lock.lock_id().objsubid(),
-          lock.lock_mode() == AdvisoryLockMode::LOCK_SHARE
-              ? PgsqlLockRequestPB::PG_LOCK_SHARE : PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-          &context->sidecars()));
-      session.Apply(unlock_op);
+      session.Apply(VERIFY_RESULT(advisory_locks_table().MakeUnlockOp(
+          MakeAdvisoryLockId(req.db_oid(), lock.lock_id()), lock.lock_mode())));
     }
   } else {
-    auto unlock_op =
-        VERIFY_RESULT(advisory_locks_table().CreateUnlockAllOp(req.db_oid(), &context->sidecars()));
-    session.Apply(unlock_op);
+    session.Apply(VERIFY_RESULT(advisory_locks_table().MakeUnlockAllOp(req.db_oid())));
   }
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   auto flush_status = session.FlushFuture().get();
