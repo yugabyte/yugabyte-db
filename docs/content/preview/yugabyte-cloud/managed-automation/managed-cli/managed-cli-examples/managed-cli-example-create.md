@@ -197,14 +197,14 @@ ybm cluster create \
   --credentials username=admin,password=password \
   --cloud-provider GCP \
   --cluster-type SYNCHRONOUS \
-  --node-config num-cores=2,disk-size-gb=200 \
-  --region-info region=us-east1,num-nodes=1,vpc=gcp-vpc \
-  --region-info region=us-west1,num-nodes=1,vpc=gcp-vpc \
-  --region-info region=us-central1,num-nodes=1,vpc=gcp-vpc \
+  --region-info region=us-east1,num-nodes=1,num-cores=2,disk-size-gb=200,vpc=gcp-vpc \
+  --region-info region=us-west1,num-nodes=1,num-cores=2,disk-size-gb=200,vpc=gcp-vpc \
+  --region-info region=us-central1,num-nodes=1,num-cores=2,disk-size-gb=200,vpc=gcp-vpc \
   --cluster-tier Dedicated \
   --fault-tolerance REGION \
   --database-version Production \
   --wait
+
 ```
 
 ```output
