@@ -109,6 +109,10 @@ class FilteringIterator : public InternalIterator {
     return iterator_->ScanForward(user_key_comparator, upperbound, &kf_callback, scan_callback);
   }
 
+  void UpdateFilterKey(Slice user_key_for_filter) override {
+    iterator_->UpdateFilterKey(user_key_for_filter);
+  }
+
   const KeyValueEntry& ApplyFilter(bool backward) {
     const auto* entry = &iterator_->Entry();
     while (*entry) {

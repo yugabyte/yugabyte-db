@@ -237,22 +237,9 @@ class Iterator : public Cleanable {
 
   // Iterator could be created with filter in deferred mode specified via ReadOptions.
   // In this case iterators for all sources (SST files and MemTables) are created.
-  // But it is allowed to update user key for filter via SeekWithNewFilter.
-  // After updating user key for filter, sub iterators that does not match updated filter & key
-  // pair, will be ignored.
-  const KeyValueEntry& SeekWithNewFilter(Slice target, Slice filter_user_key) {
-    return DoSeekWithNewFilter(target, filter_user_key);
-  }
-
-  const KeyValueEntry& SeekWithNewFilter(Slice target) {
-    return DoSeekWithNewFilter(target, target);
-  }
-
- protected:
-  virtual const KeyValueEntry& DoSeekWithNewFilter(Slice target, Slice filter_user_key) {
-    DCHECK(false);
-    return Seek(target);
-  }
+  // But it is allowed to update user key for filter via UpdateFilterKey.
+  // The filter does not change current entry, but applied during calls to Seek/Next.
+  virtual void UpdateFilterKey(Slice user_key_for_filter) = 0;
 };
 
 class DataBlockAwareIndexIterator : public Iterator {

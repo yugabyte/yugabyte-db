@@ -159,25 +159,18 @@ class IteratorWrapperBase {
     return Update(iter_->Prev());
   }
 
-  bool had_seek() const {
-    return had_seek_;
-  }
-
-  const KeyValueEntry& Seek(const Slice& k) {
+  const KeyValueEntry& Seek(Slice key) {
     DCHECK(iter_);
-    had_seek_ = true;
-    return Update(SkipLastIfNecessary(iter_->Seek(k)));
+    return Update(SkipLastIfNecessary(iter_->Seek(key)));
   }
 
   const KeyValueEntry& SeekToFirst() {
     DCHECK(iter_);
-    had_seek_ = true;
     return Update(SkipLastIfNecessary(iter_->SeekToFirst()));
   }
 
   const KeyValueEntry& SeekToLast() {
     DCHECK(iter_);
-    had_seek_ = true;
     const auto& last_entry = iter_->SeekToLast();
     if (!kSkipLastEntry || !last_entry.Valid()) {
       return Update(last_entry);
@@ -249,7 +242,6 @@ class IteratorWrapperBase {
 
   int64_t last_checked_filter_version_ = 0;
   bool matches_filter_ = true;
-  bool had_seek_ = false;
 };
 
 }  // namespace rocksdb

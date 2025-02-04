@@ -928,7 +928,8 @@ class StrongConflictChecker {
           /* iterate_upper_bound = */ nullptr,
           rocksdb::CacheRestartBlockKeys::kFalse);
     }
-    value_iter_.SeekWithNewFilter(intent_key);
+    value_iter_.UpdateFilterKey(intent_key);
+    const auto* entry = &value_iter_.Seek(intent_key);
 
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
@@ -951,16 +952,16 @@ class StrongConflictChecker {
     // change, so it is only directly in conflict with a committed record that deletes or replaces
     // that entire document subtree (similar to a strong intent), so it would have the same exact
     // key as the weak intent (not including hybrid time).
-    while (value_iter_.Valid() &&
+    while (entry->Valid() &&
            (intent_key.starts_with(KeyEntryTypeAsChar::kGroupEnd) ||
-            value_iter_.key().starts_with(intent_key))) {
-      auto existing_key = value_iter_.key();
+            entry->key.starts_with(intent_key))) {
+      auto existing_key = entry->key;
       auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
       if (existing_key.empty() ||
           existing_key[existing_key.size() - 1] != KeyEntryTypeAsChar::kHybridTime) {
         return STATUS_FORMAT(
             Corruption, "Hybrid time expected at end of key: $0",
-            value_iter_.key().ToDebugString());
+            entry->key.ToDebugString());
       }
       if (!strong && existing_key.size() != intent_key.size() + 1) {
         VLOG_WITH_PREFIX(4)
@@ -972,9 +973,9 @@ class StrongConflictChecker {
           << "Check value overwrite, key: " << SubDocKey::DebugSliceToString(intent_key)
           << ", read time: " << read_time_
           << ", doc ht: " << doc_ht.hybrid_time()
-          << ", found key: " << SubDocKey::DebugSliceToString(value_iter_.key())
+          << ", found key: " << SubDocKey::DebugSliceToString(entry->key)
           << ", after start: " << (doc_ht.hybrid_time() >= read_time_)
-          << ", value: " << value_iter_.value().ToDebugString();
+          << ", value: " << entry->value.ToDebugString();
       if (doc_ht.hybrid_time() >= read_time_) {
         if (conflict_management_policy == SKIP_ON_CONFLICT) {
           return STATUS(InternalError, "Skip locking since entity was modified in regular db",
@@ -991,7 +992,7 @@ class StrongConflictChecker {
       buffer_.Reset(existing_key);
       // Already have ValueType::kHybridTime at the end
       buffer_.AppendHybridTime(DocHybridTime::kMin);
-      ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
+      entry = &ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
     }
 
     return value_iter_.status();

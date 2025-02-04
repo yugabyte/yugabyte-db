@@ -524,7 +524,7 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> CreateYbctidIterator(
       SkipSeek skip_seek) {
   return data.ql_storage.GetIteratorForYbctid(
       data.request.stmt_id(), projection, read_context, data.txn_op_context,
-      data.read_operation_data, bounds, data.pending_op, skip_seek);
+      data.read_operation_data, bounds, data.pending_op, skip_seek, UseVariableBloomFilter::kTrue);
 }
 
 class FilteringIterator {
@@ -2526,7 +2526,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
 
-  VLOG(4) << "Row count limit: " << row_count_limit << ", size limit: " << response_size_limit;
+  VLOG_WITH_FUNC(4)
+      << "Row count limit: " << row_count_limit << ", size limit: " << response_size_limit;
 
   // Create the projection of regular columns selected by the row block plus any referenced in
   // the WHERE condition. When DocRowwiseIterator::NextRow() populates the value map, it uses this
@@ -2587,7 +2588,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
     ++fetched_rows;
   }
 
-  VLOG(3) << "Stopped iterator after " << match_count << " matches, " << fetched_rows
+  VLOG_WITH_FUNC(3)
+          << "Stopped iterator after " << match_count << " matches, " << fetched_rows
           << " rows fetched. Response buffer size: " << result_buffer_->size()
           << ", response size limit: " << response_size_limit
           << ", deadline is " << (scan_time_exceeded ? "" : "not ") << "exceeded";
@@ -2690,9 +2692,10 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
     }
 
     if (result_buffer_->size() >= response_size_limit) {
-      VLOG(3) << "Stopped iterator after " << found_rows << " rows fetched (out of "
-              << request_.batch_arguments_size() << " matches). Response buffer size: "
-              << result_buffer_->size() << ", response size limit: " << response_size_limit;
+      VLOG_WITH_FUNC(3)
+          << "Stopped iterator after " << found_rows << " rows fetched (out of "
+          << request_.batch_arguments_size() << " matches). Response buffer size: "
+          << result_buffer_->size() << ", response size limit: " << response_size_limit;
       break;
     }
   }

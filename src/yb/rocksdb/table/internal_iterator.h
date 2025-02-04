@@ -149,8 +149,7 @@ class InternalIterator : public Cleanable {
     return ScanForwardResult();
   }
 
-  virtual const KeyValueEntry& SeekWithNewFilter(Slice target, Slice filter_user_key) {
-    return Seek(target);
+  virtual void UpdateFilterKey(Slice user_key_for_filter) {
   }
 
   // Returns true if iterator matches file filter, meaning it may contain requested keys.

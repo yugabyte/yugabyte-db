@@ -1404,6 +1404,10 @@ bool IntentAwareIterator::HandleStatus(const Status& status) {
   return false;
 }
 
+void IntentAwareIterator::UpdateFilterKey(Slice user_key_for_filter) {
+  iter_.UpdateFilterKey(user_key_for_filter);
+}
+
 #ifndef NDEBUG
 void IntentAwareIterator::DebugSeekTriggered() {
 #if YB_INTENT_AWARE_ITERATOR_COLLECT_SEEK_STACK_TRACE

@@ -77,6 +77,7 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   Result<HybridTime> RestartReadHt() override;
 
+  void UpdateFilterKey(Slice user_key_for_filter) override;
   void Seek(Slice key) override;
 
   void SeekToDocKeyPrefix(Slice doc_key_prefix) override;

@@ -557,10 +557,6 @@ bool BloomFilterAwareFileFilter::Filter(
   // If bloom filter was not useful, then take this file into account.
   const bool use_file = table->NonBlockBasedFilterKeyMayMatch(
       filter, filter_key, options.statistics);
-  if (!use_file) {
-    // Record that the bloom filter was useful.
-    RecordTick(options.statistics, table->rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
-  }
   filter_entry.Release(table->rep_->table_options.block_cache.get());
   return use_file;
 }
