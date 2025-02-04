@@ -115,7 +115,11 @@ DocumentDBApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 			ThrowIfWriteCommandNotAllowed();
 		}
 
-		queryFlags = MongoQueryFlags(parse);
+		if (parse->commandType != CMD_INSERT)
+		{
+			queryFlags = MongoQueryFlags(parse);
+		}
+
 		if (queryFlags & HAS_AGGREGATION_FUNCTION)
 		{
 			parse = (Query *) ExpandAggregationFunction(parse, boundParams, &plan);
