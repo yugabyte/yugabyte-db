@@ -1148,7 +1148,7 @@ static void
 BuildRedactState(BsonReplaceRootRedactState *redactState, const bson_value_t *redactValue,
 				 pgbson *variableSpec)
 {
-	ParseAggregationExpressionContext context = { allowRedactVariables: true };
+	ParseAggregationExpressionContext context = { .allowRedactVariables = true };
 	redactState->expressionData = palloc0(sizeof(AggregationExpressionData));
 	ParseAggregationExpressionData(redactState->expressionData, redactValue, &context);
 
@@ -1211,7 +1211,7 @@ EvaluateRedactDocument(pgbson *document, const BsonReplaceRootRedactState *state
 	PgbsonToSinglePgbsonElement(evaluatedResult, &evaluatedResultElement);
 
 	AggregationExpressionData *parsedValue = palloc0(sizeof(AggregationExpressionData));
-	ParseAggregationExpressionContext context = { allowRedactVariables: true };
+	ParseAggregationExpressionContext context = { .allowRedactVariables = true };
 	ParseAggregationExpressionData(parsedValue, &evaluatedResultElement.bsonValue,
 								   &context);
 	if (parsedValue->kind == AggregationExpressionKind_SystemVariable)

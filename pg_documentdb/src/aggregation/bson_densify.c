@@ -294,6 +294,11 @@ Datum
 bson_densify_range(PG_FUNCTION_ARGS)
 {
 	pgbson *result = DensifyPartitionCore(fcinfo, DENSIFY_TYPE_RANGE);
+	if (result == NULL)
+	{
+		PG_RETURN_NULL();
+	}
+
 	PG_RETURN_POINTER(result);
 }
 
@@ -318,6 +323,11 @@ Datum
 bson_densify_partition(PG_FUNCTION_ARGS)
 {
 	pgbson *result = DensifyPartitionCore(fcinfo, DENSIFY_TYPE_PARTITION);
+	if (result == NULL)
+	{
+		PG_RETURN_NULL();
+	}
+
 	PG_RETURN_POINTER(result);
 }
 
@@ -792,7 +802,7 @@ DensifyPartitionCore(PG_FUNCTION_ARGS, DensifyType type)
 			 *     - Empty collection.
 			 *     - Filtered collection with 0 rows.
 			 */
-			PG_RETURN_NULL();
+			return NULL;
 		}
 	}
 	else
