@@ -1114,18 +1114,6 @@
   to = "/preview/tutorials/quick-start-yugabytedb-managed/:splat"
   force = true
 
-# Redirect all non-preview quick start links to preview
-
-[[redirects]]
-  from = "/:version/quick-start/*"
-  to = "/preview/tutorials/quick-start/macos/"
-  force = true
-
-[[redirects]]
-  from = "/:version/quick-start-yugabytedb-managed/*"
-  to = "/preview/tutorials/quick-start-yugabytedb-managed/"
-  force = true
-
 # Yugabyte Extensions top hit
 
 [[redirects]]
@@ -1181,6 +1169,18 @@
 [[redirects]]
   from = "/:version/quick-start/create-local-cluster/*"
   to = "/preview/tutorials/quick-start/macos/#create-a-local-cluster"
+  force = true
+
+# Redirect all non-preview quick start links to preview
+
+[[redirects]]
+  from = "/:version/quick-start/*"
+  to = "/preview/tutorials/quick-start/macos/"
+  force = true
+
+[[redirects]]
+  from = "/:version/quick-start-yugabytedb-managed/*"
+  to = "/preview/tutorials/quick-start-yugabytedb-managed/"
   force = true
 
 # Foreign data wrappers from SQL features to Advanced features
