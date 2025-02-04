@@ -9,21 +9,16 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import play.mvc.Http.Status;
 
@@ -133,9 +128,6 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
 
     boolean isYsqlMajorVersionUpgrade =
         gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, ybSoftwareVersion);
-    if (isYsqlMajorVersionUpgrade) {
-      checkIfExpressionPushdownIsEnabledByUser(universe);
-    }
 
     if (isYsqlMajorVersionUpgrade
         && currentIntent.enableYSQL
@@ -146,22 +138,6 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
           Status.BAD_REQUEST,
           "YSQL major version upgrade is only supported from 2024.2.1.0-b1. Please upgrade to a"
               + " version >= 2024.2.1.0-b1 before proceeding with the upgrade.");
-    }
-  }
-
-  private void checkIfExpressionPushdownIsEnabledByUser(Universe universe) {
-    List<UniverseDefinitionTaskParams.Cluster> clusters = universe.getUniverseDetails().clusters;
-    for (UniverseDefinitionTaskParams.Cluster cluster : clusters) {
-      for (NodeDetails node : universe.getTserversInCluster(cluster.uuid)) {
-        Map<String, String> gflags =
-            GFlagsUtil.getGFlagsForNode(node, ServerType.TSERVER, cluster, clusters);
-        if (GFlagsUtil.checkExperssionPushdownValueInFlags(gflags, "true")) {
-          throw new PlatformServiceException(
-              Status.BAD_REQUEST,
-              "YSQL major version upgrade is only supported when expression pushdown is disabled."
-                  + " Please remove override before proceeding with the upgrade.");
-        }
-      }
     }
   }
 

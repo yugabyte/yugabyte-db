@@ -141,7 +141,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           if (requireYsqlMajorVersionUpgrade) {
             if (!skipGflagChangeBeforeMajorUpgrade
                 && nodesToApply.mastersList.size() == universe.getMasters().size()) {
-              // Set ysql_yb_enable_expression_pushdown to false for tservers for ysql major
+              // Set yb_major_version_upgrade_compatibility to 11 for tservers for ysql major
               // upgrade.
               createGFlagsUpgradeTaskForYSQLMajorUpgrade(
                   universe, YsqlMajorVersionUpgradeState.IN_PROGRESS);
