@@ -802,7 +802,16 @@ public class EncryptionAtRestController extends AuthenticatedController {
     ObjectNode formData = (ObjectNode) request.body().asJson();
     byte[] keyRef = Base64.getDecoder().decode(formData.get("reference").asText());
     UUID configUUID = UUID.fromString(formData.get("configUUID").asText());
-    byte[] recoveredKey = getRecoveredKeyOrBadRequest(universeUUID, configUUID, keyRef);
+    KmsHistory kmsHistory = EncryptionAtRestUtil.getKmsHistory(configUUID, keyRef);
+    if (kmsHistory == null) {
+      final String errMsg =
+          String.format(
+              "No KMS History found for universe '%s' and config '%s' with given key ref.",
+              universeUUID.toString(), configUUID.toString());
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+    byte[] recoveredKey =
+        getRecoveredKeyOrBadRequest(universeUUID, configUUID, keyRef, kmsHistory.encryptionContext);
     ObjectNode result =
         Json.newObject()
             .put("reference", keyRef)
@@ -816,8 +825,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return PlatformResults.withRawData(result);
   }
 
-  public byte[] getRecoveredKeyOrBadRequest(UUID universeUUID, UUID configUUID, byte[] keyRef) {
-    byte[] recoveredKey = keyManager.getUniverseKey(universeUUID, configUUID, keyRef);
+  public byte[] getRecoveredKeyOrBadRequest(
+      UUID universeUUID, UUID configUUID, byte[] keyRef, ObjectNode encryptionContext) {
+    byte[] recoveredKey =
+        keyManager.getUniverseKey(universeUUID, configUUID, keyRef, encryptionContext);
     if (recoveredKey == null || recoveredKey.length == 0) {
       final String errMsg =
           String.format("No universe key found for universe %s", universeUUID.toString());
@@ -854,6 +865,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                       .put("configUUID", history.getConfigUuid().toString())
                       .put("re_encryption_count", history.getUuid().reEncryptionCount)
                       .put("db_key_id", history.dbKeyId)
+                      .put("encryption_context", history.encryptionContext.toString())
                       .put("timestamp", history.getTimestamp().toString());
                 })
             .collect(Collectors.toList()));

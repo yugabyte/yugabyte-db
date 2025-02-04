@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager.RestoreKeyResult;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Universe;
@@ -51,7 +52,7 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
-    byte[] activeKeyRef = null;
+    EncryptionKey activeKeyRef = null;
     try {
       log.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
@@ -111,7 +112,9 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
             // Ensure the active universe key in YB is set back to what it was
             // before restore flow
             sendKeyToMasters(
-                universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID, activeKeyRef);
+                universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID,
+                activeKeyRef.getKeyBytes(),
+                activeKeyRef.getEncryptionContext());
           } else if (client.isEncryptionEnabled().getFirst()) {
             // If there is no active keyRef but encryption is enabled,
             // it means that the universe being restored into was not

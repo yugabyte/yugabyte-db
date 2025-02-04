@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.kms.services;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -23,6 +24,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import java.util.Base64;
@@ -199,9 +201,11 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
         .thenReturn(Json.newObject().put("access_token", "some_access_token"));
     encryptionService.createAuthConfig(
         testCustomerUUID, "some_config_name", Json.newObject().put("some_key", "some_val"));
-    byte[] encryptionKey = encryptionService.createKey(testUniUUID, testCustomerUUID, config);
+    EncryptionKey encryptionKey =
+        encryptionService.createKey(testUniUUID, testCustomerUUID, config);
     assertNotNull(encryptionKey);
-    assertEquals(new String(encryptionKey), mockKid);
+    assertNotNull(encryptionKey.getKeyBytes());
+    assertEquals(new String(encryptionKey.getKeyBytes()), mockKid);
   }
 
   @Test

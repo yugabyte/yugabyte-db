@@ -13,10 +13,13 @@ package com.yugabyte.yw.models;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.ebean.DB;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlUpdate;
+import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Encrypted;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Column;
@@ -78,6 +81,13 @@ public class KmsHistory extends Model {
       accessMode = READ_ONLY)
   public String dbKeyId;
 
+  @Constraints.Required
+  @Column(name = "encryption_context", nullable = false, columnDefinition = "TEXT")
+  @DbJson
+  @Encrypted
+  @ApiModelProperty(value = "Encryption Context")
+  public ObjectNode encryptionContext = Json.newObject();
+
   public static final Finder<KmsHistoryId, KmsHistory> find =
       new Finder<KmsHistoryId, KmsHistory>(KmsHistory.class) {};
 
@@ -102,6 +112,24 @@ public class KmsHistory extends Model {
       UUID targetUUID,
       KmsHistoryId.TargetType targetType,
       String keyRef,
+      String dbKeyId,
+      ObjectNode encryptionContext) {
+    return createKmsHistory(
+        configUUID,
+        targetUUID,
+        targetType,
+        keyRef,
+        getLatestReEncryptionCount(targetUUID),
+        dbKeyId,
+        encryptionContext,
+        true);
+  }
+
+  public static KmsHistory createKmsHistory(
+      UUID configUUID,
+      UUID targetUUID,
+      KmsHistoryId.TargetType targetType,
+      String keyRef,
       String dbKeyId) {
     return createKmsHistory(
         configUUID,
@@ -110,6 +138,7 @@ public class KmsHistory extends Model {
         keyRef,
         getLatestReEncryptionCount(targetUUID),
         dbKeyId,
+        Json.newObject(),
         true);
   }
 
@@ -121,7 +150,14 @@ public class KmsHistory extends Model {
       int reEncryptionCount,
       String dbKeyId) {
     return createKmsHistory(
-        configUUID, targetUUID, targetType, keyRef, reEncryptionCount, dbKeyId, false);
+        configUUID,
+        targetUUID,
+        targetType,
+        keyRef,
+        reEncryptionCount,
+        dbKeyId,
+        Json.newObject(),
+        false);
   }
 
   public static KmsHistory createKmsHistory(
@@ -131,6 +167,7 @@ public class KmsHistory extends Model {
       String keyRef,
       int reEncryptionCount,
       String dbKeyId,
+      ObjectNode encryptionContext,
       Boolean saveToDb) {
     KmsHistory keyHistory = new KmsHistory();
     keyHistory.uuid = new KmsHistoryId(keyRef, targetUUID, targetType, reEncryptionCount);
@@ -139,6 +176,11 @@ public class KmsHistory extends Model {
     keyHistory.setActive(false);
     keyHistory.setConfigUuid(configUUID);
     keyHistory.dbKeyId = dbKeyId;
+    // Encryption context cannot be null, so initialize it to an empty object.
+    if (encryptionContext == null) {
+      encryptionContext = Json.newObject();
+    }
+    keyHistory.encryptionContext = encryptionContext;
     if (saveToDb) {
       keyHistory.save();
     }
@@ -384,6 +426,7 @@ public class KmsHistory extends Model {
         .put("version", getVersion())
         .put("active", isActive())
         .put("re_encryption_count", uuid.reEncryptionCount)
+        .put("encryption_context", encryptionContext.toString())
         .toString();
   }
 }

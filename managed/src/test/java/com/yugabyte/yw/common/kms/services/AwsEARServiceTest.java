@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.kms.services;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.lenient;
@@ -38,6 +39,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.Customer;
@@ -131,12 +133,13 @@ public class AwsEARServiceTest extends FakeDBApplication {
             .withAliasName(String.format("alias/%s", testUniUUID.toString()))
             .withTargetKeyId(testCmkId);
     ListAliasesRequest listAliasReq = new ListAliasesRequest().withLimit(100);
-    byte[] encryptionKey = awsEARService.createKey(testUniUUID, testCustomerUUID, config);
+    EncryptionKey encryptionKey = awsEARService.createKey(testUniUUID, testCustomerUUID, config);
     verify(mockClient, times(1)).createKey(any(CreateKeyRequest.class));
     verify(mockClient, times(1)).listAliases(listAliasReq);
     verify(mockClient, times(1)).createAlias(createAliasReq);
     assertNotNull(encryptionKey);
-    assertEquals(new String(encryptionKey), new String(mockEncryptionKey));
+    assertNotNull(encryptionKey.getKeyBytes());
+    assertEquals(new String(encryptionKey.getKeyBytes()), new String(mockEncryptionKey));
   }
 
   @Test
@@ -148,12 +151,13 @@ public class AwsEARServiceTest extends FakeDBApplication {
             .withAliasName("alias/" + testUniUUID.toString())
             .withTargetKeyId(testCmkId);
     ListAliasesRequest listAliasReq = new ListAliasesRequest().withLimit(100);
-    byte[] encryptionKey = awsEARService.createKey(testUniUUID, testCustomerUUID, config);
+    EncryptionKey encryptionKey = awsEARService.createKey(testUniUUID, testCustomerUUID, config);
     verify(mockClient, times(1)).createKey(any(CreateKeyRequest.class));
     verify(mockClient, times(1)).listAliases(listAliasReq);
     verify(mockClient, times(1)).updateAlias(updateAliasReq);
     assertNotNull(encryptionKey);
-    assertEquals(new String(encryptionKey), new String(mockEncryptionKey));
+    assertNotNull(encryptionKey.getKeyBytes());
+    assertEquals(new String(encryptionKey.getKeyBytes()), new String(mockEncryptionKey));
   }
 
   @Test

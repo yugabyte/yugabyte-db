@@ -59,6 +59,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -995,16 +996,18 @@ public class UniverseCRUDHandler {
         // TODO: (Daniel) - Move this out to an async task
         if (primaryCluster.userIntent.enableVolumeEncryption
             && primaryCluster.userIntent.providerType.equals(Common.CloudType.aws)) {
-          byte[] cmkArnBytes =
+          EncryptionKey cmkArnBytes =
               keyManager.generateUniverseKey(
                   taskParams.encryptionAtRestConfig.kmsConfigUUID,
                   universe.getUniverseUUID(),
                   taskParams.encryptionAtRestConfig);
-          if (cmkArnBytes == null || cmkArnBytes.length == 0) {
+          if (cmkArnBytes == null
+              || cmkArnBytes.getKeyBytes() == null
+              || cmkArnBytes.getKeyBytes().length == 0) {
             primaryCluster.userIntent.enableVolumeEncryption = false;
           } else {
             // TODO: (Daniel) - Update this to be inside of encryptionAtRestConfig
-            taskParams.setCmkArn(new String(cmkArnBytes));
+            taskParams.setCmkArn(new String(cmkArnBytes.getKeyBytes()));
           }
         }
 
