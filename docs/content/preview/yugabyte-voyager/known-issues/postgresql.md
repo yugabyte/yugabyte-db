@@ -1503,90 +1503,90 @@ ERROR:  PREPARE TRANSACTION not supported yet
 
 There are certain limitations when reporting issues in [assess-migration](../../reference/assess-migration/) and [analyze-schema](../../reference/schema-migration/analyze-schema/) commands:
 
-### Normalized queries in `pg_stat_statements`
+1. Normalized queries in `pg_stat_statements`
 
-The `pg_stat_statements` extension in PostgreSQL tracks execution statistics of SQL queries by normalizing them. Since normalization removes the constants, the issues related to the constants for the following scenarios cannot be detected during assessment, and analyze:
+    The `pg_stat_statements` extension in PostgreSQL tracks execution statistics of SQL queries by normalizing them. Since normalization removes the constants, the issues related to the constants for the following scenarios cannot be detected during assessment, and analyze:
 
-- `JSON_TABLE` usage in DML statements.
-- **Non-decimal integer literals** in DML statements
-- Two-Phase Commit (XA syntax) (Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084))
+    - `JSON_TABLE` usage in DML statements.
+    - **Non-decimal integer literals** in DML statements
+    - Two-Phase Commit (XA syntax) (Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084))
 
-**Example:**
+    **Example:**
 
-```sql
---query stored in pg_stat_statements:
-SELECT $1 as binary; 
+    ```sql
+    --query stored in pg_stat_statements:
+    SELECT $1 as binary; 
 
---actual query:
-SELECT 0b101010 as binary;
-```
+    --actual query:
+    SELECT 0b101010 as binary;
+    ```
 
-### Transactional Queries in `pg_stat_statements`
+1. Transactional Queries in `pg_stat_statements`
 
-In `pg_stat_statements`, a single transaction is recorded as multiple separate query entries. This fragmentation makes it challenging to detect issues that occur within transaction boundaries, such as:
+    In `pg_stat_statements`, a single transaction is recorded as multiple separate query entries. This fragmentation makes it challenging to detect issues that occur within transaction boundaries, such as:
 
-- DDL operations within Transaction (Issue [#1404](https://github.com/yugabyte/yugabyte-db/issues/1404))
+    - DDL operations within Transaction (Issue [#1404](https://github.com/yugabyte/yugabyte-db/issues/1404))
 
-**Example:**
+    **Example:**
 
-```sql
-yugabyte=# \d test
-Did not find any relation named "test".
-yugabyte=# BEGIN;
-BEGIN
-yugabyte=*# CREATE TABLE test(id int, val text);
-CREATE TABLE
-yugabyte=*# \d test
-                Table "public.test"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- id     | integer |           |          | 
- val    | text    |           |          | 
-yugabyte=*# ROLLBACK;
-ROLLBACK
-yugabyte=# \d test
-                Table "public.test"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- id     | integer |           |          | 
- val    | text    |           |          | 
-```
+    ```sql
+    yugabyte=# \d test
+    Did not find any relation named "test".
+    yugabyte=# BEGIN;
+    BEGIN
+    yugabyte=*# CREATE TABLE test(id int, val text);
+    CREATE TABLE
+    yugabyte=*# \d test
+                    Table "public.test"
+    Column |  Type   | Collation | Nullable | Default 
+    --------+---------+-----------+----------+---------
+    id     | integer |           |          | 
+    val    | text    |           |          | 
+    yugabyte=*# ROLLBACK;
+    ROLLBACK
+    yugabyte=# \d test
+                    Table "public.test"
+    Column |  Type   | Collation | Nullable | Default 
+    --------+---------+-----------+----------+---------
+    id     | integer |           |          | 
+    val    | text    |           |          | 
+    ```
 
-### Determining the Type During Query Processing
+1. Determining the Type During Query Processing
 
-In complex queries, determining the type of data being handled is not always straightforward. This limitation affects the detection of **JSONB subscripting** in such queries, making it difficult to report issues accurately.
+    In complex queries, determining the type of data being handled is not always straightforward. This limitation affects the detection of **JSONB subscripting** in such queries, making it difficult to report issues accurately.
 
-**Example:**
+    **Example:**
 
-```sql
-select ab_data['name'] from (select data as ab_data from test_jsonb); --data is the JSONB column in test_jsonb table
-```
+    ```sql
+    select ab_data['name'] from (select data as ab_data from test_jsonb); --data is the JSONB column in test_jsonb table
+    ```
 
-### Parser Limitations
+1. Parser Limitations
 
-The internal [Golang PostgreSQL parser](https://github.com/pganalyze/pg_query_go) used for schema analysis and migration assessment has certain limitations within PL/pgSQL blocks. This leads to not being able to detect issues on the statements embedded inside: Expressions, Conditions, Assignments, Loop variables, Function call arguments, and so on.
+    The internal [Golang PostgreSQL parser](https://github.com/pganalyze/pg_query_go) used for schema analysis and migration assessment has certain limitations within PL/pgSQL blocks. This leads to not being able to detect issues on the statements embedded inside: Expressions, Conditions, Assignments, Loop variables, Function call arguments, and so on.
 
-**Example:**
+    **Example:**
 
-```sql
-CREATE OR REPLACE FUNCTION example() 
-RETURNS VOID AS $$
-DECLARE
-    x TEXT; -- Adjust the type based on jsonb value type
-BEGIN
-    x := (SELECT jsonb_column['value'] FROM orders WHERE id = 1);
-    -- Further processing logic here
-    RAISE NOTICE 'Extracted value: %', x;
-END;
-$$ LANGUAGE plpgsql;
-```
+    ```sql
+    CREATE OR REPLACE FUNCTION example() 
+    RETURNS VOID AS $$
+    DECLARE
+        x TEXT; -- Adjust the type based on jsonb value type
+    BEGIN
+        x := (SELECT jsonb_column['value'] FROM orders WHERE id = 1);
+        -- Further processing logic here
+        RAISE NOTICE 'Extracted value: %', x;
+    END;
+    $$ LANGUAGE plpgsql;
+    ```
 
-### Global Objects
+1. Global Objects
 
-Global objects in PostgreSQL are database-level objects that are not tied to a specific schema. Some of these following objects are not fully supported in schema analysis and migration assessments for detecting issues.
+    Global objects in PostgreSQL are database-level objects that are not tied to a specific schema. Some of these following objects are not fully supported in schema analysis and migration assessments for detecting issues.
 
-**Example:**
+    **Example:**
 
-- `CREATE ACCESS METHOD` / `ALTER ACCESS METHOD`
-- `CREATE SERVER`
-- `CREATE DATABASE` with certain options (for example, `ICU_LOCALE`, `LOCALE_PROVIDER`)
+    - `CREATE ACCESS METHOD` / `ALTER ACCESS METHOD`
+    - `CREATE SERVER`
+    - `CREATE DATABASE` with certain options (for example, `ICU_LOCALE`, `LOCALE_PROVIDER`)
