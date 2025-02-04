@@ -1042,6 +1042,24 @@
   to = "/preview/tutorials/cdc-tutorials/:splat"
   force = true
 
+# CDC was in explore, now in Develop
+[[redirects]]
+  from = "/preview/explore/change-data-capture/using-logical-replication/*"
+  to = "/preview/develop/change-data-capture/using-logical-replication/:splat"
+  force = true
+[[redirects]]
+  from = "/stable/explore/change-data-capture/using-logical-replication/*"
+  to = "/stable/develop/change-data-capture/using-logical-replication/:splat"
+  force = true
+
+[[redirects]]
+  from = "/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
+  to = "/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/:splat"
+  force = true
+[[redirects]]
+  from = "/stable/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
+  to = "/stable/develop/change-data-capture/using-yugabytedb-grpc-replication/:splat"
+  force = true
 
 # Redirect older versions of specific sections
 
