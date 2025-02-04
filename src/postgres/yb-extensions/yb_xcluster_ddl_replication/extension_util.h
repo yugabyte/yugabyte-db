@@ -20,6 +20,7 @@
 #define YB_XCLUSTER_DDL_REPLICATION_UTIL
 
 #include "postgres.h"
+#include "tcop/deparse_utility.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 
@@ -61,13 +62,27 @@ extern const char *kManualReplicationErrorMsg;
 extern bool TEST_AllowColocatedObjects;
 
 /* Get int64 value from string extension variable. */
-int64		GetInt64FromVariable(const char *var, const char *var_name);
+extern int64 GetInt64FromVariable(const char *var, const char *var_name);
 
 /*
  * XClusterExtensionOwner returns the oid of the user that owns the extension.
  * This is used in INIT_MEM_CONTEXT_AND_SPI_CONNECT to allow the extension to
  * update its objects.
  */
-Oid			XClusterExtensionOwner(void);
+extern Oid XClusterExtensionOwner(void);
+
+extern Oid SPI_GetOid(HeapTuple spi_tuple, int column_id);
+
+extern char *SPI_GetText(HeapTuple spi_tuple, int column_id);
+
+extern bool SPI_GetBool(HeapTuple spi_tuple, int column_id);
+
+extern CollectedCommand *GetCollectedCommand(HeapTuple spi_tuple, int column_id);
+
+extern char *SPI_TextArrayGetElement(HeapTuple spi_tuple, int column_id,
+									 int element_index);
+
+/* If true, any object in this schema is a temporary object. */
+extern bool IsTempSchema(const char *schema_name);
 
 #endif

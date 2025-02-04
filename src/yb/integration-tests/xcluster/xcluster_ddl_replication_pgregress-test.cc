@@ -220,4 +220,18 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropEnum) {
   ASSERT_OK(TestPgRegress("create_enum.sql", "drop_enum.sql"));
 }
 
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTemp) {
+  ASSERT_OK(TestPgRegress("temporary_objects.sql", ""));
+
+  // Ensure no DDLs on temporary objects got replicated.  For this test, there should be no DDLs on
+  // non-temporary objects so it suffices to check that the count of replicated DDLs is 0.
+  //
+  // TODO(#25885): When triggers are working and uncommented in the test, this will have to be
+  // adjusted to exclude DDLs for creating functions as they are non-temporary objects.
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto num_replicated_ddls = ASSERT_RESULT(
+      conn.FetchRowAsString("SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue;", ","));
+  ASSERT_EQ(num_replicated_ddls, "0");
+}
+
 }  // namespace yb

@@ -17,13 +17,17 @@
  */
 
 #include "extension_util.h"
+
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_extension.h"
 #include "catalog/pg_extension_d.h"
+#include "executor/spi.h"
+#include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/lsyscache.h"
 #include "utils/relcache.h"
 
 const char *kManualReplicationErrorMsg =
@@ -84,4 +88,100 @@ XClusterExtensionOwner(void)
 	/* Cache this value for future calls. */
 	CachedExtensionOwnerOid = extensionOwner;
 	return extensionOwner;
+}
+
+Oid
+SPI_GetOid(HeapTuple spi_tuple, int column_id)
+{
+	bool		is_null;
+	Oid			oid = DatumGetObjectId(SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc,
+													 column_id, &is_null));
+
+	if (is_null)
+		elog(ERROR, "Found NULL value when parsing oid (column %d)", column_id);
+	return oid;
+}
+
+char *
+SPI_GetText(HeapTuple spi_tuple, int column_id)
+{
+	return SPI_getvalue(spi_tuple, SPI_tuptable->tupdesc, column_id);
+}
+
+bool
+SPI_GetBool(HeapTuple spi_tuple, int column_id)
+{
+	bool		is_null;
+	bool		val = DatumGetBool(SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc,
+												 column_id, &is_null));
+
+	if (is_null)
+		elog(ERROR, "Found NULL value when parsing bool (column %d)", column_id);
+	return val;
+}
+
+CollectedCommand *
+GetCollectedCommand(HeapTuple spi_tuple, int column_id)
+{
+	bool		isnull;
+	Pointer		command_datum = DatumGetPointer(SPI_getbinval(spi_tuple,
+															  SPI_tuptable->tupdesc, column_id,
+															  &isnull));
+
+	if (isnull)
+		elog(ERROR, "Found NULL value when parsing command (column %d)", column_id);
+	return (CollectedCommand *) command_datum;
+}
+
+/*
+ * elog's an ERROR if column column_id of spi_tuple does not hold a (possibly
+ * NULL) text[] value.  Otherwise, examines that value and
+ *
+ *   - returns NULL if the the value does not have an element at index
+ *     element_index
+ *   - otherwise returns the element of the array at that index as a palloc'ed
+ *     C string.
+ */
+char *
+SPI_TextArrayGetElement(HeapTuple spi_tuple, int column_id, int element_index)
+{
+	bool		is_null;
+	Datum		array_datum;
+	ArrayType  *array;
+	Oid			element_type;
+	int16		typlen;
+	bool		typbyval;
+	char		typalign;
+	Datum	   *elements;
+	int			num_elements;
+	char	   *result = NULL;
+
+	array_datum = SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc, column_id, &is_null);
+	if (is_null)
+		return NULL;
+
+	array = DatumGetArrayTypeP(array_datum);
+	element_type = ARR_ELEMTYPE(array);
+	if (element_type != TEXTOID)
+		elog(ERROR, "Expected text[] but found different type %u",
+			 element_type);
+
+	get_typlenbyvalalign(element_type, &typlen, &typbyval, &typalign);
+	deconstruct_array(array, element_type, typlen, typbyval, typalign,
+					  &elements, /*elog on NULL values*/ NULL,
+					  &num_elements);
+
+	if (element_index >= 0 && element_index < num_elements)
+	{
+		result = pstrdup(TextDatumGetCString(elements[element_index]));
+	}
+	pfree(elements);
+
+	return result;
+}
+
+bool
+IsTempSchema(const char *schema_name)
+{
+	return schema_name && !strcmp(schema_name, "pg_temp");
 }
