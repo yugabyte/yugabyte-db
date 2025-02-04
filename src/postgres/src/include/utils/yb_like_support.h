@@ -33,5 +33,5 @@
  * yb_make_greater_string.  If, in the future, postgres decides to expose
  * make_greater_string via a like_support.h, this can be replaced by that.
  */
-Const *yb_make_greater_string(const Const *str_const, FmgrInfo *ltproc,
-							  Oid collation);
+Const	   *yb_make_greater_string(const Const *str_const, FmgrInfo *ltproc,
+								   Oid collation);

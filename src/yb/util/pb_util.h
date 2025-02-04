@@ -184,6 +184,20 @@ Result<T> ParseFromSlice(const Slice& slice) {
   return result;
 }
 
+template <typename T>
+std::string JoinRepeatedPBs(const google::protobuf::RepeatedPtrField<T>& pbs) {
+  std::string result;
+  bool first = true;
+  for (const auto& pb : pbs) {
+    if (!first) {
+      result += ", ";
+    }
+    result += pb.ShortDebugString();
+    first = false;
+  }
+  return result;
+}
+
 // Load a protobuf from the given path.
 Status ReadPBFromPath(Env* env, const std::string& path, MessageLite* msg);
 

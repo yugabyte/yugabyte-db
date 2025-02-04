@@ -28,7 +28,7 @@ Performance Advisor provides recommendations for a number of issues.
 
 ### Index suggestions
 
-Performance Advisor suggests dropping unused indexes to improve write performance and increase storage space. Performance Advisor uses the [pg_stat_all_indexes view](https://www.postgresql.org/docs/11/monitoring-stats.html#PG-STAT-ALL-INDEXES-VIEW) to determine unused indexes. Any index with an `idx_scan` of 0 is considered unused.
+Performance Advisor suggests dropping unused indexes to improve write performance and increase storage space. Performance Advisor uses the [pg_stat_all_indexes view](https://www.postgresql.org/docs/15/monitoring-stats.html#PG-STAT-ALL-INDEXES-VIEW) to determine unused indexes. Any index with an `idx_scan` of 0 is considered unused.
 
 Indexes take up storage space on the same disk volume as the main table. They also increase the size of backups and can add to backup and restore time.
 

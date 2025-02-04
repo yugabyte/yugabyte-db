@@ -40,10 +40,11 @@ const std::string kDDLCommandCreateIndex = "CREATE INDEX";
 class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
  public:
   explicit XClusterDDLQueueHandlerMocked(
-      const client::YBTableName& table_name, MockTserverXClusterContext& xcluster_context)
+      const client::YBTableName& target_table_name, MockTserverXClusterContext& xcluster_context)
       : XClusterDDLQueueHandler(
-            /* local_client */ nullptr, table_name.namespace_name(), table_name.namespace_id(),
-            /* log_prefix */ "", xcluster_context, /* connect_to_pg_func */ nullptr) {}
+            /* local_client */ nullptr, target_table_name.namespace_name(),
+            /* source_namespace_id */ "", target_table_name.namespace_id(), /* log_prefix */ "",
+            xcluster_context, /* connect_to_pg_func */ nullptr) {}
 
   Status ProcessDDLQueueTable(
       const std::optional<HybridTime>& apply_safe_time, int num_records = 1) {

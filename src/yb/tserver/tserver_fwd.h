@@ -14,12 +14,15 @@
 #pragma once
 
 #include <functional>
+#include <type_traits>
+#include <utility>
 
 #include "yb/tserver/backup.fwd.h"
 #include "yb/tserver/tserver.fwd.h"
 #include "yb/tserver/tserver_service.fwd.h"
 
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 
@@ -35,6 +38,7 @@ namespace tserver {
 class Heartbeater;
 class LocalTabletServer;
 class MetricsSnapshotter;
+class PgClientServiceMockImpl;
 class PgTableCache;
 class PgResponseCache;
 class PgSequenceCache;
@@ -74,5 +78,9 @@ template <typename T>
 struct HasRaftConfigOpidIndex<
     T, std::void_t<decltype(std::declval<T>().raft_config_opid_index())>>
     : std::true_type {};
+
+struct PgTxnSnapshot;
+YB_STRONGLY_TYPED_UUID_DECL(PgTxnSnapshotLocalId);
+
 } // namespace tserver
 } // namespace yb

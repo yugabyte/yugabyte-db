@@ -44,6 +44,9 @@ step s2_try_xact_lock_shared { SELECT pg_try_advisory_xact_lock_shared(1); }
 step s2_try_xact_lock_bigint { SELECT pg_try_advisory_xact_lock(1, 1); }
 step s2_try_xact_lock_bigint_shared { SELECT pg_try_advisory_xact_lock_shared(1, 1); }
 
+step s2_lock_bigint_shared { SELECT pg_advisory_lock_shared(1, 1); }
+step s2_unlock_bigint_shared { SELECT pg_advisory_unlock_shared(1, 1); }
+
 # Test the exclusive and shared mode conflict matrix.
 permutation s1_begin_rr s1_xact_lock s2_begin_rr s2_xact_lock s1_commit s2_commit
 permutation s1_begin_rr s1_xact_lock s2_begin_rr s2_xact_lock_shared s1_commit s2_commit
@@ -76,6 +79,7 @@ permutation s1_unlock_bigint_shared
 permutation s1_unlock_all
 
 permutation s1_unlock s1_lock s1_unlock_shared s1_lock_shared s1_unlock_shared s1_unlock
+permutation s1_lock_bigint_shared s2_lock_bigint_shared s1_lock_bigint s2_unlock_bigint_shared s1_unlock_bigint s1_unlock_bigint_shared
 
 # Rolling back a transaction or a savepoint should release any advisory locks in that scope
 permutation s1_begin_rr s1_xact_lock s2_begin_rr s2_xact_lock s1_rollback s2_commit

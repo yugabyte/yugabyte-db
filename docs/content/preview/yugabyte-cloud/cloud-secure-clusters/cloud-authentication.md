@@ -46,7 +46,7 @@ Connections using SSL mode `disable` will fail. You can use other SSL modes to c
 
 If you don't provide an SSL mode, the connection defaults to `prefer`.
 
-For information on SSL modes, refer to [Protection Provided in Different Modes](https://www.postgresql.org/docs/11/libpq-ssl.html#LIBPQ-SSL-PROTECTION) in the PostgreSQL documentation.
+For information on SSL modes, refer to [Protection Provided in Different Modes](https://www.postgresql.org/docs/15/libpq-ssl.html#LIBPQ-SSL-PROTECTION) in the PostgreSQL documentation.
 
 ## SSL connections in YCQL
 

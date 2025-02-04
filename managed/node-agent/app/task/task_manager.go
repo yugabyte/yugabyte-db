@@ -146,10 +146,7 @@ func (m *TaskManager) Submit(
 		return errors.New("Task ID is not valid")
 	}
 	bgCtx, cancel := context.WithCancel(context.Background())
-	correlationID := util.CorrelationID(ctx)
-	if correlationID != "" {
-		bgCtx = util.WithCorrelationID(bgCtx, correlationID)
-	}
+	bgCtx = util.InheritTracingIDs(ctx, bgCtx)
 	i, ok := m.taskInfos.LoadOrStore(
 		taskID,
 		&taskInfo{

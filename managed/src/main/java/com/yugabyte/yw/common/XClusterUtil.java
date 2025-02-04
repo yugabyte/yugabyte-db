@@ -105,8 +105,6 @@ public class XClusterUtil {
     switch (namespaceStatus) {
       case Failed:
         return XClusterTableConfig.Status.Failed;
-      case Error:
-        return XClusterTableConfig.Status.Error;
       case Warning:
         return XClusterTableConfig.Status.Warning;
       case Updating:
@@ -118,7 +116,7 @@ public class XClusterUtil {
       case Running:
         return XClusterTableConfig.Status.Running;
       default:
-        return XClusterTableConfig.Status.ReplicationError;
+        return XClusterTableConfig.Status.Error;
     }
   }
 }

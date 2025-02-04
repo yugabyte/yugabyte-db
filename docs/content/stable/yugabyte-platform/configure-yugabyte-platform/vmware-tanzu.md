@@ -1,9 +1,9 @@
 ---
-title: Configure the VMware Tanzu cloud provider
+title: Configure the VMware Tanzu provider configuration
 headerTitle: Create Kubernetes provider configuration
 linkTitle: Kubernetes
 description: Configure the VMware Tanzu provider configuration
-headContent: For deploying universes on VMware Tanzu
+headContent: For deploying universes on Kubernetes
 menu:
   stable_yugabyte-platform:
     identifier: set-up-kubernetes-provider-2

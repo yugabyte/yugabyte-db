@@ -19,9 +19,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
+@Slf4j
 public class PrecheckNodeDetached extends AbstractTaskBase {
 
   private final NodeManager nodeManager;
@@ -71,12 +73,16 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
                 .collect(Collectors.toList());
         if (failedChecks.size() > 0) {
           response.code = 1;
+          List<String> failedCheckNames =
+              failedChecks.stream().map(v -> v.getType().toString()).collect(Collectors.toList());
+          log.error("Node {} has failed preflight checks: {}", nodeName, failedCheckNames);
           response.message = Json.toJson(failedChecks).toPrettyString();
         }
       } catch (IllegalArgumentException e) {
         for (JsonNode node : responseJson) {
           if (!node.isBoolean() || !node.asBoolean()) {
             // If a check failed, change the return code so processShellResponse errors.
+            log.error("Node {} has failed preflight checks", nodeName, e);
             response.code = 1;
             break;
           }

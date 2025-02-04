@@ -39,8 +39,8 @@ extern bool yb_disable_transactional_writes;
  */
 extern bool yb_enable_upsert_mode;
 
-//------------------------------------------------------------------------------
-// YugaByte modify table API.
+/* ------------------------------------------------------------------------------ */
+/* YugaByte modify table API. */
 
 typedef void (*yb_bind_for_write_function) (YbcPgStatement stmt,
 											void *indexstate,
@@ -159,6 +159,7 @@ extern bool YBCExecuteDelete(Relation rel,
 							 YbcPgTransactionSetting transaction_setting,
 							 bool changingPart,
 							 EState *estate);
+
 /*
  * Delete a tuple (identified by index columns and base table ybctid) from an
  * index's backing YugaByte index table.
@@ -205,6 +206,7 @@ extern bool YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 extern bool YBCExecuteUpdateLoginAttempts(Oid roleid,
 										  int failed_attempts,
 										  char rolprfstatus);
+
 /*
  * Replace a row in a YugaByte table by first deleting an existing row
  * (identified by ybctid) and then inserting a tuple to replace it.
@@ -217,11 +219,13 @@ extern void YBCExecuteUpdateReplace(Relation rel,
 									TupleTableSlot *slot,
 									EState *estate);
 
-//------------------------------------------------------------------------------
-// System tables modify-table API.
-// For system tables we identify rows to update/delete directly by primary key
-// and execute them directly (rather than needing to read ybctid first).
-// TODO This should be used for regular tables whenever possible.
+/* ------------------------------------------------------------------------------ */
+/*
+ * System tables modify-table API.
+ * For system tables we identify rows to update/delete directly by primary key
+ * and execute them directly (rather than needing to read ybctid first).
+ * TODO This should be used for regular tables whenever possible.
+ */
 
 extern void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple);
 
@@ -233,8 +237,8 @@ extern void YBCUpdateSysCatalogTupleForDb(Oid dboid,
 										  HeapTuple oldtuple,
 										  HeapTuple tuple);
 
-//------------------------------------------------------------------------------
-// Utility methods.
+/* ------------------------------------------------------------------------------ */
+/* Utility methods. */
 
 extern bool YBCIsSingleRowTxnCapableRel(ResultRelInfo *resultRelInfo);
 

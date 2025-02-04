@@ -14,7 +14,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP OPERATOR CLASS` statement to remove an operator class.
+Use the DROP OPERATOR CLASS statement to remove an operator class.
 
 ## Syntax
 
@@ -41,5 +41,6 @@ yugabyte=# DROP OPERATOR CLASS my_op_class USING btree;
 
 ## See also
 
-- [`CREATE OPERATOR CLASS`](../ddl_create_operator_class)
-- [postgresql-docs-drop-operator-class](https://www.postgresql.org/docs/current/sql-dropopclass.html)
+- [CREATE OPERATOR CLASS](../ddl_create_operator_class)
+
+[postgresql-docs-drop-operator-class]: https://www.postgresql.org/docs/15/sql-dropopclass.html

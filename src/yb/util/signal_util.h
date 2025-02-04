@@ -69,4 +69,7 @@ typename std::invoke_result<Functor>::type WithMaskedYsqlSignals(Functor callbac
   return std::move(callback_status);
 }
 
+// Installs signal handler. Safe to call before glog is initialized. This is not thread safe.
+Status InstallSignalHandler(int signum, void (*handler)(int));
+
 } // namespace yb

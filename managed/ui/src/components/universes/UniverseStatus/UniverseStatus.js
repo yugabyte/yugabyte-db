@@ -58,13 +58,28 @@ export default class UniverseStatus extends Component {
     });
   };
 
+  rollbackTaskClicked = (currentTaskUUID, universeUUID) => {
+    this.props.rollbackCurrentTask(currentTaskUUID).then((response) => {
+      const status = response?.payload?.response?.status || response?.payload?.status;
+      if (status === 200 || status === 201) {
+        browserHistory.push(`/universes/${universeUUID}/tasks`);
+      } else {
+        const taskResponse = response?.payload?.response;
+        const toastMessage = taskResponse?.data?.error
+          ? taskResponse?.data?.error
+          : taskResponse?.statusText;
+        toast.error(toastMessage);
+      }
+    });
+  };
+
   redirectToTaskLogs = (taskUUID, universeUUID) => {
     taskUUID
       ? browserHistory.push(`/tasks/${taskUUID}`)
       : browserHistory.push(`/universes/${universeUUID}/tasks`);
   };
 
-  
+
   render() {
     const {
       currentUniverse,
@@ -246,6 +261,30 @@ export default class UniverseStatus extends Component {
                   btnClass="btn btn-default view-task-details-btn"
                   onClick={() =>
                     this.retryTaskClicked(failedTask?.id, currentUniverse.universeUUID)
+                  }
+                />
+              </RbacValidator>
+            )}
+          {shouldDisplayTaskButton &&
+            !universePendingTask &&
+            failedTask !== undefined &&
+            failedTask?.canRollback &&
+            ![
+              SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
+              SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
+            ].includes(failedTask?.type) && (
+              <RbacValidator
+                accessRequiredOn={{
+                  onResource: currentUniverse.universeUUID,
+                  ...ApiPermissionMap.ROLLBACK_TASKS
+                }}
+                isControl
+              >
+                <YBButton
+                  btnText={'Rollback Task'}
+                  btnClass="btn btn-default view-task-details-btn"
+                  onClick={() =>
+                    this.rollbackTaskClicked(failedTask?.id, currentUniverse.universeUUID)
                   }
                 />
               </RbacValidator>

@@ -61,7 +61,6 @@ export const InstallNodeAgentModal = (props: InstallNodeAgentModalProps) => {
   const theme = useTheme();
   const classes = useStyles();
 
-  // Add useEffect to set selectedNodeName after universeQuery loads with node list.
   const universeQuery = useQuery(universeQueryKey.detail(universeUuid), () =>
     api.fetchUniverse(universeUuid)
   );

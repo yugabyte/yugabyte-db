@@ -27,7 +27,8 @@ echo "$1" \
       lineno=$(echo "$line" | cut -f3 | grep -Eo '^[0-9]+')
 
       if [[ "$symbol" != Ybc* ]]; then
-        echo "error:missing_ybc_prefix:$lineno:$(sed -n "$lineno"p "$1")"
+        echo 'error:missing_ybc_prefix:This type should have "Ybc" prefix:'\
+"$lineno:$(sed -n "$lineno"p "$1")"
       fi
 
       if grep -q "^} $symbol;" "$1"; then
@@ -56,6 +57,8 @@ echo "$1" \
         other_symbol=$symbol
       fi
       if [[ "$other_symbol" != "$symbol" ]]; then
-        echo "error:mismatching_typename:$lineno:$(sed -n "$lineno"p "$1")"
+        echo 'error:mismatching_typename:'\
+'The typedef name should match the enum/struct/union name:'\
+"$lineno:$(sed -n "$lineno"p "$1")"
       fi
     done

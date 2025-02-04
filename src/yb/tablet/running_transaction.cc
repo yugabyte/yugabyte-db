@@ -182,6 +182,7 @@ void RunningTransaction::Abort(client::YBClient* client,
   abort_waiters_.push_back(std::move(callback));
   auto status_tablet = this->status_tablet();
   abort_request_in_progress_ = true;
+  auto shared_self = shared_from_this();
   lock->unlock();
   VLOG_WITH_PREFIX(3) << "Abort request: " << was_empty;
   if (!was_empty) {
@@ -197,13 +198,13 @@ void RunningTransaction::Abort(client::YBClient* client,
           nullptr /* tablet */,
           client,
           &req,
-          [status_tablet, self = shared_from_this(), weak_context = context_.RetainWeak()](
+          [status_tablet, shared_self, weak_context = context_.RetainWeak()](
               const Status& status, const tserver::AbortTransactionResponsePB& response) {
             auto context_lock = weak_context.lock();
             if (!context_lock) {
               return;
             }
-            self->AbortReceived(status_tablet, status, response);
+            shared_self->AbortReceived(status_tablet, status, response);
           }),
       &abort_handle_);
 }

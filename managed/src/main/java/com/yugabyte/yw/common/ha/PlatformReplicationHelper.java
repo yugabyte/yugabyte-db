@@ -17,20 +17,25 @@ import com.google.inject.Singleton;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigValue;
 import com.typesafe.config.ConfigValueFactory;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SwamperHelper;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager.PlatformBackupParams;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.metrics.MetricUrlProvider;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -47,6 +52,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pekko.actor.Cancellable;
 import org.apache.velocity.Template;
@@ -69,7 +75,7 @@ public class PlatformReplicationHelper {
   private static final String REPLICATION_SCHEDULE_ENABLED_KEY =
       "yb.ha.replication_schedule_enabled";
   private static final String NUM_BACKUP_RETENTION_KEY = "yb.ha.num_backup_retention";
-  static final String REPLICATION_FREQUENCY_KEY = "yb.ha.replication_frequency";
+  public static final String REPLICATION_FREQUENCY_KEY = "yb.ha.replication_frequency";
   static final String DB_USERNAME_CONFIG_KEY = "db.default.username";
   static final String DB_PASSWORD_CONFIG_KEY = "db.default.password";
   static final String DB_HOST_CONFIG_KEY = "db.default.host";
@@ -92,6 +98,8 @@ public class PlatformReplicationHelper {
 
   private final PrometheusConfigManager prometheusConfigManager;
 
+  private final AlertConfigurationService alertConfigurationService;
+
   @VisibleForTesting ShellProcessHandler shellProcessHandler;
 
   @Inject
@@ -102,7 +110,8 @@ public class PlatformReplicationHelper {
       ShellProcessHandler shellProcessHandler,
       MetricUrlProvider metricUrlProvider,
       PrometheusConfigHelper prometheusConfigHelper,
-      PrometheusConfigManager prometheusConfigManager) {
+      PrometheusConfigManager prometheusConfigManager,
+      AlertConfigurationService alertConfigurationService) {
     this.confGetter = confGetter;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.remoteClientFactory = remoteClientFactory;
@@ -110,6 +119,7 @@ public class PlatformReplicationHelper {
     this.metricUrlProvider = metricUrlProvider;
     this.prometheusConfigHelper = prometheusConfigHelper;
     this.prometheusConfigManager = prometheusConfigManager;
+    this.alertConfigurationService = alertConfigurationService;
   }
 
   Path getBackupDir() {
@@ -203,6 +213,26 @@ public class PlatformReplicationHelper {
     runtimeConfigFactory
         .globalRuntimeConf()
         .setValue(REPLICATION_FREQUENCY_KEY, String.format("%d ms", duration.toMillis()));
+    List<AlertConfiguration> haStandbyAlertConfigs =
+        alertConfigurationService.list(
+            AlertConfigurationFilter.builder().template(AlertTemplate.HA_STANDBY_SYNC).build());
+    haStandbyAlertConfigs.forEach(
+        haStandbyAlertConfig -> {
+          haStandbyAlertConfig.setThresholds(
+              haStandbyAlertConfig.getThresholds().entrySet().stream()
+                  .collect(
+                      Collectors.toMap(
+                          Map.Entry::getKey,
+                          e ->
+                              new AlertConfigurationThreshold()
+                                  .setCondition(e.getValue().getCondition())
+                                  .setThreshold(
+                                      Math.max(
+                                          // Convert to minutes
+                                          2 * duration.toMillis() / 1000.0 / 60.0,
+                                          e.getValue().getThreshold())))));
+          alertConfigurationService.save(haStandbyAlertConfig);
+        });
   }
 
   JsonNode getBackupInfoJson(long frequency, boolean isRunning) {

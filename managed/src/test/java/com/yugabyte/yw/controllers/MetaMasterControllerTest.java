@@ -78,7 +78,9 @@ public class MetaMasterControllerTest extends FakeDBApplication {
       throws InterruptedException, ExecutionException, TimeoutException {
     String universeUUID = "11111111-2222-3333-4444-555555555555";
     Result result =
-        routeWithYWErrHandler(fakeRequest("GET", "/metamaster/universe/" + universeUUID));
+        routeWithYWErrHandler(
+            fakeRequest("GET", "/metamaster/universe/" + universeUUID)
+                .header(TokenAuthenticator.AUTH_TOKEN_HEADER, defaultUser.createAuthToken()));
     assertRestResult(result, false, BAD_REQUEST);
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -95,7 +97,10 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
     // Read the value back.
     Result result =
-        route(fakeRequest("GET", "/metamaster/universe/" + u.getUniverseUUID().toString()));
+        doRequestWithAuthToken(
+            "GET",
+            "/metamaster/universe/" + u.getUniverseUUID().toString(),
+            defaultUser.createAuthToken());
     assertRestResult(result, true, OK);
     // Verify that the correct data is present.
     JsonNode jsonNode = Json.parse(contentAsString(result));
@@ -169,14 +174,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
                   ImmutableList.of("10.0.0.1:" + value, "10.0.0.2:" + value, "10.0.0.3:" + value));
 
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
           assertEquals(expectedHostString, json.asText());
         });
@@ -194,14 +199,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
         (key, value) -> {
           String expectedHostString = "12.13.14.15:" + value;
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
           assertEquals(expectedHostString, json.asText());
         });
@@ -223,14 +228,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
           String completeString_2 =
               String.format("%s,%s", expectedHostString, expectedHostString_2);
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
           assertTrue(
               completeString.equals(json.asText()) || completeString_2.equals(json.asText()));
@@ -249,14 +254,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
         (key, value) -> {
           String expectedHostString = "56.78.90.1:" + value;
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
           assertEquals(expectedHostString, json.asText());
         });
@@ -274,14 +279,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
         (key, value) -> {
           String expectedHostString = "loadbalancer.hostname:" + value;
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
           assertEquals(expectedHostString, json.asText());
         });
@@ -299,14 +304,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
         (key, value) -> {
           String expectedHostString = "loadbalancer.hostname:" + value;
           Result r =
-              route(
-                  fakeRequest(
-                      "GET",
-                      "/api/customers/"
-                          + defaultCustomer.getUuid()
-                          + "/universes/"
-                          + universe.getUniverseUUID()
-                          + key));
+              doRequestWithAuthToken(
+                  "GET",
+                  "/api/customers/"
+                      + defaultCustomer.getUuid()
+                      + "/universes/"
+                      + universe.getUniverseUUID()
+                      + key,
+                  defaultUser.createAuthToken());
           JsonNode json = Json.parse(contentAsString(r));
           assertEquals(expectedHostString, json.asText());
         });
@@ -330,14 +335,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                route(
-                    fakeRequest(
-                        "GET",
-                        "/api/customers/"
-                            + defaultCustomer.getUuid()
-                            + "/universes/"
-                            + universeUUID
-                            + (isYql ? "/yqlservers" : "/redisservers"))));
+                doRequestWithAuthToken(
+                    "GET",
+                    "/api/customers/"
+                        + defaultCustomer.getUuid()
+                        + "/universes/"
+                        + universeUUID
+                        + (isYql ? "/yqlservers" : "/redisservers"),
+                    defaultUser.createAuthToken()));
     assertRestResult(result, false, BAD_REQUEST);
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -347,14 +352,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", aws));
 
     Result r =
-        route(
-            fakeRequest(
-                "GET",
-                "/api/customers/"
-                    + defaultCustomer.getUuid()
-                    + "/universes/"
-                    + u1.getUniverseUUID()
-                    + (isYql ? "/yqlservers" : "/redisservers")));
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + u1.getUniverseUUID()
+                + (isYql ? "/yqlservers" : "/redisservers"),
+            defaultUser.createAuthToken());
     assertRestResult(r, true, OK);
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -366,14 +371,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
             u1.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithYSQLNodes(false));
 
     Result r =
-        route(
-            fakeRequest(
-                "GET",
-                "/api/customers/"
-                    + defaultCustomer.getUuid()
-                    + "/universes/"
-                    + u1.getUniverseUUID()
-                    + "/ysqlservers"));
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + u1.getUniverseUUID()
+                + "/ysqlservers",
+            defaultUser.createAuthToken());
     assertRestResult(r, true, OK);
     assertEquals("", Json.parse(contentAsString(r)).asText());
     assertAuditEntry(0, defaultCustomer.getUuid());
@@ -385,14 +390,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
         Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithYSQLNodes(true));
 
     Result r =
-        route(
-            fakeRequest(
-                "GET",
-                "/api/customers/"
-                    + defaultCustomer.getUuid()
-                    + "/universes/"
-                    + u1.getUniverseUUID()
-                    + "/ysqlservers"));
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + u1.getUniverseUUID()
+                + "/ysqlservers",
+            defaultUser.createAuthToken());
     assertRestResult(r, true, OK);
     assertEquals(
         "10.0.0.1:5433,10.0.0.2:5433,10.0.0.3:5433", Json.parse(contentAsString(r)).asText());

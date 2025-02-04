@@ -127,7 +127,7 @@ The state of the system at time t = 50 ms is as follows:
 
 If a failover were to occur at this moment (t = 50 ms) the DR replica will be restored to its state as of the safe time (that is, t = .001 ms), meaning that T1 will be visible, but T3 will be hidden. T2 (which is still in transit) is currently not available on the DR Replica, and will be ignored when it arrives.
 
-In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1) and Repl_Lag(T3).
+In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1) and Repl_Lag(T2) (the transaction that is lagging the most).
 
 ### Tables
 

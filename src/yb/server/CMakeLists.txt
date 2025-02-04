@@ -77,8 +77,7 @@ target_link_libraries(server_base_proto
   yrpc
   yb_common_proto
   protobuf
-  rpc_header_proto
-  version_info_proto)
+  rpc_header_proto)
 
 #########################################
 # server_process

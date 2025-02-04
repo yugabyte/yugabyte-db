@@ -174,7 +174,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 								 true,	/* make extension dependency */
 								 false,
 								 false, /* ybRelationIsSystem */
-								 false /* ybRelationIsShared */);
+								 false /* ybRelationIsShared */ );
 
 	/* Post creation hook for new shell type */
 	InvokeObjectPostCreateHook(TypeRelationId, typoid, 0);
@@ -238,7 +238,7 @@ TypeCreate(Oid newTypeOid,
 		   int32 typNDims,		/* Array dimensions for baseType */
 		   bool typeNotNull,
 		   Oid typeCollation,
-		   bool ybRelationIsShared	/* only for relation rowtypes */)
+		   bool ybRelationIsShared /* only for relation rowtypes */ )
 {
 	Relation	pg_type_desc;
 	Oid			typeObjectId;

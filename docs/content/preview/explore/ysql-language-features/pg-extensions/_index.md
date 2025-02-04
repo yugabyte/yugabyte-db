@@ -31,21 +31,21 @@ You can install only extensions that are supported by YugabyteDB. If you are int
 
 ### PostgreSQL modules
 
-YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.org/docs/11/contrib.html). All of these modules are pre-bundled.
+YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.org/docs/15/contrib.html). All of these modules are pre-bundled.
 
 | Module | Description |
 | :----- | :---------- |
 | [auto_explain](extension-auto-explain/) | Provides a means for logging execution plans of slow statements automatically. |
 | [file_fdw](extension-file-fdw/) | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. |
 | [fuzzystrmatch](extension-fuzzystrmatch/) | Provides several functions to determine similarities and distance between strings. |
-| hstore | Implements the hstore data type for storing sets of key-value pairs in a single PostgreSQL value.<br/>For more information, see [hstore](https://www.postgresql.org/docs/11/hstore.html) in the PostgreSQL documentation. |
+| hstore | Implements the hstore data type for storing sets of key-value pairs in a single PostgreSQL value.<br/>For more information, see [hstore](https://www.postgresql.org/docs/15/hstore.html) in the PostgreSQL documentation. |
 | [passwordcheck](extension-passwordcheck/) | Checks user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it is rejected. |
 | [pgcrypto](extension-pgcrypto/) | Provides various cryptographic functions. |
 | [pg_stat_statements](extension-pgstatstatements/) | Provides a means for tracking execution statistics of all SQL statements executed by a server. |
-| [pg_trgm](../../../develop/learn/text-search/similarity-matching/#trigrams) | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings.<br/>For more information, see [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) in the PostgreSQL documentation. |
+| [pg_trgm](../../../develop/learn/text-search/similarity-matching/#trigrams) | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings.<br/>For more information, see [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) in the PostgreSQL documentation. |
 | [postgres_fdw](extension-postgres-fdw/) | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. |
 | [spi](extension-spi/) | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. |
-| sslinfo | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL.<br/>For more information, see [sslinfo](https://www.postgresql.org/docs/11/sslinfo.html) in the PostgreSQL documentation. |
+| sslinfo | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL.<br/>For more information, see [sslinfo](https://www.postgresql.org/docs/15/sslinfo.html) in the PostgreSQL documentation. |
 | [tablefunc](extension-tablefunc/) | Provides several table functions. For example, `normal_rand()` creates values, picked using a pseudorandom generator, from an ideal normal distribution. You specify how many values you want, and the mean and standard deviation of the ideal distribution. You use it in the same way that you use `generate_series()` |
 | [uuid-ossp](extension-uuid-ossp/) | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. |
 

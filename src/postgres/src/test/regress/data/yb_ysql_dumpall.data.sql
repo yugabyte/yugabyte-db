@@ -19,10 +19,21 @@ SET standard_conforming_strings = on;
 
 \set role_exists false
 \if :ignore_existing_roles
+    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'User_"_WITH_""_different''_''quotes'' and spaces') AS role_exists \gset
+\endif
+\if :role_exists
+    \echo 'Role already exists:' "User_""_WITH_""""_different'_'quotes' and spaces"
+\else
+    CREATE ROLE "User_""_WITH_""""_different'_'quotes' and spaces";
+\endif
+ALTER ROLE "User_""_WITH_""""_different'_'quotes' and spaces" WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
+
+\set role_exists false
+\if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role postgres already exists.'
+    \echo 'Role already exists:' postgres
 \else
     CREATE ROLE postgres;
 \endif
@@ -33,7 +44,7 @@ ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_db_admin') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role yb_db_admin already exists.'
+    \echo 'Role already exists:' yb_db_admin
 \else
     CREATE ROLE yb_db_admin;
 \endif
@@ -44,7 +55,7 @@ ALTER ROLE yb_db_admin WITH NOSUPERUSER NOINHERIT NOCREATEROLE NOCREATEDB NOLOGI
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_extension') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role yb_extension already exists.'
+    \echo 'Role already exists:' yb_extension
 \else
     CREATE ROLE yb_extension;
 \endif
@@ -55,7 +66,7 @@ ALTER ROLE yb_extension WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_fdw') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role yb_fdw already exists.'
+    \echo 'Role already exists:' yb_fdw
 \else
     CREATE ROLE yb_fdw;
 \endif
@@ -66,7 +77,7 @@ ALTER ROLE yb_fdw WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREP
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role yugabyte already exists.'
+    \echo 'Role already exists:' yugabyte
 \else
     CREATE ROLE yugabyte;
 \endif
@@ -77,7 +88,7 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role yugabyte_test already exists.'
+    \echo 'Role already exists:' yugabyte_test
 \else
     CREATE ROLE yugabyte_test;
 \endif

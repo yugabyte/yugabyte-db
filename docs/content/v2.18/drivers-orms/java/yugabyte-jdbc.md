@@ -110,14 +110,14 @@ The following table describes the connection parameters required to connect, inc
 
 | JDBC Parameter | Description | Default |
 | :------------- | :---------- | :------ |
-| hostname  | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost
-| port |  Listen port for YSQL | 5433
-| database | Database name | yugabyte
-| user | User connecting to the database | yugabyte
-| password | User password | yugabyte
-| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
-| `yb-servers-refresh-interval` | If `load-balance` is true, the interval in seconds to refresh the servers list | 300
-| `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
+| hostname  | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost |
+| port |  Listen port for YSQL | 5433 |
+| database | Database name | yugabyte |
+| user | User connecting to the database | yugabyte |
+| password | User password | yugabyte |
+| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
+| `yb-servers-refresh-interval` | If `load-balance` is true, the interval in seconds to refresh the servers list | 300 |
+| `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 
 The following is an example JDBC URL for connecting to YugabyteDB:
 
@@ -152,10 +152,10 @@ The following table describes the connection parameters required to connect usin
 
 | JDBC Parameter | Description | Default |
 | :---------- | :---------- | :------ |
-| ssl  | Enable SSL client connection | false
-| sslmode | SSL mode | require
-| sslrootcert | Path to the root certificate on your computer | ~/.postgresql/
-| sslhostnameverifier | Address of host name verifier; only used for YugabyteDB Aeon clusters where sslmode is verify-full. Driver v42.3.5-yb-2 and later only. | com.yugabyte.ysql.YBManagedHostnameVerifier
+| ssl  | Enable SSL client connection | false |
+| sslmode | SSL mode | require |
+| sslrootcert | Path to the root certificate on your computer | ~/.postgresql/ |
+| sslhostnameverifier | Address of host name verifier; only used for YugabyteDB Aeon clusters where sslmode is verify-full. Driver v42.3.5-yb-2 and later only. | com.yugabyte.ysql.YBManagedHostnameVerifier |
 
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 

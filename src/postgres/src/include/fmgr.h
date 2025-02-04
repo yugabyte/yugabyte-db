@@ -701,7 +701,7 @@ extern Datum OidReceiveFunctionCall(Oid functionId, fmStringInfo buf,
 									Oid typioparam, int32 typmod);
 extern bytea *SendFunctionCall(FmgrInfo *flinfo, Datum val);
 extern void StringInfoSendFunctionCall(fmStringInfo buf, FmgrInfo *flinfo,
-					   Datum val);
+									   Datum val);
 extern bytea *OidSendFunctionCall(Oid functionId, Datum val);
 
 

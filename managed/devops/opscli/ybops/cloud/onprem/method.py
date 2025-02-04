@@ -312,6 +312,8 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                                     args.master_rpc_port,
                                                     args.tserver_http_port,
                                                     args.tserver_rpc_port,
+                                                    args.yb_controller_http_port,
+                                                    args.yb_controller_rpc_port,
                                                     args.cql_proxy_http_port,
                                                     args.cql_proxy_rpc_port,
                                                     args.ysql_proxy_http_port,

@@ -40,9 +40,7 @@ void XClusterDDLReplicationTestBase::SetUp() {
 
 Status XClusterDDLReplicationTestBase::SetUpClusters(
     bool is_colocated, bool start_yb_controller_servers) {
-  if (is_colocated) {
-    namespace_name = "colocated_test_db";
-  }
+  namespace_name = is_colocated ? "colocated_test_db" : "test_db";
   const SetupParams kDefaultParams{
       // By default start with no consumer or producer tables.
       .num_consumer_tablets = {},
@@ -53,6 +51,7 @@ Status XClusterDDLReplicationTestBase::SetUpClusters(
       .num_masters = 1,
       .ranged_partitioned = false,
       .is_colocated = is_colocated,
+      .use_different_database_oids = true,
       .start_yb_controller_servers = start_yb_controller_servers,
   };
   RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters(kDefaultParams));
@@ -210,7 +209,8 @@ Status XClusterDDLReplicationTestBase::PrintDDLQueue(Cluster& cluster) {
   std::stringstream ss;
   ss << "DDL Queue Table:" << std::endl;
   for (const auto& [start_time, query_id, raw_json_data] : rows) {
-    ss << start_time << "\t" << query_id << "\t" << raw_json_data.substr(0, kMaxJsonStrLen)
+    // Serialized JSON string has an extra character at the front.
+    ss << start_time << "\t" << query_id << "\t" << raw_json_data.substr(1, kMaxJsonStrLen)
        << std::endl;
   }
   LOG(INFO) << ss.str();

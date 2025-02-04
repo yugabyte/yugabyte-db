@@ -215,4 +215,29 @@ TEST_F(PgAdvisoryLockTest, SessionAdvisoryLockReleaseUnlocksWaiters) {
   ASSERT_OK(status_future.get());
 }
 
+TEST_F(PgAdvisoryLockTest, SessionLockDeadlockWithRowLocks) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO foo SELECT generate_series(0, 11), 0"));
+
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(10)"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn2.Execute("UPDATE foo SET v=v+1 WHERE k=1"));
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Fetch("select pg_advisory_lock(10)"));
+    return Status::OK();
+  });
+  // Introduce a deadlock with session lock and row lock. Eventually conn1 will go through
+  // because of retries. conn2 cannot be retried since it is not the first statement.
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn1.Execute("UPDATE foo SET v=v+1 where k=1"));
+  ASSERT_TRUE(status_future.wait_for(2s * kTimeMultiplier) == std::future_status::ready);
+  ASSERT_NOK(status_future.get());
+  ASSERT_OK(conn2.RollbackTransaction());
+  ASSERT_OK(conn1.CommitTransaction());
+}
+
 } // namespace yb::pgwrapper

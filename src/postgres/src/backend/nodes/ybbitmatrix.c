@@ -64,7 +64,8 @@ YbInitBitMatrix(YbBitMatrix *matrix, int nrows, int ncols)
 
 	matrix->nrows = nrows;
 	matrix->ncols = ncols;
-	const int max_idx = matrix->nrows * matrix->ncols;
+	const int	max_idx = matrix->nrows * matrix->ncols;
+
 	if (max_idx)
 		matrix->data = bms_del_member(bms_add_member(NULL, max_idx), max_idx);
 }
@@ -100,16 +101,17 @@ YbBitMatrixSetRow(YbBitMatrix *matrix, int row_idx, bool value)
 	check_matrix_invariants(matrix);
 	check_row_invariants(matrix, row_idx);
 
-	int lower = row_idx * matrix->ncols;
-	int upper = lower + matrix->ncols - 1;
+	int			lower = row_idx * matrix->ncols;
+	int			upper = lower + matrix->ncols - 1;
 
 	/*
 	 * TODO(kramanathan): Optimize extra palloc in setting values to false.
 	 * This can be done be implementing a bms_del_range function.
 	 */
-	matrix->data = value ? bms_add_range(matrix->data, lower, upper) :
-						   bms_del_members(matrix->data,
-										   bms_add_range(NULL, lower, upper));
+	matrix->data = (value ?
+					bms_add_range(matrix->data, lower, upper) :
+					bms_del_members(matrix->data,
+									bms_add_range(NULL, lower, upper)));
 }
 
 /*
@@ -163,9 +165,10 @@ YbBitMatrixNextMemberInRow(const YbBitMatrix *matrix, int row_idx, int prev_col)
 	check_matrix_invariants(matrix);
 	check_row_invariants(matrix, row_idx);
 
-	int prevbit = (row_idx * matrix->ncols) + prev_col;
-	int nextbit = bms_next_member(matrix->data, prevbit);
-	int result = nextbit - prevbit + prev_col;
+	int			prevbit = (row_idx * matrix->ncols) + prev_col;
+	int			nextbit = bms_next_member(matrix->data, prevbit);
+	int			result = nextbit - prevbit + prev_col;
+
 	if (result > prev_col && result < matrix->ncols)
 		return result;
 
@@ -189,7 +192,9 @@ YbBitMatrixSetValue(YbBitMatrix *matrix, int row_idx, int col_idx, bool value)
 	check_column_invariants(matrix, col_idx);
 	check_row_invariants(matrix, row_idx);
 
-	const int idx = (row_idx * matrix->ncols) + col_idx;
-	matrix->data = value ? bms_add_member(matrix->data, idx) :
-						   bms_del_member(matrix->data, idx);
+	const int	idx = (row_idx * matrix->ncols) + col_idx;
+
+	matrix->data = (value ?
+					bms_add_member(matrix->data, idx) :
+					bms_del_member(matrix->data, idx));
 }

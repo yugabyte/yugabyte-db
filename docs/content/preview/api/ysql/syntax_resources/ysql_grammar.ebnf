@@ -1252,7 +1252,7 @@ trailing_select_clauses = [ 'FROM' ( from_item { ','  from_item } ) ] \
                           [ 'FETCH' ( 'FIRST' | 'NEXT' ) int_expression ( 'ROW' | 'ROWS' ) 'ONLY' ] \
                           { 'FOR' ( 'UPDATE' | 'NO KEY UPDATE' | 'SHARE' | 'KEY SHARE' ) [ 'OF' table_name { ',' table_name} ] [ 'NOWAIT' | 'SKIP LOCKED' ] };
 
-from_item = '<See https://www.postgresql.org/docs/11/sql-select.html>' ;
+from_item = '<See https://www.postgresql.org/docs/15/sql-select.html>' ;
 
 common_table_expression = cte_name [ '(' column_name { ',' column_name } ')' ] 'AS' '(' ( select | values | insert | update | delete ) ')' ;
 

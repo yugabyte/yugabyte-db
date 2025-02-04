@@ -1073,9 +1073,8 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 800 w: 2 } -> \
   {
     auto doc_key = dockv::MakeDocKey(kStrKey1, kIntKey1);
     const KeyBytes doc_key_bytes = doc_key.Encode();
-    boost::optional<const yb::Slice> doc_key_optional(doc_key_bytes.AsSlice());
     auto iter = CreateIntentAwareIterator(
-        doc_db(), BloomFilterMode::USE_BLOOM_FILTER, doc_key_optional,
+        doc_db(), BloomFilterOptions::Fixed(doc_key_bytes.AsSlice()),
         rocksdb::kDefaultQueryId, kMockTransactionalOperationContext,
         ReadOperationData::FromSingleReadTime(kSafeTime));
 
@@ -1113,9 +1112,8 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 800 w: 2 } -> \
   {
     auto doc_key = dockv::MakeDocKey(kStrKey2, kIntKey2);
     const KeyBytes doc_key_bytes = doc_key.Encode();
-    boost::optional<const yb::Slice> doc_key_optional(doc_key_bytes.AsSlice());
     auto iter = CreateIntentAwareIterator(
-        doc_db(), BloomFilterMode::USE_BLOOM_FILTER, doc_key_optional,
+        doc_db(), BloomFilterOptions::Fixed(doc_key_bytes.AsSlice()),
         rocksdb::kDefaultQueryId, kMockTransactionalOperationContext,
         ReadOperationData::FromSingleReadTime(kSafeTime));
 

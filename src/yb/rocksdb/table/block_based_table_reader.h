@@ -87,13 +87,17 @@ YB_DEFINE_ENUM(BlockType, (kData)(kIndex));
 // hashed components of key for filtering.
 // BloomFilterAwareFileFilter ignores an SST file completely if there are no keys with the same
 // hashed components as the key specified in constructor.
-class BloomFilterAwareFileFilter : public TableAwareReadFileFilter {
+class BloomFilterAwareFileFilter : public IteratorFilter {
  public:
-  BloomFilterAwareFileFilter();
+  bool Filter(
+      const QueryOptions& options, Slice user_key, FilterKeyCache* filter_key_cache,
+      void* context) const override {
+    return Filter(options, user_key, filter_key_cache, static_cast<TableReader*>(context));
+  }
 
   bool Filter(
-      const ReadOptions& read_options, Slice user_key, FilterKeyCache* filter_key_cache,
-      TableReader* reader) const override;
+      const QueryOptions& options, Slice user_key, FilterKeyCache* filter_key_cache,
+      TableReader* reader) const;
 };
 
 class BinarySearchIndexReader;
@@ -150,7 +154,7 @@ class BlockBasedTable : public TableReader {
   // @param skip_filters Disables loading/accessing the filter block.
   // key should be internal key in case bloom filters are used.
   Status Get(
-      const ReadOptions& readOptions, const Slice& key, GetContext* get_context,
+      const ReadOptions& read_options, const Slice& key, GetContext* get_context,
       bool skip_filters = false) override;
 
   // Pre-fetch the disk blocks that correspond to the key range specified by
@@ -234,10 +238,8 @@ class BlockBasedTable : public TableReader {
   // to get the correct filter block.
   // Note: even if we check prefix match we still need to get filter based on filter_key, not its
   // prefix, because prefix for the key goes to the same filter block as key itself.
-  CachableEntry<FilterBlockReader> GetFilter(const QueryId query_id,
-                                             bool no_io = false,
-                                             const Slice* filter_key = nullptr,
-                                             Statistics* statistics = nullptr) const;
+  CachableEntry<FilterBlockReader> GetFilter(const QueryOptions& options,
+                                             const Slice* filter_key = nullptr) const;
 
   // Returns index reader.
   // If index reader is not stored in either block or internal cache:
@@ -313,7 +315,7 @@ class BlockBasedTable : public TableReader {
 
   Status ReadPropertiesBlock(InternalIterator* meta_iter);
 
-  Status SetupFilter(InternalIterator* meta_iter);
+  Status SetupIteratorFilter(InternalIterator* meta_iter);
 
   // Read the meta block from sst.
   static Status ReadMetaBlock(

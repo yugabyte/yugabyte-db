@@ -57,9 +57,9 @@ void FreeYBCStatus(YbcStatus status) {
   Status yb_status(status, AddRef::kFalse);
 }
 
-const char* YBCPAllocStdString(const std::string& s) {
-  const size_t len = s.size();
-  char* result = static_cast<char*>(YBCPAlloc(len + 1));
+char* YBCPAllocStdString(const std::string& s) {
+  const auto len = s.size();
+  auto* result = static_cast<char*>(YBCPAlloc(len + 1));
   memcpy(result, s.c_str(), len);
   result[len] = 0;
   return result;

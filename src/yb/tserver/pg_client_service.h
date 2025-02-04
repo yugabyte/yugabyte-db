@@ -28,8 +28,9 @@
 
 #include "yb/server/server_base_options.h"
 
-#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_client.service.h"
+#include "yb/tserver/pg_txn_snapshot_manager.h"
 
 namespace yb {
 
@@ -97,6 +98,13 @@ class TserverXClusterContextIf;
     (CronGetLastMinute) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
+    (ExportTxnSnapshot) \
+    (ImportTxnSnapshot) \
+    (ClearExportedTxnSnapshots) \
+    /**/
+
+#define YB_PG_CLIENT_TRIVIAL_METHODS \
+    (PollVectorIndexReady) \
     /**/
 
 // Forwards call to corresponding PgClientSession async method (see
@@ -125,6 +133,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
   void InvalidateTableCache();
   void InvalidateTableCache(const std::unordered_set<uint32_t>& db_oids_updated,
                             const std::unordered_set<uint32_t>& db_oids_deleted);
+  Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 
   size_t TEST_SessionsCount();
 
@@ -134,8 +143,15 @@ class PgClientServiceImpl : public PgClientServiceIf {
       BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
       rpc::RpcContext context) override;
 
+#define YB_PG_CLIENT_TRIVIAL_METHOD_DECLARE(r, data, method) \
+  Result<BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)> method( \
+      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
+      CoarseTimePoint deadline) override;
+
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_METHODS);
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_ASYNC_METHODS);
+
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_TRIVIAL_METHOD_DECLARE, ~, YB_PG_CLIENT_TRIVIAL_METHODS);
 
  private:
   class Impl;
@@ -175,6 +191,11 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_SETTER_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
+
+  Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
+      const PgPollVectorIndexReadyRequestPB& req, CoarseTimePoint deadline) override {
+    return STATUS(NotSupported, "Mocking PollVectorIndexReady is not supported");
+  }
 
  private:
   PgClientServiceIf* impl_;

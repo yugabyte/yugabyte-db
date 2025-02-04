@@ -1067,7 +1067,7 @@ array_out(PG_FUNCTION_ARGS)
 		if (my_extra == NULL)
 		{
 			fcinfo->flinfo->fn_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
-													  sizeof(ArrayMetaState));
+														  sizeof(ArrayMetaState));
 			my_extra = (ArrayMetaState *) fcinfo->flinfo->fn_extra;
 			my_extra->element_type = ~element_type;
 		}
@@ -1078,11 +1078,11 @@ array_out(PG_FUNCTION_ARGS)
 			 * Get info about element type, including its output conversion proc
 			 */
 			get_type_io_data(element_type, IOFunc_output,
-						 &my_extra->typlen, &my_extra->typbyval,
-						 &my_extra->typalign, &my_extra->typdelim,
-						 &my_extra->typioparam, &my_extra->typiofunc);
+							 &my_extra->typlen, &my_extra->typbyval,
+							 &my_extra->typalign, &my_extra->typdelim,
+							 &my_extra->typioparam, &my_extra->typiofunc);
 			fmgr_info_cxt(my_extra->typiofunc, &my_extra->proc,
-					fcinfo->flinfo->fn_mcxt);
+						  fcinfo->flinfo->fn_mcxt);
 			my_extra->element_type = element_type;
 		}
 		typlen = my_extra->typlen;
@@ -1148,17 +1148,19 @@ array_out(PG_FUNCTION_ARGS)
 				if (decode_options->option == 't')
 				{
 					YbDatumDecodeOptions tz_datum_decodeOptions;
+
 					tz_datum_decodeOptions.timezone = decode_options->timezone;
 					tz_datum_decodeOptions.from_YB = decode_options->from_YB;
 					values[i] = DatumGetCString(FunctionCall2(decode_options->elem_finfo, itemvalue,
-								PointerGetDatum(&tz_datum_decodeOptions)));
+															  PointerGetDatum(&tz_datum_decodeOptions)));
 				}
 				else if (decode_options->option == 'r' &&
-						decode_options->range_datum_decode_options != NULL)
+						 decode_options->range_datum_decode_options != NULL)
 				{
-					YbDatumDecodeOptions* range_decodeOptions = decode_options->range_datum_decode_options;
+					YbDatumDecodeOptions *range_decodeOptions = decode_options->range_datum_decode_options;
+
 					values[i] = DatumGetCString(FunctionCall2(decode_options->elem_finfo, itemvalue,
-								PointerGetDatum(range_decodeOptions)));
+															  PointerGetDatum(range_decodeOptions)));
 				}
 				else
 				{

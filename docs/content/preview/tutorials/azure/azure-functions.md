@@ -43,13 +43,13 @@ We'll develop and deploy an HTTP trigger function, which connects to YugabyteDB 
 
 ## Get started on YugabyteDB Aeon
 
-For steps on creating a cluster in YugabyteDB Aeon, see the [Quick start](../../../yugabyte-cloud/cloud-quickstart/).
+For steps on creating a cluster in YugabyteDB Aeon, see the [Quick start](/preview/yugabyte-cloud/cloud-quickstart/).
 
-For a configuration that provides fault tolerance across availability zones, deploy a [three-node cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region. However, you can start with an always-free single-node [Sandbox cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).
+For a configuration that provides fault tolerance across availability zones, deploy a [three-node cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region. However, you can start with an always-free single-node [Sandbox cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).
 
 ![Deploy a 3-node YugabyteDB Aeon cluster to Azure](/images/tutorials/azure/azure-functions/yb-cluster.png)
 
-Add your computer's IP address to the cluster [IP allow list](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/) so that you can run your serverless functions locally in development.
+Add your computer's IP address to the cluster [IP allow list](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/) so that you can run your serverless functions locally in development.
 
 Now that we have a working cluster in YugabyteDB Aeon, let's add some data.
 
@@ -57,7 +57,7 @@ Now that we have a working cluster in YugabyteDB Aeon, let's add some data.
 
 Now that our cluster is running in the cloud, we can seed it with data using the provided `schema.sql` and `data.sql` files.
 
-1. Use the [YugabyteDB Cloud Shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) to connect to your cluster.
+1. Use the [YugabyteDB Cloud Shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) to connect to your cluster.
 2. Execute the commands in the `schema.sql` script against your cluster.
 3. Execute the commands in the `data.sql` script against your cluster.
 

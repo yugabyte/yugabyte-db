@@ -53,7 +53,7 @@ typedef struct
 	ItemPointerData fn_tid;
 	PGFunction	user_fn;		/* the function's address */
 	const Pg_finfo_record *inforec; /* address of its info record */
-	uint64 yb_catalog_version; /* catalog version at function load time */
+	uint64		yb_catalog_version; /* catalog version at function load time */
 } CFuncHashTabEntry;
 
 static HTAB *CFuncHash = NULL;
@@ -74,7 +74,7 @@ extern void int2send_direct(StringInfo buf, Datum value);
 extern void int4send_direct(StringInfo buf, Datum value);
 extern void int8send_direct(StringInfo buf, Datum value);
 
-typedef void (*YbSendDirectFn)(StringInfo, Datum);
+typedef void (*YbSendDirectFn) (StringInfo, Datum);
 
 /*
  * Initialize direct send function with specified oid with specified func.
@@ -114,6 +114,7 @@ fmgr_isbuiltin(Oid id)
 		return NULL;
 
 	static pthread_once_t initialized = PTHREAD_ONCE_INIT;
+
 	pthread_once(&initialized, &fmgr_init_direct_send);
 
 	/*
@@ -1677,16 +1678,21 @@ SendFunctionCall(FmgrInfo *flinfo, Datum val)
 void
 StringInfoSendFunctionCall(StringInfo buf, FmgrInfo *flinfo, Datum val)
 {
-	void (*alt)(StringInfo, Datum) = flinfo->fn_alt;
-	if (alt) {
-		// There is function to send value directly to buf, w/o intermediate
-		// conversion to bytea.
+	void		(*alt) (StringInfo, Datum) = flinfo->fn_alt;
+
+	if (alt)
+	{
+		/*
+		 * There is function to send value directly to buf, w/o intermediate
+		 * conversion to bytea.
+		 */
 		alt(buf, val);
 		return;
 	}
 
-	bytea *outputbytes = SendFunctionCall(flinfo, val);
-	uint32 size = VARSIZE(outputbytes) - VARHDRSZ;
+	bytea	   *outputbytes = SendFunctionCall(flinfo, val);
+	uint32		size = VARSIZE(outputbytes) - VARHDRSZ;
+
 	pq_sendint32(buf, size);
 	pq_sendbytes(buf, VARDATA(outputbytes), size);
 	pfree(outputbytes);

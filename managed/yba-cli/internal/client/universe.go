@@ -51,6 +51,18 @@ func (a *AuthAPIClient) UpgradeVMImage(uUUID string) (
 	return a.APIClient.UniverseUpgradesManagementApi.UpgradeVMImage(a.ctx, a.CustomerUUID, uUUID)
 }
 
+// UpgradeTLS upgrades the TLS settings of the universe
+func (a *AuthAPIClient) UpgradeTLS(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiUpgradeTlsRequest) {
+	return a.APIClient.UniverseUpgradesManagementApi.UpgradeTls(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// UpgradeCerts upgrades the TLS certs of the universe
+func (a *AuthAPIClient) UpgradeCerts(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiUpgradeCertsRequest) {
+	return a.APIClient.UniverseUpgradesManagementApi.UpgradeCerts(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // RestartUniverse for restart operation
 func (a *AuthAPIClient) RestartUniverse(uUUID string) (
 	ybaclient.UniverseUpgradesManagementApiApiRestartUniverseRequest) {

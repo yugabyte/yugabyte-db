@@ -16,10 +16,12 @@
 #include "yb/cdc/xcluster_types.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
-#include "yb/util/cow_object.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
+
+template<class State>
+class CowWriteLock;
 
 namespace rpc {
 class RpcContext;

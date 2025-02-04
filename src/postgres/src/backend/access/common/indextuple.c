@@ -96,6 +96,7 @@ index_form_tuple_context(TupleDesc tupleDescriptor,
 	for (i = 0; i < numberOfAttributes; i++)
 	{
 		Form_pg_attribute att = TupleDescAttr(tupleDescriptor, i);
+
 		untoasted_values[i] = values[i];
 		untoasted_free[i] = false;
 
@@ -227,8 +228,9 @@ index_form_tuple_context(TupleDesc tupleDescriptor,
 	 * NOTE (#2003): use the same limit for temp table after adding support
 	 * for wide column in temp table.
 	 */
-	uint32 index_size_mask = is_yb_relation ?
-		YB_INDEX_SIZE_MASK : INDEX_SIZE_MASK;
+	uint32		index_size_mask = (is_yb_relation ?
+								   YB_INDEX_SIZE_MASK :
+								   INDEX_SIZE_MASK);
 
 	/*
 	 * Here we make sure that the size will fit in the field reserved for it

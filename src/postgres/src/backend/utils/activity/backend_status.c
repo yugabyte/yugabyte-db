@@ -198,8 +198,10 @@ CreateSharedBackendStatus(void)
 		}
 	}
 
-	if (YBIsEnabledInPostgresEnvVar()) {
-		Size DatabaseNameBufferSize;
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		Size		DatabaseNameBufferSize;
+
 		DatabaseNameBufferSize = mul_size(NAMEDATALEN, NumBackendStatSlots);
 		DatabaseNameBuffer = (char *)
 			ShmemInitStruct("Database Name Buffer", DatabaseNameBufferSize, &found);
@@ -374,10 +376,13 @@ pgstat_bestart(void)
 		 lbeentry.st_backendType == YB_YSQL_CONN_MGR))
 		(*yb_new_conn)++;
 
-	if (YBIsEnabledInPostgresEnvVar() && lbeentry.st_databaseid > 0) {
-		HeapTuple tuple;
+	if (YBIsEnabledInPostgresEnvVar() && lbeentry.st_databaseid > 0)
+	{
+		HeapTuple	tuple;
+
 		tuple = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(lbeentry.st_databaseid));
 		Form_pg_database dbForm;
+
 		dbForm = (Form_pg_database) GETSTRUCT(tuple);
 		strcpy(lbeentry.st_databasename, dbForm->datname.data);
 		ReleaseSysCache(tuple);
@@ -839,7 +844,8 @@ pgstat_read_current_status(void)
 		 * the source backend is between increment steps.)	We use a volatile
 		 * pointer here to ensure the compiler doesn't try to get cute.
 		 */
-		int attempt = 1;
+		int			attempt = 1;
+
 		while (yb_pgstat_log_read_activity(beentry, ++attempt))
 		{
 			int			before_changecount;
@@ -966,7 +972,8 @@ pgstat_get_backend_current_activity(int pid, bool checkUser)
 		volatile PgBackendStatus *vbeentry = beentry;
 		bool		found;
 
-		int attempt = 1;
+		int			attempt = 1;
+
 		while (yb_pgstat_log_read_activity(vbeentry, ++attempt))
 		{
 			int			before_changecount;
@@ -1300,9 +1307,11 @@ yb_pgstat_add_session_info(uint64_t session_id)
 {
 	volatile PgBackendStatus *vbeentry = NULL;
 
-	/* This code could be invoked either in a regular backend or in an
+	/*
+	 * This code could be invoked either in a regular backend or in an
 	 * auxiliary process. In case of the latter, skip initializing shared
-	 * memory context. See note in pgstat_initalize() */
+	 * memory context. See note in pgstat_initalize()
+	 */
 	if (MyBEEntry == NULL)
 	{
 		/* Must be an auxiliary process */
@@ -1320,7 +1329,8 @@ yb_pgstat_add_session_info(uint64_t session_id)
 }
 
 bool
-yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt) {
+yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt)
+{
 	if (attempt >= YB_MAX_BEENTRIES_ATTEMPTS)
 	{
 		elog(WARNING, "backend status entry for pid %d required %d "
@@ -1338,5 +1348,5 @@ yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt) {
 PgBackendStatus *
 getBackendStatusArray(void)
 {
-  return BackendStatusArray;
+	return BackendStatusArray;
 }

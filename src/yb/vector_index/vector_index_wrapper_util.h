@@ -62,7 +62,7 @@ class VectorIndexReaderAdapter
 
     for (const auto& source_result : source_results) {
       auto cast_distance = static_cast<DestinationDistanceResult>(source_result.distance);
-      destination_results.emplace_back(source_result.vertex_id, cast_distance);
+      destination_results.emplace_back(source_result.vector_id, cast_distance);
     }
 
     return destination_results;

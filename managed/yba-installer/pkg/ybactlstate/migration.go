@@ -33,6 +33,7 @@ func handleMigration(state *State) error {
 	}
 	nextSchema := 0
 	endSchema := getSchemaVersion()
+	updateMade := false
 	for nextSchema < endSchema {
 		nextSchema++
 		if slices.Contains(state._internalFields.RunSchemas, nextSchema) {
@@ -43,10 +44,15 @@ func handleMigration(state *State) error {
 			log.Debug("skipping migration " + strconv.Itoa(nextSchema) + " as it is not defined")
 			continue
 		}
+		updateMade = true
 		if err := migrate(state); err != nil {
 			return err
 		}
 		state._internalFields.RunSchemas = append(state._internalFields.RunSchemas, nextSchema)
+	}
+	if !updateMade {
+		log.DebugLF("no migrations run")
+		return nil
 	}
 	// StoreState in order to persist migration SchemaVersion
 	return StoreState(state)

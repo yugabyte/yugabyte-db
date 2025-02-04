@@ -16,7 +16,6 @@
 #include <atomic>
 #include <mutex>
 
-#include <boost/interprocess/sync/interprocess_semaphore.hpp>
 #include <boost/interprocess/shared_memory_object.hpp>
 
 #include "yb/gutil/casts.h"
@@ -24,6 +23,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/interprocess_semaphore.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -54,95 +54,6 @@ std::chrono::system_clock::time_point ToSystem(CoarseTimePoint tp) {
   }
   return base + std::chrono::duration_cast<SystemClock::duration>(tp.time_since_epoch());
 }
-
-#if defined(BOOST_INTERPROCESS_POSIX_PROCESS_SHARED)
-class Semaphore {
- public:
-  explicit Semaphore(unsigned int initial_count) {
-    int ret = sem_init(&impl_, 1, initial_count);
-    CHECK_NE(ret, -1);
-  }
-
-  Semaphore(const Semaphore&) = delete;
-  void operator=(const Semaphore&) = delete;
-
-  ~Semaphore() {
-    CHECK_EQ(sem_destroy(&impl_), 0);
-  }
-
-  Status Post() {
-    return ResToStatus(sem_post(&impl_), "Post");
-  }
-
-  Status Wait() {
-    return ResToStatus(sem_wait(&impl_), "Wait");
-  }
-
-  template<class TimePoint>
-  Status TimedWait(const TimePoint &abs_time) {
-    // Posix does not support infinity absolute time so handle it here
-    if (boost::interprocess::ipcdetail::is_pos_infinity(abs_time)) {
-      return Wait();
-    }
-
-    auto tspec = boost::interprocess::ipcdetail::timepoint_to_timespec(abs_time);
-    int res = sem_timedwait(&impl_, &tspec);
-    if (res == 0) {
-      return Status::OK();
-    }
-    if (res > 0) {
-      // buggy glibc, copy the returned error code to errno
-      errno = res;
-    }
-    if (errno == ETIMEDOUT) {
-      static const Status timed_out_status = STATUS(TimedOut, "Timed out waiting semaphore");
-      return timed_out_status;
-    }
-    if (errno == EINTR) {
-      return Status::OK();
-    }
-    return ResToStatus(res, "TimedWait");
-  }
-
- private:
-  static Status ResToStatus(int res, const char* op) {
-    if (res == 0) {
-      return Status::OK();
-    }
-    return STATUS_FORMAT(RuntimeError, "$0 on semaphore failed: $1", op, errno);
-  }
-
-  sem_t impl_;
-};
-#else
-class Semaphore {
- public:
-  explicit Semaphore(unsigned int initial_count) : impl_(initial_count) {
-  }
-
-  Status Post() {
-    impl_.post();
-    return Status::OK();
-  }
-
-  Status Wait() {
-    impl_.wait();
-    return Status::OK();
-  }
-
-  template<class TimePoint>
-  Status TimedWait(const TimePoint &abs_time) {
-    if (!impl_.timed_wait(abs_time)) {
-      static const Status timed_out_status = STATUS(TimedOut, "Timed out waiting semaphore");
-      return timed_out_status;
-    }
-    return Status::OK();
-  }
-
- private:
-  boost::interprocess::interprocess_semaphore impl_;
-};
-#endif
 
 YB_DEFINE_ENUM(SharedExchangeState,
                (kIdle)(kRequestSent)(kProcessingRequest)(kResponseSent)(kShutdown));
@@ -236,7 +147,7 @@ class SharedExchangeHeader {
   Status DoWait(
       SharedExchangeState expected_state,
       std::chrono::system_clock::time_point deadline,
-      Semaphore* semaphore) {
+      InterprocessSemaphore* semaphore) {
     auto state = state_.load(std::memory_order_acquire);
     for (;;) {
       if (state == SharedExchangeState::kShutdown) {
@@ -254,8 +165,8 @@ class SharedExchangeHeader {
     }
   }
 
-  Semaphore request_semaphore_{0};
-  Semaphore response_semaphore_{0};
+  InterprocessSemaphore request_semaphore_{0};
+  InterprocessSemaphore response_semaphore_{0};
   std::atomic<SharedExchangeState> state_{SharedExchangeState::kIdle};
   size_t data_size_;
   std::byte data_[0];

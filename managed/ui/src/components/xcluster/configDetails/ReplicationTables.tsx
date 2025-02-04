@@ -3,7 +3,6 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
-import { Dropdown, MenuItem } from 'react-bootstrap';
 import { AxiosError } from 'axios';
 import moment from 'moment';
 import { Box, useTheme } from '@material-ui/core';
@@ -23,10 +22,7 @@ import {
   shouldAutoIncludeIndexTables,
   getInConfigTableUuid
 } from '../ReplicationUtils';
-import DeleteReplicationTableModal from './DeleteReplicationTableModal';
 import { TableReplicationLagGraphModal } from './TableReplicationLagGraphModal';
-import { YBLabelWithIcon } from '../../common/descriptors';
-import ellipsisIcon from '../../common/media/more.svg';
 import {
   alertConfigQueryKey,
   api,
@@ -41,7 +37,6 @@ import {
   liveMetricTimeRangeUnit,
   liveMetricTimeRangeValue,
   MetricName,
-  XClusterConfigType,
   XClusterModalName,
   XClusterTableStatus,
   XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION,
@@ -51,13 +46,7 @@ import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
 import {
-  RbacValidator,
-  hasNecessaryPerm
-} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import {
   getTableName,
-  getTableUuid,
   getIsTableInfoMissing,
   getIsXClusterReplicationTable
 } from '../../../utils/tableUtils';
@@ -247,10 +236,6 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     { includeUnconfiguredTables: true, includeDroppedTables: true }
   );
   const inConfigTableUuids = new Set<string>(getInConfigTableUuid(xClusterConfig.tableDetails));
-  const isDropTablePermitted = (table: XClusterReplicationTable) =>
-    isTableInfoIncludedInConfig &&
-    inConfigTableUuids.has(getTableUuid(table)) &&
-    xClusterConfig.type !== XClusterConfigType.DB_SCOPED;
 
   const sourceUniverse = sourceUniverseQuery.data;
   const filteredTablesInConfig = xClusterTables.filter((table) =>
@@ -392,56 +377,15 @@ export function ReplicationTables(props: ReplicationTablesProps) {
             width="160px"
             dataField="action"
             dataFormat={(_, table: XClusterReplicationTable) => (
-              <>
-                <YBButton
-                  className={styles.actionButton}
-                  btnIcon="fa fa-line-chart"
-                  onClick={(e: any) => {
-                    setOpenTableLagGraphDetails(table);
-                    dispatch(openDialog(XClusterModalName.TABLE_REPLICATION_LAG_GRAPH));
-                    e.currentTarget.blur();
-                  }}
-                />
-                {isDropTablePermitted(table) && (
-                  <Dropdown id={`${styles.tableActionColumn}_dropdown`} pullRight>
-                    <Dropdown.Toggle noCaret className={styles.actionButton}>
-                      <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
-                    </Dropdown.Toggle>
-                    <Dropdown.Menu>
-                      <RbacValidator
-                        customValidateFunction={() => {
-                          return (
-                            hasNecessaryPerm({
-                              ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
-                              onResource: xClusterConfig.sourceUniverseUUID
-                            }) &&
-                            hasNecessaryPerm({
-                              ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
-                              onResource: xClusterConfig.targetUniverseUUID
-                            })
-                          );
-                        }}
-                        isControl
-                      >
-                        <MenuItem
-                          onClick={() => {
-                            setDeleteTableDetails(table);
-                            dispatch(openDialog(XClusterModalName.REMOVE_TABLE_FROM_CONFIG));
-                          }}
-                          disabled={
-                            !getIsTableInfoMissing(table) &&
-                            table.tableType === TableType.TRANSACTION_STATUS_TABLE_TYPE
-                          }
-                        >
-                          <YBLabelWithIcon className={styles.dropdownMenuItem} icon="fa fa-times">
-                            Remove Table
-                          </YBLabelWithIcon>
-                        </MenuItem>
-                      </RbacValidator>
-                    </Dropdown.Menu>
-                  </Dropdown>
-                )}
-              </>
+              <YBButton
+                className={styles.actionButton}
+                btnIcon="fa fa-line-chart"
+                onClick={(e: any) => {
+                  setOpenTableLagGraphDetails(table);
+                  dispatch(openDialog(XClusterModalName.TABLE_REPLICATION_LAG_GRAPH));
+                  e.currentTarget.blur();
+                }}
+              />
             )}
           ></TableHeaderColumn>
         </BootstrapTable>
@@ -458,18 +402,6 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           }}
         />
       )}
-      <DeleteReplicationTableModal
-        deleteTableName={deleteTableDetails ? getTableName(deleteTableDetails) : ''}
-        onConfirm={() => {
-          removeTableFromXCluster.mutate({
-            ...xClusterConfig,
-            tables: xClusterConfig.tables.filter(
-              (tableUuid) => !deleteTableDetails || tableUuid !== getTableUuid(deleteTableDetails)
-            )
-          });
-        }}
-        onCancel={hideModal}
-      />
     </div>
   );
 }

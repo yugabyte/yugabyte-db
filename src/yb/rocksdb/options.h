@@ -1428,15 +1428,22 @@ struct FilterKeyCache {
 
   Slice filter_key;
   const void* transformer = nullptr;
+
+  void Reset(Slice user_key) {
+    filter_key = user_key;
+    transformer = nullptr;
+  }
 };
 
-class TableAwareReadFileFilter {
+struct QueryOptions;
+
+class IteratorFilter {
  public:
-  virtual bool Filter(const ReadOptions& read_options, Slice user_key, FilterKeyCache* cache,
-                      TableReader* reader) const = 0;
+  virtual bool Filter(
+      const QueryOptions& options, Slice user_key, FilterKeyCache* cache, void* context) const = 0;
 
  protected:
-  virtual ~TableAwareReadFileFilter() = default;
+  virtual ~IteratorFilter() = default;
 };
 
 YB_STRONGLY_TYPED_BOOL(CacheRestartBlockKeys);
@@ -1540,9 +1547,13 @@ struct ReadOptions {
 
   // Filter for pruning SST files. RocksDB user can provide its own implementation to exclude SST
   // files from being added to MergeIterator. By default doesn't filter files.
-  const TableAwareReadFileFilter* table_aware_file_filter = nullptr;
+  const IteratorFilter* iterator_filter = nullptr;
 
   Slice user_key_for_filter;
+
+  // Defer iterator filter checks to iteration phase. I.e. user could call SeekWithNewFilter
+  // before Seek, to recheck file filter for all SST files.
+  bool defer_iterator_filter = false;
 
   std::shared_ptr<ReadFileFilter> file_filter;
 
@@ -1556,6 +1567,14 @@ struct ReadOptions {
 
   ReadOptions();
   ReadOptions(bool cksum, bool cache);
+};
+
+struct QueryOptions {
+  QueryId query_id;
+  bool no_io = false;
+  Statistics* statistics = nullptr;
+
+  static QueryOptions FromReadOptions(const ReadOptions& read_options);
 };
 
 // Options that control write operations

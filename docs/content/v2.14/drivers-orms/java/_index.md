@@ -46,7 +46,7 @@ To develop Java applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
   - Create a free cluster on YugabyteDB Managed. Refer to [Use a cloud cluster](/preview/tutorials/quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/).
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/macos/).
 
 ## Next steps
 

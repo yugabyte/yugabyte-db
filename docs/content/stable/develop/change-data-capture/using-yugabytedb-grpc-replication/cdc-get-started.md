@@ -530,14 +530,19 @@ You can use several flags to fine-tune YugabyteDB's CDC behavior. These flags ar
 
 - [cdc_max_stream_intent_records](../../../../reference/configuration/yb-tserver/#cdc-max-stream-intent-records) - Controls how many intent records can be streamed in a single `GetChanges` call. Essentially, intents of large transactions are broken down into batches of size equal to this flag, hence this controls how many batches of `GetChanges` calls are needed to stream the entire large transaction. The default value of this flag is 1680, and transactions with intents less than this value are streamed in a single batch. The value of this flag can be increased, if the workload has larger transactions and CDC throughput needs to be increased. Note that high values of this flag can increase the latency of each `GetChanges` call.
 
-## Retaining data for longer durations
+## Retain data for longer durations
 
-To increase retention of data for CDC, change the two flags, `cdc_intent_retention_ms` and `cdc_wal_retention_time_secs` as required.
+The following flags control the retention of data required by CDC:
+
+- `cdc_wal_retention_time_secs` (default: 28800s)
+- `cdc_intent_retention_ms` (default: 28800000ms)
+
+Starting from v2024.2.1, the default data retention for CDC is 8 hours, with support for maximum retention up to 24 hours. Prior to v2024.2.1, the default retention for CDC is 4 hours.
 
 {{< warning title="Important" >}}
+When using ALL, FULL_ROW_NEW_IMAGE, or MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES before image modes, CDC preserves previous row values for UPDATE and DELETE operations. This is done by retaining history for each row in the database through a suspension of the compaction process. Compaction is halted by setting retention barriers to prevent cleanup of history for those rows that are yet to be streamed to the CDC client. These retention barriers are dynamically managed and advanced only after the CDC events are streamed and explicitly acknowledged by the client, thus allowing compaction of streamed rows.
 
-Longer values of `cdc_intent_retention_ms`, coupled with longer CDC lags (periods of downtime where the client is not requesting changes) can result in increased memory footprint in the YB-TServer and affect read performance.
-
+The [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) flag governs the maximum retention period (default 8 hours). Be aware that any interruption in CDC consumption for extended periods using these before image modes may degrade read performance. This happens because compaction activities are halted in the database when these before image modes are used, leading to inefficient key lookups as reads must traverse multiple SST files.
 {{< /warning >}}
 
 ## Content-based routing

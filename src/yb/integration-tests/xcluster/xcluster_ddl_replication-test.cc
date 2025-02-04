@@ -215,14 +215,14 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
   // Create a table in a new schema.
   const std::string kNewSchemaName = "new_schema";
   ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-    auto conn = VERIFY_RESULT(cluster->Connect());
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
     // TODO(jhe) can remove this once create schema is replicated.
     RETURN_NOT_OK(conn.Execute("SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE SCHEMA $0", kNewSchemaName));
     return Status::OK();
   }));
   {
-    auto conn = ASSERT_RESULT(producer_cluster_.Connect());
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
     ASSERT_OK(conn.ExecuteFormat(
         "CREATE TABLE $0.$1($2 int)", kNewSchemaName, producer_table_name.table_name(),
         kKeyColumnName));
@@ -236,14 +236,14 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
   const std::string kNewUserName = "new_user";
   const std::string producer_table_name_new_user_str = producer_table_name.table_name() + "newuser";
   ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-    auto conn = VERIFY_RESULT(cluster->Connect());
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE USER $0 WITH PASSWORD '123'", kNewUserName));
     RETURN_NOT_OK(conn.Execute("SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
     RETURN_NOT_OK(conn.ExecuteFormat("GRANT CREATE ON SCHEMA public TO $0", kNewUserName));
     return Status::OK();
   }));
   {
-    auto conn = ASSERT_RESULT(producer_cluster_.Connect());
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
     ASSERT_OK(conn.ExecuteFormat("SET ROLE $0", kNewUserName));
     ASSERT_OK(conn.ExecuteFormat(
         "CREATE TABLE $0($1 int)", producer_table_name_new_user_str, kKeyColumnName));
@@ -260,6 +260,46 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name_new_user);
 }
 
+TEST_F(XClusterDDLReplicationTest, CreateTableWithEnum) {
+  ASSERT_OK(SetUpClusters());
+  {
+    // Perturb OIDs on consumer side to make sure we don't accidentally preserve OIDs.
+    auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(
+        conn.Execute("CREATE TYPE gratuitous_enum AS ENUM ('red', 'orange', 'yellow', 'green', "
+                     "'blue', 'purple');"));
+    ASSERT_OK(conn.Execute("DROP TYPE gratuitous_enum;"));
+  }
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  std::string expected;
+  {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("CREATE TYPE color AS ENUM ('red', 'blue', 'green');"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t (paint_color color, amount INT);"));
+    ASSERT_OK(
+        conn.Execute("INSERT INTO t (paint_color, amount) VALUES "
+                     "('red', 10), "
+                     "('blue', 20), "
+                     "('green', 30), "
+                     "('red', 15), "
+                     "('blue', 25);"));
+    // PGConn can't handle enum values so have Postgres convert them to TEXT names.
+    expected = ASSERT_RESULT(conn.FetchAllAsString("SELECT paint_color::TEXT, amount FROM t;"));
+    LOG(INFO) << "expected table contents are: " << expected;
+  }
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name}));
+  {
+    auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    auto actual = ASSERT_RESULT(conn.FetchAllAsString("SELECT paint_color::TEXT, amount FROM t;"));
+    ASSERT_EQ(expected, actual);
+  }
+
+}
+
 TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
@@ -274,6 +314,8 @@ TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
     args.push_back(producer_cluster_.pg_host_port_.host());
     args.push_back("--port");
     args.push_back(AsString(producer_cluster_.pg_host_port_.port()));
+    args.push_back("-d");
+    args.push_back(namespace_name);
     args.push_back("-c");
     args.push_back(query);
 
@@ -306,8 +348,8 @@ TEST_F(XClusterDDLReplicationTest, CreateIndex) {
   const std::string kBaseTableName = "base_table";
   const std::string kColumn2Name = "a";
   const std::string kColumn3Name = "b";
-  auto p_conn = ASSERT_RESULT(producer_cluster_.Connect());
-  auto c_conn = ASSERT_RESULT(consumer_cluster_.Connect());
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
 
   // Create a base table.
   ASSERT_OK(p_conn.ExecuteFormat(
@@ -420,7 +462,7 @@ TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
   ASSERT_OK(InsertRowsInProducer(0, kNumRowsTable1, producer_table));
 
   // Drop the table, it should move to HIDDEN state.
-  auto producer_conn = ASSERT_RESULT(producer_cluster_.Connect());
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
   ASSERT_OK(producer_conn.ExecuteFormat("DROP TABLE $0", producer_table_name.table_name()));
 
   // Create a new table with the same name.
@@ -454,7 +496,7 @@ TEST_F(XClusterDDLReplicationTest, RepeatedCreateAndDropTable) {
   ASSERT_OK(ToggleUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
 
-  auto producer_conn = ASSERT_RESULT(producer_cluster_.Connect());
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
   for (int i = 0; i < kNumIterations; i++) {
     ASSERT_OK(producer_conn.Execute("DROP TABLE IF EXISTS live_die_repeat"));
     ASSERT_OK(producer_conn.Execute("CREATE TABLE live_die_repeat(a int)"));
@@ -468,7 +510,7 @@ TEST_F(XClusterDDLReplicationTest, RepeatedCreateAndDropTable) {
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
   // Ensure table has the correct row at the end.
-  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.Connect());
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
   ASSERT_EQ(
       ASSERT_RESULT(consumer_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM live_die_repeat")), 1);
   ASSERT_EQ(
@@ -497,7 +539,7 @@ TEST_F(XClusterDDLReplicationTest, AddRenamedTable) {
 
   // Rename the table.
   // TODO(#23951) remove manual flag once we support ALTERs.
-  auto producer_conn = ASSERT_RESULT(producer_cluster_.Connect());
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
   ASSERT_OK(producer_conn.ExecuteFormat(
       "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
   ASSERT_OK(producer_conn.ExecuteFormat(
@@ -515,7 +557,7 @@ TEST_F(XClusterDDLReplicationTest, AddRenamedTable) {
 
   // TODO(#23951) need to wait for create and manually run the DDL on the target side for now.
   ASSERT_OK(StringWaiterLogSink("Successfully processed entry").WaitFor(kTimeout));
-  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.Connect());
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
   ASSERT_OK(consumer_conn.ExecuteFormat(
       "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
   ASSERT_OK(consumer_conn.ExecuteFormat(
@@ -560,10 +602,10 @@ class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTes
     ASSERT_OK(SetUpClusters());
     ASSERT_OK(CheckpointReplicationGroup());
     ASSERT_OK(CreateReplicationFromCheckpoint());
-    producer_conn_ =
-        std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(producer_cluster_.Connect()));
-    consumer_conn_ =
-        std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(consumer_cluster_.Connect()));
+    producer_conn_ = std::make_unique<pgwrapper::PGConn>(
+        ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
+    consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
+        ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
   }
 
   Status PerformStep(size_t step) {
@@ -726,10 +768,10 @@ class XClusterDDLReplicationTableRewriteTest : public XClusterDDLReplicationTest
     ASSERT_OK(CheckpointReplicationGroup());
     ASSERT_OK(CreateReplicationFromCheckpoint());
 
-    producer_conn_ =
-        std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(producer_cluster_.Connect()));
-    consumer_conn_ =
-        std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(consumer_cluster_.Connect()));
+    producer_conn_ = std::make_unique<pgwrapper::PGConn>(
+        ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
+    consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
+        ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
 
     // Create a base table and insert some rows.
     ASSERT_OK(producer_conn_->ExecuteFormat(

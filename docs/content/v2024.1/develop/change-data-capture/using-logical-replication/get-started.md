@@ -77,7 +77,7 @@ In this tutorial, you will always connect to Kafka from in a Docker container. A
 
 At this point, you have started Zookeeper and Kafka, but you still need a database server from which Debezium can capture changes. In this procedure, you start a YugabyteDB instance with an example database. The example uses sample data in SQL scripts that are included with your YugabyteDB installation in the `share` directory.
 
-Follow the [Quick Start](/preview/tutorials/quick-start) to start an instance using yugabyted.
+Follow the [Quick Start](/preview/tutorials/quick-start/macos/) to start an instance using yugabyted.
 
 {{< note title="Note" >}}
 

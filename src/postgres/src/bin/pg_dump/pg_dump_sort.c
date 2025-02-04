@@ -1342,8 +1342,8 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 			return;
 		case DO_TABLEGROUP:
 			snprintf(buf, bufsize,
-					"TABLEGROUP %s  (ID %d OID %u)",
-					obj->name, obj->dumpId, obj->catId.oid);
+					 "TABLEGROUP %s  (ID %d OID %u)",
+					 obj->name, obj->dumpId, obj->catId.oid);
 			return;
 		case DO_TABLE_ATTACH:
 			snprintf(buf, bufsize,

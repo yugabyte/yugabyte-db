@@ -1,8 +1,8 @@
 ---
-title: Troubleshoot cloud provider configuration issues
+title: Troubleshoot provider configuration issues
 headerTitle:
-linkTitle: Cloud provider configuration issues
-description: Troubleshoot issues encountered when configuring cloud providers for YugabyteDB Anywhere.
+linkTitle: Provider configuration issues
+description: Troubleshoot issues encountered when creating provider configurations for YugabyteDB Anywhere.
 menu:
   preview_yugabyte-platform:
     identifier: cloud-provider-config-issues
@@ -11,13 +11,13 @@ menu:
 type: docs
 ---
 
-You might encounter issues during configuration of cloud providers for YugabyteDB Anywhere.
+You might encounter issues when creating provider configurations for YugabyteDB Anywhere.
 
 If you have problems while troubleshooting, contact {{% support-platform %}}.
 
 ## Azure cloud provider configuration problems
 
-You can diagnose and remedy a failure that occurred when [configuring Azure cloud provider](../../configure-yugabyte-platform/azure/) as follows:
+You can diagnose and remedy a failure that occurred when [creating an Azure provider configuration](../../configure-yugabyte-platform/azure/) as follows:
 
 - Navigate to **Tasks** on the left-side menu.
 

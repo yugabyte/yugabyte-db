@@ -4,7 +4,7 @@ import { NodeAgentAPI, QUERY_KEY } from './api';
 import { NodeAgentData } from './NodeAgentData';
 import { YBErrorIndicator, YBLoading } from '../../../components/common/indicators';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { NodeAgentEntities, SortDirection } from '../../utils/dtos';
+import { NodeAgent, SortDirection } from '../../utils/dtos';
 import { MetricConsts } from '../../../components/metrics/constants';
 import { Universe } from '../../helpers/dtos';
 
@@ -23,7 +23,7 @@ export const NodeAgentAssignedNodes: FC<NodeAgentAssignedNodesProps> = ({
   isErrorFilterChecked,
   selectedUniverse
 }) => {
-  const [nodeAgentData, setNodeAgentData] = useState<NodeAgentEntities[]>([]);
+  const [nodeAgentData, setNodeAgentData] = useState<NodeAgent[]>([]);
   const [isAPIError, setIsAPIError] = useState<boolean>(false);
 
   const nodeAgentStatusByIPs = useMutation(
@@ -79,7 +79,7 @@ export const NodeAgentAssignedNodes: FC<NodeAgentAssignedNodesProps> = ({
   return (
     <NodeAgentData
       isAssignedNodes={true}
-      nodeAgentData={nodeAgentData}
+      nodeAgents={nodeAgentData}
       isErrorFilterChecked={isErrorFilterChecked}
       isNodeAgentDebugPage={isNodeAgentDebugPage}
     />

@@ -84,6 +84,12 @@ class Arena : public Allocator {
   char* AllocateAligned(size_t bytes, size_t huge_page_size = 0,
                         Logger* logger = nullptr) override;
 
+  template <class T, class... Args>
+  T* NewObject(Args&&... args) {
+    void *mem = AllocateAligned(sizeof(T));
+    return new (mem) T(std::forward<Args>(args)...);
+  }
+
   // Returns an estimate of the total memory usage of data allocated
   // by the arena (exclude the space allocated but not yet used for future
   // allocations).

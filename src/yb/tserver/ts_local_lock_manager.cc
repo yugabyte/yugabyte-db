@@ -42,8 +42,7 @@ class TSLocalLockManager::Impl {
     }
 
     docdb::ObjectLockOwner object_lock_owner(
-        VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id())), req.txn_reuse_version(),
-        req.subtxn_id());
+        VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id())), req.subtxn_id());
     auto result = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
     if (object_lock_manager_.Lock(object_lock_owner, result.lock_batch, deadline)) {
       return Status::OK();
@@ -58,8 +57,7 @@ class TSLocalLockManager::Impl {
 
   Status ReleaseObjectLocks(const tserver::ReleaseObjectLockRequestPB& req) {
     docdb::ObjectLockOwner object_lock_owner(
-        VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id())), req.txn_reuse_version(),
-        req.subtxn_id());
+        VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id())), req.subtxn_id());
     if (req.release_all_locks() || !req.subtxn_id()) {
       VLOG(2) << "Release all locks for owner " << AsString(object_lock_owner);
       object_lock_manager_.Unlock(object_lock_owner);

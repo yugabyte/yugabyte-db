@@ -33,7 +33,7 @@ class InternalIterator;
 class Iterator;
 class ReadFileFilter;
 class Statistics;
-class TableAwareReadFileFilter;
+class IteratorFilter;
 class TableReader;
 class UserFrontier;
 class UserFrontiers;
@@ -43,8 +43,10 @@ class WriteBatch;
 struct BlockBasedTableOptions;
 struct CompactionContextOptions;
 struct CompactionInputFiles;
+struct FilterKeyCache;
 struct KeyValueEntry;
 struct Options;
+struct QueryOptions;
 struct ReadOptions;
 struct TableBuilderOptions;
 struct TableProperties;
@@ -55,9 +57,6 @@ using IteratorWrapper = IteratorWrapperBase<InternalIterator, /* kSkipLastEntry 
 
 template <typename IteratorType>
 class MergingIterator;
-
-template <typename IteratorWrapperType>
-class MergingIteratorBase;
 
 template <typename IteratorWrapperType>
 class MergeIteratorBuilderBase;

@@ -852,7 +852,8 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte,
 									  ObjectIdGetDatum(rte->relid),
 									  Int16GetDatum(attnum)))
 			{
-				if (IsYBRelationById(rte->relid)) {
+				if (IsYBRelationById(rte->relid))
+				{
 					YbCheckUnsupportedSystemColumns(attnum, colname, rte);
 				}
 				result = attnum;
@@ -1031,7 +1032,7 @@ markRTEForSelectPriv(ParseState *pstate, int rtindex, AttrNumber col)
 		rte->requiredPerms |= ACL_SELECT;
 		/* Must offset the attnum to fit in a bitmapset */
 		rte->selectedCols = bms_add_member(rte->selectedCols,
-												col - YBGetFirstLowInvalidAttributeNumberFromOid(rte->relid));
+										   col - YBGetFirstLowInvalidAttributeNumberFromOid(rte->relid));
 	}
 	else if (rte->rtekind == RTE_JOIN)
 	{

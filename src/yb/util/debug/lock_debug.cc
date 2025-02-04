@@ -13,8 +13,9 @@
 
 #include "yb/util/debug/lock_debug.h"
 
-#include "yb/util/logging.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/logging.h"
+#include "yb/util/rwc_lock.h"
 
 using namespace std::literals;
 
@@ -28,6 +29,8 @@ thread_local NonRecursiveSharedLockBase* head = nullptr;
 
 NonRecursiveSharedLockBase::NonRecursiveSharedLockBase(void* mutex)
     : mutex_(mutex), next_(head) {
+  RWCLock::CheckNoReadLockConflict(mutex);
+
   auto current = head;
   while (current != nullptr) {
     LOG_IF(DFATAL, current->mutex_ == mutex) << "Recursive shared lock";

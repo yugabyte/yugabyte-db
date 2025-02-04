@@ -24,6 +24,18 @@ PROMETHEUS_FREE_SPACE_MB=100
 HOME_FREE_SPACE_MB=2048
 VM_MAX_MAP_COUNT=262144
 PYTHON_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8' 'python')
+PYTHON_EXECUTABLE=""
+# Set python executable
+set_python_executable() {
+  for py_executable in "${PYTHON_EXECUTABLES[@]}"; do
+    if which "$py_executable" > /dev/null 2>&1; then
+      PYTHON_EXECUTABLE="$py_executable"
+      export PYTHON_EXECUTABLE
+      return
+    fi
+  done
+}
+set_python_executable
 LINUX_OS_NAME=""
 
 set_linux_os_name() {
@@ -262,10 +274,20 @@ check_ntp_service() {
     # Check if one of chronyd, ntpd and systemd-timesyncd is running on the node
     service_regex="Active: active \(running\)"
     service_check=false
+    skew_ms=500
     for ntp_service in chronyd ntp ntpd systemd-timesyncd; do
       service_status=$(systemctl status $ntp_service)
       if [[ $service_status =~ $service_regex ]]; then
         service_check=true
+        if [[ $ntp_service == "chronyd" ]]; then
+          chrony_tracking="$(chronyc tracking)"
+          skew=$(echo "${chrony_tracking}" | awk "/System time/ {print \$4}")
+          skew_ms=$("${PYTHON_EXECUTABLE}" -c "print(int(${skew} * 1000))")
+        elif [[ $ntp_service == "ntp" || $ntp_service == "ntpd" ]]; then
+          skew_ms=$(ntpq -p | awk '$1 ~ "^*" {print $9}')
+        elif [[ $ntp_service == "systemd-timesyncd" ]]; then
+          skew_ms=0
+        fi
         break
       fi
     done
@@ -273,6 +295,12 @@ check_ntp_service() {
       update_result_json "NTP time synchronization set up" true
     else
       update_result_json "NTP time synchronization set up" false
+    fi
+    echo "Skew: $skew_ms ms"
+    if awk "BEGIN{exit !(${skew_ms} < 400)}"; then
+      update_result_json "ntp_skew" true
+    else
+      update_result_json "ntp_skew" false
     fi
   fi
 }

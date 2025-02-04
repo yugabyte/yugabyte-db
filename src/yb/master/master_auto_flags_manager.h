@@ -24,6 +24,7 @@ namespace yb {
 namespace master {
 
 class CatalogManager;
+class Master;
 
 YB_DEFINE_ENUM(
     PromoteAutoFlagsOutcome, (kNoFlagsPromoted)(kNewFlagsPromoted)(kNonRuntimeFlagsPromoted));
@@ -46,9 +47,7 @@ YB_DEFINE_ENUM(
 // ProcessAutoFlagsConfigOperation on all master (including leader).
 class MasterAutoFlagsManager : public AutoFlagsManagerBase {
  public:
-  explicit MasterAutoFlagsManager(
-      const scoped_refptr<ClockBase>& clock, FsManager* fs_manager,
-      CatalogManager* catalog_manager);
+  explicit MasterAutoFlagsManager(Master& master);
 
   virtual ~MasterAutoFlagsManager() {}
 
@@ -113,6 +112,7 @@ class MasterAutoFlagsManager : public AutoFlagsManagerBase {
   Result<std::pair<uint32_t, bool>> DemoteSingleAutoFlag(
       const ProcessName& process_name, const std::string& flag_name);
 
+  Master& master_;
   CatalogManager* catalog_manager_;
   UniqueLock<std::shared_mutex> update_lock_;
 };

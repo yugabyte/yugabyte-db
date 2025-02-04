@@ -433,7 +433,7 @@ logicalrep_write_insert(StringInfo out, TransactionId xid, Relation rel,
 
 	pq_sendbyte(out, 'N');		/* new tuple follows */
 	logicalrep_write_tuple(out, rel, newslot, binary, columns,
-						   NULL /* yb_is_omitted */);
+						   NULL /* yb_is_omitted */ );
 }
 
 /*
@@ -582,7 +582,7 @@ logicalrep_write_delete(StringInfo out, TransactionId xid, Relation rel,
 			 YbTupleTableSlotToString(oldslot));
 
 	logicalrep_write_tuple(out, rel, oldslot, binary, columns,
-						   NULL /* yb_is_omitted */);
+						   NULL /* yb_is_omitted */ );
 }
 
 /*
@@ -845,7 +845,7 @@ logicalrep_write_tuple(StringInfo out, Relation rel, TupleTableSlot *slot,
 			 * Treat omitted column as an unchanged toast column so that the
 			 * client will ignore it.
 			 */
-			pq_sendbyte(out, 'u'); /* unchanged toast column */
+			pq_sendbyte(out, 'u');	/* unchanged toast column */
 			continue;
 		}
 

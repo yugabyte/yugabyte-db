@@ -5,6 +5,7 @@ import (
     "context"
     "fmt"
     "net"
+    "strconv"
     "time"
 
     "github.com/yugabyte/gocql"
@@ -30,7 +31,7 @@ func (h *HelperContainer) CreateGoCqlClient(log logger.Logger) *gocql.ClusterCon
         log.Warnf("failed to get list of tservers for gocql client setup: %s",
             tabletServersResponse.Error)
         // If we fail to get tservers from GetTabletServersFuture, use HOST
-        hostNames = append(hostNames, fmt.Sprintf("%s:%d", HOST, YcqlPort))
+        hostNames = append(hostNames, net.JoinHostPort(HOST, strconv.Itoa(YcqlPort)))
     } else {
         // to get hostnames, get all second level keys and only keep if
         // net.SpliHostPort succeeds.
@@ -40,7 +41,7 @@ func (h *HelperContainer) CreateGoCqlClient(log logger.Logger) *gocql.ClusterCon
                 if err != nil {
                     log.Warnf("failed to split hostport %s: %s", hostport, err.Error())
                 } else {
-                    hostNames = append(hostNames, fmt.Sprintf("%s:%d", host, YcqlPort))
+                    hostNames = append(hostNames, net.JoinHostPort(host, strconv.Itoa(YcqlPort)))
                 }
             }
         }
@@ -74,9 +75,10 @@ func (h *HelperContainer) CreatePgClient(log logger.Logger,
 
     var url string
 
-    url = fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
-            connectionParams.User, connectionParams.Password, connectionParams.Host,
-            connectionParams.Port, connectionParams.Database)
+    url = fmt.Sprintf("postgres://%s:%s@%s/%s",
+            connectionParams.User, connectionParams.Password,
+            net.JoinHostPort(connectionParams.Host, strconv.Itoa(connectionParams.Port)),
+            connectionParams.Database)
     if Secure {
             secureOptions := fmt.Sprintf("sslmode=%s", SslMode)
             if SslRootCert != "" {

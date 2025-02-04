@@ -1,5 +1,5 @@
 ---
-title: Configure the GCP cloud provider
+title: Configure the GCP provider configuration
 headerTitle: Create cloud provider configuration
 linkTitle: Cloud providers
 description: Configure the Google Cloud Platform (GCP) cloud provider.

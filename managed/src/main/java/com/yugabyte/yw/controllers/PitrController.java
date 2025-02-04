@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -474,16 +475,18 @@ public class PitrController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Create clone of a namespace in a universe",
+      notes = "YbaApi Internal.",
+      value = "Clone namespace via PITR on a universe",
       nickname = "cloneNamespace",
       response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "namespaceClone",
-          value = "post namespace clone",
+          value = "perform clone via PITR",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.CloneNamespaceParams",
           required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.1.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -492,12 +495,8 @@ public class PitrController extends AuthenticatedController {
                 action = Action.BACKUP_RESTORE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
-  public Result cloneNamespace(
-      UUID customerUUID,
-      UUID universeUUID,
-      String tableType,
-      String keyspaceName,
-      Http.Request request) {
+  public Result cloneNamespace(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    log.info("Received clone via PITR config request");
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -516,13 +515,7 @@ public class PitrController extends AuthenticatedController {
     CloneNamespaceParams taskParams = parseJsonAndValidate(request, CloneNamespaceParams.class);
 
     // Validate that a snapshot schedule exists for the database that needs to be cloned.
-    TableType type = BackupUtil.API_TYPE_TO_TABLE_TYPE_MAP.get(ApiType.valueOf(tableType));
-    Optional<PitrConfig> pitrConfigOptional = PitrConfig.maybeGet(universeUUID, type, keyspaceName);
-    if (!pitrConfigOptional.isPresent()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config must be present for the database to be cloned.");
-    }
-    PitrConfig pitrConfig = pitrConfigOptional.get();
+    PitrConfig pitrConfig = PitrConfig.getOrBadRequest(taskParams.pitrConfigUUID);
     String masterHostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     ListSnapshotSchedulesResponse scheduleResp;
@@ -556,12 +549,12 @@ public class PitrController extends AuthenticatedController {
           BAD_REQUEST, "Time to clone that has been specified is incorrect");
     }
 
-    BackupUtil.checkApiEnabled(type, universe.getUniverseDetails().getPrimaryCluster().userIntent);
+    BackupUtil.checkApiEnabled(
+        pitrConfig.getTableType(), universe.getUniverseDetails().getPrimaryCluster().userIntent);
 
     taskParams.setUniverseUUID(universeUUID);
-    taskParams.customerUUID = customerUUID;
-    taskParams.tableType = type;
-    taskParams.keyspaceName = keyspaceName;
+    taskParams.setKeyspaceName(pitrConfig.getDbName());
+    taskParams.setTableType(pitrConfig.getTableType());
     if (taskParams.cloneTimeInMillis == null) {
       taskParams.cloneTimeInMillis = currentTimeMillis;
     }

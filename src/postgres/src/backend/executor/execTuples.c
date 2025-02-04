@@ -1988,6 +1988,7 @@ ExecTypeFromTLInternal(List *targetList, bool skipjunk)
 		foreach(l, targetList)
 		{
 			TargetEntry *tle = lfirst(l);
+
 			if (tle->resno < 1)
 				len--;
 			else

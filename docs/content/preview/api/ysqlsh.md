@@ -34,7 +34,7 @@ To download and install a standalone version of ysqlsh, refer to [YugabyteDB cli
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -480,7 +480,7 @@ Setting this variable to `on` is equivalent to the command line option `-q`. It 
 
 ##### SERVER_VERSION_NAME / SERVER_VERSION_NUM
 
-The server's version number as a string, for example, `11.2-YB-2.0.7.0-b0`, and in numeric form, for example, `110002`. These are set every time you connect to a database (including program start-up), but can be changed or unset.
+The server's version number as a string, for example, `15.2-YB-2.25.0.0-b0`, and in numeric form, for example, `110002`. These are set every time you connect to a database (including program start-up), but can be changed or unset.
 
 ##### SHOW_CONTEXT
 

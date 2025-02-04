@@ -18,10 +18,12 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
   private static final String INTERNAL_MARKER = "YbaApi Internal";
   private static final String DEPRECATED_MARKER = "Deprecated since YBA version";
   private boolean isStrictMode = false;
+  private boolean isInternalMode = false;
 
   public PlatformSwaggerSpecFilter() {
     PlatformModelConverter.register();
     isStrictMode = "all".equalsIgnoreCase(PlatformModelConverter.excludeYbaDeprecatedOption);
+    isInternalMode = "none".equalsIgnoreCase(PlatformModelConverter.excludeYbaInternalOption);
   }
 
   @Override
@@ -31,14 +33,17 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
       Map<String, List<String>> params,
       Map<String, String> cookies,
       Map<String, List<String>> headers) {
-    if (operation.getDescription() != null
-        && operation.getDescription().contains(INTERNAL_MARKER)) {
-      LOG.info("Skipping swagger generation for internal method '{}'", operation.getOperationId());
-      return false;
+    if (!isInternalMode) {
+      if (operation.getDescription() != null
+          && operation.getDescription().contains(INTERNAL_MARKER)) {
+        LOG.info(
+            "Skipping swagger generation for internal method '{}'", operation.getOperationId());
+        return false;
+      }
     }
     if (isStrictMode) {
-        if (operation.getDescription() != null
-            && operation.getDescription().contains(DEPRECATED_MARKER)) {
+      if (operation.getDescription() != null
+          && operation.getDescription().contains(DEPRECATED_MARKER)) {
         LOG.info("Skipping deprecated method in strict mode '{}'", operation.getOperationId());
         return false;
       }
@@ -54,13 +59,15 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
       Map<String, List<String>> params,
       Map<String, String> cookies,
       Map<String, List<String>> headers) {
-    if (parameter.getDescription() != null
-        && parameter.getDescription().contains(INTERNAL_MARKER)) {
-      LOG.info(
-          "Skipping swagger generation for internal param '{}' of operation '{}'",
-          parameter.getName(),
-          operation.getOperationId());
-      return false;
+    if (!isInternalMode) {
+      if (parameter.getDescription() != null
+          && parameter.getDescription().contains(INTERNAL_MARKER)) {
+        LOG.info(
+            "Skipping swagger generation for internal param '{}' of operation '{}'",
+            parameter.getName(),
+            operation.getOperationId());
+        return false;
+      }
     }
     if (isStrictMode) {
       if (parameter.getDescription() != null
@@ -81,9 +88,11 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
       Map<String, List<String>> params,
       Map<String, String> cookies,
       Map<String, List<String>> headers) {
-    if (model.getDescription() != null && model.getDescription().contains(INTERNAL_MARKER)) {
-      LOG.info("Skipping swagger generation for model '{}'", ((ModelImpl) model).getName());
-      return false;
+    if (!isInternalMode) {
+      if (model.getDescription() != null && model.getDescription().contains(INTERNAL_MARKER)) {
+        LOG.info("Skipping swagger generation for model '{}'", ((ModelImpl) model).getName());
+        return false;
+      }
     }
     if (isStrictMode) {
       if (model.getDescription() != null && model.getDescription().contains(DEPRECATED_MARKER)) {
@@ -102,14 +111,18 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
       Map<String, List<String>> params,
       Map<String, String> cookies,
       Map<String, List<String>> headers) {
-    if (property.getDescription() != null && property.getDescription().contains(INTERNAL_MARKER)) {
-      LOG.info(
-          "Skipping swagger generation for property '{}' of model '{}'",
-          property.getName(),
-          ((ModelImpl) model).getName());
-      return false;
+    if (!isInternalMode) {
+      if (property.getDescription() != null
+          && property.getDescription().contains(INTERNAL_MARKER)) {
+        LOG.info(
+            "Skipping swagger generation for property '{}' of model '{}'",
+            property.getName(),
+            ((ModelImpl) model).getName());
+        return false;
+      }
     }
-    // TODO: move deprecation skipping of model property from PlatformModelConverter to here
+    // TODO: move deprecation skipping of model property from PlatformModelConverter
+    // to here
     return true;
   }
 }

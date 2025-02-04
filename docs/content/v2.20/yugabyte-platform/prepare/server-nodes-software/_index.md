@@ -10,6 +10,7 @@ menu:
     parent: server-nodes
     weight: 20
 type: indexpage
+showRightNav: true
 ---
 
 The Linux OS and other software components on each database cluster node must meet the following minimum software requirements.

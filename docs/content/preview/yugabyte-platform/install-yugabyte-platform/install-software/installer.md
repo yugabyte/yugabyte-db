@@ -372,7 +372,7 @@ You can set the following YBA Installer configuration options.
 | `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. | {{<icon/partial>}} |
 | `host` | Hostname or IP Address used for CORS and certificate creation. Optional. | |
 | `support_origin_url` | Specify an alternate hostname or IP address for CORS. For example, for a load balancer. Optional | |
-| `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. | |
+| `server_cert_path`<br />`server_key_path` | If you are using custom certificates, provide the path to the location of the server cert and server key files (in PEM format). If you don't specify server_cert_path and server_key_path, the installation process generates self-signed certificates in $installRoot/data/yba-installer/certs. Optional. | |
 | `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. | {{<icon/partial>}} |
 | `as_root` | If you ran yba-ctl as root during installation, this is automatically set to true. Otherwise it is set to false. Note that you can't switch between running yba-ctl as root and non-root. | {{<icon/partial>}} |
 

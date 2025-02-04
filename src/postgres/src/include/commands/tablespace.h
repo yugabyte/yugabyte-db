@@ -47,8 +47,8 @@ typedef struct TableSpaceOpts
 
 typedef struct YBTableSpaceOpts
 {
-	int32   vl_len_;    /* varlena header (do not touch directly!) */
-	int    placement_offset;
+	int32		vl_len_;		/* varlena header (do not touch directly!) */
+	int			placement_offset;
 } YBTableSpaceOpts;
 
 extern void validatePlacementConfiguration(const char *value);

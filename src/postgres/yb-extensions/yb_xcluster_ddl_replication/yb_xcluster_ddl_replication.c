@@ -1,16 +1,20 @@
-// Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not
-// use this file except in compliance with the License.  You may obtain a copy
-// of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
-// License for the specific language governing permissions and limitations under
-// the License.
+/*-----------------------------------------------------------------------------
+ * Copyright (c) YugabyteDB, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ *
+ *-----------------------------------------------------------------------------
+ */
 
 #include "postgres.h"
 
@@ -43,13 +47,14 @@ static const struct config_enum_entry replication_roles[] = {
 	{"SOURCE", REPLICATION_ROLE_SOURCE, false},
 	{"TARGET", REPLICATION_ROLE_TARGET, false},
 	{"BIDIRECTIONAL", REPLICATION_ROLE_BIDIRECTIONAL, /* hidden */ true},
-	{NULL, 0, false}};
+	{NULL, 0, false},
+};
 
-static int ReplicationRole = REPLICATION_ROLE_DISABLED;
+static int	ReplicationRole = REPLICATION_ROLE_DISABLED;
 static bool EnableManualDDLReplication = false;
-char *DDLQueuePrimaryKeyStartTime = NULL;
-char *DDLQueuePrimaryKeyQueryId = NULL;
-bool TEST_AllowColocatedObjects = false;
+char	   *DDLQueuePrimaryKeyStartTime = NULL;
+char	   *DDLQueuePrimaryKeyQueryId = NULL;
+bool		TEST_AllowColocatedObjects = false;
 
 /* Util functions. */
 static bool IsInIgnoreList(EventTriggerData *trig_data);
@@ -106,7 +111,7 @@ _PG_init(void)
 							   0,
 							   NULL, NULL, NULL);
 
-  // YB_TODO(jhe): Remove this flag once colocated objects are supported.
+	/* YB_TODO(jhe): Remove this flag once colocated objects are supported. */
 	DefineCustomBoolVariable("yb_xcluster_ddl_replication.TEST_allow_colocated_objects",
 							 gettext_noop("Allow colocated objects to be replicated."),
 							 NULL,
@@ -120,31 +125,31 @@ _PG_init(void)
 bool
 IsReplicationSource()
 {
-	return ReplicationRole == REPLICATION_ROLE_SOURCE ||
-			ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL;
+	return (ReplicationRole == REPLICATION_ROLE_SOURCE ||
+			ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL);
 }
 
 bool
 IsReplicationTarget()
 {
-	return ReplicationRole == REPLICATION_ROLE_TARGET ||
-		   ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL;
+	return (ReplicationRole == REPLICATION_ROLE_TARGET ||
+			ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL);
 }
 
 void
 InsertIntoTable(const char *table_name, int64 start_time, int64 query_id,
 				Jsonb *yb_data)
 {
-	const int kNumArgs = 3;
-	Oid arg_types[kNumArgs];
-	Datum arg_vals[kNumArgs];
+	const int	kNumArgs = 3;
+	Oid			arg_types[kNumArgs];
+	Datum		arg_vals[kNumArgs];
 	StringInfoData query_buf;
 
 	initStringInfo(&query_buf);
 	appendStringInfo(&query_buf,
-					"INSERT INTO %s.%s (start_time, query_id, yb_data) values "
-					"($1,$2,$3)",
-					EXTENSION_NAME, table_name);
+					 "INSERT INTO %s.%s (start_time, query_id, yb_data) values "
+					 "($1,$2,$3)",
+					 EXTENSION_NAME, table_name);
 
 	arg_types[0] = INT8OID;
 	arg_vals[0] = Int64GetDatum(start_time);
@@ -155,9 +160,10 @@ InsertIntoTable(const char *table_name, int64 start_time, int64 query_id,
 	arg_types[2] = JSONBOID;
 	arg_vals[2] = PointerGetDatum(yb_data);
 
-	int exec_res = SPI_execute_with_args(query_buf.data, kNumArgs, arg_types,
-										arg_vals, /* Nulls */ NULL, /* readonly */ false,
-										/* tuple-count limit */ 1);
+	int			exec_res = SPI_execute_with_args(query_buf.data, kNumArgs, arg_types,
+												 arg_vals, /* Nulls */ NULL, /* readonly */ false,
+												  /* tuple-count limit */ 1);
+
 	if (exec_res != SPI_OK_INSERT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 }
@@ -165,10 +171,11 @@ InsertIntoTable(const char *table_name, int64 start_time, int64 query_id,
 void
 InsertIntoDDLQueue(Jsonb *yb_data)
 {
-	// Compute the transaction start time in micros since epoch.
-	TimestampTz epoch_time =
-		GetCurrentTransactionStartTimestamp() - SetEpochTimestamp();
-	// Use random int for the query_id.
+	/* Compute the transaction start time in micros since epoch. */
+	TimestampTz epoch_time = (GetCurrentTransactionStartTimestamp() -
+							  SetEpochTimestamp());
+
+	/* Use random int for the query_id. */
 	InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, random(), yb_data);
 }
 
@@ -185,24 +192,29 @@ IsExtensionDdl(CommandTag command_tag)
 	return false;
 }
 
-// Extensions DDLs result in multiple DDL statements being executed during
-// create/alter/drop of extensions. This function checks whether the current
-// DDL is being executed as part of an Extension DDL such as CREATE/ALTER/DROP extension.
+/*
+ * Extensions DDLs result in multiple DDL statements being executed during
+ * create/alter/drop of extensions. This function checks whether the current
+ * DDL is being executed as part of an Extension DDL such as CREATE/ALTER/DROP
+ * extension.
+ */
 bool
 IsCurrentDdlPartOfExtensionDdlBatch(CommandTag command_tag)
 {
-	// Extension DDL cannot be executed within another extension DDL.
+	/* Extension DDL cannot be executed within another extension DDL. */
 	if (IsExtensionDdl(command_tag))
 	{
 		return false;
 	}
 
-	List *parse_tree = pg_parse_query(debug_query_string);
-	ListCell *lc;
-	foreach (lc, parse_tree)
+	List	   *parse_tree = pg_parse_query(debug_query_string);
+	ListCell   *lc;
+
+	foreach(lc, parse_tree)
 	{
-		RawStmt *stmt = (RawStmt *) lfirst(lc);
-		CommandTag stmt_command_tag = CreateCommandTag(stmt->stmt);
+		RawStmt    *stmt = (RawStmt *) lfirst(lc);
+		CommandTag	stmt_command_tag = CreateCommandTag(stmt->stmt);
+
 		if (IsExtensionDdl(stmt_command_tag))
 		{
 			return true;
@@ -228,39 +240,43 @@ IsCurrentDdlPartOfExtensionDdlBatch(CommandTag command_tag)
 void
 DisallowMultiStatementQueries(CommandTag command_tag)
 {
-	List *parse_tree = pg_parse_query(debug_query_string);
-	ListCell *lc;
-	int count = 0;
-	foreach (lc, parse_tree)
+	List	   *parse_tree = pg_parse_query(debug_query_string);
+	ListCell   *lc;
+	int			count = 0;
+
+	foreach(lc, parse_tree)
 	{
 		++count;
-		RawStmt *stmt = (RawStmt *) lfirst(lc);
-		CommandTag stmt_command_tag = CreateCommandTag(stmt->stmt);
-		// Only Extension DDLs are allowed to be part of multi-statement as they
-		// typically executes multiple DDLs under the covers.
+		RawStmt    *stmt = (RawStmt *) lfirst(lc);
+		CommandTag	stmt_command_tag = CreateCommandTag(stmt->stmt);
+
+		/*
+		 * Only Extension DDLs are allowed to be part of multi-statement as
+		 * they typically executes multiple DDLs under the covers.
+		 */
 		if (!IsExtensionDdl(stmt_command_tag))
 		{
 			if (count > 1 || command_tag != stmt_command_tag)
 				elog(ERROR,
-					"Database is replicating DDLs for xCluster. In this mode only "
-					"a single DDL command is allowed in the query string.\n"
-					"Please run the commands one at a time.\n"
-					"Full query string: %s. \n"
-					"Statement 1: %s\n"
-					"Statement 2: %s",
-					debug_query_string,
-					GetCommandTagName(command_tag),
-					GetCommandTagName(stmt_command_tag));
+					 "Database is replicating DDLs for xCluster. In this mode only "
+					 "a single DDL command is allowed in the query string.\n"
+					 "Please run the commands one at a time.\n"
+					 "Full query string: %s. \n"
+					 "Statement 1: %s\n"
+					 "Statement 2: %s",
+					 debug_query_string,
+					 GetCommandTagName(command_tag),
+					 GetCommandTagName(stmt_command_tag));
 		}
 		else if (!IsPassThroughDdlCommandSupported(command_tag))
 		{
 			elog(ERROR,
-				"Database is replicating DDLs for xCluster. Extension cannot be supported "
-				"because it contains DDLs that are not yet supported by replication. \n"
-				"Full query string: %s. \n"
-				"Unsupported DDL within extension : %s\n",
-				debug_query_string,
-				GetCommandTagName(command_tag));
+				 "Database is replicating DDLs for xCluster. Extension cannot be supported "
+				 "because it contains DDLs that are not yet supported by replication. \n"
+				 "Full query string: %s. \n"
+				 "Unsupported DDL within extension : %s\n",
+				 debug_query_string,
+				 GetCommandTagName(command_tag));
 		}
 	}
 }
@@ -268,14 +284,17 @@ DisallowMultiStatementQueries(CommandTag command_tag)
 void
 HandleSourceDDLEnd(EventTriggerData *trig_data)
 {
-	// Create memory context for handling json creation + query execution.
-	MemoryContext context_new, context_old;
-	Oid save_userid;
-	int save_sec_context;
+	/* Create memory context for handling json creation + query execution. */
+	MemoryContext context_new,
+				context_old;
+	Oid			save_userid;
+	int			save_sec_context;
+
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceDDLEnd context");
 
-	// Begin constructing json, fill common fields first.
+	/* Begin constructing json, fill common fields first. */
 	JsonbParseState *state = NULL;
+
 	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 	(void) AddNumericJsonEntry(state, "version", 1);
 	(void) AddStringJsonEntry(state, "query", debug_query_string);
@@ -283,12 +302,14 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 							  GetCommandTagName(trig_data->tag));
 
 	const char *current_user = GetUserNameFromId(save_userid, false);
+
 	if (current_user)
 		(void) AddStringJsonEntry(state, "user", current_user);
 
 	LOCAL_FCINFO(fcinfo, 0);
 	InitFunctionCallInfoData(*fcinfo, NULL, 0, InvalidOid, NULL, NULL);
 	const char *cur_schema = DatumGetCString(current_schema(fcinfo));
+
 	if (cur_schema)
 		(void) AddStringJsonEntry(state, "schema", cur_schema);
 
@@ -303,9 +324,9 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 
 	if (should_replicate_ddl)
 	{
-		// Construct the jsonb and insert completed row into ddl_queue table.
+		/* Construct the jsonb and insert completed row into ddl_queue table. */
 		JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
-		Jsonb *jsonb = JsonbValueToJsonb(jsonb_val);
+		Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
 
 		InsertIntoDDLQueue(jsonb);
 	}
@@ -316,29 +337,32 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 void
 HandleTargetDDLEnd(EventTriggerData *trig_data)
 {
-	// Manual DDLs are not captured at all on the target.
+	/* Manual DDLs are not captured at all on the target. */
 	if (EnableManualDDLReplication)
 		return;
 	/*
 	 * We expect ddl_queue_primary_key_* variables to have been set earlier in
 	 * the transaction by the ddl_queue handler.
 	 */
-	int64 pkey_start_time = GetInt64FromVariable(DDLQueuePrimaryKeyStartTime,
-												"ddl_queue_primary_key_start_time");
-	int64 pkey_query_id = GetInt64FromVariable(DDLQueuePrimaryKeyQueryId,
-												"ddl_queue_primary_key_query_id");
+	int64		pkey_start_time = GetInt64FromVariable(DDLQueuePrimaryKeyStartTime,
+													   "ddl_queue_primary_key_start_time");
+	int64		pkey_query_id = GetInt64FromVariable(DDLQueuePrimaryKeyQueryId,
+													 "ddl_queue_primary_key_query_id");
 
-	// Create memory context for handling json creation + query execution.
-	MemoryContext context_new, context_old;
-	Oid save_userid;
-	int save_sec_context;
+	/* Create memory context for handling json creation + query execution. */
+	MemoryContext context_new,
+				context_old;
+	Oid			save_userid;
+	int			save_sec_context;
+
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleTargetDDLEnd context");
 
 	JsonbParseState *state = NULL;
+
 	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 	(void) AddStringJsonEntry(state, "query", debug_query_string);
 	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
-	Jsonb *jsonb = JsonbValueToJsonb(jsonb_val);
+	Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
 
 	InsertIntoTable(REPLICATED_DDLS_TABLE_NAME, pkey_start_time, pkey_query_id,
 					jsonb);
@@ -352,10 +376,12 @@ HandleSourceSQLDrop(EventTriggerData *trig_data)
 	if (EnableManualDDLReplication)
 		return;
 
-	// Create memory context for handling query execution.
-	MemoryContext context_new, context_old;
-	Oid save_userid;
-	int save_sec_context;
+	/* Create memory context for handling query execution. */
+	MemoryContext context_new,
+				context_old;
+	Oid			save_userid;
+	int			save_sec_context;
+
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceSQLDrop context");
 
 	should_replicate_ddl |= ProcessSourceEventTriggerDroppedObjects();
@@ -369,10 +395,12 @@ HandleSourceTableRewrite(EventTriggerData *trig_data)
 	if (EnableManualDDLReplication)
 		return;
 
-	// Create memory context for handling query execution.
-	MemoryContext context_new, context_old;
-	Oid save_userid;
-	int save_sec_context;
+	/* Create memory context for handling query execution. */
+	MemoryContext context_new,
+				context_old;
+	Oid			save_userid;
+	int			save_sec_context;
+
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceTableRewrite context");
 
 	ProcessSourceEventTriggerTableRewrite();
@@ -407,13 +435,14 @@ PG_FUNCTION_INFO_V1(handle_ddl_start);
 Datum
 handle_ddl_start(PG_FUNCTION_ARGS)
 {
-	if (!CALLED_AS_EVENT_TRIGGER(fcinfo)) /* internal error */
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
 	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
+
 	if (IsInIgnoreList(trig_data))
 		PG_RETURN_NULL();
 
@@ -429,7 +458,7 @@ PG_FUNCTION_INFO_V1(handle_ddl_end);
 Datum
 handle_ddl_end(PG_FUNCTION_ARGS)
 {
-	if (!CALLED_AS_EVENT_TRIGGER(fcinfo)) /* internal error */
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
 	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
@@ -440,7 +469,10 @@ handle_ddl_end(PG_FUNCTION_ARGS)
 	if (IsInIgnoreList(trig_data))
 		PG_RETURN_NULL();
 
-	// Capture the DDL as long as its not a step within another Extension DDL batch.
+	/*
+	 * Capture the DDL as long as its not a step within another Extension DDL
+	 * batch.
+	 */
 	if (!IsCurrentDdlPartOfExtensionDdlBatch(trig_data->tag))
 	{
 		if (IsReplicationSource())
@@ -460,7 +492,7 @@ PG_FUNCTION_INFO_V1(handle_sql_drop);
 Datum
 handle_sql_drop(PG_FUNCTION_ARGS)
 {
-	if (!CALLED_AS_EVENT_TRIGGER(fcinfo)) /* internal error */
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
 	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
@@ -485,7 +517,7 @@ PG_FUNCTION_INFO_V1(handle_table_rewrite);
 Datum
 handle_table_rewrite(PG_FUNCTION_ARGS)
 {
-	if (!CALLED_AS_EVENT_TRIGGER(fcinfo)) /* internal error */
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
 	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
@@ -504,42 +536,53 @@ handle_table_rewrite(PG_FUNCTION_ARGS)
 	PG_RETURN_NULL();
 }
 
-static char *GetExtensionName(CommandTag tag, List *parse_tree)
+static char *
+GetExtensionName(CommandTag tag, List *parse_tree)
 {
 	switch (tag)
 	{
 		case CMDTAG_CREATE_EXTENSION:
-		{
-			CreateExtensionStmt *stmt = (CreateExtensionStmt *)
-										linitial_node(RawStmt, parse_tree)->stmt;
-			return stmt->extname;
-		}
+			{
+				CreateExtensionStmt *stmt;
+
+				stmt = (CreateExtensionStmt *)
+					linitial_node(RawStmt, parse_tree)->stmt;
+
+				return stmt->extname;
+			}
 		case CMDTAG_ALTER_EXTENSION:
-		{
-			AlterExtensionStmt *stmt = (AlterExtensionStmt *)
-										linitial_node(RawStmt, parse_tree)->stmt;
-			return stmt->extname;
-		}
+			{
+				AlterExtensionStmt *stmt;
+
+				stmt = (AlterExtensionStmt *)
+					linitial_node(RawStmt, parse_tree)->stmt;
+
+				return stmt->extname;
+			}
 		case CMDTAG_DROP_EXTENSION:
-		{
-			DropStmt *stmt = (DropStmt *) linitial_node(RawStmt, parse_tree)->stmt;
-
-			// Ensure there is at least one object in the list.
-			if (stmt->objects == NULL || list_length(stmt->objects) != 1)
 			{
-				elog(WARNING, "Unexpected number of objects in DROP EXTENSION statement");
-				return NULL;
-			}
+				DropStmt   *stmt;
 
-			Node *object = linitial(stmt->objects);
-			if (!IsA(object, String))
-			{
-				elog(WARNING, "Unexpected object type in DROP EXTENSION statement");
-				return NULL;
-			}
+				stmt = (DropStmt *)
+					linitial_node(RawStmt, parse_tree)->stmt;
 
-			return strVal(castNode(String, object));
-		}
+				/* Ensure there is at least one object in the list. */
+				if (stmt->objects == NULL || list_length(stmt->objects) != 1)
+				{
+					elog(WARNING, "Unexpected number of objects in DROP EXTENSION statement");
+					return NULL;
+				}
+
+				Node	   *object = linitial(stmt->objects);
+
+				if (!IsA(object, String))
+				{
+					elog(WARNING, "Unexpected object type in DROP EXTENSION statement");
+					return NULL;
+				}
+
+				return strVal(castNode(String, object));
+			}
 		default:
 			return NULL;
 	}
@@ -553,8 +596,8 @@ IsInIgnoreList(EventTriggerData *trig_data)
 		return false;
 	}
 
-	List *parse_tree = pg_parse_query(debug_query_string);
-	char *extname = GetExtensionName(trig_data->tag, parse_tree);
+	List	   *parse_tree = pg_parse_query(debug_query_string);
+	char	   *extname = GetExtensionName(trig_data->tag, parse_tree);
 
 	if (extname != NULL && strcmp(extname, EXTENSION_NAME) == 0)
 	{
@@ -563,4 +606,3 @@ IsInIgnoreList(EventTriggerData *trig_data)
 
 	return false;
 }
-

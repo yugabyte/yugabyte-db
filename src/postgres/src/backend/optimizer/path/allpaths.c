@@ -211,8 +211,11 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 			if (relation != NULL && relation->rtekind == RTE_RELATION)
 			{
 				RangeTblEntry *rte = root->simple_rte_array[rti];
-				if (IsYBRelationById(rte->relid)) {
-					ListCell *lc;
+
+				if (IsYBRelationById(rte->relid))
+				{
+					ListCell   *lc;
+
 					/*
 					 * Set the YugaByte FDW routine because we will use the foreign
 					 * scan API below.
@@ -222,6 +225,7 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 					foreach(lc, relation->baserestrictinfo)
 					{
 						RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
+
 						ri->yb_pushable = YbCanPushdownExpr(ri->clause, NULL);
 					}
 				}
@@ -566,8 +570,8 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 						/* TODO we don't support tablesample queries yet. */
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("'TABLESAMPLE' clause is not yet "
-									   "supported by YugaByte")));
+								 errmsg("'TABLESAMPLE' clause is not yet "
+										"supported by YugaByte")));
 					}
 
 					/* Sampled relation */
@@ -882,7 +886,8 @@ create_plain_partial_paths(PlannerInfo *root, RelOptInfo *rel)
 	if (rel->is_yb_relation)
 	{
 		Assert(rel->relid > 0);
-		RangeTblEntry  *rte = root->simple_rte_array[rel->relid];
+		RangeTblEntry *rte = root->simple_rte_array[rel->relid];
+
 		parallel_workers =
 			yb_compute_parallel_worker(rel,
 									   YbGetTableDistribution(rte->relid),
@@ -4346,7 +4351,8 @@ int
 yb_compute_parallel_worker(RelOptInfo *rel,
 						   YbTableDistribution yb_dist, int max_workers)
 {
-	int parallel_workers = 0;
+	int			parallel_workers = 0;
+
 	/*
 	 * If the user has set the parallel_workers reloption, use that; otherwise
 	 * select a default number of workers.

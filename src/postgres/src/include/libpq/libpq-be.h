@@ -169,7 +169,7 @@ typedef struct Port
 	 * To be used during Authentication, identifies whether authentication is
 	 * invoked due to Auth Passthrough Request packet.
 	 */
-	bool 		yb_is_auth_passthrough_req;
+	bool		yb_is_auth_passthrough_req;
 
 	/*
 	 * To be used for the authentication of logical connections from the
@@ -177,7 +177,7 @@ typedef struct Port
 	 * authentication backend.
 	 * It identifies whether the logical connection is encrypted.
 	 */
-	bool 		yb_is_ssl_enabled_in_logical_conn;
+	bool		yb_is_ssl_enabled_in_logical_conn;
 
 	/*
 	 * Authenticated identity.  The meaning of this identifier is dependent on

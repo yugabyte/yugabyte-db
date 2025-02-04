@@ -34,7 +34,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 namespace rocksdb {
 

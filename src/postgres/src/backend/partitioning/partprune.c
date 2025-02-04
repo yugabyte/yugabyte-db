@@ -996,8 +996,8 @@ gen_partprune_steps_internal(GeneratePruningStepsContext *context,
 	bool		generate_opsteps = false;
 	List	   *result = NIL;
 	ListCell   *lc;
-	bool generate_func_steps = false;
-	List *function_clauses = NIL;
+	bool		generate_func_steps = false;
+	List	   *function_clauses = NIL;
 
 	/*
 	 * If this partitioned relation has a default partition and is itself a
@@ -1260,6 +1260,7 @@ gen_partprune_steps_internal(GeneratePruningStepsContext *context,
 		if (IsA(clause, FuncExpr))
 		{
 			FuncExpr   *fexpr = (FuncExpr *) clause;
+
 			if (canUseFunctionForPartitionPruning(fexpr->funcid))
 			{
 				generate_func_steps = true;
@@ -1273,8 +1274,9 @@ gen_partprune_steps_internal(GeneratePruningStepsContext *context,
 	 */
 	if (generate_func_steps)
 	{
-		PartitionPruneStep *step =
-			gen_prune_steps_from_func_exprs(context, function_clauses);
+		PartitionPruneStep *step = gen_prune_steps_from_func_exprs(context,
+																   function_clauses);
+
 		if (step != NULL)
 			result = lappend(result, step);
 	}
@@ -1368,8 +1370,7 @@ static PartitionPruneStep *
 gen_prune_steps_from_func_exprs(GeneratePruningStepsContext *context,
 								List *exprs)
 {
-	YbPartitionPruneStepFuncOp *step =
-		makeNode(YbPartitionPruneStepFuncOp);
+	YbPartitionPruneStepFuncOp *step = makeNode(YbPartitionPruneStepFuncOp);
 
 	step->step.step_id = context->next_step_id++;
 	step->exprs = exprs;
@@ -3558,19 +3559,19 @@ static PruneStepResult *
 perform_pruning_func_step(PartitionPruneContext *context,
 						  YbPartitionPruneStepFuncOp *fstep)
 {
-	PruneStepResult *result =
-		(PruneStepResult *) palloc0(sizeof(PruneStepResult));
+	PruneStepResult *result = (PruneStepResult *) palloc0(sizeof(PruneStepResult));
 	PartitionBoundInfo boundinfo = context->boundinfo;
+
 	result->bound_offsets = NULL;
 
-	int        *partindices = boundinfo->indexes;
+	int		   *partindices = boundinfo->indexes;
 	List	   *exprs = fstep->exprs;
+
 	for (int boundoffset = 0; boundoffset < boundinfo->ndatums; ++boundoffset)
 	{
-		bool isSelected =
-			perform_func_expr_pruning(context,
-									  partindices[boundoffset],
-									  exprs);
+		bool		isSelected = perform_func_expr_pruning(context,
+														   partindices[boundoffset],
+														   exprs);
 
 		if (isSelected)
 		{
@@ -3598,9 +3599,10 @@ perform_pruning_func_step(PartitionPruneContext *context,
  * 		Returns whether the partition corresponding to 'partIndex' survived
  * 		partition pruning based on the function expressions in 'funcExprs'.
  */
-static bool perform_func_expr_pruning(PartitionPruneContext *context,
-									  int partIndex,
-									  List *funcExprs)
+static bool
+perform_func_expr_pruning(PartitionPruneContext *context,
+						  int partIndex,
+						  List *funcExprs)
 {
 	if (partIndex < 0)
 	{
@@ -3618,10 +3620,11 @@ static bool perform_func_expr_pruning(PartitionPruneContext *context,
 		 */
 		return false;
 	}
-	Oid partrelid = context->partrelids[partIndex];
+	Oid			partrelid = context->partrelids[partIndex];
 
-	Relation relation = relation_open(partrelid, 1);
-	const char relkind = relation->rd_rel->relkind;
+	Relation	relation = relation_open(partrelid, 1);
+	const char	relkind = relation->rd_rel->relkind;
+
 	RelationClose(relation);
 
 	if (relkind == RELKIND_PARTITIONED_TABLE)
@@ -3641,12 +3644,13 @@ static bool perform_func_expr_pruning(PartitionPruneContext *context,
 	 */
 	Assert(expr->funcid == F_YB_IS_LOCAL_TABLE);
 
-	FmgrInfo* finfo = (FmgrInfo *) palloc0(sizeof(FmgrInfo));
+	FmgrInfo   *finfo = (FmgrInfo *) palloc0(sizeof(FmgrInfo));
+
 	fmgr_info_cxt(expr->funcid, finfo, context->ppccontext);
 
-	const bool isSelected =
-			BoolGetDatum(FunctionCall1(finfo,
-									   UInt32GetDatum(partrelid)));
+	const bool	isSelected = BoolGetDatum(FunctionCall1(finfo,
+														UInt32GetDatum(partrelid)));
+
 	return isSelected;
 }
 
@@ -3872,7 +3876,8 @@ partkey_datum_from_expr(PartitionPruneContext *context,
 	}
 }
 
-static bool canUseFunctionForPartitionPruning(Oid funcoid)
+static bool
+canUseFunctionForPartitionPruning(Oid funcoid)
 {
 	/*
 	 * For now, only one function is supported.

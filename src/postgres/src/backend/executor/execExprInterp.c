@@ -3691,7 +3691,7 @@ YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op)
 {
 	FunctionCallInfo *fcinfos = op->d.row_array_compare.fcinfos;
 	PGFunction *fn_addrs = op->d.row_array_compare.fn_addrs;
-	int ncols = op->d.row_array_compare.ncols;
+	int			ncols = op->d.row_array_compare.ncols;
 	ArrayType  *arr;
 	int			nitems;
 	Datum		result;
@@ -3753,14 +3753,15 @@ YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op)
 	bitmap = ARR_NULLBITMAP(arr);
 	bitmask = 1;
 
-	TupleDesc tupleDesc = NULL;
+	TupleDesc	tupleDesc = NULL;
 
 	for (int i = 0; i < nitems; i++)
 	{
 		Datum		elt;
 		Datum		thisresult;
-		HeapTupleHeader	row_header;
+		HeapTupleHeader row_header;
 		HeapTupleData row;
+
 		ItemPointerSetInvalid(&(row.t_self));
 		row.t_tableOid = InvalidOid;
 
@@ -3780,8 +3781,8 @@ YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op)
 
 		if (tupleDesc == NULL)
 		{
-			Oid tupType = HeapTupleHeaderGetTypeId(row_header);
-			Oid typTypMod = HeapTupleHeaderGetTypMod(row_header);
+			Oid			tupType = HeapTupleHeaderGetTypeId(row_header);
+			Oid			typTypMod = HeapTupleHeaderGetTypMod(row_header);
 
 			/* Build tuple descriptor for row */
 			tupleDesc = lookup_rowtype_tupdesc(tupType, typTypMod);
@@ -3790,7 +3791,8 @@ YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op)
 		for (int j = 0; j < ncols; j++)
 		{
 			FunctionCallInfo fcinfo = fcinfos[j];
-			PGFunction fn_addr = fn_addrs[j];
+			PGFunction	fn_addr = fn_addrs[j];
+
 			fcinfo->args[1].value =
 				heap_getattr(&row, j + 1, tupleDesc, &fcinfo->args[1].isnull);
 			/* Call comparison function */
@@ -3816,7 +3818,7 @@ YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op)
 		{
 			result = BoolGetDatum(true);
 			resultnull = false;
-			break;			/* needn't look at any more elements */
+			break;				/* needn't look at any more elements */
 		}
 
 		/* advance bitmap pointer if any */

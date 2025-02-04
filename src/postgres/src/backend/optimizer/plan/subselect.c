@@ -2386,21 +2386,22 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 			break;
 
 		case T_YbBitmapTableScan:
-		{
-			YbBitmapTableScan *bitmapscan = (YbBitmapTableScan *) plan;
-			finalize_primnode((Node *) bitmapscan->rel_pushdown.quals,
-							  &context);
-			finalize_primnode((Node *) bitmapscan->recheck_pushdown.quals,
-							  &context);
-			finalize_primnode((Node *) bitmapscan->recheck_local_quals,
-							  &context);
-			finalize_primnode((Node *) bitmapscan->fallback_pushdown.quals,
-							  &context);
-			finalize_primnode((Node *) bitmapscan->fallback_local_quals,
-							  &context);
-			context.paramids = bms_add_members(context.paramids, scan_params);
-			break;
-		}
+			{
+				YbBitmapTableScan *bitmapscan = (YbBitmapTableScan *) plan;
+
+				finalize_primnode((Node *) bitmapscan->rel_pushdown.quals,
+								  &context);
+				finalize_primnode((Node *) bitmapscan->recheck_pushdown.quals,
+								  &context);
+				finalize_primnode((Node *) bitmapscan->recheck_local_quals,
+								  &context);
+				finalize_primnode((Node *) bitmapscan->fallback_pushdown.quals,
+								  &context);
+				finalize_primnode((Node *) bitmapscan->fallback_local_quals,
+								  &context);
+				context.paramids = bms_add_members(context.paramids, scan_params);
+				break;
+			}
 		case T_TidScan:
 			finalize_primnode((Node *) ((TidScan *) plan)->tidquals,
 							  &context);
@@ -2670,7 +2671,8 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 				{
 					NestLoopParam *nlp = (NestLoopParam *) lfirst(l);
 
-					int batch_size = nlp->yb_batch_size;
+					int			batch_size = nlp->yb_batch_size;
+
 					for (size_t i = 0; i < batch_size; i++)
 					{
 						nestloop_params =

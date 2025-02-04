@@ -83,7 +83,7 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
   // Search for the closest vectors across all shards.
   Result<typename Base::SearchResult> Search(
       const Vector& query_vector, const SearchOptions& options) const override {
-    std::vector<VertexWithDistance<DistanceResult>> all_results;
+    std::vector<VectorWithDistance<DistanceResult>> all_results;
     for (const auto& index : indexes_) {
       auto results = VERIFY_RESULT(index->Search(query_vector, options));
       all_results.insert(all_results.end(), results.begin(), results.end());

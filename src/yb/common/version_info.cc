@@ -30,7 +30,7 @@
 // under the License.
 //
 
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 #include <fstream>
 #include <string>
@@ -44,10 +44,11 @@
 #include "yb/gutil/once.h"
 
 #include "yb/util/env_util.h"
-#include "yb/util/path_util.h"
-#include "yb/util/status.h"
-#include "yb/util/status_log.h"
 #include "yb/util/flags.h"
+#include "yb/util/path_util.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/status_log.h"
+#include "yb/util/status.h"
 
 DEFINE_NON_RUNTIME_string(version_file_json_path, "",
               "Path to directory containing JSON file with version info.");
@@ -225,6 +226,45 @@ uint32 VersionInfo::YsqlMajorVersion() {
   GoogleOnceInitArg(&once, get_ysql_major_version, &ysql_major_version);
 
   return ysql_major_version;
+}
+
+bool VersionInfo::ValidateVersion(
+    std::optional<ConstRefWrap<VersionInfoPB>> version_opt, ValidateVersionInfoOp op) {
+  if (!version_opt.has_value()) {
+    // PG11 versions. Is a lower version allowed?
+    if (op == ValidateVersionInfoOp::kYsqlMajorVersionLE ||
+        op == ValidateVersionInfoOp::kYsqlMajorVersionLT) {
+      return true;
+    }
+    VLOG(1) << "Version validation skipped for older process missing the version_info since op: "
+            << ToString(op);
+    return false;
+  }
+
+  const VersionInfoPB& version = *version_opt;
+  const auto& current_version = GetVersionData()->pb;
+  bool result = false;
+  switch (op) {
+    case ValidateVersionInfoOp::kVersionEQ:
+      // We do not check build_type, since we support rolling migration to other hardwares.
+      result = version.version_number() == current_version.version_number() &&
+               version.build_number() == current_version.build_number() &&
+               version.ysql_major_version() == current_version.ysql_major_version();
+      break;
+    case ValidateVersionInfoOp::kYsqlMajorVersionLT:
+      result = version.ysql_major_version() < current_version.ysql_major_version();
+      break;
+    case ValidateVersionInfoOp::kYsqlMajorVersionLE:
+      result = version.ysql_major_version() <= current_version.ysql_major_version();
+      break;
+    case ValidateVersionInfoOp::kYsqlMajorVersionEQ:
+      result = version.ysql_major_version() == current_version.ysql_major_version();
+      break;
+  }
+
+  VLOG_IF(1, !result) << "Version validation failed: " << version.ShortDebugString() << " vs "
+                      << current_version.ShortDebugString() << ", op: " << ToString(op);
+  return result;
 }
 
 } // namespace yb

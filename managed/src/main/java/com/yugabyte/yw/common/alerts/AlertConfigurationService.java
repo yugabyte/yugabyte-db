@@ -10,6 +10,7 @@
 package com.yugabyte.yw.common.alerts;
 
 import static com.yugabyte.yw.common.Util.doubleToString;
+import static com.yugabyte.yw.common.ha.PlatformReplicationHelper.REPLICATION_FREQUENCY_KEY;
 import static com.yugabyte.yw.models.AlertConfiguration.createQueryByFilter;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
 import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
@@ -373,6 +374,22 @@ public class AlertConfigurationService {
                         "can't be greater than "
                             + doubleToString(templateDescription.getThresholdMaxValue()))
                     .throwError();
+              }
+              if (configuration.getTemplate() == AlertTemplate.HA_STANDBY_SYNC) {
+                long replicationFrequency =
+                    runtimeConfigFactory
+                        .globalRuntimeConf()
+                        .getDuration(REPLICATION_FREQUENCY_KEY)
+                        .toMillis();
+                // threshold in minutes RF in milliseconds
+                if ((threshold.getThreshold() * 60.0) < (2.0 * replicationFrequency / 1000.0)) {
+                  beanValidator
+                      .error()
+                      .forField(
+                          "HA Standby Sync[" + severity.name() + "].threshold",
+                          "can't be less than twice replication frequency")
+                      .throwError();
+                }
               }
             });
     if (before != null) {

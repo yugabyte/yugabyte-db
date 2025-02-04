@@ -50,6 +50,21 @@ class TaskDetail extends Component {
     });
   };
 
+  rollbackTaskClicked = (currentTaskUUID) => {
+    this.props.rollbackCurrentTask(currentTaskUUID).then((response) => {
+      const status = response?.payload?.response?.status || response?.payload?.status;
+      if (status === 200 || status === 201) {
+        browserHistory.push('/tasks');
+      } else {
+        const taskResponse = response?.payload?.response;
+        const toastMessage = taskResponse?.data?.error
+          ? taskResponse?.data?.error
+          : taskResponse?.statusText;
+        toast.error(toastMessage);
+      }
+    });
+  };
+
   componentDidMount() {
     const { params, fetchCurrentTaskDetail, fetchFailedTaskDetail, fetchUniverseList } = this.props;
     const currentTaskUUID = params.taskUUID;
@@ -131,6 +146,24 @@ class TaskDetail extends Component {
               >
                 <i className="fa fa-refresh"></i>
                 Retry Task
+              </div>
+            </RbacValidator>
+          )}
+          {isNonEmptyString(currentTaskData.title) && currentTaskData.canRollback && (
+            <RbacValidator
+              accessRequiredOn={{
+                onResource: currentTaskData?.targetUUID,
+                ...ApiPermissionMap.RETRY_TASKS
+              }}
+              isControl
+              overrideStyle={{ float: 'right' }}
+            >
+              <div
+                className="btn btn-orange text-center pull-right task-detail-button"
+                onClick={() => self.rollbackTaskClicked(taskUUID)}
+              >
+                <i className="fa fa-refresh"></i>
+                Rollback Task
               </div>
             </RbacValidator>
           )}

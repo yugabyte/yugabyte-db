@@ -172,8 +172,8 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
   const bool is_fixed_point_get =
       !bounds.lower.empty() &&
       VERIFY_RESULT(HashedOrFirstRangeComponentsEqual(bounds.lower, bounds.upper));
-  const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER
-                                       : BloomFilterMode::DONT_USE_BLOOM_FILTER;
+  const auto bloom_filter = is_fixed_point_get ? BloomFilterOptions::Fixed(bounds.lower.AsSlice())
+                                               : BloomFilterOptions::Inactive();
 
   if (is_forward_scan_) {
     has_bound_key_ = !bounds.upper.empty();
@@ -194,7 +194,7 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
     }
   }
 
-  InitIterator(mode, bounds.lower.AsSlice(), doc_spec.QueryId(), CreateFileFilter(doc_spec));
+  InitIterator(bloom_filter, doc_spec.QueryId(), CreateFileFilter(doc_spec));
 
   if (has_bound_key_) {
     if (is_forward_scan_) {

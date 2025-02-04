@@ -227,12 +227,31 @@ class Iterator : public Cleanable {
   virtual bool ScanForward(
       Slice upperbound, KeyFilterCallback* key_filter_callback,
       ScanCallback* scan_callback) {
-    assert(false);
+    DCHECK(false);
     return false;
   }
 
   virtual void UseFastNext(bool value) {
-    assert(false);
+    DCHECK(false);
+  }
+
+  // Iterator could be created with filter in deferred mode specified via ReadOptions.
+  // In this case iterators for all sources (SST files and MemTables) are created.
+  // But it is allowed to update user key for filter via SeekWithNewFilter.
+  // After updating user key for filter, sub iterators that does not match updated filter & key
+  // pair, will be ignored.
+  const KeyValueEntry& SeekWithNewFilter(Slice target, Slice filter_user_key) {
+    return DoSeekWithNewFilter(target, filter_user_key);
+  }
+
+  const KeyValueEntry& SeekWithNewFilter(Slice target) {
+    return DoSeekWithNewFilter(target, target);
+  }
+
+ protected:
+  virtual const KeyValueEntry& DoSeekWithNewFilter(Slice target, Slice filter_user_key) {
+    DCHECK(false);
+    return Seek(target);
   }
 };
 

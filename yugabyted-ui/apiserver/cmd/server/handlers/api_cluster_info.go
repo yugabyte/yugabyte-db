@@ -1458,10 +1458,9 @@ func (c *Container) GetIsLoadBalancerIdle(ctx echo.Context) error {
         for _, master := range mastersResponse.Masters {
             if len(master.Registration.PrivateRpcAddresses) > 0 {
                 masters[master.Registration.PrivateRpcAddresses[0].Host] = master
-                csvMasterAddresses += fmt.Sprintf(
-                    "%s:%d,",
+                csvMasterAddresses += net.JoinHostPort(
                     master.Registration.PrivateRpcAddresses[0].Host,
-                    master.Registration.PrivateRpcAddresses[0].Port)
+                    strconv.FormatUint(uint64(master.Registration.PrivateRpcAddresses[0].Port), 10))
             }
         }
     }
@@ -1645,7 +1644,7 @@ func (c *Container) GetClusterAlerts(ctx echo.Context) error {
         httpClient := &http.Client{
             Timeout: time.Second * 10,
         }
-        url := fmt.Sprintf("http://%s:%s/api/alerts", nodeHost, c.serverPort)
+        url := fmt.Sprintf("http://%s/api/alerts", net.JoinHostPort(nodeHost, c.serverPort))
         resp, err := httpClient.Get(url)
         if err != nil {
             c.logger.Errorf("Failed to get alerts from node %s: %s", nodeHost, err.Error())

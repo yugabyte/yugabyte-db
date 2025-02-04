@@ -2037,7 +2037,7 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	bool		recurse;		/* exec-time recursion */
 
 	bool		yb_is_add_primary_key;	/* checks if adding primary key */
-	bool 		yb_cascade;		/* to restrict movement of single table in
+	bool		yb_cascade;		/* to restrict movement of single table in
 								 * colocated tablespace */
 } AlterTableCmd;
 
@@ -2265,7 +2265,7 @@ typedef struct CreateStmt
 	bool		if_not_exists;	/* just do nothing if it already exists? */
 
 	char	   *tablegroupname; /* tablegroup to use, or NULL */
-	struct YbOptSplit *split_options; /* SPLIT statement options */
+	struct YbOptSplit *split_options;	/* SPLIT statement options */
 } CreateStmt;
 
 /* ----------
@@ -2383,14 +2383,15 @@ typedef struct Constraint
 	bool		skip_validation;	/* skip validation of existing rows? */
 	bool		initially_valid;	/* mark the new constraint as valid? */
 
-	/* For YugaByte LSM primary or unique key defined inline with the table
+	/*
+	 * For YugaByte LSM primary or unique key defined inline with the table
 	 * definition, we allow the key definition to include the sorting info
-	 * like "create table (... primary key (h hash, r1 asc, r2 desc))".
-	 * We save the IndexElem of the attributes in 'yb_index_params' to access
-	 * the full definition of the key attributes.
+	 * like "create table (... primary key (h hash, r1 asc, r2 desc))". We
+	 * save the IndexElem of the attributes in 'yb_index_params' to access the
+	 * full definition of the key attributes.
 	 */
-	List	   *yb_index_params;	/* IndexElem nodes of UNIQUE or PRIMARY KEY
-									 * constraint */
+	List	   *yb_index_params;	/* IndexElem nodes of UNIQUE or PRIMARY
+									 * KEY constraint */
 } Constraint;
 
 /* ----------
@@ -2412,11 +2413,11 @@ typedef enum
 
 typedef struct YbOptSplit
 {
-	NodeTag type;
+	NodeTag		type;
 
 	YbSplitType split_type;
-	int num_tablets;
-	List *split_points;
+	int			num_tablets;
+	List	   *split_points;
 } YbOptSplit;
 
 /* ----------------------
@@ -2428,7 +2429,7 @@ typedef struct YbCreateProfileStmt
 {
 	NodeTag		type;
 	char	   *prfname;
-	Integer	   *prffailedloginattempts;
+	Integer    *prffailedloginattempts;
 } YbCreateProfileStmt;
 
 typedef struct YbDropProfileStmt
@@ -2446,10 +2447,10 @@ typedef struct YbDropProfileStmt
 typedef struct YbCreateTableGroupStmt
 {
 	NodeTag		type;
-	char 	   *tablegroupname;
+	char	   *tablegroupname;
 	RoleSpec   *owner;
-	List 	   *options;
-	char 	   *tablespacename;
+	List	   *options;
+	char	   *tablespacename;
 	/*
 	 * Whether this tablegroup is created implicitly by YB
 	 * or created explicitly by users.
@@ -3062,7 +3063,7 @@ typedef struct IndexStmt
 	bool		if_not_exists;	/* just do nothing if index already exists? */
 	bool		reset_default_tblspc;	/* reset default_tablespace prior to
 										 * executing */
-	YbOptSplit *split_options; /* SPLIT statement options */
+	YbOptSplit *split_options;	/* SPLIT statement options */
 } IndexStmt;
 
 /* ----------------------
@@ -3666,7 +3667,7 @@ typedef struct ReindexStmt
  */
 typedef struct YbRowBounds
 {
-	NodeTag type;
+	NodeTag		type;
 	const char *partition_key;	/* Partition key of tablet containing bound */
 	const char *row_key_start;	/* Starting row of bound (inclusive) */
 	const char *row_key_end;	/* Ending row of bound (exclusive) */
@@ -3677,7 +3678,7 @@ typedef struct YbBackfillInfo
 	NodeTag		type;
 	const char *bfinstr;		/* Backfill instruction */
 	uint64_t	read_time;		/* Read time for backfill */
-	YbRowBounds  *row_bounds;		/* Rows to backfill */
+	YbRowBounds *row_bounds;	/* Rows to backfill */
 } YbBackfillInfo;
 
 typedef struct YbBackfillIndexStmt

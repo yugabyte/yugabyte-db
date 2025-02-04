@@ -1016,7 +1016,7 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_VIEW:
 			return true;
 
-		/* YB cases */
+			/* YB cases */
 		case OBJECT_YBPROFILE:
 			/* no support for event triggers on profiles */
 			return false;
@@ -1088,7 +1088,7 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 		case OCLASS_TRANSFORM:
 			return true;
 
-		/* YB cases */
+			/* YB cases */
 		case OCLASS_TBLGROUP:
 			/* no support for event triggers on tablegroups */
 			return false;
@@ -2131,7 +2131,7 @@ stringify_grant_objtype(ObjectType objtype)
 		case OBJECT_VIEW:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
 
-		/* YB cases */
+			/* YB cases */
 		case OBJECT_YBPROFILE:
 			return "PROFILE";
 		case OBJECT_YBTABLEGROUP:
@@ -2221,7 +2221,7 @@ stringify_adefprivs_objtype(ObjectType objtype)
 		case OBJECT_VIEW:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
 
-		/* YB cases */
+			/* YB cases */
 		case OBJECT_YBPROFILE:
 			return "PROFILES";
 		case OBJECT_YBTABLEGROUP:

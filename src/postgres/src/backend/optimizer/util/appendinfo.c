@@ -448,8 +448,8 @@ adjust_appendrel_attrs_mutator(Node *node,
 		/* YB: Also adjust rinfos within yb_batched_rinfo. */
 		newinfo->yb_batched_rinfo = (List *)
 			expression_tree_mutator((Node *) oldinfo->yb_batched_rinfo,
-								  adjust_appendrel_attrs_mutator,
-								  context);
+									adjust_appendrel_attrs_mutator,
+									context);
 
 		/*
 		 * Reset cached derivative fields, since these might need to have
@@ -893,9 +893,9 @@ add_row_identity_columns(PlannerInfo *root, Index rtindex,
 		add_row_identity_var(root, var, rtindex, "ybctid");
 	}
 	else if (commandType == CMD_MERGE ||
-		relkind == RELKIND_RELATION ||
-		relkind == RELKIND_MATVIEW ||
-		relkind == RELKIND_PARTITIONED_TABLE)
+			 relkind == RELKIND_RELATION ||
+			 relkind == RELKIND_MATVIEW ||
+			 relkind == RELKIND_PARTITIONED_TABLE)
 	{
 		/*
 		 * Emit CTID so that executor can find the row to merge, update or

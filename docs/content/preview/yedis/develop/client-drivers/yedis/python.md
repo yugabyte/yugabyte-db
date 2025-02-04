@@ -26,7 +26,7 @@ $ sudo pip install yedis
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, follow the steps in [Quick start](/preview/tutorials/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 
 ### Write the HelloWorld Python application
 

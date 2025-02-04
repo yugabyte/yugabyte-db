@@ -885,7 +885,7 @@ DoCopyTo(CopyToState cstate)
 	{
 		TupleTableSlot *slot;
 		TableScanDesc scandesc;
-		bool is_yb_relation;
+		bool		is_yb_relation;
 		MemoryContext oldcontext;
 		MemoryContext yb_context;
 

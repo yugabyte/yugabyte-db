@@ -27,7 +27,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/source_location.h"
 #include "yb/util/thread_restrictions.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 DEFINE_NON_RUNTIME_bool(disable_auto_flags_management, false,
     "Disables AutoFlags management. A safety switch to turn off automatic promotion of AutoFlags. "

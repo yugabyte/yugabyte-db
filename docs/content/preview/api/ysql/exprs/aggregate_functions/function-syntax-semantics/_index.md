@@ -55,7 +55,7 @@ Arguably, `avg()` might be better classified as a statistical aggregate function
 | [`min()`](./avg-count-max-min-sum/#max-min) | Computes the least value among the values in the set using the rule that is used for the particular data type in the ORDER BY clause. nulls are removed before sorting the values. |
 | [`string_agg()`](./array-string-jsonb-jsonb-object-agg/#string-agg) | Returns a single value produced by concatenating the aggregated values (first argument) separated by a mandatory separator (second argument). The first overload has `text` inputs and returns `text`. The second overload has `bytea` inputs and returns `bytea`. |
 | [`sum()`](./avg-count-max-min-sum/#sum) | Computes the sum of a set of summable values by adding them all together. If the set contains nulls, then these are simply ignored. |
-| [`xmlagg()`](https://www.postgresql.org/docs/11/functions-aggregate.html) | This is not supported through Version YB 2.2. See [GitHub Issue #1043](https://github.com/yugabyte/yugabyte-db/issues/1043) |
+| [`xmlagg()`](https://www.postgresql.org/docs/15/functions-aggregate.html) | This is not supported through Version YB 2.2. See [GitHub Issue #1043](https://github.com/yugabyte/yugabyte-db/issues/1043) |
 
 ## Statistical aggregate functions
 

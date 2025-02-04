@@ -365,7 +365,9 @@ class AwsCloud(AbstractCloud):
         """
         region = args.region
         search_pattern = args.search_pattern
-        return self.get_host_info_specific_args(region, search_pattern, get_all, private_ip)
+        node_uuid = args.node_uuid
+        return self.get_host_info_specific_args(region, search_pattern, get_all, private_ip,
+                                                node_uuid=node_uuid)
 
     def get_host_info_specific_args(self, region, search_pattern, get_all=False,
                                     private_ip=None, filters=None, node_uuid=None):
@@ -389,11 +391,6 @@ class AwsCloud(AbstractCloud):
                 "Name": "tag:Name",
                 "Values": [search_pattern]
             })
-        if node_uuid:
-            filters.append({
-                "Name": "tag:node-uuid",
-                "Values": [node_uuid]
-            })
         instances = []
         for _, client in self._get_clients(region=region).items():
             instances.extend(list(client.instances.filter(Filters=filters)))
@@ -401,7 +398,7 @@ class AwsCloud(AbstractCloud):
         for instance in instances:
             data = instance.meta.data
             if private_ip is not None and private_ip != data["PrivateIpAddress"]:
-                logging.warn("Node name {} is not unique. Expected IP {}, got IP {}".format(
+                logging.warning("Node name {} is not unique. Expected IP {}, got IP {}".format(
                     search_pattern, private_ip, data["PrivateIpAddress"]))
                 continue
             zone = data["Placement"]["AvailabilityZone"]
@@ -416,7 +413,13 @@ class AwsCloud(AbstractCloud):
                 node_uuid_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "node-uuid"]
                 universe_uuid_tags = [t["Value"] for t in data["Tags"]
                                       if t["Key"] == "universe-uuid"]
-
+            host_node_uuid = node_uuid_tags[0] if node_uuid_tags else None
+            # Matching tag or no tag for backward compatibility.
+            if host_node_uuid is not None and node_uuid is not None \
+                    and host_node_uuid != node_uuid:
+                logging.warning("VM {}({}) with node UUID {} is not found.".
+                                format(search_pattern, host_node_uuid, node_uuid))
+                continue
             primary_private_ip = None
             secondary_private_ip = None
             primary_subnet = None
@@ -447,7 +450,7 @@ class AwsCloud(AbstractCloud):
                 instance_type=data["InstanceType"],
                 server_type=server_tags[0] if server_tags else None,
                 launched_by=launched_by_tags[0] if launched_by_tags else None,
-                node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
+                node_uuid=host_node_uuid,
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 vpc=data["VpcId"],
                 instance_state=instance_state,

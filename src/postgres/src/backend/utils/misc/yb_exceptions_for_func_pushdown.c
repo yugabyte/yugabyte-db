@@ -31,9 +31,8 @@ const uint32 yb_funcs_safe_for_pushdown[] = {
 	F_RANDOM
 };
 
-const int yb_funcs_safe_for_pushdown_count =
-	sizeof(yb_funcs_safe_for_pushdown) /
-	sizeof(yb_funcs_safe_for_pushdown[0]);
+const int	yb_funcs_safe_for_pushdown_count = (sizeof(yb_funcs_safe_for_pushdown) /
+												sizeof(yb_funcs_safe_for_pushdown[0]));
 
 const uint32 yb_funcs_unsafe_for_pushdown[] = {
 	/* to_tsany.c */
@@ -76,6 +75,5 @@ const uint32 yb_funcs_unsafe_for_pushdown[] = {
 	F_TS_MATCH_TQ
 };
 
-const int yb_funcs_unsafe_for_pushdown_count =
-	sizeof(yb_funcs_unsafe_for_pushdown) /
-	sizeof(yb_funcs_unsafe_for_pushdown[0]);
+const int	yb_funcs_unsafe_for_pushdown_count = (sizeof(yb_funcs_unsafe_for_pushdown) /
+												  sizeof(yb_funcs_unsafe_for_pushdown[0]));

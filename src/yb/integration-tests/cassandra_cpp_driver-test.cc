@@ -2044,8 +2044,10 @@ void CppCassandraDriverTestSlowTServer::TestBackfillBatching(bool batching_enabl
     num_deferred_indexes += defer;
   }
 
-  for (auto& future : futures) {
-    ASSERT_OK(future.Wait());
+  auto deadline = CoarseMonoClock::Now() + 20s * kTimeMultiplier;
+  for (int i = 0; i < kNumIndexes; ++i) {
+    SCOPED_TRACE(Format("Index: $0", i));
+    ASSERT_OK(futures[i].WaitFor(deadline - CoarseMonoClock::Now()));
   }
 
   for (const auto& index_name : indexes) {

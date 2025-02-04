@@ -13,66 +13,37 @@ menu:
     weight: 620
 type: indexpage
 ---
-<div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="single-zone/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/kubernetes.png" aria-hidden="true" />
-        <div class="title">Single-zone deployments</div>
-      </div>
-      <div class="body">
-        Single-zone deployments on popular Kubernetes distributions.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="multi-zone/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/kubernetes.png" aria-hidden="true" />
-        <div class="title">Multi-zone deployments</div>
-      </div>
-      <div class="body">
-        Multi-zone deployments on Amazon EKS and GKE.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Single-zone deployments"
+    body="Single-zone deployments on popular Kubernetes distributions."
+    href="single-zone/"
+    icon="fa-light fa-dharmachakra">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="multi-cluster/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/kubernetes.png" aria-hidden="true" />
-        <div class="title">Multi-cluster deployments</div>
-      </div>
-      <div class="body">
-        Multi-cluster and multi-region deployments on GKE.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Multi-zone deployments"
+    body="Multi-zone deployments on Amazon EKS and GKE."
+    href="multi-zone/"
+    icon="fa-light fa-dharmachakra">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-   <a class="section-link icon-offset" href="clients/">
-     <div class="head">
-       <img class="icon" src="/images/section_icons/deploy/system.png" aria-hidden="true" />
-       <div class="title">Connect clients to clusters</div>
-     </div>
-     <div class="body">
-       Connect remote clients to YugabyteDB in Kubernetes clusters.
-     </div>
-   </a>
-  </div>
+  {{<index/item
+    title="Multi-cluster deployments"
+    body="Multi-cluster and multi-region deployments on GKE."
+    href="multi-cluster/"
+    icon="fa-light fa-dharmachakra">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-   <a class="section-link icon-offset" href="best-practices/">
-     <div class="head">
-       <img class="icon" src="/images/section_icons/deploy/system.png" aria-hidden="true" />
-       <div class="title">Best practices</div>
-     </div>
-     <div class="body">
-       Best practices for Kubernetes deployments.
-     </div>
-   </a>
-  </div>
+  {{<index/item
+    title="Connect clients to clusters"
+    body="Connect remote clients to YugabyteDB in Kubernetes clusters."
+    href="clients/"
+    icon="fa-light fa-globe-wifi">}}
 
-</div>
+  {{<index/item
+    title="Best practices"
+    body="Best practices for Kubernetes deployments."
+    href="best-practices/"
+    icon="fa-light fa-check">}}
+
+{{</index/block>}}

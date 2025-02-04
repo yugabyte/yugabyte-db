@@ -249,7 +249,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	toast_relid = heap_create_with_catalog(toast_relname,
 										   namespaceid,
 										   rel->rd_rel->reltablespace,
-										   InvalidOid, /* tablegroup */
+										   InvalidOid,	/* tablegroup */
 										   toastOid,
 										   InvalidOid,
 										   InvalidOid,
@@ -331,8 +331,8 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 				 rel->rd_rel->reltablespace,
 				 collationObjectId, classObjectId, coloptions, (Datum) 0,
 				 INDEX_CREATE_IS_PRIMARY, 0, true, true, NULL, NULL,
-				 true /* skip_index_backfill */, false /* is_colocated */,
-				 InvalidOid /* tablegroupId */, InvalidOid /* colocationId */);
+				 true /* skip_index_backfill */ , false /* is_colocated */ ,
+				 InvalidOid /* tablegroupId */ , InvalidOid /* colocationId */ );
 
 	table_close(toast_rel, NoLock);
 
@@ -355,7 +355,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	else
 	{
 		/* While bootstrapping, we cannot UPDATE, so overwrite in-place */
-		heap_inplace_update(class_rel, reltup, false /* yb_shared_update */);
+		heap_inplace_update(class_rel, reltup, false /* yb_shared_update */ );
 	}
 
 	heap_freetuple(reltup);

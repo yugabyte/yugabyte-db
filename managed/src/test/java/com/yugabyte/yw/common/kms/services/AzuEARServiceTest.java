@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AzuEARServiceTest extends FakeDBApplication {
-  public static final Logger LOG = LoggerFactory.getLogger(GcpEARService.class);
+  public static final Logger LOG = LoggerFactory.getLogger(AzuEARService.class);
 
   // Create fake auth config details
   public ObjectMapper mapper = new ObjectMapper();

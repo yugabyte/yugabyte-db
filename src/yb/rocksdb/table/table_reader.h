@@ -106,7 +106,7 @@ class TableReader {
   // internal_key is the internal key (encoded representation of InternalKey) to search for
   // skip_filters: disables checking the bloom filters even if they exist. This
   //               option is effective only for block-based table format.
-  virtual Status Get(const ReadOptions& readOptions, const Slice& internal_key,
+  virtual Status Get(const ReadOptions& read_options, const Slice& internal_key,
                      GetContext* get_context, bool skip_filters = false) = 0;
 
   // Prefetch data corresponding to a give range of keys

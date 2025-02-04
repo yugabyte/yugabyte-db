@@ -1357,15 +1357,19 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 															required_outer,
 															baserel));
 
-	List *sel_clauses = pclauses;
+	List	   *sel_clauses = pclauses;
+
 	if (!bms_is_empty(batchedrelids) && yb_enable_base_scans_cost_model)
 	{
-		List *new_pclauses = NIL;
-		foreach (lc, pclauses)
+		List	   *new_pclauses = NIL;
+
+		foreach(lc, pclauses)
 		{
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
-			RestrictInfo *batched =
-				yb_get_batched_restrictinfo(rinfo, batchedrelids, baserel->relids);
+			RestrictInfo *batched = yb_get_batched_restrictinfo(rinfo,
+																batchedrelids,
+																baserel->relids);
+
 			if (batched)
 				rinfo = batched;
 
@@ -1444,15 +1448,14 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 	Assert(!bms_overlap(joinrel->relids, required_outer));
 
 	/* Compute batched and unbatched relids. */
-	Relids req_batchedids = bms_union(YB_PATH_REQ_OUTER_BATCHED(outer_path),
-									  YB_PATH_REQ_OUTER_BATCHED(inner_path));
+	Relids		req_batchedids = bms_union(YB_PATH_REQ_OUTER_BATCHED(outer_path),
+										   YB_PATH_REQ_OUTER_BATCHED(inner_path));
 
-	Relids req_unbatchedids =
-		bms_union(YB_PATH_REQ_OUTER_UNBATCHED(outer_path),
-				  YB_PATH_REQ_OUTER_UNBATCHED(inner_path));
+	Relids		req_unbatchedids = bms_union(YB_PATH_REQ_OUTER_UNBATCHED(outer_path),
+											 YB_PATH_REQ_OUTER_UNBATCHED(inner_path));
 
 	req_batchedids = bms_difference(req_batchedids,
-											  req_unbatchedids);
+									req_unbatchedids);
 	req_batchedids = bms_difference(req_batchedids, outer_path->parent->relids);
 
 	/*
@@ -1604,6 +1607,7 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 		foreach(lc, pclauses)
 		{
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
 			/*
 			 * YB: If outer/inner path has a relevant pclause that requires
 			 * external relids that are not in
@@ -1615,8 +1619,8 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 
 			if (bms_overlap(rinfo->clause_relids, req_batchedids))
 			{
-				Relids unbatched_ext_rels =
-					bms_difference(rinfo->clause_relids, joinrel->relids);
+				Relids		unbatched_ext_rels = bms_difference(rinfo->clause_relids,
+																joinrel->relids);
 
 				req_unbatchedids =
 					bms_union(req_unbatchedids, unbatched_ext_rels);
@@ -1668,13 +1672,14 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 bool
 yb_has_same_batching_reqs(List *paths)
 {
-	Path *first_path = (Path *) linitial(paths);
-	Relids first_req_outer_batch = YB_PATH_REQ_OUTER_BATCHED(first_path);
-	Relids first_req_outer = PATH_REQ_OUTER(first_path);
-	ListCell *lc;
+	Path	   *first_path = (Path *) linitial(paths);
+	Relids		first_req_outer_batch = YB_PATH_REQ_OUTER_BATCHED(first_path);
+	Relids		first_req_outer = PATH_REQ_OUTER(first_path);
+	ListCell   *lc;
+
 	foreach(lc, paths)
 	{
-		Path *path = (Path *) lfirst(lc);
+		Path	   *path = (Path *) lfirst(lc);
 
 		if (!bms_equal(first_req_outer_batch, YB_PATH_REQ_OUTER_BATCHED(path)))
 			return false;
@@ -1735,8 +1740,8 @@ yb_find_batched_param_path_info(RelOptInfo *rel, Relids required_outer,
 		ParamPathInfo *ppi = (ParamPathInfo *) lfirst(lc);
 
 		if (bms_equal(ppi->ppi_req_outer, required_outer) &&
-			 bms_equal(ppi->yb_ppi_req_outer_batched,
-						  yb_required_batched_outer))
+			bms_equal(ppi->yb_ppi_req_outer_batched,
+					  yb_required_batched_outer))
 			return ppi;
 	}
 

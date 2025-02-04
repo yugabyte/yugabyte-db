@@ -215,6 +215,47 @@ KIWI_API static inline kiwi_prepared_statement_t *kiwi_prepared_statementalloc()
 	return desc;
 }
 
+static inline void yb_prepared_statement_init(kiwi_prepared_statement_t *stmt)
+{
+	stmt->operator_name = NULL;
+	stmt->operator_name_len = 0;
+	stmt->description = NULL;
+	stmt->description_len = 0;
+}
+
+static inline void yb_prepared_statement_free(kiwi_prepared_statement_t *stmt)
+{
+	if (stmt->operator_name)
+		free(stmt->operator_name);
+	if (stmt->description)
+		free(stmt->description);
+	stmt->description = NULL;
+	stmt->description_len = 0;
+	stmt->operator_name = NULL;
+	stmt->operator_name_len = 0;
+}
+
+static inline int yb_prepared_statement_alloc(kiwi_prepared_statement_t *stmt,
+					char *operator_name, size_t operator_name_len,
+					void *description, size_t description_len)
+{
+	stmt->operator_name = malloc(operator_name_len);
+	if (stmt->operator_name == NULL)
+		return -1;
+	memcpy(stmt->operator_name, operator_name, operator_name_len);
+	stmt->operator_name_len = operator_name_len;
+
+	stmt->description = malloc(description_len);
+	if (stmt->description == NULL) {
+		free(stmt->operator_name);
+		return -1;
+	}
+	memcpy(stmt->description, description, description_len);
+	stmt->description_len = description_len;
+
+	return 0;
+}
+
 KIWI_API static inline int
 kiwi_be_read_parse_dest(char *data, uint32_t size,
 			kiwi_prepared_statement_t *dest)

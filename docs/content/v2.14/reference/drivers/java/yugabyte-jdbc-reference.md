@@ -248,7 +248,7 @@ To access sample applications that use the YugabyteDB JDBC driver, visit [Yugaby
 
 To use the samples, complete the following steps:
 
-- Install YugabyteDB by following instructions provided in [Quick start guide](/preview/tutorials/quick-start/).
+- Install YugabyteDB by following instructions provided in [Quick start guide](/preview/tutorials/quick-start/macos/).
 
 - Build the examples by running `mvn package`.
 

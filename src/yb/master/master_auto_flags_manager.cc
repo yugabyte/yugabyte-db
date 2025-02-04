@@ -12,9 +12,12 @@
 //
 
 #include "yb/master/master_auto_flags_manager.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/util/scope_exit.h"
 
@@ -235,10 +238,10 @@ Result<bool> AreAutoFlagsCompatible(
 
 constexpr auto kYbMasterProcessName = "yb-master";
 
-MasterAutoFlagsManager::MasterAutoFlagsManager(
-    const scoped_refptr<ClockBase>& clock, FsManager* fs_manager, CatalogManager* catalog_manager)
-    : AutoFlagsManagerBase(kYbMasterProcessName, clock, fs_manager),
-      catalog_manager_(catalog_manager),
+MasterAutoFlagsManager::MasterAutoFlagsManager(Master& master)
+    : AutoFlagsManagerBase(kYbMasterProcessName, master.clock(), master.fs_manager()),
+      master_(master),
+      catalog_manager_(master.catalog_manager_impl()),
       update_lock_(mutex_, std::defer_lock) {}
 
 Status MasterAutoFlagsManager::Init(
@@ -400,6 +403,16 @@ Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> MasterAutoFlagsManager::Pro
     const bool force_version_change) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
 
+  SCHECK(
+      max_flag_class == AutoFlagClass::kLocalVolatile ||
+          !master_.ysql_manager().IsMajorUpgradeInProgress(),
+      InvalidArgument,
+      "Cannot promote non-volatile AutoFlags before YSQL major catalog upgrade is complete");
+
+  RETURN_NOT_OK_PREPEND(
+      master_.ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kVersionEQ),
+      "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current version");
+
   LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class)
             << ", promote_non_runtime: " << promote_non_runtime_flags
             << ", force: " << force_version_change;
@@ -420,6 +433,11 @@ Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> MasterAutoFlagsManager::Pro
 Result<std::pair<uint32_t, bool>> MasterAutoFlagsManager::RollbackAutoFlags(
     uint32_t rollback_version) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
+
+  // We do not validate tserver versions. All yb-tservers should be on the same version as the
+  // master but, we do not want to block the rollback in the rare case that some are already on a
+  // different version. Rollback is an emergency operation and we should not block it when the
+  // system is already in a bad state.
 
   auto new_config = GetConfig();
   const auto removed_flags = RemoveFlagsFromConfig(rollback_version, new_config);

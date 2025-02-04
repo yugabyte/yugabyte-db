@@ -365,7 +365,9 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 						info->nhashcolumns++;
 						info->reverse_sort[i] = false;
 						info->nulls_first[i] = false;
-					} else {
+					}
+					else
+					{
 						info->reverse_sort[i] = (opt & INDOPTION_DESC) != 0;
 						info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 					}

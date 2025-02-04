@@ -734,7 +734,7 @@ fileIterateForeignScan(ForeignScanState *node)
 	ExecClearTuple(slot);
 	found = NextCopyFrom(festate->cstate, NULL,
 						 slot->tts_values, slot->tts_isnull,
-						 false /* skip_row */);
+						 false /* skip_row */ );
 	if (found)
 		ExecStoreVirtualTuple(slot);
 
@@ -1162,7 +1162,7 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 		MemoryContextReset(tupcontext);
 		MemoryContextSwitchTo(tupcontext);
 
-		found = NextCopyFrom(cstate, NULL, values, nulls, false /* skip_row */);
+		found = NextCopyFrom(cstate, NULL, values, nulls, false /* skip_row */ );
 
 		MemoryContextSwitchTo(oldcontext);
 

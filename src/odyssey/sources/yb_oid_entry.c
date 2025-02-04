@@ -381,10 +381,24 @@ int yb_resolve_oid_status(const int obj_type, od_global_t *global, yb_oid_entry_
 /* different return status depending upon which of db or user entry is invalid */
 int yb_is_route_invalid(void *route)
 {
-	if (((od_route_t *)route)->yb_database_entry->status == YB_OID_DROPPED)
+	pthread_rwlock_t *lock;
+
+	lock = &database_rwlock;
+	pthread_rwlock_rdlock(lock);
+	if (((od_route_t *)route)->yb_database_entry->status == YB_OID_DROPPED) {
+		pthread_rwlock_unlock(lock);
 		return ROUTE_INVALID_DB_OID;
-	if (((od_route_t *)route)->yb_user_entry->status == YB_OID_DROPPED)
+	}
+	pthread_rwlock_unlock(lock);
+
+	lock = &user_rwlock;
+	pthread_rwlock_rdlock(lock);
+	if (((od_route_t *)route)->yb_user_entry->status == YB_OID_DROPPED) {
+		pthread_rwlock_unlock(lock);
 		return ROUTE_INVALID_ROLE_OID;
+	}
+	pthread_rwlock_unlock(lock);
+
 	return 0;
 }
 

@@ -1172,8 +1172,6 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add(destroyParams.instanceType);
         expectedCommand.add("--node_ip");
         expectedCommand.add(destroyParams.nodeIP);
-        expectedCommand.add("--node_uuid");
-        expectedCommand.add(destroyParams.nodeUuid.toString());
         break;
       case Tags:
         InstanceActions.Params tagsParams = (InstanceActions.Params) params;
@@ -1292,6 +1290,8 @@ public class NodeManagerTest extends FakeDBApplication {
     }
     expectedCommand.add("--remote_tmp_dir");
     expectedCommand.add("/tmp");
+    expectedCommand.add("--node_uuid");
+    expectedCommand.add(params.nodeUuid.toString());
     expectedCommand.add(params.nodeName);
     if (addGflags) {
       expectedCommand.add("--gflags");
@@ -1590,7 +1590,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 9;
+      int accessKeyIndexOffset = 11;
       if (t.cloudType.equals(Common.CloudType.aws)
           && params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
         accessKeyIndexOffset += 2;
@@ -1809,7 +1809,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 8;
+      int accessKeyIndexOffset = 10;
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyIndexOffset += 2;
         if (params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
@@ -2071,7 +2071,7 @@ public class NodeManagerTest extends FakeDBApplication {
               "/path/to/private.key",
               "--custom_ssh_port",
               "3333");
-      expectedCommand.addAll(expectedCommand.size() - 9, accessKeyCommand);
+      expectedCommand.addAll(expectedCommand.size() - 11, accessKeyCommand);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
@@ -3872,7 +3872,7 @@ public class NodeManagerTest extends FakeDBApplication {
                   "/path/to/private.key"));
       accessKeyCommands.add("--custom_ssh_port");
       accessKeyCommands.add("3333");
-      expectedCommand.addAll(expectedCommand.size() - 3, accessKeyCommands);
+      expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommands);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.CronCheck, params);
       verify(shellProcessHandler, times(1))

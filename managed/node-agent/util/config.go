@@ -232,6 +232,19 @@ func (config *Config) StoreCommandFlagString(
 	return value, nil
 }
 
+// Dump dumps the config values into a JSON string.
+func (config *Config) Dump(ctx context.Context) (string, error) {
+	if config == nil || config.viperInstance == nil {
+		return "", nil
+	}
+	ba, err := json.Marshal(config.viperInstance.AllSettings())
+	if err != nil {
+		FileLogger().Errorf(ctx, "Error in dumping config %s", err.Error())
+		return "", err
+	}
+	return string(ba), nil
+}
+
 func MustVersion() string {
 	version, err := Version()
 	if err != nil {

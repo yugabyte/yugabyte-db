@@ -376,13 +376,12 @@ struct TrackedTransactionLockEntry {
 
 template <typename LockManager>
 void OutLockTableRow(std::ostream& out,
-                     const VersionedTransaction& txn,
+                     const TransactionId& txn_id,
                      SubTransactionId subtxn_id,
                      const typename LockManagerTraits<LockManager>::KeyType& object_id,
                      const TrackedLockEntry<LockManager>& lock) {
-  ObjectLockOwner owner(txn, subtxn_id);
   out << "<tr>"
-        << "<td>" << AsString(owner) << "</td>"
+        << "<td>" << Format("{txn: $0 subtxn_id: $1}", txn_id, subtxn_id) << "</td>"
         << "<td>" << AsString(object_id) << "</td>"
         << "<td>" << LockStateDebugString(lock.state) << "</td>"
       << "</tr>";
@@ -610,7 +609,7 @@ class ObjectLockManager::Impl : public LockManagerImpl<ObjectLockManager> {
   struct OwnerPrefixAndKeyTag;
 
   using TransactionLocksMap = std::unordered_map<
-      VersionedTransaction, TrackedTransactionLockEntry<ObjectLockManager>>;
+      TransactionId, TrackedTransactionLockEntry<ObjectLockManager>>;
 
   void DumpStoredObjectLocksMap(
       std::ostream& out, std::string_view caption, LocksMapType locks_map) REQUIRES(global_mutex_);
@@ -628,7 +627,7 @@ class ObjectLockManager::Impl : public LockManagerImpl<ObjectLockManager> {
       TransactionEntry* txn, LocksMapType locks_map);
 
   // Lock activity is tracked only when the requests have ObjectLockOwner set. This maps
-  // versioned txn => subtxn => object id => entry.
+  // txn => subtxn => object id => entry.
   TransactionLocksMap txn_locks_ GUARDED_BY(global_mutex_);
 };
 
@@ -638,8 +637,8 @@ void ObjectLockManager::Impl::Unlock(
 
   std::lock_guard lock(global_mutex_);
   for (const auto& key : lock_entry_keys) {
-    const auto& versioned_txn = key.object_lock_owner.versioned_txn;
-    auto txn_it = txn_locks_.find(versioned_txn);
+    const auto& txn_id = key.object_lock_owner.txn_id;
+    auto txn_it = txn_locks_.find(txn_id);
     if (txn_it == txn_locks_.end()) {
       // This is expected in case of object/table locking, since while releasing a lock the
       // previously acquired lock mode is not specified. And since the key is formed based
@@ -668,7 +667,7 @@ void ObjectLockManager::Impl::Unlock(const ObjectLockOwner& object_lock_owner) {
   TRACE("Unlocking all keys for owner $0", AsString(object_lock_owner));
 
   std::lock_guard lock(global_mutex_);
-  auto txn_itr = txn_locks_.find(object_lock_owner.versioned_txn);
+  auto txn_itr = txn_locks_.find(object_lock_owner.txn_id);
   if (txn_itr == txn_locks_.end()) {
     return;
   }
@@ -710,7 +709,7 @@ ObjectLockManager::Impl::TransactionEntry* ObjectLockManager::Impl::GetTransacti
     return nullptr;
   }
 
-  return &txn_locks_[object_lock_owner->versioned_txn];
+  return &txn_locks_[object_lock_owner->txn_id];
 }
 
 LockState ObjectLockManager::Impl::GetLockStateForKey(

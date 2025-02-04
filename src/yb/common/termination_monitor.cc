@@ -16,7 +16,7 @@
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
-#include "yb/util/init.h"
+#include "yb/util/signal_util.h"
 #include "yb/util/thread.h"
 
 DECLARE_bool(TEST_running_test);

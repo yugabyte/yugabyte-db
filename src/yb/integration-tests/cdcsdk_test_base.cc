@@ -533,7 +533,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStream(
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamBasedOnCheckpointType(
     CDCCheckpointType checkpoint_type) {
-  return checkpoint_type == CDCCheckpointType::EXPLICIT ? CreateDBStreamWithReplicationSlot()
+  return checkpoint_type == CDCCheckpointType::EXPLICIT ? CreateConsistentSnapshotStream()
                                                         : CreateDBStream(IMPLICIT);
 }
 

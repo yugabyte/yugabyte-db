@@ -37,7 +37,7 @@ option java_package = "org.yb.server";
 
 import "yb/common/common_net.proto";
 import "yb/common/wire_protocol.proto";
-import "yb/util/version_info.proto";
+import "yb/common/version_info.proto";
 
 // The status information dumped by a server after it starts.
 //

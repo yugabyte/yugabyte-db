@@ -511,7 +511,7 @@ error hint:
 
 The first query uses an `IndexScan` in table `t2`. However, when you add `/*+Set(enable_indexscan off)*/`, the second query uses `SeqScan` in table `t2`. You can combine any parameters in the hint phrases of your SQL queries.
 
-For a more detailed explanation of the Planner Method Configuration and a complete list of available configuration parameters, refer to [Planner Method Configuration](https://www.postgresql.org/docs/11/runtime-config-query.html#RUNTIME-CONFIG-QUERY-ENABLE) in the PostgreSQL documentation.
+For a more detailed explanation of the Planner Method Configuration and a complete list of available configuration parameters, refer to [Planner Method Configuration](https://www.postgresql.org/docs/15/runtime-config-query.html#RUNTIME-CONFIG-QUERY-ENABLE) in the PostgreSQL documentation.
 
 ## Using the hint table
 

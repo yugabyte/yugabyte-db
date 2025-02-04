@@ -393,8 +393,7 @@ class TransactionParticipant::Impl
     }
     auto iter = docdb::CreateRocksDBIterator(db_.intents,
                                              db_.key_bounds,
-                                             docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-                                             boost::none,
+                                             docdb::BloomFilterOptions::Inactive(),
                                              rocksdb::kDefaultQueryId,
                                              /* file_filter = */ nullptr,
                                              /* iterate_upper_bound = */ nullptr,

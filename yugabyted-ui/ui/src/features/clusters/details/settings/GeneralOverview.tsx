@@ -61,7 +61,7 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
   const cluster = clusterData?.data;
 
   const clusterSpec = cluster?.spec;
-  const clusterName = clusterSpec?.name ?? '';
+  const universeUuid = cluster?.info.universe_uuid ?? '';
   const clusterCreationDate = cluster?.info.metadata.created_on;
   const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0;
   const replicationFactor = clusterSpec?.cluster_info?.replication_factor ?? 0;
@@ -108,12 +108,12 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
         {t('clusterDetail.settings.general')}
       </Typography>
       <Grid container spacing={4}>
-        <Grid item xs={2}>
+        <Grid item xs={4}>
           <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterWizard.clusterName')}
+            {t('clusterDetail.overview.universeUuid')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {clusterName}
+            {universeUuid}
           </Typography>
         </Grid>
         <Grid item xs={2}>
@@ -132,7 +132,6 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
             {getDate(clusterCreationDate)}
           </Typography>
         </Grid>
-        <Grid item xs={2}></Grid>
         <Grid item xs={2}>
           <Typography variant="subtitle2" className={classes.label}>
             {t('clusters.encryption')}

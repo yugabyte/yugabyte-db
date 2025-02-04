@@ -526,6 +526,10 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
 
   private YBUniverse getYBUniverse(
       KubernetesClient kubernetesClient, KubernetesResourceDetails name) {
+    if (name == null) {
+      log.debug("cannot lookup YBUniverse, kubernetesResourceDetails is null");
+      return null;
+    }
     log.debug("lookup ybuniverse {}/{}", name.namespace, name.name);
     return kubernetesClient
         .resources(YBUniverse.class)
@@ -608,8 +612,9 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
     YBUniverseStatus status = universe.getStatus();
     if (status == null) {
       log.debug(
-          "Creating new universe status for %s, namespace %s",
-          universe.getMetadata().getName(), universe.getMetadata().getNamespace());
+          "Creating new universe status for {}, namespace {}",
+          universe.getMetadata().getName(),
+          universe.getMetadata().getNamespace());
       status = new YBUniverseStatus();
     }
     return status;

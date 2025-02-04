@@ -2920,8 +2920,8 @@ _readYbSkippableEntities(void)
 static YbUpdateAffectedEntities *
 _readYbUpdateAffectedEntities(void)
 {
-	int nfields;
-	int nentities;
+	int			nfields;
+	int			nentities;
 
 	READ_LOCALS(YbUpdateAffectedEntities);
 

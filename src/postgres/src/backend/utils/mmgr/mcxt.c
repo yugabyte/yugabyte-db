@@ -74,7 +74,8 @@ YbSnapshotMemory()
 static void
 YbPgMemUpdateMax()
 {
-	const Size snapshot_mem = YbSnapshotMemory();
+	const Size	snapshot_mem = YbSnapshotMemory();
+
 	PgMemTracker.stmt_max_mem_bytes =
 		Max(PgMemTracker.stmt_max_mem_bytes,
 			snapshot_mem - PgMemTracker.stmt_max_mem_base_bytes);
@@ -99,28 +100,29 @@ YbPgGetCurRSSMemUsage(int pid)
 	if (!yb_enable_memory_tracking)
 		return -1;
 #ifdef __linux__
-	uint64 resident = 0;
-	char path[20];
+	uint64		resident = 0;
+	char		path[20];
+
 	snprintf(path, 20, "/proc/%d/statm", pid);
-	FILE* fp = fopen(path, "r");
+	FILE	   *fp = fopen(path, "r");
 
 	if (fp == NULL)
-		return -1; /* Can't open */
+		return -1;				/* Can't open */
 
 	if (fscanf(fp, "%*s%lu", &resident) != 1)
 	{
 		fclose(fp);
-		return -1; /* Can't read */
+		return -1;				/* Can't read */
 	}
 	fclose(fp);
 	return resident * sysconf(_SC_PAGESIZE);
 #else
 	struct proc_taskallinfo info;
-	int result = proc_pidinfo(pid, PROC_PIDTASKALLINFO, 0, &info,
-		sizeof(struct proc_taskallinfo));
+	int			result = proc_pidinfo(pid, PROC_PIDTASKALLINFO, 0, &info,
+									  sizeof(struct proc_taskallinfo));
 
 	if (result == 0 || result < sizeof(info))
-		return -1; /* Can't be determined or wrong value */
+		return -1;				/* Can't be determined or wrong value */
 
 	return info.ptinfo.pti_resident_size;
 #endif
@@ -163,12 +165,14 @@ YbPgMemSubConsumption(Size sz)
 	if (IsMultiThreadedMode())
 		return;
 
-	// Avoid overflow when subtracting sz.
-	PgMemTracker.pg_cur_mem_bytes = PgMemTracker.pg_cur_mem_bytes >= sz ?
-										PgMemTracker.pg_cur_mem_bytes - sz :
-										0;
-	// Only call release if pggate is alive, and update its liveness from the
-	// return value.
+	/* Avoid overflow when subtracting sz. */
+	PgMemTracker.pg_cur_mem_bytes = (PgMemTracker.pg_cur_mem_bytes >= sz ?
+									 PgMemTracker.pg_cur_mem_bytes - sz :
+									 0);
+	/*
+	 * Only call release if pggate is alive, and update its liveness from the
+	 * return value.
+	 */
 	if (PgMemTracker.pggate_alive)
 		PgMemTracker.pggate_alive = YBCTryMemRelease(sz);
 
@@ -195,43 +199,52 @@ YbPgMemResetStmtConsumption()
 MemoryContext CurrentMemoryContext = NULL;
 
 
-MemoryContext GetThreadLocalCurrentMemoryContext()
+MemoryContext
+GetThreadLocalCurrentMemoryContext()
 {
 	return (MemoryContext) YBCPgGetThreadLocalCurrentMemoryContext();
 }
 
-MemoryContext SetThreadLocalCurrentMemoryContext(MemoryContext memctx)
+MemoryContext
+SetThreadLocalCurrentMemoryContext(MemoryContext memctx)
 {
 	return (MemoryContext) YBCPgSetThreadLocalCurrentMemoryContext(memctx);
 }
 
-MemoryContext CreateThreadLocalCurrentMemoryContext(MemoryContext parent,
-													const char *name)
+MemoryContext
+CreateThreadLocalCurrentMemoryContext(MemoryContext parent,
+									  const char *name)
 {
 	return AllocSetContextCreateInternal(parent, name, ALLOCSET_START_SMALL_SIZES);
 }
 
-void PrepareThreadLocalCurrentMemoryContext()
+void
+PrepareThreadLocalCurrentMemoryContext()
 {
 	if (YBCPgGetThreadLocalCurrentMemoryContext() == NULL)
 	{
 		MemoryContext memctx = AllocSetContextCreate((MemoryContext) NULL,
 													 "DocDBExprMemoryContext",
 													 ALLOCSET_START_SMALL_SIZES);
+
 		YBCPgSetThreadLocalCurrentMemoryContext(memctx);
 	}
 }
 
-void ResetThreadLocalCurrentMemoryContext()
+void
+ResetThreadLocalCurrentMemoryContext()
 {
 	MemoryContext memctx = (MemoryContext) YBCPgGetThreadLocalCurrentMemoryContext();
+
 	YBCPgResetCurrentMemCtxThreadLocalVars();
 	MemoryContextReset(memctx);
 }
 
-void DeleteThreadLocalCurrentMemoryContext()
+void
+DeleteThreadLocalCurrentMemoryContext()
 {
 	MemoryContext memctx = (MemoryContext) YBCPgSetThreadLocalCurrentMemoryContext(NULL);
+
 	YBCPgResetCurrentMemCtxThreadLocalVars();
 	MemoryContextDelete(memctx);
 }
@@ -354,7 +367,7 @@ MemoryContextReset(MemoryContext context)
 	 * that resetting is happening. While the state variable "isReset" controls the objects in
 	 * Postgres, and the opaque object "yb_memctx" controls YugaByte objects.
 	 */
-  if (context->yb_memctx || !context->isReset)
+	if (context->yb_memctx || !context->isReset)
 		MemoryContextResetOnly(context);
 }
 
@@ -372,7 +385,8 @@ MemoryContextResetOnly(MemoryContext context)
 	 * Reset YugaByte context also.
 	 * Currently reset YugaByte context does not destroy it.  Maybe we should?
 	 */
-	if (context->yb_memctx) {
+	if (context->yb_memctx)
+	{
 		HandleYBStatus(YBCPgResetMemctx(context->yb_memctx));
 	}
 
@@ -1584,13 +1598,17 @@ pchomp(const char *in)
 /*
  * Get the YugaByte current memory context.
  */
-YbcPgMemctx GetCurrentYbMemctx() {
+YbcPgMemctx
+GetCurrentYbMemctx()
+{
 	MemoryContext context = GetCurrentMemoryContext();
+
 	AssertArg(MemoryContextIsValid(context));
 	AssertNotInCriticalSection(context);
 
-	if (context->yb_memctx == NULL) {
-		// Create the yugabyte context if this is the first time it is used.
+	if (context->yb_memctx == NULL)
+	{
+		/* Create the yugabyte context if this is the first time it is used. */
 		context->yb_memctx = YBCPgCreateMemctx();
 	}
 

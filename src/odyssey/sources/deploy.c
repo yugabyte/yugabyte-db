@@ -87,6 +87,7 @@ int od_deploy(od_client_t *client, char *context)
 		free(query);
 	} else {
 		client->server->synced_settings = true;
+		free(query);
 	}
 
 	return query_count;

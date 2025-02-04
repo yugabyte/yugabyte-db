@@ -31,8 +31,8 @@ typedef struct YbSysScanBaseData *YbSysScanBase;
 
 typedef struct YbSysScanVirtualTable
 {
-	HeapTuple (*next)(YbSysScanBase);
-	void (*end)(YbSysScanBase);
+	HeapTuple	(*next) (YbSysScanBase);
+	void		(*end) (YbSysScanBase);
 } YbSysScanVirtualTable;
 
 typedef struct YbSysScanBaseData

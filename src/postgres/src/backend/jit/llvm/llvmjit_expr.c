@@ -2348,8 +2348,9 @@ llvm_compile_expr(ExprState *state)
 				break;
 
 			case EEOP_ROWARRAY_COMPARE:
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("JIT unimplemented for ROW IN expressions")));
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("JIT unimplemented for ROW IN expressions")));
 				break;
 
 			case EEOP_LAST:

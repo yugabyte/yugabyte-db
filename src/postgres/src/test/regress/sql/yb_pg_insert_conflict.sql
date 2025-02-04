@@ -478,7 +478,6 @@ insert into parted_conflict_test_1 values (2, 'b') on conflict (b) do update set
 -- should see (2, 'b')
 select * from parted_conflict_test order by a;
 
-/* YB: Partition tables with ON CONFLICT DO UPDATE give out wrong results
 -- now check that DO UPDATE works correctly for target partition with
 -- different attribute numbers
 create table parted_conflict_test_2 (b char, a int unique);
@@ -491,7 +490,10 @@ insert into parted_conflict_test values (3, 'b') on conflict (a) do update set b
 select * from parted_conflict_test order by a;
 
 -- case where parent will have a dropped column, but the partition won't
-alter table parted_conflict_test drop b, add b char;
+-- YB Note: Dropping and adding a column with the same name is not supported in YB.
+-- Split the operation into two steps.
+alter table parted_conflict_test drop b;
+alter table parted_conflict_test add b char;
 create table parted_conflict_test_3 partition of parted_conflict_test for values in (4);
 truncate parted_conflict_test;
 insert into parted_conflict_test (a, b) values (4, 'a') on conflict (a) do update set b = excluded.b;
@@ -519,7 +521,6 @@ insert into parted_conflict_test (a, b) values (1, 'b'), (2, 'c'), (4, 'b') on c
 select * from parted_conflict_test order by a;
 
 drop table parted_conflict_test;
-*/ -- YB
 
 -- test behavior of inserting a conflicting tuple into an intermediate
 -- partitioning level

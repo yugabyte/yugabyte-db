@@ -21,24 +21,49 @@
 #include <vector>
 #include <string>
 
-#include "yb/rocksdb/table/merger.h"
 #include <gtest/gtest.h>
+
 #include "yb/rocksdb/env.h"
+#include "yb/rocksdb/table/merger.h"
+#include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
+std::string ValueForKey(Slice key) {
+  std::string result;
+  result.reserve(key.size());
+  for (auto it = key.cend(); it != key.cdata();) {
+    result.push_back(*--it);
+  }
+  return result;
+}
+
+class TestIteratorFilter : public IteratorFilter {
+ public:
+  bool Filter(
+      const QueryOptions& options, Slice user_key, FilterKeyCache* cache, void* context) const {
+    const auto& keys = *static_cast<std::vector<std::string>*>(context);
+    auto it = std::lower_bound(keys.begin(), keys.end(), user_key);
+    return it != keys.end() && Slice(*it).starts_with(user_key);
+  }
+};
+
 class MergerTest : public RocksDBTest {
  public:
-  MergerTest()
-      : rnd_(3), merging_iterator_(nullptr), single_iterator_(nullptr) {}
-  ~MergerTest() = default;
   std::vector<std::string> GenerateStrings(size_t len, int string_len) {
     std::vector<std::string> ret;
+    ret.reserve(len);
     for (size_t i = 0; i < len; ++i) {
       ret.push_back(test::RandomHumanReadableString(&rnd_, string_len));
     }
     return ret;
+  }
+
+  ~MergerTest() {
+    if (filter_iterator_) {
+      filter_iterator_->~InternalIterator();
+    }
   }
 
   void AssertEquivalence() {
@@ -117,10 +142,55 @@ class MergerTest : public RocksDBTest {
     single_iterator_.reset(new test::VectorIterator(all_keys_));
   }
 
-  Random rnd_;
+  void GenerateWithFilter(
+      size_t num_iterators, size_t strings_per_iterator, int letters_per_string,
+      size_t subkeys_per_iterator) {
+    MergeIteratorBuilder builder(BytewiseComparator(), &arena_);
+
+    builder.SetupIteratorFilter(&filter_, QueryOptions());
+
+    std::vector<InternalIterator*> small_iterators;
+    auto keys = GenerateStrings(strings_per_iterator * num_iterators, letters_per_string);
+    all_keys_.insert(all_keys_.end(), keys.begin(), keys.end());
+    subkeys_.resize(all_keys_.size());
+
+    for (size_t i = 0; i < num_iterators; ++i) {
+      std::vector<std::string> iterator_keys(
+          keys.begin() + i * strings_per_iterator, keys.begin() + (i + 1) * strings_per_iterator);
+      for (size_t j = 0; j != subkeys_per_iterator; ++j) {
+        auto idx = rnd_.Uniform(narrow_cast<int>(all_keys_.size()));
+        iterator_keys.push_back(
+            keys[idx] + test::RandomHumanReadableString(&rnd_, letters_per_string));
+        subkeys_[idx].push_back(iterator_keys.back());
+      }
+      std::sort(iterator_keys.begin(), iterator_keys.end());
+
+      std::vector<std::string> values;
+      values.reserve(iterator_keys.size());
+      for (const auto& key : iterator_keys) {
+        values.push_back(ValueForKey(key));
+      }
+      auto iterator = arena_.NewObject<test::VectorIterator>(iterator_keys, values);
+      iterator->ExpectSeekToPrefixOnly();
+      builder.AddIterator(iterator);
+    }
+
+    for (auto& subkeys : subkeys_) {
+      std::sort(subkeys.begin(), subkeys.end());
+    }
+    filter_iterator_ = builder.Finish();
+  }
+
+  void TestFilter(bool forward_only);
+
+  Random rnd_{3};
+  Arena arena_;
+  TestIteratorFilter filter_;
   std::unique_ptr<InternalIterator> merging_iterator_;
   std::unique_ptr<InternalIterator> single_iterator_;
+  InternalIterator* filter_iterator_ = nullptr;
   std::vector<std::string> all_keys_;
+  std::vector<std::vector<std::string>> subkeys_;
 };
 
 TEST_F(MergerTest, SeekToRandomNextTest) {
@@ -175,6 +245,43 @@ TEST_F(MergerTest, SeekToLastTest) {
     AssertEquivalence();
     Prev(50000);
   }
+}
+
+void MergerTest::TestFilter(bool forward_only) {
+  GenerateWithFilter(1000, 10, 10, 20);
+  std::vector<size_t> indexes(all_keys_.size());
+  std::iota(indexes.begin(), indexes.end(), 0);
+  if (forward_only) {
+    std::sort(indexes.begin(), indexes.end(), [this](size_t lhs, size_t rhs) {
+      return all_keys_[lhs] < all_keys_[rhs];
+    });
+  }
+  for (auto i : indexes) {
+    const auto& key = all_keys_[i];
+    if (!rnd_.OneIn(2)) {
+      continue;
+    }
+    {
+      const auto& entry = filter_iterator_->SeekWithNewFilter(key, key);
+      ASSERT_TRUE(entry.Valid());
+      ASSERT_EQ(entry.key, key);
+      ASSERT_EQ(entry.value, ValueForKey(key));
+    }
+    for (size_t j = 0, nj = rnd_.Uniform(narrow_cast<int>(subkeys_[i].size() + 1)); j != nj; ++j) {
+      const auto& entry = filter_iterator_->Next();
+      ASSERT_TRUE(entry.Valid());
+      ASSERT_EQ(entry.key, subkeys_[i][j]);
+      ASSERT_EQ(entry.value, ValueForKey(entry.key));
+    }
+  }
+}
+
+TEST_F(MergerTest, RandomFilter) {
+  TestFilter(false);
+}
+
+TEST_F(MergerTest, RandomFilterForwardOnly) {
+  TestFilter(true);
 }
 
 }  // namespace rocksdb

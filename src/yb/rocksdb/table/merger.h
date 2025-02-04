@@ -26,6 +26,7 @@
 #include <memory>
 
 #include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 
@@ -47,6 +48,8 @@ class Arena;
 InternalIterator* NewMergingIterator(
     const Comparator* comparator, InternalIterator** children, int n, Arena* arena = nullptr);
 
+constexpr size_t kMergeIteratorNumReserved = 4;
+
 // A builder class to build a merging iterator by adding iterators one by one.
 template <typename IteratorWrapperType>
 class MergeIteratorBuilderBase {
@@ -62,16 +65,23 @@ class MergeIteratorBuilderBase {
 
   // Get arena used to build the merging iterator. It is called one a child
   // iterator needs to be allocated.
-  Arena* GetArena() { return arena; }
+  Arena* GetArena() { return arena_; }
 
   // Return the result merging iterator.
   InternalIterator* Finish();
 
+  void SetupIteratorFilter(
+      const IteratorFilter* filter, const QueryOptions& filter_options) {
+    filter_ = filter;
+    filter_options_ = filter_options;
+  }
+
  private:
-  MergingIteratorBase<IteratorWrapperType>* merge_iter;
-  InternalIterator* first_iter;
-  bool use_merging_iter;
-  Arena* arena;
+  const Comparator* const comparator_;
+  Arena* const arena_;
+  boost::container::small_vector<IteratorWrapperType, kMergeIteratorNumReserved> iterators_;
+  const IteratorFilter* filter_ = nullptr;
+  QueryOptions filter_options_;
 };
 
 template <typename IteratorType>
@@ -96,7 +106,8 @@ class MergeIteratorInHeapBuilder {
   std::unique_ptr<MergingIterator<IteratorType>> Finish();
 
  private:
-  std::unique_ptr<MergingIteratorBase<IteratorWrapperType>> merge_iter;
+  const Comparator* const comparator_;
+  boost::container::small_vector<IteratorWrapperType, kMergeIteratorNumReserved> iterators_;
 };
 
 }  // namespace rocksdb

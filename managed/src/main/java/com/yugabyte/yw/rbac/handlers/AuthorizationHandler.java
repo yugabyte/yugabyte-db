@@ -78,7 +78,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
     Users user = tokenAuthenticator.getCurrentAuthenticatedUser(request);
     if (user == null) {
       log.debug("User not present in the system");
-      return CompletableFuture.completedFuture(Results.unauthorized("Unable To authenticate User"));
+      return CompletableFuture.completedFuture(Results.unauthorized("Unable To Authenticate User"));
     }
     UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
     Customer customer = Customer.get(user.getCustomerUUID());
@@ -95,7 +95,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
 
     if (customerUUID != null && !user.getCustomerUUID().equals(customerUUID)) {
       log.debug("User {} does not belong to the customer {}", user.getUuid(), customerUUID);
-      return CompletableFuture.completedFuture(Results.unauthorized("Unable To authenticate User"));
+      return CompletableFuture.completedFuture(Results.unauthorized("Unable To Authenticate User"));
     }
 
     RequiredPermissionOnResource[] permissionPathList = configuration.value();
@@ -206,8 +206,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
                 find.query().where().eq(resource.columnName(), resourceUUID).findList();
             ObjectMapper mapper = new ObjectMapper();
             if (modelEntityList == null || modelEntityList.isEmpty()) {
-              return CompletableFuture.completedFuture(
-                  Results.unauthorized("Unable to authorize user"));
+              return CompletableFuture.completedFuture(Results.notFound("Entity does not exist."));
             }
             Model modelEntity = modelEntityList.get(0);
             JsonNode requestBody = mapper.convertValue(modelEntity, JsonNode.class);

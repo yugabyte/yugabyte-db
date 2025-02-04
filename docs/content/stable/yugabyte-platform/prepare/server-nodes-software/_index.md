@@ -10,6 +10,7 @@ menu:
     parent: server-nodes
     weight: 20
 type: indexpage
+showRightNav: true
 ---
 
 The Linux OS and other software components on each database cluster node must meet the following minimum software requirements.
@@ -17,7 +18,7 @@ The Linux OS and other software components on each database cluster node must me
 Depending on the [provider type](../../yba-overview/#provider-configurations) and permissions you grant, you may have to install all of these requirements manually, or YugabyteDB Anywhere will install it all automatically.
 
 {{< warning title="Using disk encryption software with YugabyteDB" >}}
-If you are using third party disk encryption software, such as Vormetric or CipherTrust, the disk encryption service must be up and running on the node before starting any YugabyteDB services. If YugabyteDB processes start _before_ the encryption service, restarting an already encrypted node can result in data corruption.
+If you are using third party disk encryption software (such as Vormetric or CipherTrust), the disk encryption service must be up and running on the node before starting any YugabyteDB services. If YugabyteDB processes start _before_ the encryption service, restarting an already encrypted node can result in data corruption.
 
 To avoid problems, [pause the universe](../../manage-deployments/delete-universe/#pause-a-universe) _before_ enabling or disabling the disk encryption service on universe nodes.
 {{< /warning >}}

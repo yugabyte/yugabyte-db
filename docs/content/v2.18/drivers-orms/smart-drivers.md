@@ -34,7 +34,7 @@ YugabyteDB smart drivers have the following key features.
 | Multiple hosts | As with the upstream driver (with the exception of node.js), you can specify multiple hosts for the initial connection, to avoid dropping connections in the case where the primary host is unavailable. |
 | [Cluster aware](#cluster-aware-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
 | [Topology aware](#topology-aware-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
-| [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
+| [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable. |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
 ## Overview
@@ -114,8 +114,6 @@ For example, using the Go smart driver, you can change the interval to four minu
 ```go
 "postgres://username:password@host:5433/database_name?load_balance=true&yb_servers_refresh_interval=240"
 ```
-
-(Note that currently this feature is not available in the YugabyteDB Python Smart Driver.)
 
 ### Topology-aware load balancing
 
@@ -207,6 +205,6 @@ For more information on using TLS/SSL in YugabyteDB Aeon, refer to [Encryption i
 ## Learn more
 
 - YugabyteDB Friday Tech Talk: [PostgreSQL Smart Drivers](https://youtu.be/FbXrRdB_4u0)
-- [Smart driver FAQ](../../faq/smart-drivers-faq/)
+- [Smart driver FAQ](/preview/faq/smart-drivers-faq/)
 - Smart driver [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 - Blog: [Node.js Smart Drivers for YugabyteDB: Why You Should Care](https://www.yugabyte.com/blog/node-js-smart-drivers-for-yugabytedb/)

@@ -115,7 +115,7 @@ preprocess_targetlist(PlannerInfo *root)
 	 * TODO(neil) The optimizer should reduce the list to referenced columns.
 	 */
 	else if ((command_type == CMD_DELETE && IsYBRelation(target_relation) &&
-		 parse->returningList != NULL))
+			  parse->returningList != NULL))
 		tlist = expand_delete_targetlist(tlist, result_relation, target_relation);
 
 	/*
@@ -227,6 +227,7 @@ preprocess_targetlist(PlannerInfo *root)
 		if (rc->allMarkTypes & ~(1 << ROW_MARK_COPY))
 		{
 			RangeTblEntry *rte = rt_fetch(rc->rti, range_table);
+
 			if (IsYBRelationById(rte->relid))
 			{
 				/* Need to fetch YB TID */
@@ -410,6 +411,7 @@ expand_insert_targetlist(List *tlist, Relation rel)
 		for (int i = 0; i < tlist_length; ++i)
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, tlist_item);
+
 			if (tle && tle->resno < 1)
 			{
 				new_tlist = lappend(new_tlist, tle);
@@ -561,6 +563,7 @@ expand_delete_targetlist(List *tlist, Index result_relation, Relation rel)
 		for (int i = 0; i < tlist_length; ++i)
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, tlist_item);
+
 			if (tle && tle->resno < 1)
 			{
 				new_tlist = lappend(new_tlist, tle);
@@ -589,9 +592,14 @@ expand_delete_targetlist(List *tlist, Index result_relation, Relation rel)
 
 		if (new_tle == NULL)
 		{
-			// This case is added only for DELETE from YugaByte table with RETURNING clause.
-			Node *new_expr;
-			if (att_tup->attisdropped) {
+			/*
+			 * This case is added only for DELETE from YugaByte table with
+			 * RETURNING clause.
+			 */
+			Node	   *new_expr;
+
+			if (att_tup->attisdropped)
+			{
 				/* Insert NULL for dropped column */
 				new_expr = (Node *) makeConst(INT4OID,
 											  -1,
@@ -603,7 +611,7 @@ expand_delete_targetlist(List *tlist, Index result_relation, Relation rel)
 			}
 			else
 			{
-				// Query all attribute in the YugaByte relation.
+				/* Query all attribute in the YugaByte relation. */
 				new_expr = (Node *) makeVar(result_relation,
 											attrno,
 											att_tup->atttypid,

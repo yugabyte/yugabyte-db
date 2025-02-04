@@ -17,6 +17,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -28,6 +29,7 @@ import static play.test.Helpers.fakeRequest;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -174,6 +176,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     responseJson.put("typeName", taskType.getFriendlyName());
     responseJson.put("abortable", false);
     responseJson.put("retryable", false);
+    responseJson.put("canRollback", false);
     if (percentComplete == 100.0) {
       // Sleep 3 seconds so that the completed time is greater than
       // creation time.
@@ -443,6 +446,102 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertThat(universeTasks.isArray(), is(true));
     assertThat(universeTasks.size(), is(1));
     assertValues(universeTasks, "id", ImmutableList.of(taskUUID1.toString()));
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testTasksListPagedHistory() {
+    String authToken = user.createAuthToken();
+
+    UUID providerUUID = UUID.randomUUID();
+    createTaskWithStatus(
+        providerUUID,
+        CustomerTask.TargetType.Provider,
+        Update,
+        TaskType.UpgradeUniverse,
+        "Foo",
+        "Running",
+        10.0);
+
+    String url = "/api/customers/" + customer.getUuid() + "/tasks_list/page";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("direction", "DESC");
+    bodyJson.put("sortBy", "createTime");
+    bodyJson.put("offset", 0);
+    bodyJson.set("filter", Json.newObject());
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertThat(result.status(), is(OK));
+    JsonNode tasks = Json.parse(contentAsString(result));
+
+    ArrayNode response = (ArrayNode) tasks.get("entities");
+    assertEquals(1, response.size());
+    assertThat(response.isArray(), is(true));
+    JsonNode task = response.get(0);
+    assertThat(
+        task.get("title").asText(), allOf(notNullValue(), equalTo("Updating Provider : Foo")));
+    assertThat(task.get("percentComplete").asDouble(), allOf(notNullValue(), equalTo(10.0)));
+    assertThat(task.get("status").asText(), allOf(notNullValue(), equalTo("Running")));
+    assertThat(
+        task.get("createTime").asLong() < Calendar.getInstance().getTimeInMillis(), is(true));
+    assertThat(task.has("completionTime"), is(false));
+    assertThat(task.get("target").asText(), allOf(notNullValue(), equalTo("Provider")));
+    assertThat(
+        task.get("targetUUID").asText(), allOf(notNullValue(), equalTo(providerUUID.toString())));
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testTasksListPagedHistoryWithTargetUUIDFilter() {
+    String authToken = user.createAuthToken();
+
+    UUID providerUUID = UUID.randomUUID();
+    createTaskWithStatus(
+        providerUUID,
+        CustomerTask.TargetType.Provider,
+        Update,
+        TaskType.UpgradeUniverse,
+        "Foo",
+        "Running",
+        10.0);
+
+    String url = "/api/customers/" + customer.getUuid() + "/tasks_list/page";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("direction", "DESC");
+    bodyJson.put("sortBy", "createTime");
+    bodyJson.put("offset", 0);
+    bodyJson.set(
+        "filter",
+        Json.newObject().set("targetUUIDList", Json.newArray().add(providerUUID.toString())));
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertThat(result.status(), is(OK));
+    JsonNode tasks = Json.parse(contentAsString(result));
+
+    ArrayNode response = (ArrayNode) tasks.get("entities");
+    assertEquals(1, response.size());
+    assertThat(response.isArray(), is(true));
+    JsonNode task = response.get(0);
+    assertThat(
+        task.get("title").asText(), allOf(notNullValue(), equalTo("Updating Provider : Foo")));
+    assertThat(task.get("percentComplete").asDouble(), allOf(notNullValue(), equalTo(10.0)));
+    assertThat(task.get("status").asText(), allOf(notNullValue(), equalTo("Running")));
+    assertThat(
+        task.get("createTime").asLong() < Calendar.getInstance().getTimeInMillis(), is(true));
+    assertThat(task.has("completionTime"), is(false));
+    assertThat(task.get("target").asText(), allOf(notNullValue(), equalTo("Provider")));
+    assertThat(
+        task.get("targetUUID").asText(), allOf(notNullValue(), equalTo(providerUUID.toString())));
+    assertAuditEntry(0, customer.getUuid());
+
+    bodyJson.set(
+        "filter",
+        Json.newObject().set("targetUUIDList", Json.newArray().add(UUID.randomUUID().toString())));
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertThat(result.status(), is(OK));
+    tasks = Json.parse(contentAsString(result));
+
+    response = (ArrayNode) tasks.get("entities");
+    assertEquals(0, response.size());
+    assertThat(response.isArray(), is(true));
     assertAuditEntry(0, customer.getUuid());
   }
 

@@ -42,7 +42,7 @@ Stale reads are possible with an upper bound on the amount of staleness. Reads a
 
 ## Prerequisites
 
-Ensure that you have downloaded and configured YugabyteDB, as described in [Quick start](/preview/tutorials/quick-start/).
+Ensure that you have downloaded and configured YugabyteDB, as described in [Quick start](/preview/tutorials/quick-start/macos/).
 
 {{< note title="Note" >}}
 

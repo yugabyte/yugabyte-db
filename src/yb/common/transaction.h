@@ -49,7 +49,6 @@ YB_STRONGLY_TYPED_UUID_DECL(TransactionId);
 using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 using TransactionIdApplyOpIdMap = std::unordered_map<TransactionId, OpId, TransactionIdHash>;
 using SubTransactionId = uint32_t;
-using TxnReuseVersion = uint64_t;
 // When session level advisory locks are enabled, we created a docdb transaction for a pg session
 // on a session advisory lock request, if one doesn't already exist. This transaction lives for the
 // lifetime of the pg session. The version is used to resolve failed waiting lock requests (probably

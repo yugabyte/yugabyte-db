@@ -1342,6 +1342,9 @@ PollForTasks(List *taskList)
 static bool
 CanStartTask(CronTask *task)
 {
+	if (IsYugaByteEnabled() && !ybIsLeader)
+		return false;
+
 	return task->state == CRON_TASK_WAITING && task->pendingRunCount > 0 &&
 		   RunningTaskCount < MaxRunningTasks;
 }

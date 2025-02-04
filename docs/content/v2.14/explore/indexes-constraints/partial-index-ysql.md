@@ -42,7 +42,7 @@ The `WHERE` clause specifies which rows need to be added to the index.
 
 This example uses the `customers` table from the [Northwind sample database](../../../sample-data/northwind/).
 
-Create a cluster [locally](/preview/tutorials/quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and [install](../../../sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
+Create a cluster [locally](/preview/tutorials/quick-start/macos/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and [install](../../../sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
 
 View the contents of the `customers` table:
 

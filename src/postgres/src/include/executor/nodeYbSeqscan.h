@@ -28,18 +28,18 @@
 #include "nodes/execnodes.h"
 
 extern YbSeqScanState *ExecInitYbSeqScan(YbSeqScan *node, EState *estate,
-				  int eflags);
+										 int eflags);
 extern void ExecEndYbSeqScan(YbSeqScanState *node);
 extern void ExecReScanYbSeqScan(YbSeqScanState *node);
 
 /* parallel scan support */
 extern void ExecYbSeqScanEstimate(YbSeqScanState *node,
-					  ParallelContext *pcxt);
+								  ParallelContext *pcxt);
 extern void ExecYbSeqScanInitializeDSM(YbSeqScanState *node,
-						   ParallelContext *pcxt);
+									   ParallelContext *pcxt);
 extern void ExecYbSeqScanReInitializeDSM(YbSeqScanState *node,
-							 ParallelContext *pcxt);
+										 ParallelContext *pcxt);
 extern void ExecYbSeqScanInitializeWorker(YbSeqScanState *node,
-							  ParallelWorkerContext *pwcxt);
+										  ParallelWorkerContext *pwcxt);
 
 #endif							/* NODEYBSEQSCAN_H */

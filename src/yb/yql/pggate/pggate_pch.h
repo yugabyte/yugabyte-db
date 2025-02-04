@@ -220,7 +220,6 @@
 #include "yb/util/format.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/high_water_mark.h"
-#include "yb/util/init.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"

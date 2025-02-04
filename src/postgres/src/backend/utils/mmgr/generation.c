@@ -379,7 +379,8 @@ GenerationDelete(MemoryContext context)
 	/* Reset to release all releasable GenerationBlocks */
 	GenerationReset(context);
 	/* And free the context header and keeper block */
-	size_t freed_sz = context->mem_allocated + Generation_CONTEXTSZ;
+	size_t		freed_sz = context->mem_allocated + Generation_CONTEXTSZ;
+
 	free(context);
 	YbPgMemSubConsumption(freed_sz);
 }
@@ -656,7 +657,7 @@ GenerationBlockFree(GenerationContext *set, GenerationBlock *block)
 	dlist_delete(&block->node);
 
 	((MemoryContext) set)->mem_allocated -= block->blksize;
-	size_t freed_sz = block->blksize;
+	size_t		freed_sz = block->blksize;
 
 #ifdef CLOBBER_FREED_MEMORY
 	wipe_mem(block, block->blksize);
@@ -742,7 +743,8 @@ GenerationFree(MemoryContext context, void *pointer)
 	 */
 	dlist_delete(&block->node);
 
-	size_t freed_sz = block->blksize;
+	size_t		freed_sz = block->blksize;
+
 	context->mem_allocated -= block->blksize;
 	free(block);
 	YbPgMemSubConsumption(freed_sz);

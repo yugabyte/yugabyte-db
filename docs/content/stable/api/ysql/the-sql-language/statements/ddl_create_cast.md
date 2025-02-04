@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `CREATE CAST` statement to create a cast.
+Use the CREATE CAST statement to create a cast.
 
 ## Syntax
 
@@ -30,7 +30,7 @@ See the semantics of each option in the [PostgreSQL docs][postgresql-docs-create
 
 ## Examples
 
-`WITH FUNCTION` example.
+WITH FUNCTION example.
 
 ```plpgsql
 yugabyte=# CREATE FUNCTION sql_to_date(integer) RETURNS date AS $$
@@ -40,7 +40,7 @@ yugabyte=# CREATE CAST (integer AS date) WITH FUNCTION sql_to_date(integer) AS A
 yugabyte=# SELECT CAST (3 AS date);
 ```
 
-`WITHOUT FUNCTION` example.
+WITHOUT FUNCTION example.
 
 ```plpgsql
 yugabyte=# CREATE TYPE myfloat4;
@@ -58,7 +58,7 @@ yugabyte=# CREATE CAST (myfloat4 AS float4) WITHOUT FUNCTION;
 yugabyte=# SELECT CAST('3.14'::myfloat4 AS float4);
 ```
 
-`WITH INOUT` example.
+WITH INOUT example.
 
 ```plpgsql
 yugabyte=# CREATE TYPE myint4;
@@ -78,5 +78,6 @@ yugabyte=# SELECT CAST('2'::myint4 AS int4);
 
 ## See also
 
-- [`DROP CAST`](../ddl_drop_cast)
-- [postgresql-docs-create-cast](https://www.postgresql.org/docs/current/sql-createcast.html)
+- [DROP CAST](../ddl_drop_cast)
+
+[postgresql-docs-create-cast]: https://www.postgresql.org/docs/11/sql-createcast.html

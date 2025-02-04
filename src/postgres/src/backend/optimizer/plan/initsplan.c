@@ -44,7 +44,7 @@
 /* These parameters are set by GUC */
 int			from_collapse_limit;
 int			join_collapse_limit;
-extern int yb_bnl_batch_size;
+extern int	yb_bnl_batch_size;
 
 
 /* Elements of the postponed_qual_list used during deconstruct_recurse */
@@ -87,7 +87,7 @@ static void check_mergejoinable(RestrictInfo *restrictinfo);
 static void check_hashjoinable(RestrictInfo *restrictinfo);
 static void check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
 static void check_memoizable(RestrictInfo *restrictinfo);
-static ListCell * yb_find_wholerow_of_record_type(List *expr);
+static ListCell *yb_find_wholerow_of_record_type(List *expr);
 
 
 /*****************************************************************************
@@ -273,8 +273,8 @@ add_vars_to_targetlist(PlannerInfo *root, List *vars,
 				 * Prioritize it over existing wholerow of RECOROID type (if
 				 * any) in rel->reltarget->exprs.
 				 */
-				ListCell *lc =
-					yb_find_wholerow_of_record_type(rel->reltarget->exprs);
+				ListCell   *lc = yb_find_wholerow_of_record_type(rel->reltarget->exprs);
+
 				if (lc)
 				{
 					rel->reltarget->exprs =
@@ -1904,7 +1904,8 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 	 * relation, or between vars and consts.
 	 */
 	check_mergejoinable(restrictinfo);
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		check_batchable(root, restrictinfo);
 	}
 
@@ -2492,7 +2493,8 @@ build_implied_join_equality(PlannerInfo *root,
 	check_hashjoinable(restrictinfo);
 	check_memoizable(restrictinfo);
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		check_batchable(root, restrictinfo);
 	}
 	return restrictinfo;
@@ -2773,25 +2775,27 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 	leftarg = linitial(opexpr->args);
 	rightarg = lsecond(opexpr->args);
 
-	Node *outer;
-	Node *inner;
+	Node	   *outer;
+	Node	   *inner;
 
-	Node *args[] = {leftarg, rightarg};
+	Node	   *args[] = {leftarg, rightarg};
 
 	/*
 	 * We currently only support cross-type IN conditions within the integer
 	 * ops families.
 	 */
-	bool is_supported_cross_type_op = false;
-	ListCell *lc;
+	bool		is_supported_cross_type_op = false;
+	ListCell   *lc;
+
 	foreach(lc, restrictinfo->mergeopfamilies)
 	{
-		Oid opfamily = lfirst_oid(lc);
+		Oid			opfamily = lfirst_oid(lc);
+
 		is_supported_cross_type_op |= opfamily == INTEGER_BTREE_FAM_OID;
 		is_supported_cross_type_op |= opfamily == INTEGER_LSM_FAM_OID;
 	}
 
-	Oid opno = opexpr->opno;
+	Oid			opno = opexpr->opno;
 
 	/*
 	 * Try to make batched expressions of the forms
@@ -2807,9 +2811,9 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 			  IsA(((RelabelType *) inner)->arg, Var)))
 			continue;
 
-		Oid outerType = exprType(outer);
-		Oid innerType = exprType(inner);
-		int innerTypMod = exprTypmod(inner);
+		Oid			outerType = exprType(outer);
+		Oid			innerType = exprType(inner);
+		int			innerTypMod = exprTypmod(inner);
 
 		/*
 		 * If we need a unsupported cross-type join, try to coerce
@@ -2818,18 +2822,18 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 		if (!is_supported_cross_type_op && (outerType != innerType))
 		{
 			/* We need to coerce the outer operand to the inner type. */
-			Oid finalargtype = innerType;
-			Oid finalargtypmod = innerTypMod;
-			Node *coerced = NULL;
+			Oid			finalargtype = innerType;
+			Oid			finalargtypmod = innerTypMod;
+			Node	   *coerced = NULL;
 
 			MemoryContext cxt = GetCurrentMemoryContext();
 
 			PG_TRY();
 			{
 				coerced = coerce_to_target_type(NULL, outer, outerType,
-														  finalargtype, finalargtypmod,
-														  COERCION_IMPLICIT,
-														  COERCE_IMPLICIT_CAST, -1);
+												finalargtype, finalargtypmod,
+												COERCION_IMPLICIT,
+												COERCE_IMPLICIT_CAST, -1);
 			}
 			PG_CATCH();
 			{
@@ -2843,8 +2847,9 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 				 */
 
 				MemoryContext errcxt = MemoryContextSwitchTo(cxt);
-				ErrorData *errdata = CopyErrorData();
-				int errcode = errdata->sqlerrcode;
+				ErrorData  *errdata = CopyErrorData();
+				int			errcode = errdata->sqlerrcode;
+
 				FreeErrorData(errdata);
 
 				if (errcode == ERRCODE_CANNOT_COERCE)
@@ -2867,12 +2872,16 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 			/* Make outer the new coerced expression. */
 			outer = coerced;
 
-			char *opname = get_opname(opno);
-			List *names = lappend(NIL, makeString(opname));
+			char	   *opname = get_opname(opno);
+			List	   *names = lappend(NIL, makeString(opname));
 
-			/* Find an equivalent operator whose operands are of the same type. */
-			Oid newopno =
-				OpernameGetOprid(names, finalargtype, finalargtype);
+			/*
+			 * Find an equivalent operator whose operands are of the same
+			 * type.
+			 */
+			Oid			newopno = OpernameGetOprid(names, finalargtype,
+												   finalargtype);
+
 			pfree(opname);
 
 			if (!OidIsValid(newopno))
@@ -2882,25 +2891,26 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 		}
 
 		YbBatchedExpr *bexpr = makeNode(YbBatchedExpr);
-		bexpr->orig_expr = (Expr*) copyObject(outer);
 
-		Expr *batched_op = make_opclause(opno,
-										 opexpr->opresulttype,
-										 opexpr->opretset,
-										 (Expr *) inner,
-										 (Expr *) bexpr,
-										 opexpr->opcollid,
-										 opexpr->inputcollid);
-		RestrictInfo *batched =
-			make_restrictinfo(root,
-							  batched_op,
-							  restrictinfo->is_pushed_down,
-							  restrictinfo->outerjoin_delayed,
-							  false,
-							  restrictinfo->security_level,
-							  restrictinfo->required_relids,
-							  restrictinfo->outer_relids,
-							  restrictinfo->nullable_relids);
+		bexpr->orig_expr = (Expr *) copyObject(outer);
+
+		Expr	   *batched_op = make_opclause(opno,
+											   opexpr->opresulttype,
+											   opexpr->opretset,
+											   (Expr *) inner,
+											   (Expr *) bexpr,
+											   opexpr->opcollid,
+											   opexpr->inputcollid);
+		RestrictInfo *batched = make_restrictinfo(root,
+												  batched_op,
+												  restrictinfo->is_pushed_down,
+												  restrictinfo->outerjoin_delayed,
+												  false,
+												  restrictinfo->security_level,
+												  restrictinfo->required_relids,
+												  restrictinfo->outer_relids,
+												  restrictinfo->nullable_relids);
+
 		restrictinfo->yb_batched_rinfo =
 			lappend(restrictinfo->yb_batched_rinfo, batched);
 
@@ -2957,10 +2967,12 @@ check_memoizable(RestrictInfo *restrictinfo)
 static ListCell *
 yb_find_wholerow_of_record_type(List *expr)
 {
-	ListCell *lc;
-	foreach (lc, expr)
+	ListCell   *lc;
+
+	foreach(lc, expr)
 	{
-		Var *var = lfirst_node(Var, lc);
+		Var		   *var = lfirst_node(Var, lc);
+
 		if (var->varattno == InvalidOid && var->vartype == RECORDOID)
 			return lc;
 	}

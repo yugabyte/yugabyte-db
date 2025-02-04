@@ -264,6 +264,10 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			taskStatus.ExitStatus.Code = exitErr.ExitCode()
 		}
+		if util.FileLogger().IsDebugEnabled() && s.stdout.Len() > 0 {
+			util.FileLogger().
+				Debugf(ctx, "Output for failed command %s - %s", s.name, s.stdout.String())
+		}
 		errMsg := fmt.Sprintf("%s: %s", err.Error(), s.stderr.String())
 		util.FileLogger().Errorf(ctx, "Command %s execution failed - %s", s.name, errMsg)
 	}

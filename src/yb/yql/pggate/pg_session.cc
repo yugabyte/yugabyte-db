@@ -715,7 +715,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
     options.set_use_catalog_session(true);
   } else {
-    pg_txn_manager_->SetupPerformOptions(&options, ops_options.ensure_read_time_is_set);
+    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(
+        &options, ops_options.ensure_read_time_is_set));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -912,7 +913,10 @@ void PgSession::ClearInsertOnConflictBuffer(void* plan) {
       });
 
   DCHECK(iter != insert_on_conflict_buffers_.end());
-  // Only clear the global intents cache if this is the final buffer. */
+  // This should only be called in case the keys_ map was manually cleared beforehand.  Otherwise,
+  // we could run into memory leaks of the slots in that map.
+  DCHECK_EQ(iter->second.GetNumIndexKeys(), 0);
+  // Only clear the global intents cache if this is the final buffer.
   iter->second.Clear(insert_on_conflict_buffers_.size() == 1 /* clear_intents */);
   insert_on_conflict_buffers_.erase(iter);
 }
@@ -981,7 +985,7 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
   tserver::PgPerformOptionsPB options;
-  pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
+  RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options));
   auto status = pg_client_.RollbackToSubTransaction(id, &options);
   VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
   return status;
@@ -1157,7 +1161,7 @@ Status PgSession::AcquireAdvisoryLock(
       false /* read_only */,
       pg_txn_manager_->GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED
           ? kHighestPriority : kLowerPriorityRange));
-    pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
+    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options));
     // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
     // then it should be safe to skip set_force_global_transaction.
     options.set_force_global_transaction(true);

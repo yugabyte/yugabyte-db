@@ -106,8 +106,8 @@ Status YsqlManager::SetInitDbDone(const LeaderEpoch& epoch) {
   return ysql_catalog_config_.SetInitDbDone(Status::OK(), epoch);
 }
 
-bool YsqlManager::IsYsqlMajorCatalogUpgradeInProgress() const {
-  return ysql_initdb_and_major_upgrade_helper_->IsYsqlMajorCatalogUpgradeInProgress();
+bool YsqlManager::IsMajorUpgradeInProgress() const {
+  return ysql_initdb_and_major_upgrade_helper_->IsMajorUpgradeInProgress();
 }
 
 uint64_t YsqlManager::GetYsqlCatalogVersion() const { return ysql_catalog_config_.GetVersion(); }
@@ -155,7 +155,7 @@ Result<TableId> YsqlManager::GetVersionSpecificCatalogTableId(
 
   // Use the current version of the catalog if it is updatable, since if the current version is
   // available in the MONITORING phase, it can be deleted by a Rollback.
-  if (!ysql_initdb_and_major_upgrade_helper_->IsYsqlMajorUpgradeInProgress()) {
+  if (!IsMajorUpgradeInProgress()) {
     return current_table_id;
   }
 
@@ -238,6 +238,10 @@ Status YsqlManager::ValidateWriteToCatalogTableAllowed(
       "YSQL DDLs, and catalog modifications are not allowed during a major YSQL upgrade");
 
   return Status::OK();
+}
+
+Status YsqlManager::ValidateTServerVersion(const VersionInfoPB& version) const {
+  return ysql_initdb_and_major_upgrade_helper_->ValidateTServerVersion(version);
 }
 
 }  // namespace yb::master

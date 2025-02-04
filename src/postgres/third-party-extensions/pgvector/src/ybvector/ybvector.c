@@ -46,7 +46,7 @@ makeBaseYbVectorHandler(bool is_copartitioned)
 	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
 
 	amroutine->amstrategies = 0;
-	amroutine->amsupport = 1;
+	amroutine->amsupport = 2;
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = true;
 	amroutine->amcanbackward = false;

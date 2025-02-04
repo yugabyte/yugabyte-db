@@ -24,7 +24,7 @@ type: docs
 
 When using the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy, transactions are assigned priorities that help decide which transactions should be aborted in case of conflict.
 
-There are two priority buckets, each having a priority range of [reals](https://www.postgresql.org/docs/current/datatype.html) in [0, 1] as follows:
+There are two priority buckets, each having a priority range of [reals](https://www.postgresql.org/docs/15/datatype.html) in [0, 1] as follows:
 
 1. `High-priority` bucket: if the first statement in a transaction takes a `FOR UPDATE/ FOR SHARE/ FOR NO KEY UPDATE` explicit row lock using SELECT, it will be assigned a priority from this bucket.
 

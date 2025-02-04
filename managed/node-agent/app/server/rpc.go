@@ -385,7 +385,8 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 		// existing files. It simply truncates.
 		err = removeFileIfPresent(filename)
 		if err != nil {
-			util.FileLogger().Errorf(ctx, "Error in deleting existing file %s - %s", filename, err.Error())
+			util.FileLogger().Errorf(
+				ctx, "Error in deleting existing file %s - %s", filename, err.Error())
 			return status.Error(codes.Internal, err.Error())
 		}
 		util.FileLogger().Infof(ctx, "Setting file permission for %s to %o", filename, chmod)
@@ -404,11 +405,16 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 	}
 	// Flushes 4K bytes by default.
 	writer := bufio.NewWriter(file)
-	defer writer.Flush()
 	for {
 		req, err = stream.Recv()
 		if err == io.EOF {
-			break
+			err = writer.Flush()
+			if err == nil {
+				break
+			}
+			util.FileLogger().
+				Errorf(ctx, "Error in flushing data to file %s - %s", filename, err.Error())
+			return status.Error(codes.Internal, err.Error())
 		}
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in reading from stream - %s", err.Error())

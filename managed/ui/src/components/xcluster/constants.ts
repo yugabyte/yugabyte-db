@@ -51,8 +51,7 @@ export const XClusterTableStatus = {
   EXTRA_TABLE_ON_SOURCE: 'ExtraTableOnSource',
   EXTRA_TABLE_ON_TARGET: 'ExtraTableOnTarget',
   DROPPED_FROM_SOURCE: 'DroppedFromSource',
-  DROPPED_FROM_TARGET: 'DroppedFromTarget',
-  REPLICATION_ERROR: 'ReplicationError'
+  DROPPED_FROM_TARGET: 'DroppedFromTarget'
 } as const;
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
 

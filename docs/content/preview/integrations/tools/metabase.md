@@ -19,7 +19,7 @@ This document shows how to set up Metabase to integrate with YugabyteDB's Postgr
 
 ## 1. Start local cluster
 
-Follow [Quick Start](/preview/tutorials/quick-start/) instructions to run a local YugabyteDB cluster.
+Follow [Quick Start](/preview/tutorials/quick-start/macos/) instructions to run a local YugabyteDB cluster.
 
 ## 2. Load data
 
@@ -56,7 +56,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

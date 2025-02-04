@@ -671,7 +671,7 @@ void XClusterSafeTimeService::UpdateMetrics(
     const ProducerTabletToSafeTimeMap& safe_time_map,
     const XClusterNamespaceToSafeTimeMap& current_safe_time_map) {
   const auto max_safe_time_map = GetMaxNamespaceSafeTimeFromMap(safe_time_map);
-  const auto cur_time_micros = GetCurrentTimeMicros();
+  const auto cur_time_micros = (uint64_t)GetCurrentTimeMicros();
 
   // current_safe_time_map is the source of truth, so loop over it to construct the final mapping.
   for (const auto& [namespace_id, safe_time] : current_safe_time_map) {
@@ -706,10 +706,38 @@ void XClusterSafeTimeService::UpdateMetrics(
         // Compute the metrics, note conversion to milliseconds.
         consumer_safe_time_skew_ms = max_safe_time.PhysicalDiff(safe_time) /
             MonoTime::kMicrosecondsPerMillisecond;
-        consumer_safe_time_lag_ms = (cur_time_micros - safe_time.GetPhysicalValueMicros()) /
-            MonoTime::kMicrosecondsPerMillisecond;
+        DCHECK_GE(consumer_safe_time_skew_ms, 0);
+
+        const auto log_every_n =
+            static_cast<int>(FLAGS_xcluster_safe_time_log_outliers_interval_secs) * 3 /* 30 mins */;
+        if (cur_time_micros < safe_time.GetPhysicalValueMicros()) {
+          // Source's clock is ahead of the target's clock.
+          consumer_safe_time_lag_ms = 0;
+          YB_LOG_IF_EVERY_N(
+              WARNING,
+              (safe_time.GetPhysicalValueMicros() - cur_time_micros) >
+                  (1000 * MonoTime::kMicrosecondsPerMillisecond) /* 1s */,
+              log_every_n)
+              << "Source's clock is ahead of target's clock."
+              << " Source xCluster safe time: " << safe_time.GetPhysicalValueMicros()
+              << " Target current time: " << cur_time_micros;
+        } else {
+          consumer_safe_time_lag_ms = (cur_time_micros - safe_time.GetPhysicalValueMicros()) /
+                                      MonoTime::kMicrosecondsPerMillisecond;
+          YB_LOG_IF_EVERY_N(
+              WARNING, consumer_safe_time_lag_ms > 30 * 60 * 1000 /* 30 mins */, log_every_n)
+              << "High xCluster Safe time lag detected. xCluster safe time: "
+              << safe_time.GetPhysicalValueMicros()
+              << ", xCluster safe time lag(ms): " << consumer_safe_time_lag_ms
+              << ", xCluster safe time skew(ms): " << consumer_safe_time_skew_ms;
+        }
       }
     }
+
+    VLOG(4) << "XClusterSafeTimeService::UpdateMetrics for namespace " << namespace_id
+            << ", safe_time " << safe_time << ", cur_time_micros " << cur_time_micros
+            << ", consumer_safe_time_skew_ms " << consumer_safe_time_skew_ms
+            << ", consumer_safe_time_lag_ms " << consumer_safe_time_lag_ms;
 
     // Set the metric values.
     metrics_it->second->consumer_safe_time_skew->set_value(consumer_safe_time_skew_ms);

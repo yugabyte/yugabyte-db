@@ -73,7 +73,7 @@ type: docs
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](/preview/tutorials/quick-start/).
+- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 

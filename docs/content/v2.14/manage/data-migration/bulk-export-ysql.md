@@ -283,7 +283,7 @@ TO '<table_name>.csv'
 WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
-For all available options provided by the COPY TO command, refer to the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-copy.html).
+For all available options provided by the COPY TO command, refer to the [PostgreSQL documentation](https://www.postgresql.org/docs/11/sql-copy.html).
 
 #### Parallelize large table export
 

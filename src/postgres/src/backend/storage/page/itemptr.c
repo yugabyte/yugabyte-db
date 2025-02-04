@@ -30,10 +30,11 @@ bool
 ItemPointerEquals(ItemPointer pointer1, ItemPointer pointer2)
 {
 #ifdef YB_TODO
-	/* Verify the following.
+	/*
+	 * Verify the following.
 	 * - Yugabyte does not need this requirement to have optimal performance.
-	 * - If "3*size(uint16)" requirement is needed, we can eliminate postgres fields because we
-	 *   don't use them.
+	 * - If "3*size(uint16)" requirement is needed, we can eliminate postgres
+	 *   fields because we don't use them.
 	 */
 	/*
 	 * We really want ItemPointerData to be exactly 6 bytes.  This is rather a

@@ -698,6 +698,8 @@ Status CatalogManager::DoImportSnapshotMeta(
   // PHASE 5: Restore tablets.
   RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, tables_data));
 
+  ImportSnapshotRemoveInvalidIndexes(tables_data);
+
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
     const string msg = "ImportSnapshotMeta interrupted due to test flag";
     LOG_WITH_FUNC(WARNING) << msg;
@@ -866,6 +868,10 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
         // import here.
         auto s = ImportTableEntry(namespace_map, type_map, *tables_data, epoch, is_clone, &data);
         if (s.IsInvalidArgument() && MasterError(s) == MasterErrorPB::OBJECT_NOT_FOUND) {
+          // Defer the removal from the tables_data map until we go through all tablets, so we can
+          // verify that the only tablets missing tables belong to invalid indexes.
+          LOG(WARNING) << Format("Index $0 not found (might be backfilling, or in an invalid "
+              "state); omitting it from import.", entry.id());
           continue;
         } else if (!s.ok()) {
           return s;
@@ -942,6 +948,13 @@ Status CatalogManager::ImportSnapshotProcessTablets(const SnapshotInfoPB& snapsh
   }
 
   return Status::OK();
+}
+
+void CatalogManager::ImportSnapshotRemoveInvalidIndexes(
+    ExternalTableSnapshotDataMap* tables_data) {
+  std::erase_if(*tables_data, [](const auto& entry) {
+    return !entry.second.table_meta && entry.second.is_index();
+  });
 }
 
 template <class RespClass>
@@ -1081,9 +1094,7 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
 
   // Copy the table mapping into the response.
   for (auto& [_, table_data] : tables_data) {
-    if (table_data.table_meta) {
-      resp->mutable_tables_meta()->Add()->Swap(&*table_data.table_meta);
-    }
+    resp->mutable_tables_meta()->Add()->Swap(&*table_data.table_meta);
   }
 
   return Status::OK();

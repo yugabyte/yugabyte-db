@@ -57,6 +57,8 @@ TAG_FLAG(slow_rwc_lock_log_ms, advanced);
 
 using namespace std::literals;
 
+#define RWC_LOCK_COLLECT_READ_LOCK_STACK_TRACE 1
+
 namespace yb {
 
 namespace {
@@ -66,6 +68,14 @@ const size_t kWriteActive = 1ULL << 60;
 const size_t kWritePending = kWriteActive << 1;
 const size_t kReadersMask = kWriteActive - 1;
 
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+thread_local size_t rwc_read_lock_counter = 0;
+std::atomic<void*> rwc_conflicting_mutex{nullptr};
+#if RWC_LOCK_COLLECT_READ_LOCK_STACK_TRACE
+thread_local StackTrace rwc_read_lock_first_stack_trace;
+#endif
+#endif
+
 } // namespace
 
 RWCLock::~RWCLock() {
@@ -73,6 +83,13 @@ RWCLock::~RWCLock() {
 }
 
 void RWCLock::ReadLock() {
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+  if (++rwc_read_lock_counter == 1) {
+#if RWC_LOCK_COLLECT_READ_LOCK_STACK_TRACE
+    rwc_read_lock_first_stack_trace.Collect();
+#endif
+  }
+#endif
   for (;;) {
     if (!(reader_counter_.fetch_add(1) & kWriteActive)) {
       return;
@@ -91,7 +108,27 @@ void RWCLock::ReadLock() {
   }
 }
 
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+void RWCLock::CheckNoReadLockConflict(void* mutex) {
+  if (mutex == rwc_conflicting_mutex.load()) {
+    CHECK_EQ(rwc_read_lock_counter, 0)
+#if RWC_LOCK_COLLECT_READ_LOCK_STACK_TRACE
+        << rwc_read_lock_first_stack_trace.Symbolize();
+#else
+        << "";
+#endif
+  }
+}
+
+void RWCLock::SetConflictingMutex(void* mutex) {
+  rwc_conflicting_mutex.store(mutex);
+}
+#endif
+
 void RWCLock::ReadUnlock() {
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+  --rwc_read_lock_counter;
+#endif
   if (reader_counter_.fetch_sub(1) - 1 == kWritePending) {
     no_readers_.notify_one();
   }

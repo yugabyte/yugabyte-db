@@ -58,7 +58,6 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/server/webserver_options.h"
 #include "yb/tserver/db_server_base.h"
-#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
@@ -345,15 +344,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status ReloadKeysAndCertificates() override;
   std::string GetCertificateDetails() override;
 
-  PgClientServiceImpl* TEST_GetPgClientService() {
-    auto holder = pg_client_service_.lock();
-    return holder ? &holder->impl : nullptr;
-  }
+  PgClientServiceImpl* TEST_GetPgClientService();
 
-  PgClientServiceMockImpl* TEST_GetPgClientServiceMock() {
-    auto holder = pg_client_service_.lock();
-    return holder && holder->mock.has_value() ? &holder->mock.value() : nullptr;
-  }
+  PgClientServiceMockImpl* TEST_GetPgClientServiceMock();
 
   RemoteBootstrapServiceImpl* GetRemoteBootstrapService() {
     if (auto service_ptr = remote_bootstrap_service_.lock()) {
@@ -383,15 +376,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
 
+  Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) override;
+
   void TEST_SetIsCronLeader(bool is_cron_leader);
-
-  struct PgClientServiceHolder {
-    template<class... Args>
-    explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}
-
-    PgClientServiceImpl impl;
-    std::optional<PgClientServiceMockImpl> mock;
-  };
 
  protected:
   virtual Status RegisterServices();
@@ -498,6 +485,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // An instance to remote bootstrap service. This pointer is no longer valid after
   // RpcAndWebServerBase is shut down.
   std::weak_ptr<RemoteBootstrapServiceImpl> remote_bootstrap_service_;
+
+  struct PgClientServiceHolder;
 
   // An instance to pg client service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.

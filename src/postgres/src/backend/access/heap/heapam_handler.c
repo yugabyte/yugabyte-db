@@ -1192,8 +1192,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 	BlockNumber previous_blkno = InvalidBlockNumber;
 	BlockNumber root_blkno = InvalidBlockNumber;
 	OffsetNumber root_offsets[MaxHeapTuplesPerPage];
-	MemoryContext	oldcontext = GetCurrentMemoryContext();
-	int				yb_tuples_done = 0;
+	MemoryContext oldcontext = GetCurrentMemoryContext();
+	int			yb_tuples_done = 0;
 
 	/*
 	 * sanity checks
@@ -1268,6 +1268,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 		if (IsYBRelation(heapRelation))
 		{
 			YbcPgExecParameters *exec_params = &estate->yb_exec_params;
+
 			if (bfinfo)
 			{
 				if (bfinfo->bfinstr)
@@ -1434,7 +1435,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 				* tuples.
 				*/
 				switch (HeapTupleSatisfiesVacuum(heapTuple, OldestXmin,
-												hscan->rs_cbuf))
+												 hscan->rs_cbuf))
 				{
 					case HEAPTUPLE_DEAD:
 						/* Definitely dead, we can ignore it */
@@ -1502,7 +1503,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 						{
 							if (!is_system_catalog)
 								elog(WARNING, "concurrent insert in progress within table \"%s\"",
-									RelationGetRelationName(heapRelation));
+									 RelationGetRelationName(heapRelation));
 
 							/*
 							* If we are performing uniqueness checks, indexing
@@ -1517,8 +1518,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 								*/
 								LockBuffer(hscan->rs_cbuf, BUFFER_LOCK_UNLOCK);
 								XactLockTableWait(xwait, heapRelation,
-												&heapTuple->t_self,
-												XLTW_InsertIndexUnique);
+												  &heapTuple->t_self,
+												  XLTW_InsertIndexUnique);
 								CHECK_FOR_INTERRUPTS();
 								goto recheck;
 							}
@@ -1561,7 +1562,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 						{
 							if (!is_system_catalog)
 								elog(WARNING, "concurrent delete in progress within table \"%s\"",
-									RelationGetRelationName(heapRelation));
+									 RelationGetRelationName(heapRelation));
 
 							/*
 							* If we are performing uniqueness checks, assuming
@@ -1585,8 +1586,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 								*/
 								LockBuffer(hscan->rs_cbuf, BUFFER_LOCK_UNLOCK);
 								XactLockTableWait(xwait, heapRelation,
-												&heapTuple->t_self,
-												XLTW_InsertIndexUnique);
+												  &heapTuple->t_self,
+												  XLTW_InsertIndexUnique);
 								CHECK_FOR_INTERRUPTS();
 								goto recheck;
 							}
@@ -1660,7 +1661,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 			reltuples += 1;
 
 			/* Set up for predicate or expression evaluation */
-			ExecStoreHeapTuple(heapTuple, slot, false /* shouldFree */);
+			ExecStoreHeapTuple(heapTuple, slot, false /* shouldFree */ );
 		}
 
 		/*
@@ -1738,7 +1739,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 		else if (IsYBRelation(indexRelation))
 		{
 			ybcallback(indexRelation, heapTuple->t_ybctid, values, isnull,
-					 tupleIsAlive, callback_state);
+					   tupleIsAlive, callback_state);
 		}
 		else
 		{
@@ -2024,7 +2025,7 @@ heapam_index_validate_scan(Relation heapRelation,
 						 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
 						 false,
 						 indexInfo,
-						 false /* yb_shared_insert */);
+						 false /* yb_shared_insert */ );
 
 			state->tups_inserted += 1;
 		}

@@ -81,6 +81,9 @@ od_hashmap_t *od_hashmap_create(size_t sz)
 
 	for (size_t i = 0; i < sz; ++i) {
 		if (od_hash_bucket_init(&hm->buckets[i]) == NOT_OK_RESPONSE) {
+			for (size_t j = 0; j < i; ++j) {
+				od_hash_bucket_free(hm->buckets[j]);
+			}
 			free(hm->buckets);
 			free(hm);
 			return NULL;
@@ -193,4 +196,29 @@ od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, od_hash_t keyhash,
 
 	pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
 	return ptr;
+}
+
+/*
+ * YB: Prepare statement name based on extended query optimization mode.
+ * By introducing dependency on more unique parameters, we increase correctness
+ * of extended query protocol across logical clients.
+ * 
+ * Optimized mode: allow logical clients to share the same cached plan on
+ * the server if they attempt to prepare the same query string under the
+ * same statement name.
+ * 
+ * Unoptimized mode: Unique cached plans will be generated for each logical
+ * client, even if they attempt to prepare the same query string under the
+ * same statement name. (PG-like behavior)
+ */
+od_hash_t yb_prepare_stmt_hash(od_hash_t body_hash, od_hash_t keyhash,
+			       od_hash_t client_hash, bool optimized)
+{
+	od_hash_t yb_stmt_hash;
+	if (optimized)
+		yb_stmt_hash = body_hash ^ keyhash;
+	else
+		yb_stmt_hash = client_hash ^ body_hash ^ keyhash;
+
+	return yb_stmt_hash;
 }

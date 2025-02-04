@@ -532,6 +532,7 @@ systable_getnext(SysScanDesc sysscan)
 	HeapTuple	htup = NULL;
 
 	YbSysScanBase ybscan = sysscan->ybscan;
+
 	if (ybscan)
 		return ybscan->vtable->next(ybscan);
 
@@ -634,6 +635,7 @@ void
 systable_endscan(SysScanDesc sysscan)
 {
 	YbSysScanBase ybscan = sysscan->ybscan;
+
 	if (ybscan)
 		return ybscan->vtable->end(ybscan);
 

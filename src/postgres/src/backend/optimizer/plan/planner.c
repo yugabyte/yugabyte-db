@@ -73,7 +73,7 @@ int			force_parallel_mode = FORCE_PARALLEL_OFF;
 bool		parallel_leader_participation = true;
 
 /* GUC flag, whether to attempt single RPC lock+select in RR and RC levels. */
-bool yb_lock_pk_single_rpc = true;
+bool		yb_lock_pk_single_rpc = true;
 
 /* Hook for plugins to get control in planner() */
 planner_hook_type planner_hook = NULL;
@@ -645,8 +645,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->hasAlternativeSubPlans = false;
 	root->hasRecursion = hasRecursion;
 	root->yb_cur_batched_relids =
-		parent_root ? parent_root->yb_cur_batched_relids
-					: NULL;
+		parent_root ? parent_root->yb_cur_batched_relids : NULL;
 	root->yb_cur_unbatched_relids =
 		parent_root ? parent_root->yb_cur_unbatched_relids : NULL;
 	root->yb_availBatchedRelids =
@@ -1262,8 +1261,8 @@ preprocess_phv_expression(PlannerInfo *root, Expr *expr)
 static bool
 yb_is_main_table(IndexOptInfo *indexinfo)
 {
-	Relation indrel;
-	bool is_main_table = false;
+	Relation	indrel;
+	bool		is_main_table = false;
 
 	if (!IsYugaByteEnabled())
 		return false;
@@ -1286,12 +1285,14 @@ yb_ipath_matches_pk(IndexPath *index_path)
 	ListCell   *values;
 	Bitmapset  *primary_key_attrs = NULL;
 	ListCell   *lc = NULL;
+
 	/*
 	 * Verify no non-primary-key filters are specified.
 	 */
 	foreach(values, index_path->indexinfo->indrestrictinfo)
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, values);
+
 		if (!is_redundant_with_indexclauses(rinfo, index_path->indexclauses))
 			return false;
 	}
@@ -1300,15 +1301,15 @@ yb_ipath_matches_pk(IndexPath *index_path)
 	 * Check that all WHERE clause conditions in the query use the equality
 	 * operator, and count the number of primary keys used.
 	 */
-	foreach (lc, index_path->indexclauses)
+	foreach(lc, index_path->indexclauses)
 	{
 		IndexClause *iclause = lfirst_node(IndexClause, lc);
-		ListCell 	*lc2;
+		ListCell   *lc2;
 
-		foreach (lc2, iclause->indexquals)
+		foreach(lc2, iclause->indexquals)
 		{
 			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
-			Expr		*clause = rinfo->clause;
+			Expr	   *clause = rinfo->clause;
 			Oid			clause_op;
 			int			op_strategy;
 
@@ -1325,7 +1326,7 @@ yb_ipath_matches_pk(IndexPath *index_path)
 			op_strategy =
 				get_op_opfamily_strategy(clause_op,
 										 index_path->indexinfo->opfamily[iclause->indexcol]);
-			Assert(op_strategy != 0); /* not a member of opfamily?? */
+			Assert(op_strategy != 0);	/* not a member of opfamily?? */
 			if (op_strategy != BTEqualStrategyNumber)
 				return false;
 			/* Just used for counting, not matching. */
@@ -1338,8 +1339,8 @@ yb_ipath_matches_pk(IndexPath *index_path)
 	 * After checking all queries are for equality on primary keys, now we just
 	 * have to ensure we've covered all the primary keys.
 	 */
-	return bms_num_members(primary_key_attrs) ==
-		   index_path->indexinfo->nkeycolumns;
+	return (bms_num_members(primary_key_attrs) ==
+			index_path->indexinfo->nkeycolumns);
 }
 
 /*
@@ -1366,7 +1367,8 @@ yb_consider_locking_scan(PlannerInfo *root, RelOptInfo *final_rel)
 	{
 		Path	   *path = (Path *) lfirst(lc);
 		LockRowsPath *lr_path;
-		IndexPath *original_index_path;
+		IndexPath  *original_index_path;
+
 		if (!IsA(path, LockRowsPath))
 			continue;
 		lr_path = castNode(LockRowsPath, path);
@@ -1385,7 +1387,7 @@ yb_consider_locking_scan(PlannerInfo *root, RelOptInfo *final_rel)
 			new_path = makeNode(IndexPath);
 			memcpy(new_path, original_index_path, sizeof(IndexPath));
 			new_path->yb_index_path_info.yb_lock_mechanism = YB_LOCK_CLAUSE_ON_PK;
-			cost_index(new_path, root, /*loop_count=*/ 1.0, false);
+			cost_index(new_path, root, /* loop_count= */ 1.0, false);
 		}
 	}
 
@@ -1411,11 +1413,12 @@ static bool
 yb_skip_lockrows(Path *path)
 {
 	IndexPath  *index_scan_path;
+
 	if (!IsA(path, IndexPath))
 		return false;
 	index_scan_path = castNode(IndexPath, path);
-	return index_scan_path->yb_index_path_info.yb_lock_mechanism ==
-		   YB_LOCK_CLAUSE_ON_PK;
+	return (index_scan_path->yb_index_path_info.yb_lock_mechanism ==
+			YB_LOCK_CLAUSE_ON_PK);
 }
 
 /*--------------------
@@ -1588,9 +1591,11 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 */
 		preprocess_targetlist(root);
 
-		/* YB_TODO(Deepthi@yugabyte)
-		 * Need to reintroduce the following code for PG13 which reimplement this function.
-		 *   	root->yb_num_referenced_relations++;
+		/*
+		 * YB_TODO(Deepthi@yugabyte)
+		 * Need to reintroduce the following code
+		 * for PG13 which reimplement this function.
+		 * root->yb_num_referenced_relations++;
 		 */
 
 		/*
@@ -4729,7 +4734,7 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	{
 		foreach(lc, input_rel->pathlist)
 		{
-			Path* path = (Path *) lfirst(lc);
+			Path	   *path = (Path *) lfirst(lc);
 
 			/*
 			 * YB: Do not add these paths to distinct_rel yet because we refer
@@ -4867,8 +4872,8 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	else
 		allow_hash = true;		/* default */
 
+	/* YB: Ignore hashagg if cheapest_input_path is already distinct. */
 	if (allow_hash && grouping_is_hashable(parse->distinctClause) &&
-		/* YB: Ignore hashagg if cheapest_input_path is already distinct. */
 		!(IsYugaByteEnabled() && list_member_ptr(yb_distinct_paths,
 												 cheapest_input_path)))
 	{

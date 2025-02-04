@@ -516,8 +516,9 @@ static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
 static void get_reloptions(StringInfo buf, Datum reloptions);
-static int yb_decompile_pk_column_index_array(Datum column_index_array,
-	Oid relId, Oid indexId, StringInfo buf);
+static int	yb_decompile_pk_column_index_array(Datum column_index_array,
+											   Oid relId, Oid indexId,
+											   StringInfo buf);
 
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
@@ -1142,12 +1143,11 @@ YbAppendIndexReloptions(StringInfo buf,
 						Oid index_oid,
 						YbcTableProperties yb_table_properties)
 {
-	char *str = flatten_reloptions(index_oid);
+	char	   *str = flatten_reloptions(index_oid);
 
-	bool has_reloptions	=
-		str && strcmp(str, "") != 0;
-	bool has_colocation_id =
-		yb_table_properties && OidIsValid(yb_table_properties->colocation_id);
+	bool		has_reloptions = str && strcmp(str, "") != 0;
+	bool		has_colocation_id = (yb_table_properties &&
+									 OidIsValid(yb_table_properties->colocation_id));
 
 	if (has_reloptions || has_colocation_id)
 	{
@@ -1195,7 +1195,7 @@ pg_get_indexdef(PG_FUNCTION_ARGS)
 								 false, false,
 								 prettyFlags, true,
 								 false, yb_format_funcs_include_yb_metadata,
-								 false /* is_yb_alter_table */);
+								 false /* is_yb_alter_table */ );
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1219,7 +1219,7 @@ pg_get_indexdef_ext(PG_FUNCTION_ARGS)
 								 false, false,
 								 prettyFlags, true,
 								 false, yb_format_funcs_include_yb_metadata,
-								 false /* is_yb_alter_table */);
+								 false /* is_yb_alter_table */ );
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1241,9 +1241,9 @@ pg_get_indexdef_string(Oid indexrelid)
 								  false, false,
 								  true, true,
 								  0, false,
-								  IsYugaByteEnabled() /* useNonconcurrently */,
+								  IsYugaByteEnabled() /* useNonconcurrently */ ,
 								  yb_format_funcs_include_yb_metadata,
-								  IsYugaByteEnabled() /* is_yb_alter_table */);
+								  IsYugaByteEnabled() /* is_yb_alter_table */ );
 }
 
 /* Internal version that just reports the key-column definitions */
@@ -1258,7 +1258,7 @@ pg_get_indexdef_columns(Oid indexrelid, bool pretty)
 								  true, true,
 								  false, false,
 								  prettyFlags, false,
-								  false, false, false /* is_yb_alter_table */);
+								  false, false, false /* is_yb_alter_table */ );
 }
 
 /*
@@ -1405,7 +1405,8 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 	}
 
 	/* Count hash columns */
-	int hash_count = 0;
+	int			hash_count = 0;
+
 	for (keyno = 0; keyno < idxrec->indnkeyatts; keyno++)
 		if (indoption->values[keyno] & INDOPTION_HASH)
 			hash_count++;
@@ -1514,7 +1515,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 					if (!(opt & INDOPTION_NULLS_FIRST))
 						appendStringInfoString(&buf, " NULLS LAST");
 				}
-				else if (!(opt & INDOPTION_HASH)) // ASC
+				else if (!(opt & INDOPTION_HASH))	/* ASC */
 				{
 					appendStringInfoString(&buf, " ASC");
 					/* NULLS LAST is the default in this case */
@@ -1543,7 +1544,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 
 	if (!attrsOnly)
 	{
-		Relation indexrel = index_open(indexrelid, AccessShareLock);
+		Relation	indexrel = index_open(indexrelid, AccessShareLock);
 
 		appendStringInfoChar(&buf, ')');
 
@@ -1614,9 +1615,11 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 				/* For range-partitioned tables */
 				if (indexrel->yb_table_properties->num_tablets > 1)
 				{
-					const char *range_split_clause =
-							DatumGetCString(DirectFunctionCall1(yb_get_range_split_clause,
-																ObjectIdGetDatum(indexrelid)));
+					const char *range_split_clause;
+
+					range_split_clause =
+						DatumGetCString(DirectFunctionCall1(yb_get_range_split_clause,
+															ObjectIdGetDatum(indexrelid)));
 
 					if (strcmp(range_split_clause, "") != 0)
 						appendStringInfo(&buf, " %s", range_split_clause);
@@ -2251,7 +2254,7 @@ pg_get_constraintdef(PG_FUNCTION_ARGS)
 	prettyFlags = PRETTYFLAG_INDENT;
 
 	res = pg_get_constraintdef_worker(constraintId, false, prettyFlags, true,
-		false /* is_yb_alter_table */);
+									  false /* is_yb_alter_table */ );
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -2270,7 +2273,7 @@ pg_get_constraintdef_ext(PG_FUNCTION_ARGS)
 	prettyFlags = GET_PRETTY_FLAGS(pretty);
 
 	res = pg_get_constraintdef_worker(constraintId, false, prettyFlags, true,
-		false /* is_yb_alter_table */);
+									  false /* is_yb_alter_table */ );
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -2285,7 +2288,7 @@ char *
 pg_get_constraintdef_command(Oid constraintId)
 {
 	return pg_get_constraintdef_worker(constraintId, true, 0, false,
-		IsYugaByteEnabled() /* is_yb_alter_table */);
+									   IsYugaByteEnabled() /* is_yb_alter_table */ );
 }
 
 /*
@@ -2531,7 +2534,9 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				if (is_yb_alter_table && IsYBRelationById(indexId)
 					&& conForm->contype == CONSTRAINT_PRIMARY)
 					keyatts = yb_decompile_pk_column_index_array(val,
-						conForm->conrelid, indexId, &buf);
+																 conForm->conrelid,
+																 indexId,
+																 &buf);
 				else
 					keyatts = decompile_column_index_array(val, conForm->conrelid, &buf);
 
@@ -2578,7 +2583,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				/* XXX why do we only print these bits if fullCommand? */
 				if (fullCommand && OidIsValid(indexId))
 				{
-					Relation indexrel = index_open(indexId, AccessShareLock);
+					Relation	indexrel = index_open(indexId, AccessShareLock);
 					Oid			tblspc;
 
 					if (IsYBRelation(indexrel) && conForm->contype != CONSTRAINT_PRIMARY)
@@ -2711,7 +2716,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 															  false,
 															  false,
 															  false,
-															  false /* is_yb_alter_table */));
+															  false /* is_yb_alter_table */ ));
 				break;
 			}
 		default:
@@ -7544,7 +7549,7 @@ get_batched_expr(YbBatchedExpr *bexpr,
 				 bool showimplicit)
 {
 	appendStringInfo(context->buf, "BATCHED EXPR(");
-	(void ) get_rule_expr((Node *) bexpr->orig_expr, context, showimplicit);
+	(void) get_rule_expr((Node *) bexpr->orig_expr, context, showimplicit);
 	appendStringInfo(context->buf, ")");
 }
 
@@ -9028,12 +9033,14 @@ get_rule_expr(Node *node, deparse_context *context,
 				 * indicates we cannot find what an execution parameter refers
 				 * to. See get_parameter() in ruleutils.c.
 				 */
-				bool yb_skip_deparsing_fieldname_for_param = false;
+				bool		yb_skip_deparsing_fieldname_for_param = false;
+
 				if (IsA(arg, Param))
 				{
-					Node       *expr;
+					Node	   *expr;
 					deparse_namespace *dpns;
 					ListCell   *ancestor_cell;
+
 					expr = find_param_referent((Param *) arg, context, &dpns,
 											   &ancestor_cell);
 					if (!expr && ((Param *) arg)->paramkind == PARAM_EXEC)
@@ -9264,7 +9271,7 @@ get_rule_expr(Node *node, deparse_context *context,
 				ArrayExpr  *arrayexpr = (ArrayExpr *) node;
 
 				appendStringInfoString(buf, "ARRAY[");
-				int before_prettyflags = context->prettyFlags;
+				int			before_prettyflags = context->prettyFlags;
 
 				get_rule_expr((Node *) arrayexpr->elements, context, true);
 				context->prettyFlags = before_prettyflags;
@@ -9363,13 +9370,15 @@ get_rule_expr(Node *node, deparse_context *context,
 				 * since the construct was parsed, but there seems no way to
 				 * be perfect.
 				 */
-				Oid rhs_type;
+				Oid			rhs_type;
+
 				if (IsA(rcexpr->rargs, List))
 					rhs_type = exprType(linitial(castNode(List, rcexpr->rargs)));
 				else
 				{
-					List *elems = castNode(ArrayExpr, rcexpr->rargs)->elements;
-					RowExpr *row = (RowExpr *) linitial(elems);
+					List	   *elems = castNode(ArrayExpr, rcexpr->rargs)->elements;
+					RowExpr    *row = (RowExpr *) linitial(elems);
+
 					rhs_type = exprType(linitial(row->args));
 				}
 
@@ -9890,8 +9899,9 @@ get_rule_expr(Node *node, deparse_context *context,
 				ListCell   *l;
 
 				sep = "";
-				int limit = -1;
-				int cur_index = 0;
+				int			limit = -1;
+				int			cur_index = 0;
+
 				if (IsYugaByteEnabled() &&
 					YB_PRETTY_ARRAY(context) &&
 					YB_TRUNC_ARRAY_LIMIT < ((List *) node)->length)
@@ -9913,7 +9923,8 @@ get_rule_expr(Node *node, deparse_context *context,
 				if (IsYugaByteEnabled() &&
 					limit > 0)
 				{
-					Node *last_elem = (Node *) lfirst(list_tail((List *) node));
+					Node	   *last_elem = (Node *) lfirst(list_tail((List *) node));
+
 					get_rule_expr(last_elem, context, showimplicit);
 				}
 			}
@@ -12539,10 +12550,13 @@ get_range_partbound_string(List *bound_datums)
 void
 yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
 {
-	Relation		pg_depend, pg_rewrite;
-	ScanKeyData		key[4];
-	SysScanDesc		pg_depend_scan, pg_rewrite_scan;
-	HeapTuple		pg_depend_tuple, pg_rewrite_tuple;
+	Relation	pg_depend,
+				pg_rewrite;
+	ScanKeyData key[4];
+	SysScanDesc pg_depend_scan,
+				pg_rewrite_scan;
+	HeapTuple	pg_depend_tuple,
+				pg_rewrite_tuple;
 
 	pg_depend = table_open(DependRelationId, RowExclusiveLock);
 	pg_rewrite = table_open(RewriteRelationId, RowExclusiveLock);
@@ -12566,11 +12580,10 @@ yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
 
 	while (HeapTupleIsValid(pg_depend_tuple = systable_getnext(pg_depend_scan)))
 	{
-		ScanKeyData		key;
-		Relation		r;
-		Form_pg_depend	depend_form =
-			(Form_pg_depend) GETSTRUCT(pg_depend_tuple);
-		Oid				view_oid;
+		ScanKeyData key;
+		Relation	r;
+		Form_pg_depend depend_form = (Form_pg_depend) GETSTRUCT(pg_depend_tuple);
+		Oid			view_oid;
 
 		ScanKeyInit(&key, Anum_pg_rewrite_oid, BTEqualStrategyNumber,
 					F_OIDEQ, ObjectIdGetDatum(depend_form->objid));
@@ -12584,8 +12597,8 @@ yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
 		 */
 		Assert(HeapTupleIsValid(pg_rewrite_tuple));
 
-		Form_pg_rewrite rewrite_form =
-			(Form_pg_rewrite) GETSTRUCT(pg_rewrite_tuple);
+		Form_pg_rewrite rewrite_form = (Form_pg_rewrite) GETSTRUCT(pg_rewrite_tuple);
+
 		view_oid = rewrite_form->ev_class;
 
 		/* Exclude duplicates. */
@@ -12598,19 +12611,20 @@ yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
 		if (r->rd_rel->relkind == RELKIND_VIEW ||
 			r->rd_rel->relkind == RELKIND_MATVIEW)
 		{
-			StringInfoData	buf;
-			bool			isnull;
-			Datum			ev_action_datum = heap_getattr(pg_rewrite_tuple,
-												Anum_pg_rewrite_ev_action,
-												RelationGetDescr(pg_rewrite),
-												&isnull);
+			StringInfoData buf;
+			bool		isnull;
+			Datum		ev_action_datum = heap_getattr(pg_rewrite_tuple,
+													   Anum_pg_rewrite_ev_action,
+													   RelationGetDescr(pg_rewrite),
+													   &isnull);
+
 			if (isnull)
 				continue;
 
 			*view_oids = lappend_oid(*view_oids, view_oid);
 
-			List *actions =
-				(List *) stringToNode(TextDatumGetCString(ev_action_datum));
+			List	   *actions = (List *) stringToNode(TextDatumGetCString(ev_action_datum));
+
 			initStringInfo(&buf);
 			get_query_def(linitial(actions), &buf, NIL,
 						  RelationGetDescr(r), true, PRETTYFLAG_INDENT,
@@ -12636,18 +12650,20 @@ yb_decompile_pk_column_index_array(Datum column_index_array, Oid relId,
 	Datum	   *keys;
 	int			nKeys;
 	int			j;
-	Relation indexrel = relation_open(indexId, NoLock);
+	Relation	indexrel = relation_open(indexId, NoLock);
 
 	/* Extract data from array of int16 */
 	deconstruct_array(DatumGetArrayTypeP(column_index_array),
 					  INT2OID, 2, true, 's',
 					  &keys, NULL, &nKeys);
 
-	bool doing_hash = false;
+	bool		doing_hash = false;
+
 	for (j = 0; j < nKeys; j++)
 	{
 		char	   *colName;
-		int indoption = indexrel->rd_indoption[j];
+		int			indoption = indexrel->rd_indoption[j];
+
 		colName = get_attname(relId, DatumGetInt16(keys[j]), false);
 
 		if (doing_hash && !(indoption & INDOPTION_HASH))

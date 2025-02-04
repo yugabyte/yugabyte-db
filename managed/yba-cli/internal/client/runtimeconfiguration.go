@@ -58,3 +58,9 @@ func (a *AuthAPIClient) DeleteKey(scope, key string) (
 		a.CustomerUUID,
 		scope, key)
 }
+
+// ListFeatureFlags fetches list of feature flags
+func (a *AuthAPIClient) ListFeatureFlags() (
+	ybaclient.RuntimeConfigurationApiApiListFeatureFlagsRequest) {
+	return a.APIClient.RuntimeConfigurationApi.ListFeatureFlags(a.ctx)
+}

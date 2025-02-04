@@ -63,7 +63,9 @@ extern PGDLLIMPORT MemoryContext CurrentMemoryContext;
  * thread-local variables instead of globals.
  * Currently only used for expression evaluation in DocDB (i.e. for pushdown).
  */
-static inline bool IsMultiThreadedMode() {
+static inline bool
+IsMultiThreadedMode()
+{
 	/*
 	 * Just checking if the memory infrastructure is initialized.
 	 * TODO Consider using a specific global variable or compiler flag
@@ -75,7 +77,9 @@ static inline bool IsMultiThreadedMode() {
 extern MemoryContext GetThreadLocalCurrentMemoryContext();
 extern MemoryContext SetThreadLocalCurrentMemoryContext(MemoryContext memctx);
 
-static inline MemoryContext GetCurrentMemoryContext() {
+static inline MemoryContext
+GetCurrentMemoryContext()
+{
 	if (IsMultiThreadedMode())
 	{
 		return (MemoryContext) GetThreadLocalCurrentMemoryContext();

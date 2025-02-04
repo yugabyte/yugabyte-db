@@ -127,7 +127,6 @@ export const XClusterTableStatusLabel = ({
       );
     case XClusterTableStatus.TABLE_INFO_MISSING:
     case XClusterTableStatus.DROPPED:
-    case XClusterTableStatus.REPLICATION_ERROR:
       return (
         <Typography variant="body2" className={clsx(classes.pill, classes.danger)}>
           {t(status)}

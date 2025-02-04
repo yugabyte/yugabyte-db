@@ -10,11 +10,13 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -63,6 +65,12 @@ public class PauseKubernetesUniverse extends KubernetesUpgradeTaskBase {
   public void run() {
     try {
       Universe universe = lockAndFreezeUniverseForUpdate(-1, null);
+      kubernetesStatus.startYBUniverseEventStatus(
+          universe,
+          taskParams().getKubernetesResourceDetails(),
+          TaskType.PauseUniverse.name(),
+          getUserTaskUUID(),
+          UniverseState.PAUSING);
       taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
       taskParams().nodePrefix = universe.getUniverseDetails().nodePrefix;
       // Pause the kubernetes universe
@@ -84,8 +92,22 @@ public class PauseKubernetesUniverse extends KubernetesUpgradeTaskBase {
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       // Run all the tasks.
       getRunnableTask().runSubTasks();
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(),
+          taskParams().getKubernetesResourceDetails(),
+          TaskType.PauseUniverse.name(),
+          getUserTaskUUID(),
+          UniverseState.PAUSED,
+          null);
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(),
+          taskParams().getKubernetesResourceDetails(),
+          TaskType.PauseUniverse.name(),
+          getUserTaskUUID(),
+          UniverseState.ERROR_PAUSING,
+          t);
       throw t;
     } finally {
       unlockUniverseForUpdate();

@@ -76,7 +76,7 @@ class PollTransactionStatusBase {
  protected:
   Status VerifyTransaction();
   virtual void TransactionPending() = 0;
-  virtual void FinishPollTransaction(Status s) = 0;
+  virtual void FinishPollTransaction() = 0;
   void Shutdown();
 
   TransactionMetadata transaction_;
@@ -133,8 +133,8 @@ class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
   Status FirstStep() override;
   void TransactionPending() override;
   Status ValidateRunnable() override;
-  void FinishPollTransaction(Status s) override;
-  Status CheckNsExists(Status status);
+  void FinishPollTransaction() override;
+  Status CheckNsExists();
   void TaskCompleted(const Status& status) override;
   void PerformAbort() override;
 
@@ -183,10 +183,10 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
   Status FirstStep() override;
   void TransactionPending() override;
   Status ValidateRunnable() override;
-  Status CheckTableExists(Status s);
-  Status CompareSchema(Status s);
+  Status CheckTableExists();
+  Status CompareSchema();
   Status FinishTask(Result<std::optional<bool>> is_committed);
-  void FinishPollTransaction(Status s) override;
+  void FinishPollTransaction() override;
   void TaskCompleted(const Status& status) override;
   void PerformAbort() override;
 

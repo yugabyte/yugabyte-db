@@ -744,6 +744,12 @@ WAL retention time, in seconds, to be used for tables for which a CDC stream was
 
 Default: `14400` (4 hours)
 
+##### --enable_tablet_split_of_cdcsdk_streamed_tables
+
+Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
+
+Default: `false`
+
 ##### --enable_truncate_cdcsdk_table
 
 By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables.

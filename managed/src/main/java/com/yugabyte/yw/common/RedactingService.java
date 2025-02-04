@@ -107,6 +107,9 @@ public class RedactingService {
           .add("$..ldapBindPassword")
           // HA Config
           .add("$..cluster_key")
+          // CipherTrust creds
+          .add("$..REFRESH_TOKEN")
+          .add("$..PASSWORD")
           .build();
 
   // List of json paths to any secret fields we want to redact.

@@ -55,11 +55,6 @@ else
     echo "No reboot-required flag found."
 fi
 
-# Try restarting the yb-node-agent service in user scope if it is not already started
-SERVICE_NAME="yb-node-agent.service"
-
-# Set XDG_RUNTIME_DIR for the user and restart the service
-sudo -u $USER bash -c "export XDG_RUNTIME_DIR=\"/run/user/\$(id -u $USER)\"; systemctl --user restart $SERVICE_NAME"
 EOF
 
     # Make the scripts executable

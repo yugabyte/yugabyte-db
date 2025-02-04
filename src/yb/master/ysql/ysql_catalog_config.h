@@ -53,8 +53,10 @@ class YsqlCatalogConfig {
   IsOperationDoneResult IsYsqlMajorCatalogUpgradeDone() const EXCLUDES(mutex_);
 
   YsqlMajorCatalogUpgradeInfoPB::State GetMajorCatalogUpgradeState() const EXCLUDES(mutex_);
+
   Status GetMajorCatalogUpgradePreviousError() const EXCLUDES(mutex_);
 
+  bool IsPreviousVersionCatalogCleanupRequired() const EXCLUDES(mutex_);
   class Updater {
    public:
     ~Updater() = default;

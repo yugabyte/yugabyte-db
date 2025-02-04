@@ -28,23 +28,23 @@
 #include "utils/rel.h"
 #include "commands/explain.h"
 
-bool YBCIsSingleRowModify(PlannedStmt *pstmt);
+bool		YBCIsSingleRowModify(PlannedStmt *pstmt);
 
-bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
+bool		YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
 
-bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
+bool		YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
 
-bool is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
-								  bool bitmapindex);
+bool		is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
+										 bool bitmapindex);
 
-void extract_pushdown_clauses(List *restrictinfo_list,
-							  IndexOptInfo *indexinfo,
-							  bool is_bitmap_index_scan,
-							  List **local_quals,
-							  List **rel_remote_quals,
-							  List **rel_colrefs,
-							  List **idx_remote_quals,
-							  List **idx_colrefs);
+void		extract_pushdown_clauses(List *restrictinfo_list,
+									 IndexOptInfo *indexinfo,
+									 bool is_bitmap_index_scan,
+									 List **local_quals,
+									 List **rel_remote_quals,
+									 List **rel_colrefs,
+									 List **idx_remote_quals,
+									 List **idx_colrefs);
 
 /* YbSkippableEntities helper functions*/
 extern YbSkippableEntities *YbInitSkippableEntities(List *no_update_index_list);
@@ -55,7 +55,6 @@ extern void YbAddEntityToSkipList(YbSkippableEntityType etype, Oid oid,
 extern void YbClearSkippableEntities(YbSkippableEntities *skip_entities);
 
 
-extern struct YbUpdateAffectedEntities *
-YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
-									 const Relation rel,
-									 Bitmapset *update_attrs);
+extern struct YbUpdateAffectedEntities *YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
+																			 const Relation rel,
+																			 Bitmapset *update_attrs);

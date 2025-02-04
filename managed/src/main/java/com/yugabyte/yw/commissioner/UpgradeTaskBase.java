@@ -239,6 +239,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public void runUpgrade(Runnable upgradeLambda, @Nullable Consumer<Universe> firstRunTxnCallback) {
+    runUpgrade(upgradeLambda, firstRunTxnCallback, null /* onFailureTask */);
+  }
+
+  public void runUpgrade(
+      Runnable upgradeLambda,
+      @Nullable Consumer<Universe> firstRunTxnCallback,
+      Runnable onFailureTask) {
     if (maybeRunOnlyPrechecks()) {
       return;
     }
@@ -264,6 +271,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error: ", getName(), t);
+      if (onFailureTask != null) {
+        log.info("Running on failure upgrade task");
+        onFailureTask.run();
+        log.info("Finished on failure upgrade task");
+      }
 
       if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
         Universe universe = getUniverse();

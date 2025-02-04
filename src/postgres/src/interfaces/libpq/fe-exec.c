@@ -58,7 +58,7 @@ static const PGresult OOM_result = {
  * static state needed by PQescapeString and PQescapeBytea; initialize to
  * values that result in backward-compatible behavior
  */
-static atomic_int	static_client_encoding = PG_SQL_ASCII;
+static atomic_int static_client_encoding = PG_SQL_ASCII;
 static atomic_bool static_std_strings = false;
 
 

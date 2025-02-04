@@ -61,11 +61,12 @@ typedef struct CopyFormatOptions
 	List	   *convert_select; /* list of column names (can be NIL) */
 
 	/* Yugabytes attributes */
-	int			batch_size; 	/* copy from executes in batch sizes */
-	uint64 		num_initial_skipped_rows; /* rows to skip at the beginning of the file */
-	bool 		disable_fk_check; 		/* Disable FK check? */
-	OnConflictAction on_conflict_action; /* How to handle when the new row conflicts
-										  * with existing row */
+	int			batch_size;		/* copy from executes in batch sizes */
+	uint64		num_initial_skipped_rows;	/* rows to skip at the beginning
+											 * of the file */
+	bool		disable_fk_check;	/* Disable FK check? */
+	OnConflictAction on_conflict_action;	/* How to handle when the new row
+											 * conflicts with existing row */
 } CopyFormatOptions;
 
 /* These are private in commands/copy[from|to].c */
@@ -84,7 +85,7 @@ typedef int (*copy_data_source_cb) (void *outbuf, int minread, int maxread);
  * e.g. 'SET yb_default_copy_from_rows_per_transaction=1000'
  * See also the corresponding entries in guc.c.
  */
-extern int yb_default_copy_from_rows_per_transaction;
+extern int	yb_default_copy_from_rows_per_transaction;
 
 extern void DoCopy(ParseState *state, const CopyStmt *stmt,
 				   int stmt_location, int stmt_len,

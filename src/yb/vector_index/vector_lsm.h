@@ -29,24 +29,10 @@
 
 namespace yb::vector_index {
 
-template<ValidDistanceResultType DistanceResult>
-struct VectorLSMSearchEntry {
-  DistanceResult distance;
-  // base_table_key could be the encoded DocKey of the corresponding row in the base
-  // (indexed) table, and the hybrid time of the vector insertion.
-  KeyBuffer base_table_key;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(
-        distance, (base_table_key, base_table_key.AsSlice().ToDebugHexString()));
-  }
-};
-
 template<IndexableVectorType Vector>
 struct VectorLSMInsertEntry {
-  VectorId  vertex_id;
-  KeyBuffer base_table_key;
-  Vector    vector;
+  VectorId vector_id;
+  Vector   vector;
 };
 
 template<IndexableVectorType Vector,
@@ -63,28 +49,16 @@ struct VectorLSMTypes {
   using VectorIndex = VectorIndexIf<Vector, DistanceResult>;
   using VectorIndexPtr = VectorIndexIfPtr<Vector, DistanceResult>;
   using VectorIndexFactory = vector_index::VectorIndexFactory<Vector, DistanceResult>;
-  using SearchResults = std::vector<VectorLSMSearchEntry<DistanceResult>>;
+  using SearchResults = typename VectorIndex::SearchResult;
   using InsertEntry = VectorLSMInsertEntry<Vector>;
   using InsertEntries = std::vector<InsertEntry>;
   using Options = VectorLSMOptions<Vector, DistanceResult>;
   using InsertRegistry = VectorLSMInsertRegistry<Vector, DistanceResult>;
-  using VertexWithDistance = vector_index::VertexWithDistance<DistanceResult>;
+  using VectorWithDistance = vector_index::VectorWithDistance<DistanceResult>;
 };
-
-using BaseTableKeysBatch = std::vector<std::pair<VectorId, Slice>>;
 
 struct VectorLSMInsertContext {
   const rocksdb::UserFrontiers* frontiers = nullptr;
-};
-
-class VectorLSMKeyValueStorage {
- public:
-  virtual Status StoreBaseTableKeys(
-      const BaseTableKeysBatch& batch, const VectorLSMInsertContext& context) = 0;
-
-  virtual Result<KeyBuffer> ReadBaseTableKey(VectorId vertex_id) = 0;
-
-  virtual ~VectorLSMKeyValueStorage() = default;
 };
 
 template<IndexableVectorType Vector,
@@ -96,7 +70,6 @@ struct VectorLSMOptions {
   std::string storage_dir;
   typename Types::VectorIndexFactory vector_index_factory;
   size_t points_per_chunk;
-  VectorLSMKeyValueStorage* key_value_storage;
   rpc::ThreadPool* thread_pool;
   std::function<rocksdb::UserFrontiersPtr()> frontiers_factory;
 };
@@ -173,7 +146,7 @@ class VectorLSM {
   Status UpdateManifest(
       rocksdb::WritableFile* metadata_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
 
-  Status CreateNewMutableChunk(size_t min_points) REQUIRES(mutex_);
+  Status CreateNewMutableChunk(size_t min_vectors) REQUIRES(mutex_);
 
   Status RemoveUpdateQueueEntry(size_t order_no) REQUIRES(mutex_);
 
@@ -204,8 +177,8 @@ using MakeVectorIndexFactory =
 
 template<ValidDistanceResultType DistanceResult>
 void MergeChunkResults(
-    std::vector<VertexWithDistance<DistanceResult>>& combined_results,
-    std::vector<VertexWithDistance<DistanceResult>>& chunk_results,
+    std::vector<VectorWithDistance<DistanceResult>>& combined_results,
+    std::vector<VectorWithDistance<DistanceResult>>& chunk_results,
     size_t max_num_results);
 
 }  // namespace yb::vector_index

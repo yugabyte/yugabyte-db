@@ -3240,10 +3240,10 @@ subxact_info_read(Oid subid, TransactionId xid)
 	{
 		nread = BufFileRead(fd, subxact_data.subxacts, len);
 		if (nread != len)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not read from streaming transaction's subxact file \"%s\": read only %zu of %zu bytes",
-						path, nread, len)));
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not read from streaming transaction's subxact file \"%s\": read only %zu of %zu bytes",
+							path, nread, len)));
 	}
 
 	BufFileClose(fd);
@@ -3805,11 +3805,11 @@ ApplyWorkerMain(Datum main_arg)
 
 		ereport(DEBUG1,
 				(errmsg_internal("logical replication apply worker for subscription \"%s\" two_phase is %s",
-						MySubscription->name,
-						MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_DISABLED ? "DISABLED" :
-						MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_PENDING ? "PENDING" :
-						MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_ENABLED ? "ENABLED" :
-						"?")));
+								 MySubscription->name,
+								 MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_DISABLED ? "DISABLED" :
+								 MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_PENDING ? "PENDING" :
+								 MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_ENABLED ? "ENABLED" :
+								 "?")));
 	}
 	else
 	{

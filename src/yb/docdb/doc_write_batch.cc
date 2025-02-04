@@ -73,8 +73,7 @@ struct DocWriteBatch::LazyIterator {
     if (!iterator) {
       iterator = CreateIntentAwareIterator(
           *doc_db,
-          BloomFilterMode::USE_BLOOM_FILTER,
-          doc_path->encoded_doc_key().AsSlice(),
+          BloomFilterOptions::Fixed(doc_path->encoded_doc_key().AsSlice()),
           query_id,
           TransactionOperationContext(),
           *read_operation_data);
@@ -676,10 +675,9 @@ Status DocWriteBatch::ReplaceRedisInList(
   RETURN_NOT_OK(sub_doc_key.FromDocPath(doc_path));
   key_prefix_ = sub_doc_key.Encode();
 
-  auto iter = yb::docdb::CreateIntentAwareIterator(
+  auto iter = CreateIntentAwareIterator(
       doc_db_,
-      BloomFilterMode::USE_BLOOM_FILTER,
-      key_prefix_.AsSlice(),
+      BloomFilterOptions::Fixed(key_prefix_.AsSlice()),
       query_id,
       TransactionOperationContext(),
       read_operation_data);
@@ -779,8 +777,7 @@ Status DocWriteBatch::ReplaceCqlInList(
 
   auto iter = yb::docdb::CreateIntentAwareIterator(
       doc_db_,
-      BloomFilterMode::USE_BLOOM_FILTER,
-      key_prefix_.AsSlice(),
+      BloomFilterOptions::Fixed(key_prefix_.AsSlice()),
       query_id,
       TransactionOperationContext(),
       read_operation_data);

@@ -254,11 +254,13 @@ FreeExecutorState(EState *estate)
 		estate->es_partition_directory = NULL;
 	}
 
-	ListCell *lc;
-	foreach (lc, estate->yb_es_pk_proutes)
+	ListCell   *lc;
+
+	foreach(lc, estate->yb_es_pk_proutes)
 	{
 		PartitionTupleRouting *proute = lfirst(lc);
-		ExecCleanupTupleRouting(NULL /* mtstate */, proute);
+
+		ExecCleanupTupleRouting(NULL /* mtstate */ , proute);
 	}
 	list_free(estate->yb_es_pk_proutes);
 

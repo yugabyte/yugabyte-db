@@ -92,6 +92,10 @@ void InsertOnConflictBuffer::ClearIntents() {
   IntentKeys().clear();
 }
 
+// Since this clears the keys_ map containing slots from the batch read operation, the caller should
+// be careful to avoid memory leak by falling under one of these cases:
+// - The keys_ map is already empty before calling this function.
+// - This is happening together with a transaction abort or error, which anyway cleans up the slots.
 void InsertOnConflictBuffer::Clear(bool clear_intents) {
   keys_.clear();
   keys_iter_ = keys_.end();

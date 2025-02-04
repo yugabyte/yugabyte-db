@@ -89,7 +89,10 @@ typedef enum
 #define PG_ISPUNCT	0x40
 #define PG_ISSPACE	0x80
 
-static YbcPgThreadLocalRegexpMetadata metadata = {0, NULL, 0};
+static YbcPgThreadLocalRegexpMetadata metadata =
+{
+	0, NULL, 0
+};
 
 static YbcPgThreadLocalRegexpMetadata *
 YbGetRegexpMetadata()
@@ -243,8 +246,7 @@ void
 pg_set_regex_collation(Oid collation)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	if (!OidIsValid(collation))
 	{
@@ -309,8 +311,7 @@ static int
 pg_wc_isdigit(pg_wchar c)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	switch (yb_regexp_metadata->pg_regex_strategy)
 	{
@@ -349,8 +350,7 @@ static int
 pg_wc_isalpha(pg_wchar c)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	switch (yb_regexp_metadata->pg_regex_strategy)
 	{
@@ -389,8 +389,7 @@ static int
 pg_wc_isalnum(pg_wchar c)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	switch (yb_regexp_metadata->pg_regex_strategy)
 	{
@@ -438,8 +437,7 @@ static int
 pg_wc_isupper(pg_wchar c)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	switch (yb_regexp_metadata->pg_regex_strategy)
 	{
@@ -478,8 +476,7 @@ static int
 pg_wc_islower(pg_wchar c)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	switch (yb_regexp_metadata->pg_regex_strategy)
 	{
@@ -518,8 +515,7 @@ static int
 pg_wc_isgraph(pg_wchar c)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	switch (yb_regexp_metadata->pg_regex_strategy)
 	{
@@ -558,8 +554,7 @@ static int
 pg_wc_isprint(pg_wchar c)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	switch (yb_regexp_metadata->pg_regex_strategy)
 	{
@@ -598,8 +593,7 @@ static int
 pg_wc_ispunct(pg_wchar c)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	switch (yb_regexp_metadata->pg_regex_strategy)
 	{
@@ -638,8 +632,7 @@ static int
 pg_wc_isspace(pg_wchar c)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	switch (yb_regexp_metadata->pg_regex_strategy)
 	{
@@ -678,8 +671,7 @@ static pg_wchar
 pg_wc_toupper(pg_wchar c)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	switch (yb_regexp_metadata->pg_regex_strategy)
 	{
@@ -726,8 +718,7 @@ static pg_wchar
 pg_wc_tolower(pg_wchar c)
 {
 	YbcPgThreadLocalRegexpMetadata *yb_regexp_metadata = YbGetRegexpMetadata();
-	pg_locale_t *pg_regex_locale =
-		(pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
+	pg_locale_t *pg_regex_locale = (pg_locale_t *) &yb_regexp_metadata->pg_regex_locale;
 
 	switch (yb_regexp_metadata->pg_regex_strategy)
 	{

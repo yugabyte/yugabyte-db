@@ -413,8 +413,9 @@ void YBSession::SetForceConsistentRead(ForceConsistentRead value) {
   }
 }
 
-void YBSession::SetBatcherBackgroundTransactionId(const TransactionId& background_transaction_id) {
-  Batcher().SetBackgroundTransactionId(background_transaction_id);
+void YBSession::SetBatcherBackgroundTransactionMeta(
+    const TransactionMetadata& background_transaction_meta) {
+  Batcher().SetBackgroundTransactionMeta(background_transaction_meta);
 }
 
 bool ShouldSessionRetryError(const Status& status) {

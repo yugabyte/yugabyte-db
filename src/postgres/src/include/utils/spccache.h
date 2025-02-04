@@ -18,6 +18,6 @@ extern void get_tablespace_page_costs(Oid spcid, float8 *spc_random_page_cost,
 extern int	get_tablespace_io_concurrency(Oid spcid);
 extern int	get_tablespace_maintenance_io_concurrency(Oid spcid);
 
-bool get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost);
+bool		get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost);
 
 #endif							/* SPCCACHE_H */

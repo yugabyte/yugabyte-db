@@ -23,11 +23,17 @@ import type { EntityMetadata } from './EntityMetadata';
  */
 export interface ClusterDataInfo  {
   /**
+   * The UUID of the universe
+   * @type {string}
+   * @memberof ClusterDataInfo
+   */
+  universe_uuid: string;
+  /**
    * The UUID of the cluster
    * @type {string}
    * @memberof ClusterDataInfo
    */
-  id: string;
+  cluster_uuid: string;
   /**
    * The current state of the cluster
    * @type {string}

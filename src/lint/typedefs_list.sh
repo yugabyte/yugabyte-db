@@ -23,8 +23,10 @@ pattern='YB|Yb|yb'
 
 if [[ "$1" == */yb_typedefs.list ]]; then
   grep -Env "$pattern" "$1" \
-    | sed 's/^/error:missing_yb_in_type_name:/'
+    | sed 's/^/error:missing_yb_in_type_name:'\
+'Types in yb_typedefs.list should have "yb":/'
 else
   grep -En "$pattern" "$1" \
-    | sed 's/^/error:bad_yb_in_type_name:/'
+    | sed 's/^/error:bad_yb_in_type_name:'\
+'Types in non-yb_typedefs.list should not have "yb":/'
 fi

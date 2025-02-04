@@ -597,22 +597,23 @@ Status PollTransactionStatusBase::VerifyTransaction() {
 void PollTransactionStatusBase::TransactionReceived(
     Status txn_status, const tserver::GetTransactionStatusResponsePB& resp) {
   if (RandomActWithProbability(FLAGS_TEST_ysql_ddl_transaction_verification_failure_probability)) {
-    LOG(ERROR) << "Injecting failure for transaction, inducing failure to enqueue callback";
-    FinishPollTransaction(STATUS_FORMAT(InternalError, "Injected failure"));
+    LOG(ERROR) << "Injecting failure for transaction polling";
+    TransactionPending();
     return;
   }
 
   if (!txn_status.ok()) {
     LOG(WARNING) << "Transaction Status attempt (" << transaction_
                  << ") failed with status " << txn_status;
-    FinishPollTransaction(txn_status);
+    TransactionPending();
     return;
   }
   if (resp.has_error()) {
     const Status s = StatusFromPB(resp.error().status());
-    FinishPollTransaction(STATUS_FORMAT(
-        InternalError, "Transaction Status attempt failed with error code $0: $1",
-        tserver::TabletServerErrorPB::Code_Name(resp.error().code()), s));
+    LOG(WARNING) << "Transaction Status attempt failed with error code "
+                 << tserver::TabletServerErrorPB::Code_Name(resp.error().code())
+                 << s;
+    TransactionPending();
     return;
   }
   YB_LOG_EVERY_N_SECS(INFO, 1) << "Got Response for " << transaction_
@@ -630,7 +631,7 @@ void PollTransactionStatusBase::TransactionReceived(
   // If this transaction isn't pending, then the transaction is in a terminal state.
   // Note: We ignore the resp.status() now, because it could be ABORT'd but actually a SUCCESS.
   // Determine whether the transaction was a success by comparing with the PG schema.
-  FinishPollTransaction(Status::OK());
+  FinishPollTransaction();
 }
 
 NamespaceVerificationTask::NamespaceVerificationTask(
@@ -685,14 +686,13 @@ void NamespaceVerificationTask::TransactionPending() {
   }, "VerifyTransaction");
 }
 
-void NamespaceVerificationTask::FinishPollTransaction(Status status) {
+void NamespaceVerificationTask::FinishPollTransaction() {
   ScheduleNextStep(
-    std::bind(&NamespaceVerificationTask::CheckNsExists, this, std::move(status)),
+    std::bind(&NamespaceVerificationTask::CheckNsExists, this),
     "CheckNsExists");
 }
 
-Status NamespaceVerificationTask::CheckNsExists(Status txn_rpc_status) {
-  RETURN_NOT_OK(txn_rpc_status);
+Status NamespaceVerificationTask::CheckNsExists() {
   const auto pg_table_id = GetPgsqlTableId(atoi(kSystemNamespaceId), kPgDatabaseTableOid);
   const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_info_.id()));
   entry_exists_ = VERIFY_RESULT(
@@ -771,7 +771,6 @@ Status TableSchemaVerificationTask::FirstStep() {
 }
 
 void TableSchemaVerificationTask::TransactionPending() {
-  // Schedule verify transaction with some delay.
   this->ScheduleNextStep([this] {
     return VerifyTransaction();
   }, "VerifyTransaction");
@@ -795,9 +794,9 @@ Status TableSchemaVerificationTask::ValidateRunnable() {
   return Status::OK();
 }
 
-void TableSchemaVerificationTask::FinishPollTransaction(Status status) {
-  ScheduleNextStep([this, status] {
-    return ddl_atomicity_enabled_ ? CompareSchema(status) : CheckTableExists(status);
+void TableSchemaVerificationTask::FinishPollTransaction() {
+  ScheduleNextStep([this] {
+    return ddl_atomicity_enabled_ ? CompareSchema() : CheckTableExists();
   }, "Compare Schema");
 }
 
@@ -809,8 +808,7 @@ Status TableSchemaVerificationTask::FinishTask(Result<std::optional<bool>> is_co
   return Status::OK();
 }
 
-Status TableSchemaVerificationTask::CheckTableExists(Status txn_rpc_success) {
-  RETURN_NOT_OK(txn_rpc_success);
+Status TableSchemaVerificationTask::CheckTableExists() {
   if (!table_info_->IsColocationParentTable()) {
     // Check that pg_class still has an entry for the table.
     const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table_info_->id()));
@@ -836,9 +834,7 @@ Status TableSchemaVerificationTask::CheckTableExists(Status txn_rpc_success) {
       sys_catalog_, pg_yb_tablegroup_table_id, tablegroup_oid, boost::none /* relfilenode_oid */));
 }
 
-Status TableSchemaVerificationTask::CompareSchema(Status txn_rpc_success) {
-  RETURN_NOT_OK(txn_rpc_success);
-
+Status TableSchemaVerificationTask::CompareSchema() {
   // If the transaction was a success, we need to compare the schema of the table in PG catalog
   // with the schema in DocDB.
   return FinishTask(PgSchemaChecker(sys_catalog_, table_info_));

@@ -5,6 +5,7 @@ import (
     "encoding/json"
     "fmt"
     "io/ioutil"
+    "net"
     "net/http"
     "regexp"
     "time"
@@ -46,7 +47,7 @@ func (h *HelperContainer) GetGFlagsFuture(
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:%s/varz?raw=1", hostName, port)
+    url := fmt.Sprintf("http://%s/varz?raw=1", net.JoinHostPort(hostName, port))
     resp, err := httpClient.Get(url)
     if err != nil {
         gFlags.Error = err
@@ -95,7 +96,7 @@ func (h *HelperContainer) GetGFlagsJsonFuture(
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:%s/api/v1/varz", hostName, port)
+    url := fmt.Sprintf("http://%s/api/v1/varz", net.JoinHostPort(hostName, port))
     resp, err := httpClient.Get(url)
     if err != nil {
         gFlags.Error = err

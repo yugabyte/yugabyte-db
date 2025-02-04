@@ -46,7 +46,6 @@
 #include "yb/server/total_mem_watcher.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/mem_tracker.h"

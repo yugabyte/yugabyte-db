@@ -284,6 +284,11 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 		}
 	}
 
+	if (IsYugaByteEnabled() && !collisdeterministic)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("nondeterministic collation is not supported")));
+
 	if (!collversion)
 		collversion = get_collation_actual_version(collprovider, collprovider == COLLPROVIDER_ICU ? colliculocale : collcollate);
 

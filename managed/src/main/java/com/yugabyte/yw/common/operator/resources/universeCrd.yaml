@@ -179,7 +179,7 @@ spec:
                   rule: self == oldSelf
               deviceInfo:
                 description: >
-                  Device information for the universe to
+                  Device information for the tservers in universe to
                   refer to storage information for volume,
                   storage classes etc.
                 properties:
@@ -198,6 +198,36 @@ spec:
                       - message:   StorageClass cannot be changed once set.
                         rule: self == oldSelf
                 type: object
+              masterDeviceInfo:
+                description: >
+                  Device information for the masters in universe to
+                  refer to storage information for volume,
+                  storage classes etc.
+                properties:
+                  volumeSize:
+                    type: integer
+                    default: 50
+                  numVolumes:
+                    type: integer
+                    default: 1
+                    x-kubernetes-validations:
+                      - message:   numVolumes cannot be changed once set.
+                        rule: self == oldSelf
+                  storageClass:
+                    type: string
+                    x-kubernetes-validations:
+                      - message:   StorageClass cannot be changed once set.
+                        rule: self == oldSelf
+                type: object
+              paused:
+                description: >
+                  If the universe is paused. A paused universe will have its statefulsets scaled
+                  to 0 pods. When unpaused, the statefulsets will be scaled back to their previous
+                  values.
+                  While Paused, all other actions on the universe will be ignored until the universe
+                  is resumed.
+                type: boolean
+                default: false
               kubernetesOverrides:
                 description: >
                   Kubernetes overrides for the universe.

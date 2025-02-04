@@ -588,7 +588,7 @@ yb_tokenize_hardcoded(List **tok_lines, int elevel)
 		char	   *err_msg = NULL;
 		TokenizedAuthLine *tok_line;
 
-		tok_line = yb_tokenize_line("(hardcoded: no filename)" /* filename */,
+		tok_line = yb_tokenize_line("(hardcoded: no filename)" /* filename */ ,
 									elevel, line_number,
 									pstrdup(HardcodedHbaLines[i]), err_msg);
 		if (tok_line != NULL)
@@ -616,10 +616,10 @@ yb_tokenize_hardcoded(List **tok_lines, int elevel)
  */
 static TokenizedAuthLine *
 yb_tokenize_line(const char *filename,
-			  int elevel,
-			  int line_number,
-			  char *rawline,
-			  char *err_msg)
+				 int elevel,
+				 int line_number,
+				 char *rawline,
+				 char *err_msg)
 {
 	char	   *lineptr;
 	List	   *current_line = NIL;
@@ -1825,23 +1825,25 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 		 */
 		static const char *passkey = "ldapbindpasswd=";
 		static const char *pass_replacement_string = "ldapbindpasswd=***";
-		char *passfield = strstr(parsedline->rawline, passkey);
+		char	   *passfield = strstr(parsedline->rawline, passkey);
+
 		Assert(passfield != NULL);
 
 		/*
 		 * Caching various string lengths
 		 */
-		size_t total_len = strlen(parsedline->rawline);
-		size_t prefix_len = passfield - parsedline->rawline;
-		size_t passkey_len = strlen(passkey);
-		size_t passwd_len = strlen(parsedline->ldapbindpasswd);
-		size_t pass_replacement_string_len = strlen(pass_replacement_string);
-		size_t maskedlinelength = total_len - passkey_len - passwd_len
-									+ pass_replacement_string_len + 1;
+		size_t		total_len = strlen(parsedline->rawline);
+		size_t		prefix_len = passfield - parsedline->rawline;
+		size_t		passkey_len = strlen(passkey);
+		size_t		passwd_len = strlen(parsedline->ldapbindpasswd);
+		size_t		pass_replacement_string_len = strlen(pass_replacement_string);
+		size_t		maskedlinelength = (total_len - passkey_len - passwd_len +
+										pass_replacement_string_len + 1);
 
 		parsedline->maskedline = palloc0(maskedlinelength);
-		size_t head = 0;
-		size_t copy_size = prefix_len;
+		size_t		head = 0;
+		size_t		copy_size = prefix_len;
+
 		strncpy(parsedline->maskedline + head, parsedline->rawline, copy_size);
 		head += copy_size;
 
@@ -1850,8 +1852,7 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 				pass_replacement_string, copy_size);
 		head += copy_size;
 
-		copy_size = total_len - prefix_len - passkey_len
-					- passwd_len;
+		copy_size = total_len - prefix_len - passkey_len - passwd_len;
 		strncpy(parsedline->maskedline + head,
 				passfield + passkey_len
 				+ passwd_len, copy_size);
@@ -2381,10 +2382,10 @@ check_hba(hbaPort *port)
 				continue;
 
 			/* Check SSL state */
-			if (YbIsClientYsqlConnMgr() && (port->yb_is_auth_passthrough_req ||
-											yb_is_auth_backend) ?
-					port->yb_is_ssl_enabled_in_logical_conn :
-					port->ssl_in_use)
+			if ((YbIsClientYsqlConnMgr() &&
+				 (port->yb_is_auth_passthrough_req || yb_is_auth_backend)) ?
+				port->yb_is_ssl_enabled_in_logical_conn :
+				port->ssl_in_use)
 			{
 				/* Connection is SSL, match both "host" and "hostssl" */
 				if (hba->conntype == ctHostNoSSL)
@@ -2985,11 +2986,12 @@ yb_set_hba_tserver_key(hbaPort *port)
 	 * Check that client connections are allowed to set yb-tserver-key
 	 * as the authentication method via the startup packet.
 	 */
-	char *is_allowed = getenv("YB_ALLOW_CLIENT_SET_TSERVER_KEY_AUTH");
+	char	   *is_allowed = getenv("YB_ALLOW_CLIENT_SET_TSERVER_KEY_AUTH");
+
 	if (is_allowed == NULL || strcmp(is_allowed, "1") != 0)
 		return false;
 
-	ListCell *gucopts;
+	ListCell   *gucopts;
 
 	/*
 	 * Parsing and setting startup parameter happen after authentication.
@@ -2999,8 +3001,8 @@ yb_set_hba_tserver_key(hbaPort *port)
 	gucopts = list_head(port->guc_options);
 	while (gucopts)
 	{
-		char *name;
-		char *value;
+		char	   *name;
+		char	   *value;
 
 		name = lfirst(gucopts);
 		gucopts = lnext(port->guc_options, gucopts);
@@ -3010,7 +3012,8 @@ yb_set_hba_tserver_key(hbaPort *port)
 
 		if (strcasecmp(name, "yb_use_tserver_key_auth") == 0)
 		{
-			bool result;
+			bool		result;
+
 			if (!parse_bool(value, &result))
 				ereport(FATAL, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 								errmsg("parameter \"%s\" requires a Boolean "
@@ -3038,7 +3041,10 @@ hba_getauthmethod(hbaPort *port)
 	{
 		port->yb_is_tserver_auth_method = true;
 		port->hba = palloc0(sizeof(HbaLine));
-		*port->hba = (HbaLine){.auth_method = uaYbTserverKey};
+		*port->hba = (HbaLine)
+		{
+			.auth_method = uaYbTserverKey
+		};
 		return;
 	}
 

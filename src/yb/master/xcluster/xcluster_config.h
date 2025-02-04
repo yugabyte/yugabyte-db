@@ -18,10 +18,12 @@
 #include "yb/cdc/cdc_types.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/master/leader_epoch.h"
-#include "yb/util/cow_object.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
+
+template<class State>
+class CowWriteLock;
 
 namespace master {
 

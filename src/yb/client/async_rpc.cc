@@ -365,7 +365,7 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
                  bool need_full_metadata,
                  tserver::WriteRequestPB* req) {
   SetMetadata(metadata, need_full_metadata, req->mutable_write_batch());
-  if (metadata.background_transaction_id) {
+  if (metadata.background_transaction_meta) {
     // Indicates an attempt to acquire either a session-level or transaction-level advisory lock.
     // The background_transaction_id ensures no conflicts occur between session-level and
     // transaction-level advisory locks within the same session.
@@ -375,7 +375,10 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
     //   the session-level transaction, if exists. Note that a session level transaction is only
     //   created on demand when we encounter a session advisory lock request.
     req->mutable_write_batch()->set_background_transaction_id(
-        metadata.background_transaction_id->data(), metadata.background_transaction_id->size());
+        metadata.background_transaction_meta->transaction_id.data(),
+        metadata.background_transaction_meta->transaction_id.size());
+    req->mutable_write_batch()->set_background_txn_status_tablet(
+        metadata.background_transaction_meta->status_tablet);
   }
   if (metadata.pg_session_req_version) {
     // Populate the current request version for a session level transaction. This is used to unblock

@@ -6,7 +6,7 @@ description: Use federated authentication for single sign-on.
 headContent: Single sign-on using an identity provider
 menu:
   preview_yugabyte-cloud:
-    identifier: federated-jump
+    identifier: federated-2-jump
     parent: managed-authentication
     weight: 20
 type: docs
@@ -40,11 +40,18 @@ Currently, YugabyteDB Aeon supports IdPs exclusively using the OIDC (OpenID Conn
       JumpCloud
     </a>
   </li>
+
+  <li>
+    <a href="../federated-custom/" class="nav-link">
+      Custom
+    </a>
+  </li>
+
 </ul>
 
 ## Prerequisites
 
-Before configuring federated authentication, be sure to allow pop-up requests from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
+Before configuring federated authentication, be sure to allow pop-up requests from your IdP; the provider may need to confirm your identity in a new window.
 
 ## Create an application in JumpCloud
 
@@ -100,4 +107,4 @@ To configure federated authentication in YugabyteDB Aeon, do the following:
 1. Enter the client ID and secret of the JumpCloud application you created.
 1. Click **Enable**.
 
-You are redirected to sign in to your IdP to test the connection. After the test connection is successful, federated authentication is enabled.
+At this point, you will be redirected to sign in to your IdP to test the connection. If the test connection is successful, federated authentication is enabled.

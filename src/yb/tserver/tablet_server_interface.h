@@ -29,6 +29,7 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
 
@@ -38,7 +39,7 @@ class MemTracker;
 
 namespace pgwrapper {
 class PGConn;
-}  // namespace pgwrapper
+} // namespace pgwrapper
 
 namespace server {
 class RpcAndWebServerBase;
@@ -122,6 +123,9 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) = 0;
+
+  virtual Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(
+      const PgTxnSnapshotLocalId& snapshot_id) = 0;
 
   virtual bool SkipCatalogVersionChecks() { return false; }
 

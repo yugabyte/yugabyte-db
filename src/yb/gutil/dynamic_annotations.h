@@ -631,6 +631,16 @@ void __asan_set_death_callback(void (*callback)(void));
   ((void)(cb))
 #endif
 
+void __asan_get_shadow_mapping(size_t* shadow_scale, size_t* shadow_offset);
+
+#if defined(__SANITIZE_ADDRESS__) || defined(ADDRESS_SANITIZER)
+#define ASAN_GET_SHADOW_MAPPING(shadow_scale, shadow_offset)   \
+  __asan_get_shadow_mapping(shadow_scale, shadow_offset)
+#else
+#define ASAN_GET_SHADOW_MAPPING(shadow_scale, shadow_offset)   \
+  (*(shadow_scale) = 0, *(shadow_offset) = 0)
+#endif
+
 #ifdef __cplusplus
 }
 #endif

@@ -23,7 +23,7 @@ To edit Kubernetes overrides, do the following:
 
     ![Kubernetes Overrides](/images/yb-platform/kubernetes-config66.png)
 
-1. Complete the dialog by following instructions provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes#configure-helm-overrides).
+1. Complete the dialog by following instructions provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides).
 
 ## Upgrade universes for GKE service account-based IAM
 

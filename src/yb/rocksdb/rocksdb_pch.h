@@ -224,5 +224,3 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/ulimit.h"
-#include "yb/util/version_info.h"
-#include "yb/util/version_info.pb.h"

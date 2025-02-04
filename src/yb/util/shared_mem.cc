@@ -249,12 +249,9 @@ SharedMemorySegment::SharedMemorySegment(void* base_address, int fd, size_t segm
 }
 
 SharedMemorySegment::SharedMemorySegment(SharedMemorySegment&& other)
-    : base_address_(other.base_address_),
-      fd_(other.fd_),
-      segment_size_(other.segment_size_) {
-  other.base_address_ = nullptr;
-  other.fd_ = -1;
-}
+    : base_address_(std::exchange(other.base_address_, nullptr)),
+      fd_(std::exchange(other.fd_, -1)),
+      segment_size_(other.segment_size_) { }
 
 SharedMemorySegment::~SharedMemorySegment() {
   if (base_address_ && munmap(base_address_, segment_size_) == -1) {
@@ -265,6 +262,13 @@ SharedMemorySegment::~SharedMemorySegment() {
   if (fd_ != -1) {
     close(fd_);
   }
+}
+
+SharedMemorySegment& SharedMemorySegment::operator=(SharedMemorySegment&& other) {
+  base_address_ = std::exchange(other.base_address_, nullptr);
+  fd_ = std::exchange(other.fd_, -1);
+  segment_size_ = other.segment_size_;
+  return *this;
 }
 
 void* SharedMemorySegment::GetAddress() const {

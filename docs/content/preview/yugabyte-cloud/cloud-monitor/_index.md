@@ -11,6 +11,9 @@ menu:
     parent: yugabytedb-managed
     identifier: cloud-monitor
     weight: 150
+    params:
+      classes: separator
+      hideLink: true
 type: indexpage
 showRightNav: true
 ---

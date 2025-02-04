@@ -45,24 +45,26 @@
 
 #include "parser/parser.h"
 
-static void YBCAddSysCatalogColumn(YbcPgStatement yb_stmt,
-								   IndexStmt *pkey_idx,
-								   const char *attname,
-								   int attnum,
-								   Oid type_id,
-								   int32 typmod,
-								   bool key)
+static void
+YBCAddSysCatalogColumn(YbcPgStatement yb_stmt,
+					   IndexStmt *pkey_idx,
+					   const char *attname,
+					   int attnum,
+					   Oid type_id,
+					   int32 typmod,
+					   bool key)
 {
 
-	ListCell      *lc;
-	bool          is_key    = false;
-	const YbcPgTypeEntity *col_type  = YbDataTypeFromOidMod(attnum, type_id);
+	ListCell   *lc;
+	bool		is_key = false;
+	const YbcPgTypeEntity *col_type = YbDataTypeFromOidMod(attnum, type_id);
 
 	if (pkey_idx)
 	{
 		foreach(lc, pkey_idx->indexParams)
 		{
-			IndexElem *elem = lfirst(lc);
+			IndexElem  *elem = lfirst(lc);
+
 			if (strcmp(elem->name, attname) == 0)
 			{
 				is_key = true;
@@ -70,31 +72,34 @@ static void YBCAddSysCatalogColumn(YbcPgStatement yb_stmt,
 		}
 	}
 
-	/* We will call this twice, first for key columns, then for regular
-	 * columns to handle any re-ordering.
-	 * So only adding the if matching the is_key property.
+	/*
+	 * We will call this twice, first for key columns, then for regular
+	 * columns to handle any re-ordering. So only adding the if matching the
+	 * is_key property.
 	 */
 	if (key == is_key)
 	{
 		HandleYBStatus(YBCPgCreateTableAddColumn(yb_stmt,
-																						 attname,
-																						 attnum,
-																						 col_type,
-																						 false /* is_hash */,
-																						 is_key,
-																						 false /* is_desc */,
-																						 false /* is_nulls_first */));
+												 attname,
+												 attnum,
+												 col_type,
+												 false /* is_hash */ ,
+												 is_key,
+												 false /* is_desc */ ,
+												 false /* is_nulls_first */ ));
 	}
 }
 
-static void YBCAddSysCatalogColumns(YbcPgStatement yb_stmt,
-									TupleDesc tupdesc,
-									IndexStmt *pkey_idx,
-									const bool key)
+static void
+YBCAddSysCatalogColumns(YbcPgStatement yb_stmt,
+						TupleDesc tupdesc,
+						IndexStmt *pkey_idx,
+						const bool key)
 {
 	for (int attno = 0; attno < tupdesc->natts; attno++)
 	{
 		Form_pg_attribute attr = TupleDescAttr(tupdesc, attno);
+
 		YBCAddSysCatalogColumn(yb_stmt,
 							   pkey_idx,
 							   attr->attname.data,
@@ -114,9 +119,9 @@ YBCCreateSysCatalogTable(const char *table_name,
 {
 	/* Database and schema are fixed when running inidb. */
 	Assert(IsBootstrapProcessingMode());
-	char           *db_name     = "template1";
-	char           *schema_name = "pg_catalog";
-	YbcPgStatement yb_stmt      = NULL;
+	char	   *db_name = "template1";
+	char	   *schema_name = "pg_catalog";
+	YbcPgStatement yb_stmt = NULL;
 	YbcPgYbrowidMode ybrowid_mode = (pkey_idx == NULL
 									 ? PG_YBROWID_MODE_RANGE
 									 : PG_YBROWID_MODE_NONE);
@@ -127,17 +132,17 @@ YBCCreateSysCatalogTable(const char *table_name,
 									   Template1DbOid,
 									   table_oid,
 									   is_shared_relation,
-									   true /* is_sys_catalog_table */,
-									   false, /* if_not_exists */
+									   true /* is_sys_catalog_table */ ,
+									   false,	/* if_not_exists */
 									   ybrowid_mode,
-									   true, /* is_colocated_via_database */
-									   InvalidOid /* tablegroup_oid */,
-									   InvalidOid /* colocation_id */,
-									   InvalidOid /* tablespace_oid */,
-									   false /* is_matview */,
-									   InvalidOid /* pg_table_oid */,
-									   InvalidOid /* old_relfilenode_oid */,
-									   false /* is_truncate */,
+									   true,	/* is_colocated_via_database */
+									   InvalidOid /* tablegroup_oid */ ,
+									   InvalidOid /* colocation_id */ ,
+									   InvalidOid /* tablespace_oid */ ,
+									   false /* is_matview */ ,
+									   InvalidOid /* pg_table_oid */ ,
+									   InvalidOid /* old_relfilenode_oid */ ,
+									   false /* is_truncate */ ,
 									   &yb_stmt));
 
 	/* Add all key columns first, then the regular columns */

@@ -4,6 +4,7 @@ import (
     "encoding/json"
     "fmt"
     "io/ioutil"
+    "net"
     "net/http"
     "time"
 )
@@ -39,7 +40,7 @@ func (h *HelperContainer) GetMemTrackersFuture(
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:%s/api/v1/mem-trackers", hostName, port)
+    url := fmt.Sprintf("http://%s/api/v1/mem-trackers", net.JoinHostPort(hostName, port))
     resp, err := httpClient.Get(url)
     if err != nil {
         memTrackers.Error = err

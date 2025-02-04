@@ -3155,7 +3155,8 @@ yb_get_attdistinctcount(Oid relid, AttrNumber attnum)
 		ReleaseSysCache(tp);
 		if (stadistinct < 0)
 		{
-			float4 reltuples = yb_get_rel_reltuples(relid);
+			float4		reltuples = yb_get_rel_reltuples(relid);
+
 			stadistinct *= -1 * reltuples;
 		}
 		return stadistinct;

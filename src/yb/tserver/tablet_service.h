@@ -235,6 +235,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       const AdminExecutePgsqlRequestPB* req, AdminExecutePgsqlResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void GetLocalPgTxnSnapshot(
+      const GetLocalPgTxnSnapshotRequestPB* req, GetLocalPgTxnSnapshotResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:

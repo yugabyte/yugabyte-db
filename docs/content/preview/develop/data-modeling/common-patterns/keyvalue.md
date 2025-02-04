@@ -47,7 +47,7 @@ user2.name = "Harry Potter"
 user2.country = "UK"
 ```
 
-The primary concern with the above schema is that the database will have to do multiple internal lookups to fetch the data for a single user as each attribute will be stored as a different row. To avoid this, you could choose to store the user data in an [HStore](https://www.postgresql.org/docs/11/hstore.html) type, like:
+The primary concern with the above schema is that the database will have to do multiple internal lookups to fetch the data for a single user as each attribute will be stored as a different row. To avoid this, you could choose to store the user data in an [HStore](https://www.postgresql.org/docs/15/hstore.html) type, like:
 
 ```json{.nocopy}
 1 : {"name" : "John Wick", "country" : "USA"}
@@ -137,7 +137,7 @@ DELETE FROM kvstore WHERE key = 'user1.name';
 
 ## Attributes as one row
 
-To store multiple attributes associated with a user as one entry, you can use the [Hstore](https://www.postgresql.org/docs/11/hstore.html) type. Follow the steps below to set up your table.
+To store multiple attributes associated with a user as one entry, you can use the [Hstore](https://www.postgresql.org/docs/15/hstore.html) type. Follow the steps below to set up your table.
 
 1. Create the HStore extension.
 
@@ -232,5 +232,5 @@ you will notice that the `name` attribute has been removed for user `id=1`.
 
 ## Learn more
 
-- [Hstore](https://www.postgresql.org/docs/11/hstore.html)
+- [Hstore](https://www.postgresql.org/docs/15/hstore.html)
 - [Json](../../../../explore/ysql-language-features/jsonb-ysql/)

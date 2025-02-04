@@ -38,7 +38,7 @@ var encryptionAtRestCmd = &cobra.Command{
 					formatter.RedColor))
 		}
 
-		// Validations before gflags upgrade operation
+		// Validations before EAR upgrade operation
 		skipValidations, err := cmd.Flags().GetBool("skip-validations")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))

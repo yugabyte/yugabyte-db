@@ -30,7 +30,7 @@ CATALOG(pg_yb_tablegroup,8036,YbTablegroupRelationId) BKI_ROWTYPE_OID(8038,YbTab
 	Oid			oid;			/* oid */
 	NameData	grpname;		/* tablegroup name */
 	Oid			grpowner;		/* owner of tablegroup */
-	Oid			grptablespace;  /* tablespace of tablegroup */
+	Oid			grptablespace;	/* tablespace of tablegroup */
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 	aclitem		grpacl[1];		/* access permissions */

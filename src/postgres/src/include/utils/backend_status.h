@@ -101,9 +101,9 @@ typedef struct PgBackendGSSStatus
 typedef struct YbPgBackendCatalogVersionStatus
 {
 	bool		has_version;	/* whether the backend is using the following
-								   version */
+								 * version */
 	uint64_t	version;		/* if has_version, catalog version that the
-								   backend is on */
+								 * backend is on */
 } YbPgBackendCatalogVersionStatus;
 
 /* ----------
@@ -196,19 +196,19 @@ typedef struct PgBackendStatus
 	uint64		st_query_id;
 
 	/* Yugabyte attributes */
-	char 		*st_databasename; /* Used in YB Mode */
+	char	   *st_databasename;	/* Used in YB Mode */
 
 	/*
 	 * Memory usage of backend from TCMalloc, including PostgreSQL memory usage
 	 * + pggate memory usage + cached memory - memory that was freed but not recycled
 	 */
-	int64_t yb_st_allocated_mem_bytes;
+	int64_t		yb_st_allocated_mem_bytes;
 
 	/* YB catalog version */
 	YbPgBackendCatalogVersionStatus yb_st_catalog_version;
 
 	/* YB (pg_client <--> tserver) Session ID */
-	uint64_t yb_session_id;
+	uint64_t	yb_session_id;
 
 } PgBackendStatus;
 
@@ -303,7 +303,7 @@ typedef struct LocalPgBackendStatus
 	TransactionId backend_xmin;
 
 	/* Backend's RSS memory usage */
-	int64_t yb_backend_rss_mem_bytes;
+	int64_t		yb_backend_rss_mem_bytes;
 } LocalPgBackendStatus;
 
 

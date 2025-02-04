@@ -184,10 +184,10 @@ extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
 #ifndef NDEBUG
 extern bool YbCheckCatalogCacheIndexNameTable();
 #endif
-extern const char* YbGetCatalogCacheIndexName(int cache_id);
+extern const char *YbGetCatalogCacheIndexName(int cache_id);
 extern const char *YbGetCatalogCacheTableNameFromTableId(int table_id);
 extern const char *YbGetCatalogCacheTableNameFromCacheId(int cache_id);
-extern int YbGetCatalogCacheTableIdFromCacheId(int cache_id);
+extern int	YbGetCatalogCacheTableIdFromCacheId(int cache_id);
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);

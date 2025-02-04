@@ -41,12 +41,14 @@ typedef struct
 	Bitmapset  *varattnos;
 	Index		varno;
 
-	/* Because of special hidden columns, the actual column attribute number has some offset
-	 * from the logical number. Column "1" would have attribute number as "1 - offset". In
-	 * postgres original code, this offset is always FirstLowInvalidHeapAttributeNumber. For
-	 * Yugabyte, this offset can be flexible.
+	/*
+	 * Because of special hidden columns, the actual column attribute number
+	 * has some offset from the logical number. Column "1" would have
+	 * attribute number as "1 - offset". In postgres original code, this
+	 * offset is always FirstLowInvalidHeapAttributeNumber. For Yugabyte, this
+	 * offset can be flexible.
 	 */
-	AttrNumber  yb_attr_offset;
+	AttrNumber	yb_attr_offset;
 } pull_varattnos_context;
 
 typedef struct
@@ -300,7 +302,10 @@ pull_varattnos(Node *node, Index varno, Bitmapset **varattnos)
 	context.varattnos = *varattnos;
 	context.varno = varno;
 
-	/* For Postgres processing, min attribute is always FirstLowInvalidHeapAttributeNumber. */
+	/*
+	 * For Postgres processing, min attribute is always
+	 * FirstLowInvalidHeapAttributeNumber.
+	 */
 	context.yb_attr_offset = FirstLowInvalidHeapAttributeNumber;
 
 	(void) pull_varattnos_walker(node, &context);

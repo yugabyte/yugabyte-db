@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesOverrides;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -51,6 +52,7 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
           // Set overrides to primary cluster so that they will be picked up in upgrade tasks.
           cluster.userIntent.universeOverrides = taskParams().universeOverrides;
           cluster.userIntent.azOverrides = taskParams().azOverrides;
+          String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
 
           // Create Kubernetes Upgrade Task.
           createUpgradeTask(
@@ -60,7 +62,7 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
               /* isMasterChanged */ true,
               /* isTServerChanged */ true,
               universe.isYbcEnabled(),
-              universe.getUniverseDetails().getYbcSoftwareVersion());
+              stableYbcVersion);
           // Remove extra Namespaced scope services.
           addHandleKubernetesNamespacedServices(
                   false /* readReplicaDelete */,

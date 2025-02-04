@@ -157,7 +157,7 @@ If you haven't already created your sandbox cluster, log in to YugabyteDB Aeon, 
 
   {{% tab header="Multi-node cluster" lang="YBM Multi" %}}
 
-Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/preview/yugabyte-cloud/managed-freetrial/).
 
 To create a single region three-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
 

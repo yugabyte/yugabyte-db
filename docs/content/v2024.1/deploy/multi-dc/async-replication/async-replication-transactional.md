@@ -1,14 +1,14 @@
 ---
-title: Deploy to two universes with transactional xCluster replication
-headerTitle: Transactional xCluster deployment
-linkTitle: Transactional xCluster
-description: Enable deployment using transactional (active-standby) replication between universes
-headContent: Transactional (active-standby) replication
+title: Deploy transactional xCluster replication
+headerTitle: Transactional xCluster
+linkTitle: Transactional
+description: Deploy using transactional (active-standby) replication between universes
+headContent: Deploy transactional (active-standby) replication
 menu:
   v2024.1:
     parent: async-replication
     identifier: async-replication-transactional
-    weight: 20
+    weight: 10
 tags:
   other: ysql
 type: docs

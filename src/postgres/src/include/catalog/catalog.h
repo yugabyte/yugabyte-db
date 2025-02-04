@@ -54,15 +54,15 @@ extern Oid	GetNewOidWithIndex(Relation relation, Oid indexId,
 extern Oid	GetNewRelFileNode(Oid reltablespace, Relation pg_class,
 							  char relpersistence);
 
-// TODO: Rename according to new style guide
+/* TODO: Rename according to new style guide */
 extern bool YbIsCatalogNamespaceByName(const char *namespace_name);
 
-extern Oid GetTableOidFromRelOptions(List *relOptions, Oid reltablespace,
-									 char relpersistence);
+extern Oid	GetTableOidFromRelOptions(List *relOptions, Oid reltablespace,
+									  char relpersistence);
 
-extern Oid GetRowTypeOidFromRelOptions(List *relOptions);
+extern Oid	GetRowTypeOidFromRelOptions(List *relOptions);
 
-extern Oid YbGetColocationIdFromRelOptions(List *relOptions);
+extern Oid	YbGetColocationIdFromRelOptions(List *relOptions);
 
 extern bool YbGetUseInitdbAclFromRelOptions(List *options);
 

@@ -49,7 +49,7 @@ typedef struct
 	{
 		TableSpaceOpts *pg_opts;
 		YBTableSpaceOpts *yb_opts;
-	} opts; 					/* options, or NULL if none */
+	}			opts;			/* options, or NULL if none */
 	YbGeolocationDistance ts_distance;
 } TableSpaceCacheEntry;
 
@@ -160,7 +160,8 @@ get_tablespace(Oid spcid)
 			opts = NULL;
 		else
 		{
-			bytea *bytea_opts;
+			bytea	   *bytea_opts;
+
 			if (IsYugaByteEnabled())
 				bytea_opts = yb_tablespace_reloptions(datum, false);
 			else
@@ -198,13 +199,15 @@ get_tablespace(Oid spcid)
  *		Returns a YbGeolocationDistance indicating how far away a given
  *		tablespace is from the current node.
  */
-YbGeolocationDistance get_tablespace_distance(Oid spcid)
+YbGeolocationDistance
+get_tablespace_distance(Oid spcid)
 {
 	Assert(IsYugaByteEnabled());
 	if (spcid == InvalidOid)
 		return UNKNOWN_DISTANCE;
 
 	TableSpaceCacheEntry *spc = get_tablespace(spcid);
+
 	if (spc->opts.yb_opts == NULL)
 	{
 		return UNKNOWN_DISTANCE;
@@ -227,8 +230,8 @@ YbGeolocationDistance get_tablespace_distance(Oid spcid)
 	}
 
 	MemoryContext tablespaceDistanceContext = AllocSetContextCreate(GetCurrentMemoryContext(),
-														   "tablespace distance calculation",
-														   ALLOCSET_SMALL_SIZES);
+																	"tablespace distance calculation",
+																	ALLOCSET_SMALL_SIZES);
 
 	MemoryContext oldContext = MemoryContextSwitchTo(tablespaceDistanceContext);
 
@@ -238,12 +241,12 @@ YbGeolocationDistance get_tablespace_distance(Oid spcid)
 	 * words, the json is stored sizeof(YBTableSpaceOpts) bytes after the
 	 * memory adddress in spc->opts.yb_opts
 	 */
-	text *tsp_options_json = cstring_to_text((const char *)
-								(spc->opts.yb_opts + 1));
+	text	   *tsp_options_json = cstring_to_text((const char *)
+												   (spc->opts.yb_opts + 1));
 
-	text *placement_array = json_get_value(tsp_options_json,
-											"placement_blocks");
-	const int length = get_json_array_length(placement_array);
+	text	   *placement_array = json_get_value(tsp_options_json,
+												 "placement_blocks");
+	const int	length = get_json_array_length(placement_array);
 
 	static char *cloudKey = "cloud";
 	static char *regionKey = "region";
@@ -251,13 +254,13 @@ YbGeolocationDistance get_tablespace_distance(Oid spcid)
 	static char *leaderPrefKey = "leader_preference";
 
 	YbGeolocationDistance farthest = ZONE_LOCAL;
-	bool leader_pref_exists = false;
+	bool		leader_pref_exists = false;
 
 	for (size_t i = 0; i < length; i++)
 	{
-		text *json_element = get_json_array_element(placement_array, i);
-		text *pref = json_get_denormalized_value(json_element, leaderPrefKey);
-		bool preferred = (pref != NULL) && (atoi(text_to_cstring(pref)) == 1);
+		text	   *json_element = get_json_array_element(placement_array, i);
+		text	   *pref = json_get_denormalized_value(json_element, leaderPrefKey);
+		bool		preferred = (pref != NULL) && (atoi(text_to_cstring(pref)) == 1);
 
 		/*
 		 * YB: If we've seen a preferred placement,
@@ -270,6 +273,7 @@ YbGeolocationDistance get_tablespace_distance(Oid spcid)
 		const char *tsp_cloud;
 		const char *tsp_region;
 		const char *tsp_zone;
+
 		tsp_cloud =
 			text_to_cstring(json_get_denormalized_value(json_element,
 														cloudKey));
@@ -337,7 +341,8 @@ YbGeolocationDistance get_tablespace_distance(Oid spcid)
  *		is stored in yb_tsp_cost. Returns false iff geolocation costing is
  *		disabled or a NULL pointer was passed in for yb_tsp_cost.
  */
-bool get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost)
+bool
+get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost)
 {
 	if (!yb_enable_geolocation_costing)
 	{
@@ -352,7 +357,8 @@ bool get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost)
 	}
 
 	YbGeolocationDistance distance = get_tablespace_distance(spcid);
-	double cost;
+	double		cost;
+
 	switch (distance)
 	{
 		case UNKNOWN_DISTANCE:
@@ -422,7 +428,7 @@ get_tablespace_io_concurrency(Oid spcid)
 	TableSpaceCacheEntry *spc = get_tablespace(spcid);
 
 	if (!spc->opts.pg_opts || spc->opts.pg_opts->effective_io_concurrency < 0
-			|| IsYugaByteEnabled())
+		|| IsYugaByteEnabled())
 		return effective_io_concurrency;
 	else
 		return spc->opts.pg_opts->effective_io_concurrency;

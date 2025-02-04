@@ -1775,9 +1775,9 @@ table_index_build_scan(Relation table_rel,
 														 callback,
 														 callback_state,
 														 scan,
-														 NULL, /* bfinfo */
-														 NULL, /* bfresult */
-														 NULL /* ybcallback */);
+														 NULL,	/* bfinfo */
+														 NULL,	/* bfresult */
+														 NULL /* ybcallback */ );
 }
 
 /*
@@ -1802,11 +1802,11 @@ yb_table_index_build_scan(Relation table_rel,
 														 false, /* progress */
 														 0,
 														 InvalidBlockNumber,
-														 NULL, /* callback */
+														 NULL,	/* callback */
 														 callback_state,
 														 scan,
-														 NULL, /* bfinfo */
-														 NULL, /* bfresult */
+														 NULL,	/* bfinfo */
+														 NULL,	/* bfresult */
 														 ybcallback);
 }
 
@@ -1848,7 +1848,7 @@ table_index_build_range_scan(Relation table_rel,
 														 scan,
 														 bfinfo,
 														 bfresult,
-														 NULL /* ybcallback */);
+														 NULL /* ybcallback */ );
 }
 
 /*

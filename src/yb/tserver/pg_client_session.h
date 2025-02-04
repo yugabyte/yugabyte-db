@@ -16,9 +16,13 @@
 #include <stdint.h>
 
 #include <array>
+#include <atomic>
+#include <chrono>
+#include <cstddef>
 #include <functional>
 #include <iosfwd>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -113,7 +117,20 @@ YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence)(kPgSessi
 
 YB_STRONGLY_TYPED_BOOL(IsDDL);
 
-class PgClientSession {
+struct PgClientSessionContext {
+  const TserverXClusterContextIf* xcluster_context;
+  YsqlAdvisoryLocksTable& advisory_locks_table;
+  PgMutationCounter* pg_node_level_mutation_counter;
+  const scoped_refptr<ClockBase>& clock;
+  PgTableCache& table_cache;
+  PgResponseCache& response_cache;
+  PgSequenceCache& sequence_cache;
+  PgSharedMemoryPool& shared_mem_pool;
+  const EventStatsPtr& stats_exchange_response_size;
+};
+
+class PgClientSession final {
+ private:
   using TransactionBuilder = std::function<client::YBTransactionPtr(
       IsDDL, client::ForceGlobalTransaction, CoarseTimePoint, client::ForceCreateTransaction)>;
   using SharedThisSource = std::shared_ptr<void>;
@@ -152,16 +169,9 @@ class PgClientSession {
   using UsedReadTimeApplier = std::function<void(ReadTimeData&&)>;
 
   PgClientSession(
-      TransactionBuilder&& transaction_builder,
-      SharedThisSource shared_this_source, uint64_t id,
-      client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
-      const TserverXClusterContextIf* xcluster_context,
-      PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
-      PgSequenceCache* sequence_cache, PgSharedMemoryPool& shared_mem_pool,
-      const EventStatsPtr& stats_exchange_response_size, rpc::Scheduler& scheduler,
-      YsqlAdvisoryLocksTable& advisory_locks_table);
-
-  virtual ~PgClientSession() = default;
+      TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
+      client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
+      uint64_t id, rpc::Scheduler& scheduler);
 
   uint64_t id() const { return id_; }
 
@@ -188,8 +198,13 @@ class PgClientSession {
 
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size);
 
-  virtual void StartShutdown();
-  virtual void CompleteShutdown();
+  void StartShutdown();
+  void CompleteShutdown();
+
+  Result<ReadHybridTime> GetTxnSnapshotReadTime(
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline);
+
+  Status SetTxnSnapshotReadTime(const PgPerformOptionsPB& options, CoarseTimePoint deadline);
 
  private:
   struct SetupSessionResult {
@@ -223,7 +238,6 @@ class PgClientSession {
       ReadTimeManipulation manipulation, uint64_t read_time_serial_no,
       ClampUncertaintyWindow clamp);
 
-  client::YBClient& client();
   client::YBSessionPtr& EnsureSession(
       PgClientSessionKind kind, CoarseTimePoint deadline,
       std::optional<uint64_t> read_time = std::nullopt);
@@ -307,6 +321,16 @@ class PgClientSession {
 
   void ScheduleBigSharedMemExpirationCheck(std::chrono::steady_clock::duration delay);
 
+  const auto* xcluster_context() const { return context_.xcluster_context; }
+  auto& advisory_locks_table() { return context_.advisory_locks_table; }
+  auto* pg_node_level_mutation_counter() { return context_.pg_node_level_mutation_counter; }
+  const auto& clock() { return context_.clock; }
+  auto& table_cache() { return context_.table_cache; }
+  auto& response_cache() { return context_.response_cache; }
+  auto& sequence_cache() { return context_.sequence_cache; }
+  auto& shared_mem_pool() { return context_.shared_mem_pool; }
+  const auto& stats_exchange_response_size() { return context_.stats_exchange_response_size; }
+
   struct PendingUsedReadTime {
     UsedReadTime value;
     bool pending_update = {false};
@@ -327,23 +351,58 @@ class PgClientSession {
     std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
   };
 
+  class TransactionProvider {
+   public:
+    YB_STRONGLY_TYPED_BOOL(EnsureGlobal);
+    using TakeForPlainReturnType = std::pair<client::YBTransactionPtr, EnsureGlobal>;
+
+    explicit TransactionProvider(TransactionBuilder&& builder);
+
+    template<PgClientSessionKind kind, class... Args>
+    requires(
+        kind == PgClientSessionKind::kPlain ||
+        kind == PgClientSessionKind::kDdl ||
+        kind == PgClientSessionKind::kPgSession)
+    auto Take(Args&&... args) {
+      if constexpr (kind == PgClientSessionKind::kPlain) {
+        return TakeForPlain(std::forward<Args>(args)...);
+      } else if constexpr (kind == PgClientSessionKind::kDdl) {
+        return TakeForDdl(std::forward<Args>(args)...);
+      } else if constexpr (kind == PgClientSessionKind::kPgSession) {
+        return TakeForPgSession(std::forward<Args>(args)...);
+      }
+    }
+
+    const TransactionId& NextTxnIdForPlain(CoarseTimePoint deadline);
+
+   private:
+    struct BuildStrategy {
+      bool is_ddl = false;
+      bool force_global = false;
+      bool force_create = false;
+    };
+
+    client::YBTransactionPtr TakeForPgSession(CoarseTimePoint deadline);
+    client::YBTransactionPtr TakeForDdl(CoarseTimePoint deadline);
+    TakeForPlainReturnType TakeForPlain(
+        client::ForceGlobalTransaction force_global, CoarseTimePoint deadline);
+
+    client::YBTransactionPtr Build(CoarseTimePoint deadline, const BuildStrategy& strategy);
+
+    const TransactionBuilder builder_;
+    client::YBTransactionPtr next_plain_;
+  };
+
+  client::YBClient& client_;
+  const PgClientSessionContext& context_;
   const std::weak_ptr<PgClientSession> shared_this_;
   const uint64_t id_;
-  client::YBClient& client_;
-  scoped_refptr<ClockBase> clock_;
-  const TransactionBuilder transaction_builder_;
-  PgTableCache& table_cache_;
-  const TserverXClusterContextIf* xcluster_context_;
-  PgMutationCounter* pg_node_level_mutation_counter_;
-  PgResponseCache& response_cache_;
-  PgSequenceCache& sequence_cache_;
-  PgSharedMemoryPool& shared_mem_pool_;
+  TransactionProvider transaction_provider_;
   std::mutex big_shared_mem_mutex_;
   std::atomic<CoarseTimePoint> last_big_shared_memory_access_;
   SharedMemorySegmentHandle big_shared_mem_handle_ GUARDED_BY(big_shared_mem_mutex_);
   bool big_shared_mem_expiration_task_scheduled_ GUARDED_BY(big_shared_mem_mutex_) = false;
   rpc::ScheduledTaskTracker big_shared_mem_expiration_task_;
-  EventStatsPtr stats_exchange_response_size_;
 
   std::array<SessionData, kPgClientSessionKindMapSize> sessions_;
   uint64_t txn_serial_no_ = 0;
@@ -355,7 +414,6 @@ class PgClientSession {
 
   simple_spinlock pending_data_mutex_;
   std::vector<WriteBuffer> pending_data_ GUARDED_BY(pending_data_mutex_);
-  YsqlAdvisoryLocksTable& advisory_locks_table_;
 };
 
 template <class Pb>
@@ -363,27 +421,13 @@ concept PbWith_AshMetadataPB = requires (const Pb& t) {
   t.ash_metadata();
 };
 
-template <PbWith_AshMetadataPB Pb>
+template <class Pb>
 void TryUpdateAshWaitState(const Pb& req) {
-  if (req.has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req.ash_metadata());
+  if constexpr (PbWith_AshMetadataPB<Pb>) {
+    if (req.has_ash_metadata()) {
+      ash::WaitStateInfo::UpdateMetadataFromPB(req.ash_metadata());
+    }
   }
 }
-
-// Overloads for RPCs which intentionally doesn't have the ash_metadata
-// field, either because they are deprecated, or they are async RPCs, or
-// they are called before ASH is able to sample them as of 08-10-2024
-//
-// NOTE: New sync RPCs should have ASH metadata along with it, and it shouldn't
-// be overloaded here.
-inline void TryUpdateAshWaitState(const PgHeartbeatRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgActiveSessionHistoryRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgFetchDataRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgGetCatalogMasterVersionRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgGetReplicationSlotStatusRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgSetActiveSubTransactionRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgGetDatabaseInfoRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgIsInitDbDoneRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgCreateSequencesDataTableRequestPB&) {}
 
 } // namespace yb::tserver

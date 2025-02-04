@@ -68,7 +68,7 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
-// YB includes
+/* YB includes */
 #include "catalog/catalog.h"
 #include "utils/guc.h"
 #include "pg_yb_utils.h"
@@ -98,16 +98,19 @@ typedef struct
 	PartitionBoundSpec *partbound;	/* transformed FOR VALUES */
 	bool		ofType;			/* true if statement contains OF typename */
 
-	/* TODO(neil) For completeness, we should process "split_options" here to cache partitioning
-	 * information in Postgres relation objects. This is important for choosing query plan.
+	/*
+	 * TODO(neil) For completeness, we should process "split_options" here to
+	 * cache partitioning information in Postgres relation objects. This is
+	 * important for choosing query plan.
 	 *
 	 * YbOptSplit   *split_options;
 	 */
 
-	Oid			relOid;			/* OID of a relation, either from rel (for ALTER),
-								 * or from table_oid option (for CREATE) */
+	Oid			relOid;			/* OID of a relation, either from rel (for
+								 * ALTER), or from table_oid option (for
+								 * CREATE) */
 	Oid			yb_tablespaceOid;	/* resolved OID of a tablespace to use,
-								 * might be InvalidOid. */
+									 * might be InvalidOid. */
 	bool		isSystem;		/* true if the relation is system relation */
 } CreateStmtContext;
 
@@ -269,8 +272,11 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	cxt.ispartitioned = stmt->partspec != NULL;
 	cxt.partbound = stmt->partbound;
 	cxt.ofType = (stmt->ofTypename != NULL);
-	/* TODO(neil) For completeness, we should process "split_options" here to cache partitioning
-	 * information in Postgres relation objects. This is important for choosing query plan.
+
+	/*
+	 * TODO(neil) For completeness, we should process "split_options" here to
+	 * cache partitioning information in Postgres relation objects. This is
+	 * important for choosing query plan.
 	 *
 	 * cxt.split_options = stmt->split_options;
 	 */
@@ -326,6 +332,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 * have it before DefineRelation.
 	 */
 	Constraint *yb_like_clause_pk_constraint = NULL;
+
 	foreach(elements, stmt->tableElts)
 	{
 		Node	   *element = lfirst(elements);
@@ -353,27 +360,31 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	}
 
 	/* Validate the storage options from the WITH clause */
-	ListCell *cell;
-	bool colocation_option_specified = false;
-	bool colocated_option_specified = false;
+	ListCell   *cell;
+	bool		colocation_option_specified = false;
+	bool		colocated_option_specified = false;
+
 	foreach(cell, stmt->options)
 	{
-		DefElem *def = (DefElem*) lfirst(cell);
+		DefElem    *def = (DefElem *) lfirst(cell);
+
 		if (strcmp(def->defname, "oids") == 0)
 		{
-			bool oids_val = defGetBoolean(def);
+			bool		oids_val = defGetBoolean(def);
+
 			if (oids_val && !cxt.isSystem)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("OIDs are not supported for user tables.")));
+						 errmsg("OIDs are not supported for user tables.")));
 		}
 		else if (strcmp(def->defname, "user_catalog_table") == 0)
 		{
-			bool user_cat_val = defGetBoolean(def);
+			bool		user_cat_val = defGetBoolean(def);
+
 			if (user_cat_val)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("users cannot create system catalog tables")));
+						 errmsg("users cannot create system catalog tables")));
 		}
 		else if (strcmp(def->defname, "colocated") == 0)
 		{
@@ -390,20 +401,22 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 			if (!yb_enable_create_with_table_oid && !IsYsqlUpgrade)
 			{
 				ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					errmsg("create table with table_oid is not allowed"),
-					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
+								errmsg("create table with table_oid is not allowed"),
+								errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
 			}
 
-			const char* hintmsg;
+			const char *hintmsg;
+
 			if (!parse_oid(defGetString(def), &cxt.relOid, &hintmsg))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("invalid value for OID option \"table_oid\""),
 						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
 
-			Oid max_system_relid = (yb_test_system_catalogs_creation
-									? FirstNormalObjectId - 1
-									: YB_LAST_USED_OID);
+			Oid			max_system_relid = (yb_test_system_catalogs_creation
+											? FirstNormalObjectId - 1
+											: YB_LAST_USED_OID);
+
 			if (!cxt.isSystem && cxt.relOid < FirstNormalObjectId)
 			{
 				ereport(ERROR,
@@ -454,8 +467,8 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	if (IsYsqlUpgrade && cxt.isSystem &&
 		(!OidIsValid(cxt.relOid) || !specifies_type_oid))
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			errmsg("system tables must specify both table_oid and row_type_oid "
-				   "(exactly as defined in the relevant BKI header file!)")));
+						errmsg("system tables must specify both table_oid and row_type_oid "
+							   "(exactly as defined in the relevant BKI header file!)")));
 
 	/*
 	 * Transfer anything we already have in cxt.alist into save_alist, to keep
@@ -959,7 +972,8 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 				{
 					if (constraint->yb_index_params == NIL)
 					{
-						IndexElem *index_elem = makeNode(IndexElem);
+						IndexElem  *index_elem = makeNode(IndexElem);
+
 						index_elem->name = pstrdup(column->colname);
 						index_elem->expr = NULL;
 						index_elem->indexcolname = NULL;
@@ -1063,7 +1077,8 @@ YBCheckDeferrableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 {
 	if (!constraint->deferrable || cxt->relation->relpersistence == RELPERSISTENCE_TEMP)
 		return;
-	const char* message = NULL;
+	const char *message = NULL;
+
 	switch (constraint->contype)
 	{
 		case CONSTR_PRIMARY:
@@ -1267,6 +1282,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 	 */
 	AttrNumber	yb_new_attno;
 	AttrMap    *yb_attmap;
+
 	if (IsYugaByteEnabled())
 	{
 		/*
@@ -1460,9 +1476,10 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 			/*
 			 * If index is a primary key index save the primary key constraint.
 			 */
-			if (((Form_pg_index)GETSTRUCT(parent_index->rd_indextuple))->indisprimary)
+			if (((Form_pg_index) GETSTRUCT(parent_index->rd_indextuple))->indisprimary)
 			{
 				Constraint *primary_key = makeNode(Constraint);
+
 				primary_key->contype = CONSTR_PRIMARY;
 				primary_key->conname = index_stmt->idxname;
 				primary_key->options = index_stmt->options;
@@ -1471,10 +1488,12 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 					primary_key->indexspace =
 						get_tablespace_name(table_like_clause->yb_tablespaceOid);
 
-				ListCell *idxcell;
+				ListCell   *idxcell;
+
 				foreach(idxcell, index_stmt->indexParams)
 				{
-					IndexElem* ielem = lfirst(idxcell);
+					IndexElem  *ielem = lfirst(idxcell);
+
 					primary_key->keys =
 						lappend(primary_key->keys, makeString(ielem->name));
 					primary_key->yb_index_params =
@@ -1581,7 +1600,7 @@ expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause)
 	 */
 	attmap = build_attrmap_by_name(RelationGetDescr(childrel),
 								   tupleDesc,
-								   false /* yb_ignore_type_mismatch */);
+								   false /* yb_ignore_type_mismatch */ );
 
 	/*
 	 * Process defaults, if required.
@@ -2483,7 +2502,8 @@ transformIndexConstraints(CreateStmtContext *cxt)
 	}
 
 
-	Bitmapset *oids_used = NULL;
+	Bitmapset  *oids_used = NULL;
+
 	if (cxt->isSystem)
 	{
 		Assert(OidIsValid(cxt->relOid));
@@ -2499,8 +2519,9 @@ transformIndexConstraints(CreateStmtContext *cxt)
 		if (IsYsqlUpgrade && cxt->isSystem)
 		{
 			if (index->idxname == NULL)
-				elog(ERROR, "system indexes must have an explicit name "
-							"(exactly as defined in indexing.h header file!)");
+				elog(ERROR,
+					 "system indexes must have an explicit name "
+					 "(exactly as defined in indexing.h header file!)");
 
 			/*
 			 * For system tables, we need to check not just a presence of
@@ -2508,20 +2529,23 @@ transformIndexConstraints(CreateStmtContext *cxt)
 			 * Even though index creation would do that anyway, we do this ahead
 			 * to spare DocDB from rolling back table creation.
 			 */
-			Oid oid = GetTableOidFromRelOptions(index->options,
-												cxt->yb_tablespaceOid,
-												cxt->relation->relpersistence);
+			Oid			oid = GetTableOidFromRelOptions(index->options,
+														cxt->yb_tablespaceOid,
+														cxt->relation->relpersistence);
 
 			if (!OidIsValid(oid))
-				elog(ERROR, "system indexes must specify table_oid "
-							"(exactly as defined in indexing.h header file!)");
+				elog(ERROR,
+					 "system indexes must specify table_oid "
+					 "(exactly as defined in indexing.h header file!)");
 
-			Oid max_system_relid = (yb_test_system_catalogs_creation
-									? FirstNormalObjectId - 1
-									: YB_LAST_USED_OID);
+			Oid			max_system_relid = (yb_test_system_catalogs_creation
+											? FirstNormalObjectId - 1
+											: YB_LAST_USED_OID);
+
 			if (oid > max_system_relid)
-				elog(ERROR, "system indexes must have an OID <= %d "
-							"(exactly as defined in indexing.h header file!)",
+				elog(ERROR,
+					 "system indexes must have an OID <= %d "
+					 "(exactly as defined in indexing.h header file!)",
 					 max_system_relid);
 
 			if (bms_is_member(oid, oids_used))
@@ -2576,13 +2600,14 @@ transformIndexConstraints(CreateStmtContext *cxt)
 }
 
 static char
-ybcGetIndexedRelPersistence(IndexStmt* index, CreateStmtContext *cxt) {
-  /*
-   * Use persistence from relation info. It is available in case of 'ALTER TABLE' statement.
-   * Or use persistence from statement itself. This is a case when relation is not yet exists
-   * (i.e. 'CREATE TABLE' statement).
-   */
-  return cxt->rel ? cxt->rel->rd_rel->relpersistence : index->relation->relpersistence;
+ybcGetIndexedRelPersistence(IndexStmt *index, CreateStmtContext *cxt)
+{
+	/*
+	 * Use persistence from relation info. It is available in case of 'ALTER
+	 * TABLE' statement. Or use persistence from statement itself. This is a
+	 * case when relation is not yet exists (i.e. 'CREATE TABLE' statement).
+	 */
+	return cxt->rel ? cxt->rel->rd_rel->relpersistence : index->relation->relpersistence;
 }
 
 /*
@@ -2632,10 +2657,13 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 		index->idxname = NULL;	/* DefineIndex will choose name */
 
 	index->relation = cxt->relation;
-	index->accessMethod = constraint->access_method ? constraint->access_method :
-			(IsYugaByteEnabled() && ybcGetIndexedRelPersistence(index, cxt) != RELPERSISTENCE_TEMP
-					? DEFAULT_YB_INDEX_TYPE
-					: DEFAULT_INDEX_TYPE);
+	index->accessMethod = (constraint->access_method ?
+						   constraint->access_method :
+						   ((IsYugaByteEnabled() &&
+							 (ybcGetIndexedRelPersistence(index, cxt) !=
+							  RELPERSISTENCE_TEMP)) ?
+							DEFAULT_YB_INDEX_TYPE :
+							DEFAULT_INDEX_TYPE));
 	index->options = constraint->options;
 	index->tableSpace = constraint->indexspace;
 	index->whereClause = constraint->where_clause;
@@ -2808,7 +2836,8 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 
 				defopclass = GetDefaultOpClass(attform->atttypid,
 											   index_rel->rd_rel->relam);
-				int16 opt = index_rel->rd_indoption[i];
+				int16		opt = index_rel->rd_indoption[i];
+
 				if (indclass->values[i] != defopclass ||
 					attform->attcollation != index_rel->rd_indcollation[i] ||
 					attoptions != (Datum) 0 ||
@@ -2821,7 +2850,8 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 
 				if (IsYugaByteEnabled())
 				{
-					IndexElem *index_elem = makeNode(IndexElem);
+					IndexElem  *index_elem = makeNode(IndexElem);
+
 					index_elem->name = attname;
 					index_elem->expr = NULL;
 					index_elem->indexcolname = NULL;
@@ -2875,8 +2905,9 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 	{
 		foreach(lc, constraint->yb_index_params)
 		{
-			IndexElem  *index_elem = (IndexElem *)lfirst(lc);
-			char       *key;
+			IndexElem  *index_elem = (IndexElem *) lfirst(lc);
+			char	   *key;
+
 			if (!IsYugaByteEnabled())
 				key = strVal(lfirst(lc));
 			bool		found = false;
@@ -3309,24 +3340,27 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 
 	is_system = IsCatalogNamespace(RelationGetNamespace(rel));
 
-	ListCell *cell;
+	ListCell   *cell;
+
 	foreach(cell, stmt->options)
 	{
-		DefElem *def = (DefElem*) lfirst(cell);
+		DefElem    *def = (DefElem *) lfirst(cell);
+
 		if (strcmp(def->defname, "table_oid") == 0)
 		{
 			if (!(yb_enable_create_with_table_oid || IsYsqlUpgrade))
 			{
-				ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					errmsg("create index with table_oid is not allowed"),
-					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("create index with table_oid is not allowed"),
+						 errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
 			}
 
-			Oid table_oid = strtol(defGetString(def), NULL, 10);
+			Oid			table_oid = strtol(defGetString(def), NULL, 10);
 
-			Oid max_system_relid = (yb_test_system_catalogs_creation
-									? FirstNormalObjectId - 1
-									: YB_LAST_USED_OID);
+			Oid			max_system_relid = (yb_test_system_catalogs_creation
+											? FirstNormalObjectId - 1
+											: YB_LAST_USED_OID);
 
 			if (!is_system && table_oid < FirstNormalObjectId)
 			{
@@ -3859,8 +3893,11 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 	cxt.ispartitioned = (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
 	cxt.partbound = NULL;
 	cxt.ofType = false;
-	/* TODO(neil) For completeness, we should process "split_options" here to cache partitioning
-	 * information in Postgres relation objects. This is important for choosing query plan.
+
+	/*
+	 * TODO(neil) For completeness, we should process "split_options" here to
+	 * cache partitioning information in Postgres relation objects. This is
+	 * important for choosing query plan.
 	 *
 	 * cxt.split_options = NULL;
 	 */
@@ -3900,7 +3937,8 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 					 * Report an error for constraint types which YB does not yet support in
 					 * ALTER TABLE ... ADD COLUMN statements.
 					 */
-					ListCell *clist;
+					ListCell   *clist;
+
 					foreach(clist, def->constraints)
 					{
 						Constraint *constraint = lfirst_node(Constraint, clist);
@@ -3917,8 +3955,8 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 								if (!YbDdlRollbackEnabled())
 									ereport(ERROR,
 											(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-											errmsg("this ALTER TABLE command is"
-												   " not yet supported")));
+											 errmsg("this ALTER TABLE command is"
+													" not yet supported")));
 								break;
 							case CONSTR_UNIQUE:
 								/*
@@ -4985,11 +5023,13 @@ YBTransformPartitionSplitValue(ParseState *pstate,
 				 errmsg("number of SPLIT values cannot be greater than number of SPLIT columns")));
 	}
 
-	ListCell *lc;
-	int idx = 0;
-	foreach(lc, split_point) {
+	ListCell   *lc;
+	int			idx = 0;
+
+	foreach(lc, split_point)
+	{
 		/* Find the constant value for the given column */
-		Node *expr = (Node *) lfirst(lc);
+		Node	   *expr = (Node *) lfirst(lc);
 		PartitionRangeDatum *prd = NULL;
 
 		Assert(expr);
@@ -5047,12 +5087,13 @@ YBTransformPartitionSplitValue(ParseState *pstate,
 		if (prd == NULL)
 		{
 			/* TODO(minghui@yugabyte) -- Collation for split value */
-			Const *value = transformPartitionBoundValue(pstate,
-														expr,
-														NameStr(attrs[idx]->attname),
-														attrs[idx]->atttypid,
-														attrs[idx]->atttypmod,
-														DEFAULT_COLLATION_OID);
+			Const	   *value = transformPartitionBoundValue(pstate,
+															 expr,
+															 NameStr(attrs[idx]->attname),
+															 attrs[idx]->atttypid,
+															 attrs[idx]->atttypmod,
+															 DEFAULT_COLLATION_OID);
+
 			if (value->constisnull)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),

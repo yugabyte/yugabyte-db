@@ -28,8 +28,8 @@
 PG_MODULE_MAGIC;
 
 /* GUC variables */
-static int password_min_len = 8;
-static int password_max_len = 15;
+static int	password_min_len = 8;
+static int	password_max_len = 15;
 static bool password_lower_case = true;
 static bool password_upper_case = true;
 static bool password_special = true;
@@ -100,8 +100,8 @@ check_password(const char *username,
 
 		case PASSWORD_TYPE_PLAINTEXT:
 			{
-				StringInfoData	buf;
-				bool			set_comma = false;
+				StringInfoData buf;
+				bool		set_comma = false;
 
 				/*
 				 * For unencrypted passwords we can perform better checks.

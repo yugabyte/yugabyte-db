@@ -190,10 +190,8 @@ Status MasterClusterHandler::RemoveTabletServer(
 
 Status MasterClusterHandler::GetLoadMoveCompletionPercent(
     GetLoadMovePercentResponsePB* resp, bool blacklist_leader) {
-  auto l = catalog_manager_->ClusterConfig()->LockForRead();
-
   // Fine to pass in empty defaults if server_blacklist or leader_blacklist is not filled.
-  const auto& state = GetBlacklist(l->pb, blacklist_leader);
+  auto state = GetBlacklist(catalog_manager_->ClusterConfig()->LockForRead()->pb, blacklist_leader);
   int64_t blacklist_replicas = catalog_manager_->GetNumRelevantReplicas(state, blacklist_leader);
   int64_t initial_load =
       (blacklist_leader) ? state.initial_leader_load() : state.initial_replica_load();

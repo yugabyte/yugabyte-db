@@ -8,6 +8,9 @@ menu:
   v2.20_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: alerts-monitoring
+    params:
+      classes: separator
+      hideLink: true
 weight: 660
 type: indexpage
 ---

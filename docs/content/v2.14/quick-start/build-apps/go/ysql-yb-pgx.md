@@ -61,7 +61,7 @@ The first example demonstrates connection load balancing using the `pgx.Connect(
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you're new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](/preview/tutorials/quick-start/). Alternatively, you can use [YugabyteDB Managed](http://cloud.yugabyte.com/) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
+- YugabyteDB is up and running. If you're new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](/preview/tutorials/quick-start/macos/). Alternatively, you can use [YugabyteDB Managed](http://cloud.yugabyte.com/) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 
 - [Go version 1.15](https://golang.org/dl/) or later is installed.
 

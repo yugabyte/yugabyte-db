@@ -134,7 +134,7 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 
-// YB includes.
+/*  YB includes. */
 #include "pg_yb_utils.h"
 #include "ybgate/ybgate_status.h"
 
@@ -221,22 +221,23 @@ typedef struct YbgErrorData
 	const char **errargs;
 	int			nargs;
 	int			argsize;
-	int			sqlerrcode; /* encoded ERRSTATE */
-	uint16_t yb_txn_errcode; /* YB transaction error cast to uint16, as returned
-							  * by static_cast of TransactionErrorTag::Decode of
-							  * Status::ErrorData(TransactionErrorTag::kCategory)
-							  */
-	const char *filename;	/* __FILE__ of ereport() call */
-	int			lineno;		/* __LINE__ of ereport() call */
-	const char *funcname;	/* __func__ of ereport() call */
-	int			saved_errno; /* errno at entry */
+	int			sqlerrcode;		/* encoded ERRSTATE */
+	uint16_t	yb_txn_errcode; /* YB transaction error cast to uint16, as
+								 * returned by static_cast of
+								 * TransactionErrorTag::Decode of
+								 * Status::ErrorData(TransactionErrorTag::kCategory)
+								 * */
+	const char *filename;		/* __FILE__ of ereport() call */
+	int			lineno;			/* __LINE__ of ereport() call */
+	const char *funcname;		/* __func__ of ereport() call */
+	int			saved_errno;	/* errno at entry */
 	int			errordata_stack_depth;
-	struct YbgErrorData *previous; /* next stack frame */
+	struct YbgErrorData *previous;	/* next stack frame */
 } YbgErrorData;
 typedef struct YbgErrorData *YbgError;
 
-static void yb_additional_errmsg(const char* fmt,...);
-static void yb_errmsg_va(const char* fmt, va_list args);
+static void yb_additional_errmsg(const char *fmt,...);
+static void yb_errmsg_va(const char *fmt, va_list args);
 static void yb_format_and_append(StringInfo buf, const char *fmt,
 								 const size_t nargs, const char **args);
 
@@ -257,11 +258,11 @@ yb_errstart_cold(int elevel)
 bool
 yb_errstart(int elevel)
 {
-	YbgStatus		status;
-	MemoryContext	error_context;
-	MemoryContext	old_context;
-	YbgError		edata;
-	YbgError		previous;
+	YbgStatus	status;
+	MemoryContext error_context;
+	MemoryContext old_context;
+	YbgError	edata;
+	YbgError	previous;
 
 	Assert(IsMultiThreadedMode());
 	status = YBCPgGetThreadLocalErrStatus();
@@ -278,7 +279,7 @@ yb_errstart(int elevel)
 		 * Static constants of YbgStatus type have NULL context. They are read
 		 * only, and can not be used with ereport/elog
 		 */
-		YBCLogImpl(/* severity (3=FATAL) */ 3, NULL /* filename */, 0 /* lineno */,
+		YBCLogImpl( /* severity (3=FATAL) */ 3, NULL /* filename */ , 0 /* lineno */ ,
 				   YBShouldLogStackTraceOnError(),
 				   "PG error state is missing memory context");
 		pg_unreachable();
@@ -297,7 +298,7 @@ yb_errstart(int elevel)
 		YBCPgSetThreadLocalErrStatus(NULL);
 		MemoryContextSwitchTo(old_context);
 		MemoryContextReset(error_context);
-		YBCLogImpl(/* severity (3=FATAL) */ 3, NULL /* filename */, 0 /* lineno */,
+		YBCLogImpl( /* severity (3=FATAL) */ 3, NULL /* filename */ , 0 /* lineno */ ,
 				   YBShouldLogStackTraceOnError(),
 				   "Error data stack is too deep");
 		pg_unreachable();
@@ -344,17 +345,18 @@ yb_copy_edata_fields_to_status(YbgStatus status, YbgError edata)
 static void
 yb_write_status_to_server_log()
 {
-	YbgStatus		status = YBCPgGetThreadLocalErrStatus();
-	YbgError		edata = (YbgError) YbgStatusGetEdata(status);
-	StringInfoData	buf;
-	MemoryContext	error_context = (MemoryContext) YbgStatusGetContext(status);
-	MemoryContext	oldcontext = MemoryContextSwitchTo(error_context);
+	YbgStatus	status = YBCPgGetThreadLocalErrStatus();
+	YbgError	edata = (YbgError) YbgStatusGetEdata(status);
+	StringInfoData buf;
+	MemoryContext error_context = (MemoryContext) YbgStatusGetContext(status);
+	MemoryContext oldcontext = MemoryContextSwitchTo(error_context);
 
 	initStringInfo(&buf);
 	yb_format_and_append(&buf, edata->errmsg, edata->nargs,
 						 edata->errargs);
-	bool is_error = YbgStatusIsError(status);
-	YBCLogImpl(is_error ? 2 : 0 /* severity */,
+	bool		is_error = YbgStatusIsError(status);
+
+	YBCLogImpl(is_error ? 2 : 0 /* severity */ ,
 			   edata->filename,
 			   edata->lineno,
 			   is_error ? YBShouldLogStackTraceOnError() : false,
@@ -372,8 +374,8 @@ yb_write_status_to_server_log()
 void
 yb_errfinish(const char *filename, int lineno, const char *funcname)
 {
-	YbgStatus		status = YBCPgGetThreadLocalErrStatus();
-	YbgError		edata = (YbgError) YbgStatusGetEdata(status);
+	YbgStatus	status = YBCPgGetThreadLocalErrStatus();
+	YbgError	edata = (YbgError) YbgStatusGetEdata(status);
 
 	if (filename)
 	{
@@ -401,6 +403,7 @@ yb_errfinish(const char *filename, int lineno, const char *funcname)
 	{
 		yb_copy_edata_fields_to_status(status, edata);
 		sigjmp_buf *buffer = YBCPgGetThreadLocalJumpBuffer();
+
 		if (buffer == NULL)
 		{
 			/*
@@ -411,7 +414,8 @@ yb_errfinish(const char *filename, int lineno, const char *funcname)
 			 * status is not an error.
 			 */
 			const char *filename = YbgStatusGetFilename(status);
-			int lineno = YbgStatusGetLineNumber(status);
+			int			lineno = YbgStatusGetLineNumber(status);
+
 			YBCLogImpl(3 /* severity (3=FATAL) */ , filename, lineno,
 					   YBShouldLogStackTraceOnError(),
 					   "PG error reporting has not been set up");
@@ -880,11 +884,14 @@ errfinish(const char *filename, int lineno, const char *funcname)
 		PG_RE_THROW();
 	}
 
-	/* YB_TODO(neil@yugabyte) Check if this is still needed and the right place for reporting */
+	/*
+	 * YB_TODO(neil@yugabyte) Check if this is still needed and the right
+	 * place for reporting
+	 */
 	if (YBShouldLogStackTraceOnError() && elevel >= ERROR)
 	{
 		YBCLogImpl(2 /* severity (2=ERROR) */ , filename, lineno,
-				   /* stack_trace */ true, "Postgres error: %s",
+				   true /* stack_trace */ , "Postgres error: %s",
 				   YBPgErrorLevelToString(elevel));
 	}
 
@@ -938,9 +945,13 @@ errfinish(const char *filename, int lineno, const char *funcname)
 			whereToSendOutput = DestNone;
 
 		if (IsYugaByteEnabled())
-			/* When it's FATAL, the memory context that "debug_query_string" points to might have been
-			 * deleted or even corrupted. Set "debug_query_string" to NULL before emitting error.
-			 * The variable "debug_query_string" contains the user statement that is currently executed.
+
+			/*
+			 * When it's FATAL, the memory context that "debug_query_string"
+			 * points to might have been deleted or even corrupted. Set
+			 * "debug_query_string" to NULL before emitting error. The
+			 * variable "debug_query_string" contains the user statement that
+			 * is currently executed.
 			 */
 			debug_query_string = NULL;
 
@@ -1002,8 +1013,9 @@ errcode(int sqlerrcode)
 {
 	if (IsMultiThreadedMode())
 	{
-		YbgStatus		status = YBCPgGetThreadLocalErrStatus();
-		YbgError		edata = (YbgError) YbgStatusGetEdata(status);
+		YbgStatus	status = YBCPgGetThreadLocalErrStatus();
+		YbgError	edata = (YbgError) YbgStatusGetEdata(status);
+
 		edata->sqlerrcode = sqlerrcode;
 		return 0;
 	}
@@ -1032,7 +1044,6 @@ yb_txn_errcode(uint16_t txn_errcode)
 
 	return 0;					/* return value does not matter */
 }
-
 
 /*
  * errcode_for_file_access --- add SQLSTATE error code to the current error
@@ -1240,7 +1251,8 @@ errmsg(const char *fmt,...)
 {
 	if (IsMultiThreadedMode())
 	{
-		va_list args;
+		va_list		args;
+
 		/*
 		 * Update current error message.
 		 * Will also be logged to tserver log as part of yb_errfinish.
@@ -1343,7 +1355,8 @@ errmsg_internal(const char *fmt,...)
 {
 	if (IsMultiThreadedMode())
 	{
-		va_list args;
+		va_list		args;
+
 		/*
 		 * Update current error message.
 		 * Will also be logged to tserver log as part of yb_errfinish.
@@ -1391,7 +1404,8 @@ errmsg_plural(const char *fmt_singular, const char *fmt_plural,
 	if (IsMultiThreadedMode())
 	{
 		const char *fmt = n == 1 ? fmt_singular : fmt_plural;
-		va_list args;
+		va_list		args;
+
 		/*
 		 * Update current error message.
 		 * Will also be logged to tserver log in yb_errfinish.
@@ -1599,7 +1613,7 @@ errhint_plural(const char *fmt_singular, const char *fmt_plural,
  * Ignored in YbGate environment.
  */
 int
-errcontext_msg(const char *fmt, ...)
+errcontext_msg(const char *fmt,...)
 {
 	RETURN_IF_MULTITHREADED_MODE();
 
@@ -1975,7 +1989,8 @@ yb_reset_error_status(void)
 {
 	if (IsMultiThreadedMode())
 	{
-		YbgStatus ybg_status = YBCPgSetThreadLocalErrStatus(NULL);
+		YbgStatus	ybg_status = YBCPgSetThreadLocalErrStatus(NULL);
+
 		if (ybg_status && YbgStatusGetEdata(ybg_status))
 		{
 			/*
@@ -2055,8 +2070,9 @@ EmitErrorReport(void)
 static ErrorData *
 ybg_status_to_edata(void)
 {
-	YbgStatus ybg_status = YBCPgGetThreadLocalErrStatus();
+	YbgStatus	ybg_status = YBCPgGetThreadLocalErrStatus();
 	MemoryContext mctx = GetCurrentMemoryContext();
+
 	/*
 	 * In multi-thread mode current memory context may be null, as well as the
 	 * error context. Here we require they both are set and are different, since
@@ -2064,16 +2080,19 @@ ybg_status_to_edata(void)
 	 */
 	Assert(mctx && YbgStatusGetContext(ybg_status) != mctx);
 	/* We do not set most of the field, so nullify the allocated struct */
-	ErrorData *newedata = (ErrorData *) palloc0(sizeof(ErrorData));
+	ErrorData  *newedata = (ErrorData *) palloc0(sizeof(ErrorData));
+
 	/* Assuming we are in PG_CATCH, it only can be ERROR */
 	newedata->elevel = ERROR;
 	/* Copy error message. Have to format it now. */
 	const char *fmt = YbgStatusGetMessage(ybg_status);
+
 	if (fmt)
 	{
 		StringInfoData buf;
-		int nargs;
+		int			nargs;
 		const char **args = YbgStatusGetMessageArgs(ybg_status, &nargs);
+
 		initStringInfo(&buf);
 		yb_format_and_append(&buf, fmt, nargs, args);
 		newedata->message_id = pstrdup(fmt);
@@ -2103,11 +2122,11 @@ ybg_status_from_edata(ErrorData *edata)
 	if (!yb_errstart(edata->elevel))
 		return;
 	/* Successful error start makes sure we have memory context and YbgError */
-	YbgStatus ybg_status = YBCPgGetThreadLocalErrStatus();
-	YbgError newedata = (YbgError) YbgStatusGetEdata(ybg_status);
-	MemoryContext error_context =
-		(MemoryContext) YbgStatusGetContext(ybg_status);
+	YbgStatus	ybg_status = YBCPgGetThreadLocalErrStatus();
+	YbgError	newedata = (YbgError) YbgStatusGetEdata(ybg_status);
+	MemoryContext error_context = (MemoryContext) YbgStatusGetContext(ybg_status);
 	MemoryContext old_context = MemoryContextSwitchTo(error_context);
+
 	/* Error message raised that way is not localizable unfortunately */
 	newedata->errmsg = pstrdup(edata->message);
 	newedata->sqlerrcode = edata->sqlerrcode;
@@ -2224,9 +2243,9 @@ FreeErrorData(ErrorData *edata)
 	if (edata->yb_owns_file_and_func)
 	{
 		if (edata->filename)
-			pfree((char*) edata->filename);
+			pfree((char *) edata->filename);
 		if (edata->funcname)
-			pfree((char*) edata->funcname);
+			pfree((char *) edata->funcname);
 	}
 	pfree(edata);
 }
@@ -2417,6 +2436,7 @@ void
 pg_re_throw(void)
 {
 	sigjmp_buf *exception_stack = yb_get_exception_stack();
+
 	/* If possible, throw the error to the next outer setjmp handler */
 	if (exception_stack != NULL)
 		siglongjmp(*exception_stack, 1);
@@ -2439,9 +2459,10 @@ pg_re_throw(void)
 			 * information to include into the fatal error report, as it would
 			 * point to the offending ereport/elog.
 			 */
-			YbgStatus status = YBCPgGetThreadLocalErrStatus();
+			YbgStatus	status = YBCPgGetThreadLocalErrStatus();
 			const char *filename = NULL;
-			int lineno = 0;
+			int			lineno = 0;
+
 			if (status)
 			{
 				filename = YbgStatusGetFilename(status);
@@ -3422,67 +3443,85 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				else
 					appendStringInfoString(buf, unpack_sql_state(edata->sqlerrcode));
 				break;
-			case 'C': {
-				const char* cloud = YBGetCurrentCloud();
-				if (cloud) {
-					if (padding != 0)
-						appendStringInfo(buf, "%*s", padding, cloud);
-					else
-						appendStringInfoString(buf, cloud);
+			case 'C':
+				{
+					const char *cloud = YBGetCurrentCloud();
+
+					if (cloud)
+					{
+						if (padding != 0)
+							appendStringInfo(buf, "%*s", padding, cloud);
+						else
+							appendStringInfoString(buf, cloud);
+					}
+					break;
 				}
-				break;
-			}
-			case 'R': {
-				const char* region = YBGetCurrentRegion();
-				if (region) {
-					if (padding != 0)
-						appendStringInfo(buf, "%*s", padding, region);
-					else
-						appendStringInfoString(buf, region);
+			case 'R':
+				{
+					const char *region = YBGetCurrentRegion();
+
+					if (region)
+					{
+						if (padding != 0)
+							appendStringInfo(buf, "%*s", padding, region);
+						else
+							appendStringInfoString(buf, region);
+					}
+					break;
 				}
-				break;
-			}
-			case 'Z': {
-				const char* zone = YBGetCurrentZone();
-				if (zone) {
-					if (padding != 0)
-						appendStringInfo(buf, "%*s", padding, zone);
-					else
-						appendStringInfoString(buf, zone);
+			case 'Z':
+				{
+					const char *zone = YBGetCurrentZone();
+
+					if (zone)
+					{
+						if (padding != 0)
+							appendStringInfo(buf, "%*s", padding, zone);
+						else
+							appendStringInfoString(buf, zone);
+					}
+					break;
 				}
-				break;
-			}
-			case 'U': {
-				const char* uuid = YBGetCurrentUUID();
-				if (uuid) {
-					if (padding != 0)
-						appendStringInfo(buf, "%*s", padding, uuid);
-					else
-						appendStringInfoString(buf, uuid);
+			case 'U':
+				{
+					const char *uuid = YBGetCurrentUUID();
+
+					if (uuid)
+					{
+						if (padding != 0)
+							appendStringInfo(buf, "%*s", padding, uuid);
+						else
+							appendStringInfoString(buf, uuid);
+					}
+					break;
 				}
-				break;
-			}
-			case 'N': {
-				const char* node = YBGetCurrentMetricNodeName();
-				if (node) {
-					if (padding != 0)
-						appendStringInfo(buf, "%*s", padding, node);
-					else
-						appendStringInfoString(buf, node);
+			case 'N':
+				{
+					const char *node = YBGetCurrentMetricNodeName();
+
+					if (node)
+					{
+						if (padding != 0)
+							appendStringInfo(buf, "%*s", padding, node);
+						else
+							appendStringInfoString(buf, node);
+					}
+					break;
 				}
-				break;
-			}
-			case 'H': {
-				char name[MAX_HOSTNAME_LENGTH];
-				const int ret = gethostname(name, sizeof(name));
-				if (!ret) {
-					if (padding != 0)
-						appendStringInfo(buf, "%*s", padding, name);
-					else
-						appendStringInfoString(buf, name);
+			case 'H':
+				{
+					char		name[MAX_HOSTNAME_LENGTH];
+					const int	ret = gethostname(name, sizeof(name));
+
+					if (!ret)
+					{
+						if (padding != 0)
+							appendStringInfo(buf, "%*s", padding, name);
+						else
+							appendStringInfoString(buf, name);
+					}
+					break;
 				}
-				break;
-			}
 			case 'Q':
 				if (padding != 0)
 					appendStringInfo(buf, "%*lld", padding,
@@ -4005,7 +4044,7 @@ send_message_to_frontend(ErrorData *edata)
 static const char *
 yb_strerror(int errnum)
 {
-	char *errorstr_buf = (char *) palloc(PG_STRERROR_R_BUFLEN);
+	char	   *errorstr_buf = (char *) palloc(PG_STRERROR_R_BUFLEN);
 
 	return pg_strerror_r(errnum, errorstr_buf, PG_STRERROR_R_BUFLEN);
 }
@@ -4198,8 +4237,8 @@ yb_additional_errmsg(const char *fmt,...)
 
 	Assert(GetCurrentMemoryContext() == edata->assoc_context ||
 		   GetCurrentMemoryContext() == ErrorContext);
-	EVALUATE_MESSAGE(edata->domain, message, true /* appendval */,
-					 false /* translateit */);
+	EVALUATE_MESSAGE(edata->domain, message, true /* appendval */ ,
+					 false /* translateit */ );
 }
 
 /*
@@ -4231,6 +4270,7 @@ static const char *
 yb_next_template(const char *fmt, int *len, int *nstars, bool *is_long)
 {
 	const char *template = NULL;
+
 	while (fmt != NULL && *fmt != '\0')
 	{
 		if (*fmt == '%')
@@ -4238,11 +4278,11 @@ yb_next_template(const char *fmt, int *len, int *nstars, bool *is_long)
 			if (template == NULL)
 				template = fmt; /* potential template start */
 			else if (template == fmt - 1)
-				template = NULL; /* found double %, not a template */
+				template = NULL;	/* found double %, not a template */
 			else
-				break; /* invalid format */
+				break;			/* invalid format */
 		}
-		else if (template) /* template continues */
+		else if (template)		/* template continues */
 		{
 			if (yb_is_char_in_str(*fmt, STR_TYPES INT_TYPES FLOAT_TYPES))
 			{
@@ -4259,7 +4299,7 @@ yb_next_template(const char *fmt, int *len, int *nstars, bool *is_long)
 					(*nstars)++;
 			}
 			else
-				break; /* invalid format */
+				break;			/* invalid format */
 		}
 		fmt++;
 	}
@@ -4351,21 +4391,24 @@ yb_errmsg_va(const char *fmt, va_list args)
 	bool		is_long = false;
 	const char *next;
 
-	YbgError		edata = (YbgError) YbgStatusGetEdata(status);
-	MemoryContext	error_context = (MemoryContext) YbgStatusGetContext(status);
-	MemoryContext	old_context = MemoryContextSwitchTo(error_context);
+	YbgError	edata = (YbgError) YbgStatusGetEdata(status);
+	MemoryContext error_context = (MemoryContext) YbgStatusGetContext(status);
+	MemoryContext old_context = MemoryContextSwitchTo(error_context);
+
 	/* Save copy of the format string to edata */
 	edata->errmsg = pstrdup(fmt);
 	while ((next = yb_next_template(fmt, &len, &nstars, &is_long)) != NULL)
 	{
-		char *onefmt = pnstrdup(next, len);
-		char ttype = onefmt[len - 1];
+		char	   *onefmt = pnstrdup(next, len);
+		char		ttype = onefmt[len - 1];
+
 		if (yb_is_char_in_str(ttype, STR_TYPES))
 		{
 			/* %m is a Postgres format extension, obtain system error message */
 			if (ttype == 'm')
 			{
 				const char *err = yb_strerror(edata->saved_errno);
+
 				yb_edata_add_arg(edata, err);
 			}
 			else
@@ -4383,7 +4426,9 @@ yb_errmsg_va(const char *fmt, va_list args)
 				FORMAT_ONE_VALUE(edata, onefmt, long long, nstars, 24);
 			else
 				FORMAT_ONE_VALUE(edata, onefmt, int, nstars, 12);
-		} else {
+		}
+		else
+		{
 			Assert(yb_is_char_in_str(ttype, FLOAT_TYPES));
 			/* float parameter */
 			if (is_long)
@@ -4418,11 +4463,12 @@ yb_format_and_append(StringInfo buf, const char *fmt, const size_t nargs,
 	const char *next;
 	int			len = 0;
 	int			argno = 0;
+
 	/* If no more arguments left, no need to parse the string */
 	while (argno < nargs &&
 		   (next = yb_next_template(fmt, &len,
-									NULL /* nstars */,
-									NULL /* is_long */)) != NULL)
+									NULL /* nstars */ ,
+									NULL /* is_long */ )) != NULL)
 	{
 		/* Copy the part of the format string before the template */
 		if (next != fmt)
@@ -4494,8 +4540,8 @@ yb_errmsg_from_status(const char *fmt, const size_t nargs, const char **args)
 
 	edata->message_id = fmt;
 	YB_EVALUATE_MESSAGE_FROM_STATUS(edata->domain, message,
-									false /* appendval */,
-									true /* translateit */, nargs, args);
+									false /* appendval */ ,
+									true /* translateit */ , nargs, args);
 
 	Assert(IsYugaByteEnabled());
 	if (yb_debug_report_error_stacktrace)
@@ -4519,8 +4565,8 @@ yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args)
 	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
 
 	YB_EVALUATE_MESSAGE_FROM_STATUS(edata->domain, detail,
-									false /* appendval */,
-									true /* translateit */, nargs, args);
+									false /* appendval */ ,
+									true /* translateit */ , nargs, args);
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
@@ -4533,7 +4579,7 @@ yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args)
  * we end up with a palloc-d or null value in any case.
  */
 static void
-yb_set_or_pstrdup_err_field(const char** field, const char* new_value)
+yb_set_or_pstrdup_err_field(const char **field, const char *new_value)
 {
 	if (new_value)
 	{
@@ -4551,10 +4597,11 @@ yb_set_or_pstrdup_err_field(const char** field, const char* new_value)
  * Set palloc-d filename and funcname and makes sure they are pfreed at the end.
  */
 void
-yb_set_pallocd_error_file_and_func(const char* filename, const char* funcname)
+yb_set_pallocd_error_file_and_func(const char *filename, const char *funcname)
 {
 	Assert(!IsMultiThreadedMode());
-	ErrorData *edata = &errordata[errordata_stack_depth];
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
 	yb_set_or_pstrdup_err_field(&edata->filename, filename);
 	yb_set_or_pstrdup_err_field(&edata->funcname, funcname);
 	edata->yb_owns_file_and_func = true;

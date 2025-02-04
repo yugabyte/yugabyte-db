@@ -330,13 +330,13 @@ Result<ApplyTransactionState> GetIntentsBatch(
   const Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
 
   auto reverse_index_iter = CreateRocksDBIterator(
-      intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
+      intents_db, &KeyBounds::kNoBounds, BloomFilterOptions::Inactive(),
       !FLAGS_cdc_enable_caching_db_block ? rocksdb::kNoCacheQueryId : rocksdb::kDefaultQueryId,
       /* file_filter = */ nullptr, &reverse_index_upperbound,
       rocksdb::CacheRestartBlockKeys::kFalse);
 
   BoundedRocksDbIterator intent_iter = CreateRocksDBIterator(
-      intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
+      intents_db, key_bounds, BloomFilterOptions::Inactive(),
       !FLAGS_cdc_enable_caching_db_block ? rocksdb::kNoCacheQueryId : rocksdb::kDefaultQueryId,
       /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
       rocksdb::CacheRestartBlockKeys::kFalse);

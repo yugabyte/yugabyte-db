@@ -57,7 +57,7 @@ static void RangeVarCallbackForPolicy(const RangeVar *rv,
 									  Oid relid, Oid oldrelid, void *arg);
 static char parse_policy_command(const char *cmd_name);
 static Datum *policy_role_list_to_array(List *roles, int *num_roles);
-static int YbPolicyNameCmp(const void *a, const void *b);
+static int	YbPolicyNameCmp(const void *a, const void *b);
 
 /*
  * Callback to RangeVarGetRelidExtended().
@@ -237,13 +237,14 @@ RelationBuildRowSecurity(Relation relation, const YbTupleCache *yb_pg_policy_cac
 	 */
 	catalog = table_open(PolicyRelationId, AccessShareLock);
 
-	bool use_yb_cache = IsYugaByteEnabled() &&
-		*YBCGetGFlags()->ysql_use_optimized_relcache_update &&
-		yb_pg_policy_cache;
+	bool		use_yb_cache = (IsYugaByteEnabled() &&
+								*YBCGetGFlags()->ysql_use_optimized_relcache_update &&
+								yb_pg_policy_cache);
 
 	if (use_yb_cache)
 	{
-		Oid relid = RelationGetRelid(relation);
+		Oid			relid = RelationGetRelid(relation);
+
 		iter = YbTupleCacheIteratorBegin(yb_pg_policy_cache, &relid);
 	}
 	else
@@ -254,12 +255,12 @@ RelationBuildRowSecurity(Relation relation, const YbTupleCache *yb_pg_policy_cac
 					ObjectIdGetDatum(RelationGetRelid(relation)));
 
 		sscan = systable_beginscan(catalog, PolicyPolrelidPolnameIndexId, true,
-								NULL, 1, &skey);
+								   NULL, 1, &skey);
 	}
 
 	while (HeapTupleIsValid(tuple = use_yb_cache ?
-							 YbTupleCacheIteratorGetNext(iter) :
-							 systable_getnext(sscan)))
+							YbTupleCacheIteratorGetNext(iter) :
+							systable_getnext(sscan)))
 	{
 		Form_pg_policy policy_form = (Form_pg_policy) GETSTRUCT(tuple);
 		RowSecurityPolicy *policy;

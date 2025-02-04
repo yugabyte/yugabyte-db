@@ -30,7 +30,7 @@ For more information, see [What is Prisma?](https://www.prisma.io/docs/concepts/
 
 ### YugabyteDB
 
-If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](/preview/tutorials/quick-start/).
+If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 
 If YugabyteDB is installed, run the following `yb-ctl create` command to start a YugabyteDB 1-node cluster, setting the default transaction isolation level to `serializable`:
 

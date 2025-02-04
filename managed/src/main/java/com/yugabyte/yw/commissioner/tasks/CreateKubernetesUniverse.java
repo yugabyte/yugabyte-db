@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -218,21 +219,22 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Install YBC on the pods
+      String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
       if (taskParams().isEnableYbc()) {
         installYbcOnThePods(
             tserversAdded,
             false,
-            taskParams().getYbcSoftwareVersion(),
+            stableYbcVersion,
             taskParams().getPrimaryCluster().userIntent.ybcFlags);
         if (readClusters.size() == 1) {
           installYbcOnThePods(
               readOnlyTserversAdded,
               true,
-              taskParams().getYbcSoftwareVersion(),
+              stableYbcVersion,
               taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
         }
         createWaitForYbcServerTask(allTserversAdded);
-        createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
+        createUpdateYbcTask(stableYbcVersion)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
@@ -241,7 +243,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       if (KubernetesUtil.isNonRestartGflagsUpgradeSupported(
           primaryCluster.userIntent.ybSoftwareVersion)) {
         KubernetesGflagsUpgradeCommonParams gflagsParams =
-            new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster);
+            new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster, confGetter);
         nonRestartMasterGflagUpgrade =
             () ->
                 upgradePodsNonRestart(
@@ -259,7 +261,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                     // Use taskParams here since updated universe details are not available
                     // during subtasks creation.
                     taskParams().isEnableYbc(),
-                    taskParams().getYbcSoftwareVersion());
+                    stableYbcVersion);
       }
 
       createConfigureUniverseTasks(

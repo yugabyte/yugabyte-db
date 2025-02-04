@@ -221,9 +221,9 @@ compare_path_costs_fuzzily(Path *path1, Path *path2, double fuzz_factor)
 static BMS_Comparison
 yb_bms_compare_ppi(Path *path1, Path *path2)
 {
-	Relids path1_batchinfo = YB_PATH_REQ_OUTER_BATCHED(path1);
+	Relids		path1_batchinfo = YB_PATH_REQ_OUTER_BATCHED(path1);
 
-	Relids path2_batchinfo = YB_PATH_REQ_OUTER_BATCHED(path2);
+	Relids		path2_batchinfo = YB_PATH_REQ_OUTER_BATCHED(path2);
 
 	if (bms_is_empty(path1_batchinfo) ^ bms_is_empty(path2_batchinfo))
 		return BMS_DIFFERENT;
@@ -302,7 +302,7 @@ set_cheapest(RelOptInfo *parent_rel)
 			else
 			{
 				switch (yb_bms_compare_ppi(path,
-													best_param_path))
+										   best_param_path))
 				{
 					case BMS_EQUAL:
 						/* keep the cheaper one */
@@ -463,11 +463,11 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 	 */
 	foreach(p1, parent_rel->pathlist)
 	{
-		Path	 		   *old_path = (Path *) lfirst(p1);
-		bool				remove_old = false; /* unless new proves superior */
-		PathCostComparison  costcmp;
-		PathKeysComparison  keyscmp;
-		BMS_Comparison		outercmp;
+		Path	   *old_path = (Path *) lfirst(p1);
+		bool		remove_old = false; /* unless new proves superior */
+		PathCostComparison costcmp;
+		PathKeysComparison keyscmp;
+		BMS_Comparison outercmp;
 
 		/*
 		 * Do a fuzzy cost comparison with standard fuzziness limit.
@@ -499,13 +499,11 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			 * YB: If one is batched and the other isn't we consider
 			 * the two parameterizations to be different.
 			 */
-			bool yb_does_new_path_req_batch =
-				YB_PATH_NEEDS_BATCHED_RELS(new_path);
+			bool		yb_does_new_path_req_batch = YB_PATH_NEEDS_BATCHED_RELS(new_path);
 
-			bool yb_does_old_path_req_batch =
-				YB_PATH_NEEDS_BATCHED_RELS(old_path);
-			bool yb_has_diff_req_batch =
-				(yb_does_new_path_req_batch != yb_does_old_path_req_batch);
+			bool		yb_does_old_path_req_batch = YB_PATH_NEEDS_BATCHED_RELS(old_path);
+			bool		yb_has_diff_req_batch = (yb_does_new_path_req_batch !=
+												 yb_does_old_path_req_batch);
 
 			/*
 			 * YB: If CBO is on, force batch-requiring plans to not be pruned
@@ -513,8 +511,8 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			 * as these batched paths will output more rows than their
 			 * unbatched equivalents.
 			 */
-			bool yb_should_keep_all_batched_plans = yb_has_diff_req_batch &&
-				yb_enable_base_scans_cost_model;
+			bool		yb_should_keep_all_batched_plans = (yb_has_diff_req_batch &&
+															yb_enable_base_scans_cost_model);
 
 			if (yb_prefer_bnl &&
 				IsA(old_path, NestPath) && IsA(new_path, NestPath))
@@ -530,17 +528,14 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 				 * TODO: Remove this entire branch once CBO is GA and let BNL's
 				 * naturally overcome NL's.
 				 */
-				bool yb_old_is_bnl =
-					yb_is_nestloop_batched((NestPath *) old_path);
-				bool yb_new_is_bnl =
-					yb_is_nestloop_batched((NestPath *) new_path);
+				bool		yb_old_is_bnl = yb_is_nestloop_batched((NestPath *) old_path);
+				bool		yb_new_is_bnl = yb_is_nestloop_batched((NestPath *) new_path);
 
-				Relids yb_old_outer_rels =
-					((NestPath *) old_path)->jpath.outerjoinpath->parent->relids;
-				Relids yb_new_outer_rels =
-					((NestPath *) new_path)->jpath.outerjoinpath->parent->relids;
-				bool is_different_nl_batchedness =
-					yb_old_is_bnl != yb_new_is_bnl;
+				Relids		yb_old_outer_rels = ((NestPath *) old_path)->jpath.outerjoinpath->parent->relids;
+				Relids		yb_new_outer_rels = ((NestPath *) new_path)->jpath.outerjoinpath->parent->relids;
+				bool		is_different_nl_batchedness = (yb_old_is_bnl !=
+														   yb_new_is_bnl);
+
 				if (yb_prefer_bnl && is_different_nl_batchedness &&
 					bms_equal(yb_old_outer_rels, yb_new_outer_rels) &&
 					compare_path_costs_fuzzily(new_path,
@@ -550,7 +545,7 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 					if (yb_old_is_bnl)
 						accept_new = false; /* Reject new classic NL. */
 					else
-						remove_old = true; /* Forget old classic NL. */
+						remove_old = true;	/* Forget old classic NL. */
 					break;
 				}
 			}
@@ -617,8 +612,8 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 								else if (compare_path_costs_fuzzily(new_path,
 																	old_path,
 																	1.0000000001) ==
-																	COSTS_EQUAL &&
-																	yb_has_diff_req_batch)
+										 COSTS_EQUAL &&
+										 yb_has_diff_req_batch)
 								{
 									/*
 									 * YB: Keep both but put the batched path higher up
@@ -1153,9 +1148,9 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 		else
 		{
 			ybcCostEstimate(rel, YBC_FULL_SCAN_SELECTIVITY,
-							false, /* is_backward_scan */
-							true, /* is_seq_scan */
-							false, /* is_uncovered_idx_scan */
+							false,	/* is_backward_scan */
+							true,	/* is_seq_scan */
+							false,	/* is_uncovered_idx_scan */
 							&pathnode->startup_cost,
 							&pathnode->total_cost,
 							rel->reltablespace);
@@ -1326,11 +1321,11 @@ create_bitmap_heap_path(PlannerInfo *root,
  */
 YbBitmapTablePath *
 create_yb_bitmap_table_path(PlannerInfo *root,
-						RelOptInfo *rel,
-						Path *bitmapqual,
-						Relids required_outer,
-						double loop_count,
-						int parallel_degree)
+							RelOptInfo *rel,
+							Path *bitmapqual,
+							Relids required_outer,
+							double loop_count,
+							int parallel_degree)
 {
 	YbBitmapTablePath *pathnode = makeNode(YbBitmapTablePath);
 
@@ -2720,7 +2715,7 @@ calc_non_nestloop_required_outer(Path *outer_path, Path *inner_path)
 	return required_outer;
 }
 
-extern int yb_bnl_batch_size;
+extern int	yb_bnl_batch_size;
 
 /*
  * create_nestloop_path
@@ -2761,13 +2756,14 @@ create_nestloop_path(PlannerInfo *root,
 	 * because the restrict_clauses list can affect the size and cost
 	 * estimates for this path.
 	 */
-	 Relids inner_req_batched = YB_PATH_REQ_OUTER_BATCHED(inner_path);
+	Relids		inner_req_batched = YB_PATH_REQ_OUTER_BATCHED(inner_path);
 
-	 Relids outer_req_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(outer_path);
+	Relids		outer_req_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(outer_path);
 
-	 bool is_batched = (bms_overlap(inner_req_batched,
-									outer_path->parent->relids) &&
-						!bms_overlap(outer_req_unbatched, inner_req_batched));
+	bool		is_batched = (bms_overlap(inner_req_batched,
+										  outer_path->parent->relids) &&
+							  !bms_overlap(outer_req_unbatched, inner_req_batched));
+
 	if (!is_batched && bms_overlap(inner_req_outer, outer_path->parent->relids))
 	{
 		Relids		inner_and_outer = bms_union(inner_path->parent->relids,
@@ -4996,7 +4992,7 @@ yb_create_distinct_index_path(PlannerInfo *root,
 			/* pathkeys available. Can use UpperUniquePath here. */
 			return (Path *)
 				yb_create_unique_path(root, index->rel, (Path *) pathnode,
-									yb_distinct_nkeys, numDistinctRows);
+									  yb_distinct_nkeys, numDistinctRows);
 
 		/*
 		 * Unique path cannot be added on top => possible duplicate tuples

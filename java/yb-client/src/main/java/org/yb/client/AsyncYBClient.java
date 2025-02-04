@@ -1154,6 +1154,72 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Initiates a major catalog upgrade for YSQL.
+   *
+   * @return a Deferred object that will contain the response of the upgrade request.
+   */
+  public Deferred<StartYsqlMajorCatalogUpgradeResponse> startYsqlMajorCatalogUpgrade() {
+    checkIsClosed();
+    StartYsqlMajorCatalogUpgradeRequest rpc =
+        new StartYsqlMajorCatalogUpgradeRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Checks if the YSQL major catalog upgrade is done.
+   *
+   * @return a Deferred object that will be called back with the response indicating whether the
+   *     YSQL major catalog upgrade is done.
+   */
+  public Deferred<IsYsqlMajorCatalogUpgradeDoneResponse> isYsqlMajorCatalogUpgradeDone() {
+    checkIsClosed();
+    IsYsqlMajorCatalogUpgradeDoneRequest rpc =
+        new IsYsqlMajorCatalogUpgradeDoneRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Finalizes the YSQL major catalog upgrade.
+   *
+   * @return a Deferred object that will contain the response of the finalize operation.
+   */
+  public Deferred<FinalizeYsqlMajorCatalogUpgradeResponse> finalizeYsqlMajorCatalogUpgrade() {
+    checkIsClosed();
+    FinalizeYsqlMajorCatalogUpgradeRequest rpc =
+        new FinalizeYsqlMajorCatalogUpgradeRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Initiates a rollback of the YSQL major catalog version.
+   *
+   * @return a Deferred object that will contain the response of the rollback operation.
+   */
+  public Deferred<RollbackYsqlMajorCatalogVersionResponse> rollbackYsqlMajorCatalogVersion() {
+    checkIsClosed();
+    RollbackYsqlMajorCatalogVersionRequest rpc =
+        new RollbackYsqlMajorCatalogVersionRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Retrieves the YSQL major catalog upgrade state.
+   *
+   * @return a Deferred object containing the response of the YSQL major catalog upgrade state.
+   */
+  public Deferred<GetYsqlMajorCatalogUpgradeStateResponse> getYsqlMajorCatalogUpgradeState() {
+    checkIsClosed();
+    GetYsqlMajorCatalogUpgradeStateRequest rpc =
+        new GetYsqlMajorCatalogUpgradeStateRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Get the master tablet id.
    *
    * @return the constant master tablet uuid.

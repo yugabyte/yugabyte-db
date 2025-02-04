@@ -1334,9 +1334,9 @@ Default: `CHANGE`
 
 ##### --cdcsdk_enable_dynamic_table_support
 
-Tables created after the creation of a replication slot are referred as Dynamic tables. This preview flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
+Tables created after the creation of a replication slot are referred as Dynamic tables. This flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
 
-Default: `false`
+Default: `true`
 
 ##### --cdcsdk_publication_list_refresh_interval_secs
 
@@ -1344,11 +1344,13 @@ Interval in seconds at which the table list in the publication will be refreshed
 
 Default: `3600`
 
-##### --cdcsdk_max_consistent_records
+##### --cdc_stream_records_threshold_size_bytes
 
-Controls the maximum number of records sent from Virtual WAL (VWAL) to walsender in consistent order.
+Maximum size (in bytes) of changes from a tablet sent from the CDC service to the gRPC connector when using the gRPC replication protocol.
 
-Default: `500`
+Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol. 
+
+Default: `4194304` (4MB)
 
 ##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
 
@@ -1570,25 +1572,27 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ##### ysql_yb_ddl_rollback_enabled
 
-Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will rollback the changes made to the DocDB system catalog.
+Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will roll back the changes made to the DocDB system catalog.
 
 Default: true
 
 {{< note title="Important" >}}
-In YSQL, a DDL statement creates a separate DDL transaction to execute the DDL statement. A DDL transaction generally needs to read and write PostgreSQL metadata stored in catalog tables in the same way as a native PostgreSQL DDL statement. In addition, some DDL statements also involve updating DocDB system catalog table.
-(for example, a DDL statement such as `alter table add/drop column`). When a DDL transaction fails, the corresponding DDL statement is aborted. This means that the PostgreSQL metadata will be rolled back atomically.
-<br>Before the introduction of the flag `--ysql_yb_ddl_rollback_enabled`, the DocDB system catalog changes were not automatically rolled back by YB-Master, possibly leading to metadata corruption that had to be manually fixed. Currently, with this flag being set to true, YB-Master can rollback the DocDB system catalog changes
+In YSQL, a DDL statement creates a separate DDL transaction to execute the DDL statement. A DDL transaction generally needs to read and write PostgreSQL metadata stored in catalog tables in the same way as a native PostgreSQL DDL statement. In addition, some DDL statements also involve updating DocDB system catalog table (for example, a DDL statement such as `alter table add/drop column`). When a DDL transaction fails, the corresponding DDL statement is aborted. This means that the PostgreSQL metadata will be rolled back atomically.
+
+Before the introduction of the flag `--ysql_yb_ddl_rollback_enabled`, the DocDB system catalog changes were not automatically rolled back by YB-Master, possibly leading to metadata corruption that had to be manually fixed. Currently, with this flag being set to true, YB-Master can rollback the DocDB system catalog changes
 automatically to prevent metadata corruption.
 {{< /note >}}
 
 ##### report_ysql_ddl_txn_status_to_master
 
-If set, at the end of a DDL operation, the YB-TServer notifies the YB-Master whether the DDL operation was committed or aborted.
+If set, at the end of a DDL operation the YB-TServer notifies the YB-Master whether the DDL operation was committed or aborted.
 
 Default: true
 
 {{< note title="Important" >}}
-Due to implementation restrictions, after a DDL statement commits or aborts, YB-Master performs a relatively expensive operation by continuously polling the transaction status tablet, and comparing the DocDB schema with PostgreSQL schema to determine whether the transaction was a success.<br> This behavior is optimized with the flag `report_ysql_ddl_txn_status_to_master`, where at the end of a DDL transaction, YSQL sends the status of the transaction (commit/abort) to YB-Master. Once received, YB-Master can stop polling the transaction status tablet, and also skip the relatively expensive schema comparison.
+Due to implementation restrictions, after a DDL statement commits or aborts, YB-Master performs a relatively expensive operation by continuously polling the transaction status tablet, and comparing the DocDB schema with PostgreSQL schema to determine whether the transaction was a success.
+
+This behavior is optimized with the flag `report_ysql_ddl_txn_status_to_master`, where at the end of a DDL transaction, YSQL sends the status of the transaction (commit/abort) to YB-Master. Once received, YB-Master can stop polling the transaction status tablet, and also skip the relatively expensive schema comparison.
 {{< /note >}}
 
 ##### ysql_ddl_transaction_wait_for_ddl_verification
@@ -1598,7 +1602,8 @@ If set, DDL transactions will wait for DDL verification to complete before retur
 Default: true
 
 {{< note title="Important" >}}
-After a DDL statement that includes updating DocDB system catalog completes, YB-Master still needs to work on the DocDB system catalog changes in the background asynchronously, to ensure that they are eventually in sync with the corresponding PostgreSQL catalog changes. This can take additional time in order to reach eventual consistency. During this period, an immediately succeeding DML or DDL statement can fail due to changes made by YB-Master to the DocDB system catalog in the background, which may cause confusion.<br>
+After a DDL statement that includes updating DocDB system catalog completes, YB-Master still needs to work on the DocDB system catalog changes in the background asynchronously, to ensure that they are eventually in sync with the corresponding PostgreSQL catalog changes. This can take additional time in order to reach eventual consistency. During this period, an immediately succeeding DML or DDL statement can fail due to changes made by YB-Master to the DocDB system catalog in the background, which may cause confusion.
+
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 

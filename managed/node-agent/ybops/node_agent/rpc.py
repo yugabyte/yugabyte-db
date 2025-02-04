@@ -11,6 +11,7 @@
 import json
 import jwt
 import logging
+import os
 import shlex
 import time
 import uuid
@@ -26,6 +27,8 @@ from ybops.node_agent.server_pb2 import DownloadFileRequest, ExecuteCommandReque
 from ybops.node_agent.server_pb2_grpc import NodeAgentStub
 from ybops.common.exceptions import YBOpsRuntimeError
 
+CORRELATION_ID = "correlation_id"
+X_CORRELATION_ID = "x-correlation-id"
 SERVER_READY_RETRY_LIMIT = 60
 PING_TIMEOUT_SEC = 10
 RPC_TIMEOUT_SEC = 900
@@ -145,6 +148,10 @@ class RpcClient(object):
         output = RpcOutput()
         try:
             timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
+            request_id = kwargs.get('request_id')
+            if request_id is None:
+                request_id = str(uuid.uuid4())
+            metadata = self._get_metadata(**kwargs)
             bash = kwargs.get('bash', False)
             if isinstance(cmd, str):
                 if bash:
@@ -162,7 +169,7 @@ class RpcClient(object):
                     cmd_args_list = cmd
             for response in self.stub.ExecuteCommand(
                     ExecuteCommandRequest(user=self.user, command=cmd_args_list),
-                    timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY):
+                    timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY, metadata=metadata):
                 if response.HasField('error'):
                     output.rc = response.error.code
                     output.stderr = response.error.message
@@ -184,6 +191,7 @@ class RpcClient(object):
         task_id = kwargs.get('task_id', str(uuid.uuid4()))
         try:
             timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
+            metadata = self._get_metadata(**kwargs)
             bash = kwargs.get('bash', False)
             if isinstance(cmd, str):
                 if bash:
@@ -202,7 +210,8 @@ class RpcClient(object):
             cmd_input = CommandInput(command=cmd_args_list)
             self.stub.SubmitTask(SubmitTaskRequest(user=self.user, taskId=task_id,
                                                    commandInput=cmd_input),
-                                 timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY)
+                                 timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY,
+                                 metadata=metadata)
             while True:
                 try:
                     for response in self.stub.DescribeTask(
@@ -236,9 +245,11 @@ class RpcClient(object):
         output_json = kwargs.get('output_json', True)
         try:
             timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
+            metadata = self._get_metadata(**kwargs)
             request = SubmitTaskRequest(user=self.user, taskId=task_id)
             self._set_request_oneof_field(request, param)
-            self.stub.SubmitTask(request, timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY)
+            self.stub.SubmitTask(request, timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY,
+                                 metadata=metadata)
             while True:
                 try:
                     for response in self.stub.DescribeTask(
@@ -272,7 +283,9 @@ class RpcClient(object):
     def abort_task(self, task_id, **kwargs):
         try:
             timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
-            self.stub.AbortTask(AbortTaskRequest(taskId=task_id), timeout=timeout_sec)
+            metadata = self._get_metadata(**kwargs)
+            self.stub.AbortTask(AbortTaskRequest(taskId=task_id), timeout=timeout_sec,
+                                metadata=metadata)
         except Exception as e:
             # Ignore error.
             logging.error("Failed to abort remote task {} - {}".format(task_id, str(e)))
@@ -295,9 +308,11 @@ class RpcClient(object):
         """
         chmod = kwargs.get('chmod', 0)
         timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
+        metadata = self._get_metadata(**kwargs)
         try:
             self.stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path, chmod),
-                                 timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY)
+                                 timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY,
+                                 metadata=metadata)
         except RpcError as e:
             raise self._handle_rpc_error(e)
 
@@ -307,10 +322,11 @@ class RpcClient(object):
         """
 
         timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
+        metadata = self._get_metadata(**kwargs)
         try:
             for response in self.stub.DownloadFile(
                     DownloadFileRequest(filename=in_path, user=self.user),
-                    timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY):
+                    timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY, metadata=metadata):
                 with open(out_path, mode="ab") as f:
                     f.write(response.chunkData)
         except RpcError as e:
@@ -341,10 +357,19 @@ class RpcClient(object):
 
         try:
             timeout_sec = kwargs.get('timeout', PING_TIMEOUT_SEC)
-            self.stub.Ping(PingRequest(), timeout=timeout_sec)
+            metadata = self._get_metadata(**kwargs)
+            self.stub.Ping(PingRequest(), timeout=timeout_sec, metadata=metadata)
             return True
         except Exception as e:
             return False
+
+    def _get_metadata(self, **kwargs):
+        metadata = []
+        correlation_id = os.getenv(CORRELATION_ID, None)
+        if correlation_id is None:
+            correlation_id = str(uuid.uuid4())
+        metadata.append((X_CORRELATION_ID, correlation_id))
+        return metadata
 
     def _set_request_oneof_field(self, request, field):
         descriptor = getattr(field, 'DESCRIPTOR', None)

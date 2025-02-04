@@ -39,6 +39,7 @@
 
 #include "yb/common/common_fwd.h"
 
+#include "yb/common/version_info.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
 
@@ -189,6 +190,9 @@ class TSManager {
   Status RemoveTabletServer(
       const std::string& permanent_uuid, const BlacklistSet& blacklist,
       const std::vector<TableInfoPtr>& tables, const LeaderEpoch& epoch);
+
+  // Make sure all live tservers are on the expected version.
+  Status ValidateAllTserverVersions(ValidateVersionInfoOp op) const;
 
  private:
   // Performs all mutations necessary to register a new tserver or update the registration of an

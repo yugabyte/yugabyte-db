@@ -172,7 +172,7 @@ public class Util {
 
   public static final String YBA_VERSION_REGEX = "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$";
 
-  private static final List<String> specialCharacters =
+  public static final List<String> SPECIAL_CHARACTERS_STRING_LIST =
       ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
   private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
@@ -1240,7 +1240,8 @@ public class Util {
     String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
     String uppercaseLetter = lowercaseLetter.toUpperCase();
     generatedPassword +=
-        (specialCharacters.get(new Random().nextInt(specialCharacters.size()))
+        (SPECIAL_CHARACTERS_STRING_LIST.get(
+                new Random().nextInt(SPECIAL_CHARACTERS_STRING_LIST.size()))
             + lowercaseLetter
             + uppercaseLetter
             + String.valueOf(randomInt));

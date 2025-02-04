@@ -28,7 +28,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 - A YugabyteDB cluster running [v2.19.2 or later](https://download.yugabyte.com/)
 - [Node.js](https://github.com/nodejs/release#release-schedule) v18 or later
 - The latest version of [Docker](https://docs.docker.com/desktop/)
-- [ysqlsh](../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/current/app-psql.html)
+- [ysqlsh](../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/15/app-psql.html)
 
 ## Set up the application
 

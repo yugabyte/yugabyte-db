@@ -42,7 +42,7 @@ type: docs
 
 This tutorial assumes that you have installed:
 
-- YugabyteDB and created a cluster. Refer to [Quick Start](/preview/tutorials/quick-start/).
+- YugabyteDB and created a cluster. Refer to [Quick Start](/preview/tutorials/quick-start/macos/).
 - [node.js](https://nodejs.org/en/) version 16 or later.
 
 ## Clone the orm-examples repository

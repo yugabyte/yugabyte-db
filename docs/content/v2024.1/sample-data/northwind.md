@@ -15,7 +15,7 @@ Install the PostgreSQL-compatible version of the Northwind dataset on the Yugaby
 
 You can install and use the Northwind sample database using:
 
-- A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](/preview/tutorials/quick-start/).
+- A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](/preview/tutorials/quick-start/macos/).
 - Using cloud shell or a client shell to connect to a cluster in YugabyteDB Aeon. Refer to [Connect to clusters in YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-connect/). To get started with YugabyteDB Aeon, refer to [Quick Start](/preview/yugabyte-cloud/cloud-quickstart/).
 
 In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../api/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).

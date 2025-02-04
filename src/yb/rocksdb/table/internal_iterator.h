@@ -21,6 +21,8 @@
 #pragma once
 
 #include <string>
+
+#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/status.h"
 
@@ -145,6 +147,19 @@ class InternalIterator : public Cleanable {
       KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
     LOG(FATAL) << "ScanForward is not supported yet";
     return ScanForwardResult();
+  }
+
+  virtual const KeyValueEntry& SeekWithNewFilter(Slice target, Slice filter_user_key) {
+    return Seek(target);
+  }
+
+  // Returns true if iterator matches file filter, meaning it may contain requested keys.
+  // Returns false if iterator is guaranteed not to contain requested keys.
+  virtual bool MatchFilter(
+      const IteratorFilter* filter, const QueryOptions& options, Slice user_key,
+      FilterKeyCache* cache) {
+    // It is always safe to return true, but may incur unnecessary data access and processing.
+    return true;
   }
 
  private:

@@ -62,7 +62,7 @@ Connect to the database using ysqlsh and create a table as follows:
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 ```
 

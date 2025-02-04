@@ -32,17 +32,17 @@ A Kubernetes-based installation of YugabyteDB Anywhere requires you to address c
 
 The core dump collection in Kubernetes requires special care due to the fact that `core_pattern` is not isolated in cgroup drivers.
 
-You need to ensure that core dumps are enabled on the underlying Kubernetes node. Running the `ulimit -c` command within a Kubernetes pod or node must produce a large non-zero value or the `unlimited` value as an output. For more information, see [How to enable core dumps](https://www.ibm.com/support/pages/how-do-i-enable-core-dumps).
+You need to ensure that core dumps are enabled on the underlying Kubernetes node. Running the `ulimit -c` command in a Kubernetes pod or node must produce a large non-zero value or the `unlimited` value as an output. For more information, see [How to enable core dumps](https://www.ibm.com/support/pages/how-do-i-enable-core-dumps).
 
 To be able to locate your core dumps, you should be aware of the fact that the location to which core dumps are written depends on the sysctl `kernel.core_pattern` setting. For more information, see [Linux manual: core(5)](https://man7.org/linux/man-pages/man5/core.5.html#:~:text=Naming%20of%20core%20dump%20files).
 
-To inspect the value of the sysctl within a Kubernetes pod or node, execute the following:
+To inspect the value of the sysctl in a Kubernetes pod or node, execute the following:
 
 ```sh
 cat /proc/sys/kernel/core_pattern
 ```
 
-If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E`), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. To be able to retrieve core dump files in case of a crash within the Kubernetes pod, it is important that you understand where these files are written.
+If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E`), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. To be able to retrieve core dump files in case of a crash in the Kubernetes pod, it is important that you understand where these files are written.
 
 If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, no action is required on your part, as core dumps will be copied by the YugabyteDB node to the persistent volume directory `/mnt/disk0/cores` for future analysis.
 

@@ -103,6 +103,8 @@ The exact sequence of these operations for each type of schema change (DDL) is d
 
 ## Upgrading universes in DR
 
+Use the same version of YugabyteDB on both the DR primary and DR replica.
+
 When [upgrading universes](../../manage-deployments/upgrade-software-install/) in DR replication, you should upgrade and finalize the DR replica before upgrading and finalizing the DR primary.
 
 Note that switchover operations can potentially fail if the DR primary and replica are at different versions.

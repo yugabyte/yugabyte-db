@@ -18,6 +18,7 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/init.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
@@ -29,7 +30,6 @@
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
-#include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
@@ -161,6 +161,19 @@ YBPgErrorCode FetchErrorCode(YbcStatus s) {
   // If we have PgsqlError explicitly set, we decode it
   YBPgErrorCode result = pg_err_ptr != nullptr ? PgsqlErrorTag::Decode(pg_err_ptr)
                                                : YBPgErrorCode::YB_PG_INTERNAL_ERROR;
+
+  // If there's a schema version mismatch, we need to return the status code 40001.
+  // When we get a schema version mismatch, DocDB will set the PgsqlResponsePB::RequestStatus
+  // to PGSQL_STATUS_SCHEMA_VERSION_MISMATCH. Note that this is a separate field from the above
+  // PgsqlErrorTag.
+  const uint8_t* pgsql_err_ptr = wrapper->ErrorData(PgsqlRequestStatusTag::kCategory);
+  if (PgsqlRequestStatusTag::Decode(pgsql_err_ptr) ==
+      PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH) {
+    LOG_IF(DFATAL, result != YBPgErrorCode::YB_PG_INTERNAL_ERROR)
+        << "Expected schema version mismatch error to be YB_PG_INTERNAL_ERROR, got "
+        << ToString(result);
+    result = YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
+  }
 
   // If the error is the default generic YB_PG_INTERNAL_ERROR (as we also set in AsyncRpc::Failed)
   // then we try to deduce it from a transaction error.

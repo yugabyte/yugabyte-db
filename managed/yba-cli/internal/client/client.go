@@ -71,8 +71,9 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 	if len(host) == 0 {
 		logrus.Fatalln(
 			formatter.Colorize(
-				"No valid Host detected. "+
-					"Run \"yba auth\" or \"yba login\" to authenticate with YugabyteDB Anywhere.\n",
+				"No valid YugabyteDB Anywhere Host detected. "+
+					"Run \"yba auth\" or \"yba login\" to authenticate "+
+					"with YugabyteDB Anywhere or run the command with -H flag.\n",
 				formatter.RedColor))
 	}
 	url, err := ParseURL(host)
@@ -85,8 +86,11 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 	if len(apiToken) == 0 {
 		logrus.Fatalln(
 			formatter.Colorize(
-				"No valid API token detected. Run \"yba auth\" or \"yba login\" to "+
-					"authenticate with YugabyteDB Anywhere or run the command with -a flag.\n",
+				fmt.Sprintf(
+					"No valid API token detected for YugabyteDB Anywhere on %s. "+
+						"Run \"yba auth\" or \"yba login\" to "+
+						"authenticate with YugabyteDB Anywhere or run the command with -a flag.\n",
+					host),
 				formatter.RedColor))
 	}
 
@@ -224,4 +228,6 @@ func (a *AuthAPIClient) IsCLISupported() {
 			allowedVersions.Preview)
 		logrus.Fatalln(formatter.Colorize(errMessage, formatter.RedColor))
 	}
+
+	SetHostVersion(version)
 }

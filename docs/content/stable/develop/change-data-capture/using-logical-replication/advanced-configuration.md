@@ -28,6 +28,14 @@ CDC retains resources (such as WAL segments) that contain information related to
 
 Retaining resources has an impact on the system. Clients are expected to consume these transactions within configurable duration limits. Resources will be released if the duration exceeds these configured limits.
 
-Use the [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) flag to control the duration for which resources are retained.
+Use the [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) and [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-tserver/#cdc-wal-retention-time-secs) flags to control the duration for which resources are retained.
 
 Resources are retained for each tablet of a table that is part of a database whose changes are being consumed using a replication slot. This includes those tables that may not be currently part of the publication specification.
+
+Starting from v2024.2.1, the default data retention for CDC is 8 hours, with support for maximum retention up to 24 hours. Prior to v2024.2.1, the default retention for CDC is 4 hours.
+
+{{< warning title="Important" >}}
+When using FULL or DEFAULT replica identities, CDC preserves previous row values for UPDATE and DELETE operations. This is done by retaining history for each row in the database through a suspension of the compaction process. Compaction is halted by setting retention barriers to prevent cleanup of history for those rows that are yet to be streamed to the CDC client. These retention barriers are dynamically managed and advanced only after the CDC events are streamed and explicitly acknowledged by the client, thus allowing compaction of history for streamed rows.
+
+The [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) flag governs the maximum retention period (default 8 hours). Be aware that any interruption in CDC consumption for extended periods using these replica identities may degrade read performance. This happens because compaction activities are halted in the database with these replica identities, leading to inefficient key lookups as reads must traverse multiple SST files.
+{{< /warning >}}

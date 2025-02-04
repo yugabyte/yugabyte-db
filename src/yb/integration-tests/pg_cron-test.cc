@@ -691,6 +691,9 @@ TEST_F(PgCronTest, CancelJobOnLeaderChange) {
 
   ASSERT_OK(cluster_->MoveTabletLeader(tablet_id_));
 
+  // Wait for the jobs to get killed.
+  SleepFor(kJobListRefreshInterval * 1s);
+
   // Wait for the new leader to start running.
   const auto initial_row_count = ASSERT_RESULT(GetRowCount());
   ASSERT_OK(WaitForRowCountAbove(initial_row_count));

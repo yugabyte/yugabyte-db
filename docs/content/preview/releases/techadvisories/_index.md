@@ -20,7 +20,7 @@ It is strongly recommended that you take appropriate measures as outlined in the
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
 | {{<ta 25193>}}
-|CDC unable to stream UPDATE/DELETE operations
+| Logical Replication CDC may fail to stream UPDATE or DELETE changes correctly when using FULL_ROW_NEW_IMAGE, MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES, or DEFAULT Replica Identity with CDC lag
 | [CDC](/preview/develop/change-data-capture/)
 | {{<release "2.20, 2024.1, 2024.2">}}
 | {{<nobreak "10 January 2025">}}

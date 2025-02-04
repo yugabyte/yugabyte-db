@@ -32,7 +32,7 @@ type: indexpage
 
   {{<index/item
     title="Cloud provider configuration issues"
-    body="Troubleshoot issues encountered when configuring cloud providers."
+    body="Troubleshoot issues encountered when creating provider configurations."
     href="cloud-provider-config-issues/"
     icon="/images/section_icons/quick_start/create_cluster.png">}}
 

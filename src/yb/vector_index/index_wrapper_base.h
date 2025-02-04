@@ -52,11 +52,11 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return Status::OK();
   }
 
-  Result<std::vector<VertexWithDistance<DistanceResult>>> Search(
+  Result<std::vector<VectorWithDistance<DistanceResult>>> Search(
       const Vector& query_vector, const SearchOptions& options)
       const override {
     if (!has_entries_) {
-      return std::vector<VertexWithDistance<DistanceResult>>();
+      return std::vector<VectorWithDistance<DistanceResult>>();
     }
     return impl().DoSearch(query_vector, options);
   }

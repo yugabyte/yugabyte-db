@@ -52,6 +52,7 @@ ifeq ($(PROVE),)
 endif
 
 LDFLAGS += -lyb_pggate
+LDFLAGS += -lyb_pggate_util
 LDFLAGS += -L${BUILD_ROOT}/lib
 
 # for Postgres 15

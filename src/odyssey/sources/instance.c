@@ -74,6 +74,7 @@ static inline od_retcode_t od_args_init(od_arguments_t *args,
 	return OK_RESPONSE;
 }
 
+/* YB: wrap over shm operations, return -1 if error, not NULL */
 struct ConnectionStats *yb_get_stats_ptr(od_instance_t *instance,
 					 char *stats_shm_key_str)
 {
@@ -84,7 +85,7 @@ struct ConnectionStats *yb_get_stats_ptr(od_instance_t *instance,
 			&instance->logger, "stats", NULL, NULL,
 			"Got error while updating the stats in the shared memory, %s",
 			strerror(errno));
-		return NULL;
+		return (struct ConnectionStats *)-1;
 	}
 
 	struct shmid_ds shmid_ds;
@@ -93,7 +94,7 @@ struct ConnectionStats *yb_get_stats_ptr(od_instance_t *instance,
 			&instance->logger, "stats", NULL, NULL,
 			"Got error while updating the stats in the shared memory, %s",
 			strerror(errno));
-		return NULL;
+		return (struct ConnectionStats *)-1;
 	}
 
 	return (struct ConnectionStats *)shmat(shmid, NULL, 0);
@@ -129,6 +130,7 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 				&instance->logger, "stats", NULL, NULL,
 				"Got error while updating the stats in the shared memory, %s",
 				strerror(errno));
+			goto error;
 		}
 	}
 

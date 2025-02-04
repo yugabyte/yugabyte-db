@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.kms.util;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.AwsEARService;
 import com.yugabyte.yw.common.kms.services.AzuEARService;
+import com.yugabyte.yw.common.kms.services.CiphertrustEARService;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.services.GcpEARService;
 import com.yugabyte.yw.common.kms.services.HashicorpEARService;
@@ -37,7 +38,10 @@ public enum KeyProvider {
   GCP(GcpEARService.class),
 
   @EnumValue("AZU")
-  AZU(AzuEARService.class);
+  AZU(AzuEARService.class),
+
+  @EnumValue("CIPHERTRUST")
+  CIPHERTRUST(CiphertrustEARService.class);
 
   private final Class<?> providerService;
 

@@ -16,6 +16,8 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction_priority.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/pg_client.messages.h"
@@ -474,6 +476,7 @@ void PgTxnManager::ResetTxnAndSession() {
   read_only_ = false;
   enable_tracing_ = false;
   read_time_for_follower_reads_ = HybridTime();
+  snapshot_read_time_is_set_ = false;
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   read_only_stmt_ = false;
 }
@@ -561,7 +564,7 @@ std::string PgTxnManager::TxnStateDebugStr() const {
       isolation_level);
 }
 
-void PgTxnManager::SetupPerformOptions(
+Status PgTxnManager::SetupPerformOptions(
     tserver::PgPerformOptionsPB* options, EnsureReadTimeIsSet ensure_read_time) {
   if (!IsDdlMode() && !txn_in_progress_) {
     IncTxnSerialNo();
@@ -609,11 +612,16 @@ void PgTxnManager::SetupPerformOptions(
       //   i.e. no txn block and a pure SELECT stmt.
       options->set_clamp_uncertainty_window(
         read_only_ || (!in_txn_blk_ && read_only_stmt_));
+
+    if (snapshot_read_time_is_set_) {
+      RETURN_NOT_OK(CheckSnapshotTimeConflict());
+    }
   }
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());
     options->set_read_from_followers(true);
   }
+  return Status::OK();
 }
 
 double PgTxnManager::GetTransactionPriority() const {
@@ -663,6 +671,73 @@ uint64_t PgTxnManager::GetCurrentReadTimePoint() const {
 
 Status PgTxnManager::RestoreReadTimePoint(uint64_t read_time_point_handle) {
   return serial_no_.RestoreReadTime(read_time_point_handle);
+}
+
+Result<std::string> PgTxnManager::ExportSnapshot(const YbcPgTxnSnapshot& snapshot) {
+  tserver::PgExportTxnSnapshotRequestPB req;
+  auto& snapshot_pb = *req.mutable_snapshot();
+  snapshot_pb.set_db_oid(snapshot.db_id);
+  snapshot_pb.set_isolation_level(snapshot.iso_level);
+  snapshot_pb.set_read_only(snapshot.read_only);
+  auto& options = *req.mutable_options();
+  RETURN_NOT_OK(SetupPerformOptions(&options, EnsureReadTimeIsSet::kTrue));
+  RETURN_NOT_OK(CheckTxnSnapshotOptions(options));
+  auto res = client_->ExportTxnSnapshot(&req);
+  if (res.ok()) {
+    has_exported_snapshots_ = true;
+  }
+  return res;
+}
+
+Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(std::string_view snapshot_id) {
+  RETURN_NOT_OK(CheckSnapshotTimeConflict());
+  tserver::PgPerformOptionsPB options;
+  RETURN_NOT_OK(SetupPerformOptions(&options));
+  RETURN_NOT_OK(CheckTxnSnapshotOptions(options));
+  const auto resp = VERIFY_RESULT(client_->ImportTxnSnapshot(snapshot_id, std::move(options)));
+  snapshot_read_time_is_set_ = true;
+  const auto& snapshot = resp.snapshot();
+  return YbcPgTxnSnapshot{
+      .db_id = snapshot.db_oid(),
+      .iso_level = implicit_cast<int>(snapshot.isolation_level()),
+      .read_only = snapshot.read_only()};
+}
+
+Status PgTxnManager::CheckSnapshotTimeConflict() const {
+  SCHECK(
+      !read_time_for_follower_reads_, NotSupported,
+      "Cannot set both 'transaction snapshot' and 'yb_read_from_followers' in the same "
+      "transaction.");
+  SCHECK(
+      yb_read_time == 0, NotSupported,
+      "Cannot set both 'transaction snapshot' and 'yb_read_time' in the same transaction.");
+  SCHECK(
+      yb_read_after_commit_visibility != YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, NotSupported,
+      "Cannot set both 'transaction snapshot' and 'yb_read_after_commit_visibility' in the same "
+      "transaction.");
+  return Status::OK();
+}
+
+Status PgTxnManager::CheckTxnSnapshotOptions(const tserver::PgPerformOptionsPB& options) const {
+  RSTATUS_DCHECK(!options.ddl_mode(), NotSupported, "Cannot export/import snapshot in DDL mode.");
+  RSTATUS_DCHECK(
+      !options.use_catalog_session(), NotSupported,
+      "Cannot export/import snapshot in catalog session.");
+  RSTATUS_DCHECK(
+      !options.defer_read_point(), NotSupported,
+      "Cannot export/import snapshot with deferred read point.");
+  return Status::OK();
+}
+
+bool PgTxnManager::HasExportedSnapshots() const { return has_exported_snapshots_; }
+
+void PgTxnManager::ClearExportedTxnSnapshots() {
+  if (!has_exported_snapshots_) {
+    return;
+  }
+  has_exported_snapshots_ = false;
+  const auto s = client_->ClearExportedTxnSnapshots();
+  LOG_IF(DFATAL, !s.ok()) << "Faced error while deleting exported snapshots. Error Details: " << s;
 }
 
 }  // namespace yb::pggate

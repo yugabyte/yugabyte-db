@@ -64,6 +64,7 @@ message TabletStatusPB {
   // A list of all tables that are colocated on this tablet.
   repeated bytes colocated_table_ids = 19;
   optional string pgschema_name = 20;
+  repeated bytes vector_index_finished_backfills = 21;
 }
 
 // Used to present the maintenance manager's internal state.

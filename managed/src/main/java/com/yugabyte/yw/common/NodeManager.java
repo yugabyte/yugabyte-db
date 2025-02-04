@@ -951,17 +951,14 @@ public class NodeManager extends DevopsBase {
       }
       Pair<String, String> ybcPackageDetails =
           Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
+      String stableYbc = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
       ReleaseManager.ReleaseMetadata releaseMetadata =
           releaseManager.getYbcReleaseByVersion(
-              taskParam.getYbcSoftwareVersion(),
-              ybcPackageDetails.getFirst(),
-              ybcPackageDetails.getSecond());
+              stableYbc, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
 
       if (releaseMetadata == null) {
         throw new RuntimeException(
-            String.format(
-                "Ybc package metadata: %s cannot be empty with ybc enabled",
-                taskParam.getYbcSoftwareVersion()));
+            String.format("Ybc package metadata: %s cannot be empty with ybc enabled", stableYbc));
       }
 
       if (arch != null) {
@@ -2229,10 +2226,6 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");
           }
-          if (taskParam.nodeUuid != null) {
-            commandArgs.add("--node_uuid");
-            commandArgs.add(taskParam.nodeUuid.toString());
-          }
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -2645,6 +2638,10 @@ public class NodeManager extends DevopsBase {
       }
       return localNodeManager.nodeCommand(type, nodeTaskParam, commandArgs);
     }
+    if (nodeTaskParam.nodeUuid != null) {
+      commandArgs.add("--node_uuid");
+      commandArgs.add(nodeTaskParam.nodeUuid.toString());
+    }
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       Map<String, String> envVars =
@@ -2725,6 +2722,10 @@ public class NodeManager extends DevopsBase {
     result.add(Integer.toString(ports.tserverHttpPort));
     result.add("--tserver_rpc_port");
     result.add(Integer.toString(ports.tserverRpcPort));
+    result.add("--yb_controller_http_port");
+    result.add(Integer.toString(ports.ybControllerHttpPort));
+    result.add("--yb_controller_rpc_port");
+    result.add(Integer.toString(ports.ybControllerrRpcPort));
     if (userIntent.enableYCQL) {
       result.add("--cql_proxy_http_port");
       result.add(Integer.toString(ports.yqlServerHttpPort));

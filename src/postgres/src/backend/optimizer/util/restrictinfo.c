@@ -233,14 +233,15 @@ make_restrictinfo_internal(PlannerInfo *root,
  *	an inner variable from inner_relids and its outer batched variables from
  *	outer_batched_relids.
  */
-bool yb_can_batch_rinfo(RestrictInfo *rinfo,
-							Relids outer_batched_relids,
-							Relids inner_relids)
+bool
+yb_can_batch_rinfo(RestrictInfo *rinfo,
+				   Relids outer_batched_relids,
+				   Relids inner_relids)
 {
-	RestrictInfo *batched_rinfo =
-		yb_get_batched_restrictinfo(rinfo,
-											 outer_batched_relids,
-											 inner_relids);
+	RestrictInfo *batched_rinfo = yb_get_batched_restrictinfo(rinfo,
+															  outer_batched_relids,
+															  inner_relids);
+
 	return batched_rinfo != NULL;
 }
 
@@ -251,13 +252,14 @@ bool yb_can_batch_rinfo(RestrictInfo *rinfo,
  */
 RestrictInfo *
 yb_get_batched_restrictinfo(RestrictInfo *rinfo,
-									 Relids outer_batched_relids,
-									 Relids inner_relids)
+							Relids outer_batched_relids,
+							Relids inner_relids)
 {
 	if (list_length(rinfo->yb_batched_rinfo) == 0)
 		return NULL;
 
 	RestrictInfo *ret = linitial(rinfo->yb_batched_rinfo);
+
 	if (!bms_is_subset(ret->left_relids, inner_relids))
 	{
 		/* Try the other batched rinfo if it exists. */
@@ -472,13 +474,16 @@ restriction_is_securely_promotable(RestrictInfo *restrictinfo,
 /*
  * Add a given batched RestrictInfo to rinfo if it hasn't already been added.
  */
-void add_batched_rinfo(RestrictInfo *rinfo, RestrictInfo *batched)
+void
+add_batched_rinfo(RestrictInfo *rinfo, RestrictInfo *batched)
 {
-	ListCell *lc;
+	ListCell   *lc;
+
 	foreach(lc, rinfo->yb_batched_rinfo)
 	{
 		RestrictInfo *current = lfirst(lc);
-		/* If we already have a batched clause with this LHS we don't bother.*/
+
+		/* If we already have a batched clause with this LHS we don't bother. */
 		if (equal(get_leftop(current->clause), get_leftop(batched->clause)))
 			return;
 	}

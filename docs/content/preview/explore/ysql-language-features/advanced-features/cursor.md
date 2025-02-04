@@ -102,7 +102,7 @@ DELETE FROM employees_cursor_2;
 
 You can return a cursor using a function that opens the cursor and returns its name to the caller which, in turn, can fetch rows from the cursor and close it before the end of the transaction, if needed.
 
-For more information and examples, refer to [Using Cursors](https://www.postgresql.org/docs/11/plpgsql-cursors.html#PLPGSQL-CURSOR-USING) in the PostgreSQL documentation.
+For more information and examples, refer to [Using Cursors](https://www.postgresql.org/docs/15/plpgsql-cursors.html#PLPGSQL-CURSOR-USING) in the PostgreSQL documentation.
 
 ### Use loops
 

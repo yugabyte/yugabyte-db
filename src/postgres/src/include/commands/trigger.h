@@ -43,7 +43,7 @@ typedef struct TriggerData
 	Tuplestorestate *tg_oldtable;
 	Tuplestorestate *tg_newtable;
 	const Bitmapset *tg_updatedcols;
-	EState *estate;
+	EState	   *estate;
 } TriggerData;
 
 /*
@@ -293,6 +293,6 @@ extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 extern int	RI_FKey_trigger_type(Oid tgfoid);
 
 /* Return true if the trigger description has non FK trigger. */
-extern bool HasNonRITrigger(const TriggerDesc* trigDesc);
+extern bool HasNonRITrigger(const TriggerDesc *trigDesc);
 
 #endif							/* TRIGGER_H */

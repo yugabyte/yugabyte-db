@@ -3754,6 +3754,7 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 		case OCLASS_TBLGROUP:
 			{
 				char	   *tblgroup;
+
 				tblgroup = get_tablegroup_name(object->objectId);
 				if (!tblgroup)
 					elog(ERROR, "cache lookup failed for tablegroup %u",
@@ -3924,7 +3925,11 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 										 rolename);
 						break;
 					case DEFACLOBJ_TABLEGROUP:
-						// Cannot set default perms for tablegroups on a per-schema level. Must be per-db.
+
+						/*
+						 * Cannot set default perms for tablegroups on a
+						 * per-schema level. Must be per-db.
+						 */
 						Assert(!nspname);
 						appendStringInfo(&buffer,
 										 _("default privileges on new tablegroups belonging to role %s"),
@@ -4149,13 +4154,14 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 		case OCLASS_YBPROFILE:
 			{
 				char	   *profile;
+
 				profile = yb_get_profile_name(object->objectId);
 				appendStringInfo(&buffer, _("profile %s"), profile);
 				break;
 			}
 		case OCLASS_YBROLE_PROFILE:
 			{
-				HeapTuple tup = yb_get_role_profile_tuple_by_oid(object->objectId);
+				HeapTuple	tup = yb_get_role_profile_tuple_by_oid(object->objectId);
 
 				if (!HeapTupleIsValid(tup))
 					elog(ERROR, "could not find tuple for role profile %u",
@@ -5639,6 +5645,7 @@ getObjectIdentityParts(const ObjectAddress *object,
 		case OCLASS_TBLGROUP:
 			{
 				char	   *tblgroup;
+
 				tblgroup = get_tablegroup_name(object->objectId);
 				if (!tblgroup)
 					elog(ERROR, "cache lookup failed for tablegroup %u",
@@ -6061,6 +6068,7 @@ getObjectIdentityParts(const ObjectAddress *object,
 		case OCLASS_YBPROFILE:
 			{
 				char	   *profile;
+
 				profile = yb_get_profile_name(object->objectId);
 				if (objname)
 					*objname = list_make1(profile);
@@ -6070,7 +6078,7 @@ getObjectIdentityParts(const ObjectAddress *object,
 			}
 		case OCLASS_YBROLE_PROFILE:
 			{
-				HeapTuple tup = yb_get_role_profile_tuple_by_oid(object->objectId);
+				HeapTuple	tup = yb_get_role_profile_tuple_by_oid(object->objectId);
 
 				if (!HeapTupleIsValid(tup))
 					elog(ERROR, "could not find tuple for role profile %u",

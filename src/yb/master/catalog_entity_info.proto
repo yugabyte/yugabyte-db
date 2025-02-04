@@ -22,6 +22,7 @@ import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
+import "yb/common/version_info.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/master/master_types.proto";
@@ -404,8 +405,8 @@ message SysObjectLockEntryPB {
   // host_uid is part of the key. Thus not stored
   // explicitly in this proto again.
 
-  // incarnation id -> Transaction ...
-  map<uint64, TransactionSubtxnMapPB> incarnations = 1;
+  // lease_epoch -> Transaction ...
+  map<uint64, TransactionSubtxnMapPB> lease_epochs = 1;
 }
 
 message SysXClusterConfigEntryPB {
@@ -464,6 +465,8 @@ message YsqlMajorCatalogUpgradeInfoPB {
   // This field is introduced in version 15. So universes that are upgraded
   // will have the default value of 11 (the previous version).
   optional uint32 catalog_version = 3 [ default = 11 ];
+
+  optional bool previous_version_catalog_cleanup_required = 4; // [default = false]
 }
 
 // Metadata about the YSQL catalog (current only version).
@@ -977,4 +980,6 @@ message SysTabletServerEntryPB {
   optional bool live_client_operation_lease = 7;
 
   optional uint64 lease_epoch = 8;
+
+  optional VersionInfoPB version_info = 9;
 }

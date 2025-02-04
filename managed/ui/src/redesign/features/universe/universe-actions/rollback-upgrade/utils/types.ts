@@ -52,7 +52,8 @@ export interface TaskObject {
   createTime: string;
   id: string;
   percentComplete: 10;
-  retryable: true;
+  retryable: boolean;
+  canRollback: boolean;
   status: string;
   target: string;
   targetUUID: string;

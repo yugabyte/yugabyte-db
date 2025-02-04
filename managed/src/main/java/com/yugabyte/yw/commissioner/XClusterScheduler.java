@@ -316,7 +316,7 @@ public class XClusterScheduler {
     XClusterTableConfig.Status tableStatus = xClusterTableConfig.getStatus();
     if (xClusterTableConfig.getStatus().equals(XClusterTableConfig.Status.Running)) {
       if (!xClusterTableConfig.getReplicationStatusErrors().isEmpty()) {
-        tableStatus = XClusterTableConfig.Status.ReplicationError;
+        tableStatus = XClusterTableConfig.Status.Error;
       }
     }
 
@@ -361,7 +361,12 @@ public class XClusterScheduler {
     }
 
     XClusterConfigTaskBase.updateReplicationDetailsFromDB(
-        xClusterUniverseService, ybClientService, tableHandler, xClusterConfig, dbSyncTimeoutMs);
+        xClusterUniverseService,
+        ybClientService,
+        tableHandler,
+        xClusterConfig,
+        dbSyncTimeoutMs,
+        this.confGetter);
     Set<XClusterTableConfig> xClusterTableConfigs = xClusterConfig.getTableDetails();
     xClusterTableConfigs.forEach(
         tableConfig -> metricsList.add(buildMetricTemplate(xClusterConfig, tableConfig)));

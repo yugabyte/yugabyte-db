@@ -4,6 +4,7 @@ import (
     "encoding/json"
     "fmt"
     "io/ioutil"
+    "net"
     "net/http"
     "time"
 )
@@ -41,7 +42,7 @@ func (h *HelperContainer) GetVersionFuture(
     if isMaster {
         port = MasterUIPort
     }
-    url := fmt.Sprintf("http://%s:%s/api/v1/version", hostName, port)
+    url := fmt.Sprintf("http://%s/api/v1/version", net.JoinHostPort(hostName, port))
     resp, err := httpClient.Get(url)
     if err != nil {
         versionInfo.Error = err

@@ -36,7 +36,7 @@ The source for the application can be found in the [Using ORMs with YugabyteDB](
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - [Rust](https://www.rust-lang.org/tools/install) 1.31 or later.
 
 ## Clone the "orm-examples" repository

@@ -4,6 +4,7 @@ import (
     "encoding/json"
     "fmt"
     "io/ioutil"
+    "net"
     "net/http"
     "time"
 )
@@ -49,7 +50,7 @@ func (h *HelperContainer) GetTabletsFuture(nodeHost string, future chan TabletsF
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:%s/api/v1/tablets", nodeHost, TserverUIPort)
+    url := fmt.Sprintf("http://%s/api/v1/tablets", net.JoinHostPort(nodeHost, TserverUIPort))
     resp, err := httpClient.Get(url)
     if err != nil {
         tablets.Error = err

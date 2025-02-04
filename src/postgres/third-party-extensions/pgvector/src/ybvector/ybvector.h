@@ -116,4 +116,5 @@ void
 bindVectorIndexOptions(YbcPgStatement handle,
 					   IndexInfo *indexInfo,
 					   TupleDesc indexTupleDesc,
-					   YbcPgVectorIdxType ybpg_idx_type);
+					   YbcPgVectorIdxType ybpg_idx_type,
+					   YbcPgVectorDistType dist_type);

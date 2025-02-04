@@ -1167,6 +1167,7 @@ static const char *yb_cache_index_name_table[] = {
 	"pg_yb_tablegroup_oid_index",
 	"pg_constraint_conrelid_contypid_conname_index",
 };
+
 static_assert(SysCacheSize == sizeof(yb_cache_index_name_table) /
 			  sizeof(const char *), "Wrong catalog cache number");
 
@@ -1225,7 +1226,7 @@ static const char *yb_cache_table_name_table[] = {
 };
 
 static_assert(YbNumCatalogCacheTables ==
-				  sizeof(yb_cache_table_name_table) / sizeof(const char *),
+			  sizeof(yb_cache_table_name_table) / sizeof(const char *),
 			  "yb_catalog_cache_table_name_table size mismatch");
 
 
@@ -1319,7 +1320,7 @@ static YbCatalogCacheTable yb_catalog_cache_tables[] = {
 };
 
 static_assert(SysCacheSize ==
-				  sizeof(yb_catalog_cache_tables) / sizeof(YbCatalogCacheTable),
+			  sizeof(yb_catalog_cache_tables) / sizeof(YbCatalogCacheTable),
 			  "yb_catalog_cache_tables size mismatch");
 
 static CatCache *SysCache[SysCacheSize];
@@ -1340,9 +1341,11 @@ static int	oid_compare(const void *a, const void *b);
  * Utility function for YugaByte mode. Is used to automatically add entries
  * from common catalog tables to the cache immediately after they are inserted.
  */
-void YbSetSysCacheTuple(Relation rel, HeapTuple tup)
+void
+YbSetSysCacheTuple(Relation rel, HeapTuple tup)
 {
-	TupleDesc tupdesc = RelationGetDescr(rel);
+	TupleDesc	tupdesc = RelationGetDescr(rel);
+
 	switch (RelationGetRelid(rel))
 	{
 		case RelationRelationId:
@@ -1379,20 +1382,20 @@ void
 YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 {
 
-	CatCache* cache         = SysCache[cache_id];
-	CatCache* idx_cache     = idx_cache_id != -1 ? SysCache[idx_cache_id] : NULL;
-	List*     dest_list     = NIL;
-	List*     list_of_lists = NIL;
-	HeapTuple ntp;
-	Relation  relation      = table_open(cache->cc_reloid, AccessShareLock);
-	TupleDesc tupdesc       = RelationGetDescr(relation);
+	CatCache   *cache = SysCache[cache_id];
+	CatCache   *idx_cache = idx_cache_id != -1 ? SysCache[idx_cache_id] : NULL;
+	List	   *dest_list = NIL;
+	List	   *list_of_lists = NIL;
+	HeapTuple	ntp;
+	Relation	relation = table_open(cache->cc_reloid, AccessShareLock);
+	TupleDesc	tupdesc = RelationGetDescr(relation);
 
 	SysScanDesc scandesc = systable_beginscan(relation,
 											  cache->cc_indexoid,
-											  false /* indexOK */,
-											  NULL /* snapshot */,
-											  0  /* nkeys */,
-											  NULL /* key */);
+											  false /* indexOK */ ,
+											  NULL /* snapshot */ ,
+											  0 /* nkeys */ ,
+											  NULL /* key */ );
 
 	while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
 	{
@@ -1400,100 +1403,108 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		if (idx_cache)
 			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
 
-		bool is_add_to_list_required = true;
+		bool		is_add_to_list_required = true;
 
-		switch(cache_id)
+		switch (cache_id)
 		{
 			case PROCOID:
-			{
-				/*
-				 * Special handling for the common case of looking up
-				 * functions (procedures) by name (i.e. partial key).
-				 * We set up the partial cache list for function by-name
-				 * lookup on initialization to avoid scanning the large
-				 * pg_proc table each time.
-				 */
-				bool is_null = false;
-				ScanKeyData key = idx_cache->cc_skey[0];
-				Datum ndt = heap_getattr(ntp, key.sk_attno, tupdesc, &is_null);
-
-				if (is_null)
 				{
-					YBC_LOG_WARNING("Ignoring unexpected null "
-									"entry while initializing proc cache list");
-					is_add_to_list_required = false;
-					break;
-				}
+					/*
+					 * Special handling for the common case of looking up
+					 * functions (procedures) by name (i.e. partial key).
+					 * We set up the partial cache list for function by-name
+					 * lookup on initialization to avoid scanning the large
+					 * pg_proc table each time.
+					 */
+					bool		is_null = false;
+					ScanKeyData key = idx_cache->cc_skey[0];
+					Datum		ndt = heap_getattr(ntp, key.sk_attno, tupdesc, &is_null);
 
-				dest_list = NIL;
-				/* Look for an existing list for functions with this name. */
-				ListCell *lc;
-				foreach(lc, list_of_lists)
-				{
-					List *fnlist = lfirst(lc);
-					HeapTuple otp = linitial(fnlist);
-					Datum odt = heap_getattr(otp, key.sk_attno, tupdesc, &is_null);
-					Datum key_matches = FunctionCall2Coll(&key.sk_func,
-														  key.sk_collation,
-														  ndt, odt);
-					if (DatumGetBool(key_matches))
+					if (is_null)
 					{
-						dest_list = fnlist;
+						YBC_LOG_WARNING("Ignoring unexpected null "
+										"entry while initializing proc cache list");
+						is_add_to_list_required = false;
 						break;
 					}
-				}
-				break;
-			}
-			case RULERELNAME:
-			{
-				/*
-				 * Special handling for pg_rewrite: preload rules list by
-				 * relation oid. Note that rules should be ordered by name -
-				 * which is achieved using RewriteRelRulenameIndexId index.
-				 */
-				if (dest_list)
-				{
-					HeapTuple ltp = llast(dest_list);
-					Form_pg_rewrite ltp_struct = (Form_pg_rewrite) GETSTRUCT(ltp);
-					Form_pg_rewrite ntp_struct = (Form_pg_rewrite) GETSTRUCT(ntp);
-					if (ntp_struct->ev_class != ltp_struct->ev_class)
-						dest_list = NIL;
-				}
-				break;
-			}
-			case AMOPOPID:
-			{
-				/* Add a cache list for AMOPOPID for lookup by operator only. */
-				if (dest_list)
-				{
-					HeapTuple ltp = llast(dest_list);
-					Form_pg_amop ltp_struct = (Form_pg_amop) GETSTRUCT(ltp);
-					Form_pg_amop ntp_struct = (Form_pg_amop) GETSTRUCT(ntp);
-					if (ntp_struct->amopopr != ltp_struct->amopopr)
-						dest_list = NIL;
-				}
-				break;
-			}
-			case CONSTROID:
-			{
-				/*
-				 * Add a cache list for YBCONSTRAINTRELIDTYPIDNAME for lookup by conrelid only.
-				 */
-				if (!yb_enable_fkey_catcache)
-				{
-					is_add_to_list_required = false;
+
+					dest_list = NIL;
+					/* Look for an existing list for functions with this name. */
+					ListCell   *lc;
+
+					foreach(lc, list_of_lists)
+					{
+						List	   *fnlist = lfirst(lc);
+						HeapTuple	otp = linitial(fnlist);
+						Datum		odt = heap_getattr(otp, key.sk_attno, tupdesc, &is_null);
+						Datum		key_matches = FunctionCall2Coll(&key.sk_func,
+																	key.sk_collation,
+																	ndt, odt);
+
+						if (DatumGetBool(key_matches))
+						{
+							dest_list = fnlist;
+							break;
+						}
+					}
 					break;
 				}
-				if (dest_list)
+			case RULERELNAME:
 				{
-					HeapTuple ltp = llast(dest_list);
-					Form_pg_constraint ltp_struct = (Form_pg_constraint) GETSTRUCT(ltp);
-					Form_pg_constraint ntp_struct = (Form_pg_constraint) GETSTRUCT(ntp);
-					if (ntp_struct->conrelid != ltp_struct->conrelid)
-						dest_list = NIL;
+					/*
+					 * Special handling for pg_rewrite: preload rules list by
+					 * relation oid. Note that rules should be ordered by name -
+					 * which is achieved using RewriteRelRulenameIndexId index.
+					 */
+					if (dest_list)
+					{
+						HeapTuple	ltp = llast(dest_list);
+						Form_pg_rewrite ltp_struct = (Form_pg_rewrite) GETSTRUCT(ltp);
+						Form_pg_rewrite ntp_struct = (Form_pg_rewrite) GETSTRUCT(ntp);
+
+						if (ntp_struct->ev_class != ltp_struct->ev_class)
+							dest_list = NIL;
+					}
+					break;
 				}
-				break;
-			}
+			case AMOPOPID:
+				{
+					/*
+					 * Add a cache list for AMOPOPID for lookup by operator
+					 * only.
+					 */
+					if (dest_list)
+					{
+						HeapTuple	ltp = llast(dest_list);
+						Form_pg_amop ltp_struct = (Form_pg_amop) GETSTRUCT(ltp);
+						Form_pg_amop ntp_struct = (Form_pg_amop) GETSTRUCT(ntp);
+
+						if (ntp_struct->amopopr != ltp_struct->amopopr)
+							dest_list = NIL;
+					}
+					break;
+				}
+			case CONSTROID:
+				{
+					/*
+					 * Add a cache list for YBCONSTRAINTRELIDTYPIDNAME for lookup by conrelid only.
+					 */
+					if (!yb_enable_fkey_catcache)
+					{
+						is_add_to_list_required = false;
+						break;
+					}
+					if (dest_list)
+					{
+						HeapTuple	ltp = llast(dest_list);
+						Form_pg_constraint ltp_struct = (Form_pg_constraint) GETSTRUCT(ltp);
+						Form_pg_constraint ntp_struct = (Form_pg_constraint) GETSTRUCT(ntp);
+
+						if (ntp_struct->conrelid != ltp_struct->conrelid)
+							dest_list = NIL;
+					}
+					break;
+				}
 			default:
 				is_add_to_list_required = false;
 				break;
@@ -1503,7 +1514,8 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		{
 			if (dest_list)
 			{
-				List *old_dest_list = dest_list;
+				List	   *old_dest_list = dest_list;
+
 				(void) old_dest_list;
 				dest_list = lappend(dest_list, ntp);
 				Assert(dest_list == old_dest_list);
@@ -1523,8 +1535,9 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	if (list_of_lists)
 	{
 		/* Load up the lists computed above into the catalog cache. */
-		CatCache *dest_cache = cache;
-		switch(cache_id)
+		CatCache   *dest_cache = cache;
+
+		switch (cache_id)
 		{
 			case PROCOID:
 			case CONSTROID:
@@ -1538,8 +1551,9 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 				Assert(false);
 				break;
 		}
-		ListCell *lc;
-		foreach (lc, list_of_lists)
+		ListCell   *lc;
+
+		foreach(lc, list_of_lists)
 			SetCatCacheList(dest_cache, 1, lfirst(lc));
 		list_free_deep(list_of_lists);
 	}
@@ -2149,14 +2163,17 @@ YbCheckCatalogCacheIndexNameTable()
 	 */
 	if (!YBCIsInitDbModeEnvVarSet())
 		return true;
-	int	cache_id;
+	int			cache_id;
+
 	for (cache_id = 0; cache_id < SysCacheSize; cache_id++)
 	{
-		const char* index_name = yb_cache_index_name_table[cache_id];
-		Oid indoid = cacheinfo[cache_id].indoid;
-		HeapTuple tuple = SearchSysCache1(RELOID, indoid);
+		const char *index_name = yb_cache_index_name_table[cache_id];
+		Oid			indoid = cacheinfo[cache_id].indoid;
+		HeapTuple	tuple = SearchSysCache1(RELOID, indoid);
+
 		Assert(HeapTupleIsValid(tuple));
 		Form_pg_class classForm = (Form_pg_class) GETSTRUCT(tuple);
+
 		if (strcmp(NameStr(classForm->relname), index_name))
 		{
 			ReleaseSysCache(tuple);
@@ -2167,7 +2184,8 @@ YbCheckCatalogCacheIndexNameTable()
 		ReleaseSysCache(tuple);
 
 		const char *table_name = YbGetCatalogCacheTableNameFromCacheId(cache_id);
-		Oid reloid = cacheinfo[cache_id].reloid;
+		Oid			reloid = cacheinfo[cache_id].reloid;
+
 		tuple = SearchSysCache1(RELOID, reloid);
 		Assert(HeapTupleIsValid(tuple));
 		classForm = (Form_pg_class) GETSTRUCT(tuple);
@@ -2184,7 +2202,8 @@ YbCheckCatalogCacheIndexNameTable()
 }
 #endif
 
-const char* YbGetCatalogCacheIndexName(int cache_id)
+const char *
+YbGetCatalogCacheIndexName(int cache_id)
 {
 	return yb_cache_index_name_table[cache_id];
 }
@@ -2199,7 +2218,8 @@ YbGetCatalogCacheTableNameFromTableId(int table_id)
 int
 YbGetCatalogCacheTableIdFromCacheId(int cache_id)
 {
-	int table_id = yb_catalog_cache_tables[cache_id];
+	int			table_id = yb_catalog_cache_tables[cache_id];
+
 	Assert(table_id >= 0 && table_id < YbNumCatalogCacheTables);
 	return table_id;
 }

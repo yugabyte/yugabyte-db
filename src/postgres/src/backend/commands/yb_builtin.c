@@ -46,10 +46,12 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
-// Scale the ru_maxrss value according to the platform.
-// On Linux, the maxrss is in kilobytes.
-// On OSX, the maxrss is in bytes and scale it to kilobytes.
-// https://www.manpagez.com/man/2/getrusage/osx-10.12.3.php
+/*
+ * Scale the ru_maxrss value according to the platform.
+ * On Linux, the maxrss is in kilobytes.
+ * On OSX, the maxrss is in bytes and scale it to kilobytes.
+ * https://www.manpagez.com/man/2/getrusage/osx-10.12.3.php
+ */
 static long
 scale_rss_to_kb(long maxrss)
 {
@@ -58,6 +60,7 @@ scale_rss_to_kb(long maxrss)
 #endif
 	return maxrss;
 }
+
 /*
  * Dump the current connection heap stats, including TCMalloc, PG, and PgGate.
  * The exact definition for the output columns are as followed:
@@ -100,6 +103,7 @@ yb_heap_stats(PG_FUNCTION_ARGS)
 	if (yb_enable_memory_tracking)
 	{
 		YbcTcmallocStats tcmallocStats;
+
 		YBCGetHeapConsumption(&tcmallocStats);
 
 		values[0] = Int64GetDatum(tcmallocStats.heap_size_bytes);
@@ -109,12 +113,12 @@ yb_heap_stats(PG_FUNCTION_ARGS)
 		values[4] = Int64GetDatum(tcmallocStats.pageheap_unmapped_bytes);
 		values[5] = Int64GetDatum(PgMemTracker.pg_cur_mem_bytes);
 		values[6] = Int64GetDatum(tcmallocStats.current_allocated_bytes -
-					PgMemTracker.pg_cur_mem_bytes);
+								  PgMemTracker.pg_cur_mem_bytes);
 	}
 
 	memset(isnull, !yb_enable_memory_tracking, sizeof(isnull));
 
-	// Return tuple.
+	/* Return tuple. */
 	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, isnull));
 }
 
@@ -127,17 +131,17 @@ yb_heap_stats(PG_FUNCTION_ARGS)
 Datum
 yb_getrusage(PG_FUNCTION_ARGS)
 {
-	const int arg_count = 16;
+	const int	arg_count = 16;
 
 	TupleDesc	tupdesc;
 	Datum		values[arg_count];
 	bool		isnull[arg_count];
 	struct rusage r;
 
-	// Get usage.
+	/* Get usage. */
 	getrusage(RUSAGE_SELF, &r);
 
-	// Create tuple descriptor.
+	/* Create tuple descriptor. */
 	tupdesc = CreateTemplateTupleDesc(arg_count);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "user cpu", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "system cpu", INT8OID, -1, 0);
@@ -157,12 +161,16 @@ yb_getrusage(PG_FUNCTION_ARGS)
 	TupleDescInitEntry(tupdesc, (AttrNumber) 16, "nivcsw", INT8OID, -1, 0);
 	BlessTupleDesc(tupdesc);
 
-	// Fill in values.
-	// TODO() To evaluate CPU percentage, a start-time must be defined. An interface for users to
-	// set start-time is needed. It could be the start of a page, a statement, a transaction, or
-	// the entire process. Leave this work till later as it is not need it now.
-	//   user_cpu % = NULL / NAN
-	//   system_cpu % = NULL / NAN
+	/*
+	 * Fill in values.
+	 * TODO() To evaluate CPU percentage, a start-time must be defined. An
+	 * interface for users to set start-time is needed. It could be the start
+	 * of a page, a statement, a transaction, or the entire process. Leave this
+	 * work till later as it is not need it now.
+	 *
+	 *     user_cpu % = NULL / NAN
+	 *     system_cpu % = NULL / NAN
+	 */
 	memset(isnull, 0, sizeof(isnull));
 	isnull[0] = true;
 	values[0] = Int64GetDatum(NAN);
@@ -183,7 +191,7 @@ yb_getrusage(PG_FUNCTION_ARGS)
 	values[14] = Int64GetDatum(r.ru_nvcsw);
 	values[15] = Int64GetDatum(r.ru_nivcsw);
 
-	// Return tuple.
+	/* Return tuple. */
 	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, isnull));
 }
 
@@ -197,9 +205,9 @@ Datum
 yb_mem_usage(PG_FUNCTION_ARGS)
 {
 	struct rusage r;
-	char a[1024];
+	char		a[1024];
 
-	// Get usage.
+	/* Get usage. */
 	getrusage(RUSAGE_SELF, &r);
 	sprintf(a, "Session memory usage = %ld kbs", scale_rss_to_kb(r.ru_maxrss));
 	PG_RETURN_TEXT_P(cstring_to_text(a));
@@ -209,6 +217,7 @@ Datum
 yb_mem_usage_kb(PG_FUNCTION_ARGS)
 {
 	struct rusage r;
+
 	getrusage(RUSAGE_SELF, &r);
 	PG_RETURN_INT64(scale_rss_to_kb(r.ru_maxrss));
 }
@@ -222,8 +231,9 @@ yb_mem_usage_kb(PG_FUNCTION_ARGS)
 Datum
 yb_mem_usage_sql(PG_FUNCTION_ARGS)
 {
-	char s[1024];
-	int64 usage = MemoryContextStatsUsage(TopMemoryContext, 100);
+	char		s[1024];
+	int64		usage = MemoryContextStatsUsage(TopMemoryContext, 100);
+
 	sprintf(s, "SQL layer memory usage = %ld bytes", usage);
 	PG_RETURN_TEXT_P(cstring_to_text(s));
 }
@@ -231,13 +241,15 @@ yb_mem_usage_sql(PG_FUNCTION_ARGS)
 Datum
 yb_mem_usage_sql_b(PG_FUNCTION_ARGS)
 {
-	int64 usage = MemoryContextStatsUsage(TopMemoryContext, 100);
+	int64		usage = MemoryContextStatsUsage(TopMemoryContext, 100);
+
 	PG_RETURN_INT64(usage);
 }
 
 Datum
 yb_mem_usage_sql_kb(PG_FUNCTION_ARGS)
 {
-	int64 usage = MemoryContextStatsUsage(TopMemoryContext, 100)/1000;
+	int64		usage = MemoryContextStatsUsage(TopMemoryContext, 100) / 1000;
+
 	PG_RETURN_INT64(usage);
 }

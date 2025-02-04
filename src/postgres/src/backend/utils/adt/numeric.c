@@ -527,8 +527,8 @@ static bool numericvar_to_int128(const NumericVar *var, int128 *result);
 static void int128_to_numericvar(int128 val, NumericVar *var);
 #endif
 #ifdef NEIL
-// No longer in postgres new code.
-double numeric_to_double_no_overflow(Numeric num);
+/*  No longer in postgres new code. */
+double		numeric_to_double_no_overflow(Numeric num);
 #endif
 static double numericvar_to_double_no_overflow(const NumericVar *var);
 
@@ -7912,7 +7912,7 @@ int128_to_numericvar(int128 val, NumericVar *var)
 #endif
 
 #ifdef NEIL
-// No longer in Postgres code.
+/*  No longer in Postgres code. */
 /*
  * Convert numeric to float8; if out of range, return +/- HUGE_VAL
  */

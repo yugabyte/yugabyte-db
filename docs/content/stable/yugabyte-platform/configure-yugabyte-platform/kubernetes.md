@@ -1,5 +1,5 @@
 ---
-title: Configure the Kubernetes cloud provider
+title: Configure the Kubernetes provider configuration
 headerTitle: Create Kubernetes provider configuration
 linkTitle: Kubernetes
 description: Configure the Kubernetes provider configuration
@@ -130,246 +130,276 @@ Click **Add Region** when you are done.
 
 ## Overrides
 
-The following overrides are available:
+You can enter the following overrides.
 
-- Overrides to add service-level annotations:
+### Service-level annotations
 
-  ```yml
-  serviceEndpoints:
-    - name: "yb-master-service"
-      type: "LoadBalancer"
-      annotations:
-        service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
-      app: "yb-master"
-      ports:
-        ui: "7000"
+Overrides to add service-level annotations:
 
-    - name: "yb-tserver-service"
-      type: "LoadBalancer"
-      annotations:
-        service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
-      app: "yb-tserver"
-      ports:
-        ycql-port: "9042"
-        ysql-port: "5433"
-  ```
+```yml
+serviceEndpoints:
+  - name: "yb-master-service"
+    type: "LoadBalancer"
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
+    app: "yb-master"
+    ports:
+      ui: "7000"
 
-- Overrides to disable LoadBalancer:
+  - name: "yb-tserver-service"
+    type: "LoadBalancer"
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
+    app: "yb-tserver"
+    ports:
+      ycql-port: "9042"
+      ysql-port: "5433"
+```
 
-  ```yml
-  enableLoadBalancer: False
-  ```
+### Load balancer
 
-- Overrides to change the cluster domain name:
+Override to disable LoadBalancer:
 
-  ```yml
-  domainName: my.cluster
-  ```
+```yml
+enableLoadBalancer: False
+```
 
-  YugabyteDB servers and other components communicate with each other using the Kubernetes Fully Qualified Domain Names (FQDN). The default domain is `cluster.local`.
+### Domain name
 
-- Overrides to add annotations at StatefulSet level:
+Override to change the cluster domain name:
 
-  ```yml
-  networkAnnotation:
-    annotation1: 'foo'
-    annotation2: 'bar'
-  ```
+```yml
+domainName: my.cluster
+```
 
-- Overrides to add custom resource allocation for YB-Master and YB-TServer pods:
+YugabyteDB servers and other components communicate with each other using the Kubernetes Fully Qualified Domain Names (FQDN). The default domain is `cluster.local`.
 
-  ```yml
-  resource:
-    master:
-      requests:
-        cpu: 2
-        memory: 2Gi
-      limits:
-        cpu: 2
-        memory: 2Gi
-    tserver:
-      requests:
-        cpu: 2
-        memory: 4Gi
-      limits:
-        cpu: 2
-        memory: 4Gi
-  ```
+### StatefulSet
 
-  This overrides instance types selected in the YBA universe creation flow.
+Overrides to add annotations at StatefulSet level:
 
-- Overrides to enable Istio compatibility:
+```yml
+networkAnnotation:
+  annotation1: 'foo'
+  annotation2: 'bar'
+```
 
-  ```yml
-  istioCompatibility:
-    enabled: true
-  ```
+### Resource allocation
 
-  This is required when Istio is used with Kubernetes.
+Overrides to add custom resource allocation for YB-Master and YB-TServer pods:
 
-- Overrides to publish node IP as the server broadcast address.
-
-  By default, YB-Master and YB-TServer pod fully-qualified domain names (FQDN) are used in the cluster as the server broadcast address. To publish the IP addresses of the nodes on which YB-TServer pods are deployed, add the following YAML to each zone override configuration:
-
-  ```yml
-  tserver:
-    extraEnv:
-    - name: NODE_IP
-      valueFrom:
-        fieldRef:
-          fieldPath: status.hostIP
-    serverBroadcastAddress: "$(NODE_IP)"
-    affinity:
-      podAntiAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchExpressions:
-            - key: app
-              operator: In
-              values:
-              - "yb-tserver"
-          topologyKey: kubernetes.io/hostname
-
-  # Required to esure that the Kubernetes FQDNs are used for
-  # internal communication between the nodes and node-to-node
-  # TLS certificates are validated correctly
-
-  gflags:
-    master:
-      use_private_ip: cloud
-    tserver:
-      use_private_ip: cloud
-
-  serviceEndpoints:
-    - name: "yb-master-ui"
-      type: LoadBalancer
-      app: "yb-master"
-      ports:
-        http-ui: "7000"
-
-    - name: "yb-tserver-service"
-      type: NodePort
-      externalTrafficPolicy: "Local"
-      app: "yb-tserver"
-      ports:
-        tcp-yql-port: "9042"
-        tcp-ysql-port: "5433"
-  ```
-
-- Overrides to run YugabyteDB as a non-root user:
-
-  ```yml
-  podSecurityContext:
-    enabled: true
-    ## Set to false to stop the non-root user validation
-    runAsNonRoot: true
-    fsGroup: 10001
-    runAsUser: 10001
-    runAsGroup: 10001
-  ```
-
-  Note that you cannot change users during the Helm upgrades.
-
-- Overrides to add `tolerations` in YB-Master and YB-TServer pods:
-
-  ```yml
-  ## Consider the node has the following taint:
-  ## kubectl taint nodes node1 dedicated=experimental:NoSchedule-
-
+```yml
+resource:
   master:
-    tolerations:
-    - key: dedicated
-      operator: Equal
-      value: experimental
-      effect: NoSchedule
-
+    requests:
+      cpu: 2
+      memory: 2Gi
+    limits:
+      cpu: 2
+      memory: 2Gi
   tserver:
-    tolerations: []
-  ```
+    requests:
+      cpu: 2
+      memory: 4Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+```
 
-  Tolerations work in combination with taints: `Taints` are applied on nodes and `Tolerations` are applied to pods. Taints and tolerations ensure that pods do not schedule onto inappropriate nodes. You need to set `nodeSelector` to schedule YugabyteDB pods onto specific nodes, and then use taints and tolerations to prevent other pods from getting scheduled on the dedicated nodes, if required. For more information, see [tolerations](../../install-yugabyte-platform/install-software/kubernetes/#tolerations) and [Toleration API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#toleration-v1-core).
+This overrides instance types selected in the YBA universe creation flow.
 
-- Overrides to use `nodeSelector` to schedule YB-Master and YB-TServer pods on dedicated nodes:
+### Istio
 
-  ```yml
-  ## To schedule a pod on a node that has a topology.kubernetes.io/zone=asia-south2-a label
+Overrides to enable Istio compatibility:
 
-  nodeSelector:
-    topology.kubernetes.io/zone: asia-south2-a
-  ```
+```yml
+istioCompatibility:
+  enabled: true
+```
 
-  For more information, see [nodeSelector](../../install-yugabyte-platform/install-software/kubernetes/#nodeselector) and [Kubernetes: Node Selector](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector).
+This is required when Istio is used with Kubernetes.
 
-- Overrides to add `affinity` in YB-Master and YB-TServer pods:
+### Server broadcast address
 
-  ```yml
-  ## To prevent scheduling of multiple master pods on single kubernetes node
+Overrides to publish node IP as the server broadcast address.
 
+By default, YB-Master and YB-TServer pod fully-qualified domain names (FQDN) are used in the cluster as the server broadcast address. To publish the IP addresses of the nodes on which YB-TServer pods are deployed, add the following YAML to each zone override configuration:
+
+```yml
+tserver:
+  extraEnv:
+  - name: NODE_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.hostIP
+  serverBroadcastAddress: "$(NODE_IP)"
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - "yb-tserver"
+        topologyKey: kubernetes.io/hostname
+
+# Required to esure that the Kubernetes FQDNs are used for
+# internal communication between the nodes and node-to-node
+# TLS certificates are validated correctly
+
+gflags:
   master:
-    affinity:
-      podAntiAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchExpressions:
-            - key: app
-              operator: In
-              values:
-              - "yb-master"
-          topologyKey: kubernetes.io/hostname
-
+    use_private_ip: cloud
   tserver:
-    affinity: {}
-  ```
+    use_private_ip: cloud
 
-  `affinity` allows the Kubernetes scheduler to place a pod on a set of nodes or a pod relative to the placement of other pods. You can use `nodeAffinity` rules to control pod placements on a set of nodes. In contrast, `podAffinity` or `podAntiAffinity` rules provide the ability to control pod placements relative to other pods. For more information, see [Affinity API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.27/#affinity-v1-core).
+serviceEndpoints:
+  - name: "yb-master-ui"
+    type: LoadBalancer
+    app: "yb-master"
+    ports:
+      http-ui: "7000"
 
-- Overrides to add `annotations` to YB-Master and YB-TServer pods:
+  - name: "yb-tserver-service"
+    type: NodePort
+    externalTrafficPolicy: "Local"
+    app: "yb-tserver"
+    ports:
+      tcp-yql-port: "9042"
+      tcp-ysql-port: "5433"
+```
 
-  ```yml
-  master:
-    podAnnotations:
-      application: "yugabytedb"
+### Run as non-root
 
-  tserver:
-    podAnnotations: {}
-  ```
+Overrides to run YugabyteDB as a non-root user:
 
-  The Kubernetes `annotations` can attach arbitrary metadata to objects. For more information, see [Annotations](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/).
+```yml
+podSecurityContext:
+  enabled: true
+  ## Set to false to stop the non-root user validation
+  runAsNonRoot: true
+  fsGroup: 10001
+  runAsUser: 10001
+  runAsGroup: 10001
+```
 
-- Overrides to add `labels` to YB-Master and YB-TServer pods:
+Note that you cannot change users during the Helm upgrades.
 
-  ```yml
-  master:
-    podLabels:
-      environment: production
-      app: yugabytedb
-      prometheus.io/scrape: true
+### Tolerations
 
-  tserver:
-    podLabels: {}
-  ```
+Overrides to add `tolerations` in YB-Master and YB-TServer pods:
 
-  The Kubernetes `labels` are key-value pairs attached to objects. The `labels` are used to specify identifying attributes of objects that are meaningful and relevant to you. For more information, see [Labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/).
+```yml
+## Consider the node has the following taint:
+## kubectl taint nodes node1 dedicated=experimental:NoSchedule-
 
-- Preflight check overrides, such as DNS address resolution, disk IO, available port, ulimit:
+master:
+  tolerations:
+  - key: dedicated
+    operator: Equal
+    value: experimental
+    effect: NoSchedule
 
-  ```yml
-  ## Default values
-  preflight:
-    ## Set to true to skip disk IO check, DNS address resolution, port bind checks
-    skipAll: false
+tserver:
+  tolerations: []
+```
 
-    ## Set to true to skip port bind checks
-    skipBind: false
+Tolerations work in combination with taints: taints are applied on nodes and tolerations are applied to pods. Taints and tolerations ensure that pods do not schedule onto inappropriate nodes. You need to set `nodeSelector` to schedule YugabyteDB pods onto specific nodes, and then use taints and tolerations to prevent other pods from getting scheduled on the dedicated nodes, if required. For more information, see [Tolerations](../../install-yugabyte-platform/install-software/kubernetes/#tolerations) and [Toleration API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#toleration-v1-core).
 
-    ## Set to true to skip ulimit verification
-    ## SkipAll has higher priority
-    skipUlimit: false
-  ```
+### nodeSelector
 
-  For more information, see [Helm chart: Prerequisites](../../../deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
+Overrides to use `nodeSelector` to schedule YB-Master and YB-TServer pods on dedicated nodes:
 
-- Overrides to use a secret for LDAP authentication. Refer to [Create secrets for Kubernetes](../../../secure/authentication/ldap-authentication-ysql/#create-secrets-for-kubernetes).
+```yml
+## To schedule a pod on a node that has a topology.kubernetes.io/zone=asia-south2-a label
+
+nodeSelector:
+  topology.kubernetes.io/zone: asia-south2-a
+```
+
+For more information, see [nodeSelector](../../install-yugabyte-platform/install-software/kubernetes/#nodeselector), and [Kubernetes: Node Selector](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector) in the Kubernetes documentation.
+
+### Affinity
+
+Overrides to add `affinity` in YB-Master and YB-TServer pods:
+
+```yml
+## To prevent scheduling of multiple master pods on single kubernetes node
+
+master:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - "yb-master"
+        topologyKey: kubernetes.io/hostname
+
+tserver:
+  affinity: {}
+```
+
+Affinity allows the Kubernetes scheduler to place a pod on a set of nodes or a pod relative to the placement of other pods. You can use `nodeAffinity` rules to control pod placements on a set of nodes. In contrast, `podAffinity` or `podAntiAffinity` rules provide the ability to control pod placements relative to other pods. For more information, see [Affinity API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.27/#affinity-v1-core) in the Kubernetes documentation.
+
+### Annotations
+
+Overrides to add `annotations` to YB-Master and YB-TServer pods:
+
+```yml
+master:
+  podAnnotations:
+    application: "yugabytedb"
+
+tserver:
+  podAnnotations: {}
+```
+
+The Kubernetes `annotations` can attach arbitrary metadata to objects. For more information, see [Annotations](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/) in the Kubernetes documentation.
+
+### Labels
+
+Overrides to add `labels` to YB-Master and YB-TServer pods:
+
+```yml
+master:
+  podLabels:
+    environment: production
+    app: yugabytedb
+    prometheus.io/scrape: true
+
+tserver:
+  podLabels: {}
+```
+
+The Kubernetes `labels` are key-value pairs attached to objects. The `labels` are used to specify identifying attributes of objects that are meaningful and relevant to you. For more information, see [Labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/) in the Kubernetes documentation.
+
+### Preflight check
+
+Preflight check overrides, such as DNS address resolution, disk IO, available port, ulimit:
+
+```yml
+## Default values
+preflight:
+  ## Set to true to skip disk IO check, DNS address resolution, port bind checks
+  skipAll: false
+
+  ## Set to true to skip port bind checks
+  skipBind: false
+
+  ## Set to true to skip ulimit verification
+  ## SkipAll has higher priority
+  skipUlimit: false
+```
+
+For more information, see [Helm chart: Prerequisites](../../../deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
+
+### LDAP secret
+
+Overrides to use a secret for LDAP authentication. Refer to [Create secrets for Kubernetes](../../../secure/authentication/ldap-authentication-ysql/#create-secrets-for-kubernetes).
 
 ## Configure Kubernetes multi-cluster environment
 
@@ -423,9 +453,9 @@ spec:
 
 Refer to [Multi-Region YugabyteDB Deployments on Kubernetes with Istio](https://www.yugabyte.com/blog/multi-region-yugabytedb-deployments-on-kubernetes-with-istio/) for a step-by-step guide and an explanation of the options being used.
 
-### Configure the cloud provider for MCS
+### Configure the provider configuration for MCS
 
-After you have the cluster set up, follow the instructions in [Configure the Kubernetes cloud provider](#provider-settings), and refer to this section for region and zone configuration required for multi-region universes.
+After you have the cluster set up, follow the instructions in [Create a provider](#create-a-provider), and refer to this section for region and zone configuration required for multi-region universes.
 
 #### Configure region and zone for GKE MCS
 
@@ -450,7 +480,7 @@ For example, if your cluster membership name is `yb-asia-south1`, then the **Add
 
 #### Configure region and zones for OpenShift MCS
 
-Follow the instructions in [Configure the OpenShift cloud provider](../openshift/) and [Create a provider](#create-a-provider). For all the zones from your OpenShift clusters connected via MCS (Submariner), add a region as follows:
+Follow the instructions in [Create OpenShift provider configuration](../openshift/) and [Create a provider](#create-a-provider). For all the zones from your OpenShift clusters connected via MCS (Submariner), add a region as follows:
 
 1. Specify fields such as Region, Zone, and so on as you would normally.
 1. Set the **Cluster DNS Domain** to `clusterset.local`.

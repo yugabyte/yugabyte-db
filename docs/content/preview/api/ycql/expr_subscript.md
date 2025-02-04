@@ -9,11 +9,10 @@ menu:
     weight: 1340
 aliases:
   - /preview/api/cassandra/expr_subscript
-  - /preview/api/ycql/expr_subscript
 type: docs
 ---
 
-Use subscripted expressions to access elements in a multi-element value, such as a map collection by using operator `[]`. Subscripted column expressions can be used when writing the same way as a [column expression](../expr_simple##Column). For example, if `ids` refers to a column of type `LIST`, `ids[7]` refers to the third element of the list `ids`, which can be set in an [UPDATE](../dml_update/) statement.
+Use subscripted expressions to access elements in a multi-element value, such as a map collection by using operator `[]`. Subscripted column expressions can be used when writing the same way as a [column expression](../expr_simple/#column-expression). For example, if `ids` refers to a column of type `LIST`, `ids[7]` refers to the third element of the list `ids`, which can be set in an [UPDATE](../dml_update/) statement.
 
 - Subscripted expression can only be applied to columns of type `LIST`, `MAP`, or user-defined data types.
 - Subscripting a `LIST` value with a non-positive index will yield NULL.
@@ -32,4 +31,4 @@ ycqlsh:yugaspace> UPDATE yugatab SET map_value['key_value'] = 'yuga_string' WHER
 
 ## See also
 
-- [All Expressions](..##expressions)
+- [All Expressions](../#expressions)

@@ -283,6 +283,12 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       createReplicateNamespacesTask(xClusterConfig);
     }
 
+    // Ensure network health between source and target universes.
+    if (confGetter.getConfForScope(
+        sourceUniverse, UniverseConfKeys.xClusterNetworkConnectivityCheckEnabled)) {
+      createXClusterNetworkConnectivityCheckTask(xClusterConfig);
+    }
+
     // Support mismatched TLS root certificates.
     createTransferXClusterCertsCopyTasks(xClusterConfig);
 

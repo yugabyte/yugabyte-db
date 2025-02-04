@@ -48,13 +48,13 @@ extern bool yb_is_client_ysqlconnmgr;
 extern bool yb_is_parallel_worker;
 
 /* TODO (janand): Write a function to read/change yb_logical_client_shmem_key */
-extern int yb_logical_client_shmem_key;
+extern int	yb_logical_client_shmem_key;
 
 /*
  * `ysql_conn_mgr_sticky_object_count` is the count of the database objects
  * that require a sticky connection.
  */
-extern int ysql_conn_mgr_sticky_object_count;
+extern int	ysql_conn_mgr_sticky_object_count;
 
 /*
  * `yb_ysql_conn_mgr_sticky_guc` is used to denote stickiness of a connection

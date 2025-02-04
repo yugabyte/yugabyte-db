@@ -211,7 +211,7 @@ Setting `COLOCATION = true` has no effect if the database that the table is part
 
 ### Storage parameters
 
-Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
 
 ## Examples
 

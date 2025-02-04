@@ -75,6 +75,11 @@ class BoundedRocksDbIterator final : public rocksdb::Iterator {
 
  private:
   const rocksdb::KeyValueEntry& FilterEntry(const rocksdb::KeyValueEntry& entry) const;
+  template <class Filter>
+  const rocksdb::KeyValueEntry& DoSeek(Slice target, Filter filter_user_key);
+  const rocksdb::KeyValueEntry& DoSeekImpl(Slice target, std::nullptr_t);
+  const rocksdb::KeyValueEntry& DoSeekImpl(Slice target, Slice filter_user_key);
+  const rocksdb::KeyValueEntry& DoSeekWithNewFilter(Slice target, Slice filter_user_key) override;
 
   std::unique_ptr<rocksdb::Iterator> iterator_;
   const KeyBounds* key_bounds_;

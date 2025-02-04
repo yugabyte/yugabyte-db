@@ -30,7 +30,7 @@ The source for the application can be found in the [Using ORMs with YugabyteDB](
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - [Rust](https://www.rust-lang.org/tools/install) 1.31 or later.
 
 ## Clone the "orm-examples" repository
@@ -72,7 +72,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

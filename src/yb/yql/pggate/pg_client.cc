@@ -563,6 +563,17 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.info();
   }
 
+  Result<bool> PollVectorIndexReady(const PgObjectId& table_id) {
+    tserver::PgPollVectorIndexReadyRequestPB req;
+    req.set_table_id(table_id.GetYbTableId());
+
+    tserver::PgPollVectorIndexReadyResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->PollVectorIndexReady(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.ready();
+  }
+
   Status SetActiveSubTransaction(
       SubTransactionId id, tserver::PgPerformOptionsPB* options) {
     tserver::PgSetActiveSubTransactionRequestPB req;
@@ -1192,6 +1203,41 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req) {
+    tserver::PgExportTxnSnapshotResponsePB resp;
+    req->set_session_id(session_id_);
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::ExportTxnSnapshot, *req, resp,
+        ash::PggateRPC::kExportTxnSnapshot));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.snapshot_id();
+  }
+
+  Result<tserver::PgImportTxnSnapshotResponsePB> ImportTxnSnapshot(
+      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
+    tserver::PgImportTxnSnapshotRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_snapshot_id(snapshot_id.data(), snapshot_id.length());
+    *req.mutable_options() = std::move(options);
+
+    tserver::PgImportTxnSnapshotResponsePB resp;
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::ImportTxnSnapshot, req, resp,
+        ash::PggateRPC::kImportTxnSnapshot));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Status ClearExportedTxnSnapshots() {
+    tserver::PgClearExportedTxnSnapshotsRequestPB req;
+    tserver::PgClearExportedTxnSnapshotsResponsePB resp;
+    req.set_session_id(session_id_);
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::ClearExportedTxnSnapshots, req, resp,
+        ash::PggateRPC::kClearExportedTxnSnapshots));
+    return ResponseStatus(resp);
+  }
+
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory() {
     tserver::PgActiveSessionHistoryRequestPB req;
     req.set_fetch_tserver_states(true);
@@ -1476,6 +1522,10 @@ Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oi
   return impl_->GetDatabaseInfo(oid);
 }
 
+Result<bool> PgClient::PollVectorIndexReady(const PgObjectId& table_id) {
+  return impl_->PollVectorIndexReady(table_id);
+}
+
 Result<std::pair<PgOid, PgOid>> PgClient::ReserveOids(
     PgOid database_oid, PgOid next_oid, uint32_t count) {
   return impl_->ReserveOids(database_oid, next_oid, count);
@@ -1659,6 +1709,17 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgClient::GetReplicationSlot(
     const ReplicationSlotName& slot_name) {
   return impl_->GetReplicationSlot(slot_name);
 }
+
+Result<std::string> PgClient::ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req) {
+  return impl_->ExportTxnSnapshot(req);
+}
+
+Result<tserver::PgImportTxnSnapshotResponsePB> PgClient::ImportTxnSnapshot(
+    std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
+  return impl_->ImportTxnSnapshot(snapshot_id, std::move(options));
+}
+
+Status PgClient::ClearExportedTxnSnapshots() { return impl_->ClearExportedTxnSnapshots(); }
 
 Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory() {
   return impl_->ActiveSessionHistory();

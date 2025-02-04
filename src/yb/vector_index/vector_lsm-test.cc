@@ -39,27 +39,22 @@ using FloatVectorLSM = VectorLSM<std::vector<float>, float>;
 using TestUsearchIndexFactory = MakeVectorIndexFactory<UsearchIndexFactory, FloatVectorLSM>;
 using TestHnswlibIndexFactory = MakeVectorIndexFactory<HnswlibIndexFactory, FloatVectorLSM>;
 
-class SimpleVectorLSMKeyValueStorage : public VectorLSMKeyValueStorage {
+class SimpleVectorLSMKeyValueStorage {
  public:
   SimpleVectorLSMKeyValueStorage() = default;
 
-  Status StoreBaseTableKeys(const BaseTableKeysBatch& batch, const VectorLSMInsertContext&) {
-    for (const auto& [vertex_id, base_table_key] : batch) {
-      storage_.emplace(vertex_id, KeyBuffer(base_table_key));
-    }
-    return Status::OK();
+  void StoreVector(const vector_index::VectorId& vector_id, size_t index) {
+    storage_.emplace(vector_id, index);
   }
 
-  Result<KeyBuffer> ReadBaseTableKey(VectorId vertex_id) {
-    auto it = storage_.find(vertex_id);
-    if (it == storage_.end()) {
-      return STATUS_FORMAT(NotFound, "Vertex id not found: $0", vertex_id);
-    }
+  size_t GetVectorIndex(VectorId vector_id) {
+    auto it = storage_.find(vector_id);
+    CHECK(it != storage_.end());
     return it->second;
   }
 
  private:
-  std::unordered_map<VectorId, KeyBuffer> storage_;
+  std::unordered_map<VectorId, size_t> storage_;
 };
 
 class TestFrontier : public rocksdb::UserFrontier {
@@ -170,10 +165,6 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   FloatVectorLSM::InsertEntries  inserted_entries_;
 };
 
-std::string VertexKey(size_t vertex_id) {
-  return Format("vertex_$0", vertex_id);
-}
-
 auto GetVectorIndexFactory(ANNMethodKind ann_method) {
   switch (ann_method) {
     case ANNMethodKind::kUsearch:
@@ -193,8 +184,7 @@ FloatVectorLSM::InsertEntries CubeInsertEntries(size_t dimensions) {
       vector[d] = 1.f * ((bits >> d) & 1);
     }
     result.emplace_back(FloatVectorLSM::InsertEntry {
-      .vertex_id = VectorId::GenerateRandom(),
-      .base_table_key = KeyBuffer(Slice(VertexKey(i))),
+      .vector_id = VectorId::GenerateRandom(),
       .vector = std::move(vector),
     });
   }
@@ -226,8 +216,12 @@ Status VectorLSMTest::InsertCube(
     }
     FloatVectorLSM::InsertEntries block_entries(begin, end);
     TestFrontiers frontiers;
-    frontiers.Smallest().SetVertexId(block_entries.front().vertex_id);
-    frontiers.Largest().SetVertexId(block_entries.front().vertex_id);
+    frontiers.Smallest().SetVertexId(block_entries.front().vector_id);
+    frontiers.Largest().SetVertexId(block_entries.front().vector_id);
+    for (; begin != end; ++begin) {
+      key_value_storage_.StoreVector(
+          begin->vector_id, begin - inserted_entries_.begin() + 1);
+    }
     RETURN_NOT_OK(lsm.Insert(block_entries, { .frontiers = &frontiers }));
   }
   return Status::OK();
@@ -250,7 +244,6 @@ Status VectorLSMTest::OpenVectorLSM(
         return factory(hnsw_options);
       },
     .points_per_chunk = points_per_chunk,
-    .key_value_storage = &key_value_storage_,
     .thread_pool = &thread_pool_,
     .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
   };
@@ -275,13 +268,10 @@ void VectorLSMTest::CheckQueryVector(
 
   FloatVectorLSM::SearchResults expected_results;
   for (const auto& entry : inserted_entries_) {
-    expected_results.push_back({
-      .distance = lsm.Distance(query_vector, entry.vector),
-      .base_table_key = entry.base_table_key,
-    });
+    expected_results.emplace_back(entry.vector_id, lsm.Distance(query_vector, entry.vector));
   }
   auto less_condition = [](const auto& lhs, const auto& rhs) {
-    return lhs.distance == rhs.distance ? lhs.base_table_key < rhs.base_table_key
+    return lhs.distance == rhs.distance ? lhs.vector_id < rhs.vector_id
                                         : lhs.distance < rhs.distance;
   };
   std::sort(expected_results.begin(), expected_results.end(), less_condition);
@@ -303,7 +293,7 @@ void VectorLSMTest::CheckQueryVector(
 
     for (size_t i = 0; i != expected_results.size(); ++i) {
       ASSERT_EQ(search_result[i].distance, expected_results[i].distance);
-      ASSERT_EQ(search_result[i].base_table_key, expected_results[i].base_table_key);
+      ASSERT_EQ(search_result[i].vector_id, expected_results[i].vector_id);
     }
   }
 }
@@ -349,7 +339,7 @@ void VectorLSMTest::TestBootstrap(bool flush) {
     if (frontier_ptr) {
       const auto frontier_vertex_id = down_cast<TestFrontier*>(frontier_ptr.get())->vertex_id();
       for (; frontier_entry_idx < inserted_entries_.size(); ++frontier_entry_idx) {
-        if (inserted_entries_[frontier_entry_idx].vertex_id == frontier_vertex_id) {
+        if (inserted_entries_[frontier_entry_idx].vector_id == frontier_vertex_id) {
           break;
         }
       }
@@ -378,7 +368,7 @@ TEST_P(VectorLSMTest, NotSavedChunk) {
 TEST_F(VectorLSMTest, MergeChunkResults) {
   const auto kIds = GenerateVectorIds(7);
 
-  using ChunkResults = std::vector<VertexWithDistance<float>>;
+  using ChunkResults = std::vector<VectorWithDistance<float>>;
   ChunkResults a_src = {{kIds[4], 1}, {kIds[2], 3}, {kIds[0], 5}, {kIds[5], 7}};
   ChunkResults b_src = {{kIds[1], 2}, {kIds[2], 3}, {kIds[3], 4}, {kIds[6], 7}, {kIds[5], 7}};
   for (size_t i = 1; i != a_src.size() + b_src.size(); ++i) {

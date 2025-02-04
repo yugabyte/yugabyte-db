@@ -19,8 +19,6 @@
 #include <map>
 #include <unordered_map>
 
-#include <boost/regex.hpp>
-
 #include "yb/gutil/callback_forward.h"
 #include "yb/gutil/map-util.h"
 

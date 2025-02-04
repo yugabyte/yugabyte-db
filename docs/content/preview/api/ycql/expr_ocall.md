@@ -9,7 +9,6 @@ menu:
     weight: 1360
 aliases:
   - /preview/api/cassandra/expr_ocall
-  - /preview/api/ycql/expr_ocall
 type: docs
 ---
 

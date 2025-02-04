@@ -39,8 +39,8 @@ extern bool yb_can_batch_rinfo(RestrictInfo *rinfo,
 							   Relids outer_batched_relids,
 							   Relids inner_relids);
 extern RestrictInfo *yb_get_batched_restrictinfo(RestrictInfo *rinfo,
-											  Relids outer_batched_relids,
-											  Relids inner_relids);
+												 Relids outer_batched_relids,
+												 Relids inner_relids);
 extern List *get_actual_clauses(List *restrictinfo_list);
 extern List *extract_actual_clauses(List *restrictinfo_list,
 									bool pseudoconstant);

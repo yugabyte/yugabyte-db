@@ -38,7 +38,7 @@ Review the following information before starting an upgrade.
 
 - Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector in the upper right corner of the page.
 
-- Roll back is {{<tags/feature/ea>}} and supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
+- Roll back is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
 
 - You can upgrade from any version of 2.14.x to any stable version in one go.
 

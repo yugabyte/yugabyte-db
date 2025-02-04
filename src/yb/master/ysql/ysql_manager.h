@@ -57,7 +57,7 @@ class YsqlManager : public YsqlManagerIf {
 
   Status SetInitDbDone(const LeaderEpoch& epoch);
 
-  bool IsYsqlMajorCatalogUpgradeInProgress() const;
+  bool IsMajorUpgradeInProgress() const override;
 
   void HandleNewTableId(const TableId& table_id);
 
@@ -102,6 +102,8 @@ class YsqlManager : public YsqlManagerIf {
   Status CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch);
 
   Status ValidateWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
+
+  Status ValidateTServerVersion(const VersionInfoPB& version) const override;
 
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);

@@ -383,14 +383,15 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	amoid = amform->oid;
 	if (IsYugaByteEnabled() && amoid == LSM_AM_OID)
 	{
-		foreach (l, stmt->items)
+		foreach(l, stmt->items)
 		{
 			CreateOpClassItem *item = lfirst_node(CreateOpClassItem, l);
+
 			if (item->itemtype == OPCLASS_ITEM_STORAGETYPE)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("STORAGE clause not supported for CREATE "
-						 "OPERATOR CLASS with lsm access method")));
+								"OPERATOR CLASS with lsm access method")));
 		}
 	}
 
@@ -1279,6 +1280,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 			 (IsYugaByteEnabled() && amoid == LSM_AM_OID))
 	{
 		const char *yb_amname = amoid == BTREE_AM_OID ? "btree" : "lsm";
+
 		if (member->number == BTORDER_PROC)
 		{
 			if (procform->pronargs != 2)
@@ -1306,7 +1308,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("%s sort support functions must accept type \"internal\"",
-						 yb_amname)));
+								yb_amname)));
 			if (procform->prorettype != VOIDOID)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
@@ -1729,10 +1731,10 @@ dropProcedures(List *opfamilyname, Oid amoid, Oid opfamilyoid,
 
 #ifdef NEIL
 /* Pg11 OID interface */
-void RemoveOpFamilyById(Oid opfamilyOid);
-void RemoveOpClassById(Oid opclassOid);
-void RemoveAmOpEntryById(Oid entryOid);
-void RemoveAmProcEntryById(Oid entryOid);
+void		RemoveOpFamilyById(Oid opfamilyOid);
+void		RemoveOpClassById(Oid opclassOid);
+void		RemoveAmOpEntryById(Oid entryOid);
+void		RemoveAmProcEntryById(Oid entryOid);
 #endif
 
 /*

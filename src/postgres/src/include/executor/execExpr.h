@@ -670,7 +670,7 @@ typedef struct ExprEvalStep
 		struct
 		{
 			FunctionCallInfo *fcinfos;
-			PGFunction		 *fn_addrs;
+			PGFunction *fn_addrs;
 			int			ncols;
 		}			row_array_compare;
 	}			d;

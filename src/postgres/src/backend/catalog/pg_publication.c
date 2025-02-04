@@ -1022,6 +1022,7 @@ YBGetPublicationsByNames(List *pubnames, bool missing_ok)
 	{
 		char	   *pubname = (char *) lfirst(lc);
 		Publication *pub = GetPublicationByName(pubname, missing_ok);
+
 		result = lappend(result, pub);
 	}
 
@@ -1278,14 +1279,14 @@ yb_pg_get_publications_tables(List *publications)
 	ctl.hcxt = GetCurrentMemoryContext();
 
 	seen_tables = hash_create("yb_pg_get_publications_tables temporary table",
-							32, /* start small and extend */
-							&ctl,
-							HASH_ELEM | HASH_BLOBS);
+							  32,	/* start small and extend */
+							  &ctl,
+							  HASH_ELEM | HASH_BLOBS);
 
-	foreach (lc, publications)
+	foreach(lc, publications)
 	{
-		List		*pub_tables;
-		ListCell	*lc_tables;
+		List	   *pub_tables;
+		ListCell   *lc_tables;
 		Publication *pub = (Publication *) lfirst(lc);
 		bool		has_alltables = pub->alltables;
 
@@ -1349,8 +1350,8 @@ yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid)
 bool
 yb_is_publishable_relation(Relation rel)
 {
-	return is_publishable_class(RelationGetRelid(rel), rel->rd_rel) &&
-		   YBRelationHasPrimaryKey(rel);
+	return (is_publishable_class(RelationGetRelid(rel), rel->rd_rel) &&
+			YBRelationHasPrimaryKey(rel));
 }
 
 /*

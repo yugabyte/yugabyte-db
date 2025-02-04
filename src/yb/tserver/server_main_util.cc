@@ -19,6 +19,7 @@
 #include "absl/debugging/symbolize.h"
 #endif
 
+#include "yb/common/init.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_queue.h"
@@ -29,7 +30,6 @@
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
-#include "yb/util/init.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"

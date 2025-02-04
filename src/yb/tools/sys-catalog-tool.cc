@@ -42,7 +42,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 DEFINE_RUNTIME_bool(show_raw_id, false, "Print binary id in raw format also");
 

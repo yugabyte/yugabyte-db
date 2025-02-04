@@ -498,9 +498,10 @@ YbIsPgAuthTupleEqual(TupleDesc pg_authid_dsc,
 					 HeapTuple auth_tup1,
 					 HeapTuple auth_tup2)
 {
-	static_assert(sizeof(*(Form_pg_authid)0) == 80, "size mismatch");
+	static_assert(sizeof(*(Form_pg_authid) 0) == 80, "size mismatch");
 	Form_pg_authid authform1 = (Form_pg_authid) GETSTRUCT(auth_tup1);
 	Form_pg_authid authform2 = (Form_pg_authid) GETSTRUCT(auth_tup2);
+
 	/* All these struct members have a not null constraint. */
 	if (authform1->oid != authform2->oid ||
 		authform1->rolsuper != authform2->rolsuper ||
@@ -517,8 +518,10 @@ YbIsPgAuthTupleEqual(TupleDesc pg_authid_dsc,
 #ifdef CATALOG_VARLEN
 #error "need to compare extra members"
 #endif
-	Datum datum1, datum2;
-	bool isnull1, isnull2;
+	Datum		datum1,
+				datum2;
+	bool		isnull1,
+				isnull2;
 
 	/* Check rolpassword (SQL type text), can be null. */
 	datum1 = heap_getattr(auth_tup1, Anum_pg_authid_rolpassword,
@@ -584,7 +587,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	DefElem    *dbypassRLS = NULL;
 	Oid			roleid;
 
-	char       *profile = NULL;
+	char	   *profile = NULL;
 	int			unlocked = -1;
 	DefElem    *dprofile = NULL;
 	DefElem    *dnoprofile = NULL;
@@ -775,8 +778,9 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 			YbCreateRoleProfile(roleid, rolename, profile);
 		else if (dunlocked != NULL)
 			YbSetRoleProfileStatus(roleid, rolename,
-								   unlocked == 0 ? YB_ROLPRFSTATUS_LOCKED
-												 : YB_ROLPRFSTATUS_OPEN);
+								   (unlocked == 0 ?
+									YB_ROLPRFSTATUS_LOCKED :
+									YB_ROLPRFSTATUS_OPEN));
 		else
 		{
 			Assert(dnoprofile);
@@ -1310,7 +1314,7 @@ RenameRole(const char *oldname, const char *newname)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("cannot rename postgres"),
 				 strcmp(oldname, "postgres") != 0 ?
-				  errhint("ALTER ROLE %s RENAME TO postgres", oldname) : 0));
+				 errhint("ALTER ROLE %s RENAME TO postgres", oldname) : 0));
 
 	/*
 	 * If built with appropriate switch, whine when regression-testing

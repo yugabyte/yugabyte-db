@@ -17,7 +17,7 @@ showRightNav: true
 The code on this page and on its child, [Modeling the internal representation and comparing the model with the actual implementation](./internal-representation-model/), depends on the code presented in the section [User-defined _interval_ utility functions](../interval-utilities/). This is included in the larger [code kit](../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../type_datetime/)_ section describes and uses.
 {{< /tip >}}
 
-The PostgreSQL documentation, under the table [Interval Input](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-INTERVAL-INPUT-EXAMPLES), says this:
+The PostgreSQL documentation, under the table [Interval Input](https://www.postgresql.org/docs/15/datatype-datetime.html#DATATYPE-INTERVAL-INPUT-EXAMPLES), says this:
 
 > Internally, _interval_ values are stored as months, days, and seconds. This is done because the number of days in a month varies, and a day can have 23 or 25 hours if a Daylight Savings Time adjustment is involved. The months and days fields are integers while the seconds field can store fractions. Because intervals are usually created from constant strings or timestamp subtraction, this storage method works well in most cases, but can cause unexpected results.
 

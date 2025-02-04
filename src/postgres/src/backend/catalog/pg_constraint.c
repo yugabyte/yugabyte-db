@@ -922,7 +922,7 @@ get_relation_constraint_attnos(Relation rel, const char *conname,
 	HeapTuple	tuple;
 	SysScanDesc scan;
 	ScanKeyData skey[3];
-	Oid relid = RelationGetRelid(rel);
+	Oid			relid = RelationGetRelid(rel);
 
 	/* Set *constraintOid, to avoid complaints about uninitialized vars */
 	*constraintOid = InvalidOid;
@@ -1127,9 +1127,12 @@ get_primary_key_attnos(Oid relid, bool deferrableOk, Oid *constraintOid)
 	 * This will trigger a master RPC if this is the first time we're looking
 	 * up the primary key for this relation.
 	 */
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		iterator = YbCatCListIteratorBegin(SearchSysCacheList1(YBCONSTRAINTRELIDTYPIDNAME, relid));
-	} else {
+	}
+	else
+	{
 		/* Scan pg_constraint for constraints of the target rel */
 		pg_constraint = table_open(ConstraintRelationId, AccessShareLock);
 
@@ -1194,7 +1197,8 @@ get_primary_key_attnos(Oid relid, bool deferrableOk, Oid *constraintOid)
 
 	if (IsYugaByteEnabled())
 		YbCatCListIteratorFree(&iterator);
-	else {
+	else
+	{
 		systable_endscan(scan);
 
 		table_close(pg_constraint, AccessShareLock);

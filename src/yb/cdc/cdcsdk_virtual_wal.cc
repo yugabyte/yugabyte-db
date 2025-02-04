@@ -47,7 +47,7 @@ DEFINE_RUNTIME_uint32(cdcsdk_max_consistent_records, 500,
     "cdc_vwal_use_byte_threshold_for_consistent_changes flag is set to false.");
 
 DEFINE_RUNTIME_uint64(
-    cdcsdk_publication_list_refresh_interval_secs, 3600 /* 1 hour */,
+    cdcsdk_publication_list_refresh_interval_secs, 900 /* 15 mins */,
     "Interval in seconds at which the table list in the publication will be refreshed");
 
 DEFINE_RUNTIME_uint64(
@@ -646,16 +646,20 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         << ", VWAL lag: " << (metadata.commit_records > 0 ? Format("$0 ms", vwal_lag_in_ms) : "-1")
         << ", Number of unacked txns in VWAL: " << unacked_txn;
 
-    if (metadata.txn_ids.size() > 0) {
-      oss << ", Records per txn details:";
+    YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
+
+    if (VLOG_IS_ON(3) && metadata.txn_ids.size() > 0) {
+      std::ostringstream txn_oss;
+
+      txn_oss << "Records per txn details:";
 
       for (const auto& entry : metadata.txn_id_to_ct_records_map_) {
-        oss << ", {txn_id, ct, dml}: {" << entry.first << ", " << entry.second.first << ", "
-            << entry.second.second << "}";
+        txn_oss << "{txn_id, ct, dml}: {" << entry.first << ", " << entry.second.first << ", "
+                << entry.second.second << "} ";
       }
-    }
 
-    YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
+      VLOG_WITH_PREFIX(3) << (txn_oss).str();
+    }
   }
 
   VLOG_WITH_PREFIX(1)

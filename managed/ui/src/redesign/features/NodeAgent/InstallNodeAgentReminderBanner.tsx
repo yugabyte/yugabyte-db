@@ -4,7 +4,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { browserHistory } from 'react-router';
 
 import { ReactComponent as MegaphoneIcon } from '../../assets/megaphone.svg';
-import { NODE_AGENT_PREREQ_DOCS_URL } from './constants';
+import { NODE_AGENT_FAQ_DOCS_URL, NODE_AGENT_PREREQ_DOCS_URL } from './constants';
 import { YBButton } from '../../components/YBButton/YBButton';
 import { YBExternalLink } from '../../components/YBLink/YBExternalLink';
 import { getStoredBooleanValue } from '../../helpers/utils';
@@ -116,6 +116,7 @@ export const InstallNodeAgentReminderBanner = () => {
                 <Trans
                   i18nKey={`${TRANSLATION_KEY_PREFIX}.additionalDetailText`}
                   components={{
+                    nodeAgentFaqDocsLink: <YBExternalLink href={NODE_AGENT_FAQ_DOCS_URL} />,
                     nodeAgentPrereqDocsLink: <YBExternalLink href={NODE_AGENT_PREREQ_DOCS_URL} />,
                     paragraph: <p />
                   }}
@@ -124,10 +125,10 @@ export const InstallNodeAgentReminderBanner = () => {
               <Box marginLeft="auto">
                 <YBButton
                   variant="secondary"
-                  data-testid="NodeAgentReminderBanner-ReinstallNodeAgentButton"
+                  data-testid="NodeAgentReminderBanner-ViewNodeAgentsButton"
                   onClick={redirectToNodeAgentPage}
                 >
-                  {t('reinstallNodeAgentButton')}
+                  {t('viewNodeAgentsButton')}
                 </YBButton>
               </Box>
             </Box>

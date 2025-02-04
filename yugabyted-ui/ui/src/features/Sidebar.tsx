@@ -246,7 +246,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
           variant="subtitle2"
           className={clsx(classes.label, isCollapsed && classes.hidden)}
         >
-          {t("clusterDetail.cluster")}
+          {t("clusterDetail.universe")}
         </Typography>
         <NavLinkWithDisable
           disabled={isDisabled}
@@ -258,7 +258,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         >
           <RocketIcon className={classes.icon} />
           <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
-            {t("common.cluster")}
+            {t("common.universe")}
           </Typography>
         </NavLinkWithDisable>
         <NavLinkWithDisable

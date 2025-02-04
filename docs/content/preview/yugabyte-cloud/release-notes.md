@@ -9,6 +9,9 @@ menu:
     identifier: yugabytedb-managed-releases
     parent: yugabytedb-managed
     weight: 22
+    params:
+      classes: separator
+      hideLink: true
 type: docs
 rightNav:
   hideH4: true
@@ -16,7 +19,38 @@ rightNav:
 
 ## Change log
 
+### 2025
+
+#### January 30, 2025
+
+##### New features
+
+- YugabyteDB v2.25.0.0 featuring support for PostgreSQL 15 is now available for testing on the Preview database track. To test it out, [create a Sandbox](../cloud-basics/create-clusters/create-clusters-free/) cluster with the Database version set to the Preview track.
+  - [YugabyteDB v2.25.0.0 Release Notes](/preview/releases/ybdb-releases/v2.25/)
+  - [PostgreSQL 15 features](/preview/develop/pg15-features/)
+  - [YugabyteDB Levels Up with PG15 Features](https://www.yugabyte.com/blog/postgresql-compatibility-new-yugabytedb-pg15-features/)
+- Support for configuring custom identity providers for [federated authentication](../managed-security/managed-authentication/federated-custom/), to provide single sign-on access for your account users.
+
+##### Database
+
+- Innovation track updated to 2024.1.4.0.
+- Preview track updated to 2.25.0.0.
+
+#### January 8, 2025
+
+##### Database
+
+- Production track updated to 2.20.8.0.
+- Innovation track updated to 2024.1.3.1.
+
 ### 2024
+
+#### December 18, 2024
+
+##### Database
+
+- Early Access track updated to 2024.2.0.0.
+- Innovation track updated to 2.20.8.0.
 
 #### November 29, 2024
 
@@ -82,7 +116,7 @@ rightNav:
 
 ##### New features
 
-- Support for exporting [PostgreSQL logs](https://www.postgresql.org/docs/11/runtime-config-logging.html) to third-party tools (such as Datadog) for security monitoring, to build operations and health dashboards, troubleshooting, and more.
+- Support for exporting [PostgreSQL logs](https://www.postgresql.org/docs/15/runtime-config-logging.html) to third-party tools (such as Datadog) for security monitoring, to build operations and health dashboards, troubleshooting, and more.
 - New regions. Jakarta and Hyderabad on AWS, and Singapore on Azure.
 
 ##### Database

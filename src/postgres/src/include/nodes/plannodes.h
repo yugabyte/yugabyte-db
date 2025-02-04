@@ -99,7 +99,7 @@ typedef struct PlannedStmt
 	 * Number of relations that are still referenced by the plan after
 	 * constraint exclusion and partition pruning.
 	 */
-	int		yb_num_referenced_relations;
+	int			yb_num_referenced_relations;
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -236,13 +236,13 @@ typedef struct
 	NodeTag		type;
 
 	/* A list of indexes whose update can be skipped */
-	List		*index_list;
+	List	   *index_list;
 
 	/*
 	 * A list of skippable foreign key relationships where the relation under
 	 * consideration is the referencing relation.
 	 */
-	List		*referencing_fkey_list;
+	List	   *referencing_fkey_list;
 
 	/*
 	 * A list of skippable foreign key relationships where the relation under
@@ -253,7 +253,7 @@ typedef struct
 	 * constraints where one side of the relationship may be skippable, and the
 	 * other side may not be.
 	 */
-	List		*referenced_fkey_list;
+	List	   *referenced_fkey_list;
 } YbSkippableEntities;
 
 /*
@@ -271,10 +271,11 @@ typedef struct YbUpdateAffectedEntities
 	 * Identifying information about a list of entities that may be impacted by
 	 * the current query.
 	 */
-	struct YbUpdateEntity {
-		Oid oid; /* OID of the entity that might need an update */
-		YbSkippableEntityType etype; /* What type of entity is it? */
-	}			*entity_list;
+	struct YbUpdateEntity
+	{
+		Oid			oid;		/* OID of the entity that might need an update */
+		YbSkippableEntityType etype;	/* What type of entity is it? */
+	}		   *entity_list;
 
 	/*
 	 * YbUpdateColInfo holds information about columns that may be modified as
@@ -290,21 +291,22 @@ typedef struct YbUpdateAffectedEntities
 	 * update operation. Similarly, modification of a column that has a foreign
 	 * key constraint on it will trigger a referential integrity check.
 	 */
-	struct YbUpdateColInfo {
+	struct YbUpdateColInfo
+	{
 		/*
 		 * The attribute number of the column offset by
 		 *'YBFirstLowInvalidAttributeNumber' or 'FirstLowInvalidHeapAttributeNumber'
 		 * The offset makes the attribute number non-negative, allowing direct
 		 * interfacing with bitmapsets.
 		 */
-		AttrNumber attnum;
+		AttrNumber	attnum;
 
 		/*
 		 * A list of entities that reference the column.
 		 * Entities are identified by their index in the entity_list.
 		 */
-		List *entity_refs;
-	}			*col_info_list;
+		List	   *entity_refs;
+	}		   *col_info_list;
 
 	/*
 	 * A matrix that facilitates optimizing the number of columns to be compared
@@ -314,7 +316,7 @@ typedef struct YbUpdateAffectedEntities
 	 * A working copy of this matrix is made for each tuple that is updated at
 	 * execution time.
 	 */
-	YbBitMatrix	matrix;
+	YbBitMatrix matrix;
 } YbUpdateAffectedEntities;
 
 #define YB_UPDATE_AFFECTED_ENTITIES_NUM_FIELDS(state) \
@@ -364,7 +366,7 @@ typedef struct ModifyTable
 									 * MERGE */
 
 	List	   *ybPushdownTlist;	/* tlist for the pushdown SET expressions */
-	List	   *ybReturningColumns;	/* columns to fetch from DocDB */
+	List	   *ybReturningColumns; /* columns to fetch from DocDB */
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
 
@@ -509,8 +511,8 @@ typedef struct SeqScan
 
 typedef struct YbPushdownExprs
 {
-	List *quals;
-	List *colrefs;
+	List	   *quals;
+	List	   *colrefs;
 } YbPushdownExprs;
 
 typedef struct YbSeqScan
@@ -582,8 +584,8 @@ typedef struct IndexScan
 	YbPushdownExprs yb_idx_pushdown;
 	YbPushdownExprs yb_rel_pushdown;
 	YbPlanInfo	yb_plan_info;
-	int         yb_distinct_prefixlen; /* distinct index scan prefix */
-	YbLockMechanism	yb_lock_mechanism;	/* locks possible as part of the scan */
+	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
+	YbLockMechanism yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
 
 /* ----------------
@@ -634,7 +636,7 @@ typedef struct IndexOnlyScan
 	 */
 	List	   *yb_indexqual_for_recheck;
 	YbPlanInfo	yb_plan_info;
-	int			yb_distinct_prefixlen; /* distinct index scan prefix */
+	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
 } IndexOnlyScan;
 
 /* ----------------
@@ -719,14 +721,14 @@ typedef struct BitmapHeapScan
 typedef struct YbBitmapTableScan
 {
 	Scan		scan;
-	YbPushdownExprs rel_pushdown;		/* any pushable quals that aren't already
+	YbPushdownExprs rel_pushdown;	/* any pushable quals that aren't already
 									 * guaranteed by the Bitmap Index Scan
 									 * nodes. */
-	YbPushdownExprs recheck_pushdown;		/* pushable index quals */
-	List		 *recheck_local_quals;	/* non-pushable index quals */
+	YbPushdownExprs recheck_pushdown;	/* pushable index quals */
+	List	   *recheck_local_quals;	/* non-pushable index quals */
 	YbPushdownExprs fallback_pushdown;	/* all pushable quals */
-	List		 *fallback_local_quals;	/* all non-pushable quals */
-	YbPlanInfo	  yb_plan_info;
+	List	   *fallback_local_quals;	/* all non-pushable quals */
+	YbPlanInfo	yb_plan_info;
 } YbBitmapTableScan;
 
 /* ----------------
@@ -992,21 +994,21 @@ typedef struct NestLoop
  */
 typedef struct YbBNLHashClauseInfo
 {
-	Oid hashOp;				/*
-							 * Operator to hash the outer side of this clause
-							 * with. The inner side must be the left input of
-							 * this op.
-							 */
-	int innerHashAttNo;		/* Attno of inner side variable. */
-	Expr *outerParamExpr;	/* Outer expression of this clause. */
-	Expr *orig_expr;
+	Oid			hashOp;			/*
+								 * Operator to hash the outer side of this clause
+								 * with. The inner side must be the left input of
+								 * this op.
+								 */
+	int			innerHashAttNo; /* Attno of inner side variable. */
+	Expr	   *outerParamExpr; /* Outer expression of this clause. */
+	Expr	   *orig_expr;
 } YbBNLHashClauseInfo;
 
 typedef struct YbBatchedNestLoop
 {
-	NestLoop nl;
+	NestLoop	nl;
 
-	double first_batch_factor;
+	double		first_batch_factor;
 	/* Only relevant if we're using the hash batching strategy. */
 
 	/*
@@ -1014,9 +1016,9 @@ typedef struct YbBatchedNestLoop
 	 * hashable join clause.
 	 */
 	YbBNLHashClauseInfo *hashClauseInfos;
-	int num_hashClauseInfos;
+	int			num_hashClauseInfos;
 	/* remaining fields are just like the sort-key info in struct Sort */
-	int			numSortCols;		/* number of sort-key columns */
+	int			numSortCols;	/* number of sort-key columns */
 	AttrNumber *sortColIdx;		/* their indexes in the target list */
 	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
 	Oid		   *collations;		/* OIDs of collations */
@@ -1028,7 +1030,7 @@ typedef struct NestLoopParam
 	NodeTag		type;
 	int			paramno;		/* number of the PARAM_EXEC Param to set */
 	Var		   *paramval;		/* outer-relation Var to assign to Param */
-	int	   		yb_batch_size;	/* Batch size of this param. */
+	int			yb_batch_size;	/* Batch size of this param. */
 } NestLoopParam;
 
 /* ----------------
@@ -1583,7 +1585,7 @@ typedef struct PartitionPruneStepCombine
 typedef struct YbPartitionPruneStepFuncOp
 {
 	PartitionPruneStep step;
-	List       *exprs;
+	List	   *exprs;
 } YbPartitionPruneStepFuncOp;
 
 /*

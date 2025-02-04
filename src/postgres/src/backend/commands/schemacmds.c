@@ -265,7 +265,10 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 
 #ifdef NEIL
 /* Pg11 API */
-void RemoveSchemaById(Oid schemaOid)
+void
+RemoveSchemaById(Oid schemaOid)
+{
+}
 #endif
 
 /*
@@ -443,7 +446,7 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		else
 		{
 			aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(),
-													ACL_CREATE);
+											 ACL_CREATE);
 		}
 
 		if (aclresult != ACLCHECK_OK)

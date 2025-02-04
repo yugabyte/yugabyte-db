@@ -57,7 +57,7 @@ To set up pg_recvlogical, create and start the local cluster by running the foll
 ./bin/yugabyted start \
   --advertise_address=127.0.0.1 \
   --base_dir="${HOME}/var/node1" \
-  --tserver_flags="allowed_preview_flags_csv={cdcsdk_enable_dynamic_table_support},cdcsdk_enable_dynamic_table_support=true,cdcsdk_publication_list_refresh_interval_secs=2"
+  --tserver_flags="cdcsdk_publication_list_refresh_interval_secs=2"
 ```
 
 ### Create tables

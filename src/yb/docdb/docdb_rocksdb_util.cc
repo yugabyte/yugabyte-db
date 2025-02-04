@@ -260,10 +260,29 @@ KeyBytes AppendDocHt(Slice key, const DocHybridTime& doc_ht) {
 
 namespace {
 
+void SetupBloomFilter(rocksdb::ReadOptions& read_options, const BloomFilterOptions& bloom_filter) {
+  if (!FLAGS_use_docdb_aware_bloom_filter) {
+    return;
+  }
+  static const rocksdb::BloomFilterAwareFileFilter bloom_filter_aware_file_filter;
+  switch (bloom_filter.mode()) {
+    case BloomFilterMode::kInactive:
+      return;
+    case BloomFilterMode::kFixed:
+      read_options.iterator_filter = &bloom_filter_aware_file_filter;
+      read_options.user_key_for_filter = bloom_filter.key();
+      return;
+    case BloomFilterMode::kVariable:
+      read_options.iterator_filter = &bloom_filter_aware_file_filter;
+      read_options.defer_iterator_filter = true;
+      return;
+  }
+  FATAL_INVALID_ENUM_VALUE(BloomFilterMode, bloom_filter.mode());
+}
+
 rocksdb::ReadOptions PrepareReadOptions(
     rocksdb::DB* rocksdb,
-    BloomFilterMode bloom_filter_mode,
-    const boost::optional<const Slice>& user_key_for_filter,
+    const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
@@ -272,13 +291,7 @@ rocksdb::ReadOptions PrepareReadOptions(
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = query_id;
   read_opts.statistics = statistics;
-  if (FLAGS_use_docdb_aware_bloom_filter &&
-    bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER) {
-    DCHECK(user_key_for_filter);
-    static const rocksdb::BloomFilterAwareFileFilter bloom_filter_aware_file_filter;
-    read_opts.table_aware_file_filter = &bloom_filter_aware_file_filter;
-    read_opts.user_key_for_filter = *user_key_for_filter;
-  }
+  SetupBloomFilter(read_opts, bloom_filter);
   read_opts.file_filter = std::move(file_filter);
   read_opts.iterate_upper_bound = iterate_upper_bound;
   read_opts.cache_restart_block_keys = cache_restart_block_keys;
@@ -294,23 +307,21 @@ rocksdb::Statistics* GetRegularDBStatistics(DocDBStatistics* statistics) {
 BoundedRocksDbIterator CreateRocksDBIterator(
     rocksdb::DB* rocksdb,
     const KeyBounds* docdb_key_bounds,
-    BloomFilterMode bloom_filter_mode,
-    const boost::optional<const Slice>& user_key_for_filter,
+    const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
     const rocksdb::CacheRestartBlockKeys cache_restart_block_keys,
     rocksdb::Statistics* statistics) {
-  rocksdb::ReadOptions read_opts = PrepareReadOptions(rocksdb, bloom_filter_mode,
-      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound,
+  rocksdb::ReadOptions read_opts = PrepareReadOptions(
+      rocksdb, bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
       cache_restart_block_keys, statistics);
   return BoundedRocksDbIterator(rocksdb, read_opts, docdb_key_bounds);
 }
 
 unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const DocDB& doc_db,
-    BloomFilterMode bloom_filter_mode,
-    const boost::optional<const Slice>& user_key_for_filter,
+    const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
     const TransactionOperationContext& txn_op_context,
     const ReadOperationData& read_operation_data,
@@ -321,8 +332,8 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
   const auto cache_restart_block_keys = rocksdb::CacheRestartBlockKeys { use_fast_backward_scan };
 
   // TODO(dtxn) do we need separate options for intents db?
-  rocksdb::ReadOptions read_opts = PrepareReadOptions(doc_db.regular, bloom_filter_mode,
-      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound,
+  rocksdb::ReadOptions read_opts = PrepareReadOptions(
+      doc_db.regular, bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
       cache_restart_block_keys, GetRegularDBStatistics(read_operation_data.statistics));
   return std::make_unique<IntentAwareIterator>(
       doc_db, read_opts, read_operation_data, txn_op_context, use_fast_backward_scan);
@@ -343,8 +354,7 @@ BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
   return CreateRocksDBIterator(
       intentsdb,
       docdb_key_bounds,
-      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      boost::none /* user_key_for_filter */,
+      docdb::BloomFilterOptions::Inactive(),
       rocksdb::kDefaultQueryId,
       CreateIntentHybridTimeFileFilter(min_running_ht),
       iterate_upper_bound,

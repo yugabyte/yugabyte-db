@@ -28,17 +28,17 @@
 
 typedef struct YbPgInheritsCacheEntryData
 {
-	Oid	parentOid;
-	List *childTuples;
-	int refcount;
+	Oid			parentOid;
+	List	   *childTuples;
+	int			refcount;
 } YbPgInheritsCacheEntryData;
 
 typedef YbPgInheritsCacheEntryData *YbPgInheritsCacheEntry;
 
 typedef struct YbPgInheritsCacheChildEntryData
 {
-	Oid childrelid;
-	HeapTuple childTuple;
+	Oid			childrelid;
+	HeapTuple	childTuple;
 	YbPgInheritsCacheEntry cacheEntry;
 } YbPgInheritsCacheChildEntryData;
 

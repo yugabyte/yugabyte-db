@@ -20,6 +20,9 @@ static int yb_get_stats_index(struct ConnectionStats *yb_stats,
 	if (strlen(db_name) >= DB_NAME_MAX_LEN)
 		return -1;
 
+	if (strlen(user_name) >= USER_NAME_MAX_LEN)
+		return -1;
+
 	for (int i = 1; i < YSQL_CONN_MGR_MAX_POOLS; i++) {
 		if (strncmp(yb_stats[i].database_name, db_name, DB_NAME_MAX_LEN) == 0 &&
 			strncmp(yb_stats[i].user_name, user_name, USER_NAME_MAX_LEN) == 0)

@@ -27,9 +27,19 @@
 
 #include "yb/rocksdb/rocksdb_fwd.h"
 
+#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 
 namespace rocksdb {
+
+struct UserKeyFilterContext {
+  // Increased when user_key is updated. Used to avoid recheck on the same key.
+  int64_t version = 0;
+  const IteratorFilter* filter = nullptr;
+  QueryOptions options;
+  Slice user_key;
+  FilterKeyCache cache{Slice{}};
+};
 
 // A internal wrapper class with an interface similar to Iterator that
 // caches the valid() and key() results for an underlying iterator.
@@ -149,18 +159,25 @@ class IteratorWrapperBase {
     return Update(iter_->Prev());
   }
 
+  bool had_seek() const {
+    return had_seek_;
+  }
+
   const KeyValueEntry& Seek(const Slice& k) {
     DCHECK(iter_);
+    had_seek_ = true;
     return Update(SkipLastIfNecessary(iter_->Seek(k)));
   }
 
   const KeyValueEntry& SeekToFirst() {
     DCHECK(iter_);
+    had_seek_ = true;
     return Update(SkipLastIfNecessary(iter_->SeekToFirst()));
   }
 
   const KeyValueEntry& SeekToLast() {
     DCHECK(iter_);
+    had_seek_ = true;
     const auto& last_entry = iter_->SeekToLast();
     if (!kSkipLastEntry || !last_entry.Valid()) {
       return Update(last_entry);
@@ -180,6 +197,16 @@ class IteratorWrapperBase {
         iter_->ScanForward(user_key_comparator, upperbound, key_filter_callback, scan_callback);
     Update(iter_->Entry());
     return result;
+  }
+
+  // Returns true iff iterator matches updated file filter.
+  bool UpdateUserKeyForFilter(UserKeyFilterContext& context) {
+    if (context.version <= last_checked_filter_version_) {
+      return matches_filter_;
+    }
+    last_checked_filter_version_ = context.version;
+    return matches_filter_ = iter_->MatchFilter(
+        context.filter, context.options, context.user_key, &context.cache);
   }
 
  private:
@@ -219,6 +246,10 @@ class IteratorWrapperBase {
   // iterators of previous data blocks to keep them from being deleted.
   std::set<IteratorType*> pinned_iters_;
   const KeyValueEntry* entry_;
+
+  int64_t last_checked_filter_version_ = 0;
+  bool matches_filter_ = true;
+  bool had_seek_ = false;
 };
 
 }  // namespace rocksdb

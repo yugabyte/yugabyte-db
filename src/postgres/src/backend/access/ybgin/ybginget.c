@@ -309,7 +309,7 @@ ybginSetupBindsForPrefix(TupleDesc tupdesc, YbginScanOpaque ybso,
 								typoid,
 								colloid,
 								entry->queryKey,
-								false /* is_null */);
+								false /* is_null */ );
 
 	greaterstr = get_greaterstr((Datum) entry->queryKey,
 								typoid,
@@ -320,9 +320,9 @@ ybginSetupBindsForPrefix(TupleDesc tupdesc, YbginScanOpaque ybso,
 								  typoid,
 								  colloid,
 								  greaterstr->constvalue,
-								  false /* is_null */);
+								  false /* is_null */ );
 		HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybso->handle,
-													 1 /* attr_num */,
+													 1 /* attr_num */ ,
 													 expr_start,
 													 true,
 													 expr_end,
@@ -331,10 +331,10 @@ ybginSetupBindsForPrefix(TupleDesc tupdesc, YbginScanOpaque ybso,
 	}
 	else
 		HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybso->handle,
-													 1 /* attr_num */,
+													 1 /* attr_num */ ,
 													 expr_start,
 													 true,
-													 NULL /* attr_value_end */,
+													 NULL /* attr_value_end */ ,
 													 true));
 }
 
@@ -441,9 +441,9 @@ ybginSetupBinds(IndexScanDesc scan)
 							  TupleDescAttr(tupdesc, 0)->atttypid,
 							  so->ginstate.supportCollation[0],
 							  entry->queryKey,
-							  false /* is_null */);
+							  false /* is_null */ );
 		HandleYBStatus(YBCPgDmlBindColumn(ybso->handle,
-										  1 /* attr_num */,
+										  1 /* attr_num */ ,
 										  expr));
 	}
 }
@@ -503,7 +503,7 @@ ybginExecSelect(IndexScanDesc scan, ScanDirection dir)
 	if (ScanDirectionIsForward(dir))
 		HandleYBStatus(YBCPgSetForwardScan(ybso->handle, true));
 
-	HandleYBStatus(YBCPgExecSelect(ybso->handle, NULL /* exec_params */));
+	HandleYBStatus(YBCPgExecSelect(ybso->handle, NULL /* exec_params */ ));
 }
 
 /*

@@ -780,7 +780,7 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 	if (IsYugaByteEnabled() && RelationGetForm(reln)->relkind == RELKIND_SEQUENCE)
 	{
 		/* Get a sequence tuple */
-		HeapTuple seqtuple = YBReadSequenceTuple(reln);
+		HeapTuple	seqtuple = YBReadSequenceTuple(reln);
 
 		/* Create an empty buffer to initialize with the sequence data */
 		buf = ReadBuffer_common(RelationGetSmgr(reln),
@@ -788,13 +788,15 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 								blockNum, RBM_ZERO_AND_LOCK, strategy, &hit);
 
 		/* Insert onto the page */
-		Page dp = BufferGetPage(buf);
+		Page		dp = BufferGetPage(buf);
+
 		PageInit(dp, BLCKSZ, sizeof(*seqtuple));
 		PageSetAllVisible(dp);
-		OffsetNumber off = PageAddItemExtended(dp, (Item)(seqtuple->t_data),
+		OffsetNumber off = PageAddItemExtended(dp, (Item) (seqtuple->t_data),
 											   seqtuple->t_len,
 											   InvalidOffsetNumber,
 											   PAI_IS_HEAP);
+
 		if (off == InvalidOffsetNumber)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

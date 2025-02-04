@@ -4,6 +4,7 @@ import (
     "encoding/json"
     "fmt"
     "io/ioutil"
+    "net"
     "net/http"
     "time"
 )
@@ -29,7 +30,8 @@ func (h *HelperContainer) GetTabletReplicationFuture(
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:%s/api/v1/tablet-replication", nodeHost, MasterUIPort)
+    url := fmt.Sprintf("http://%s/api/v1/tablet-replication",
+        net.JoinHostPort(nodeHost, MasterUIPort))
     resp, err := httpClient.Get(url)
     if err != nil {
         leaderlessTablets.Error = err

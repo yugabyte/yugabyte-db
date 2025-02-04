@@ -140,6 +140,7 @@ public class SetFlagInMemory extends ServerSubTaskBase {
 
   private void setFlag(YBClient client, String gflag, String value, HostAndPort hp)
       throws Exception {
+    log.debug("Setting gflag {} to {} on node {} via non-restart rpc", gflag, value, hp);
     boolean setSuccess = client.setFlag(hp, gflag, value, taskParams().force);
     if (!setSuccess) {
       throw new RuntimeException(

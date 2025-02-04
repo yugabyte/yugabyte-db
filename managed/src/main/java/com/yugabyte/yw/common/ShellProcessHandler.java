@@ -20,6 +20,7 @@ import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.logging.LogUtil;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -39,6 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.slf4j.MDC;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 import play.libs.Json;
@@ -120,6 +122,14 @@ public class ShellProcessHandler {
     if (MapUtils.isNotEmpty(extraEnvVars)) {
       envVars.putAll(extraEnvVars);
     }
+
+    String correlationId = MDC.get(LogUtil.CORRELATION_ID);
+    if (StringUtils.isEmpty(correlationId)) {
+      correlationId = UUID.randomUUID().toString();
+      log.debug("Using correlation ID {}", correlationId);
+    }
+    envVars.put(LogUtil.CORRELATION_ID.replaceAll("-", "_"), correlationId);
+
     String devopsHome = appConfig.getString("yb.devops.home");
     if (devopsHome != null) {
       pb.directory(new File(devopsHome));

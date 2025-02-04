@@ -254,8 +254,7 @@ typedef struct OutputPluginCallbacks
 	LogicalDecodeStreamTruncateCB stream_truncate_cb;
 
 	YBLogicalDecodeSchemaChangeCB yb_schema_change_cb;
-	YBLogicalDecodeEnableYBSpecficReplicaIdentityCB
-		yb_support_yb_specifc_replica_identity_cb;
+	YBLogicalDecodeEnableYBSpecficReplicaIdentityCB yb_support_yb_specifc_replica_identity_cb;
 } OutputPluginCallbacks;
 
 /* Functions in replication/logical/logical.c */

@@ -201,9 +201,9 @@ extern int	errcode_for_file_access(void);
 extern int	errcode_for_socket_access(void);
 
 extern int	errmsg(const char *fmt,...) pg_attribute_printf(1, 2);
-extern int	yb_errmsg_from_status(const char *fmt, const size_t nargs, const char** args);
-extern int	yb_errdetail_from_status(const char *fmt, const size_t nargs, const char** args);
-extern void yb_set_pallocd_error_file_and_func(const char* filename, const char* funcname);
+extern int	yb_errmsg_from_status(const char *fmt, const size_t nargs, const char **args);
+extern int	yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args);
+extern void yb_set_pallocd_error_file_and_func(const char *filename, const char *funcname);
 extern int	errmsg_internal(const char *fmt,...) pg_attribute_printf(1, 2);
 
 extern int	errmsg_plural(const char *fmt_singular, const char *fmt_plural,
@@ -428,12 +428,13 @@ typedef struct ErrorData
 	char	   *internalquery;	/* text of internally-generated query */
 	int			saved_errno;	/* errno at entry */
 
-	uint16_t	yb_txn_errcode;	/* YB transaction error cast to uint16, as returned by static_cast
-								 * of TransactionErrorTag::Decode
-								 * of Status::ErrorData(TransactionErrorTag::kCategory) */
+	uint16_t	yb_txn_errcode; /* YB transaction error cast to uint16, as
+								 * returned by static_cast of
+								 * TransactionErrorTag::Decode of
+								 * Status::ErrorData(TransactionErrorTag::kCategory) */
 	/* context containing associated non-constant strings */
 	struct MemoryContextData *assoc_context;
-	bool		yb_owns_file_and_func; /* Whether we own filename/funcname. */
+	bool		yb_owns_file_and_func;	/* Whether we own filename/funcname. */
 } ErrorData;
 
 extern sigjmp_buf *yb_get_exception_stack(void);

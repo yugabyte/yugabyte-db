@@ -298,7 +298,7 @@ DEFINE_RUNTIME_PG_FLAG(
     "Maximum number of changes kept in memory per transaction in reorder buffer, which is used in "
     "streaming changes via logical replication . After that, changes are spooled to disk.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, 2048, // 2 KB
     "Size threshold in bytes for a catcache tuple to be compressed.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
@@ -330,6 +330,11 @@ DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
 DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
     "Enables the collection of query diagnostics data for YSQL queries, "
     "facilitating the creation of diagnostic bundles.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
+    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and "
+    "11.");
+DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11));
 
 DECLARE_bool(enable_pg_cron);
 

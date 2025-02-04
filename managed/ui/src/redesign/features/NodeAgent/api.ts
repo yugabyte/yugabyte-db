@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { ROOT_URL } from '../../../config';
-import { NodeAgentEntities, ProviderNode } from '../../utils/dtos';
+import { NodeAgent, ProviderNode } from '../../utils/dtos';
 
 export enum QUERY_KEY {
   fetchNodeAgents = 'fetchNodeAgents',
@@ -9,7 +9,7 @@ export enum QUERY_KEY {
 }
 
 type NodeAgentResponse = {
-  entities: NodeAgentEntities[];
+  entities: NodeAgent[];
   hasNext: boolean;
   hasPrev: boolean;
   totalCount: number;
@@ -23,7 +23,7 @@ class ApiService {
 
   fetchNodeAgents = () => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/node_agents`;
-    return axios.get<NodeAgentEntities[]>(requestURL).then((res) => res.data);
+    return axios.get<NodeAgent[]>(requestURL).then((res) => res.data);
   };
 
   fetchOnPremProviderNodeList = (providerUUID: string) => {

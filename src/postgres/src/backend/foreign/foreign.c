@@ -461,10 +461,13 @@ GetFdwRoutineForRelation(Relation relation, bool makecopy)
 
 	if (relation->rd_fdwroutine == NULL)
 	{
-		if (IsYBRelation(relation)) {
+		if (IsYBRelation(relation))
+		{
 			/* Get the custom YB FDW directly */
 			fdwroutine = (FdwRoutine *) yb_fdw_handler();
-		} else {
+		}
+		else
+		{
 			/* Get the info by consulting the catalogs and the FDW code */
 			fdwroutine = GetFdwRoutineByRelId(RelationGetRelid(relation));
 		}

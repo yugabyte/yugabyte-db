@@ -22,35 +22,40 @@ typedef enum YbHistParseState
 
 typedef struct YbHistPair
 {
-	double end;
-	int64_t total;
+	double		end;
+	int64_t		total;
 } YbHistPair;
 
 typedef struct YbHistInterval
 {
-	double start;
-	double end;
+	double		start;
+	double		end;
 } YbHistInterval;
 
-static double extract_from_match(const char *str, regmatch_t *match, int match_num)
+static double
+extract_from_match(const char *str, regmatch_t *match, int match_num)
 {
-	int start = match[match_num].rm_so;
-	int end = match[match_num].rm_eo;
-	if (start == -1 || end == -1 )
+	int			start = match[match_num].rm_so;
+	int			end = match[match_num].rm_eo;
+
+	if (start == -1 || end == -1)
 		return INFINITY;
-	char num_str[MAX_INTERVAL_LEN];
+	char		num_str[MAX_INTERVAL_LEN];
+
 	strncpy(num_str, str + start, end - start);
 	num_str[end - start] = '\0';
 	return atof(num_str);
 }
 
-static YbHistInterval yb_extract_interval(regex_t *regex, const char *str, int len)
+static YbHistInterval
+yb_extract_interval(regex_t *regex, const char *str, int len)
 {
-	regmatch_t match[7];
-	double start;
-	double end;
+	regmatch_t	match[7];
+	double		start;
+	double		end;
 
-	char str_cpy[MAX_INTERVAL_LEN];
+	char		str_cpy[MAX_INTERVAL_LEN];
+
 	strncpy(str_cpy, str, len);
 	str_cpy[len] = '\0';
 	if (0 == regexec(regex, str_cpy, 7, match, 0))
@@ -66,29 +71,33 @@ static YbHistInterval yb_extract_interval(regex_t *regex, const char *str, int l
 	if (end <= start)
 		elog(ERROR, "Unexpected histogram interval where where start >= end");
 
-	return (struct YbHistInterval){start, end};
+	return (struct YbHistInterval)
+	{
+		start, end
+	};
 }
 
 Datum
 yb_get_percentile(PG_FUNCTION_ARGS)
 {
-	Jsonb *jsonb = PG_GETARG_JSONB_P(0);
-	double percentile = PG_GETARG_FLOAT8(1);
+	Jsonb	   *jsonb = PG_GETARG_JSONB_P(0);
+	double		percentile = PG_GETARG_FLOAT8(1);
 	JsonbIterator *it = JsonbIteratorInit(&jsonb->root);
-	JsonbValue val;
+	JsonbValue	val;
 	JsonbIteratorToken token;
 
 	YbHistParseState h_state = NONE;
-	int64_t total_count = 0;
-	int total_entries = 0;
-	int allocated_entries = 100;
+	int64_t		total_count = 0;
+	int			total_entries = 0;
+	int			allocated_entries = 100;
 	YbHistPair *entries = palloc(allocated_entries * sizeof(YbHistPair));
 	YbHistInterval interval;
-	double last_interval_end = -INFINITY;
-	double ret = 0;
+	double		last_interval_end = -INFINITY;
+	double		ret = 0;
 
-	regex_t regex;
+	regex_t		regex;
 	const char *pattern = "^\\[([-+]?[0-9]+(\\.[0-9]+)?(e[-+]?[0-9]+)?),([-+]?[0-9]+(\\.[0-9]+)?(e[-+]?[0-9]+)?)?\\)$";
+
 	if (regcomp(&regex, pattern, REG_EXTENDED))
 		Assert(false);
 
@@ -96,7 +105,7 @@ yb_get_percentile(PG_FUNCTION_ARGS)
 	percentile = percentile < 100.0 ? percentile : 100.0;
 
 	MemoryContext tmpContext = AllocSetContextCreate(GetCurrentMemoryContext(),
-		"JSONB processing temporary context", ALLOCSET_DEFAULT_SIZES);
+													 "JSONB processing temporary context", ALLOCSET_DEFAULT_SIZES);
 	MemoryContext oldContext = MemoryContextSwitchTo(tmpContext);
 
 	while ((token = JsonbIteratorNext(&it, &val, false)) != WJB_DONE)
@@ -120,7 +129,7 @@ yb_get_percentile(PG_FUNCTION_ARGS)
 					elog(ERROR, "Invalid histogram: Unexpected key that is not of string type");
 				h_state = KEY;
 				interval = yb_extract_interval(&regex, val.val.string.val,
-					val.val.string.len);
+											   val.val.string.len);
 				if (interval.start < last_interval_end)
 					elog(ERROR, "Invalid histogram: Unexpected interval intersection between keys");
 				last_interval_end = interval.end;
@@ -130,8 +139,9 @@ yb_get_percentile(PG_FUNCTION_ARGS)
 					elog(ERROR, "Invalid histogram: Unexpected value, should follow key within object");
 				if (val.type != jbvNumeric)
 					elog(ERROR, "Invalid histogram: Unexpected value that is not of numeric type");
-				int64_t count = DatumGetInt64(DirectFunctionCall1(numeric_int8,
-					NumericGetDatum(val.val.numeric)));
+				int64_t		count = DatumGetInt64(DirectFunctionCall1(numeric_int8,
+																	  NumericGetDatum(val.val.numeric)));
+
 				if (count < 0)
 					elog(ERROR, "Invalid histogram: Unexpected negative count value");
 				if (count > 0)
@@ -142,10 +152,13 @@ yb_get_percentile(PG_FUNCTION_ARGS)
 					{
 						allocated_entries *= 2;
 						entries = repalloc(entries,
-							allocated_entries * sizeof(YbHistPair));
+										   allocated_entries * sizeof(YbHistPair));
 					}
 					entries[total_entries] =
-						(struct YbHistPair){last_interval_end, total_count};
+						(struct YbHistPair)
+					{
+						last_interval_end, total_count
+					};
 					total_entries++;
 				}
 				break;
@@ -173,12 +186,13 @@ yb_get_percentile(PG_FUNCTION_ARGS)
 		PG_RETURN_FLOAT8(-INFINITY);
 	}
 
-	int64_t expected_min_count = ((percentile / 100) * total_count) + 0.5;
+	int64_t		expected_min_count = ((percentile / 100) * total_count) + 0.5;
+
 	/* Always want a minimum count of at least 1 */
 	expected_min_count = 0 < expected_min_count ? expected_min_count : 1;
 
 	for (int i = total_entries - 1;
-		i >= 0 && entries[i].total >= expected_min_count; i--)
+		 i >= 0 && entries[i].total >= expected_min_count; i--)
 		ret = entries[i].end;
 
 	MemoryContextSwitchTo(oldContext);

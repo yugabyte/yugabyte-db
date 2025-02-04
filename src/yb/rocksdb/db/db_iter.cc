@@ -310,7 +310,9 @@ class DBIter final : public Iterator {
   const KeyValueEntry& FastNext();
   const KeyValueEntry& Next() override;
   const KeyValueEntry& Prev() override;
-  const KeyValueEntry& Seek(Slice target) override;
+  const KeyValueEntry& Seek(Slice target) override {
+    return DoSeek(target, nullptr);
+  }
   const KeyValueEntry& SeekToFirst() override;
   const KeyValueEntry& SeekToLast() override;
 
@@ -336,6 +338,10 @@ class DBIter final : public Iterator {
     fast_next_ = value;
   }
 
+  const KeyValueEntry& DoSeekWithNewFilter(Slice target, Slice filter_user_key) override {
+    return DoSeek(target, filter_user_key);
+  }
+
  private:
   void ReverseToBackward();
   void PrevInternal();
@@ -348,6 +354,9 @@ class DBIter final : public Iterator {
   void FindNextUserEntryInternal(bool skipping);
   bool ParseKey(ParsedInternalKey* key);
   void MergeValuesNewToOld();
+
+  template <class Filter>
+  const KeyValueEntry& DoSeek(Slice target, Filter filter_user_key);
 
   inline void ClearSavedValue() {
     if (saved_value_.capacity() > 1048576) {
@@ -955,7 +964,16 @@ void DBIter::FindParseableKey(ParsedInternalKey* ikey, Direction direction) {
   }
 }
 
-const KeyValueEntry& DBIter::Seek(Slice target) {
+const KeyValueEntry& CallSeek(InternalIterator* iter, Slice target, std::nullptr_t) {
+  return iter->Seek(target);
+}
+
+const KeyValueEntry& CallSeek(InternalIterator* iter, Slice target, Slice filter_user_key) {
+  return iter->SeekWithNewFilter(target, filter_user_key);
+}
+
+template <class Filter>
+const KeyValueEntry& DBIter::DoSeek(Slice target, Filter filter_user_key) {
   key_buffer_.Clear();
   auto target_size = target.size();
   char* out = key_buffer_.GrowByAtLeast(target_size + sizeof(uint64_t));
@@ -964,7 +982,7 @@ const KeyValueEntry& DBIter::Seek(Slice target) {
 
   {
     PERF_TIMER_GUARD(seek_internal_seek_time);
-    iter_->Seek(key_buffer_.AsSlice());
+    CallSeek(iter_, key_buffer_.AsSlice(), filter_user_key);
   }
 
   if (iter_->Valid()) {
@@ -1149,6 +1167,10 @@ bool ArenaWrappedDBIter::ScanForward(
 
 void ArenaWrappedDBIter::UseFastNext(bool value) {
   db_iter_->UseFastNext(value);
+}
+
+const KeyValueEntry& ArenaWrappedDBIter::DoSeekWithNewFilter(Slice target, Slice filter_user_key) {
+  return db_iter_->SeekWithNewFilter(target, filter_user_key);
 }
 
 ArenaWrappedDBIter* NewArenaWrappedDbIterator(

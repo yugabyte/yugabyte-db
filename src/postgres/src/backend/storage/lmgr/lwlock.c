@@ -1070,7 +1070,7 @@ LWLockQueueSelf(LWLock *lock, LWLockMode mode)
 	 * should never occur, since MyProc should only be null during shared
 	 * memory initialization.
 	 */
-	PGPROC *proc = MyProc;
+	PGPROC	   *proc = MyProc;
 
 	if (!IsUnderPostmaster && proc == NULL)
 	{
@@ -1119,7 +1119,7 @@ LWLockDequeueSelf(LWLock *lock)
 {
 	bool		found = false;
 	proclist_mutable_iter iter;
-	PGPROC *proc = MyProc;
+	PGPROC	   *proc = MyProc;
 
 	if (proc == NULL)
 	{

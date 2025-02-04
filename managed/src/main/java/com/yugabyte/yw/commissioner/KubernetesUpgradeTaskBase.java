@@ -37,7 +37,7 @@ import play.mvc.Http.Status;
 @Slf4j
 public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
-  private final OperatorStatusUpdater kubernetesStatus;
+  protected final OperatorStatusUpdater kubernetesStatus;
 
   protected KubernetesUpgradeTaskBase(
       BaseTaskDependencies baseTaskDependencies,
@@ -580,7 +580,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
     KubernetesGflagsUpgradeCommonParams upgradeParamsPrimary =
-        new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster);
+        new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster, confGetter);
     createSingleKubernetesExecutorTask(
         universe.getName(),
         CommandType.POD_INFO,
@@ -625,7 +625,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     if (universeDetails.getReadOnlyClusters().size() != 0) {
       Cluster readOnlyCluster = universeDetails.getReadOnlyClusters().get(0);
       KubernetesGflagsUpgradeCommonParams upgradeParamsReadOnly =
-          new KubernetesGflagsUpgradeCommonParams(universe, readOnlyCluster);
+          new KubernetesGflagsUpgradeCommonParams(universe, readOnlyCluster, confGetter);
       PlacementInfo readClusterPlacementInfo = readOnlyCluster.placementInfo;
       createSingleKubernetesExecutorTask(
           universe.getName(),

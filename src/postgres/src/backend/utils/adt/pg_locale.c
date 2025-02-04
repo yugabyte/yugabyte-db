@@ -78,6 +78,9 @@
 #include <shlwapi.h>
 #endif
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 #define		MAX_L10N_DATA		80
 
 
@@ -1578,6 +1581,8 @@ pg_newlocale_from_collation(Oid collid)
 #endif
 				if (!loc)
 					report_newlocale_failure(collcollate);
+				else
+					YbCheckUnsupportedLibcLocale(collcollate);
 			}
 			else
 			{
@@ -1589,10 +1594,14 @@ pg_newlocale_from_collation(Oid collid)
 				loc1 = newlocale(LC_COLLATE_MASK, collcollate, NULL);
 				if (!loc1)
 					report_newlocale_failure(collcollate);
+				else
+					YbCheckUnsupportedLibcLocale(collcollate);
 				errno = 0;
 				loc = newlocale(LC_CTYPE_MASK, collctype, loc1);
 				if (!loc)
 					report_newlocale_failure(collctype);
+				else
+					YbCheckUnsupportedLibcLocale(collctype);
 #else
 
 				/*

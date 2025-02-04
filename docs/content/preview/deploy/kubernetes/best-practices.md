@@ -1,5 +1,5 @@
 ---
-title: Best practices
+title: Kubernetes best practices
 linkTitle: Best practices
 description: Best practices
 menu:

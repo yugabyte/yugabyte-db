@@ -207,7 +207,8 @@ recordDependencyOnTablespace(Oid classId, Oid objectId, Oid tablespaceOid)
 		/* Nothing to do */
 		return;
 	}
-	ObjectAddress myself, referenced;
+	ObjectAddress myself,
+				referenced;
 
 	myself.classId = classId;
 	myself.objectId = objectId;
@@ -348,7 +349,7 @@ shdepChangeDep(Relation sdepRel,
 void
 shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId)
 {
-	Oid databaseId;
+	Oid			databaseId;
 	ScanKeyData key[2];
 	SysScanDesc scan;
 	Relation	sdepRel;
@@ -360,16 +361,17 @@ shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId)
 
 
 	ScanKeyInit(&key[0], Anum_pg_shdepend_dbid,
-	BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(databaseId));
+				BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(databaseId));
 
 	ScanKeyInit(&key[1], Anum_pg_shdepend_classid,
-	BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(YbTablegroupRelationId));
+				BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(YbTablegroupRelationId));
 
 	scan = systable_beginscan(sdepRel, SharedDependDependerIndexId, true, NULL, 2, key);
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
 		Form_pg_shdepend shdepForm = (Form_pg_shdepend) GETSTRUCT(tup);
+
 		if (shdepForm->refobjid == tablespaceId)
 		{
 			*tablegroupId = shdepForm->objid;
@@ -1030,7 +1032,7 @@ copyTemplateDependencies(Oid templateDbId, Oid newDbId)
 		if (slot_stored_count == max_slots)
 		{
 			CatalogTuplesMultiInsertWithInfo(sdepRel, slot, slot_stored_count, indstate,
-											 false /* yb_shared_insert */);
+											 false /* yb_shared_insert */ );
 			slot_stored_count = 0;
 		}
 	}
@@ -1038,7 +1040,7 @@ copyTemplateDependencies(Oid templateDbId, Oid newDbId)
 	/* Insert any tuples left in the buffer */
 	if (slot_stored_count > 0)
 		CatalogTuplesMultiInsertWithInfo(sdepRel, slot, slot_stored_count, indstate,
-										 false /* yb_shared_insert */);
+										 false /* yb_shared_insert */ );
 
 	systable_endscan(scan);
 
@@ -1350,7 +1352,7 @@ shdepLockAndCheckObject(Oid classId, Oid objectId)
 static void
 storeObjectDescription(StringInfo descs,
 					   SharedDependencyObjectType type,
-						 Oid refobjid,
+					   Oid refobjid,
 					   ObjectAddress *object,
 					   SharedDependencyType deptype,
 					   int count)
@@ -1379,7 +1381,8 @@ storeObjectDescription(StringInfo descs,
 				appendStringInfo(descs, _("target of %s"), objdesc);
 			else if (deptype == SHARED_DEPENDENCY_TABLESPACE)
 			{
-				char implicit_tablegroup_name[33];
+				char		implicit_tablegroup_name[33];
+
 				sprintf(implicit_tablegroup_name, "tablegroup colocation_%u", refobjid);
 
 				/*
@@ -1780,7 +1783,8 @@ shdepReassignOwned(List *roleids, Oid newrole)
 void
 ybRecordDependencyOnProfile(Oid classId, Oid objectId, Oid profile)
 {
-	ObjectAddress myself, referenced;
+	ObjectAddress myself,
+				referenced;
 
 	ObjectAddressSet(myself, classId, objectId);
 	ObjectAddressSet(referenced, YbProfileRelationId, profile);

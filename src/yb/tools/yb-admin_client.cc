@@ -2962,21 +2962,21 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(
   }));
 
   if (resp.snapshots_size() > 1) {
-        LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
-                     << resp.snapshots_size() << " snapshots in the response";
+    LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
+                 << resp.snapshots_size() << " snapshots in the response";
   }
 
   SnapshotInfoPB* snapshot = nullptr;
   for (SnapshotInfoPB& snapshot_entry : *resp.mutable_snapshots()) {
-        if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
+    if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
       snapshot = &snapshot_entry;
       break;
-        }
+    }
   }
   if (!snapshot) {
-        return STATUS_FORMAT(
-            InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
-            resp.snapshots_size(), snapshot_id);
+    return STATUS_FORMAT(
+        InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
+        resp.snapshots_size(), snapshot_id);
   }
 
   if (FLAGS_TEST_metadata_file_format_version == -1) {
@@ -2988,7 +2988,7 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(
         meta.clear_namespace_name();
         entry.set_data(meta.SerializeAsString());
       }
-        }
+    }
   }
 
   cout << "Exporting snapshot " << snapshot_id << " (" << snapshot->entry().state() << ") to file "

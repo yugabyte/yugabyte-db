@@ -637,8 +637,7 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValueBackward(
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
-      BloomFilterMode::USE_BLOOM_FILTER,
-      pk_doc_key_->Encode().AsSlice(),
+      BloomFilterOptions::Fixed(pk_doc_key_->Encode().AsSlice()),
       request_.query_id(),
       txn_op_context_,
       data.read_operation_data);

@@ -17,3 +17,8 @@ CREATE FUNCTION bigname_out(bigname)
    RETURNS cstring
    AS :'regresslib'
    LANGUAGE C STRICT IMMUTABLE;
+
+CREATE FUNCTION yb_run_spi(text, int)
+   RETURNS int8
+   AS :'regresslib'
+   LANGUAGE C STRICT IMMUTABLE;

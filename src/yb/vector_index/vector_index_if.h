@@ -35,7 +35,7 @@ class VectorIndexReaderIf;
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexReaderIf {
  public:
-  using SearchResult  = std::vector<VertexWithDistance<DistanceResult>>;
+  using SearchResult  = std::vector<VectorWithDistance<DistanceResult>>;
   using IteratorValue = std::pair<VectorId, Vector>;
   using Iterator      = PolymorphicIterator<IteratorValue>;
 

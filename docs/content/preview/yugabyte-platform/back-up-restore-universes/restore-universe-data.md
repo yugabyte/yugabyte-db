@@ -110,6 +110,126 @@ To confirm that the restore succeeded, select the **Tables** tab to compare the 
 
 To view the details of a restored database, navigate to **Universes > Restore History**, or **Backups > Restore History**.
 
+## Restore a PITR-enabled backup
+
+<!-- Restoring a PITR-enabled backup is currently {{<tags/feature/ea>}}.
+
+You can restore entire backups with or without PITR, restore selected entities, and to get a list of the restorable entities using the following APIs.
+
+### List restorable entities
+
+To get a list of restorable entities from a backup, use the following API request:
+
+```sh
+curl 'http://<platform-url>/api/v1/customers/:cUUID/backups/:baseBackupUUID/restorable_keyspace_tables'
+```
+
+You should see a response similar to the following:
+
+```sh
+[
+  {
+    "tableNames": [
+      "test4",
+      "test2",
+      "test"
+    ],
+    "keyspace": "test2"
+  },
+  {
+    "tableNames": [
+      "test4",
+      "test2"
+    ],
+    "keyspace": "test"
+  }
+]
+```
+
+To check if the selected restore entities can be restored to a specific point in time using the backup's metadata available in YBA database, use the following request API:
+
+```sh
+curl 'http://<platform-url>/api/v1/customers/:cUUID/restore/validate_restorable_keyspace_tables' \
+-d '{
+  "backupUUID": "f136a43f-5b1c-4ef9-ba55-17346d13c65c",
+  "restoreToPointInTimeMillis": 1723114010000,
+  "keyspaceTables": [
+    {
+      "keyspace": "test"
+    }
+  ]
+}'
+```
+
+You should see a response similar to the following:
+
+```sh
+# Returns an error message, if the entities are not restorable in the provided point in time window
+{
+  "success": false,
+  "error": "Some objects cannot be restored",
+  "errorJson": [
+    {
+      "tableNames": [],
+      "keyspace": "test3"
+    }
+  ]
+}
+```
+
+### Restore an entire backup
+
+The following restore API allows you to restore data from a backup location. You can also use `restoreToPointInTimeMillis` (for PITR-enabled restores) to restore data to a specific point in time.
+
+```sh
+curl 'http://<platform-url>/api/v1/customers/:cUUID/restore' \
+  -d '{
+    "backupStorageInfoList": [
+      {
+        "storageLocation": "s3://backups.yugabyte.com/test/univ-816ecdcd-8031-4a41-ad62-f49d8a2aa6dc/ybc_backup-b9b3204fd33a4e41b25276fc816fb3b9/incremental/2024-08-08T11:02:56/multi-table-test2_8c42714dbc95469ebb2e31221a851dc1",
+        "keyspace": "test5",
+        "backupType": "PGSQL_TABLE_TYPE"
+      }
+    ],
+    "universeUUID": "816ecdcd-8031-4a41-ad62-f49d8a2aa6dc",
+    "restoreToPointInTimeMillis": 1723113480000,
+    "storageConfigUUID": "20946d96-978f-4577-ae28-c156eebb6aad",
+    "customerUUID": "f33e3c9b-75ab-4c30-80ad-cba85646ea39"
+  }'
+```-->
+
+{{<tags/feature/ea>}}You can restore entire backups with or without PITR. To enable the feature in YugabyteDB Anywhere, set the **Option for Off-Cluster PITR based Backup Schedule** Global Runtime Configuration option (config key `yb.ui.feature_flags.off_cluster_pitr_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
+If you created backups using a [scheduled backup policy with PITR](../schedule-data-backups/#create-a-scheduled-backup-policy-with-pitr), you can restore YugabyteDB universe data from a backup as follows:
+
+1. In the **Backups** list, select the backup to restore to display the **Backup Details**.
+
+1. Select **Restore Entire Backup** to open the **Restore Backup** dialog.
+
+1. Select the Keyspaces/Databases you want to restore. You can choose to backup either All Databases/Keyspaces, or a single database/keyspace.
+
+    ![Restore backup](/images/yp/restore-backup-pitr.png)
+
+1. You can select time to restore to based on the backup time or to an earlier point in time. Select the **An earlier point in time** option to show the available restore window (start and end times) for the restoration.
+
+    For YCQL backups, you can select a subset of tables to restore. If a table is not available in the specified restore window, an error message is displayed.
+
+1. When finished, click **Next**.
+
+1. Select the **Target Universe** where you want to restore the backup. You also have the option to rename the keyspaces/databases.
+
+1. If the backup is encrypted, choose the appropriate **KMS configuration**.
+
+1. If you are renaming keyspaces/databases, click **Next** and enter the new names.
+
+1. Click **Restore** when you are done.
+
+The restore begins immediately. When finished, a completed **Restore Backup** task appears under **Tasks > Task History**.
+
+To confirm that the restore succeeded, select the **Tables** tab to compare the original table with the table to which you restored.
+
+To view the details of a restored database, navigate to **Universes > Restore History**, or **Backups > Restore History**.
+
 ## Advanced restore procedure
 
 In addition to the basic restore, an advanced restore option is available for the following circumstances:

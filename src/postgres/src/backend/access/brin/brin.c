@@ -1400,7 +1400,7 @@ summarize_range(IndexInfo *indexInfo, BrinBuildState *state, Relation heapRel,
 	table_index_build_range_scan(heapRel, state->bs_irel, indexInfo, false, true, false,
 								 heapBlk, scanNumBlks,
 								 brinbuildCallback, (void *) state, NULL,
-								 NULL /* bfinfo */, NULL /* bfresult */);
+								 NULL /* bfinfo */ , NULL /* bfresult */ );
 
 	/*
 	 * Now we update the values obtained by the scan with the placeholder

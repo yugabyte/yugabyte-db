@@ -109,7 +109,7 @@ To view the details of a restored database, navigate to **Universes > Restore Hi
 
 ## Restore a PITR-enabled backup
 
-Restoring a PITR-enabled backup is currently {{<tags/feature/ea>}}.
+<!-- Restoring a PITR-enabled backup is currently {{<tags/feature/ea>}}.
 
 You can restore entire backups with or without PITR, restore selected entities, and to get a list of the restorable entities using the following APIs.
 
@@ -193,10 +193,9 @@ curl 'http://<platform-url>/api/v1/customers/:cUUID/restore' \
     "storageConfigUUID": "20946d96-978f-4577-ae28-c156eebb6aad",
     "customerUUID": "f33e3c9b-75ab-4c30-80ad-cba85646ea39"
   }'
-```
+```-->
 
-<!--
-Steps to restore with PITR via the UI when the runtime config flag is available in 2024.2.1.0
+{{<tags/feature/ea>}}You can restore entire backups with or without PITR. To enable the feature in YugabyteDB Anywhere, set the **Option for Off-Cluster PITR based Backup Schedule** Global Runtime Configuration option (config key `yb.ui.feature_flags.off_cluster_pitr_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 If you created backups using a [scheduled backup policy with PITR](../schedule-data-backups/#create-a-scheduled-backup-policy-with-pitr), you can restore YugabyteDB universe data from a backup as follows:
 
@@ -208,13 +207,25 @@ If you created backups using a [scheduled backup policy with PITR](../schedule-d
 
     ![Restore backup](/images/yp/restore-backup-pitr.png)
 
-1. You can select time to restore to based on the "Backup time" or to "An earlier point in time". Select the **An earlier point in time** option to show the available restore window (start and end times) for the restoration. For YCQL backups, you can select a subset of tables for restoration. If a table is not available within the specified restore window, an error message is displayed. When finished, click **Next**.
+1. You can select time to restore to based on the backup time or to an earlier point in time. Select the **An earlier point in time** option to show the available restore window (start and end times) for the restoration.
 
-1. Select the **Target Universe** where you want to restore the backup. You also have the option to rename the keyspaces/databases before initiating the restore process.
+    For YCQL backups, you can select a subset of tables to restore. If a table is not available in the specified restore window, an error message is displayed.
 
-1. If the backup is encrypted, choose the appropriate **KMS configuration**. When finished, click **Next**.
+1. When finished, click **Next**.
 
-1. Rename the keyspaces/databases and click **Restore**. -->
+1. Select the **Target Universe** where you want to restore the backup. You also have the option to rename the keyspaces/databases.
+
+1. If the backup is encrypted, choose the appropriate **KMS configuration**.
+
+1. If you are renaming keyspaces/databases, click **Next** and enter the new names.
+
+1. Click **Restore** when you are done.
+
+The restore begins immediately. When finished, a completed **Restore Backup** task appears under **Tasks > Task History**.
+
+To confirm that the restore succeeded, select the **Tables** tab to compare the original table with the table to which you restored.
+
+To view the details of a restored database, navigate to **Universes > Restore History**, or **Backups > Restore History**.
 
 ## Advanced restore procedure
 

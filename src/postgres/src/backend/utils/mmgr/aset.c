@@ -615,7 +615,7 @@ AllocSetReset(MemoryContext context)
 		else
 		{
 			/* Normal case, release the block */
-			size_t freed_sz = ASET_BLOCK_TOTAL_SIZE(block);
+			size_t		freed_sz = ASET_BLOCK_TOTAL_SIZE(block);
 
 			context->mem_allocated -= block->endptr - ((char *) block);
 
@@ -684,7 +684,7 @@ AllocSetDelete(MemoryContext context)
 				freelist->first_free = (AllocSetContext *) oldset->header.nextchild;
 				freelist->num_free--;
 
-				size_t freed_sz = ASET_INITIAL_TOTAL_SIZE(oldset);
+				size_t		freed_sz = ASET_INITIAL_TOTAL_SIZE(oldset);
 
 				/* All that remains is to free the header/initial block */
 				free(oldset);
@@ -715,7 +715,8 @@ AllocSetDelete(MemoryContext context)
 
 		if (block != set->keeper)
 		{
-			size_t freed_sz = ASET_BLOCK_TOTAL_SIZE(block);
+			size_t		freed_sz = ASET_BLOCK_TOTAL_SIZE(block);
+
 			free(block);
 			YbPgMemSubConsumption(freed_sz);
 		}
@@ -723,7 +724,8 @@ AllocSetDelete(MemoryContext context)
 		block = next;
 	}
 
-	size_t freed_sz = ASET_INITIAL_TOTAL_SIZE(set);
+	size_t		freed_sz = ASET_INITIAL_TOTAL_SIZE(set);
+
 	Assert(context->mem_allocated == keepersize);
 
 	/* Finally, free the context header, including the keeper block */
@@ -1065,7 +1067,7 @@ AllocSetFree(MemoryContext context, void *pointer)
 			block->next->prev = block->prev;
 
 		/* Must be place before the wipe_mem wipes the content */
-		size_t freed_sz = ASET_BLOCK_TOTAL_SIZE(block);
+		size_t		freed_sz = ASET_BLOCK_TOTAL_SIZE(block);
 
 		context->mem_allocated -= block->endptr - ((char *) block);
 

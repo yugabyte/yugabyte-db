@@ -32,7 +32,7 @@ typedef struct ReorderBufferTupleBuf
 	Size		alloc_tuple_size;
 
 	/* allocated separately but in the reorder buffer memory context. */
-	bool		*yb_is_omitted;
+	bool	   *yb_is_omitted;
 	int			yb_is_omitted_size;
 
 	/* actual tuple data follows */
@@ -698,7 +698,7 @@ extern void StartupReorderBuffer(void);
  * Return a palloc'd array of bool allocated in the reorderbuffer's memory
  * context to be used for storing yb_is_omitted values for each attribute.
  */
-bool		*YBAllocateIsOmittedArray(ReorderBuffer *rb, int nattrs);
+bool	   *YBAllocateIsOmittedArray(ReorderBuffer *rb, int nattrs);
 
 void		YBReorderBufferSchemaChange(ReorderBuffer *, Oid relid);
 

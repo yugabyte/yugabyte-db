@@ -632,6 +632,10 @@ Result<std::optional<NamespaceCheckpointInfo>>
 XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
     const NamespaceId& namespace_id,
     const std::vector<std::pair<TableName, PgSchemaName>>& table_names) const {
+  auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(
+      namespace_id, /*include_sequences_data=*/(
+          AutomaticDDLMode() && FLAGS_TEST_xcluster_enable_sequence_replication)));
+
   SharedLock mutex_lock(mutex_);
   auto l = VERIFY_RESULT(LockForRead());
   const auto* namespace_info = VERIFY_RESULT(GetNamespaceInfo(namespace_id));
@@ -642,9 +646,6 @@ XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
   NamespaceCheckpointInfo ns_info;
   ns_info.initial_bootstrap_required = namespace_info->initial_bootstrap_required();
 
-  auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(
-      namespace_id, /*include_sequences_data=*/(
-          AutomaticDDLMode() && FLAGS_TEST_xcluster_enable_sequence_replication)));
   std::vector<TableDesignator> table_descriptors;
 
   if (!table_names.empty()) {

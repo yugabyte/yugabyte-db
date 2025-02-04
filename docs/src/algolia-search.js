@@ -369,43 +369,11 @@ import algoliasearch from 'algoliasearch';
     const aiSearch = document.getElementById('ai-search');
     if (aiSearch) {
       aiSearch.addEventListener('click', () => {
-        const kapaWidgetButton = document.querySelector('#kapa-widget-container > button');
-        if (kapaWidgetButton) {
-          kapaWidgetButton.click();
-
-          const aiSearchInput = new MutationObserver(() => {
-            const mantineTextInput = document.querySelector('.mantine-TextInput-input');
-            if (mantineTextInput) {
-              const event = new Event('input', {
-                bubbles: true,
-              });
-
-              // Add the original searched input.
-              mantineTextInput.setAttribute('value', searchInput.value.trim());
-
-              mantineTextInput.dispatchEvent(event);
-
-              aiSearchInput.disconnect();
-            }
-          });
-
-          const aiSearchTab = new MutationObserver(() => {
-            const mantineSearchTab = document.querySelector('.mantine-SegmentedControl-control input[value="search"]');
-            if (mantineSearchTab) {
-              mantineSearchTab.click();
-
-              aiSearchTab.disconnect();
-            }
-          });
-
-          aiSearchInput.observe(document, {
-            childList: true,
-            subtree: true,
-          });
-
-          aiSearchTab.observe(document, {
-            childList: true,
-            subtree: true,
+        if (window.Kapa) {
+          window.Kapa.open({
+            mode: 'search',
+            query: searchInput.value.trim(),
+            submit: true,
           });
         }
       });

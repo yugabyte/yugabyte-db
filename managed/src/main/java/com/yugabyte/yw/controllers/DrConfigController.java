@@ -8,7 +8,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
@@ -382,12 +381,16 @@ public class DrConfigController extends AuthenticatedController {
     UUID taskUUID = commissioner.submit(TaskType.EditDrConfigParams, taskParams);
     CustomerTask.create(
         customer,
-        drConfig.getUuid(),
+        Objects.isNull(drConfig.getActiveXClusterConfig())
+            ? drConfig.getUuid()
+            : drConfig.getActiveXClusterConfig().getSourceUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.DrConfig,
         CustomerTask.TaskType.Edit,
         drConfig.getName());
+
     log.info("Submitted edit DrConfig({}), task {}", drConfig.getUuid(), taskUUID);
+
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -1275,7 +1278,8 @@ public class DrConfigController extends AuthenticatedController {
             ybService,
             tableHandler,
             xClusterConfig,
-            confGetter.getGlobalConf(GlobalConfKeys.xclusterGetApiTimeoutMs));
+            confGetter.getGlobalConf(GlobalConfKeys.xclusterGetApiTimeoutMs),
+            this.confGetter);
       }
     }
 
@@ -1501,8 +1505,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result pause(UUID customerUUID, UUID drConfigUUID, Http.Request request) {
@@ -1517,8 +1537,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result resume(UUID customerUUID, UUID drConfigUUID, Http.Request request) {
@@ -1550,11 +1586,7 @@ public class DrConfigController extends AuthenticatedController {
                 sourceType = SourceType.DB,
                 dbClass = XClusterConfig.class,
                 identifier = "dr_configs",
-                columnName = "dr_config_uuid")),
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+                columnName = "dr_config_uuid"))
   })
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.0.0")
   public Result pauseUniverses(UUID customerUUID, UUID drConfigUUID, Http.Request request) {
@@ -1631,11 +1663,7 @@ public class DrConfigController extends AuthenticatedController {
                 sourceType = SourceType.DB,
                 dbClass = XClusterConfig.class,
                 identifier = "dr_configs",
-                columnName = "dr_config_uuid")),
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+                columnName = "dr_config_uuid"))
   })
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.0.0")
   public Result resumeUniverses(UUID customerUUID, UUID drConfigUUID, Http.Request request) {

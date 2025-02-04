@@ -63,6 +63,10 @@ class BinaryHeap {
   explicit BinaryHeap(const Compare& cmp) : cmp_(cmp) { }
   explicit BinaryHeap(Compare&& cmp) : cmp_(std::move(cmp)) { }
 
+  void reserve(size_t capacity) {
+    data_.reserve(capacity);
+  }
+
   void push(const T& value) {
     data_.push_back(value);
     std::push_heap(data_.begin(), data_.end(), cmp_);

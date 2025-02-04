@@ -28,7 +28,7 @@ The source for the application can be found in the [yugabytedb-simple-elixir-app
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 
 - The latest versions of [Elixir, Erlang VM, IEx and Mix](https://elixir-lang.org/docs.html) (tested with Elixir 1.17.1 and Erlang/OTP 26 erts-14.2.5).
 

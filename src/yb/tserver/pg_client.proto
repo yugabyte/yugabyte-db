@@ -27,6 +27,7 @@ import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
+import "yb/rpc/service.proto";
 import "yb/tablet/tablet.proto";
 
 service PgClientService {
@@ -64,6 +65,10 @@ service PgClientService {
       returns (PgGetTablePartitionListResponsePB);
   rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
+  };
+  rpc PollVectorIndexReady(PgPollVectorIndexReadyRequestPB)
+      returns (PgPollVectorIndexReadyResponsePB) {
+    option (yb.rpc.trivial) = true;
   };
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
@@ -131,6 +136,15 @@ service PgClientService {
       returns (PgAcquireAdvisoryLockResponsePB);
   rpc ReleaseAdvisoryLock(PgReleaseAdvisoryLockRequestPB)
       returns (PgReleaseAdvisoryLockResponsePB);
+
+  rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
+      returns (PgExportTxnSnapshotResponsePB);
+
+  rpc ImportTxnSnapshot(PgImportTxnSnapshotRequestPB)
+      returns (PgImportTxnSnapshotResponsePB);
+
+  rpc ClearExportedTxnSnapshots(PgClearExportedTxnSnapshotsRequestPB)
+      returns (PgClearExportedTxnSnapshotsResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -619,6 +633,15 @@ message PgGetTablePartitionListRequestPB {
 message PgGetTablePartitionListResponsePB {
   AppStatusPB status = 1;
   PgTablePartitionsPB partitions = 2;
+}
+
+message PgPollVectorIndexReadyRequestPB {
+  string table_id = 1;
+}
+
+message PgPollVectorIndexReadyResponsePB {
+  AppStatusPB status = 1;
+  bool ready = 2;
 }
 
 message PgPerformOpPB {
@@ -1153,3 +1176,34 @@ message PgReleaseAdvisoryLockRequestPB {
 message PgReleaseAdvisoryLockResponsePB {
   AppStatusPB status = 1;
 }
+
+message PgExportTxnSnapshotRequestPB {
+  uint64 session_id = 1;
+  PgTxnSnapshotPB snapshot = 2;
+  PgPerformOptionsPB options = 3;
+  AshMetadataPB ash_metadata = 4;
+}
+
+message PgExportTxnSnapshotResponsePB {
+  AppStatusPB status = 1;
+  string snapshot_id = 2;
+}
+
+message PgImportTxnSnapshotRequestPB {
+  uint64 session_id = 1;
+  string snapshot_id = 2;
+  PgPerformOptionsPB options = 3;
+  AshMetadataPB ash_metadata = 4;
+}
+
+message PgImportTxnSnapshotResponsePB {
+  AppStatusPB status = 1;
+  PgTxnSnapshotPB snapshot = 2;
+}
+
+message PgClearExportedTxnSnapshotsRequestPB {
+  uint64 session_id = 1;
+  AshMetadataPB ash_metadata = 2;
+}
+
+message PgClearExportedTxnSnapshotsResponsePB { AppStatusPB status = 1; }

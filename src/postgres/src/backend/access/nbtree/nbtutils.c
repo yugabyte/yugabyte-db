@@ -493,8 +493,9 @@ _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
 		 * support that in YB yet. Until then, it's ok to fallback to the
 		 * column data-type specific comparator.
 		 */
-		TypeCacheEntry *typentry =
-			lookup_type_cache(elemtype, TYPECACHE_CMP_PROC);
+		TypeCacheEntry *typentry = lookup_type_cache(elemtype,
+													 TYPECACHE_CMP_PROC);
+
 		cmp_proc = typentry->cmp_proc;
 	}
 	if (!RegProcedureIsValid(cmp_proc))

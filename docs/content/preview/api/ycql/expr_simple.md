@@ -9,7 +9,6 @@ menu:
     weight: 1331
 aliases:
   - /preview/api/cassandra/expr_simple
-  - /preview/api/ycql/expr_simple
 type: docs
 ---
 

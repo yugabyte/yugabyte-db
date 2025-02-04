@@ -44,6 +44,7 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/bind.h"
@@ -343,6 +344,8 @@ Status Heartbeater::Thread::SetupRegistration(master::TSRegistrationPB* reg) {
   if (tablet_overhead_limit > 0) {
     resources->set_tablet_overhead_ram_in_bytes(tablet_overhead_limit);
   }
+  VersionInfo::GetVersionInfoPB(reg->mutable_version_info());
+
   return Status::OK();
 }
 
@@ -486,8 +489,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
           break;
         }
         default:
-          return StatusFromPB(resp.error().status());
-
+          auto status = StatusFromPB(resp.error().status());
+          if (resp.is_fatal_error()) {
+            // yb-master has requested us to terminate the process immediately.
+            LOG(FATAL) << "Unable to join universe: " << status;
+          }
+          return status;
       }
     }
 

@@ -98,8 +98,8 @@ static void generate_mergejoin_paths(PlannerInfo *root,
 									 bool is_partial);
 
 static bool yb_has_non_evaluable_bnl_clauses(Path *outer_path,
-															Path *inner_path,
-															List *rinfos);
+											 Path *inner_path,
+											 List *rinfos);
 
 /*
  * add_paths_to_joinrel
@@ -734,10 +734,10 @@ try_nestloop_path(PlannerInfo *root,
 			if (yb_has_non_evaluable_bnl_clauses(outer_path,
 												 inner_path,
 												 extra->restrictlist) ||
-			   (yb_has_non_evaluable_bnl_clauses(outer_path,
-												 inner_path,
-												 inner_path->param_info
-												 ->ppi_clauses)))
+				(yb_has_non_evaluable_bnl_clauses(outer_path,
+												  inner_path,
+												  inner_path->param_info
+												  ->ppi_clauses)))
 			{
 				bms_free(required_outer);
 				return;
@@ -750,13 +750,12 @@ try_nestloop_path(PlannerInfo *root,
 			 * YB: Check to see if there are any conflicting unbatched and batched
 			 * requirements.
 			 */
-			Relids unbatched =
-				bms_union(YB_PATH_REQ_OUTER_UNBATCHED(inner_path),
-						  YB_PATH_REQ_OUTER_UNBATCHED(outer_path));
-			Relids batched = bms_union(YB_PATH_REQ_OUTER_BATCHED(outer_path),
-									   YB_PATH_REQ_OUTER_BATCHED(inner_path));
-			bool yb_is_nl_batched =
-				bms_overlap(YB_PATH_REQ_OUTER_BATCHED(inner_path), outerrelids);
+			Relids		unbatched = bms_union(YB_PATH_REQ_OUTER_UNBATCHED(inner_path),
+											  YB_PATH_REQ_OUTER_UNBATCHED(outer_path));
+			Relids		batched = bms_union(YB_PATH_REQ_OUTER_BATCHED(outer_path),
+											YB_PATH_REQ_OUTER_BATCHED(inner_path));
+			bool		yb_is_nl_batched = bms_overlap(YB_PATH_REQ_OUTER_BATCHED(inner_path),
+													   outerrelids);
 
 			if (bms_overlap(unbatched, batched) ||
 				(yb_is_nl_batched && bms_overlap(unbatched, outerrelids)))
@@ -1628,45 +1627,47 @@ generate_mergejoin_paths(PlannerInfo *root,
 Relids
 yb_get_batched_relids(NestPath *nest)
 {
-	Relids outer_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(nest->jpath.outerjoinpath);
-	Relids inner_batched = YB_PATH_REQ_OUTER_BATCHED(nest->jpath.innerjoinpath);
+	Relids		outer_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(nest->jpath.outerjoinpath);
+	Relids		inner_batched = YB_PATH_REQ_OUTER_BATCHED(nest->jpath.innerjoinpath);
 
 	Assert(!bms_overlap(inner_batched, outer_unbatched));
 	(void) outer_unbatched;
 
-	Relids outerrels = nest->jpath.outerjoinpath->parent->relids;
+	Relids		outerrels = nest->jpath.outerjoinpath->parent->relids;
+
 	return bms_intersect(inner_batched, outerrels);
 }
 
 Relids
 yb_get_unbatched_relids(NestPath *nest)
 {
-	Relids outer_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(nest->jpath.outerjoinpath);
-	Relids inner_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(nest->jpath.innerjoinpath);
+	Relids		outer_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(nest->jpath.outerjoinpath);
+	Relids		inner_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(nest->jpath.innerjoinpath);
 
 	/* Rels not in this join that can't be batched. */
-	Relids param_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(&nest->jpath.path);
+	Relids		param_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(&nest->jpath.path);
 
 	return bms_union(outer_unbatched,
-						  bms_union(inner_unbatched, param_unbatched));
+					 bms_union(inner_unbatched, param_unbatched));
 }
 
 bool
 yb_is_outer_inner_batched(Path *outer, Path *inner)
 {
-	Relids outer_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(outer);
-	Relids inner_batched = YB_PATH_REQ_OUTER_BATCHED(inner);
+	Relids		outer_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(outer);
+	Relids		inner_batched = YB_PATH_REQ_OUTER_BATCHED(inner);
 
 	return bms_overlap(outer->parent->relids,
-		bms_difference(inner_batched, outer_unbatched));
+					   bms_difference(inner_batched, outer_unbatched));
 }
 
 bool
 yb_is_nestloop_batched(NestPath *nest)
 {
-	Relids batched_relids = yb_get_batched_relids(nest);
+	Relids		batched_relids = yb_get_batched_relids(nest);
+
 	return bms_overlap(nest->jpath.outerjoinpath->parent->relids,
-					  batched_relids);
+					   batched_relids);
 }
 
 /*
@@ -1832,7 +1833,7 @@ match_unsorted_outer(PlannerInfo *root,
 			 * inner relation, including the unparameterized case.
 			 */
 			ListCell   *lc2;
-			List *param_paths = innerrel->cheapest_parameterized_paths;
+			List	   *param_paths = innerrel->cheapest_parameterized_paths;
 
 			foreach(lc2, param_paths)
 			{
@@ -2437,26 +2438,28 @@ select_mergejoin_clauses(PlannerInfo *root,
  */
 static bool
 yb_has_non_evaluable_bnl_clauses(Path *outer_path, Path *inner_path,
-											List *rinfos)
+								 List *rinfos)
 {
-	ListCell *lc;
-	Relids req_batched_rels = YB_PATH_REQ_OUTER_BATCHED(inner_path);
-	Relids outer_relids = outer_path->parent->relids;
-	Relids inner_relids = inner_path->parent->relids;
+	ListCell   *lc;
+	Relids		req_batched_rels = YB_PATH_REQ_OUTER_BATCHED(inner_path);
+	Relids		outer_relids = outer_path->parent->relids;
+	Relids		inner_relids = inner_path->parent->relids;
 
 	foreach(lc, rinfos)
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
-		RestrictInfo *batched_rinfo =
-			yb_get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
+		RestrictInfo *batched_rinfo = yb_get_batched_restrictinfo(rinfo,
+																  outer_relids,
+																  inner_relids);
 
 		if (!batched_rinfo)
 			continue;
 
-		Relids right_relids = batched_rinfo->right_relids;
+		Relids		right_relids = batched_rinfo->right_relids;
+
 		right_relids = bms_intersect(right_relids, req_batched_rels);
 		if (bms_overlap(right_relids, outer_relids) &&
-			 !bms_is_subset(right_relids, outer_relids))
+			!bms_is_subset(right_relids, outer_relids))
 		{
 			return true;
 		}

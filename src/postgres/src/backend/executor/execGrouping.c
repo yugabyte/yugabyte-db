@@ -139,16 +139,18 @@ execTuplesHashPrepare(int numCols,
 ExprState *
 ybPrepareOuterExprsEqualFn(List *outer_exprs, Oid *eqOps, PlanState *parent)
 {
-	List *quals = NULL;
-	ListCell *lc;
-	int i = 0;
+	List	   *quals = NULL;
+	ListCell   *lc;
+	int			i = 0;
+
 	foreach(lc, outer_exprs)
 	{
-		Expr *rhs = lfirst(lc);
-		Expr *lhs = yb_copy_replace_varnos(rhs, OUTER_VAR, INNER_VAR);
+		Expr	   *rhs = lfirst(lc);
+		Expr	   *lhs = yb_copy_replace_varnos(rhs, OUTER_VAR, INNER_VAR);
 
-		int collid = exprCollation((Node *) rhs);
-		Oid eqop;
+		int			collid = exprCollation((Node *) rhs);
+		Oid			eqop;
+
 		/*
 		 * We can't directly use eqOps[i] as that might be a cross-type
 		 * comparison between the outer and inner sides. We attempt to get
@@ -156,9 +158,9 @@ ybPrepareOuterExprsEqualFn(List *outer_exprs, Oid *eqOps, PlanState *parent)
 		 * with itself.
 		 */
 		(void) get_compatible_hash_operators(eqOps[i], NULL, &eqop);
-		Expr *qual =
-			make_opclause(eqop, BOOLOID, false, lhs, rhs,
-						  collid, collid);
+		Expr	   *qual = make_opclause(eqop, BOOLOID, false, lhs, rhs,
+										 collid, collid);
+
 		set_opfuncid((OpExpr *) qual);
 		quals = lappend(quals, qual);
 		i++;
@@ -249,7 +251,7 @@ YbBuildTupleHashTableExt(PlanState *parent,
 	 * functions (i.e. nothing that'd employ RegisterExprContextCallback()).
 	 */
 	hashtable->exprcontext =
-	expr_cxt ? expr_cxt : CreateStandaloneExprContext();
+		expr_cxt ? expr_cxt : CreateStandaloneExprContext();
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -567,7 +569,7 @@ TupleHashTableHash_internal(struct tuplehash_hash *tb,
 	TupleTableSlot *slot;
 	FmgrInfo   *hashfunctions;
 	int			i;
-	ExprState  **eval_exprs = NULL;
+	ExprState **eval_exprs = NULL;
 
 	if (tuple == NULL)
 	{
@@ -617,9 +619,10 @@ TupleHashTableHash_internal(struct tuplehash_hash *tb,
 			uint32		hkey;
 
 			/* YB doesn't support collations with hash functions. */
-			Oid yb_collation = (IsYugaByteEnabled() ?
-								DEFAULT_COLLATION_OID :
-								hashtable->tab_collations[i]);
+			Oid			yb_collation = (IsYugaByteEnabled() ?
+										DEFAULT_COLLATION_OID :
+										hashtable->tab_collations[i]);
+
 			hkey = DatumGetUInt32(FunctionCall1Coll(&hashfunctions[i],
 													yb_collation,
 													attr));

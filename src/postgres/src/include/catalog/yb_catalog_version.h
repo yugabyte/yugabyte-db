@@ -24,9 +24,9 @@
  */
 typedef enum YbCatalogVersionType
 {
-	CATALOG_VERSION_UNSET,           /* Not yet set. */
-	CATALOG_VERSION_PROTOBUF_ENTRY,  /* Old protobuf-based version. */
-	CATALOG_VERSION_CATALOG_TABLE,   /* New table-based version. */
+	CATALOG_VERSION_UNSET,		/* Not yet set. */
+	CATALOG_VERSION_PROTOBUF_ENTRY, /* Old protobuf-based version. */
+	CATALOG_VERSION_CATALOG_TABLE,	/* New table-based version. */
 } YbCatalogVersionType;
 
 extern YbCatalogVersionType yb_catalog_version_type;
@@ -55,4 +55,4 @@ extern bool YbIsSystemCatalogChange(Relation rel);
 extern YbCatalogVersionType YbGetCatalogVersionType();
 
 /* Get actual db_oid for pg_yb_catalog_version */
-Oid YbMasterCatalogVersionTableDBOid();
+Oid			YbMasterCatalogVersionTableDBOid();

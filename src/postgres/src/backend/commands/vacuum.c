@@ -1487,7 +1487,7 @@ vac_update_relstats(Relation relation,
 
 	/* If anything changed, write out the tuple. */
 	if (dirty)
-		heap_inplace_update(rd, ctup, false /* yb_shared_update */);
+		heap_inplace_update(rd, ctup, false /* yb_shared_update */ );
 
 	table_close(rd, RowExclusiveLock);
 
@@ -1705,7 +1705,7 @@ vac_update_datfrozenxid(void)
 		newMinMulti = dbform->datminmxid;
 
 	if (dirty)
-		heap_inplace_update(relation, tuple, false /* yb_shared_update */);
+		heap_inplace_update(relation, tuple, false /* yb_shared_update */ );
 
 	heap_freetuple(tuple);
 	table_close(relation, RowExclusiveLock);

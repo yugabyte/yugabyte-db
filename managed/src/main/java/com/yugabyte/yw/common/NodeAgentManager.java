@@ -52,7 +52,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
-import org.apache.commons.compress.utils.IOUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.filefilter.WildcardFileFilter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -156,10 +156,10 @@ public class NodeAgentManager {
       CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPrivate(), keyPath);
       return new ImmutablePair<>(x509, keyPair);
     } catch (RuntimeException e) {
-      log.error("Failed to create root cert for node agent {}", nodeAgent.getUuid(), e);
+      log.error("Failed to create root cert for node agent {}", nodeAgent, e);
       throw e;
     } catch (Exception e) {
-      log.error("Failed to create root cert for node agent {}", nodeAgent.getUuid(), e);
+      log.error("Failed to create root cert for node agent {}", nodeAgent, e);
       throw new RuntimeException(e.getMessage(), e);
     }
   }
@@ -190,10 +190,10 @@ public class NodeAgentManager {
       CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPrivate(), serverKeyPath);
       return new ImmutablePair<>(x509, keyPair);
     } catch (RuntimeException e) {
-      log.error("Failed to create server cert for node agent {}", nodeAgent.getUuid(), e);
+      log.error("Failed to create server cert for node agent {}", nodeAgent, e);
       throw e;
     } catch (Exception e) {
-      log.error("Failed to create server cert for node agent {}", nodeAgent.getUuid(), e);
+      log.error("Failed to create server cert for node agent {}", nodeAgent, e);
       throw new RuntimeException(e.getMessage(), e);
     }
   }
@@ -209,7 +209,7 @@ public class NodeAgentManager {
       Pair<X509Certificate, KeyPair> pair = createRootCert(nodeAgent, caCertPath, caKeyPath);
       log.info(
           "Generated root cert for node agent: {} at key path: {} and cert path: {}",
-          nodeAgent.getUuid(),
+          nodeAgent,
           caKeyPath,
           caCertPath);
 
@@ -224,15 +224,15 @@ public class NodeAgentManager {
 
       log.info(
           "Generated self-signed server cert for node agent: {} at key path: {} and cert path: {}",
-          nodeAgent.getUuid(),
+          nodeAgent,
           serverKeyPath,
           serverKeyPath);
       return serverPair;
     } catch (RuntimeException e) {
-      log.error("Failed to generate certs for node agent {}", nodeAgent.getUuid(), e);
+      log.error("Failed to generate certs for node agent {}", nodeAgent, e);
       throw e;
     } catch (Exception e) {
-      log.error("Failed to generate certs for node agent {}", nodeAgent.getUuid(), e);
+      log.error("Failed to generate certs for node agent {}", nodeAgent, e);
       throw new RuntimeException(e.getMessage(), e);
     }
   }
@@ -242,10 +242,11 @@ public class NodeAgentManager {
     Path nextCertFilepath = nextCertDirPath.resolve(NodeAgent.ROOT_CA_CERT_NAME);
     Path mergedCertFilepath = nextCertDirPath.resolve(NodeAgent.MERGED_ROOT_CA_CERT_NAME);
     log.info(
-        "Creating merged cert file {} of curr {} and new {}",
+        "Creating merged cert file {} of curr {} and new {} for node agent {}",
         mergedCertFilepath,
         currCertFilepath,
-        nextCertFilepath);
+        nextCertFilepath,
+        nodeAgent);
     try (PrintWriter writer = new PrintWriter(mergedCertFilepath.toFile())) {
       Path[] paths = new Path[] {currCertFilepath, nextCertFilepath};
       for (Path path : paths) {
@@ -259,8 +260,8 @@ public class NodeAgentManager {
     } catch (Exception e) {
       throw new RuntimeException(
           String.format(
-              "Failed to merge two certificates %s and %s into %s. Error: %s",
-              currCertFilepath, nextCertFilepath, mergedCertFilepath, e.getMessage()),
+              "Failed to merge two certificates %s and %s into %s for node agent {}. Error: %s",
+              currCertFilepath, nextCertFilepath, mergedCertFilepath, nodeAgent, e.getMessage()),
           e);
     }
   }
@@ -505,22 +506,22 @@ public class NodeAgentManager {
     if (!Files.exists(newCertDirPath)) {
       throw new IllegalStateException(
           String.format(
-              "New cert directory %s does not exist for node agent %s",
-              newCertDirPath, nodeAgent.getUuid()));
+              "New cert directory %s does not exist for node agent %s", newCertDirPath, nodeAgent));
     }
     // Point to the new directory and persist in the DB before deleting.
-    log.info("Updating the cert dir to {} for node agent {}", newCertDirPath, nodeAgent.getUuid());
+    log.info("Updating the cert dir to {} for node agent {}", newCertDirPath, nodeAgent);
     nodeAgent.updateCertDirPath(newCertDirPath, State.UPGRADED);
     try {
       // Delete the old cert directory.
-      log.info(
-          "Deleting current cert dir {} for node agent {}",
-          currentCertDirPath,
-          nodeAgent.getUuid());
+      log.info("Deleting current cert dir {} for node agent {}", currentCertDirPath, nodeAgent);
       FileData.deleteFiles(currentCertDirPath.toString(), true);
     } catch (Exception e) {
       // Ignore error.
-      log.warn("Error deleting old cert directory {}", currentCertDirPath, e);
+      log.warn(
+          "Error deleting old cert directory {} for node agent {}",
+          currentCertDirPath,
+          nodeAgent,
+          e);
     }
   }
 

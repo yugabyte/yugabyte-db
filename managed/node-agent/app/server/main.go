@@ -22,7 +22,7 @@ var (
 )
 
 func init() {
-	ctx = util.WithCorrelationID(context.Background(), util.NewUUID().String())
+	ctx = context.WithValue(context.Background(), util.CorrelationId, util.NewUUID().String())
 	ctx, cancelFunc = context.WithCancel(ctx)
 }
 
@@ -44,6 +44,8 @@ func Start() {
 	if nodeAgentId == "" {
 		util.FileLogger().Fatalf(Context(), "Node Agent ID must be set")
 	}
+	dump, _ := config.Dump(Context())
+	util.FileLogger().Infof(Context(), "Dumping config %s", dump)
 	executor.Init(Context())
 	session.Init(Context())
 	disableMetricsTLS := config.Bool(util.NodeAgentDisableMetricsTLS)

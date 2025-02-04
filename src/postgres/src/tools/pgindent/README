@@ -12,15 +12,16 @@ different.
     the corresponding commit):
 
         diff \
-          <(cd src/postgres; git ls-files ^third-party-extensions ../yb/yql/pggate/***/ybc_*.h | ctags -L - --languages=c,c++ --c-kinds=gstu --c++-kinds=gstu -f /dev/stdout | awk '{print$1}' | uniq)
+          <(cd src/postgres; git ls-files ^third-party-extensions ../yb/yql/pggate/***/ybc_*.h | ctags -L - --languages=c,c++ --c-kinds=gstu --c++-kinds=gstu -f /dev/stdout | awk '{print$1}' | uniq) \
           <(cd ~/code/postgres; git ls-files | ctags -L - --languages=c,c++ --c-kinds=gstu --c++-kinds=gstu -f /dev/stdout | awk ' {print$1}' | uniq) | grep '<'
 
     ctags can find most type names.  The command above compares the ctags
     output between Yugabyte code and upstream postgres code and reports the
     types that are defined in Yugabyte only.  All these should have "yb" (case
     insensitive) present in them, and it should not be the case that upstream
-    postgres has type names that Yugabyte does not.  See the test plan of
-    commit 6a56ce7bcdeb0478c791efaa322b58c61007fd39 that should serve as a
+    postgres has type names that Yugabyte does not (though this may show up in
+    case there are future upstream PG commit point imports).  See the test plan
+    of commit 6a56ce7bcdeb0478c791efaa322b58c61007fd39 that should serve as a
     sanity check before proceeding to use pgindent.
 
     In addition to the types found by the above command, here are a few more

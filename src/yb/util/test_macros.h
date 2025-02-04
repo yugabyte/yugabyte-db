@@ -423,6 +423,12 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_LINUX_ONLY_TEST(test_name) YB_DISABLE_TEST(test_name)
 #endif
 
+#if !defined(NDEBUG)
+#define YB_DEBUG_ONLY_TEST(test_name) test_name
+#else
+#define YB_DEBUG_ONLY_TEST(test_name) YB_DISABLE_TEST(test_name)
+#endif
+
 // Can be used in individual test cases or in the SetUp() method to skip all tests for a fixture.
 #define YB_SKIP_TEST_IN_TSAN() \
   do { \

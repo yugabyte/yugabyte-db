@@ -28,7 +28,7 @@ namespace yb::vector_index {
 namespace {
 
 template<ValidDistanceResultType DistanceResult>
-using VerticesWithDistances = std::vector<VertexWithDistance<DistanceResult>>;
+using VerticesWithDistances = std::vector<VectorWithDistance<DistanceResult>>;
 
 template<ValidDistanceResultType DistanceResult>
 std::vector<VectorId> VertexIdsOnly(
@@ -36,7 +36,7 @@ std::vector<VectorId> VertexIdsOnly(
   std::vector<VectorId> result;
   result.reserve(vertices_with_distances.size());
   for (const auto& v_dist : vertices_with_distances) {
-    result.push_back(v_dist.vertex_id);
+    result.push_back(v_dist.vector_id);
   }
   return result;
 }
@@ -228,14 +228,14 @@ Status GroundTruth<Vector, DistanceResult>::ProcessQuery(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-std::vector<VertexWithDistance<DistanceResult>>
+std::vector<VectorWithDistance<DistanceResult>>
 GroundTruth<Vector, DistanceResult>::AugmentWithDistancesAndTrimToK(
     const std::vector<VectorId>& precomputed_correct_results,
     const Vector& query) {
   VerticesWithDistances<DistanceResult> result;
   result.reserve(k_);
   for (auto vertex_id : precomputed_correct_results) {
-    result.push_back(VertexWithDistance<DistanceResult>(vertex_id, distance_fn_(vertex_id, query)));
+    result.push_back(VectorWithDistance<DistanceResult>(vertex_id, distance_fn_(vertex_id, query)));
     if (result.size() == k_) {
       break;
     }
@@ -255,7 +255,7 @@ void GroundTruth<Vector, DistanceResult>::DoApproxSearchAndUpdateStats(
       vector_cast<Vector>(query), SearchOptions{.max_num_results = k_}));
   std::unordered_set<VectorId> approx_set;
   for (const auto& approx_entry : approx_result) {
-    approx_set.insert(approx_entry.vertex_id);
+    approx_set.insert(approx_entry.vector_id);
   }
 
   size_t overlap = 0;

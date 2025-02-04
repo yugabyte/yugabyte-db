@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -409,6 +410,7 @@ class PgApiImpl {
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid);
 
   Status BackfillIndex(const PgObjectId& table_id);
+  Status WaitVectorIndexReady(const PgObjectId& table_id);
 
   Status NewDropSequence(const YbcPgOid database_oid,
                          const YbcPgOid sequence_oid,
@@ -797,6 +799,12 @@ class PgApiImpl {
   Status NewDropReplicationSlot(const char *slot_name,
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
+
+  Result<std::string> ExportSnapshot(const YbcPgTxnSnapshot& snapshot);
+  Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
+
+  bool HasExportedSnapshots() const;
+  void ClearExportedTxnSnapshots();
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();

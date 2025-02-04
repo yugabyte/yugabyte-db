@@ -59,7 +59,6 @@ bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
 bool YBCIsTxnAbortedError(uint16_t txn_errcode);
 const char* YBCTxnErrCodeToString(uint16_t txn_errcode);
 uint16_t YBCGetTxnConflictErrorCode();
-
 void YBCResolveHostname();
 
 #define CHECKED_YBC_STATUS __attribute__ ((warn_unused_result)) YbcStatus

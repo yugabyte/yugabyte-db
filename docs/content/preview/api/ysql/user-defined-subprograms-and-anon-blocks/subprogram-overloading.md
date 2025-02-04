@@ -14,7 +14,7 @@ type: docs
 {{< tip title="Read the accounts of data type conversion and subprogram overloading in the PostgreSQL documentation." >}}
 The possibility of overloading brings the risk of overall application behavior changes when a new overload of an existing subprogram's name is defined. You can see a few practical examples in the section [Choosing between overload candidates in the absence of a perfect match](#choosing-between-overload-candidates-in-the-absence-of-a-perfect-match) below.
 
-The risk occurs because PostgreSQL, and therefore YSQL, support implicit data type conversion. The rules for data type conversion, and the consequences for how an overload candidate is selected, require careful explanation. The YSQL documentation doesn't reproduce the accounts. Rather, you should read the sections [Type Conversion](https://www.postgresql.org/docs/11/typeconv.html) and [Function Overloading](https://www.postgresql.org/docs/11/xfunc-overload.html) in the PostgreSQL documentation.
+The risk occurs because PostgreSQL, and therefore YSQL, support implicit data type conversion. The rules for data type conversion, and the consequences for how an overload candidate is selected, require careful explanation. The YSQL documentation doesn't reproduce the accounts. Rather, you should read the sections [Type Conversion](https://www.postgresql.org/docs/15/typeconv.html) and [Function Overloading](https://www.postgresql.org/docs/15/xfunc-overload.html) in the PostgreSQL documentation.
 {{< /tip >}}
 
 Subprograms with different _subprogram_call_signatures_ can share the same _[subprogram_name](../../syntax_resources/grammar_diagrams/#subprogram-name)_. If two or more subprograms share the same _subprogram_name_, then the _subprogram_name_ is said to be _overloaded_. Notice the relationship between the _subprogram_signature_ rule:
@@ -34,7 +34,7 @@ and the _subprogram_call_signature_ rule:
 The _subprogram_signature_ is a list of _arg_decls_; and an _arg_decl_ has two optional components (_formal_arg_ and _arg_mode_) and one mandatory component (_arg_type_). But the only significant part of the _subprogram_signature_ for distinguishing between overloads is the mandatory _arg_type_ component.<a name="subprogram-call-signature"></a>
 
 {{< tip title="'OUT' arguments are not included in the 'subprogram_call_signature'." >}}
-This rule is stated in the PostgreSQL documentation in the account of the  _[pg_proc](https://www.postgresql.org/docs/11/catalog-pg-proc.html)_ catalog table. See the description of the _proargtypes_ column.
+This rule is stated in the PostgreSQL documentation in the account of the  _[pg_proc](https://www.postgresql.org/docs/15/catalog-pg-proc.html)_ catalog table. See the description of the _proargtypes_ column.
 
 Yugabyte recommends that you never create a function with an _out_ or _inout_ argument but, rather, that you return all values of interest by specifying an appropriate composite data type for the _returns_ clause. This implies preferring _returns table(...)_ over _returns setof_. The latter requires a list of _out_ arguments that correspond to the columns that you list, when you use the former, within the parenthesis of _table(...)_.
 

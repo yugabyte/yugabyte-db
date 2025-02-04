@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/apex/log"
@@ -22,11 +23,19 @@ type AppLogger struct {
 }
 
 var (
+	// Path prefix upto node-agent.
+	pathPrefix    string
 	consoleLogger *AppLogger
 	fileLogger    *AppLogger
 
 	onceConsoleLogger = &sync.Once{}
 	onceFileLogger    = &sync.Once{}
+
+	// TracingIDs maps header to internal IDs.
+	TracingIDs = map[string]ContextKey{
+		CorrelationIdHeader: CorrelationId,
+		RequestIdHeader:     RequestId,
+	}
 )
 
 // Returns the console logger.
@@ -51,6 +60,12 @@ func FileLogger() *AppLogger {
 		if err != nil {
 			panic("Unable to create logs dir.")
 		}
+		if pathPrefix == "" {
+			_, file, _, ok := runtime.Caller(0)
+			if ok {
+				pathPrefix = filepath.Dir(filepath.Dir(file))
+			}
+		}
 		logFilepath := filepath.Join(LogsDir(), config.String(NodeLoggerKey))
 		writer := &lumberjack.Logger{
 			Filename:   logFilepath,
@@ -74,15 +89,11 @@ func (l *AppLogger) getEntry(ctx context.Context) *log.Entry {
 	entry := log.NewEntry(l.logger)
 	if l.enableDebug {
 		config := CurrentConfig()
-		corrId := ""
-		if ctx != nil {
-			if v := ctx.Value(CorrelationId); v != nil {
-				corrId = v.(string)
-			}
-		}
 		// Get the line number from the runtime stack.
 		funcPtr, file, line, ok := runtime.Caller(2)
 		if ok {
+			// Trim the unwanted path prefix.
+			file = strings.TrimPrefix(file, pathPrefix)
 			entry = entry.WithFields(
 				log.Fields{
 					"func": runtime.FuncForPC(funcPtr).Name(),
@@ -91,11 +102,15 @@ func (l *AppLogger) getEntry(ctx context.Context) *log.Entry {
 				},
 			)
 		}
+		if ctx != nil {
+			for _, val := range TracingIDs {
+				if v := ctx.Value(val); v != nil && v != "" {
+					entry = entry.WithField(string(val), v.(string))
+				}
+			}
+		}
 		if version := config.String(PlatformVersionKey); version != "" {
 			entry = entry.WithField("version", version)
-		}
-		if corrId != "" {
-			entry = entry.WithField("corr", corrId)
 		}
 	}
 	return entry
@@ -111,7 +126,7 @@ func (l *AppLogger) Errorf(ctx context.Context, msg string, v ...interface{}) {
 
 func (l *AppLogger) Info(ctx context.Context, msg string) {
 	if l.IsInfoEnabled() {
-		l.getEntry(ctx).Infof(msg)
+		l.getEntry(ctx).Info(msg)
 	}
 }
 

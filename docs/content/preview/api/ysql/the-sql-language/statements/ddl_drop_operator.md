@@ -14,7 +14,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP OPERATOR` statement to remove an operator.
+Use the DROP OPERATOR statement to remove an operator.
 
 ## Syntax
 
@@ -41,5 +41,6 @@ yugabyte=# DROP OPERATOR @#@ (NONE, int8);
 
 ## See also
 
-- [`CREATE OPERATOR`](../ddl_create_operator)
-- [postgresql-docs-drop-operator](https://www.postgresql.org/docs/current/sql-dropoperator.html)
+- [CREATE OPERATOR](../ddl_create_operator)
+
+[postgresql-docs-drop-operator]: https://www.postgresql.org/docs/15/sql-dropoperator.html

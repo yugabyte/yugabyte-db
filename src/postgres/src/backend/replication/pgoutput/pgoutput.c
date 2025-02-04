@@ -106,8 +106,7 @@ static void update_replication_progress(LogicalDecodingContext *ctx,
  */
 static bool yb_is_yboutput_mode;
 
-static void
-yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity);
+static void yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity);
 
 /*
  * Only 3 publication actions are used for row filtering ("insert", "update",
@@ -738,7 +737,7 @@ maybe_send_schema(LogicalDecodingContext *ctx,
 
 	if (IsYugaByteEnabled())
 		elog(DEBUG1, "Sent the RELATION message for table_id: %d",
-			RelationGetRelid(relation));
+			 RelationGetRelid(relation));
 }
 
 /*
@@ -1527,14 +1526,15 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 			maybe_send_schema(ctx, change, relation, relentry);
 
-			bool		*yb_old_is_omitted = NULL;
-			bool		*yb_new_is_omitted = NULL;
+			bool	   *yb_old_is_omitted = NULL;
+			bool	   *yb_new_is_omitted = NULL;
+
 			if (IsYugaByteEnabled() && yb_is_yboutput_mode)
 			{
 				yb_old_is_omitted =
-					(change->data.tp.oldtuple) ?
-						change->data.tp.oldtuple->yb_is_omitted :
-						NULL;
+					change->data.tp.oldtuple ?
+					change->data.tp.oldtuple->yb_is_omitted :
+					NULL;
 
 				yb_new_is_omitted = change->data.tp.newtuple->yb_is_omitted;
 			}
@@ -1775,7 +1775,7 @@ yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid)
 {
 	elog(DEBUG1, "yb_pgoutput_schema_change for relid: %d", relid);
 
-	rel_sync_cache_relation_cb(0 /* unused */, relid);
+	rel_sync_cache_relation_cb(0 /* unused */ , relid);
 }
 
 /*

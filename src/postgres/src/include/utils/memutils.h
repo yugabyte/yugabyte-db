@@ -1,4 +1,4 @@
-	/*-------------------------------------------------------------------------
+/*-------------------------------------------------------------------------
  *
  * memutils.h
  *	  This file contains declarations for memory allocation utility
@@ -118,7 +118,8 @@ GetMemoryChunkContext(void *pointer)
 {
 	MemoryContext context;
 
-	if (pointer == NULL) {
+	if (pointer == NULL)
+	{
 		YBC_LOG_ERROR_STACK_TRACE("GetMemoryChunkContext: null pointer");
 	}
 	/*
@@ -242,22 +243,22 @@ typedef struct YbPgMemTracker
 	 * Current, at time of cutting Snapshot(), memory in bytes allocated by PG
 	 * (pggate is not included in this field)
 	 */
-	Size pg_cur_mem_bytes;
+	Size		pg_cur_mem_bytes;
 	/*
 	 * The current allocated memory including PG, pggate and cached memory.
 	 */
-	int64_t backend_cur_allocated_mem_bytes;
+	int64_t		backend_cur_allocated_mem_bytes;
 	/*
 	 * The maximum memory ever allocated by current statement including PG and
 	 * pggate
 	 */
-	Size stmt_max_mem_bytes;
+	Size		stmt_max_mem_bytes;
 	/*
 	 * The initial base memory already allocated by PG and paggate at the
 	 * beginning of current statement.
 	 * NOTE: Only set if yb_run_with_explain_analyze is true.
 	 */
-	Size stmt_max_mem_base_bytes;
+	Size		stmt_max_mem_base_bytes;
 
 	/*
 	 * A flag to tell if pggate is inititated. This is used to track the memory
@@ -266,7 +267,7 @@ typedef struct YbPgMemTracker
 	 * pggate. It pushes down fundamental memory work to it, while this layer
 	 * stays as light as possible in PG.
 	 */
-	bool pggate_alive;
+	bool		pggate_alive;
 } YbPgMemTracker;
 
 extern YbPgMemTracker PgMemTracker;

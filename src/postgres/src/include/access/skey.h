@@ -191,8 +191,8 @@ typedef ScanKeyData *ScanKey;
 #define SK_ORDER_BY			0x0100	/* scankey is for ORDER BY op */
 #define YB_SK_IS_HASHED		0x0200	/* scankey represents yb hash code */
 #define YB_SK_SEARCHARRAY_RETAIN_NULLS	0x0400	/* retain NULLs in
-												 * ScalarArrayOpExpr (see above)
-												 */
+												 * ScalarArrayOpExpr (see
+												 * above) */
 
 
 /*

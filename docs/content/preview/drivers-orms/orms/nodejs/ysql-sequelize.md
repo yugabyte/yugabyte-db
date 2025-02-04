@@ -34,7 +34,7 @@ The application source is in the [repository](https://github.com/yugabyte/orm-ex
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - [node.js](https://nodejs.org/en/) version 16 or later.
 
 ## Clone the orm-examples repository
@@ -132,7 +132,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

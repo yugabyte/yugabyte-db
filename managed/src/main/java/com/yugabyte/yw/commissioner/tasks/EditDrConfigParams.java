@@ -73,10 +73,10 @@ public class EditDrConfigParams extends XClusterConfigTaskBase {
                   pitrConfig -> {
                     createDeletePitrConfigTask(
                         pitrConfig.getUuid(),
-                        targetUniverse.getUniverseUUID(),
+                        pitrConfig.getUniverse().getUniverseUUID(),
                         false /* ignoreErrors */);
                     createCreatePitrConfigTask(
-                        targetUniverse,
+                        pitrConfig.getUniverse(),
                         pitrConfig.getDbName(),
                         pitrConfig.getTableType(),
                         pitrRetentionPeriodSec,

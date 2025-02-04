@@ -24,11 +24,11 @@
  */
 typedef struct
 {
-	int nrows; /* Number of rows in the matrix */
-	int ncols; /* Number of columns in the matrix */
+	int			nrows;			/* Number of rows in the matrix */
+	int			ncols;			/* Number of columns in the matrix */
 
 	/* The data held in the matrix implemented as a one-dimensional BMS */
-	Bitmapset *data;
+	Bitmapset  *data;
 } YbBitMatrix;
 
 /* Lifecycle operations */
@@ -37,15 +37,15 @@ extern void YbCopyBitMatrix(YbBitMatrix *dest, const YbBitMatrix *src);
 extern void YbFreeBitMatrix(YbBitMatrix *matrix);
 
 /* General operations */
-extern int YbBitMatrixNumRows(const YbBitMatrix *matrix);
-extern int YbBitMatrixNumCols(const YbBitMatrix *matrix);
+extern int	YbBitMatrixNumRows(const YbBitMatrix *matrix);
+extern int	YbBitMatrixNumCols(const YbBitMatrix *matrix);
 
 /* Row-level operations */
 extern void YbBitMatrixSetRow(YbBitMatrix *matrix, int row_idx, bool value);
-extern int YbBitMatrixNextMemberInColumn(const YbBitMatrix *matrix, int col_idx,
-										 int prev_row);
-extern int YbBitMatrixNextMemberInRow(const YbBitMatrix *matrix, int row_idx,
-									  int prev_col);
+extern int	YbBitMatrixNextMemberInColumn(const YbBitMatrix *matrix, int col_idx,
+										  int prev_row);
+extern int	YbBitMatrixNextMemberInRow(const YbBitMatrix *matrix, int row_idx,
+									   int prev_col);
 
 /* Individual cell-level operations */
 extern bool YbBitMatrixGetValue(const YbBitMatrix *matrix, int row_idx,

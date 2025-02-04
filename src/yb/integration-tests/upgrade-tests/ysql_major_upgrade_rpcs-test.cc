@@ -14,6 +14,8 @@
 #include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
 
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/util/backoff_waiter.h"
 
 using namespace std::literals;
 
@@ -27,7 +29,7 @@ class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
 
   void SetUp() override {
     Pg15UpgradeTestBase::SetUp();
-    if (IsTestSkipped()) {
+    if (Test::IsSkipped()) {
       return;
     }
 
@@ -135,6 +137,37 @@ class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
     }
     return STATUS_FORMAT(IllegalState, "Unknown state: $0", state);
   }
+
+  Result<bool> HasPreviousVersionCatalogTables(std::optional<std::string> db_name = std::nullopt) {
+    master::ListTablesRequestPB req;
+    master::ListTablesResponsePB resp;
+
+    auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+    rpc::RpcController controller;
+    RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &controller));
+
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+
+    for (const auto& table : resp.tables()) {
+      if (db_name && table.namespace_().name() != *db_name) {
+        continue;
+      }
+      if (IsPriorVersionYsqlCatalogTable(table.id())) {
+        LOG(INFO) << "Found previous version catalog table: " << table.ShortDebugString();
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  Status WaitForPreviousVersionCatalogDeletion() {
+    return LoggedWaitFor(
+        [this]() -> Result<bool> { return !VERIFY_RESULT(HasPreviousVersionCatalogTables()); },
+        5min, "Waiting for previous version catalog tables to be deleted");
+  }
 };
 
 // Start multiple ysql major upgrade RPCs simultaneously. Only one RPC should succeed.
@@ -184,6 +217,8 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousUpgrades) {
 
   ASSERT_NOK_STR_CONTAINS(
       PerformYsqlMajorCatalogUpgrade(), "Ysql Catalog is already on the current major version");
+
+  ASSERT_OK(WaitForPreviousVersionCatalogDeletion());
 }
 
 // Start multiple ysql major upgrade rollback RPCs simultaneously. Only one RPC should succeed.
@@ -248,10 +283,6 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MasterCrashDurin
   auto master_leader = cluster_->GetLeaderMaster();
 
   auto state_to_fail_at = master::YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE;
-#ifdef __APPLE__
-  // Mac machines are slow so fail earlier.
-  state_to_fail_at = master::YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB;
-#endif
 
   // Block the upgrade from finishing.
   ASSERT_OK(cluster_->SetFlag(
@@ -350,6 +381,46 @@ TEST_F(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterEveryPhase) {
   ASSERT_OK(RestartAllMastersInOldVersion(kNoDelayBetweenNodes));
 
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
+}
+
+TEST_F(YsqlMajorUpgradeRpcsTest, CleanupPreviousCatalog) {
+  const auto db_name = "db1";
+  ASSERT_TRUE(ASSERT_RESULT(HasPreviousVersionCatalogTables()));
+  ASSERT_FALSE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db_name)));
+
+  ASSERT_OK(ExecuteStatement(Format("CREATE DATABASE $0", db_name)));
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+  ASSERT_TRUE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db_name)));
+
+  // Block the cleanup.
+  {
+    auto master_leader = cluster_->GetLeaderMaster();
+    ASSERT_OK(cluster_->SetFlag(
+        master_leader, "TEST_ysql_fail_cleanup_previous_version_catalog", "true"));
+  }
+
+  ASSERT_OK(CompleteUpgradeAndValidate());
+  ASSERT_TRUE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db_name)));
+
+  // Make sure our block worked.
+  SleepFor(10s);
+  ASSERT_TRUE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db_name)));
+
+  // Drop the database should still cleanup both old and new catalog of this db.
+  ASSERT_OK(ExecuteStatement(Format("DROP DATABASE $0", db_name)));
+  ASSERT_FALSE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db_name)));
+
+  // Check other databases still hve the old catalog since we have blocked it.
+  for (const auto& db : {"template0", "template1", "yugabyte", "postgres"}) {
+    ASSERT_TRUE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db)));
+  }
+
+  // Failover master leader to make sure new leader picks up the cleanup and can handle dropped
+  // databases. This new leader does not have the block gFlag set.
+  tserver::TabletServerErrorPB::Code error_code;
+  ASSERT_OK(cluster_->StepDownMasterLeader(&error_code));
+  ASSERT_OK(WaitForPreviousVersionCatalogDeletion());
 }
 
 class YsqlMajorUpgradeYbAdminTest : public Pg15UpgradeTestBase {

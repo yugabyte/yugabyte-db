@@ -412,12 +412,13 @@ message ClearUniverseUuidResponsePB {
 
 message AcquireObjectLockRequestPB {
   optional bytes txn_id = 1;
-  optional uint64 txn_reuse_version = 2;
-  optional uint32 subtxn_id = 3;
-  repeated docdb.ObjectLockPB object_locks = 4;
+  optional uint32 subtxn_id = 2;
+  repeated docdb.ObjectLockPB object_locks = 3;
   // The field is used only on the master side. Master remembers which tserver requested the
   // exclusive lock(s) so that it can issue a cleanup when the tserver looses its lease.
-  optional bytes session_host_uuid = 5;
+  optional bytes session_host_uuid = 4;
+  // The lease epoch of the requesting tserver.
+  optional uint64 lease_epoch = 5;
 }
 
 message AcquireObjectLockResponsePB {
@@ -426,15 +427,16 @@ message AcquireObjectLockResponsePB {
 
 message ReleaseObjectLockRequestPB {
   optional bytes txn_id = 1;
-  optional uint64 txn_reuse_version = 2;
   // When set, only locks owned by the given subtxn id are released. If unset, releases
-  // all locks held by <txn_id, reuse_version> irrespective of value in 'release_all_locks'.
-  optional uint32 subtxn_id = 3;
+  // all locks held by <txn_id> irrespective of value in 'release_all_locks'.
+  optional uint32 subtxn_id = 2;
   // The lock_type in ObjectLockPB is irrelevant here.
-  repeated docdb.ObjectLockPB object_locks = 4;
-  // When set, releases locks on all objects owned by <<txn_id, reuse_version>, subtxn_id>.
-  optional bool release_all_locks = 5;
-  optional bytes session_host_uuid = 6;
+  repeated docdb.ObjectLockPB object_locks = 3;
+  // When set, releases locks on all objects owned by <txn_id, subtxn_id>.
+  optional bool release_all_locks = 4;
+  optional bytes session_host_uuid = 5;
+  // The lease epoch of the requesting tserver.
+  optional uint64 lease_epoch = 6;
 }
 
 message ReleaseObjectLockResponsePB {

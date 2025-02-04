@@ -43,7 +43,7 @@ pg_GSS_error_int(PQExpBuffer str, OM_uint32 stat, int type)
 /*
  * GSSAPI errors contain two parts; put both into conn->errorMessage.
  */
-__attribute__((weak))	/* YB: for lto build */
+__attribute__((weak))			/* YB: for lto build */
 void
 pg_GSS_error(const char *mprefix, PGconn *conn,
 			 OM_uint32 maj_stat, OM_uint32 min_stat)

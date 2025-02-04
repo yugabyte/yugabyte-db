@@ -14,7 +14,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP AGGREGATE` statement to remove an aggregate.
+Use the DROP AGGREGATE statement to remove an aggregate.
 
 ## Syntax
 
@@ -41,7 +41,7 @@ yugabyte=# CREATE AGGREGATE newcnt(*) (
 yugabyte=# DROP AGGREGATE newcnt(*);
 ```
 
-`IF EXISTS` example.
+IF EXISTS example.
 
 ```plpgsql
 yugabyte=# DROP AGGREGATE IF EXISTS newcnt(*);
@@ -54,7 +54,7 @@ yugabyte=# CREATE AGGREGATE newcnt(*) (
 yugabyte=# DROP AGGREGATE IF EXISTS newcnt(*);
 ```
 
-`CASCADE` and `RESTRICT` example.
+CASCADE and RESTRICT example.
 
 ```plpgsql
 yugabyte=# CREATE AGGREGATE newcnt(*) (
@@ -74,5 +74,6 @@ yugabyte=# DROP AGGREGATE newcnt(*) CASCADE;
 
 ## See also
 
-- [`CREATE AGGREGATE`](../ddl_create_aggregate)
-- [postgresql-docs-drop-aggregate](https://www.postgresql.org/docs/current/sql-dropaggregate.html)
+- [CREATE AGGREGATE](../ddl_create_aggregate)
+
+[postgresql-docs-drop-aggregate]: https://www.postgresql.org/docs/15/sql-dropaggregate.html

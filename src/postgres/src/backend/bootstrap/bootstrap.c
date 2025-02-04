@@ -383,9 +383,9 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 						  "template1",
 						  InvalidOid,
 						  FirstGenbkiObjectId,
-						  false /* colocated */,
-						  NULL /* retry_on_oid_collision */,
-						  NULL /* yb_clone_info */);
+						  false /* colocated */ ,
+						  NULL /* retry_on_oid_collision */ ,
+						  NULL /* yb_clone_info */ );
 	}
 
 	/*
@@ -654,6 +654,7 @@ InsertOneTuple(void)
 	{
 		TupleTableSlot *slot = MakeSingleTupleTableSlot(tupDesc,
 														&TTSOpsHeapTuple);
+
 		ExecStoreHeapTuple(tuple, slot, false);
 		YBCExecuteInsert(boot_reldesc, slot, ONCONFLICT_NONE);
 		ExecDropSingleTupleTableSlot(slot);

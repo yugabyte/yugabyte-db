@@ -19,7 +19,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/util/is_operation_done_result.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 DECLARE_bool(log_ysql_catalog_versions);
 
@@ -157,6 +157,12 @@ Status YsqlCatalogConfig::GetMajorCatalogUpgradePreviousError() const {
     status = StatusFromPB(pb.ysql_major_catalog_upgrade_info().previous_error());
   }
   return status;
+}
+
+bool YsqlCatalogConfig::IsPreviousVersionCatalogCleanupRequired() const {
+  auto [l, pb] = LockForRead();
+  return pb.has_ysql_major_catalog_upgrade_info() &&
+         pb.ysql_major_catalog_upgrade_info().previous_version_catalog_cleanup_required();
 }
 
 YsqlCatalogConfig::Updater::Updater(

@@ -88,15 +88,13 @@ Oct 16 23:49:38 ip-172-199-76-70.ec2.internal clockbound[92765]: 2024-10-16T23:4
 Oct 16 23:49:38 ip-172-199-76-70.ec2.internal clockbound[92765]: 2024-10-16T23:49:38.630045Z  INFO ThreadId(03) /root/.cargo/registry/src/index.crates.io-6f17d22bba15001f/clock->
 ```
 
-</details>
-
 ## Set ulimits
 
-In Linux, `ulimit` is used to limit and control the usage of system resources (threads, files, and network connections) on a per-process or per-user basis.
+In Linux, ulimit is used to limit and control the usage of system resources (threads, files, and network connections) on a per-process or per-user basis.
 
 ### Check ulimits
 
-Run the following command to check the `ulimit` settings.
+Run the following command to check the ulimit settings.
 
 ```sh
 $ ulimit -a
@@ -125,7 +123,7 @@ file locks                      (-x) unlimited
 
 ### Set system-wide ulimits
 
-You can change values by substituting the `-n` option for any possible value in the output of `ulimit -a`. Issue a command in the following form to change a `ulimit` setting.
+You can change values by substituting the `-n` option for any possible value in the output of `ulimit -a`. Issue a command in the following form to change a ulimit setting.
 
 ```sh
 $ ulimit -n <value>
@@ -170,10 +168,10 @@ On CentOS, `/etc/security/limits.d/20-nproc.conf` must also be configured to mat
 *          soft    nproc     12000
 ```
 
-After changing a `ulimit` setting in `/etc/security/limits.conf`, you will need to log out and back in. To update system processes, you may need to restart.
+After changing a ulimit setting in `/etc/security/limits.conf`, you will need to log out and back in. To update system processes, you may need to restart.
 
 {{< note title="Using other distributions" >}}
-If you're using a desktop-distribution, such as ubuntu-desktop, the preceding settings may not suffice. The operating system needs additional steps to change `ulimit` for GUI login.
+If you're using a desktop-distribution, such as ubuntu-desktop, the preceding settings may not suffice. The operating system needs additional steps to change ulimit for GUI login.
 
 In the case of ubuntu-desktop, in `/etc/systemd/user.conf` and `/etc/systemd/system.conf`, add `DefaultLimitNOFILE=64000` at the end of file.
 

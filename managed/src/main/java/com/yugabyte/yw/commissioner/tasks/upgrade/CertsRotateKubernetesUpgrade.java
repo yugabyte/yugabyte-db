@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -60,13 +61,14 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // So, generated node certs will still be of old rootCA after this step
           createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
           // Create kubernetes upgrade task to rotate certs
+          String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
           createUpgradeTask(
               getUniverse(),
               userIntent.ybSoftwareVersion,
               true /* isMasterChanged */,
               true /* isTserverChanged */,
               getUniverse().isYbcEnabled(),
-              getUniverse().getUniverseDetails().getYbcSoftwareVersion());
+              stableYbcVersion);
 
           // Now we will change the order of certs: new cert first, followed by old root cert
           // Also cert key will be pointing to new root cert key
@@ -80,7 +82,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               true /* isMasterChanged */,
               true /* isTserverChanged */,
               getUniverse().isYbcEnabled(),
-              getUniverse().getUniverseDetails().getYbcSoftwareVersion());
+              stableYbcVersion);
 
           // Reset the temporary certs and update the universe to use new rootCA
           createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
@@ -92,7 +94,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               true /* isMasterChanged */,
               true /* isTserverChanged */,
               getUniverse().isYbcEnabled(),
-              getUniverse().getUniverseDetails().getYbcSoftwareVersion());
+              stableYbcVersion);
         });
   }
 

@@ -67,7 +67,7 @@ exprType(const Node *expr)
 			type = ((const WindowFunc *) expr)->wintype;
 			break;
 		case T_YbBatchedExpr:
-			type = exprType((Node *)((const YbBatchedExpr *) expr)->orig_expr);
+			type = exprType((Node *) ((const YbBatchedExpr *) expr)->orig_expr);
 			break;
 		case T_SubscriptingRef:
 			type = ((const SubscriptingRef *) expr)->refrestype;
@@ -2291,8 +2291,8 @@ expression_tree_walker(Node *node,
 			break;
 		case T_YbPartitionPruneStepFuncOp:
 			{
-				YbPartitionPruneStepFuncOp *fstep =
-					(YbPartitionPruneStepFuncOp *) node;
+				YbPartitionPruneStepFuncOp *fstep = (YbPartitionPruneStepFuncOp *) node;
+
 				if (walker((Node *) fstep->exprs, context))
 					return true;
 			}
@@ -3246,12 +3246,11 @@ expression_tree_mutator(Node *node,
 			return (Node *) copyObject(node);
 		case T_YbPartitionPruneStepFuncOp:
 			{
-				YbPartitionPruneStepFuncOp *fstep =
-					(YbPartitionPruneStepFuncOp *) node;
+				YbPartitionPruneStepFuncOp *fstep = (YbPartitionPruneStepFuncOp *) node;
 				YbPartitionPruneStepFuncOp *newnode;
 
 				FLATCOPY(newnode, fstep, YbPartitionPruneStepFuncOp);
-				MUTATE(newnode->exprs,fstep->exprs, List *);
+				MUTATE(newnode->exprs, fstep->exprs, List *);
 				return (Node *) newnode;
 			}
 			break;
@@ -3372,8 +3371,8 @@ expression_tree_mutator(Node *node,
 			break;
 		case T_RestrictInfo:
 			{
-				RestrictInfo   *rinfo = (RestrictInfo *) node;
-				RestrictInfo   *newnode;
+				RestrictInfo *rinfo = (RestrictInfo *) node;
+				RestrictInfo *newnode;
 
 				FLATCOPY(newnode, rinfo, RestrictInfo);
 				MUTATE(newnode->clause, rinfo->clause, Expr *);
@@ -4250,7 +4249,7 @@ planstate_walk_members(PlanState **planstates, int nplans,
  * Given PlanState, return pointer to aggrefs field if it exists, NULL
  * otherwise.
  */
-List **
+List	  **
 YbPlanStateTryGetAggrefs(PlanState *ps)
 {
 	switch (nodeTag(ps))
@@ -4276,21 +4275,23 @@ YbGetBitmapScanRecheckRequired(PlanState *ps)
 	switch (nodeTag(ps))
 	{
 		case T_BitmapOrState:
-		{
-			BitmapOrState *bos = castNode(BitmapOrState, ps);
-			for (int i = 0; i < bos->nplans; i++)
-				if (YbGetBitmapScanRecheckRequired(bos->bitmapplans[i]))
-					return true;
-			return false;
-		}
+			{
+				BitmapOrState *bos = castNode(BitmapOrState, ps);
+
+				for (int i = 0; i < bos->nplans; i++)
+					if (YbGetBitmapScanRecheckRequired(bos->bitmapplans[i]))
+						return true;
+				return false;
+			}
 		case T_BitmapAndState:
-		{
-			BitmapAndState *bas = castNode(BitmapAndState, ps);
-			for (int i = 0; i < bas->nplans; i++)
-				if (YbGetBitmapScanRecheckRequired(bas->bitmapplans[i]))
-					return true;
-			return false;
-		}
+			{
+				BitmapAndState *bas = castNode(BitmapAndState, ps);
+
+				for (int i = 0; i < bas->nplans; i++)
+					if (YbGetBitmapScanRecheckRequired(bas->bitmapplans[i]))
+						return true;
+				return false;
+			}
 		case T_YbBitmapIndexScanState:
 			return castNode(YbBitmapIndexScanState, ps)->biss_requires_recheck;
 		default:

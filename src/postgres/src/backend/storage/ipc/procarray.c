@@ -268,7 +268,7 @@ typedef enum KAXCompressReason
 	KAX_PRUNE,					/* we just pruned old entries */
 	KAX_TRANSACTION_END,		/* we just committed/removed some XIDs */
 	KAX_STARTUP_PROCESS_IDLE	/* startup process is about to sleep */
-} KAXCompressReason;
+}			KAXCompressReason;
 
 
 static ProcArrayStruct *procArray;
@@ -587,7 +587,8 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 
 	Assert(myoff >= 0 && myoff < arrayP->numProcs);
 
-	int foundoff = ProcGlobal->allProcs[arrayP->pgprocnos[myoff]].pgxactoff;
+	int			foundoff = ProcGlobal->allProcs[arrayP->pgprocnos[myoff]].pgxactoff;
+
 	if (unlikely(foundoff != myoff))
 		ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
 						  errmsg("inconsistent state due to pgxactoff mismatch "
@@ -600,7 +601,8 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 	/*
 	 * Postgres transaction related code-paths are disabled for YB.
 	 */
-	if (!IsYugaByteEnabled()) {
+	if (!IsYugaByteEnabled())
+	{
 		if (TransactionIdIsValid(latestXid))
 		{
 			Assert(TransactionIdIsValid(ProcGlobal->xids[myoff]));
@@ -706,7 +708,8 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 			ProcArrayEndTransactionInternal(proc, latestXid);
 			LWLockRelease(ProcArrayLock);
 		}
-		else ProcArrayGroupClearXid(proc, latestXid);
+		else
+			ProcArrayGroupClearXid(proc, latestXid);
 	}
 	else
 	{
@@ -926,7 +929,8 @@ ProcArrayClearTransaction(PGPROC *proc)
 {
 	int			pgxactoff;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		return;
 	}
 
@@ -1047,7 +1051,8 @@ ProcArrayInitRecovery(TransactionId initializedUptoXID)
 	Assert(standbyState == STANDBY_INITIALIZED);
 	Assert(TransactionIdIsNormal(initializedUptoXID));
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		return;
 	}
 
@@ -1083,7 +1088,8 @@ ProcArrayApplyRecoveryInfo(RunningTransactions running)
 	int			nxids;
 	int			i;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		return;
 	}
 
@@ -1333,7 +1339,8 @@ ProcArrayApplyXidAssignment(TransactionId topxid,
 	TransactionId max_xid;
 	int			i;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		return;
 	}
 
@@ -1428,7 +1435,8 @@ TransactionIdIsInProgress(TransactionId xid)
 	int			numProcs;
 	int			j;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		return false;
 	}
 
@@ -1663,7 +1671,8 @@ TransactionIdIsActive(TransactionId xid)
 	TransactionId *other_xids = ProcGlobal->xids;
 	int			i;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		return false;
 	}
 
@@ -1771,7 +1780,8 @@ ComputeXidHorizons(ComputeXidHorizonsResult *h)
 	bool		in_recovery = RecoveryInProgress();
 	TransactionId *other_xids = ProcGlobal->xids;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		return;
 	}
 
@@ -5307,7 +5317,7 @@ YbStorePgAshSamples(TimestampTz sample_time)
 	for (i = 0; i < arrayP->numProcs; ++i)
 	{
 		int			pgprocno = arrayP->pgprocnos[i];
-		PGPROC 	   *proc = &allProcs[pgprocno];
+		PGPROC	   *proc = &allProcs[pgprocno];
 
 		/* Don't sample if ASH metadata is not set */
 		if (!proc->yb_is_ash_metadata_set)

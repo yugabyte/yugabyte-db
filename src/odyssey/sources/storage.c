@@ -69,6 +69,7 @@ od_rule_storage_t *od_rules_storage_allocate(void)
 	memset(storage, 0, sizeof(*storage));
 	storage->tls_opts = od_tls_opts_alloc();
 	if (storage->tls_opts == NULL) {
+		free(storage);
 		return NULL;
 	}
 	storage->target_session_attrs = OD_TARGET_SESSION_ATTRS_ANY;
