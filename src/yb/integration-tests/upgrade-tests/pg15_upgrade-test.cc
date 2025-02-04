@@ -113,6 +113,9 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
 
   ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
   ASSERT_STR_CONTAINS(ysql_catalog_config, "catalog_version: 15");
+
+  // Running validation on the upgraded cluster should fail since its already on the higher version.
+  ASSERT_NOK_STR_CONTAINS(ValidateUpgradeCompatibility(), kPgUpgradeFailedError);
 }
 
 TEST_F(Pg15UpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }

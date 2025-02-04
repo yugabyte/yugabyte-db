@@ -135,10 +135,13 @@ main(int argc, char **argv)
 	output_check_banner(live_check);
 
 	/*
-	 * YB: The check for Postgres versions is performed at higher layers.
-	 * Socket directories are explicitly set from input arguments.
+	 * YB: Socket directories are explicitly set from input arguments.
 	 */
-	if (!is_yugabyte_enabled())
+	if (is_yugabyte_enabled())
+	{
+		yb_check_cluster_versions();
+	}
+	else
 	{
 		check_cluster_versions();
 		get_sock_dir(&old_cluster, live_check);

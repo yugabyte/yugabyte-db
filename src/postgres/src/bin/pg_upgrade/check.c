@@ -372,6 +372,24 @@ check_cluster_versions(void)
 	check_ok();
 }
 
+void
+yb_check_cluster_versions(void)
+{
+	if (!user_opts.check)
+		return;
+
+	prep_status("Checking cluster versions");
+
+	/* cluster versions should already have been obtained */
+	Assert(old_cluster.major_version != 0);
+
+	if (GET_MAJOR_VERSION(old_cluster.major_version) > 1100)
+		pg_fatal("This version of the utility can only be used for checking "
+				 "YSQL version 11. The cluster is currently on YSQL version %s\n",
+				 old_cluster.major_version_str);
+
+	check_ok();
+}
 
 void
 check_cluster_compatibility(bool live_check)
