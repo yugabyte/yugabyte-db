@@ -641,8 +641,8 @@ Status PgApiImpl::InitSession(YbcPgExecStatsState& session_stats, bool is_binary
 
 uint64_t PgApiImpl::GetSessionID() const { return pg_client_.SessionID(); }
 
-Status PgApiImpl::InvalidateCache() {
-  pg_session_->InvalidateAllTablesCache();
+Status PgApiImpl::InvalidateCache(uint64_t min_ysql_catalog_version) {
+  pg_session_->InvalidateAllTablesCache(min_ysql_catalog_version);
   return Status::OK();
 }
 

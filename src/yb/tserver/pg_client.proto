@@ -590,11 +590,16 @@ message PgListReplicationSlotsResponsePB {
 message PgOpenTableRequestPB {
   string table_id = 1;
   bool reopen = 2;
-  fixed64 invalidate_cache_time_us = 3;
+
+  // Reserved for invalidate_cache_time_us which was used to invalidate
+  // the tserver table cache
+  reserved 3;
+
   // Allows a hidden table to be opened.
   // Hidden table is a dropped table retained in DocDB for PITR, CLONE, AS-OF.
   bool include_hidden = 4;
   AshMetadataPB ash_metadata = 5;
+  uint64 ysql_catalog_version = 6;
 }
 
 message PgTablePartitionsPB {

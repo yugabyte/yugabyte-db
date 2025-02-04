@@ -220,7 +220,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   std::string GenerateNewYbrowid();
 
-  void InvalidateAllTablesCache();
+  void InvalidateAllTablesCache(uint64_t min_ysql_catalog_version);
 
   void InvalidateForeignKeyReferenceCache() {
     fk_reference_cache_.clear();
@@ -347,7 +347,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status status_;
   std::string errmsg_;
 
-  CoarseTimePoint invalidate_table_cache_time_;
+  uint64_t table_cache_min_ysql_catalog_version_ = 0;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
   const YbctidReader ybctid_reader_;
   MemoryOptimizedTableYbctidSet fk_reference_cache_;

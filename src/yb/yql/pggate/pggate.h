@@ -145,7 +145,7 @@ class PgApiImpl {
   Status GetTabledescFromCurrentPgMemctx(size_t table_desc_id, PgTableDesc **handle);
 
   // Invalidate the sessions table cache.
-  Status InvalidateCache();
+  Status InvalidateCache(uint64_t min_ysql_catalog_version);
 
   // Get the gflag TEST_ysql_disable_transparent_cache_refresh_retry.
   bool GetDisableTransparentCacheRefreshRetry();

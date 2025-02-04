@@ -478,13 +478,13 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<PgTableDescPtr> OpenTable(
-      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+      const PgObjectId& table_id, bool reopen, uint64_t min_ysql_catalog_version,
       master::IncludeHidden include_hidden) {
     tserver::PgOpenTableRequestPB req;
     req.set_table_id(table_id.GetYbTableId());
     req.set_reopen(reopen);
-    if (invalidate_cache_time != CoarseTimePoint()) {
-      req.set_invalidate_cache_time_us(ToMicroseconds(invalidate_cache_time.time_since_epoch()));
+    if (min_ysql_catalog_version > 0) {
+      req.set_ysql_catalog_version(min_ysql_catalog_version);
     }
     req.set_include_hidden(include_hidden);
     tserver::PgOpenTableResponsePB resp;
@@ -1505,9 +1505,9 @@ void PgClient::SetTimeout(MonoDelta timeout) {
 uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
 
 Result<PgTableDescPtr> PgClient::OpenTable(
-    const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+    const PgObjectId& table_id, bool reopen, uint64_t min_ysql_catalog_version,
     master::IncludeHidden include_hidden) {
-  return impl_->OpenTable(table_id, reopen, invalidate_cache_time, include_hidden);
+  return impl_->OpenTable(table_id, reopen, min_ysql_catalog_version, include_hidden);
 }
 
 Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(

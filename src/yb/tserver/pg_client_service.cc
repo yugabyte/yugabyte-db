@@ -542,19 +542,14 @@ class PgClientServiceImpl::Impl {
 
   Status OpenTable(
       const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext* context) {
-    if (req.invalidate_cache_time_us()) {
-      const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(req.table_id()));
-      std::unordered_set<uint32_t> db_oids_updated = { db_oid };
-      table_cache_.InvalidateDbTables(db_oids_updated, {} /* db_oids_deleted */,
-          CoarseTimePoint() + req.invalidate_cache_time_us() * 1us);
-    }
-    if (req.reopen()) {
-      table_cache_.Invalidate(req.table_id());
-    }
-
     client::YBTablePtr table;
+    PgTableCacheGetOptions options = {
+      req.reopen(),
+      req.ysql_catalog_version(),
+      master::IncludeHidden(req.include_hidden())
+    };
     RETURN_NOT_OK(table_cache_.GetInfo(
-        req.table_id(), master::IncludeHidden(req.include_hidden()), &table,
+        req.table_id(), options, &table,
         resp->mutable_info()));
     tserver::GetTablePartitionList(table, resp->mutable_partitions());
     return Status::OK();
@@ -1685,9 +1680,9 @@ class PgClientServiceImpl::Impl {
   }
 
   void InvalidateTableCache(
-      const std::unordered_set<uint32_t>& db_oids_updated,
+      const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
       const std::unordered_set<uint32_t>& db_oids_deleted) {
-    table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted, CoarseMonoClock::Now());
+    table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted);
   }
 
   // Return the TabletServer hosting the specified status tablet.
@@ -2248,7 +2243,7 @@ void PgClientServiceImpl::InvalidateTableCache() {
 }
 
 void PgClientServiceImpl::InvalidateTableCache(
-    const std::unordered_set<uint32_t>& db_oids_updated,
+    const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
     const std::unordered_set<uint32_t>& db_oids_deleted) {
   impl_->InvalidateTableCache(db_oids_updated, db_oids_deleted);
 }

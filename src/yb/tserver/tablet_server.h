@@ -500,7 +500,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void AutoInitServiceFlags();
 
   void InvalidatePgTableCache();
-  void InvalidatePgTableCache(const std::unordered_set<uint32_t>& db_oids_updated,
+  void InvalidatePgTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
                               const std::unordered_set<uint32_t>& db_oids_deleted);
 
   std::string log_prefix_;
