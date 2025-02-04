@@ -60,7 +60,14 @@ bool		TEST_AllowColocatedObjects = false;
 static bool IsInIgnoreList(EventTriggerData *trig_data);
 
 /* Per DDL Variables. */
-static bool should_replicate_ddl = false;
+
+/*
+ * This is updated as the DDL triggers run, ending up with the decision of
+ * whether or not to replicate the DDL that is currently running.
+ *
+ * Once this becomes true, it remains true for the rest of the DDL.
+ */
+static bool yb_should_replicate_ddl = false;
 
 /*
  * _PG_init gets called when the extension is loaded.
@@ -319,10 +326,10 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	}
 	else
 	{
-		should_replicate_ddl |= ProcessSourceEventTriggerDDLCommands(state);
+		yb_should_replicate_ddl |= ProcessSourceEventTriggerDDLCommands(state);
 	}
 
-	if (should_replicate_ddl)
+	if (yb_should_replicate_ddl)
 	{
 		/* Construct the jsonb and insert completed row into ddl_queue table. */
 		JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
@@ -384,7 +391,7 @@ HandleSourceSQLDrop(EventTriggerData *trig_data)
 
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceSQLDrop context");
 
-	should_replicate_ddl |= ProcessSourceEventTriggerDroppedObjects();
+	yb_should_replicate_ddl |= ProcessSourceEventTriggerDroppedObjects();
 
 	CLOSE_MEM_CONTEXT_AND_SPI;
 }
@@ -411,23 +418,22 @@ HandleSourceTableRewrite(EventTriggerData *trig_data)
 void
 HandleSourceDDLStart(EventTriggerData *trig_data)
 {
-	/*
-	 * Do some initial checks here before the source query runs.
-	 * Also reset should_replicate_ddl for this new DDL.
-	 */
+	/* By default we don't replicate. */
+	yb_should_replicate_ddl = false;
 	if (EnableManualDDLReplication)
 	{
 		/*
 		 * Always replicate manual DDLs regardless of what they are.
 		 * Will show up on the target with a manual_replication field set.
 		 */
-		should_replicate_ddl = true;
+		yb_should_replicate_ddl = true;
 		return;
 	}
 
+	/*
+	 * Do some initial checks here before the source query runs.
+	 */
 	DisallowMultiStatementQueries(trig_data->tag);
-	should_replicate_ddl = false;
-
 	ClearRewrittenTableOidList();
 }
 

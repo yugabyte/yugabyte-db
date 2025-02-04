@@ -16,9 +16,8 @@ DROP VIEW temp_view;
 DROP TABLE temp_table_for_view;
 
 -- Standalone sequences
--- Uncomment this as part of #24080
--- CREATE TEMP SEQUENCE temp_seq START 1;
--- DROP SEQUENCE temp_seq;
+CREATE TEMP SEQUENCE temp_seq START 1;
+DROP SEQUENCE temp_seq;
 
 -- Create a temp table with an temporary index
 CREATE TEMP TABLE temp_table3 (id INT, data TEXT);
@@ -28,17 +27,16 @@ DROP TABLE temp_table3;
 
 
 -- Sequences via SERIAL columns, defaults
--- Uncomment this as part of #24080
--- CREATE TEMP SEQUENCE myseq2;
--- CREATE TEMP SEQUENCE myseq3;
--- CREATE TEMP TABLE t1 (
---   f1 serial,
---   f2 int DEFAULT nextval('myseq2'),
---   f3 int DEFAULT nextval('myseq3'::text)
--- );
--- DROP SEQUENCE myseq3;
--- DROP TABLE t1;
--- DROP SEQUENCE myseq2;
+CREATE TEMP SEQUENCE myseq2;
+CREATE TEMP SEQUENCE myseq3;
+CREATE TEMP TABLE t1 (
+  f1 serial,
+  f2 int DEFAULT nextval('myseq2'),
+  f3 int DEFAULT nextval('myseq3'::text)
+);
+DROP SEQUENCE myseq3;
+DROP TABLE t1;
+DROP SEQUENCE myseq2;
 
 
 -- Create a temporary table with a column default

@@ -139,6 +139,7 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_DROP_ROUTINE) \
 	X(CMDTAG_DROP_RULE) \
 	X(CMDTAG_DROP_SCHEMA) \
+	X(CMDTAG_DROP_SEQUENCE) \
 	X(CMDTAG_DROP_SERVER) \
 	X(CMDTAG_DROP_STATISTICS) \
 	X(CMDTAG_DROP_TEXT_SEARCH_CONFIGURATION) \
@@ -166,6 +167,13 @@ typedef struct YbEnumLabelMapEntry
 	Oid label_oid;
 	char *label_name;
 } YbEnumLabelMapEntry;
+
+typedef struct YbSequenceInfoMapEntry
+{
+	char       *schema;
+	char       *name;
+	Oid         pg_class_oid;
+} YbSequenceInfoMapEntry;
 
 void
 CheckAlterColumnTypeDDL(CollectedCommand *cmd)
@@ -221,17 +229,29 @@ IsPassThroughDdlSupported(const char *command_tag_name)
 	return IsPassThroughDdlCommandSupported(command_tag);
 }
 
+static bool
+IsSequence(Oid rel_oid)
+{
+	Relation	rel = RelationIdGetRelation(rel_oid);
+	if (!rel)
+		elog(ERROR, "Could not find relation with OID %d", rel_oid);
+
+	return rel->rd_rel->relkind == RELKIND_SEQUENCE;
+}
+
 /*
  * This function handles both new relation from create table/index,
  * and also new relations as a result of table rewrites.
+ *
+ * This function does not handle sequences.
  */
 bool
 ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
 {
 	Relation	rel = RelationIdGetRelation(rel_oid);
-
 	if (!rel)
-		elog(ERROR, "Could not find relation with oid %d", rel_oid);
+		elog(ERROR, "Could not find relation with OID %d", rel_oid);
+
 	/* Ignore temporary tables. */
 	if (!IsYBBackedRelation(rel))
 	{
@@ -381,6 +401,25 @@ GetEnumLabels(Oid enum_oid, List **enum_label_list)
 	}
 }
 
+static void
+AddSequenceInfo(Oid pg_class_oid, char *schema, List **sequence_info_list)
+{
+	char       *name = get_rel_name(pg_class_oid);
+	if (!name)
+		elog(ERROR, "Unable to find name of sequence with pg_class OID %u",
+			 pg_class_oid);
+	if (!schema)
+		elog(ERROR, "Schema of sequence with pg_class OID %u unknown",
+			 pg_class_oid);
+
+	YbSequenceInfoMapEntry *sequence_info_entry =
+		palloc(sizeof(YbSequenceInfoMapEntry));
+	sequence_info_entry->name = name;
+	sequence_info_entry->schema = pstrdup(schema);
+	sequence_info_entry->pg_class_oid = pg_class_oid;
+	*sequence_info_list = lappend(*sequence_info_list, sequence_info_entry);
+}
+
 typedef struct YbCommandInfo
 {
 	Oid         oid;
@@ -434,6 +473,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 
 	List	   *new_rel_list = NIL;
 	List       *enum_label_list = NIL;
+	List       *sequence_info_list = NIL;
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
 	 * will set this to true and replicate the entire query string.
@@ -465,6 +505,26 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			if (type_is_enum(obj_id))
 				GetEnumLabels(obj_id, &enum_label_list);
 			should_replicate_ddl |= true;
+		}
+		else if (command_tag == CMDTAG_CREATE_SEQUENCE)
+		{
+			AddSequenceInfo(obj_id, schema, &sequence_info_list);
+			should_replicate_ddl |= !is_temporary_object;
+		}
+		else if (command_tag == CMDTAG_ALTER_SEQUENCE)
+		{
+			should_replicate_ddl |= !is_temporary_object;
+		}
+		else if (command_tag == CMDTAG_ALTER_TABLE &&
+				 IsSequence(obj_id))
+		{
+			/*
+			 * This is one of:
+			 * - ALTER TABLE <sequence> OWNER TO ...
+			 * - ALTER TABLE <sequence> RENAME TO ...
+			 * - ALTER TABLE <sequence> SET SCHEMA ...
+			 */
+			should_replicate_ddl |= !is_temporary_object;
 		}
 		else if (command_tag == CMDTAG_ALTER_TABLE &&
 				 list_member_oid(rewritten_table_oid_list, obj_id))
@@ -564,6 +624,37 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 
 			pfree(entry->label_name);
+			pfree(entry);
+		}
+
+		(void) pushJsonbValue(&state, WJB_END_ARRAY, NULL);
+	}
+	if (sequence_info_list)
+	{
+		/*----------
+		 * Add the sequence_info_list to the JSON output.  We use a flat array
+		 * of entries because JSON doesn't allow maps on composite values.
+		 *
+		 * If two entries have the same schema and name, then the remaining
+		 * fields are guaranteed to be the same.
+		 *----------
+		 */
+		AddJsonKey(state, "sequence_info");
+		(void) pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
+
+		ListCell *l;
+		foreach (l, sequence_info_list)
+		{
+			YbSequenceInfoMapEntry *entry = (YbSequenceInfoMapEntry *) lfirst(l);
+
+			(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+			AddStringJsonEntry(state, "schema", entry->schema);
+			AddStringJsonEntry(state, "name", entry->name);
+			AddNumericJsonEntry(state, "oid", entry->pg_class_oid);
+			(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+
+			pfree(entry->schema);
+			pfree(entry->name);
 			pfree(entry);
 		}
 

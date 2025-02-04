@@ -78,6 +78,7 @@ const char* kDDLJsonNewRelMap = "new_rel_map";
 const char* kDDLJsonRelName = "rel_name";
 const char* kDDLJsonRelFileOid = "relfile_oid";
 const char* kDDLJsonEnumLabelInfo = "enum_label_info";
+const char* kDDLJsonSequenceInfo = "sequence_info";
 const char* kDDLJsonManualReplication = "manual_replication";
 const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
@@ -87,12 +88,15 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "CREATE TABLE",
     "CREATE INDEX",
     "CREATE TYPE",
+    "CREATE SEQUENCE",
     "DROP TABLE",
     "DROP INDEX",
     "DROP TYPE",
+    "DROP SEQUENCE",
     "ALTER TABLE",
     "ALTER INDEX",
     "ALTER TYPE",
+    "ALTER SEQUENCE",
     // Pass thru DDLs
     "CREATE ACCESS METHOD",
     "CREATE AGGREGATE",
@@ -309,6 +313,10 @@ Result<XClusterDDLQueueHandler::DDLQueryInfo> XClusterDDLQueueHandler::GetDDLQue
   if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonEnumLabelInfo, IsArray)) {
     writer.Key(kDDLJsonEnumLabelInfo);
     doc[kDDLJsonEnumLabelInfo].Accept(writer);
+  }
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonSequenceInfo, IsArray)) {
+    writer.Key(kDDLJsonSequenceInfo);
+    doc[kDDLJsonSequenceInfo].Accept(writer);
   }
   writer.EndObject();
   query_info.json_for_oid_assignment = assignment_buffer.GetString();

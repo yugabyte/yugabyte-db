@@ -66,6 +66,7 @@
 #include "catalog/storage.h"
 #include "catalog/storage_xlog.h"
 #include "catalog/toasting.h"
+#include "catalog/yb_oid_assignment.h"
 #include "commands/cluster.h"
 #include "commands/comment.h"
 #include "commands/defrem.h"
@@ -1183,6 +1184,11 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 						 errmsg("use_initdb_acl cannot be used outside of YSQL upgrade for pg_catalog")));
 			}
 		}
+	}
+
+	if (relkind == RELKIND_SEQUENCE && YbUsingSequenceOidAssignment())
+	{
+		relationId = YbLookupOidAssignmentForSequence(get_namespace_name(namespaceId), relname);
 	}
 
 	/*

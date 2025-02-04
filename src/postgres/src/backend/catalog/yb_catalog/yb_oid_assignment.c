@@ -32,6 +32,9 @@
 static HTAB *yb_enum_label_assignment_map = NULL;
 static bool yb_enum_label_assignment_exists = false;
 
+static HTAB *yb_sequence_oid_assignment_map = NULL;
+static bool yb_sequence_oid_assignment_exists = false;
+
 /*
  * yb_enum_label_assignment_map key format is <oid>.<label>\0
  * Oid's are uint_32_t so take up at most 10 decimal digits.
@@ -111,6 +114,79 @@ YbLookupOidForEnumLabel(Oid enum_oid, const char *label)
 	return InvalidOid;
 }
 
+/*
+ * yb_sequence_oid_assignment_map key format is <schema>.<name>\0
+ * <identifier>\0 is guaranteed to fit in NAMEDATALEN characters.
+ */
+#define YB_SEQUENCE_OID_ASSIGNMENT_MAP_KEY_SIZE (NAMEDATALEN + NAMEDATALEN)
+
+typedef struct YbSequenceOidAssignmentMapEntry {
+	/* encodes schema, name */
+	char		key[YB_SEQUENCE_OID_ASSIGNMENT_MAP_KEY_SIZE];
+	Oid			oid;
+} YbSequenceOidAssignmentMapEntry;
+
+static void
+YbClearSequenceOidMap(void)
+{
+	HASHCTL ctl;
+
+	if (yb_sequence_oid_assignment_map != NULL)
+		hash_destroy(yb_sequence_oid_assignment_map);
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = YB_SEQUENCE_OID_ASSIGNMENT_MAP_KEY_SIZE;
+	ctl.entrysize = sizeof(YbSequenceOidAssignmentMapEntry);
+	yb_sequence_oid_assignment_map = hash_create("YB sequence OIDs map",
+											   /*initial size*/ 20, &ctl,
+											   HASH_ELEM | HASH_STRINGS);
+}
+
+static void
+YbCreateSequenceOidMapKey(const char *schema, const char *name, char *key_buffer)
+{
+	int written_bytes = snprintf(key_buffer,
+								 YB_SEQUENCE_OID_ASSIGNMENT_MAP_KEY_SIZE,
+								 "%s.%s", schema, name);
+	if (written_bytes >= YB_SEQUENCE_OID_ASSIGNMENT_MAP_KEY_SIZE)
+		elog(ERROR,
+			 "unexpectedly large schema/name in OID assignment (schema '%s', "
+			 "name '%s')",
+			 schema, name);
+}
+
+static void
+YbInsertSequenceOid(const char *schema, const char *name, Oid sequence_oid)
+{
+	char key[YB_SEQUENCE_OID_ASSIGNMENT_MAP_KEY_SIZE];
+	YbCreateSequenceOidMapKey(schema, name, key);
+
+	bool found;
+	YbSequenceOidAssignmentMapEntry *entry =
+		hash_search(yb_sequence_oid_assignment_map, key, HASH_ENTER, &found);
+	if (!found)
+		entry->oid = sequence_oid;
+	else if (entry->oid != sequence_oid)
+		elog(ERROR,
+			 "attempt to provide multiple OIDs for sequence %s.%s: %u vs "
+			 "%u",
+			 schema, name, entry->oid, sequence_oid);
+}
+
+/* Returns InvalidOid on not found. */
+static Oid
+YbLookupOidForSequence(const char *schema, const char *name)
+{
+	char key[YB_SEQUENCE_OID_ASSIGNMENT_MAP_KEY_SIZE];
+	YbCreateSequenceOidMapKey(schema, name, key);
+
+	bool found;
+	YbSequenceOidAssignmentMapEntry *entry =
+		hash_search(yb_sequence_oid_assignment_map, key, HASH_FIND, &found);
+	if (found)
+		return entry->oid;
+	return InvalidOid;
+}
+
 /* Returns InvalidOid on bad input. */
 static Oid
 YbGetOidFromText(const text *input)
@@ -153,6 +229,22 @@ PG_FUNCTION_INFO_V1(yb_xcluster_set_next_oid_assignments);
  * not create all the labels mentioned in the assignment.
  *
  *
+ * Example:
+ *    SELECT pg_catalog.yb_xcluster_set_next_oid_assignments(
+ *       '{"sequence_info":['                                        ||
+ *            '{"schema":"public","name":"my_sequence","oid":16406}' ||
+ *            ']}');
+ *
+ * This indicates that the sequence named my_sequence in schema public should
+ * be assigned the OID 16406.
+ *
+ * The sequence_info key is optional; if it is present then all sequences
+ * created until the assignment is changed are expected to be covered by the
+ * assignment.  In the example this means that if the DDL attempts to create a
+ * sequence not_my_sequence then an error will occur.  It is not an error if
+ * the DDL does not create all the sequences mentioned in the assignment.
+ *
+ *
  * You can remove the current assignment if any by using
  *
  *     SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('{}');
@@ -165,7 +257,6 @@ yb_xcluster_set_next_oid_assignments(PG_FUNCTION_ARGS)
 
 	YbClearEnumLabelMap();
 	yb_enum_label_assignment_exists = false;
-
 	text *enum_label_info = json_get_value(json_text, "enum_label_info");
 	if (enum_label_info != NULL)
 	{
@@ -191,6 +282,34 @@ yb_xcluster_set_next_oid_assignments(PG_FUNCTION_ARGS)
 			}
 
 			YbInsertEnumLabel(enum_oid, label, label_oid);
+		}
+	}
+
+	YbClearSequenceOidMap();
+	yb_sequence_oid_assignment_exists = false;
+	text *sequence_info = json_get_value(json_text, "sequence_info");
+	if (sequence_info != NULL)
+	{
+		yb_sequence_oid_assignment_exists = true;
+		int length = get_json_array_length(sequence_info);
+		for (int i = 0; i < length; i++)
+		{
+			text *sequence_info_entry = get_json_array_element(sequence_info, i);
+			char *schema = text_to_cstring(json_get_denormalized_value(sequence_info_entry,
+				"schema"));
+			char *name = text_to_cstring(json_get_denormalized_value(sequence_info_entry,
+				"name"));
+			text *oid_text = json_get_value(sequence_info_entry, "oid");
+			Oid sequence_oid = YbGetOidFromText(oid_text);
+			if (sequence_oid == InvalidOid)
+			{
+				elog(ERROR,
+					 "corrupted JSON passed to "
+					 "yb_xcluster_set_next_oid_assignments: '%s'",
+					 text_to_cstring(json_text));
+			}
+
+			YbInsertSequenceOid(schema, name, sequence_oid);
 		}
 	}
 
@@ -222,4 +341,20 @@ YbLookupOidAssignmentForEnumLabel(Oid enum_oid, const char *label)
 		elog(ERROR, "no OID assignment for enum label %u.%s in OID assignment",
 			 enum_oid, label);
 	return label_oid;
+}
+
+bool
+YbUsingSequenceOidAssignment(void)
+{
+	return yb_sequence_oid_assignment_exists;
+}
+
+Oid
+YbLookupOidAssignmentForSequence(const char *schema, const char *name)
+{
+	Oid sequence_oid = YbLookupOidForSequence(schema, name);
+	if (sequence_oid == InvalidOid)
+		elog(ERROR, "no OID assignment for sequence %s.%s in OID assignment",
+			 schema, name);
+	return sequence_oid;
 }
