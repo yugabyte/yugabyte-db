@@ -29,6 +29,11 @@ set yb_enable_base_scans_cost_model to true;
 -- parallel bitmap scan not supported yet
 set enable_bitmapscan = false;
 
+-- encourage use of parallel plans for the remaining tests by gucs
+-- since the "hard" option of Parallel hint is broken. (#26181)
+set parallel_setup_cost=0;
+set parallel_tuple_cost=0;
+
 -- Parallel sequential scan
 /*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
@@ -56,11 +61,6 @@ EXPLAIN (costs off)
 SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
 /*+ Parallel(pctest1 2 hard) */
 SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
-
--- encourage use of parallel plans for the remaining tests by gucs
--- since the "hard" option of Parallel hint is broken. (#26181)
-set parallel_setup_cost=0;
-set parallel_tuple_cost=0;
 
 -- Parallel index scan
 EXPLAIN (costs off)
