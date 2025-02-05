@@ -2949,6 +2949,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   bool SkipCatalogVersionChecks() override;
 
+  void RemoveNamespaceFromMaps(
+      YQLDatabase db_type, const NamespaceId& ns_id, const NamespaceName& ns_name) EXCLUDES(mutex_);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
