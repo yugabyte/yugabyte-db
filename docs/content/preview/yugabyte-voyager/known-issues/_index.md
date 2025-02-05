@@ -38,7 +38,7 @@ Currently, yb-voyager doesn't support the following features:
 
 ## Assessment and schema analysis limitations
 
-Although the Voyager [migration assessment](../reference/assess-migration/) and [schema analysis](../reference/schema-migration/analyze-schema/) commands detect most issues you may face when migrating a database so that you can work around and mitigate those issues, they have the following known limitations.
+Although the Voyager [migration assessment](../reference/assess-migration/) and [schema analysis](../reference/schema-migration/analyze-schema/) commands detect most issues you may face when migrating a database so that you can work around and mitigate them, they have the following known limitations.
 
 ### Normalized queries in pg_stat_statements
 
@@ -121,9 +121,7 @@ $$ LANGUAGE plpgsql;
 
 ### Global objects
 
-Global objects in PostgreSQL are database-level objects that are not tied to a specific schema. Some of the following objects are not fully supported in schema analysis and migration assessments for detecting issues.
-
-**Example:**
+Global objects in PostgreSQL are database-level objects that are not tied to a specific schema. As a result, schema analysis and migration assessment are unable to detect issues in the following global objects:
 
 - `CREATE ACCESS METHOD` / `ALTER ACCESS METHOD`
 - `CREATE SERVER`
