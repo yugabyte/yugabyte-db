@@ -1509,7 +1509,7 @@ There are certain limitations when reporting issues in [assess-migration](../../
 
     - `JSON_TABLE` usage in DML statements.
     - Non-decimal integer literals in DML statements.
-    - Two-Phase Commit (XA syntax) (Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084))
+    - Two-Phase Commit (XA syntax) (Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)).
 
     **Example:**
 
@@ -1525,7 +1525,7 @@ There are certain limitations when reporting issues in [assess-migration](../../
 
     In `pg_stat_statements`, a single transaction is recorded as multiple separate query entries. This fragmentation makes it challenging to detect issues that occur within transaction boundaries, such as:
 
-    - DDL operations within Transaction (Issue [#1404](https://github.com/yugabyte/yugabyte-db/issues/1404))
+    - DDL operations within Transaction (Issue [#1404](https://github.com/yugabyte/yugabyte-db/issues/1404)).
 
     **Example:**
 
