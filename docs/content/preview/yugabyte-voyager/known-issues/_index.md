@@ -54,8 +54,7 @@ Currently, yb-voyager doesn't support the following features:
 
 {{</index/block>}}
 
-
-## Limitations
+## Assess and Analyze Limitations
 
 There are certain limitations when reporting issues in [assess-migration](../../reference/assess-migration/) and [analyze-schema](../../reference/schema-migration/analyze-schema/) commands:
 
