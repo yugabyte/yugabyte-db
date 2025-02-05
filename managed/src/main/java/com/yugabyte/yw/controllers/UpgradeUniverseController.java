@@ -4,9 +4,6 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.params.PreUpgradeValidationResponse;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -37,7 +34,6 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
@@ -54,16 +50,7 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http;
 import play.mvc.Http.Request;
@@ -75,8 +62,6 @@ import play.mvc.Result;
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UpgradeUniverseController extends AuthenticatedController {
 
-  private static final Long VALIDATE_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(90);
-
   @Inject UpgradeUniverseHandler upgradeUniverseHandler;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
@@ -84,12 +69,6 @@ public class UpgradeUniverseController extends AuthenticatedController {
   @Inject RuntimeConfGetter confGetter;
 
   @Inject GFlagsAuditHandler gFlagsAuditHandler;
-
-  @Inject Commissioner commissioner;
-
-  // Added to avoid running multiple simultaneous validate requests for universe.
-  // We are not running CustomerTask for that case so need some other method to do locking.
-  private final Map<UUID, UUID> validateTasksMap = new ConcurrentHashMap<>();
 
   /**
    * API that restarts all nodes in the universe. Supports rolling and non-rolling restart
@@ -817,187 +796,5 @@ public class UpgradeUniverseController extends AuthenticatedController {
         Audit.ActionType.UpdateProxyConfig,
         customerUuid,
         universeUuid);
-  }
-
-  /**
-   * API that runs all the prechecks and validations for specific upgrade.
-   *
-   * @param customerUuid ID of customer
-   * @param universeUuid ID of universe
-   * @return Result of update operation with task id
-   */
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.1")
-  @ApiOperation(
-      value = "Run validation for upgrade",
-      notes =
-          "WARNING: This is a preview API that could change. "
-              + "Runs all the prechecks and validations for specific upgrade",
-      nickname = "preUpgradeValidation",
-      response = PreUpgradeValidationResponse.class)
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          name = "upgrade params",
-          value = "Upgrade Params",
-          dataType = "com.yugabyte.yw.forms.UpgradeTaskParams",
-          required = true,
-          paramType = "body"))
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
-  })
-  public Result preUpgradeValidation(
-      UUID customerUuid, UUID universeUuid, String upgradeType, Http.Request request) {
-    Customer customer = Customer.getOrBadRequest(customerUuid);
-    Universe universe = Universe.getOrBadRequest(universeUuid, customer);
-
-    UpgradeTaskParams.UpgradeTaskType upgradeTaskType;
-    try {
-      upgradeTaskType = UpgradeTaskParams.UpgradeTaskType.valueOf(upgradeType);
-    } catch (Exception e) {
-      throw new PlatformServiceException(BAD_REQUEST, "Unknown upgrade type: " + upgradeType);
-    }
-    UUID currentTaskUUID = validateTasksMap.get(universeUuid);
-    if (currentTaskUUID != null) {
-      Optional<TaskInfo> taskInfo = TaskInfo.maybeGet(currentTaskUUID);
-      if (!taskInfo.isEmpty()) {
-        if (!taskInfo.get().hasCompleted()) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "Another validate request is still pending");
-        }
-      }
-      validateTasksMap.remove(universeUuid);
-    }
-    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
-
-    switch (upgradeTaskType) {
-      case Software:
-        return runValidation(
-            request,
-            upgradeUniverseHandler::upgradeSoftware,
-            SoftwareUpgradeParams.class,
-            customer,
-            universe);
-      case Systemd:
-        return runValidation(
-            request,
-            upgradeUniverseHandler::upgradeSystemd,
-            SystemdUpgradeParams.class,
-            customer,
-            universe);
-      case VMImage:
-        return runValidation(
-            request,
-            upgradeUniverseHandler::upgradeVMImage,
-            VMImageUpgradeParams.class,
-            customer,
-            universe);
-      case Restart:
-        return runValidation(
-            request,
-            upgradeUniverseHandler::restartUniverse,
-            RestartTaskParams.class,
-            customer,
-            universe);
-      case Certs:
-        return runValidation(
-            request,
-            upgradeUniverseHandler::rotateCerts,
-            CertsRotateParams.class,
-            customer,
-            universe);
-      case ToggleTls:
-        return runValidation(
-            request, upgradeUniverseHandler::toggleTls, TlsToggleParams.class, customer, universe);
-      case ResizeNode:
-        return runValidation(
-            request,
-            upgradeUniverseHandler::resizeNode,
-            ResizeNodeParams.class,
-            customer,
-            universe);
-      case Reboot:
-        return runValidation(
-            request,
-            upgradeUniverseHandler::rebootUniverse,
-            UpgradeTaskParams.class,
-            customer,
-            universe);
-      case ThirdPartyPackages:
-        return runValidation(
-            request,
-            upgradeUniverseHandler::thirdpartySoftwareUpgrade,
-            ThirdpartySoftwareUpgradeParams.class,
-            customer,
-            universe);
-      case GFlags:
-        Class<? extends GFlagsUpgradeParams> flagParamType =
-            isK8s ? KubernetesGFlagsUpgradeParams.class : GFlagsUpgradeParams.class;
-        return runValidation(
-            request, upgradeUniverseHandler::upgradeGFlags, flagParamType, customer, universe);
-      default:
-        throw new PlatformServiceException(BAD_REQUEST, "Unsupported upgrade type: " + upgradeType);
-    }
-  }
-
-  private <T extends UpgradeTaskParams> Result runValidation(
-      Request request,
-      IUpgradeUniverseHandlerMethod<T> serviceMethod,
-      Class<T> type,
-      Customer customer,
-      Universe universe) {
-    T requestParams =
-        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(request, type, universe);
-    requestParams.runOnlyPrechecks = true;
-    requestParams.skipNodeChecks = false;
-    UUID taskUUID = null;
-    try {
-      taskUUID = serviceMethod.upgrade(requestParams, customer, universe);
-      validateTasksMap.put(requestParams.getUniverseUUID(), taskUUID);
-      commissioner.waitForTask(taskUUID, Duration.ofMillis(VALIDATE_TIMEOUT_MS));
-      validateTasksMap.remove(requestParams.getUniverseUUID());
-      return PlatformResults.withData(toResponse(TaskInfo.getOrBadRequest(taskUUID)));
-    } catch (Exception e) {
-      if (e.getCause() instanceof TimeoutException) {
-        return PlatformResults.withData(
-            PreUpgradeValidationResponse.fromError("Timed out waiting for validation to complete"));
-      }
-      validateTasksMap.remove(requestParams.getUniverseUUID());
-      Optional<TaskInfo> taskInfo =
-          taskUUID == null ? Optional.empty() : TaskInfo.maybeGet(taskUUID);
-      if (taskInfo.isPresent() && taskInfo.get().getTaskState() == TaskInfo.State.Failure) {
-        return PlatformResults.withData(toResponse(taskInfo.get()));
-      }
-      if (e.getCause() instanceof PlatformServiceException) {
-        return PlatformResults.withData(
-            PreUpgradeValidationResponse.fromError(e.getCause().getMessage()));
-      }
-      return PlatformResults.withData(PreUpgradeValidationResponse.fromError(e.getMessage()));
-    }
-  }
-
-  private PreUpgradeValidationResponse toResponse(TaskInfo taskInfo) {
-    PreUpgradeValidationResponse response = new PreUpgradeValidationResponse();
-    if (taskInfo.getTaskState() == TaskInfo.State.Success) {
-      response.setSuccess(true);
-    } else {
-      if (taskInfo.getTaskState() == TaskInfo.State.Aborted) {
-        return PreUpgradeValidationResponse.fromError("Task was aborted");
-      } else {
-        List<String> errors =
-            taskInfo.getSubTasks().stream()
-                .filter(t -> taskInfo.getTaskState() == TaskInfo.State.Failure)
-                .map(t -> t.getTaskError())
-                .filter(Objects::nonNull)
-                .map(t -> t.getOriginMessage())
-                .collect(Collectors.toList());
-        if (errors.isEmpty()) {
-          return PreUpgradeValidationResponse.fromError(taskInfo.getErrorMessage());
-        }
-        response.setErrors(errors);
-      }
-    }
-    return response;
   }
 }
