@@ -8,8 +8,10 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -20,6 +22,8 @@ import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -36,6 +40,7 @@ import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
@@ -54,13 +59,16 @@ public class OperatorUtils {
   private final RuntimeConfGetter confGetter;
   private final String namespace;
   private final Config k8sClientConfig;
+  private final YbcManager ybcManager;
 
   private ReleaseManager releaseManager;
 
   @Inject
-  public OperatorUtils(RuntimeConfGetter confGetter, ReleaseManager releaseManager) {
+  public OperatorUtils(
+      RuntimeConfGetter confGetter, ReleaseManager releaseManager, YbcManager ybcManager) {
     this.releaseManager = releaseManager;
     this.confGetter = confGetter;
+    this.ybcManager = ybcManager;
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     ConfigBuilder confBuilder = new ConfigBuilder();
     if (namespace == null || namespace.trim().isEmpty()) {
@@ -350,6 +358,8 @@ public class OperatorUtils {
     log.trace("version mismatch: {}", mismatch);
     mismatch = mismatch || pauseChangeRequired;
     log.trace("pause mismatch: {}", mismatch);
+    mismatch = mismatch || isThrottleParamUpdate(u, ybUniverse);
+    log.trace("throttle mismatch: {}", mismatch);
     return mismatch;
   }
 
@@ -455,5 +465,56 @@ public class OperatorUtils {
       return new String(Base64.getDecoder().decode(secret.getData().get(key)));
     }
     return secret.getStringData().get(key);
+  }
+
+  /*
+   * Determines if there is a need to update throttle parameters for a given universe.
+   *
+   * This method compares the current throttle parameters of the universe with the specified
+   * parameters in the YBUniverse specification. If the specification parameters are not defined,
+   * it checks if the current parameters are set to their default values as obtained from the YBC
+   * API. If there is any mismatch between the current and specified parameters, or if the current
+   * parameters are not set to their default values when no specification is provided, the method
+   * returns true, indicating an update is required.
+   *
+   * @param universe the Universe object representing the current state of the universe.
+   * @param ybUniverse the YBUniverse object containing the specification for throttle parameters.
+   * @return true if an update to throttle parameters is needed; false otherwise.
+   * @throws RuntimeException if an unknown throttle parameter is encountered.
+   */
+  public boolean isThrottleParamUpdate(Universe universe, YBUniverse ybUniverse) {
+    YbcThrottleParameters specParams = ybUniverse.getSpec().getYbcThrottleParameters();
+    YbcThrottleParametersResponse currentParams =
+        ybcManager.getThrottleParams(universe.getUniverseUUID());
+    for (String key : currentParams.getThrottleParamsMap().keySet()) {
+      ThrottleParamValue currentParam = currentParams.getThrottleParamsMap().get(key);
+      // when spec params is not defined, we need to ensure all current throttle params are set to
+      // their default values
+      // according to the YBC Api to get them.
+      if (specParams == null) {
+        if (currentParam.getPresetValues().getDefaultValue() != currentParam.getCurrentValue())
+          return true;
+      } else {
+        Long value = (long) currentParam.getCurrentValue();
+        switch (key) {
+          case GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS:
+            if (value != specParams.getMaxConcurrentDownloads()) return true;
+            break;
+          case GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS:
+            if (value != specParams.getMaxConcurrentUploads()) return true;
+            break;
+          case GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS:
+            if (value != specParams.getPerDownloadNumObjects()) return true;
+            break;
+          case GFlagsUtil.YBC_PER_UPLOAD_OBJECTS:
+            if (value != specParams.getPerUploadNumObjects()) return true;
+            break;
+          default:
+            // This shoud only happen if a new throttle parameter is introduced and not added here.
+            throw new RuntimeException("Unknown throttle parameter: " + key);
+        }
+      }
+    }
+    return false;
   }
 }

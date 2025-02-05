@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -27,6 +28,7 @@ import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
@@ -105,6 +107,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock KubernetesOperatorStatusUpdater kubernetesStatusUpdator;
   @Mock ReleaseManager releaseManager;
   @Mock UniverseActionsHandler universeActionsHandler;
+  @Mock YbcManager ybcManager;
 
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
@@ -128,10 +131,14 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Mockito.when(client.resources(YBUniverse.class)).thenReturn(ybUniverseClient);
     Mockito.when(ybUniverseClient.inNamespace(anyString())).thenReturn(inNamespaceYBUClient);
     Mockito.when(inNamespaceYBUClient.withName(anyString())).thenReturn(ybUniverseResource);
+    YbcThrottleParametersResponse throttleResponse = new YbcThrottleParametersResponse();
+    throttleResponse.setThrottleParamsMap(new HashMap<>());
+    Mockito.when(ybcManager.getThrottleParams(any())).thenReturn(throttleResponse);
+
     envVars = Mockito.mockStatic(KubernetesEnvironmentVariables.class);
     envVars.when(KubernetesEnvironmentVariables::getServiceHost).thenReturn("host");
     envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
-    operatorUtils = new OperatorUtils(confGetterForOperatorUtils, releaseManager);
+    operatorUtils = new OperatorUtils(confGetterForOperatorUtils, releaseManager, ybcManager);
     // Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
     Mockito.when(
             confGetterForOperatorUtils.getGlobalConf(GlobalConfKeys.KubernetesOperatorCustomerUUID))
@@ -150,7 +157,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             confGetter,
             customerTaskManager,
             operatorUtils,
-            universeActionsHandler);
+            universeActionsHandler,
+            ybcManager);
     // reconcilerFactory.getYBUniverseReconciler(client);
 
     // Setup Defaults
