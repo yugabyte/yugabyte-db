@@ -74,22 +74,13 @@ YB_DEFINE_ENUM(
 
 // Runtime AutoFlags
 #define DEFINE_RUNTIME_AUTO_bool(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(bool, name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
+  _DEFINE_AUTO(bool, name, flag_class, initial_val, target_val, RUNTIME, true, txt);
 
-#define DEFINE_RUNTIME_AUTO_int32(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(int32, name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
+#define DEFINE_RUNTIME_AUTO_uint64_DO_NOT_USE(name, flag_class, initial_val, target_val, txt) \
+  _DEFINE_AUTO(uint64, name, flag_class, initial_val, target_val, RUNTIME, true, txt);
 
-#define DEFINE_RUNTIME_AUTO_int64(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(int64, name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
-
-#define DEFINE_RUNTIME_AUTO_uint64(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(uint64, name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
-
-#define DEFINE_RUNTIME_AUTO_double(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(double, name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
-
-#define DEFINE_RUNTIME_AUTO_string(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO_string(name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
+#define DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(name, flag_class, initial_val, target_val, txt) \
+  _DEFINE_AUTO_string(name, flag_class, initial_val, target_val, RUNTIME, true, txt);
 
 struct AutoFlagDescription {
   std::string name;

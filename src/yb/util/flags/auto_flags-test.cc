@@ -18,28 +18,22 @@
 using std::string;
 using std::vector;
 
-DEFINE_RUNTIME_AUTO_int32(test_auto_flag, kLocalVolatile, 0, 100, "Testing");
+DEFINE_RUNTIME_AUTO_uint64_DO_NOT_USE(test_auto_flag, kLocalVolatile, 0, 100, "Testing");
 DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kLocalPersisted, false, true, "Testing!");
-DEFINE_RUNTIME_AUTO_int32(test_auto_int32, kExternal, 1, 2, "Testing!");
-DEFINE_RUNTIME_AUTO_int64(test_auto_int64, kExternal, 1, 2, "Testing!");
-DEFINE_RUNTIME_AUTO_uint64(test_auto_uint64, kExternal, 1, 2, "Testing!");
-DEFINE_RUNTIME_AUTO_double(test_auto_double, kExternal, 1, 2, "Testing!");
-DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, "false", "true", "Testing!");
+DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(test_auto_string, kExternal, "false", "true", "Testing!");
 
 // Static Assert test flags. These should fail to compile.
-// DEFINE_RUNTIME_AUTO_int32(test_auto_flag, kExternal, 100, 1, "Testing"); // Duplicate flag
-// DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, 10, true, "Testing!"); // Initial value
+// DEFINE_RUNTIME_AUTO_uint64_DO_NOT_USE(test_auto_flag, kExternal, 100, 1, "Testing"); // Duplicate
+// flag DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, 10, true, "Testing!"); // Initial value
 // incompatible
 // DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, false, "true", "Testing!"); // Target value
 // incompatible
-// DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, 1, "test", "Testing!"); // Initial value
-// incompatible String
-// DEFINE_RUNTIME_AUTO_bool(test_auto_string, kExternal, "test", true, "Testing!"); // Target value
-// incompatible String
-// DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, true, true, "Testing!"); // Initial and
-// Target are same
-// DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, "test", "test", "Testing!"); // Initial
-// and Target are same String
+// DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(test_auto_string, kExternal, 1, "test", "Testing!"); //
+// Initial value incompatible String DEFINE_RUNTIME_AUTO_bool(test_auto_string, kExternal, "test",
+// true, "Testing!"); // Target value incompatible String DEFINE_RUNTIME_AUTO_bool(test_auto_bool,
+// kExternal, true, true, "Testing!"); // Initial and Target are same
+// DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(test_auto_string, kExternal, "test", "test", "Testing!");
+// // Initial and Target are same String
 
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
 
@@ -77,10 +71,6 @@ TEST(AutoFlagsTest, TestPromote) {
   VerifyFlagDefault(0);
 
   ASSERT_EQ(FLAGS_test_auto_bool, false);
-  ASSERT_EQ(FLAGS_test_auto_int32, 1);
-  ASSERT_EQ(FLAGS_test_auto_int64, 1);
-  ASSERT_EQ(FLAGS_test_auto_uint64, 1);
-  ASSERT_EQ(FLAGS_test_auto_double, 1);
   ASSERT_EQ(FLAGS_test_auto_string, "false");
 
   const auto* flag_desc = GetAutoFlagDescription(kFlagName);
@@ -105,10 +95,6 @@ TEST(AutoFlagsTest, TestAutoPromoted) {
   VerifyFlagDefault(100);
 
   ASSERT_EQ(FLAGS_test_auto_bool, true);
-  ASSERT_EQ(FLAGS_test_auto_int32, 2);
-  ASSERT_EQ(FLAGS_test_auto_int64, 2);
-  ASSERT_EQ(FLAGS_test_auto_uint64, 2);
-  ASSERT_EQ(FLAGS_test_auto_double, 2);
   ASSERT_EQ(FLAGS_test_auto_string, "true");
 
   // promote again should be no-op
