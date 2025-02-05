@@ -1508,7 +1508,7 @@ There are certain limitations when reporting issues in [assess-migration](../../
     The `pg_stat_statements` extension in PostgreSQL tracks execution statistics of SQL queries by normalizing them. Since normalization removes the constants, the issues related to the constants for the following scenarios cannot be detected during assessment, and analyze:
 
     - `JSON_TABLE` usage in DML statements.
-    - **Non-decimal integer literals** in DML statements
+    - Non-decimal integer literals in DML statements.
     - Two-Phase Commit (XA syntax) (Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084))
 
     **Example:**
