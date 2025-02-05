@@ -5078,6 +5078,22 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
   context.RespondSuccess();
 }
 
+std::vector<uint64_t> CDCServiceImpl::FilterVirtualWalSessions(
+    const std::vector<uint64_t>& session_ids) {
+  std::vector<uint64_t> vwal_sessions;
+
+  {
+    SharedLock l(mutex_);
+    for (const auto& session_id : session_ids) {
+      if (session_virtual_wal_.contains(session_id)) {
+        vwal_sessions.push_back(session_id);
+      }
+    }
+  }
+
+  return vwal_sessions;
+}
+
 void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids) {
   // Return early without acquiring the mutex_ in case the walsender consumption feature is disabled
   // or there are no sessions to be cleaned up.
@@ -5085,21 +5101,10 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& s
     return;
   }
 
+  // The call to FilterVirtualWalSessions from pg_client_service will ensure that we are only
+  // receiving session_ids here which belong to a virtual WAL session and thus we will also
+  // ensure that we do not end up spewing the following log for every expired session.
   LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request: " << AsString(session_ids);
-
-  auto it = session_ids.begin();
-  {
-    SharedLock lock(mutex_);
-    for (; it != session_ids.end(); ++it) {
-      if (session_virtual_wal_.contains(*it)) {
-        break;
-      }
-    }
-  }
-
-  if (it == session_ids.end()) {
-    return;
-  }
 
   // Ideally, we should not depend on this mutex_ as this function gets called from the session
   // cleanup bg thread from pg_client_service which is time sensitive.
@@ -5108,7 +5113,7 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& s
   {
     std::lock_guard l(mutex_);
 
-    for (; it != session_ids.end(); ++it) {
+    for (auto it = session_ids.begin(); it != session_ids.end(); ++it) {
       if (session_virtual_wal_.erase(*it)) {
         LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
       }

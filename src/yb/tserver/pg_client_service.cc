@@ -2088,7 +2088,15 @@ class PgClientServiceImpl::Impl {
         expired_session_ids.push_back(session->id());
       }
       expired_sessions.clear();
-      cdc_service->DestroyVirtualWALBatchForCDC(expired_session_ids);
+
+      std::vector<uint64_t> cdc_expired_session_ids =
+          cdc_service->FilterVirtualWalSessions(expired_session_ids);
+      if (cdc_expired_session_ids.empty()) {
+        // Return early as we do not have any CDC session to destroy here.
+        return;
+      }
+
+      cdc_service->DestroyVirtualWALBatchForCDC(cdc_expired_session_ids);
     }
   }
 
