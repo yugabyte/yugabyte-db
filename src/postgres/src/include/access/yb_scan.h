@@ -269,9 +269,9 @@ extern void ybc_heap_endscan(HeapScanDesc scanDesc);
 extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
 extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
 									 YBCPgStatement handle);
-extern void YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
-										Relation index, bool xs_want_itup,
-										YBCPgStatement handle);
+extern void YbDmlAppendTargetsAggregate(List *aggrefs,  Scan *outer_plan,
+										TupleDesc tupdesc, Relation index,
+										bool xs_want_itup, YBCPgStatement handle);
 extern void YbDmlAppendTargets(List *colrefs, YBCPgStatement handle);
 /* Add quals to the given statement. */
 extern void YbDmlAppendQuals(List *quals, bool is_primary,

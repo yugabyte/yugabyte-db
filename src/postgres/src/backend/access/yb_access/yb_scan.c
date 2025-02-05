@@ -2554,7 +2554,8 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
  * attribute numbers from table-based numbers to index-based ones.
  */
 void
-YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc, Relation index,
+YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
+							TupleDesc tupdesc, Relation index,
 							bool xs_want_itup, YBCPgStatement handle)
 {
 	ListCell   *lc;
@@ -2613,17 +2614,27 @@ YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc, Relation index,
 				}
 				else if (IsA(tle->expr, Var))
 				{
+					Var *var = castNode(Var, tle->expr);
+					int attno = var->varattno;
 					/*
-					 * Use original attribute number (varoattno) instead of projected one (varattno)
-					 * as projection is disabled for tuples produced by pushed down operators.
+					 * Change column reference in an aggregate to attribute
+					 * number. Given limited number of cases we support, we
+					 * take a number of assumptions here: the outer plan is a
+					 * plain Scan, and the scan's target list contains only
+					 * simple Vars.
+					 * Support for more generic plan shapes would require
+					 * deep rework of Postgres/PgGate interactions.
 					 */
-					int attno = castNode(Var, tle->expr)->varoattno;
-					/*
-					 * For index only scans, translate the table-based
-					 * attribute number to an index-based one.
-					 */
-					if (index && xs_want_itup)
-						attno = YbGetIndexAttnum(index, attno);
+					if (outer_plan)
+					{
+						List *tlist = outer_plan->plan.targetlist;
+						Assert(var->varno == OUTER_VAR);
+						Assert(attno > 0);
+						Assert(attno <= list_length(tlist));
+						TargetEntry *scan_tle = list_nth_node(TargetEntry, tlist, attno - 1);
+						Assert(IsA(scan_tle->expr, Var));
+						attno = castNode(Var, scan_tle->expr)->varattno;
+					}
 					Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
 					YBCPgTypeAttrs type_attrs = {attr->atttypmod};
 
@@ -2824,8 +2835,8 @@ ybcBeginScan(Relation relation,
 	 * non-aggregate and aggregate targets.
 	 */
 	if (aggrefs != NIL)
-		YbDmlAppendTargetsAggregate(aggrefs, ybScan->target_desc, index,
-									xs_want_itup, ybScan->handle);
+		YbDmlAppendTargetsAggregate(aggrefs, pg_scan_plan, ybScan->target_desc,
+									index, xs_want_itup, ybScan->handle);
 	else
 		ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
 

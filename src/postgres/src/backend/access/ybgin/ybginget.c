@@ -525,6 +525,7 @@ ybginDoFirstExec(IndexScanDesc scan, ScanDirection dir)
 		 * IndexOnlyScan, not IndexScan.
 		 */
 		YbDmlAppendTargetsAggregate(scan->yb_aggrefs,
+									NULL,
 									RelationGetDescr(scan->indexRelation),
 									scan->indexRelation,
 									scan->xs_want_itup,
