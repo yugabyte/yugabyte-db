@@ -21,7 +21,7 @@ git checkout 8c80bd84d023d9ae220c2721e68b09d10403bb41
 mkdir build
 cd build/
 cmake ..
-make clean && make -sj$(cat /proc/cpuinfo | grep "processor" | wc -l) install
+make clean && make -sj$(cat /proc/cpuinfo | grep -c "processor") install
 
 # Install citus_indent.
 git clone https://github.com/citusdata/tools.git

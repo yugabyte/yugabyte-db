@@ -44,9 +44,9 @@ echo "building and installing citus extension ..."
 make PATH=$PATH clean
 
 if [ "${DESTINSTALLDIR:-}" == "" ]; then
-make PATH=$PATH -j$(cat /proc/cpuinfo | grep "core id" | wc -l) install
+make PATH=$PATH -j$(cat /proc/cpuinfo | grep -c "processor") install
 else
-make PATH=$PATH DESTDIR=$DESTINSTALLDIR -j$(cat /proc/cpuinfo | grep "core id" | wc -l) install
+make PATH=$PATH DESTDIR=$DESTINSTALLDIR -j$(cat /proc/cpuinfo | grep -c "processor") install
 fi
 popd
 

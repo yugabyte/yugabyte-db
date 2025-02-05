@@ -87,7 +87,7 @@ else
   ./configure --enable-debug --enable-tap-tests --with-openssl --prefix="$postgresqlInstallDir" --with-icu
 fi
 
-make clean && make -sj$(cat /proc/cpuinfo | grep "core id" | wc -l) install
+make clean && make -sj$(cat /proc/cpuinfo | grep -c "processor") install
 
 popd
 

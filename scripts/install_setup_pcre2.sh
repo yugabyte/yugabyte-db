@@ -56,7 +56,7 @@ rm -rf $PCRE_LIB_WITH_VERSION.tar.gz
 
 # Build the library
 ./configure --prefix=$DESTINSTALLDIR --disable-shared --enable-static --enable-jit
-make clean && make -sj$(cat /proc/cpuinfo | grep "processor" | wc -l) AM_CFLAGS=-fPIC pkgconfigdir=$PKG_CONFIG_INSTALL_PATH install
+make clean && make -sj$(cat /proc/cpuinfo | grep -c "processor") AM_CFLAGS=-fPIC pkgconfigdir=$PKG_CONFIG_INSTALL_PATH install
 
 popd
 

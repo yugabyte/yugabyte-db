@@ -67,7 +67,7 @@ rm -rf $MATH_LIB_WITH_VERSION.tar.gz
 
 # Build the library with -fPIC so that it is linked properly and also other variables are defined to configure the library
 cd LIBRARY
-make -sj$(cat /proc/cpuinfo | grep "processor" | wc -l) _CFLAGS_OPT=-fPIC CC=gcc CALL_BY_REF=0 GLOBAL_RND=0 GLOBAL_FLAGS=0 UNCHANGED_BINARY_FLAGS=0
+make -sj$(cat /proc/cpuinfo | grep -c "processor") _CFLAGS_OPT=-fPIC CC=gcc CALL_BY_REF=0 GLOBAL_RND=0 GLOBAL_FLAGS=0 UNCHANGED_BINARY_FLAGS=0
 
 # Create a package config file to easily locate the lib
 
