@@ -55,6 +55,7 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [JSONB subscripting](#jsonb-subscripting)
 - [Events Listen / Notify](#events-listen-notify)
 - [Two-Phase Commit](#two-phase-commit)
+- [DDL operations within the Transaction](#ddl-operations-within-the-transaction)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -1499,6 +1500,39 @@ ERROR:  PREPARE TRANSACTION not supported yet
 
 **Workaround**: Currently, there is no workaround.
 
+### DDL operations within the Transaction
+
+**GitHub**:  Issue [#1404](https://github.com/yugabyte/yugabyte-db/issues/1404)
+
+**Description**: If your application queries or PL/pgSQL objects runs the DDL operations within the Transactions in the [source](https://www.postgresql.org/docs/current/two-phase.html) PostgreSQL database, this functionality will not work after migrating to YugabyteDB. Currently, DDL operations within the transaction in the YugabyteDB is not supported and will not work as expected:
+
+**Workaround**: Currently, there is no workaround.
+
+**Example:**
+
+```sql
+yugabyte=# \d test
+Did not find any relation named "test".
+yugabyte=# BEGIN;
+BEGIN
+yugabyte=*# CREATE TABLE test(id int, val text);
+CREATE TABLE
+yugabyte=*# \d test
+                Table "public.test"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           |          | 
+ val    | text    |           |          | 
+yugabyte=*# ROLLBACK;
+ROLLBACK
+yugabyte=# \d test
+                Table "public.test"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           |          | 
+ val    | text    |           |          | 
+```
+
 ## Limitations
 
 There are certain limitations when reporting issues in [assess-migration](../../reference/assess-migration/) and [analyze-schema](../../reference/schema-migration/analyze-schema/) commands:
@@ -1508,8 +1542,8 @@ There are certain limitations when reporting issues in [assess-migration](../../
     The `pg_stat_statements` extension in PostgreSQL tracks execution statistics of SQL queries by normalizing them. Since normalization removes the constants, the issues related to the constants for the following scenarios cannot be detected during assessment, and analyze:
 
     - `JSON_TABLE` usage in DML statements.
-    - Non-decimal integer literals in DML statements.
-    - Two-Phase Commit (XA syntax) (Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)).
+    - [Non-decimal integer literals in DML statements.](../../known-issues/postgresql/#postgresql-12-and-later-features)
+    - [Two-Phase Commit (XA syntax)](../../known-issues/postgresql/#two-phase-commit).
 
     **Example:**
 
@@ -1525,7 +1559,7 @@ There are certain limitations when reporting issues in [assess-migration](../../
 
     In `pg_stat_statements`, a single transaction is recorded as multiple separate query entries. This fragmentation makes it challenging to detect issues that occur within transaction boundaries, such as:
 
-    - DDL operations within Transaction (Issue [#1404](https://github.com/yugabyte/yugabyte-db/issues/1404)).
+    - [DDL operations within Transaction](.../../known-issues/postgresql/#ddl-operations-within-the-transaction)
 
     **Example:**
 
@@ -1554,7 +1588,7 @@ There are certain limitations when reporting issues in [assess-migration](../../
 
 1. Determining the Type During Query Processing
 
-    In complex queries, determining the type of data being handled is not always straightforward. This limitation affects the detection of **JSONB subscripting** in such queries, making it difficult to report issues accurately.
+    In complex queries, determining the type of data being handled is not always straightforward. This limitation affects the detection of [JSONB subscripting](../../known-issues/postgresql/#jsonb-subscripting) in such queries, making it difficult to report issues accurately.
 
     **Example:**
 
