@@ -9,6 +9,8 @@ menu:
     identifier: software-on-prem-4-manual
     parent: software-on-prem
     weight: 10
+aliases:
+  - /v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/
 type: docs
 ---
 

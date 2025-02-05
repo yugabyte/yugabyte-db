@@ -34,7 +34,7 @@ Execute the following command to check the cluster status at any time:
 
 Using the YugabyteDB SQL shell, [ysqlsh](/preview/api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
-(If you have previously installed YugabyteDB version 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](/preview/manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.)
+(If you have previously installed YugabyteDB version 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](/preview/manage/upgrade-deployment/#2-upgrade-the-ysql-system-catalog) to run the latest features.)
 
 To open the YSQL shell, run ysqlsh:
 

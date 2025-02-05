@@ -216,7 +216,7 @@ You can manage LDAP roles in YugabyteDB Anywhere using a combination of the foll
 
 ### Group mapping
 
-You can map LDAP groups to [YugabyteDB Anywhere roles](../anywhere-rbac/#roles). After signing in, the user's role is assigned based on whatever role their LDAP group has been mapped to in YugabyteDB Anywhere. If a user is in multiple mapped LDAP groups, YugabyteDB Anywhere performs a union of all the roles that are chosen as a result of group mapping and assigns the union to the user.
+You can map LDAP groups to [YugabyteDB Anywhere roles](../anywhere-rbac/#users-and-roles). After signing in, the user's role is assigned based on whatever role their LDAP group has been mapped to in YugabyteDB Anywhere. If a user is in multiple mapped LDAP groups, YugabyteDB Anywhere performs a union of all the roles that are chosen as a result of group mapping and assigns the union to the user.
 
 {{<tags/feature/ea>}}You can map groups to [fine-grained](../anywhere-rbac/#fine-grained-rbac) YugabyteDB Anywhere roles. To enable the feature in YugabyteDB Anywhere, set the **Enable RBAC for Groups** Global Runtime Configuration option (config key `yb.security.group_mapping_rbac_support`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
@@ -263,7 +263,7 @@ When a LDAP user logs in to YugabyteDB Anywhere, the system handles role assignm
 
 - If group mapping is enabled:
 
-  - If YugabyteDB Anywhere can obtain a valid role from the LDAP server (from either `yugabytePlatformRole` or group mappings), it assigns the role to the user. If both are defined, the union of roles is assigned. You can't subsequently [change the role for this user](../anywhere-rbac/#create-modify-and-delete-roles) in the **Access Management** tab.
+  - If YugabyteDB Anywhere can obtain a valid role from the LDAP server (from either `yugabytePlatformRole` or group mappings), it assigns the role to the user. If both are defined, the union of roles is assigned. You can't subsequently [change the role for this user](../anywhere-rbac/#users-and-roles) in the **Access Management** tab.
   - If YugabyteDB Anywhere is unable to obtain a valid role from the LDAP server, the user is assigned the ReadOnly role. You can subsequently change the role for the user in the **Access Management** tab.
 
 - If group mapping is disabled:
