@@ -140,8 +140,8 @@ service PgClientService {
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
 
-  rpc ImportTxnSnapshot(PgImportTxnSnapshotRequestPB)
-      returns (PgImportTxnSnapshotResponsePB);
+  rpc SetTxnSnapshot(PgSetTxnSnapshotRequestPB)
+      returns (PgSetTxnSnapshotResponsePB);
 
   rpc ClearExportedTxnSnapshots(PgClearExportedTxnSnapshotsRequestPB)
       returns (PgClearExportedTxnSnapshotsResponsePB);
@@ -281,6 +281,8 @@ enum PgReplicationSlotSnapshotActionPB {
   REPLICATION_SLOT_NOEXPORT_SNAPSHOT = 1;
   // Client wishes to consume snapshot from the source universe.
   REPLICATION_SLOT_USE_SNAPSHOT = 2;
+  // Client wishes to export snapshot to be used in other session
+  REPLICATION_SLOT_EXPORT_SNAPSHOT = 3;
 }
 
 // proto2 version of the ReplicationSlotLsnType enum from yb/common/common_types.proto
@@ -1181,6 +1183,7 @@ message PgExportTxnSnapshotRequestPB {
   uint64 session_id = 1;
   PgTxnSnapshotPB snapshot = 2;
   PgPerformOptionsPB options = 3;
+  ReadHybridTimePB explicit_read_time = 5;
   AshMetadataPB ash_metadata = 4;
 }
 
@@ -1189,14 +1192,17 @@ message PgExportTxnSnapshotResponsePB {
   string snapshot_id = 2;
 }
 
-message PgImportTxnSnapshotRequestPB {
+message PgSetTxnSnapshotRequestPB {
   uint64 session_id = 1;
-  string snapshot_id = 2;
+  oneof source {
+    string snapshot_id = 2;
+    ReadHybridTimePB explicit_read_time = 5;
+  }
   PgPerformOptionsPB options = 3;
   AshMetadataPB ash_metadata = 4;
 }
 
-message PgImportTxnSnapshotResponsePB {
+message PgSetTxnSnapshotResponsePB {
   AppStatusPB status = 1;
   PgTxnSnapshotPB snapshot = 2;
 }

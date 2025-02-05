@@ -2234,6 +2234,8 @@ GetSnapshotDataReuse(Snapshot snapshot)
 	GetSnapshotDataInitOldSnapshot(snapshot);
 
 	snapshot->yb_read_time_point_handle = YbBuildCurrentReadTimePointHandle();
+	snapshot->yb_cdc_snapshot_read_time.has_value = false;
+	snapshot->yb_cdc_snapshot_read_time.value = 0;
 	return true;
 }
 
@@ -2621,6 +2623,8 @@ GetSnapshotData(Snapshot snapshot)
 	GetSnapshotDataInitOldSnapshot(snapshot);
 
 	snapshot->yb_read_time_point_handle = YbBuildCurrentReadTimePointHandle();
+	snapshot->yb_cdc_snapshot_read_time.has_value = false;
+	snapshot->yb_cdc_snapshot_read_time.value = 0;
 	return snapshot;
 }
 

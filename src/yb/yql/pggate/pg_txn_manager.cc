@@ -673,7 +673,8 @@ Status PgTxnManager::RestoreReadTimePoint(uint64_t read_time_point_handle) {
   return serial_no_.RestoreReadTime(read_time_point_handle);
 }
 
-Result<std::string> PgTxnManager::ExportSnapshot(const YbcPgTxnSnapshot& snapshot) {
+Result<std::string> PgTxnManager::ExportSnapshot(
+    const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time) {
   tserver::PgExportTxnSnapshotRequestPB req;
   auto& snapshot_pb = *req.mutable_snapshot();
   snapshot_pb.set_db_oid(snapshot.db_id);
@@ -682,6 +683,9 @@ Result<std::string> PgTxnManager::ExportSnapshot(const YbcPgTxnSnapshot& snapsho
   auto& options = *req.mutable_options();
   RETURN_NOT_OK(SetupPerformOptions(&options, EnsureReadTimeIsSet::kTrue));
   RETURN_NOT_OK(CheckTxnSnapshotOptions(options));
+  if (explicit_read_time.has_value()) {
+    ReadHybridTime::FromUint64(explicit_read_time.value()).ToPB(req.mutable_explicit_read_time());
+  }
   auto res = client_->ExportTxnSnapshot(&req);
   if (res.ok()) {
     has_exported_snapshots_ = true;
@@ -689,14 +693,20 @@ Result<std::string> PgTxnManager::ExportSnapshot(const YbcPgTxnSnapshot& snapsho
   return res;
 }
 
-Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(std::string_view snapshot_id) {
+Result<std::optional<YbcPgTxnSnapshot>> PgTxnManager::SetTxnSnapshot(
+    PgTxnSnapshotDescriptor snapshot_descriptor) {
   RETURN_NOT_OK(CheckSnapshotTimeConflict());
   tserver::PgPerformOptionsPB options;
   RETURN_NOT_OK(SetupPerformOptions(&options));
   RETURN_NOT_OK(CheckTxnSnapshotOptions(options));
-  const auto resp = VERIFY_RESULT(client_->ImportTxnSnapshot(snapshot_id, std::move(options)));
+  const auto resp = VERIFY_RESULT(client_->SetTxnSnapshot(snapshot_descriptor, std::move(options)));
   snapshot_read_time_is_set_ = true;
   const auto& snapshot = resp.snapshot();
+
+  if (std::holds_alternative<PgTxnSnapshotReadTime>(snapshot_descriptor)) {
+    return std::nullopt;
+  }
+
   return YbcPgTxnSnapshot{
       .db_id = snapshot.db_oid(),
       .iso_level = implicit_cast<int>(snapshot.isolation_level()),

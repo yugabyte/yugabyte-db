@@ -2160,8 +2160,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 			repl_slot_snapshot_action = YB_REPLICATION_SLOT_USE_SNAPSHOT;
 			break;
 		case CRS_EXPORT_SNAPSHOT:
-			/* We return an 'Unsupported' error earlier. */
-			pg_unreachable();
+			repl_slot_snapshot_action = YB_REPLICATION_SLOT_EXPORT_SNAPSHOT;
 	}
 
 	/*

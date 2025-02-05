@@ -1906,7 +1906,8 @@ Status create_change_data_stream_action(
   if (args.size() > 3) {
     ToUpperCase(args[3], &uppercase_consistent_snapshot_option);
     if (uppercase_consistent_snapshot_option != "USE_SNAPSHOT" &&
-        uppercase_consistent_snapshot_option != "NOEXPORT_SNAPSHOT") {
+        uppercase_consistent_snapshot_option != "NOEXPORT_SNAPSHOT" &&
+        uppercase_consistent_snapshot_option != "EXPORT_SNAPSHOT") {
       return ClusterAdminCli::kInvalidArguments;
     }
     consistent_snapshot_option = uppercase_consistent_snapshot_option;

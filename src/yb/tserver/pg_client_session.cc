@@ -1136,6 +1136,9 @@ Status PgClientSession::CreateReplicationSlot(
       case REPLICATION_SLOT_USE_SNAPSHOT:
         snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT;
         break;
+      case REPLICATION_SLOT_EXPORT_SNAPSHOT:
+        snapshot_option = CDCSDKSnapshotOption::EXPORT_SNAPSHOT;
+        break;
       case REPLICATION_SLOT_UNKNOWN_SNAPSHOT:
         // Crash in debug and return InvalidArgument in release mode.
         RSTATUS_DCHECK(false, InvalidArgument, "invalid snapshot_action UNKNOWN");

@@ -265,7 +265,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kAcquireAdvisoryLock)
   (kReleaseAdvisoryLock)
   (kExportTxnSnapshot)
-  (kImportTxnSnapshot)
+  (kSetTxnSnapshot)
   (kClearExportedTxnSnapshots)
 );
 
