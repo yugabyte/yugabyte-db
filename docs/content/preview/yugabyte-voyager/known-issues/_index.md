@@ -16,7 +16,13 @@ menu:
     weight: 104
 ---
 
-Review the unsupported features, limitations, and implement suggested workarounds to successfully migrate data from MySQL, Oracle, or PostgreSQL to YugabyteDB.
+The following sections provide workarounds for issues detected by the Voyager [migration assessment](../reference/assess-migration/) and [schema analysis](../reference/schema-migration/analyze-schema/) commands.
+
+Review the unsupported features and limitations, and implement the suggested workarounds to successfully migrate data from MySQL, Oracle, or PostgreSQL to YugabyteDB.
+
+- [Workarounds for PostgreSQL issues](./postgresql/)
+- [Workarounds for Oracle issues](./oracle/)
+- [Workarounds for MySQL issues](./mysql/)
 
 ## Unsupported features
 
@@ -30,33 +36,9 @@ Currently, yb-voyager doesn't support the following features:
 | Unsupported data types | Data migration is unsupported for some data types, such as BLOB and XML. For others such as ANY and BFile, both schema and data migration is unsupported. Refer to [datatype mapping](../reference/datatype-mapping-oracle/) for the detailed list of data types. | |
 | Unsupported PostgreSQL features | Yugabyte currently doesn't support the PostgreSQL features listed in [PostgreSQL compatibility](../../develop/postgresql-compatibility/#unsupported-postgresql-features). If such schema clauses are encountered, Voyager results in an error. | |
 
-## Schema review
+## Assessment and schema analysis limitations
 
-{{<index/block>}}
-
-  {{<index/item
-    title="PostgreSQL"
-    body="Explore workarounds for limitations associated with PostgreSQL as the source database."
-    href="postgresql/"
-    icon="/images/section_icons/architecture/concepts.png">}}
-
-  {{<index/item
-    title="Oracle"
-    body="Explore workarounds for limitations associated with Oracle as the source database."
-    href="oracle/"
-    icon="/images/section_icons/architecture/concepts.png">}}
-
-  {{<index/item
-    title="MySQL"
-    body="Explore workarounds for limitations associated with MySQL as the source database."
-    href="mysql/"
-    icon="/images/section_icons/architecture/concepts.png">}}
-
-{{</index/block>}}
-
-## Assess and analyze limitations
-
-The [assess-migration](../reference/assess-migration/) and [analyze-schema](../reference/schema-migration/analyze-schema/) commands have the following limitations.
+Although the Voyager [migration assessment](../reference/assess-migration/) and [schema analysis](../reference/schema-migration/analyze-schema/) commands detect most issues you may face when migrating a database so that you can work around and mitigate those issues, they have the following known limitations.
 
 ### Normalized queries in pg_stat_statements
 
