@@ -91,6 +91,9 @@ bool EnableMultiIndexRumJoin = DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN;
 #define DEFAULT_ENABLE_STATEMENT_TIMEOUT false
 bool EnableBackendStatementTimeout = DEFAULT_ENABLE_STATEMENT_TIMEOUT;
 
+#define DEFAULT_ENABLE_SIMPLIFY_GROUP_ACCUMULATORS true
+bool EnableSimplifyGroupAccumulators = DEFAULT_ENABLE_SIMPLIFY_GROUP_ACCUMULATORS;
+
 void
 InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix)
 {
@@ -252,5 +255,13 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		gettext_noop(
 			"Whether to enable per statement backend timeout override in the backend."),
 		NULL, &EnableBackendStatementTimeout, DEFAULT_ENABLE_STATEMENT_TIMEOUT,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableSimplifyGroupAccumulators", newGucPrefix),
+		gettext_noop(
+			"Whether to enable parse time simplification of group accumulators."),
+		NULL, &EnableSimplifyGroupAccumulators,
+		DEFAULT_ENABLE_SIMPLIFY_GROUP_ACCUMULATORS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

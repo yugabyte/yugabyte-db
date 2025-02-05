@@ -76,6 +76,7 @@ extern bool EnableLookupUnwindSupport;
 extern bool EnableCollation;
 extern bool EnableFastPathPointLookupPlanner;
 extern bool DefaultInlineWriteOperations;
+extern bool EnableSimplifyGroupAccumulators;
 
 /* GUC to config tdigest compression */
 extern int TdigestCompressionAccuracy;
@@ -4571,6 +4572,35 @@ AddGroupExpression(Expr *expression, ParseState *parseState, char *identifiers,
 
 
 /*
+ * Given an accumulator expression, checks whether it can be statically
+ * evaluated to a const. If it can, then returns a const "Expr".
+ * If not, returns the original docExpr.
+ */
+static Expr *
+GetDocumentExprForGroupAccumulatorValue(const bson_value_t *accumulatorValue,
+										Expr *docExpr)
+{
+	if (!EnableSimplifyGroupAccumulators)
+	{
+		return docExpr;
+	}
+
+	ParseAggregationExpressionContext parseContext = { 0 };
+	AggregationExpressionData expressionData;
+	memset(&expressionData, 0, sizeof(AggregationExpressionData));
+
+	ParseAggregationExpressionData(&expressionData, accumulatorValue, &parseContext);
+	if (expressionData.kind == AggregationExpressionKind_Constant)
+	{
+		/* Expression evaluates to a const, we don't need to pass in the input documentExpr */
+		return (Expr *) MakeBsonConst(PgbsonInitEmpty());
+	}
+
+	return docExpr;
+}
+
+
+/*
  * Simple helper method that has logic to insert a Group accumulator to a query.
  * This adds the group aggregate to the TargetEntry (for projection)
  * and also adds the necessary data to the bson_repath_and_build arguments.
@@ -4585,6 +4615,8 @@ AddSimpleGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
 												  accumulatorValue));
 
+	documentExpr = GetDocumentExprForGroupAccumulatorValue(accumulatorValue,
+														   documentExpr);
 	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
 								 true);
 	List *groupArgs;
@@ -5161,16 +5193,18 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 
 	List *groupArgs;
 	Oid bsonExpressionGetFunction;
+	Expr *groupIdDocumentExpr = GetDocumentExprForGroupAccumulatorValue(&idValue,
+																		origEntry->expr);
 	if (context->variableSpec != NULL)
 	{
 		bsonExpressionGetFunction = BsonExpressionGetWithLetFunctionOid();
-		groupArgs = list_make4(origEntry->expr, MakeBsonConst(groupValue),
+		groupArgs = list_make4(groupIdDocumentExpr, MakeBsonConst(groupValue),
 							   MakeBoolValueConst(true), context->variableSpec);
 	}
 	else
 	{
 		bsonExpressionGetFunction = BsonExpressionGetFunctionOid();
-		groupArgs = list_make3(origEntry->expr, MakeBsonConst(groupValue),
+		groupArgs = list_make3(groupIdDocumentExpr, MakeBsonConst(groupValue),
 							   MakeBoolValueConst(true));
 	}
 
