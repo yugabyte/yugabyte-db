@@ -2534,7 +2534,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				YbIsCatalogNamespaceByName(castNode(ViewStmt, parsetree)->view->schemaname))
 				break;
 
-			is_version_increment = false;
+			/* Create or replace view needs to increment catalog version. */
+			if (!castNode(ViewStmt, parsetree)->replace)
+				is_version_increment = false;
 			break;
 
 		case T_CompositeTypeStmt:	/* Create (composite) type */
