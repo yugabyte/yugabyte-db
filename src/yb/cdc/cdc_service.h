@@ -149,6 +149,9 @@ class CDCServiceImpl : public CDCServiceIf {
       const DestroyVirtualWALForCDCRequestPB* req, DestroyVirtualWALForCDCResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Get a filtered list of all the sessions that belong to virtual WAL
+  std::vector<uint64_t> FilterVirtualWalSessions(const std::vector<uint64_t>& session_ids);
+
   // Destroy a batch of Virtual WAL instances managed by this CDC service.
   // Intended to be called from background jobs and hence only logs warnings in case of errors.
   void DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids);
