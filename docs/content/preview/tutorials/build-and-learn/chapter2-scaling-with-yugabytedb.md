@@ -30,7 +30,7 @@ You need to complete [Chapter 1](../chapter1-debuting-with-postgres) of the tuto
 
 ## Start YugabyteDB
 
-YugabyteDB offers various deployment options, including bare metal, containerization, or as a fully-managed service. In this tutorial, you'll use the [yugabyted tool](../../../reference/configuration/yugabyted/#yugabyted) deploying a YugabyteDB cluster in a containerized environment.
+YugabyteDB offers various deployment options, including bare metal, containerization, or as a fully-managed service. In this tutorial, you'll use the [yugabyted tool](../../../reference/configuration/yugabyted/) deploying a YugabyteDB cluster in a containerized environment.
 
 To begin, start a single-node YugabyteDB cluster in Docker:
 
