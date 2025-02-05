@@ -1346,9 +1346,9 @@ CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
 - [Non-decimal integer literals](https://www.postgresql.org/about/featurematrix/detail/407/).
 - [Non-deterministic collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC).
 - [COMPRESSION clause](https://www.postgresql.org/docs/current/sql-createtable.html#SQL-CREATETABLE-PARMS-COMPRESSION) in TABLE Column for TOASTing method.
-- [CREATE DATABASE options](https://www.postgresql.org/docs/15/sql-createdatabase.html) (locale, collation, strategy and oid related).
+- [CREATE DATABASE options](https://www.postgresql.org/docs/15/sql-createdatabase.html) (locale, collation, strategy, and oid related).
 
-Apart from these, the following issues are supported in the YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25) release (preview release where YugabyteDB now supports PostgreSQL 15).
+Apart from these, the following issues are supported in YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25), which supports PostgreSQL 15.
 
 - [Multirange datatypes](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-BUILTIN).
 - [UNIQUE NULLS NOT DISTINCT clause](https://www.postgresql.org/about/featurematrix/detail/392/) in constraint and index.
@@ -1492,7 +1492,7 @@ NOTIFY my_table_changes, 'New row added with name: Charlie';
 
 **GitHub**: Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)
 
-**Description**: If your application queries or PL/pgSQL objects rely on **Two-Phase Commit** protocol that allows multiple distributed systems to work together in a transactional manner in the [source](https://www.postgresql.org/docs/current/two-phase.html) PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, Two-Phase Commit is not implemented in the YugabyteDB and will throw the following error when attempt to execute the commands:
+**Description**: If your application queries or PL/pgSQL objects rely on [Two-Phase Commit protocol](https://www.postgresql.org/docs/11/two-phase.html) that allows multiple distributed systems to work together in a transactional manner in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, Two-Phase Commit is not implemented in YugabyteDB and will throw the following error when you attempt to execute the commands:
 
 ```sql
 ERROR:  PREPARE TRANSACTION not supported yet
@@ -1504,7 +1504,7 @@ ERROR:  PREPARE TRANSACTION not supported yet
 
 **GitHub**:  Issue [#1404](https://github.com/yugabyte/yugabyte-db/issues/1404)
 
-**Description**: If your application queries or PL/pgSQL objects runs the DDL operations within the Transactions in the [source](https://www.postgresql.org/docs/current/two-phase.html) PostgreSQL database, this functionality will not work after migrating to YugabyteDB. Currently, DDL operations within the transaction in the YugabyteDB is not supported and will not work as expected:
+**Description**: If your application queries or PL/pgSQL objects runs DDL operations inside transactions in the source PostgreSQL database, this functionality will not work after migrating to YugabyteDB. Currently, DDL operations in a transaction in YugabyteDB is not supported and will not work as expected.
 
 **Workaround**: Currently, there is no workaround.
 
