@@ -313,8 +313,8 @@ public class XClusterScheduler {
       XClusterConfig xClusterConfig, XClusterTableConfig xClusterTableConfig) {
     XClusterTableConfig.Status tableStatus = xClusterTableConfig.getStatus();
     if (xClusterTableConfig.getStatus().equals(XClusterTableConfig.Status.Running)) {
-      if (xClusterTableConfig.getReplicationStatusErrors().size() > 0) {
-        tableStatus = XClusterTableConfig.Status.ReplicationError;
+      if (!xClusterTableConfig.getReplicationStatusErrors().isEmpty()) {
+        tableStatus = XClusterTableConfig.Status.Error;
       }
     }
 

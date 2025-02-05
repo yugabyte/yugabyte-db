@@ -139,8 +139,7 @@ public class XClusterTableConfig extends Model {
     DroppedFromSource("DroppedFromSource", -5), // Not stored in YBA DB.
     DroppedFromTarget("DroppedFromTarget", -6), // Not stored in YBA DB.
     ExtraTableOnSource("ExtraTableOnSource", -7), // Not stored in YBA DB.
-    ExtraTableOnTarget("ExtraTableOnTarget", -8), // Not stored in YBA DB.
-    ReplicationError("ReplicationError", -9); // Not stored in YBA DB.
+    ExtraTableOnTarget("ExtraTableOnTarget", -8); // Not stored in YBA DB.
 
     private final String status;
     private final int code;
