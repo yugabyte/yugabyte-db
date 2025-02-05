@@ -650,12 +650,14 @@ class WaitOnConflictResolver : public ConflictResolver {
       LockBatch* lock_batch,
       uint64_t request_start_us,
       int64_t request_id,
+      bool is_advisory_lock_request,
       CoarseTimePoint deadline)
         : ConflictResolver(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback)),
         wait_queue_(wait_queue), lock_batch_(lock_batch), serial_no_(wait_queue_->GetSerialNo()),
         trace_(Trace::CurrentTrace()), request_start_us_(request_start_us),
-        request_id_(request_id), deadline_(deadline) {}
+        request_id_(request_id), is_advisory_lock_request_(is_advisory_lock_request),
+        deadline_(deadline) {}
 
   ~WaitOnConflictResolver() {
     VLOG(3) << "Wait-on-Conflict resolution complete after " << wait_for_iters_ << " iters.";
@@ -709,7 +711,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         waiter_txn, context_->subtransaction_id(), lock_batch_, waiter_status_tablet,
         serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_,
-        context_->PgSessionRequestVersion(), deadline_,
+        context_->PgSessionRequestVersion(), is_advisory_lock_request_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
@@ -735,7 +737,7 @@ class WaitOnConflictResolver : public ConflictResolver {
         waiter_txn, context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), waiter_status_tablet, serial_no_,
         context_->GetTxnStartUs(), request_start_us_, request_id_,
-        context_->PgSessionRequestVersion(), deadline_,
+        context_->PgSessionRequestVersion(), is_advisory_lock_request_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2)));
     MaybeSetWaitStartTime();
@@ -782,6 +784,7 @@ class WaitOnConflictResolver : public ConflictResolver {
   // Stores the start time of the underlying rpc request that created this resolver.
   uint64_t request_start_us_ = 0;
   const int64_t request_id_;
+  const bool is_advisory_lock_request_;
   CoarseTimePoint deadline_;
 };
 
@@ -1444,6 +1447,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    tablet::TabletMetrics* tablet_metrics,
                                    LockBatch* lock_batch,
                                    WaitQueue* wait_queue,
+                                   bool is_advisory_lock_request,
                                    CoarseTimePoint deadline,
                                    ResolutionCallback callback) {
   DCHECK(resolution_ht.is_valid());
@@ -1464,7 +1468,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
     DCHECK(lock_batch);
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, request_id, deadline);
+        wait_queue, lock_batch, request_start_us, request_id, is_advisory_lock_request, deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
@@ -1505,7 +1509,8 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
         "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, request_id, deadline);
+        wait_queue, lock_batch, request_start_us, request_id, false /* is_advisory_lock_request */,
+        deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
