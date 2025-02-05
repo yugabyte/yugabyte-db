@@ -43,6 +43,11 @@ struct SchemaDetails {
 // the current 'running' schema.
 using SchemaDetailsMap = std::map<TableId, SchemaDetails>;
 
+struct CDCThroughputMetrics {
+  uint64_t records_sent = 0;
+  uint64_t bytes_sent = 0;
+};
+
 class StreamMetadata;
 
 Status GetChangesForCDCSDK(
@@ -67,7 +72,8 @@ Status GetChangesForCDCSDK(
     int64_t* last_readable_opid_index = nullptr,
     const TableId& colocated_table_id = "",
     const CoarseTimePoint deadline = CoarseTimePoint::max(),
-    const std::optional<uint64> getchanges_resp_max_size_bytes = std::nullopt);
+    const std::optional<uint64> getchanges_resp_max_size_bytes = std::nullopt,
+    CDCThroughputMetrics* throughput_metrics = nullptr);
 
 bool IsReplicationSlotStream(const StreamMetadata& stream_metadata);
 
