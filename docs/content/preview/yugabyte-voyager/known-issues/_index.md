@@ -38,7 +38,7 @@ Currently, yb-voyager doesn't support the following features:
 
 ## Assessment and schema analysis limitations
 
-Although the Voyager [migration assessment](../reference/assess-migration/) and [schema analysis](../reference/schema-migration/analyze-schema/) commands detect most issues you may face when migrating a database so that you can work around and mitigate them, they have the following known limitations.
+Although [migration assessment](../reference/assess-migration/) and [schema analysis](../reference/schema-migration/analyze-schema/) detect most issues you may face when migrating a database so that you can work around and mitigate them, the commands have the following known limitations.
 
 ### Normalized queries in pg_stat_statements
 
