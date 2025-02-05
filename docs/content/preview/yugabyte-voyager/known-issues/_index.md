@@ -56,15 +56,15 @@ Currently, yb-voyager doesn't support the following features:
 
 ## Assess and Analyze Limitations
 
-There are certain limitations when reporting issues in [assess-migration](../../reference/assess-migration/) and [analyze-schema](../../reference/schema-migration/analyze-schema/) commands:
+There are certain limitations when reporting issues in [assess-migration](../reference/assess-migration/) and [analyze-schema](../reference/schema-migration/analyze-schema/) commands:
 
 1. Normalized queries in `pg_stat_statements`
 
-    The `pg_stat_statements` extension in PostgreSQL tracks execution statistics of SQL queries by normalizing them. Since normalization removes the constants, the issues related to the constants for the following scenarios cannot be detected during assessment, and analyze:
+    The `pg_stat_statements` extension in PostgreSQL tracks execution statistics of SQL queries by normalizing them. Since normalization removes the constants, the issues related to the constants for the following scenarios cannot be detected during assessment:
 
-    - `JSON_TABLE` usage in DML statements.
-    - [Non-decimal integer literals in DML statements.](../../known-issues/postgresql/#postgresql-12-and-later-features)
-    - [Two-Phase Commit (XA syntax)](../../known-issues/postgresql/#two-phase-commit).
+    - `JSON_TABLE` ([JSON Query function](../known-issues/postgresql/#postgresql-12-and-later-features)) usage in DML statements.
+    - [Non-decimal integer literals in DML statements.](../known-issues/postgresql/#postgresql-12-and-later-features)
+    - [Two-Phase Commit (XA syntax)](../known-issues/postgresql/#two-phase-commit).
 
     **Example:**
 
@@ -80,7 +80,7 @@ There are certain limitations when reporting issues in [assess-migration](../../
 
     In `pg_stat_statements`, a single transaction is recorded as multiple separate query entries. This fragmentation makes it challenging to detect issues that occur within transaction boundaries, such as:
 
-    - [DDL operations within Transaction](.../../known-issues/postgresql/#ddl-operations-within-the-transaction)
+    - [DDL operations within Transaction](../known-issues/postgresql/#ddl-operations-within-the-transaction)
 
     **Example:**
 
@@ -109,7 +109,7 @@ There are certain limitations when reporting issues in [assess-migration](../../
 
 1. Determining the Type During Query Processing
 
-    In complex queries, determining the type of data being handled is not always straightforward. This limitation affects the detection of [JSONB subscripting](../../known-issues/postgresql/#jsonb-subscripting) in such queries, making it difficult to report issues accurately.
+    In complex queries, determining the type of data being handled is not always straightforward. This limitation affects the detection of [JSONB subscripting](../known-issues/postgresql/#jsonb-subscripting) in such queries, making it difficult to report issues accurately.
 
     **Example:**
 
