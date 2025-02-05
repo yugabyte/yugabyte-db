@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.models.Backup;
@@ -57,6 +58,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -159,6 +161,23 @@ public class BackupUtil {
 
   public static boolean allSnapshotsSuccessful(List<SnapshotInfo> snapshotInfoList) {
     return !snapshotInfoList.stream().anyMatch(info -> info.getState().equals(State.FAILED));
+  }
+
+  public static long getMinRecoveryTimeForSchedule(
+      List<SnapshotInfo> snapshotInfoList, long retentionPeriodInSeconds) {
+    Optional<SnapshotInfo> oldestSuccessfulSnaptshoScheduletOptional =
+        snapshotInfoList.stream()
+            .filter(
+                i ->
+                    i.getState().equals(State.COMPLETE)
+                        && (i.getSnapshotTime()
+                            >= System.currentTimeMillis() - (retentionPeriodInSeconds * 1000L)))
+            .sorted(Comparator.comparing(SnapshotInfo::getSnapshotTime))
+            .findFirst();
+    if (oldestSuccessfulSnaptshoScheduletOptional.isPresent()) {
+      return oldestSuccessfulSnaptshoScheduletOptional.get().getSnapshotTime();
+    }
+    return 0L;
   }
 
   public static Metric buildMetricTemplate(
@@ -901,5 +920,18 @@ public class BackupUtil {
       return baseBackupOpt.get().getBackupInfo().isPointInTimeRestoreEnabled();
     }
     return false;
+  }
+
+  public static void checkApiEnabled(TableType tableType, UserIntent userIntent)
+      throws PlatformServiceException {
+    if (tableType != null) {
+      if (tableType.equals(TableType.YQL_TABLE_TYPE) && !userIntent.enableYCQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot perform operation on YCQL tables when API is disabled");
+      } else if (tableType.equals(TableType.PGSQL_TABLE_TYPE) && !userIntent.enableYSQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot perform operation on YSQL tables when API is disabled");
+      }
+    }
   }
 }

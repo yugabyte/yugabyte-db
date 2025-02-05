@@ -21,8 +21,10 @@ When a unique index is applied to two or more columns, the combined values in th
 ## Syntax
 
 ```sql
-CREATE UNIQUE INDEX index_name ON table_name(column_list);
+CREATE UNIQUE INDEX index_name ON table_name(column_list)  [ NULLS [ NOT ] DISTINCT ];
 ```
+
+When creating an unique index, by default, null values are not considered equal, allowing multiple nulls in the column. The NULLS NOT DISTINCT option modifies this and causes the index to treat nulls as equal.
 
 ## Setup
 

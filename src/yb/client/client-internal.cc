@@ -56,7 +56,7 @@
 #include "yb/qlexpr/index.h"
 #include "yb/common/common_util.h"
 #include "yb/common/redis_constants_common.h"
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 
@@ -2840,7 +2840,7 @@ Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
 }
 
 Status YBClient::Data::SetReplicationInfo(
-    YBClient* client, const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
+    YBClient* client, const ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
     bool* retry) {
   // If retry was not set, we'll wrap around in a retryable function.
   if (!retry) {
@@ -2879,7 +2879,7 @@ Status YBClient::Data::SetReplicationInfo(
 }
 
 Status YBClient::Data::ValidateReplicationInfo(
-    const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline) {
+    const ReplicationInfoPB& replication_info, CoarseTimePoint deadline) {
   // Validate the request config.
   ValidateReplicationInfoRequestPB req;
   ValidateReplicationInfoResponsePB resp;

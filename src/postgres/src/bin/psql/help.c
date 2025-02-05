@@ -83,7 +83,7 @@ usage(unsigned short int pager)
 		env = user;
 	HELP0("  -c, --command=COMMAND    run only single command (SQL or internal) and exit\n");
 	HELPN("  -d, --dbname=DBNAME      database name to connect to (default: \"%s\")\n",
-		"yugabyte");
+		  "yugabyte");
 	HELP0("  -f, --file=FILENAME      execute commands from file, then exit\n");
 	HELP0("  -l, --list               list available databases, then exit\n");
 	HELP0("  -v, --set=, --variable=NAME=VALUE\n"
@@ -140,7 +140,7 @@ usage(unsigned short int pager)
 		  env ? env : DEF_YBPORT_STR);
 	/* Display default user */
 	HELPN("  -U, --username=USERNAME  database user name (default: \"%s\")\n",
-		"yugabyte");
+		  "yugabyte");
 	HELP0("  -w, --no-password        never prompt for password\n");
 	HELP0("  -W, --password           force password prompt (should happen automatically)\n");
 
@@ -702,23 +702,27 @@ helpSQL(const char *topic, unsigned short int pager)
 					strcmp(topic, "*") == 0)
 				{
 					PQExpBufferData buffer;
+
 					/* YB: exclude links to postgres documentation. */
 					/* char	   *url; */
 
 					initPQExpBuffer(&buffer);
 					QL_HELP[i].syntaxfunc(&buffer);
-					/* url = psprintf("https://www.postgresql.org/docs/%s/%s.html",
-								   strstr(PG_VERSION, "devel") ? "devel" : PG_MAJORVERSION,
-								   QL_HELP[i].docbook_id); */
+
+					/*
+					 *	url = psprintf("https://www.postgresql.org/docs/%s/%s.html",
+					 *				   strstr(PG_VERSION, "devel") ? "devel" : PG_MAJORVERSION,
+					 *				   QL_HELP[i].docbook_id);
+					 */
 					/* # of newlines in format must match constant above! */
 					fprintf(output, _("Command:     %s\n"
 									  "Description: %s\n"
 									  "Syntax:\n%s\n\n"),
-									  /* "URL: %s\n\n"), */
+					/* "URL: %s\n\n"), */
 							QL_HELP[i].cmd,
 							_(QL_HELP[i].help),
 							buffer.data);
-							/* url); */
+					/* url); */
 					/* free(url); */
 					termPQExpBuffer(&buffer);
 

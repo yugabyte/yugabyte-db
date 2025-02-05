@@ -220,8 +220,7 @@ typedef void (*YBLogicalDecodeSchemaChangeCB) (struct LogicalDecodingContext *ct
 /*
  * Called to let the output plugin know about supporting yb specifc replica identity like CHANGE.
  */
-typedef void (*YBLogicalDecodeEnableYBSpecficReplicaIdentityCB)(
-	bool enable_support_for_yb_specific_replica_identity);
+typedef void (*YBLogicalDecodeEnableYBSpecficReplicaIdentityCB) (bool enable_support_for_yb_specific_replica_identity);
 
 /*
  * Output plugin callbacks
@@ -255,8 +254,7 @@ typedef struct OutputPluginCallbacks
 	LogicalDecodeStreamTruncateCB stream_truncate_cb;
 
 	YBLogicalDecodeSchemaChangeCB yb_schema_change_cb;
-	YBLogicalDecodeEnableYBSpecficReplicaIdentityCB
-		yb_support_yb_specifc_replica_identity_cb;
+	YBLogicalDecodeEnableYBSpecficReplicaIdentityCB yb_support_yb_specifc_replica_identity_cb;
 } OutputPluginCallbacks;
 
 /* Functions in replication/logical/logical.c */

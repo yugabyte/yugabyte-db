@@ -22,6 +22,13 @@ public interface ITask extends Runnable {
     boolean enabled() default true;
   }
 
+  /** Annotation for a ITask class to enable/disable rollback on a Task Type. */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.TYPE)
+  @interface CanRollback {
+    boolean enabled() default true;
+  }
+
   /** Annotation for a ITask class to enable/disable abortable. */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.TYPE)
@@ -85,8 +92,8 @@ public interface ITask extends Runnable {
   boolean isFirstTry();
 
   /**
-   * Returns the queuing wait time for the given task type and params. Return value of null or zero
-   * means queuing is not enabled on this task.
+   * Returns the queuing wait time for the given task type and params. Return value of null means
+   * queuing is not enabled on this task.
    */
   Duration getQueueWaitTime(TaskType taskType, ITaskParams taskParams);
 }

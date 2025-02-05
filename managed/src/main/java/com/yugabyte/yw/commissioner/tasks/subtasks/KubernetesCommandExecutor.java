@@ -52,8 +52,10 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.provider.region.WellKnownIssuerKind;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Service;
 import java.io.BufferedWriter;
@@ -223,6 +225,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public String podName;
     public String serviceName;
     public String newDiskSize;
+    public boolean useNewTserverDiskSize;
+    public boolean useNewMasterDiskSize;
 
     // Master addresses in multi-az case (to have control over different deployments).
     public String masterAddresses = null;
@@ -451,7 +455,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
         // Ideally we should have called KubernetesUtil.getHelmFullNameWithSuffix()
-        String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + "yb-tserver";
+        String appType = taskParams().serverType == ServerType.TSERVER ? "yb-tserver" : "yb-master";
+        String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + appType;
         kubernetesManagerFactory
             .getManager()
             .deleteStatefulSet(config, taskParams().namespace, appName);
@@ -466,7 +471,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                   config,
                   taskParams().namespace,
                   taskParams().helmReleaseName,
-                  "yb-tserver",
+                  taskParams().serverType == ServerType.TSERVER
+                      ? "yb-tserver"
+                      : "yb-master" /* appName */,
                   taskParams().newDiskSize,
                   u.getUniverseDetails().useNewHelmNamingStyle);
         } catch (Throwable e) {
@@ -656,6 +663,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             if (nodeName.contains("master")) {
               nodeDetail.isTserver = false;
               nodeDetail.isMaster = true;
+              nodeDetail.dedicatedTo = ServerType.MASTER;
               nodeDetail.cloudInfo.private_ip =
                   KubernetesUtil.formatPodAddress(
                       podAddressTemplate,
@@ -666,6 +674,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             } else {
               nodeDetail.isMaster = false;
               nodeDetail.isTserver = true;
+              nodeDetail.dedicatedTo = ServerType.TSERVER;
               nodeDetail.cloudInfo.private_ip =
                   KubernetesUtil.formatPodAddress(
                       podAddressTemplate,
@@ -863,6 +872,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     }
 
+    // Fetch universe again for Certs
+    // For Certs rotate task, we're updating the certs in the Universe details as a subtask
+    Universe universeFromDB = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    UniverseDefinitionTaskParams universeFromDBParams = universeFromDB.getUniverseDetails();
+    UserIntent userIntentFromDB =
+        taskParams().isReadOnlyCluster
+            ? universeFromDBParams.getReadOnlyClusters().get(0).userIntent
+            : universeFromDBParams.getPrimaryCluster().userIntent;
+
     Map<String, Object> storageOverrides =
         (HashMap) overrides.getOrDefault("storage", new HashMap<>());
 
@@ -870,18 +888,37 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         (HashMap) storageOverrides.getOrDefault("tserver", new HashMap<>());
     Map<String, Object> masterDiskSpecs =
         (HashMap) storageOverrides.getOrDefault("master", new HashMap<>());
-    // Override disk count and size for just the tserver pods according to user intent.
-    if (userIntent.deviceInfo != null) {
-      if (userIntent.deviceInfo.numVolumes != null) {
-        tserverDiskSpecs.put("count", userIntent.deviceInfo.numVolumes);
+
+    // Override disk count and size for the tserver/master pods according to user intent.
+    DeviceInfo tserverDeviceInfo =
+        taskParams().useNewTserverDiskSize ? userIntent.deviceInfo : userIntentFromDB.deviceInfo;
+    DeviceInfo masterDeviceInfo =
+        taskParams().useNewMasterDiskSize
+            ? userIntent.masterDeviceInfo
+            : userIntentFromDB.masterDeviceInfo;
+
+    if (tserverDeviceInfo != null) {
+      if (tserverDeviceInfo.numVolumes != null) {
+        tserverDiskSpecs.put("count", tserverDeviceInfo.numVolumes);
       }
-      if (userIntent.deviceInfo.volumeSize != null) {
-        tserverDiskSpecs.put("size", String.format("%dGi", userIntent.deviceInfo.volumeSize));
+      if (tserverDeviceInfo.volumeSize != null) {
+        tserverDiskSpecs.put("size", String.format("%dGi", tserverDeviceInfo.volumeSize));
       }
       // Storage class override applies to both tserver and master.
-      if (userIntent.deviceInfo.storageClass != null) {
-        tserverDiskSpecs.put("storageClass", userIntent.deviceInfo.storageClass);
-        masterDiskSpecs.put("storageClass", userIntent.deviceInfo.storageClass);
+      if (tserverDeviceInfo.storageClass != null) {
+        tserverDiskSpecs.put("storageClass", tserverDeviceInfo.storageClass);
+      }
+    }
+    // Override disk count and size for master pods
+    if (masterDeviceInfo != null) {
+      if (masterDeviceInfo.numVolumes != null) {
+        masterDiskSpecs.put("count", masterDeviceInfo.numVolumes);
+      }
+      if (masterDeviceInfo.volumeSize != null) {
+        masterDiskSpecs.put("size", String.format("%dGi", masterDeviceInfo.volumeSize));
+      }
+      if (masterDeviceInfo.storageClass != null) {
+        masterDiskSpecs.put("storageClass", masterDeviceInfo.storageClass);
       }
     }
 
@@ -1049,11 +1086,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UniverseDefinitionTaskParams.UserIntent primaryClusterIntent =
         taskUniverseDetails.getPrimaryCluster().userIntent;
 
-    // Fetch universe again for Certs
-    // For Certs rotate task, we're updating the certs in the Universe details as a subtask
-    Universe universeFromDB = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    UniverseDefinitionTaskParams universeFromDBParams = universeFromDB.getUniverseDetails();
-
     if (universeFromDBParams.rootCA != null || universeFromDBParams.getClientRootCA() != null) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
@@ -1089,30 +1121,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         rootCA.put("cert", rootCert);
         rootCA.put("key", "");
         tlsInfo.put("rootCA", rootCA);
-        String certManagerIssuer =
-            KubernetesUtil.getK8sPropertyFromConfigOrDefault(
-                null, regionConfig, azConfig, "CERT-MANAGER-ISSUER", null);
-        String certManagerClusterIssuer =
-            KubernetesUtil.getK8sPropertyFromConfigOrDefault(
-                null, regionConfig, azConfig, "CERT-MANAGER-CLUSTERISSUER", null);
 
-        if (certInfo.getCertType() == CertConfigType.K8SCertManager
-            && (StringUtils.isNotEmpty(certManagerClusterIssuer)
-                || StringUtils.isNotEmpty(certManagerIssuer))) {
-          // User configuring a K8SCertManager type of certificate on a Universe and setting
-          // the corresponding azConfig enables the cert-manager integration for this
-          // Universe. The name of Issuer/ClusterIssuer will come from the azConfig.
-          Map<String, Object> certManager = new HashMap<>();
-          certManager.put("enabled", true);
-          certManager.put("bootstrapSelfsigned", false);
-          boolean useClusterIssuer = StringUtils.isNotEmpty(certManagerClusterIssuer);
-          certManager.put("useClusterIssuer", useClusterIssuer);
-          if (useClusterIssuer) {
-            certManager.put("clusterIssuer", certManagerClusterIssuer);
-          } else {
-            certManager.put("issuer", certManagerIssuer);
-          }
-          tlsInfo.put("certManager", certManager);
+        if (certInfo.getCertType() == CertConfigType.K8SCertManager) {
+          tlsInfo.put(
+              "certManager", getCertManagerHelmValues(universeFromDB, regionConfig, azConfig));
         } else {
           CertificateProviderInterface certProvider =
               EncryptionInTransitUtil.getCertificateProviderInstance(
@@ -1597,6 +1609,19 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       // provided
       Map<String, Object> certManager =
           (Map<String, Object>) ((Map<String, Object>) values.get("tls")).get("certManager");
+
+      if (certManager.containsKey("useCustomIssuer")
+          && (Boolean) certManager.get("useCustomIssuer")) {
+        String ybSoftwareVersion =
+            (String) ((Map<String, Object>) values.get("Image")).getOrDefault("tag", "");
+        if (!KubernetesUtil.isCustomIssuerSupported(ybSoftwareVersion)) {
+          throw new RuntimeException(
+              String.format(
+                  "Custom Issuer is not supported for this Yugabyte version. "
+                      + "Please upgrade to %s or later to use this feature.",
+                  KubernetesUtil.MIN_VERSION_CUSTOM_ISSUER_SUPPORT_STABLE));
+        }
+      }
       if (!certManager.containsKey("useClusterIssuer")) {
         throw new RuntimeException(
             "useClusterIssuer is required when tls.certManager.enabled=true");
@@ -1644,5 +1669,60 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       dnsNames.add(String.format("*.yb-masters.%s.svc.%s", taskParams().namespace, kubeDomain));
     }
     return dnsNames;
+  }
+
+  /*
+   * User configuring a K8SCertManager type of certificate on a Universe and setting
+   * the corresponding azConfig enables the cert-manager integration for this
+   * Universe. The name of Issuer/ClusterIssuer will come from the azConfig.
+   * This method retrieves the necessary Helm values for cert-manager integration.
+   */
+  private Map<String, Object> getCertManagerHelmValues(
+      Universe universe, Map<String, String> regionConfig, Map<String, String> azConfig) {
+    Map<String, Object> certManager = new HashMap<>();
+    String certManagerIssuerKind =
+        KubernetesUtil.getK8sPropertyFromConfigOrDefault(
+            null, regionConfig, azConfig, "CERT-MANAGER-ISSUER-KIND", null);
+    String certManagerIssuerName =
+        KubernetesUtil.getK8sPropertyFromConfigOrDefault(
+            null, regionConfig, azConfig, "CERT-MANAGER-ISSUER-NAME", null);
+    String certManagerIssuerGroup =
+        KubernetesUtil.getK8sPropertyFromConfigOrDefault(
+            null, regionConfig, azConfig, "CERT-MANAGER-ISSUER-GROUP", null);
+
+    certManager.put("enabled", true);
+    certManager.put("bootstrapSelfsigned", false);
+
+    if (!StringUtils.isEmpty(certManagerIssuerKind)
+        && !StringUtils.isEmpty(certManagerIssuerName)) {
+
+      // ClusterIssuer
+      if (StringUtils.equals(certManagerIssuerKind, WellKnownIssuerKind.CLUSTER_ISSUER)) {
+        certManager.put("useClusterIssuer", true);
+        certManager.put("clusterIssuer", certManagerIssuerName);
+      }
+      // Issuer
+      else if (StringUtils.equals(certManagerIssuerKind, WellKnownIssuerKind.ISSUER)) {
+        certManager.put("useClusterIssuer", false);
+        certManager.put("issuer", certManagerIssuerName);
+      }
+      // CustomIssuer
+      else {
+        certManager.put("useClusterIssuer", false);
+        certManager.put("useCustomIssuer", true);
+        Map<String, String> customIssuer = new HashMap<>();
+        customIssuer.put("kind", certManagerIssuerKind);
+        customIssuer.put("name", certManagerIssuerName);
+        if (StringUtils.isNotEmpty(certManagerIssuerGroup)) {
+          customIssuer.put("group", certManagerIssuerGroup);
+        }
+        certManager.put("customIssuer", customIssuer);
+      }
+      // Set commonNameRequired if runtimeConfig is set to true.
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.certManagerCommonNameRequired)) {
+        certManager.put("certificates", new HashMap<>(Map.of("commonNameRequired", true)));
+      }
+    }
+    return certManager;
   }
 }

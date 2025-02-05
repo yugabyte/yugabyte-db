@@ -34,6 +34,20 @@ static void check_for_new_tablespace_dir(ClusterInfo *new_cluster);
 static void check_for_user_defined_encoding_conversions(ClusterInfo *cluster);
 static char *get_canonical_locale_name(int category, const char *locale);
 
+/* Yugabyte-specific checks */
+
+static void yb_check_pushdown_is_disabled(PGconn *old_cluster_conn);
+
+static void yb_check_system_databases_exist(PGconn *old_cluster_conn);
+
+static void yb_check_user_attributes(PGconn *old_cluster_conn,
+									 const char *user_name,
+									 const char **role_attrs);
+
+static void yb_check_yugabyte_user(PGconn *old_cluster_conn);
+
+static void yb_check_old_cluster_user(PGconn *old_cluster_conn);
+
 /*
  * fix_path_separator
  * For non-Windows, just return the argument.
@@ -107,10 +121,8 @@ check_and_dump_old_cluster(bool live_check)
 		check_for_prepared_transactions(&old_cluster);
 	check_for_composite_data_type_usage(&old_cluster);
 	check_for_reg_data_type_usage(&old_cluster);
-#ifdef YB_TODO
-	/* Enable this check when contrib directory is enabled in build_postgres.py */
+
 	check_for_isn_and_int8_passing_mismatch(&old_cluster);
-#endif
 
 	/*
 	 * PG 14 changed the function signature of encoding conversion functions.
@@ -143,11 +155,8 @@ check_and_dump_old_cluster(bool live_check)
 	 * Pre-PG 12 allowed tables to be declared WITH OIDS, which is not
 	 * supported anymore. Verify there are none, iff applicable.
 	 */
-#ifdef YB_TODO
-	/* Investigate/implement this check */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1100)
 		check_for_tables_with_oids(&old_cluster);
-#endif
 
 	/*
 	 * PG 12 changed the 'sql_identifier' type storage to be based on name,
@@ -180,6 +189,28 @@ check_and_dump_old_cluster(bool live_check)
 	/* Pre-PG 9.4 had a different 'line' data type internal format */
 	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
 		old_9_3_check_for_line_data_type_usage(&old_cluster);
+
+	if (is_yugabyte_enabled())
+	{
+		PGconn	   *old_cluster_conn = connectToServer(&old_cluster, "template1");
+
+		/*
+		 * Yugabyte does not support expression pushdown during major upgrades.
+		 * Only check this when we are ready to actually upgrade the cluster,
+		 * because users may want to run this check long before the upgrade.
+		 */
+		if (!user_opts.check)
+		{
+			yb_check_pushdown_is_disabled(old_cluster_conn);
+			yb_check_old_cluster_user(old_cluster_conn);
+		}
+
+		yb_check_yugabyte_user(old_cluster_conn);
+		yb_check_system_databases_exist(old_cluster_conn);
+
+		PQfinish(old_cluster_conn);
+		check_ok();
+	}
 
 	/*
 	 * While not a check option, we do this now because this is the only time
@@ -341,6 +372,24 @@ check_cluster_versions(void)
 	check_ok();
 }
 
+void
+yb_check_cluster_versions(void)
+{
+	if (!user_opts.check)
+		return;
+
+	prep_status("Checking cluster versions");
+
+	/* cluster versions should already have been obtained */
+	Assert(old_cluster.major_version != 0);
+
+	if (GET_MAJOR_VERSION(old_cluster.major_version) > 1100)
+		pg_fatal("This version of the utility can only be used for checking "
+				 "YSQL version 11. The cluster is currently on YSQL version %s\n",
+				 old_cluster.major_version_str);
+
+	check_ok();
+}
 
 void
 check_cluster_compatibility(bool live_check)
@@ -1544,4 +1593,133 @@ get_canonical_locale_name(int category, const char *locale)
 	pg_free(save);
 
 	return res;
+}
+
+/*
+ *	yb_check_pushdown_is_disabled()
+ *
+ *	Check we are the install user, and that the new cluster
+ *	has no other users.
+ */
+static void
+yb_check_pushdown_is_disabled(PGconn *old_cluster_conn)
+{
+	PGresult   *res;
+
+	prep_status("Checking expression pushdown is disabled");
+
+	res = executeQueryOrDie(old_cluster_conn, "SHOW yb_major_version_upgrade_compatibility");
+
+	if (strncmp(PQgetvalue(res, 0, 0), "11", 2))
+		pg_fatal("yb_major_version_upgrade_compatibility must be set to 11\n");
+
+	PQclear(res);
+
+	check_ok();
+}
+
+/*
+ * yb_check_system_databases_exist()
+ *
+ *	All the 3 system database should exist before upgrading
+ */
+static void
+yb_check_system_databases_exist(PGconn *old_cluster_conn)
+{
+	PGresult   *res;
+
+	prep_status("Checking for all 3 system databases");
+
+	res = executeQueryOrDie(old_cluster_conn,
+							"VALUES ('template0'), ('template1'), ('yugabyte') EXCEPT SELECT datname FROM pg_database;");
+
+	if (PQntuples(res) != 0)
+		pg_fatal("Missing system database %s\n", PQgetvalue(res, 0, 0));
+
+	PQclear(res);
+
+	check_ok();
+}
+
+/*
+ * yb_check_user_attributes()
+ *
+ *	Make sure the user have the required attributes.
+ */
+static void
+yb_check_user_attributes(PGconn *old_cluster_conn, const char *user_name,
+						 const char **role_attrs)
+{
+	PQExpBufferData buf;
+	PGresult   *res;
+	const char **role_attr;
+	bool		first_attribute = true;
+
+	prep_status("Checking '%s' user attributes", user_name);
+
+	initPQExpBuffer(&buf);
+	for (role_attr = role_attrs; *role_attr != NULL; role_attr++)
+	{
+		if (!first_attribute)
+			appendPQExpBufferStr(&buf, ", ");
+		first_attribute = false;
+		appendPQExpBufferStr(&buf, *role_attr);
+	}
+
+	res = executeQueryOrDie(old_cluster_conn,
+							"SELECT %s FROM pg_catalog.pg_roles WHERE rolname = '%s'",
+							buf.data, user_name);
+
+	if (PQntuples(res) != 1)
+		pg_fatal("The '%s' user is missing\n", user_name);
+
+	for (role_attr = role_attrs; *role_attr != NULL; role_attr++)
+	{
+		if (strcmp(PQgetvalue(res, 0, PQfnumber(res, *role_attr)), "f") == 0)
+			pg_fatal("The '%s' user is missing the '%s' attribute\n", user_name,
+					 *role_attr);
+	}
+
+	termPQExpBuffer(&buf);
+	PQclear(res);
+	check_ok();
+}
+
+/*
+ * yb_check_yugabyte_user()
+ *
+ *	Make sure yugabyte user has the required attributes.
+ */
+static void
+yb_check_yugabyte_user(PGconn *old_cluster_conn)
+{
+	static const char *role_attrs[] = {
+		"rolsuper",
+		"rolinherit",
+		"rolcreaterole",
+		"rolcreatedb",
+		"rolcanlogin",
+		"rolreplication",
+		"rolbypassrls",
+		NULL,
+	};
+
+	yb_check_user_attributes(old_cluster_conn, "yugabyte", role_attrs);
+}
+
+/*
+ * yb_check_old_cluster_user()
+ *
+ *	Make sure user used to dump the old cluster has required attributes.
+ */
+static void
+yb_check_old_cluster_user(PGconn *old_cluster_conn)
+{
+	prep_status("Checking attributes of the user used to access the old "
+				"cluster");
+
+	static const char *role_attributes[] = {"rolsuper", "rolcanlogin", NULL};
+
+	yb_check_user_attributes(old_cluster_conn, old_cluster.yb_user,
+							 role_attributes);
 }

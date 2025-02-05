@@ -31,29 +31,31 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-//-----------------------------------------------------------------------------
-// Error Reporting
-//-----------------------------------------------------------------------------
-// !!! IMPORTANT: All functions invoking Postgres code MUST:
-// - return YbgStatus;
-// - call PG_SETUP_ERROR_REPORTING() before any Postgres code is called. It is
-//   a good idea to put it as the first line of the function;
-// - use PG_STATUS_OK() macro to exit from the function, put it at the and, and
-//   wherever in the middle where shortcut return is needed.
-//
-// Postgres backends and auxillary processes set up error handling
-// infrastructure at the very top level, and keep it forever, so elog / ereport,
-// as well as PG_TRY / PG_CATCH work as expected.
-// However, inside of the master / tserver processes this infrastructure is not
-// available, and that may make respective process to crash.
-// The PG_SETUP_ERROR_REPORTING() sets up equivalent infrastructure in
-// multithreaded mode. Whether Postgres code throws an error, it is caught and
-// wrapped into a YbgStatus, which is subsequently returned to the Postgres
-// client.
-//-----------------------------------------------------------------------------
+/*-----------------------------------------------------------------------------
+ * Error Reporting
+ *-----------------------------------------------------------------------------
+ * !!! IMPORTANT: All functions invoking Postgres code MUST:
+ * - return YbgStatus;
+ * - call PG_SETUP_ERROR_REPORTING() before any Postgres code is called. It is
+ *   a good idea to put it as the first line of the function;
+ * - use PG_STATUS_OK() macro to exit from the function, put it at the and, and
+ *   wherever in the middle where shortcut return is needed.
+ *
+ * Postgres backends and auxillary processes set up error handling
+ * infrastructure at the very top level, and keep it forever, so elog / ereport,
+ * as well as PG_TRY / PG_CATCH work as expected.
+ * However, inside of the master / tserver processes this infrastructure is not
+ * available, and that may make respective process to crash.
+ * The PG_SETUP_ERROR_REPORTING() sets up equivalent infrastructure in
+ * multithreaded mode. Whether Postgres code throws an error, it is caught and
+ * wrapped into a YbgStatus, which is subsequently returned to the Postgres
+ * client.
+ *-----------------------------------------------------------------------------
+ */
 
 typedef struct YbgStatusData *YbgStatus;
 
@@ -107,27 +109,27 @@ typedef struct YbgStatusData *YbgStatus;
 		return (YbgStatus) YBCPgSetThreadLocalErrStatus(NULL); \
 	} while(0)
 
-YbgStatus YbgStatusErrorReportingError();
-YbgStatus YbgStatusCreate();
-YbgStatus YbgStatusCreateError(const char *msg, const char *filename, int line);
-void YbgStatusDestroy(YbgStatus status);
-void *YbgStatusGetContext(YbgStatus status);
-void YbgStatusSetLevel(YbgStatus status, int32_t elevel);
-bool YbgStatusIsError(YbgStatus status);
-void YbgStatusSetMessageAndArgs(YbgStatus status, const char *msg,
-						   int32_t nargs, const char **args);
+YbgStatus	YbgStatusErrorReportingError();
+YbgStatus	YbgStatusCreate();
+YbgStatus	YbgStatusCreateError(const char *msg, const char *filename, int line);
+void		YbgStatusDestroy(YbgStatus status);
+void	   *YbgStatusGetContext(YbgStatus status);
+void		YbgStatusSetLevel(YbgStatus status, int32_t elevel);
+bool		YbgStatusIsError(YbgStatus status);
+void		YbgStatusSetMessageAndArgs(YbgStatus status, const char *msg,
+									   int32_t nargs, const char **args);
 const char *YbgStatusGetMessage(YbgStatus status);
 const char **YbgStatusGetMessageArgs(YbgStatus status, int32_t *nargs);
-uint32_t YbgStatusGetSqlError(YbgStatus status);
-void YbgStatusSetSqlError(YbgStatus status, uint32_t sqlerror);
+uint32_t	YbgStatusGetSqlError(YbgStatus status);
+void		YbgStatusSetSqlError(YbgStatus status, uint32_t sqlerror);
 const char *YbgStatusGetFilename(YbgStatus status);
-void YbgStatusSetFilename(YbgStatus status, const char *filename);
-int YbgStatusGetLineNumber(YbgStatus status);
-void YbgStatusSetLineNumber(YbgStatus status, int lineno);
+void		YbgStatusSetFilename(YbgStatus status, const char *filename);
+int			YbgStatusGetLineNumber(YbgStatus status);
+void		YbgStatusSetLineNumber(YbgStatus status, int lineno);
 const char *YbgStatusGetFuncname(YbgStatus status);
-void YbgStatusSetFuncname(YbgStatus status, const char *funcname);
-void YbgStatusSetEdata(YbgStatus status, void *edata);
-void *YbgStatusGetEdata(YbgStatus status);
+void		YbgStatusSetFuncname(YbgStatus status, const char *funcname);
+void		YbgStatusSetEdata(YbgStatus status, void *edata);
+void	   *YbgStatusGetEdata(YbgStatus status);
 
 #ifdef __cplusplus
 }

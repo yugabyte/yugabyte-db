@@ -38,7 +38,7 @@ Here is what you want to achieve from a role-based access control (RBAC) perspec
 
 The exercise assumes you have [enabled authentication for YSQL](../../enable-authentication/authentication-ysql/).
 
-## 1. Create role hierarchy
+## Create role hierarchy
 
 Connect to the cluster using a superuser role. For this tutorial, use the default `yugabyte` user and connect to the cluster using ysqlsh as follows:
 
@@ -86,7 +86,7 @@ dev_database=# GRANT engineering TO developer;
                  GRANT engineering TO db_admin;
 ```
 
-## 2. List privileges for roles
+## List privileges for roles
 
 You can list all privileges granted to the various roles with the [\du meta-command](../../../api/ysqlsh-meta-commands/#du-s-pattern-patterns):
 
@@ -112,7 +112,7 @@ You should see something like the following output.
 
 This shows the various role attributes of the `yugabyte` role. Because `yugabyte` is a superuser, it has all privileges on all databases.
 
-## 3. Grant privileges to roles
+## Grant privileges to roles
 
 In this section, you grant permissions to each role.
 
@@ -226,7 +226,7 @@ dev_database=# \du
  yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
 
-## 4. Revoke privileges from roles
+## Revoke privileges from roles
 
 To revoke superuser from the DB admins so that they can no longer change privileges for other roles, do the following:
 
@@ -255,3 +255,11 @@ You should see the following output.
  yb_fdw       | Cannot login                                               | {}
  yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
+
+## Grant predefined roles
+
+YugabyteDB ships with built-in roles that grant access to frequently required administrative functions and data.
+
+{{<lead link="../../../api/ysql/the-sql-language/statements/dcl_grant/#predefined-roles">}}
+To learn more, see [Predefined roles](../../../api/ysql/the-sql-language/statements/dcl_grant/#predefined-roles)
+{{</lead>}}

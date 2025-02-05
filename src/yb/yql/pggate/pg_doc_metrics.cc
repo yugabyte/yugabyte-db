@@ -20,20 +20,20 @@
 namespace yb::pggate {
 namespace {
 
-inline void IncRead(YBCPgExecReadWriteStats* stat, uint64_t wait_time) {
+inline void IncRead(YbcPgExecReadWriteStats* stat, uint64_t wait_time) {
   ++stat->reads;
   stat->read_wait += wait_time;
 }
 
-inline void IncWrite(YBCPgExecReadWriteStats* stat) {
+inline void IncWrite(YbcPgExecReadWriteStats* stat) {
   ++stat->writes;
 }
 
-inline void IncRowsScanned(YBCPgExecReadWriteStats* stat, uint64_t count) {
+inline void IncRowsScanned(YbcPgExecReadWriteStats* stat, uint64_t count) {
   stat->rows_scanned += count;
 }
 
-YBCPgExecReadWriteStats& GetStat(YBCPgExecStatsState* state, TableType relation) {
+YbcPgExecReadWriteStats& GetStat(YbcPgExecStatsState* state, TableType relation) {
   switch (relation) {
     case TableType::SYSTEM:
       return state->stats.catalog;
@@ -68,7 +68,7 @@ PgDocMetrics::DurationWatcher::~DurationWatcher() {
   *duration_ = GetNow(use_zero_duration_, use_high_res_timer_) - start_;
 }
 
-PgDocMetrics::PgDocMetrics(YBCPgExecStatsState& state) : state_(state) {}
+PgDocMetrics::PgDocMetrics(YbcPgExecStatsState& state) : state_(state) {}
 
 void PgDocMetrics::ReadRequest(TableType relation, uint64_t wait_time) {
   IncRead(&GetStat(&state_, relation), wait_time);

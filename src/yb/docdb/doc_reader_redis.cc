@@ -386,7 +386,7 @@ Status GetRedisSubDocument(
     const TransactionOperationContext& txn_op_context,
     const ReadOperationData& read_operation_data) {
   auto iter = CreateIntentAwareIterator(
-      doc_db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, query_id, txn_op_context,
+      doc_db, BloomFilterOptions::Fixed(data.subdocument_key), query_id, txn_op_context,
       read_operation_data);
   return GetRedisSubDocument(iter.get(), data, nullptr /* projection */, SeekFwdSuffices::kFalse);
 }

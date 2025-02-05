@@ -125,11 +125,9 @@ static void pg_decode_stream_truncate(LogicalDecodingContext *ctx,
 									  ReorderBufferChange *change);
 
 
-static void
-yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid);
+static void yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid);
 
-static void
-yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity);
+static void yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity);
 
 void
 _PG_init(void)

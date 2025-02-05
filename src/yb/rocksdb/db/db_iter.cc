@@ -336,6 +336,10 @@ class DBIter final : public Iterator {
     fast_next_ = value;
   }
 
+  void UpdateFilterKey(Slice user_key_for_filter) override {
+    iter_->UpdateFilterKey(user_key_for_filter);
+  }
+
  private:
   void ReverseToBackward();
   void PrevInternal();
@@ -1149,6 +1153,10 @@ bool ArenaWrappedDBIter::ScanForward(
 
 void ArenaWrappedDBIter::UseFastNext(bool value) {
   db_iter_->UseFastNext(value);
+}
+
+void ArenaWrappedDBIter::UpdateFilterKey(Slice user_key_for_filter) {
+  return db_iter_->UpdateFilterKey(user_key_for_filter);
 }
 
 ArenaWrappedDBIter* NewArenaWrappedDbIterator(

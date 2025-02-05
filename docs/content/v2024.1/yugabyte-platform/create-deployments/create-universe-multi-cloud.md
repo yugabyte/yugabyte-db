@@ -23,7 +23,7 @@ To create a multi-cloud universe, you would need to do the following:
 * [Set up node instance virtual machines](#set-up-instance-vms) in each cloud (AWS, GCP, and Azure)
 * [Set up VPC peering](#set-up-vpc-peering) through a VPN tunnel across these 3 clouds
 * [Install YugabyteDB Anywhere](#install-yugabytedb-anywhere) on one of the nodes
-* [Configure the on-premises cloud provider](#configure-the-on-premises-cloud-provider)
+* [Configure the on-premises provider configuration](#configure-the-on-premises-provider-configuration)
 * [Create a universe](#create-a-universe) using the provider
 * [Run the TPC-C benchmark](#run-the-tpc-c-benchmark)
 
@@ -59,7 +59,7 @@ All public cloud providers enable VPN tunneling across VPCs and their subnet to 
 
 Follow steps provided in [Install YugabyteDB Anywhere](../../install-yugabyte-platform/) to deploy YugabyteDB Anywhere on a new VM on one of your cloud providers. You will use this node to manage your YugabyteDB universe.
 
-## Configure the on-premises cloud provider
+## Configure the on-premises provider configuration
 
 To deploy a multi-cloud universe, you first need to create an on-premises provider configuration. Refer to [Create provider configuration](../../configure-yugabyte-platform/on-premises/) for more information.
 
@@ -91,6 +91,8 @@ After the provider configuration is created, select the provider in the **On-Pre
 Click **Add Instance Type** and enter a machine description that matches the nodes you will be using. The machine type can be any logical name, given the machine types will be different between all three regions (cloud providers).
 
 Click **Add Instances** to add nodes in the regions you defined for the provider configuration. For each node, select the zone where you want it deployed, choose the instance type, and enter the IP address of the node. The address should be a private IP address of the VPN you configured.
+
+For more information, refer to [Add nodes to the on-premises provider](../../configure-yugabyte-platform/on-premises-nodes/).
 
 ## Create a universe
 

@@ -39,6 +39,10 @@
 #include "utils/numeric.h"
 #include "utils/sortsupport.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
 /*
  * gcc's -ffast-math switch breaks routines that expect exact results from
  * expressions like timeval / SECS_PER_HOUR, where timeval is double.
@@ -768,7 +772,7 @@ Datum
 timestamptz_out(PG_FUNCTION_ARGS)
 {
 	TimestampTz dt = PG_GETARG_TIMESTAMPTZ(0);
-	DatumDecodeOptions *decode_options = NULL;
+	YbDatumDecodeOptions *decode_options = NULL;
 	char	   *result;
 	int			tz;
 	struct pg_tm tt,
@@ -779,14 +783,14 @@ timestamptz_out(PG_FUNCTION_ARGS)
 
 	if (PG_NARGS() == 2)
 	{
-		decode_options = (DatumDecodeOptions *)PG_GETARG_POINTER(1);
+		decode_options = (YbDatumDecodeOptions *) PG_GETARG_POINTER(1);
 	}
 
 	if (TIMESTAMP_NOT_FINITE(dt))
 		EncodeSpecialTimestamp(dt, buf);
 	else if (((decode_options != NULL && decode_options->from_YB) ?
-		(timestamp2tm(dt, &tz, tm, &fsec, &tzn, pg_tzset(decode_options->timezone))) :
-		(timestamp2tm(dt, &tz, tm, &fsec, &tzn, NULL))) == 0)
+			  (timestamp2tm(dt, &tz, tm, &fsec, &tzn, pg_tzset(decode_options->timezone))) :
+			  (timestamp2tm(dt, &tz, tm, &fsec, &tzn, NULL))) == 0)
 		EncodeDateTime(tm, fsec, true, tz, tzn, DateStyle, buf);
 	else
 		ereport(ERROR,
@@ -1570,6 +1574,15 @@ Datum
 pg_conf_load_time(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_TIMESTAMPTZ(PgReloadTime);
+}
+
+/*
+ * Get the current operating system time value as hybrid time.
+ */
+Datum
+yb_get_current_hybrid_time_lsn(PG_FUNCTION_ARGS)
+{
+	return Int64GetDatum(YBCGetCurrentHybridTimeLsn());
 }
 
 /*

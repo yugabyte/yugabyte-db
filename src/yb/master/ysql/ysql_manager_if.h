@@ -17,7 +17,11 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/util/status_fwd.h"
 
-namespace yb::master {
+namespace yb {
+
+class VersionInfoPB;
+
+namespace master {
 
 class YsqlCatalogConfig;
 
@@ -35,6 +39,11 @@ class YsqlManagerIf {
 
   virtual Result<TableId> GetVersionSpecificCatalogTableId(
       const TableId& current_table_id) const = 0;
+
+  virtual bool IsMajorUpgradeInProgress() const = 0;
+
+  virtual Status ValidateTServerVersion(const VersionInfoPB& version) const = 0;
 };
 
-}  // namespace yb::master
+}  // namespace master
+}  // namespace yb

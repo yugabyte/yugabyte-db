@@ -57,7 +57,7 @@ TEST_F(PgConnTest, UserNames) {
 // Test libpq connection using URI connection string.
 TEST_F(PgConnTest, Uri) {
   const auto& host = pg_ts->bind_host();
-  const auto port = pg_ts->pgsql_rpc_port();
+  const auto port = pg_ts->ysql_port();
   {
     const auto conn_str = Format("postgres://yugabyte@$0:$1", host, port);
     LOG(INFO) << "Connecting using string: " << conn_str;
@@ -87,7 +87,7 @@ TEST_F(PgConnTest, Uri) {
 
 TEST_F(PgConnTest, PastDeadline) {
   const std::string conn_str = Format("host=$0 port=$1 dbname=yugabyte user=yugabyte",
-                                      pg_ts->bind_host(), pg_ts->pgsql_rpc_port());
+                                      pg_ts->bind_host(), pg_ts->ysql_port());
   Result<PGConn> res = PGConn::Connect(
       conn_str, CoarseMonoClock::Now() - 1s, false /* simple_query_protocol */, conn_str);
   ASSERT_NOK(res);
@@ -98,7 +98,7 @@ TEST_F(PgConnTest, PastDeadline) {
 
 void PgConnTest::TestUriAuth() {
   const std::string& host = pg_ts->bind_host();
-  const uint16_t port = pg_ts->pgsql_rpc_port();
+  const uint16_t port = pg_ts->ysql_port();
   // Don't supply password.
   {
     const std::string& conn_str = Format("postgres://yugabyte@$0:$1", host, port);
@@ -172,7 +172,7 @@ TEST_F_EX(PgConnTest, ConnectionLimit, PgConnTestLimit) {
   const auto now = CoarseMonoClock::Now();
   Result<PGConn> res = PGConnBuilder({
     .host = pg_ts->bind_host(),
-    .port = pg_ts->pgsql_rpc_port(),
+    .port = pg_ts->ysql_port(),
     .connect_timeout = kConnectTimeoutSec,
   }).Connect();
   const MonoDelta time_taken = CoarseMonoClock::Now() - now;

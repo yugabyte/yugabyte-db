@@ -19,8 +19,8 @@
  *
  *--------------------------------------------------------------------------------------------------
  */
-#ifndef YBPGINHERITSCACHE_H
-#define YBPGINHERITSCACHE_H
+
+#pragma once
 
 #include "postgres.h"
 #include "access/htup.h"
@@ -28,17 +28,17 @@
 
 typedef struct YbPgInheritsCacheEntryData
 {
-	Oid	parentOid;
-	List *childTuples;
-	int refcount;
+	Oid			parentOid;
+	List	   *childTuples;
+	int			refcount;
 } YbPgInheritsCacheEntryData;
 
 typedef YbPgInheritsCacheEntryData *YbPgInheritsCacheEntry;
 
 typedef struct YbPgInheritsCacheChildEntryData
 {
-	Oid childrelid;
-	HeapTuple childTuple;
+	Oid			childrelid;
+	HeapTuple	childTuple;
 	YbPgInheritsCacheEntry cacheEntry;
 } YbPgInheritsCacheChildEntryData;
 
@@ -57,5 +57,3 @@ extern void ReleaseYbPgInheritsCacheEntry(YbPgInheritsCacheEntry entry);
 extern void ReleaseYbPgInheritsChildEntry(YbPgInheritsCacheChildEntry entry);
 
 extern void YbPgInheritsCacheInvalidate(Oid relid);
-
-#endif

@@ -550,7 +550,8 @@ public class ReleasesUtils {
       String minVersion = node.get("minimum_yba_version").asText();
       String currVersion = ybaCurrentVersion();
       // If the current version is less then the minimum version, validation failed
-      if (Util.compareYbVersions(currVersion, minVersion) < 0) {
+      if (!confGetter.getGlobalConf(GlobalConfKeys.skipYbaMinVersionCheck)
+          && Util.compareYbVersions(currVersion, minVersion) < 0) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(

@@ -67,6 +67,10 @@ class DBIteratorWrapper : public Iterator {
     wrapped_->UseFastNext(value);
   }
 
+  void UpdateFilterKey(Slice user_key_for_filter) override {
+    wrapped_->UpdateFilterKey(user_key_for_filter);
+  }
+
  protected:
   std::unique_ptr<Iterator> wrapped_;
 };

@@ -58,7 +58,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
     flags.put("ysql_hba_conf", CUSTOM_PG_HBA_CONFIG);
     if(isTestRunningWithConnectionManager()) {
        flags.put("allowed_preview_flags_csv",
-                ",enable_ysql_conn_mgr,ysql_conn_mgr_version_matching,"
+                "ysql_conn_mgr_version_matching,"
                 + "ysql_conn_mgr_version_matching_connect_higher_version");
       flags.put("enable_ysql_conn_mgr", "true");
       flags.put("ysql_conn_mgr_version_matching", "true");
@@ -3228,14 +3228,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testLongPasswords() throws Exception {
-    // (DB-10387) (DB-10760) Using long passwords with Connection Manager
-    // causes I/O errors during test execution. Skip this test temporarily
-    // until support for the same can be provided with Connection Manager.
-    // This test will further need the support of role OID-based pooling
-    // to help support recreate role operations (DROP ROLE followed by
-    // CREATE ROLE).
-    assumeFalse(BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED, isTestRunningWithConnectionManager());
-
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
 

@@ -56,7 +56,7 @@ Dump only the data, not the schema (data definitions). Table data, large objects
 
 #### -b, --blobs
 
-Include large objects in the dump. This is the default behavior except when [`-n|--schema`](#n-schema-schema-schema), [`-t|--table`](#t-table-table-table), or [`-s|--schema-only`](#s-schema-only) is specified. The `-b|--blobs` option is therefore only useful to add large objects to dumps where a specific schema or table has been requested. Note that blobs are considered data and therefore will be included when `-a|--data-only` is used, but not when [`-s|--schema-only`](#s-schema-only) is used.
+Include large objects in the dump. This is the default behavior except when [-n|--schema](#n-schema-schema-schema), [-t|--table](#t-table-table-table), or [-s|--schema-only](#s-schema-only) is specified. The `-b|--blobs` option is therefore only useful to add large objects to dumps where a specific schema or table has been requested. Note that blobs are considered data and therefore will be included when `-a|--data-only` is used, but not when [-s|--schema-only](#s-schema-only) is used.
 
 #### -B, --no-blobs
 
@@ -102,9 +102,9 @@ Non-schema objects, such as blobs, are not dumped when `-n|--schema` is specifie
 
 #### -N *schema*, --exclude-schema=*schema*
 
-Do not dump any schemas matching the schema pattern. The pattern is interpreted according to the same rules as for [`-n|--schema`](#n-schema-schema-schema) option. `-N|--exclude-schema` can be given more than once to exclude schemas matching any of several patterns.
+Do not dump any schemas matching the schema pattern. The pattern is interpreted according to the same rules as for [-n|--schema](#n-schema-schema-schema) option. `-N|--exclude-schema` can be given more than once to exclude schemas matching any of several patterns.
 
-When both [`-n|--schema`](#n-schema-schema-schema) and `-N|--exclude-schema` are given, the behavior is to dump just the schemas that match at least one [`-n|--schema`](#n-schema-schema-schema) option but no `-N|--exclude-schema` options. If `-N|--exclude-schema` appears without [`-n|--schema`](#n-schema-schema-schema), then schemas matching `-N|--exclude-schema` are excluded from what is otherwise a normal dump.
+When both `-n|--schema` and `-N|--exclude-schema` are given, the behavior is to dump just the schemas that match at least one `-n|--schema` option but no `-N|--exclude-schema` options. If `-N|--exclude-schema` appears without `-n|--schema`, then schemas matching `-N|--exclude-schema` are excluded from what is otherwise a normal dump.
 
 #### -o, --oids
 
@@ -118,21 +118,21 @@ Do not output statements to set ownership of objects to match the original datab
 
 Dump only the object definitions (schema), not data.
 
-This option is the inverse of [`-a|--data-only`](#a-data-only).
+This option is the inverse of [-a|--data-only](#a-data-only).
 
-(Do not confuse this with the [`-n|--schema`](#n-schema-schema-schema) option, which uses the word "schema" in a different meaning.)
+(Do not confuse this with the [-n|--schema](#n-schema-schema-schema) option, which uses the word "schema" in a different meaning.)
 
-To exclude table data for only a subset of tables in the database, see [`--exclude-table-data`](#exclude-table-data).
+To exclude table data for only a subset of tables in the database, see [--exclude-table-data](#exclude-table-data-table).
 
 #### -S *username*, --superuser=*username*
 
-Specify the superuser username to use when disabling triggers. This is relevant only if [`--disable-triggers`](#disable-triggers) is used. (Usually, it's better to leave this out, and instead start the resulting script as superuser.)
+Specify the superuser username to use when disabling triggers. This is relevant only if [--disable-triggers](#disable-triggers) is used. (Usually, it's better to leave this out, and instead start the resulting script as superuser.)
 
 #### -t *table*, --table=*table*
 
 Dump only tables with names matching *table*. For this purpose, "table" includes views, materialized views, sequences, and foreign tables. Multiple tables can be selected by writing multiple `-t|--table` options. Also, the table parameter is interpreted as a pattern according to the same rules used by `ysqlsh \d` commands, so multiple tables can also be selected by writing wildcard characters in the pattern. When using wildcards, be careful to quote the pattern if needed to prevent the shell from expanding the wildcards.
 
-The [`-n|--schema`](#n-schema-schema-schema) and `-N|--exclude-schema` options have no effect when `-t|--table` is used, because tables selected by `-t|--table` will be dumped regardless of those options, and non-table objects will not be dumped.
+The [-n|--schema](#n-schema-schema-schema) and `-N|--exclude-schema` options have no effect when `-t|--table` is used, because tables selected by `-t|--table` will be dumped regardless of those options, and non-table objects will not be dumped.
 
 {{< note title="Note" >}}
 
@@ -142,7 +142,7 @@ When `-t|--table` is specified, ysql_dump makes no attempt to dump any other dat
 
 #### -T *table*, --exclude-table=*table*
 
-Do not dump any tables matching the table pattern. The pattern is interpreted according to the same rules as for [`-t`](#t-table-table-table). `-T|--exclude-table` can be given more than once to exclude tables matching any of several patterns.
+Do not dump any tables matching the table pattern. The pattern is interpreted according to the same rules as for [-t](#t-table-table-table). `-T|--exclude-table` can be given more than once to exclude tables matching any of several patterns.
 
 When both `-t|--table` and `-T|--exclude-table` are given, the behavior is to dump just the tables that match at least one `-t|--table` option but no `-T|--exclude-table` options. If `-T|--exclude-table` appears without `-t|--table`, then tables matching `-T|--exclude-table` are excluded from what is otherwise a normal dump.
 
@@ -184,9 +184,9 @@ Note that if you use this option currently, you probably also want the dump be i
 
 #### --exclude-table-data=*table*
 
-Do not dump data for any tables matching the table pattern. The pattern is interpreted according to the same rules as for [`-t|--table`](#t-table-table-table). The `--exclude-table-data` option can be given more than once to exclude tables matching any of several patterns. This option is helpful when you need the definition of a particular table even though you do not need the data in it.
+Do not dump data for any tables matching the table pattern. The pattern is interpreted according to the same rules as for [-t|--table](#t-table-table-table). The `--exclude-table-data` option can be given more than once to exclude tables matching any of several patterns. This option is helpful when you need the definition of a particular table even though you do not need the data in it.
 
-To exclude data for all tables in the database, see [`-s|--schema-only`](#s-schema-only).
+To exclude data for all tables in the database, see [-s|--schema-only](#s-schema-only).
 
 #### --if-exists
 
@@ -234,7 +234,7 @@ The data section contains actual table data, large-object contents, and sequence
 
 Use the `--no-serializable-deferrable` flag to disable the default `serializable-deferrable` transaction mode. The `serializable-deferrable` mode ensures that the snapshot used is consistent with later database states by waiting for a point in the transaction stream at which no anomalies can be present, so that there is no risk of the dump failing or causing other transactions to roll back with a `serialization_failure`.
 
-If there are active read-write transactions, the maximum wait time until the start of the dump will be `50ms` (based on the default [`--max_clock_skew_usec`](../../reference/configuration/yb-tserver/#max-clock-skew-usec) for YB-TServer and YB-Master servers.) If there are no active read-write transactions when ysql_dump is started, this option will not make any difference. Once running, performance with or without the option is the same.
+If there are active read-write transactions, the maximum wait time until the start of the dump will be `50ms` (based on the default [--max_clock_skew_usec](../../reference/configuration/yb-tserver/#max-clock-skew-usec) for YB-TServer and YB-Master servers.) If there are no active read-write transactions when ysql_dump is started, this option will not make any difference. Once running, performance with or without the option is the same.
 
 #### --snapshot=*snapshotname*
 
@@ -242,9 +242,9 @@ Use the specified synchronized snapshot when making a dump of the database. This
 
 #### --strict-names
 
-Require that each schema ([`-n|--schema`](#n-schema-schema-schema)) and table ([`-t|--table`](#t-table-table-table)) qualifier match at least one schema or table in the database to be dumped. Note that if none of the schema or table qualifiers find matches, ysql_dump generates an error even without `--strict-names`.
+Require that each schema ([-n|--schema](#n-schema-schema-schema)) and table ([-t|--table](#t-table-table-table)) qualifier match at least one schema or table in the database to be dumped. Note that if none of the schema or table qualifiers find matches, ysql_dump generates an error even without `--strict-names`.
 
-This option has no effect on [`-N|--exclude-schema`](#n-schema-exclude-schema-schema), [`-T|--exclude-table`](#t-table-exclude-table-table), or [`--exclude-table-data`](#exclude-table-data-table). An exclude pattern failing to match any objects is not considered an error.
+This option has no effect on [-N|--exclude-schema](#n-schema-exclude-schema-schema), [-T|--exclude-table](#t-table-exclude-table-table), or [--exclude-table-data](#exclude-table-data-table). An exclude pattern failing to match any objects is not considered an error.
 
 #### --use-set-session-authorization
 
@@ -288,7 +288,7 @@ This option is never essential, as ysql_dump automatically prompts for a passwor
 
 #### --role=*rolename*
 
-Specifies a role name to be used to create the dump. This option causes ysql_dump to issue a `SET ROLE <rolename>` statement after connecting to the database. It is useful when the authenticated user (specified by [`-U|--username`](#u-username-username-username)) lacks privileges needed by ysql_dump, but can switch to a role with the required rights. Some installations have a policy against logging in directly as a superuser, and use of this option allows dumps to be made without violating the policy.
+Specifies a role name to be used to create the dump. This option causes ysql_dump to issue a `SET ROLE <rolename>` statement after connecting to the database. It is useful when the authenticated user (specified by [-U|--username](#u-username-username-username)) lacks privileges needed by ysql_dump, but can switch to a role with the required rights. Some installations have a policy against logging in directly as a superuser, and use of this option allows dumps to be made without violating the policy.
 
 ## Environment
 
@@ -317,11 +317,11 @@ If your YugabyteDB cluster has any local additions to the `template1` database, 
 CREATE DATABASE foo WITH TEMPLATE template0;
 ```
 
-When a data-only dump is chosen and the option [`--disable-triggers`](#disable-triggers) is used, ysql_dump emits statements to disable triggers on user tables before inserting the data, and then statements to re-enable them after the data has been inserted. If the restore is stopped in the middle, the system catalogs might be left in the wrong state.
+When a data-only dump is chosen and the option [--disable-triggers](#disable-triggers) is used, ysql_dump emits statements to disable triggers on user tables before inserting the data, and then statements to re-enable them after the data has been inserted. If the restore is stopped in the middle, the system catalogs might be left in the wrong state.
 
 The dump file produced by ysql_dump does not contain the statistics used by the optimizer to make query planning decisions. Therefore, running ANALYZE after restoring from a dump file can ensure optimal performance.
 
-Because ysql_dump is used to transfer data to newer versions of YugabyteDB, the output of ysql_dump can be expected to load into YugabyteDB versions newer than the ysql_dump version. ysql_dump can also dump from YugabyteDB servers older than its own version. However, ysql_dump cannot dump from YugabyteDB servers newer than its own major version; it will refuse to even try, rather than risk making an invalid dump. Also, it is not guaranteed that the ysql_dump output can be loaded into a server of an older major version — not even if the dump was taken from a server of that version. Loading a dump file into an older server may require manual editing of the dump file to remove syntax not understood by the older server. Use of the [`--quote-all-identifiers`](#quote-all-identifiers) option is recommended in cross-version cases, as it can prevent problems arising from varying reserved-word lists in different YugabyteDB versions.
+Because ysql_dump is used to transfer data to newer versions of YugabyteDB, the output of ysql_dump can be expected to load into YugabyteDB versions newer than the ysql_dump version. ysql_dump can also dump from YugabyteDB servers older than its own version. However, ysql_dump cannot dump from YugabyteDB servers newer than its own major version; it will refuse to even try, rather than risk making an invalid dump. Also, it is not guaranteed that the ysql_dump output can be loaded into a server of an older major version — not even if the dump was taken from a server of that version. Loading a dump file into an older server may require manual editing of the dump file to remove syntax not understood by the older server. Use of the [--quote-all-identifiers](#quote-all-identifiers) option is recommended in cross-version cases, as it can prevent problems arising from varying reserved-word lists in different YugabyteDB versions.
 
 ## Examples
 

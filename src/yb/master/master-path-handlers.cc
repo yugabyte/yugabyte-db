@@ -94,8 +94,7 @@
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"
-#include "yb/util/version_info.h"
-#include "yb/util/version_info.pb.h"
+#include "yb/common/version_info.h"
 
 DEFINE_RUNTIME_int32(
     hide_dead_node_threshold_mins, 60 * 24,
@@ -1175,15 +1174,16 @@ void MasterPathHandlers::HandleAllTables(
   }
 
   for (const auto& table : tables) {
+    string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
+    TableType table_cat = GetTableType(*table);
+
     auto table_locked = table->LockForRead();
     if (!table_locked->is_running()) {
       continue;
     }
 
     string table_uuid = table->id();
-    string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
 
-    TableType table_cat = GetTableType(*table);
     // Skip non-user tables if we should.
     if (only_user_tables && table_cat != kUserIndex && table_cat != kUserTable) {
       continue;
@@ -1369,13 +1369,13 @@ void MasterPathHandlers::HandleAllTablesJSON(
   }
 
   for (const auto& table : tables) {
+    string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     auto table_locked = table->LockForRead();
     if (!table_locked->is_running()) {
       continue;
     }
 
     string table_uuid = table->id();
-    string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
 
     TableType table_cat = GetTableType(*table);
     if (only_user_tables && table_cat != kUserIndex && table_cat != kUserTable) {
@@ -1695,8 +1695,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   TableName table_name;
   TabletInfos tablets;
   {
-    auto l = table->LockForRead();
     keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
+    auto l = table->LockForRead();
     table_name = l->name();
     *output << "<h1>Table: "
             << EscapeForHtmlToString(server::TableLongName(keyspace_name, table_name))
@@ -1794,7 +1794,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
       *output << "Unable to decode partition schema: " << EscapeForHtmlToString(s.ToString());
       return;
     }
-    Result<TabletInfos> tablets_result = table->GetTablets(IncludeInactive::kTrue);
+    Result<TabletInfos> tablets_result = table->GetTabletsIncludeInactive();
     if (!tablets_result) {
       *output << "Unable to fetch tablets for table: " << EscapeForHtmlToString(s.ToString());
       return;
@@ -2004,10 +2004,9 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
   dockv::PartitionSchema partition_schema;
   TabletInfos tablets;
   {
-    NamespaceName keyspace_name;
+    auto keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     TableName table_name;
     auto l = table->LockForRead();
-    keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     table_name = l->name();
     jw.String("table_name");
     jw.String(server::TableLongName(keyspace_name, table_name));
@@ -2097,7 +2096,7 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
       jw.EndObject();
       return;
     }
-    auto tablets_result = table->GetTablets(IncludeInactive::kTrue);
+    auto tablets_result = table->GetTabletsIncludeInactive();
     if (!tablets_result) {
       jw.String("error");
       jw.String("Unable to fetch tablets: " + s.ToString());
@@ -2208,7 +2207,7 @@ Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetNonSystemTablets() {
     if (table->is_system()) {
       continue;
     }
-    TabletInfos ts = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
+    TabletInfos ts = VERIFY_RESULT(table->GetTabletsIncludeInactive());
     nonsystem_tablets.insert(
         nonsystem_tablets.end(), std::make_move_iterator(ts.begin()),
         std::make_move_iterator(ts.end()));
@@ -3403,7 +3402,7 @@ Status MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       continue;
     }
 
-    TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
+    TabletInfos tablets = VERIFY_RESULT(table->GetTabletsIncludeInactive());
     bool is_user_table = table->IsUserCreated();
     for (const auto& tablet : tablets) {
       if (tablet->LockForRead()->is_deleted()) {
@@ -3460,7 +3459,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
       continue;
     }
 
-    TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
+    TabletInfos tablets = VERIFY_RESULT(table->GetTabletsIncludeInactive());
 
     for (const auto& tablet : tablets) {
       if (tablet->LockForRead()->is_deleted()) {
@@ -3511,14 +3510,13 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
 
   // Table rows.
   for (const auto& table : tables) {
+    auto keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
+    auto table_cat = GetTableType(*table);
     auto table_locked = table->LockForRead();
     if (!table_locked->is_running()) {
       continue;
     }
 
-    const string& keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
-
-    const auto& table_cat = GetTableType(*table);
     // Skip non-user tables if we should.
     if (table_cat != kUserIndex && table_cat != kUserTable) {
       continue;

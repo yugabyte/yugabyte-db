@@ -15,15 +15,17 @@ YugabyteDB ships with command line interface (CLI) shells for interacting with e
 | [ysqlsh](../../api/ysqlsh/) | [YSQL](../../api/ysql/) | SQL shell for interacting with YugabyteDB using PostgreSQL-compatible YSQL API. |
 | [ycqlsh](../../api/ycqlsh/) | [YCQL](../../api/ycql/) | CQL shell for interacting with YugabyteDB using Cassandra-compatible YCQL API. |
 
+## Compatibility
+
+Clients work best with servers of the same or an older major version. If you are running multiple versions of YugabyteDB, use the newest version of the client to connect. You can keep and use the matching version of a client to use with each version of YugabyteDB, but in practice, this shouldn't be necessary. For best results, use the latest client.
+
+While the general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, this cannot be guaranteed in all cases. In particular, due to the change from PostgreSQL 11 to 15 in YugabyteDB 2.25, use only the latest client to avoid compatibility issues.
+
 ## Installation
 
 The YugabyteDB clients are installed with [YugabyteDB](../ybdb-releases/) and located in the `bin` directory of the YugabyteDB home directory.
 
-Clients work best with servers of the same or an older major version. The general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, but this cannot be guaranteed in all cases.
-
-If you are running multiple versions of YugabyteDB, use the newest version of the client to connect. You can keep and use the matching version of a client to use with each version of YugabyteDB, but in practice, this shouldn't be necessary.
-
-You can install a standalone version using any of the following methods:
+You can also install a standalone version using any of the following methods:
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -56,17 +58,17 @@ You can install a standalone version using any of the following methods:
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
 
 ```sh
-curl -O https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz
-tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
+curl -O https://downloads.yugabyte.com/releases/{{< yb-version version="preview" >}}/yugabyte-client-{{< yb-version version="preview"  format="build">}}-darwin-x86_64.tar.gz
+tar xvfz yugabyte-client-{{< yb-version version="preview"  format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-client-{{< yb-version version="preview" >}}/
 ```
 
   </div>
   <div id="linuxx86" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxx86-tab">
 
 ```sh
-wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-x86_64.tar.gz
-cd yugabyte-client-{{< yb-version version="stable" >}}
+wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview" >}}/yugabyte-client-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+tar xvfz yugabyte-client-{{< yb-version version="preview"  format="build">}}-linux-x86_64.tar.gz
+cd yugabyte-client-{{< yb-version version="preview" >}}
 ./bin/post_install.sh
 ```
 
@@ -74,9 +76,9 @@ cd yugabyte-client-{{< yb-version version="stable" >}}
   <div id="linuxarm" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxarm-tab">
 
 ```sh
-wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz
-tar xvfz yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz
-cd yugabyte-client-{{< yb-version version="stable" >}}
+wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview" >}}/yugabyte-client-{{< yb-version version="preview" format="build">}}-linux-aarch64.tar.gz
+tar xvfz yugabyte-client-{{< yb-version version="preview" format="build">}}-linux-aarch64.tar.gz
+cd yugabyte-client-{{< yb-version version="preview" >}}
 ./bin/post_install.sh
 ```
 
@@ -93,6 +95,10 @@ docker pull yugabytedb/yugabyte-client:latest
 ## Release notes
 
 The YugabyteDB clients are released with every version of [YugabyteDB](../ybdb-releases/). Only versions with client-specific changes are listed.
+
+### v2.25.0.0 - January 17, 2025 {#v2.25.0.0}
+
+* Updated ysqlsh for PostgreSQL 15 compatibility.
 
 ### v2.23.0.0 - September 13, 2024 {#v2.23.0.0}
 

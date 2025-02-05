@@ -33,10 +33,11 @@
  */
 typedef struct TIDBitmap TIDBitmap;
 
-typedef union {
-	TIDBitmap *tbm;
+typedef union
+{
+	TIDBitmap  *tbm;
 	YbTIDBitmap *ybtbm;
-} TupleBitmap;
+} YbTupleBitmap;
 
 /* Likewise, TBMIterator is private */
 typedef struct TBMIterator TBMIterator;

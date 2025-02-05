@@ -307,14 +307,14 @@ ORDER BY
 
 -- There are no relations present in tsp3, this would succeed and move all relations to tsp3.
 ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp3 CASCADE;
-NOTICE:  Data movement for table table1 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table table2 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table index1 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table col_mv is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table table1 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table table2 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table index1 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table col_mv is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 --Verify if the tablespaces for the queries have been updated.
 SELECT c.relname, ts.spcname FROM
     pg_class c
@@ -338,12 +338,12 @@ ORDER BY
 (10 rows)
 
 ALTER INDEX ALL IN TABLESPACE tsp2 SET TABLESPACE tsp1 CASCADE;
-NOTICE:  Data movement for table index2 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table m is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table table3 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table index2 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table m is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table table3 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 SELECT c.relname, ts.spcname FROM
     pg_class c
     JOIN pg_tablespace ts ON c.reltablespace = ts.oid
@@ -366,14 +366,14 @@ ORDER BY
 (10 rows)
 
 ALTER MATERIALIZED VIEW ALL IN TABLESPACE tsp3 SET TABLESPACE tsp2 CASCADE;
-NOTICE:  Data movement for table table1 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table table2 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table index1 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table col_mv is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table table1 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table table2 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table index1 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table col_mv is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 SELECT c.relname, ts.spcname FROM
     pg_class c
     JOIN pg_tablespace ts ON c.reltablespace = ts.oid
@@ -457,14 +457,14 @@ ORDER BY
 
 -- There are no relations present in tsp3, this would succeed and move relations colocated with t1 to tsp3.
 ALTER TABLE ALL IN TABLESPACE tsp1 COLOCATED WITH table1 SET TABLESPACE tsp3 CASCADE;
-NOTICE:  Data movement for table table1 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table index1 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table index2 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table col_mv is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table table1 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table index1 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table index2 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table col_mv is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 --Verify if the tablespaces for the queries have been updated.
 SELECT c.relname, ts.spcname FROM
     pg_class c
@@ -519,8 +519,8 @@ CREATE TABLE table1(a INT PRIMARY KEY, b INT, c INT) WITH (colocation=false) TAB
 CREATE TABLE table2(a INT PRIMARY KEY, b INT, c INT) WITH (colocation=false) TABLESPACE tsp2;
 CREATE TABLE table3(a INT PRIMARY KEY, b INT, c INT) TABLESPACE tsp3;
 ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp2;
-NOTICE:  Data movement for table table1 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table table1 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 --Verify if the tablespaces for the queries have been updated.
 SELECT c.relname, ts.spcname FROM
     pg_class c
@@ -540,10 +540,10 @@ ORDER BY
 (6 rows)
 
 ALTER TABLE ALL in TABLESPACE tsp2 SET TABLESPACE tsp3;
-NOTICE:  Data movement for table table1 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table table2 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table table1 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table table2 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 --Verify if the tablespaces for the queries have been updated.
 SELECT c.relname, ts.spcname FROM
     pg_class c
@@ -609,10 +609,10 @@ SELECT COUNT(*) FROM pg_yb_tablegroup WHERE grpname != 'default' AND (grpname = 
 (1 row)
 
 ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp3 CASCADE;
-NOTICE:  Data movement for table table1 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table table2 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table table1 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table table2 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 SELECT COUNT(*) FROM pg_yb_tablegroup WHERE grpname != 'default' AND (grpname = ('colocation_' || grptablespace)) ;
  count
 -------

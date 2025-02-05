@@ -36,10 +36,10 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.yb.CommonNet;
 import org.yb.CommonNet.CloudInfoPB;
 import org.yb.YBTestRunner;
 import org.yb.client.*;
-import org.yb.master.CatalogEntityInfo;
 import org.yb.minicluster.MiniYBCluster;
 
 @RunWith(value = YBTestRunner.class)
@@ -388,35 +388,35 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
             .setPlacementZone("zone1")
             .build();
 
-    CatalogEntityInfo.PlacementBlockPB placementBlock0 =
-        CatalogEntityInfo.PlacementBlockPB.newBuilder()
+    CommonNet.PlacementBlockPB placementBlock0 =
+        CommonNet.PlacementBlockPB.newBuilder()
             .setCloudInfo(cloudInfo0)
             .setMinNumReplicas(1)
             .build();
 
-    List<CatalogEntityInfo.PlacementBlockPB> placementBlocksLive =
-        new ArrayList<CatalogEntityInfo.PlacementBlockPB>();
+    List<CommonNet.PlacementBlockPB> placementBlocksLive =
+        new ArrayList<CommonNet.PlacementBlockPB>();
     placementBlocksLive.add(placementBlock0);
 
-    List<CatalogEntityInfo.PlacementBlockPB> placementBlocksReadOnly =
-        new ArrayList<CatalogEntityInfo.PlacementBlockPB>();
+    List<CommonNet.PlacementBlockPB> placementBlocksReadOnly =
+        new ArrayList<CommonNet.PlacementBlockPB>();
     placementBlocksReadOnly.add(placementBlock0);
 
-    CatalogEntityInfo.PlacementInfoPB livePlacementInfo =
-        CatalogEntityInfo.PlacementInfoPB.newBuilder()
+    CommonNet.PlacementInfoPB livePlacementInfo =
+        CommonNet.PlacementInfoPB.newBuilder()
             .addAllPlacementBlocks(placementBlocksLive)
             .setNumReplicas(1)
             .setPlacementUuid(ByteString.copyFromUtf8(""))
             .build();
 
-    CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfo =
-        CatalogEntityInfo.PlacementInfoPB.newBuilder()
+    CommonNet.PlacementInfoPB readOnlyPlacementInfo =
+        CommonNet.PlacementInfoPB.newBuilder()
             .addAllPlacementBlocks(placementBlocksReadOnly)
             .setNumReplicas(1)
             .setPlacementUuid(ByteString.copyFromUtf8("readcluster"))
             .build();
 
-    List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacements =
+    List<CommonNet.PlacementInfoPB> readOnlyPlacements =
         Arrays.asList(readOnlyPlacementInfo);
 
     ModifyClusterConfigReadReplicas readOnlyOperation =

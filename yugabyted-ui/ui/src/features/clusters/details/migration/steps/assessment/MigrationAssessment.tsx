@@ -51,7 +51,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       "https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/assess-migration/"
   // TODO: get correct linux install commands, and a way to distinguish different linux distros.
   const INSTALL_VOYAGER_OS_CMD: { [key: string]: string; } = {
-    "rhel": "sudo yum update\n" +
+    "rhel":  "sudo yum update\n" +
              "sudo yum install " +
              "https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/reporpms/" +
              "yb-yum-repo-1.1-0.noarch.rpm\n" +
@@ -62,8 +62,8 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
              "yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm\n" +
              "sudo dnf -qy module disable postgresql\n" +
              "sudo yum install perl-open.noarch\n" +
-             "sudo yum update" +
-             "sudo yum install yb-voyager" +
+             "sudo yum update\n" +
+             "sudo yum install yb-voyager\n" +
              "yb-voyager version",
     "darwin": "brew tap yugabyte/tap\n" +
               "brew install yb-voyager\n" +
@@ -76,12 +76,11 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
               "sudo apt-get clean\n" +
               "sudo apt-get update\n" +
               "sudo apt-get install yb-voyager\n" +
-              "yb-voyager version\n",
+              "yb-voyager version",
     "docker": "docker pull yugabytedb/yb-voyager\n" +
               "wget -O ./yb-voyager https://raw.githubusercontent.com/yugabyte/" +
-              "yb-voyager/main/docker/\n" +
-              "yb-voyager-docker && chmod +x ./yb-voyager && sudo mv yb-voyager " +
-              "/usr/local/bin/yb-voyager\n" +
+              "yb-voyager/main/docker/yb-voyager-docker " +
+              "&& chmod +x ./yb-voyager && sudo mv yb-voyager /usr/local/bin/yb-voyager\n" +
               "yb-voyager version",
     "git": "git clone https://github.com/yugabyte/yb-voyager.git\n" +
            "cd yb-voyager/installer_scripts\n" +

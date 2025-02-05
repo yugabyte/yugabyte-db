@@ -26,22 +26,6 @@
 #include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 
-DEFINE_RUNTIME_int64(max_concurrent_restoration_rpcs, -1,
-    "Maximum number of tablet restoration rpcs that can be outstanding. "
-    "Only used if its value is >= 0. Value of 0 means that "
-    "INT_MAX number of restoration rpcs can be concurrent."
-    "If its value is < 0 then max_concurrent_restoration_rpcs_per_tserver "
-    "gflag is used.");
-
-DEFINE_RUNTIME_int64(max_concurrent_restoration_rpcs_per_tserver, 1,
-    "Maximum number of tablet restoration rpcs per tserver that can be outstanding."
-    "Only used if the value of gflag max_concurrent_restoration_rpcs is < 0. "
-    "When used it is multiplied with the number of TServers in the active cluster "
-    "(not read-replicas) to obtain the total maximum concurrent restoration rpcs. If "
-    "the cluster config is not found and we are not able to determine the number of "
-    "live tservers then the total maximum concurrent restoration RPCs is just the "
-    "value of this flag.");
-
 DEFINE_test_flag(bool, update_aggregated_restore_state, false,
     "Test only flag that updates the aggregated restore state as opposed to the initial state"
     " when persisting the restoration object");
@@ -153,7 +137,8 @@ void RestorationState::PrepareOperations(
     TabletRestoreOperations* operations, const std::unordered_set<TabletId>& snapshot_tablets,
     std::optional<int64_t> db_oid) {
   DoPrepareOperations(
-      [this, &operations, &snapshot_tablets, &db_oid](const TabletData& data) -> bool {
+      [this, &operations, &snapshot_tablets, &db_oid](
+          const TabletData& data, int64_t serial_no) -> bool {
     if (Throttler().Throttle()) {
       return false;
     }
@@ -166,6 +151,7 @@ void RestorationState::PrepareOperations(
       .is_tablet_part_of_snapshot = snapshot_tablets.count(data.id) != 0,
       .db_oid = db_oid,
       .schedule_id = schedule_id_,
+      .serial_no = serial_no,
     });
     return true;
   });
@@ -188,7 +174,7 @@ Status RestorationState::Abort() {
 
     // Only decrement if the given tablet is in the initial state and is NOT running. If the task IS
     // running, the value will be decremented in Done when the task itself finishes.
-    if (it->state == initial_state_ && !it->running) {
+    if (it->state == initial_state_ && it->running_task_serial_no == 0) {
       DecrementTablets();
     }
   }

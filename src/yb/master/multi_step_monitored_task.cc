@@ -28,7 +28,7 @@ MultiStepMonitoredTask::MultiStepMonitoredTask(
     : messenger_(messenger), async_task_pool_(async_task_pool) {}
 
 void MultiStepMonitoredTask::Start() {
-  LOG_WITH_PREFIX(INFO) << "Starting task " << this;
+  LOG_WITH_PREFIX(INFO) << "Starting task";
   auto status = RegisterTask();
   if (!status.ok()) {
     AbortAndReturnPrevState(status.CloneAndPrepend("Failed to register task"));
@@ -54,6 +54,10 @@ void MultiStepMonitoredTask::TaskCompleted(const Status& status) {
 
 void MultiStepMonitoredTask::PerformAbort() { AbortReactorTaskIfScheduled(); }
 
+std::string MultiStepMonitoredTask::LogPrefix() const {
+  return Format("$0[$1]: ", description(), static_cast<const void*>(this));
+}
+
 void MultiStepMonitoredTask::Complete() {
   if (TrySetState(server::MonitoredTaskState::kComplete)) {
     EndTask(Status::OK());
@@ -76,7 +80,7 @@ server::MonitoredTaskState MultiStepMonitoredTask::AbortAndReturnPrevState(
     }
     EndTask(status);
   } else {
-    LOG_WITH_PREFIX(WARNING) << this << ": Task already ended. Unable to abort it: " << status;
+    LOG_WITH_PREFIX(WARNING) << "Task already ended. Unable to abort it: " << status;
   }
 
   return old_state;
@@ -207,13 +211,13 @@ Status MultiStepMonitoredTask::RunInternal() {
 
 void MultiStepMonitoredTask::EndTask(const Status& status) {
   if (!status.ok()) {
-    LOG_WITH_PREFIX(WARNING) << this << " task failed: " << status;
+    LOG_WITH_PREFIX(WARNING) << "Task failed: " << status;
   }
 
   TaskCompleted(status);
 
   completion_timestamp_ = MonoTime::Now();
-  LOG_WITH_PREFIX(INFO) << this << " task ended" << (status.ok() ? " successfully" : "");
+  LOG_WITH_PREFIX(INFO) << "Task ended" << (status.ok() ? " successfully" : "");
 
   auto retain_self = shared_from_this();
   UnregisterTask();

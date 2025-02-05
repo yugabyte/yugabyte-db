@@ -99,6 +99,14 @@ void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
     db_filter->set_db_oid(db_oid);
     db_filter->set_ht_filter(ht);
   });
+  if (backfill_done_) {
+    pb.set_backfill_done(backfill_done_);
+  } else {
+    pb.set_backfill_read_ht(backfill_read_ht_.ToUint64());
+    if (!backfill_key_.empty()) {
+      pb.set_backfill_key(backfill_key_);
+    }
+  }
   VLOG(3) << "ConsensusFrontierPB: " << pb.ShortDebugString();
   any->PackFrom(pb);
 }
@@ -145,6 +153,9 @@ Status ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   for (const auto& per_db_filter : pb.db_oid_to_ht_filter()) {
     AppendHybridTimeToCotablesFilter(per_db_filter.ht_filter());
   }
+  backfill_done_ = pb.backfill_done();
+  backfill_key_ = pb.backfill_key();
+  backfill_read_ht_ = HybridTime::FromPB(pb.backfill_read_ht());
   VLOG(3) << "ConsensusFrontier: " << ToString();
   return Status::OK();
 }
@@ -170,10 +181,33 @@ std::string RenderCotablesFilter(Slice input) {
 }
 
 std::string ConsensusFrontier::ToString() const {
-  return YB_CLASS_TO_STRING(
-      op_id, hybrid_time, history_cutoff, max_value_level_ttl_expiration_time,
-      primary_schema_version, cotable_schema_versions, (global_filter, AsString(GlobalFilter())),
-      (cotables_filter, RenderCotablesFilter(hybrid_time_filter_.AsSlice())));
+  auto fields = YB_FIELDS_TO_STRING((BOOST_PP_IDENTITY(_)), op_id, hybrid_time) " ";
+  if (history_cutoff_valid()) {
+    fields += Format("history_cutoff: $0 ", history_cutoff_);
+  }
+  if (max_value_level_ttl_expiration_time_.is_valid()) {
+    fields += Format(
+        "max_value_level_ttl_expiration_time: $0 ", max_value_level_ttl_expiration_time_);
+  }
+  if (primary_schema_version_) {
+    fields += Format("primary_schema_version: $0 ", primary_schema_version_);
+  }
+  if (!cotable_schema_versions_.empty()) {
+    fields += Format("cotable_schema_versions: $0 ", cotable_schema_versions_);
+  }
+  if (!hybrid_time_filter_.empty()) {
+    fields += Format(
+        "global_filter: $0 cotables_filter: $1 ",
+        GlobalFilter(), RenderCotablesFilter(hybrid_time_filter_.AsSlice()));
+  }
+  if (backfill_done_) {
+    fields += Format("backfill_done: $0 ", backfill_done_);
+  } else if (backfill_read_ht_.is_valid()) {
+    fields += Format(
+        "backfill_read_ht: $0 backfill_key: $1 ",
+        backfill_read_ht_, Slice(backfill_key_).ToDebugHexString());
+  }
+  return Format("{$0}", fields);
 }
 
 void ConsensusFrontier::SetCoTablesFilter(
@@ -296,6 +330,13 @@ void ConsensusFrontier::Update(
       UpdateField(&it->second, p.second, update_type);
     }
   }
+  if (update_type == rocksdb::UpdateUserValueType::kLargest) {
+    if (rhs.backfill_done_) {
+      SetBackfillDone();
+    } else if (rhs.backfill_key_ > backfill_key_) {
+      SetBackfillPosition(rhs.backfill_key_, rhs.backfill_read_ht_);
+    }
+  }
 }
 
 Slice ConsensusFrontier::FilterAsSlice() {
@@ -371,6 +412,17 @@ void ConsensusFrontier::MakeExternalSchemaVersionsAtMost(
   for (const auto& p : cotable_schema_versions_) {
     yb::MakeAtMost(p.first, p.second, min_schema_versions);
   }
+}
+
+void ConsensusFrontier::SetBackfillDone() {
+  backfill_done_ = true;
+  backfill_key_.clear();
+  backfill_read_ht_ = HybridTime();
+}
+
+void ConsensusFrontier::SetBackfillPosition(Slice key, HybridTime backfill_read_ht) {
+  backfill_key_ = key.ToBuffer();
+  backfill_read_ht = backfill_read_ht_;
 }
 
 void AddTableSchemaVersion(

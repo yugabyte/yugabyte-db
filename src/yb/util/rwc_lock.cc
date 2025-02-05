@@ -42,19 +42,22 @@
 #include "yb/util/logging.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/util/tsan_util.h"
 
 DEFINE_RUNTIME_bool(enable_rwc_lock_debugging, false,
     "Enable debug logging for RWC lock. This can hurt performance significantly since it causes us "
     "to capture stack traces on each lock acquisition.");
 TAG_FLAG(enable_rwc_lock_debugging, advanced);
 
-DEFINE_RUNTIME_int32(slow_rwc_lock_log_ms, 5000,
+DEFINE_RUNTIME_int32(slow_rwc_lock_log_ms, 5000 * yb::kTimeMultiplier,
     "How long to wait for a write or commit lock before logging that it took a long time (and "
     "logging the stacks of the writer / reader threads if FLAGS_enable_rwc_lock_debugging is "
     "true).");
 TAG_FLAG(slow_rwc_lock_log_ms, advanced);
 
 using namespace std::literals;
+
+#define RWC_LOCK_COLLECT_READ_LOCK_STACK_TRACE 1
 
 namespace yb {
 
@@ -65,6 +68,14 @@ const size_t kWriteActive = 1ULL << 60;
 const size_t kWritePending = kWriteActive << 1;
 const size_t kReadersMask = kWriteActive - 1;
 
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+thread_local size_t rwc_read_lock_counter = 0;
+std::atomic<void*> rwc_conflicting_mutex{nullptr};
+#if RWC_LOCK_COLLECT_READ_LOCK_STACK_TRACE
+thread_local StackTrace rwc_read_lock_first_stack_trace;
+#endif
+#endif
+
 } // namespace
 
 RWCLock::~RWCLock() {
@@ -72,6 +83,13 @@ RWCLock::~RWCLock() {
 }
 
 void RWCLock::ReadLock() {
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+  if (++rwc_read_lock_counter == 1) {
+#if RWC_LOCK_COLLECT_READ_LOCK_STACK_TRACE
+    rwc_read_lock_first_stack_trace.Collect();
+#endif
+  }
+#endif
   for (;;) {
     if (!(reader_counter_.fetch_add(1) & kWriteActive)) {
       return;
@@ -90,7 +108,27 @@ void RWCLock::ReadLock() {
   }
 }
 
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+void RWCLock::CheckNoReadLockConflict(void* mutex) {
+  if (mutex == rwc_conflicting_mutex.load()) {
+    CHECK_EQ(rwc_read_lock_counter, 0)
+#if RWC_LOCK_COLLECT_READ_LOCK_STACK_TRACE
+        << rwc_read_lock_first_stack_trace.Symbolize();
+#else
+        << "";
+#endif
+  }
+}
+
+void RWCLock::SetConflictingMutex(void* mutex) {
+  rwc_conflicting_mutex.store(mutex);
+}
+#endif
+
 void RWCLock::ReadUnlock() {
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+  --rwc_read_lock_counter;
+#endif
   if (reader_counter_.fetch_sub(1) - 1 == kWritePending) {
     no_readers_.notify_one();
   }
@@ -107,10 +145,14 @@ bool RWCLock::HasWriteLock() const {
 
 void RWCLock::WriteLock() NO_THREAD_SAFETY_ANALYSIS {
   ThreadRestrictions::AssertWaitAllowed();
+#if defined(THREAD_SANITIZER)
+  write_mutex_.lock();
+#else
   if (!write_mutex_.try_lock_for(1ms * FLAGS_slow_rwc_lock_log_ms)) {
     LOG(WARNING) << "Long time taking write lock";
     write_mutex_.lock();
   }
+#endif
 #ifndef NDEBUG
   write_start_ = CoarseMonoClock::now();
 #endif

@@ -41,7 +41,7 @@ class IndexReader {
   explicit IndexReader(const ComparatorPtr& comparator)
       : comparator_(comparator) {}
 
-  virtual ~IndexReader() {}
+  virtual ~IndexReader() = default;
 
   // Create an iterator for index access.
   // If not null iter is passed in, implementation was able to update it and it should be used by
@@ -101,10 +101,9 @@ class BinarySearchIndexReader : public IndexReader {
   // `BinarySearchIndexReader`.
   // On success, index_reader will be populated; otherwise it will remain
   // unmodified.
-  static Status Create(
+  static Result<std::unique_ptr<BinarySearchIndexReader>> Create(
       RandomAccessFileReader* file, const Footer& footer, const BlockHandle& index_handle, Env* env,
-      const ComparatorPtr& comparator, std::unique_ptr<IndexReader>* index_reader,
-      const std::shared_ptr<yb::MemTracker>& mem_tracker);
+      const ComparatorPtr& comparator, const std::shared_ptr<yb::MemTracker>& mem_tracker);
 
   InternalIterator* NewIterator(
       BlockIter* iter,
@@ -114,6 +113,10 @@ class BinarySearchIndexReader : public IndexReader {
     auto new_iter =
         index_block_->NewIndexBlockIterator(comparator_.get(), iter, /* total_order_seek = */ true);
     return iter ? nullptr : new_iter;
+  }
+
+  void NewIterator(BlockIter* iter) {
+    index_block_->NewIndexBlockIterator(comparator_.get(), iter, /* total_order_seek = */ true);
   }
 
   DataBlockAwareIndexInternalIterator* NewDataBlockAwareIterator(
@@ -146,8 +149,6 @@ class BinarySearchIndexReader : public IndexReader {
     DCHECK(index_block_);
   }
 
-  ~BinarySearchIndexReader() {}
-
   const std::unique_ptr<Block> index_block_;
 };
 
@@ -155,11 +156,11 @@ class BinarySearchIndexReader : public IndexReader {
 // key.
 class HashIndexReader : public IndexReader {
  public:
-  static Status Create(
+  static yb::Result<std::unique_ptr<IndexReader>> Create(
       const SliceTransform* hash_key_extractor, const Footer& footer, RandomAccessFileReader* file,
       Env* env, const ComparatorPtr& comparator, const BlockHandle& index_handle,
-      InternalIterator* meta_index_iter, std::unique_ptr<IndexReader>* index_reader,
-      bool hash_index_allow_collision, const std::shared_ptr<yb::MemTracker>& mem_tracker);
+      InternalIterator* meta_index_iter, bool hash_index_allow_collision,
+      const std::shared_ptr<yb::MemTracker>& mem_tracker);
 
   InternalIterator* NewIterator(
       BlockIter* iter = nullptr, std::unique_ptr<TwoLevelIteratorState> state = nullptr,
@@ -196,8 +197,6 @@ class HashIndexReader : public IndexReader {
       : IndexReader(comparator), index_block_(std::move(index_block)) {
     DCHECK(index_block_);
   }
-
-  ~HashIndexReader() {}
 
   void OwnPrefixesContents(BlockContents&& prefixes_contents) {
     prefixes_contents_ = std::move(prefixes_contents);

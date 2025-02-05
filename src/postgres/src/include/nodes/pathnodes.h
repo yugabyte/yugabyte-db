@@ -383,8 +383,8 @@ struct PlannerInfo
 	 * These are used to transfer information about batching in createplan.c
 	 * and indxpath.c
 	 */
-	Relids		yb_cur_batched_relids;	/* valid if we are processing a batched
-										 * NL join */
+	Relids		yb_cur_batched_relids;	/* valid if we are processing a
+										 * batched NL join */
 	Relids		yb_cur_unbatched_relids;
 
 	/*
@@ -392,16 +392,16 @@ struct PlannerInfo
 	 * available from the outer path of a particular Batched Nested Loop join
 	 * node.
 	 */
-	List		*yb_availBatchedRelids;
+	List	   *yb_availBatchedRelids;
 
-	int yb_cur_batch_no;		/* Used in replace_nestloop_params to keep
-								 * track of current batch */
+	int			yb_cur_batch_no;	/* Used in replace_nestloop_params to keep
+									 * track of current batch */
 
 	/*
 	 * Number of relations that are still referenced by the plan after
 	 * constraint exclusion and partition pruning.
 	 */
-	int     yb_num_referenced_relations;
+	int			yb_num_referenced_relations;
 };
 
 
@@ -800,7 +800,7 @@ typedef struct RelOptInfo
 	List	  **nullable_partexprs; /* Nullable partition key expressions */
 
 	/* used for YB relations */
-	bool		is_yb_relation;	/* Is a YbRelation */
+	bool		is_yb_relation; /* Is a YbRelation */
 } RelOptInfo;
 
 /*
@@ -917,10 +917,10 @@ struct IndexOptInfo
 	/* Rather than include amapi.h here, we declare amcostestimate like this */
 	void		(*amcostestimate) ();	/* AM's cost estimator */
 
-	bool		yb_amhasgetbitmap; /* does AM have yb_amgetbitmap interface? */
+	bool		yb_amhasgetbitmap;	/* does AM have yb_amgetbitmap interface? */
 
 	/* Used for YB base scans cost model */
-	int32_t 	yb_cached_ybctid_size;
+	int32_t		yb_cached_ybctid_size;
 };
 
 /*
@@ -1178,7 +1178,7 @@ typedef struct ParamPathInfo
 	List	   *ppi_clauses;	/* join clauses available from outer rels */
 
 	/* Yugabyte attributes */
-	Relids		yb_ppi_req_outer_batched; /* outer rels that can be batched */
+	Relids		yb_ppi_req_outer_batched;	/* outer rels that can be batched */
 } ParamPathInfo;
 
 
@@ -1190,8 +1190,8 @@ typedef struct ParamPathInfo
  */
 typedef enum YbLockMechanism
 {
-	YB_NO_SCAN_LOCK,		/* no locks taken in this scan */
-	YB_LOCK_CLAUSE_ON_PK,	/* may take locks on PK for locking clause */
+	YB_NO_SCAN_LOCK,			/* no locks taken in this scan */
+	YB_LOCK_CLAUSE_ON_PK,		/* may take locks on PK for locking clause */
 } YbLockMechanism;
 
 /*
@@ -1200,14 +1200,16 @@ typedef enum YbLockMechanism
  * 'yb_uniqkeys' Set of exprs that the path is distinct on. NIL by default.
  * NIL signifies that the set is indeterminate.
  */
-typedef struct YbPathInfo {
-	List		   *yb_uniqkeys;		/* list keys that are distinct */
+typedef struct YbPathInfo
+{
+	List	   *yb_uniqkeys;	/* list keys that are distinct */
 } YbPathInfo;
 
-typedef struct YbPlanInfo {
+typedef struct YbPlanInfo
+{
 	double		estimated_num_nexts;
 	double		estimated_num_seeks;
-	int 		estimated_docdb_result_width;
+	int			estimated_docdb_result_width;
 } YbPlanInfo;
 
 /*
@@ -1218,7 +1220,7 @@ typedef struct YbPlanInfo {
  */
 typedef struct YbIndexPathInfo
 {
-	int				yb_distinct_prefixlen;
+	int			yb_distinct_prefixlen;
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
 } YbIndexPathInfo;
 
@@ -1353,7 +1355,7 @@ typedef struct IndexPath
 	Selectivity indexselectivity;
 	int			ybctid_width;
 	YbPlanInfo	yb_plan_info;
-	YbIndexPathInfo yb_index_path_info;	/* fields used for YugabyteDB */
+	YbIndexPathInfo yb_index_path_info; /* fields used for YugabyteDB */
 } IndexPath;
 
 /*
@@ -2267,9 +2269,9 @@ typedef struct RestrictInfo
 	/* Yugabyte attributes */
 	bool		yb_pushable;	/* true if can be pushed down to DocDB */
 
-	List *yb_batched_rinfo; /* If there is a batched version of
-							 * this clause, this is a pointer to
-							 * a list of possible batched versions. */
+	List	   *yb_batched_rinfo;	/* If there is a batched version of this
+									 * clause, this is a pointer to a list of
+									 * possible batched versions. */
 } RestrictInfo;
 
 /*
@@ -2340,8 +2342,8 @@ typedef struct PlaceHolderVar
  */
 typedef struct YbBatchedExpr
 {
-	Expr xpr;
-	Expr *orig_expr; /* Original Var this is a batched version of. */
+	Expr		xpr;
+	Expr	   *orig_expr;		/* Original Var this is a batched version of. */
 } YbBatchedExpr;
 
 /*

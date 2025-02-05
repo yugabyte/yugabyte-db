@@ -176,7 +176,7 @@ inline bool IsKeyOrderedBefore(Slice key, Slice other_key) {
   }
 }
 
-rocksdb::Statistics* GetIntentsDBStatistics(const DocDBStatistics* statistics) {
+rocksdb::Statistics* GetIntentsDBStatistics(DocDBStatistics* statistics) {
   return statistics ? statistics->IntentsDBStatistics() : nullptr;
 }
 
@@ -1402,6 +1402,10 @@ bool IntentAwareIterator::HandleStatus(const Status& status) {
 
   status_ = status;
   return false;
+}
+
+void IntentAwareIterator::UpdateFilterKey(Slice user_key_for_filter) {
+  iter_.UpdateFilterKey(user_key_for_filter);
 }
 
 #ifndef NDEBUG

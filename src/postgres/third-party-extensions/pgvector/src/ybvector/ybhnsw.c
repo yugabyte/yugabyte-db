@@ -25,15 +25,40 @@
 #include "postgres.h"
 
 #include "ybvector.h"
-#include "commands/ybccmds.h"
+#include "catalog/pg_opclass.h"
+#include "commands/yb_cmds.h"
+#include "utils/syscache.h"
 
 static void
-ybhnswbindcolumnschema(YBCPgStatement handle,
+ybhnswbindcolumnschema(YbcPgStatement handle,
 					   IndexInfo *indexInfo,
 					   TupleDesc indexTupleDesc,
-					   int16 *coloptions)
+					   int16 *coloptions,
+					   Oid *opclassOids)
 {
-	bindVectorIndexOptions(handle, indexInfo, indexTupleDesc, YB_VEC_HNSW);
+	HeapTuple	ht_opc;
+	Form_pg_opclass opcrec;
+
+	Assert(indexInfo->ii_NumIndexKeyAttrs == 1);
+	ht_opc = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclassOids[0]));
+	if (!HeapTupleIsValid(ht_opc))
+		elog(ERROR, "cache lookup failed for opclass %u", opclassOids[0]);
+	opcrec = (Form_pg_opclass) GETSTRUCT(ht_opc);
+	YbcPgVectorDistType dist_type;
+	if (!strcmp(opcrec->opcname.data, "vector_l2_ops")) {
+		dist_type = YB_VEC_DIST_L2;
+	} else if (!strcmp(opcrec->opcname.data, "vector_ip_ops")) {
+		dist_type = YB_VEC_DIST_IP;
+	} else if (!strcmp(opcrec->opcname.data, "vector_cosine_ops")) {
+		dist_type = YB_VEC_DIST_COSINE;
+	} else {
+		elog(ERROR, "unsupported vector index op class name %s",
+			 opcrec->opcname.data);
+	}
+	ReleaseSysCache(ht_opc);
+
+	bindVectorIndexOptions(
+		handle, indexInfo, indexTupleDesc, YB_VEC_HNSW, dist_type);
 	YBCBindCreateIndexColumns(handle, indexInfo, indexTupleDesc, coloptions, 0);
 }
 

@@ -22,7 +22,6 @@ namespace yb::dockv {
 template <class F>
 auto VisitDataType(DataType data_type, const F& f) {
   switch (data_type) {
-    case DataType::VECTOR: FALLTHROUGH_INTENDED;
     case DataType::BINARY:
       return f.Binary();
     case DataType::BOOL:
@@ -47,6 +46,8 @@ auto VisitDataType(DataType data_type, const F& f) {
       return f.template Primitive<uint64_t>();
     case DataType::DOUBLE:
       return f.template Primitive<double>();
+    case DataType::VECTOR:
+      return f.Vector();
     default:
       break;
   }

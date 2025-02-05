@@ -271,6 +271,9 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_commands, kLocalPersiste
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replica_identity, kLocalPersisted, false, true,
     "Enable replica identity command for Alter Table query");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_block_based_sampling_algorithm,
+    kLocalVolatile, false, true, "Allow YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING");
+
 DEFINE_RUNTIME_PG_FLAG(
     string, yb_default_replica_identity, "CHANGE",
     "The default replica identity to be assigned to user defined tables at the time of creation. "
@@ -295,7 +298,7 @@ DEFINE_RUNTIME_PG_FLAG(
     "Maximum number of changes kept in memory per transaction in reorder buffer, which is used in "
     "streaming changes via logical replication . After that, changes are spooled to disk.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, 2048, // 2 KB
     "Size threshold in bytes for a catcache tuple to be compressed.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
@@ -306,6 +309,12 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
     "Enable nop alter role statement optimization.");
+
+DEFINE_RUNTIME_PG_FLAG(string, yb_sampling_algorithm,
+    "block_based_sampling",
+    "Which sampling algorithm to use for YSQL. full_table_scan - scan the whole table and pick "
+    "random rows, block_based_sampling - sample the table for a set of blocks, then scan selected "
+    "blocks to form a final rows sample.");
 
 DEFINE_validator(ysql_yb_xcluster_consistency_level, FLAG_IN_SET_VALIDATOR("database", "tablet"));
 
@@ -321,6 +330,11 @@ DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
 DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
     "Enables the collection of query diagnostics data for YSQL queries, "
     "facilitating the creation of diagnostic bundles.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
+    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and "
+    "11.");
+DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11));
 
 DECLARE_bool(enable_pg_cron);
 
@@ -890,14 +904,14 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
     }
   }
 
-  std::string stdout, stderr;
-  auto status = initdb_subprocess.Call(&stdout, &stderr);
-  LOG(INFO) << "initdb stdout: " << stdout;
-  if (!stderr.empty()) {
-    LOG(WARNING) << "initdb stderr: " << stderr;
-  }
-  if (!status.ok()) {
-    return status.CloneAndAppend(stderr);
+  int status = 0;
+  RETURN_NOT_OK(initdb_subprocess.Start());
+  RETURN_NOT_OK(initdb_subprocess.Wait(&status));
+  if (status != 0) {
+    SCHECK(
+        WIFEXITED(status), InternalError, Format("$0 did not exit normally", initdb_program_path));
+    return STATUS_FORMAT(
+        RuntimeError, "$0 failed with exit code $1", initdb_program_path, WEXITSTATUS(status));
   }
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
@@ -914,7 +928,7 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   std::vector<std::string> args{
       program_path,
       "--new-datadir", param.data_dir,
-      "--username", "yugabyte",
+      "--username", param.ysql_user_name,
       "--new-socketdir", param.new_version_socket_dir,
       "--new-port", ToString(param.new_version_pg_port),
       "--old-port", ToString(param.old_version_pg_port)};
@@ -930,14 +944,10 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
   Subprocess subprocess(program_path, args);
 
-  std::string stdout, stderr;
-  auto status = Subprocess::Call(args, &stdout, &stderr);
-  LOG(INFO) << "pg_upgrade stdout: " << stdout;
-  if (!stderr.empty()) {
-    LOG(WARNING) << "pg_upgrade stderr: " << stderr;
-  }
+  auto status = Subprocess::Call(args);
   if (!status.ok()) {
-    return status.CloneAndAppend(stderr);
+    return status.CloneAndAppend(
+        "pg_upgrade failed. Check the standard output and standard error for more details.");
   }
 
   LOG(INFO) << "pg_upgrade completed successfully";
@@ -1036,7 +1046,7 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
 
 Status PgWrapper::InitDbForYSQL(
     const string& master_addresses, const string& tmp_dir_base, int tserver_shm_fd,
-    std::vector<std::pair<string, YBCPgOid>> db_to_oid, bool is_major_upgrade) {
+    std::vector<std::pair<string, YbcPgOid>> db_to_oid, bool is_major_upgrade) {
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;
@@ -1104,6 +1114,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
   CHECK_NE(conf_.tserver_shm_fd, -1);
   proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
+  proc->SetEnv("FLAGS_log_dir", FLAGS_log_dir);
 #ifdef OS_MACOSX
   // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
   if (getenv("LC_ALL") == nullptr) {

@@ -57,6 +57,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -70,6 +72,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -867,7 +870,7 @@ public class GCPUtil implements CloudUtil {
       }
 
       log.info(
-          "Deleted {} old backups from gs://{}/{}",
+          "Deleted {} old backup(s) from gs://{}/{}",
           backupsToDelete.size(),
           cLInfo.bucket,
           backupDir);
@@ -948,7 +951,6 @@ public class GCPUtil implements CloudUtil {
               cLInfo.bucket, Storage.BlobListOption.prefix(backupDir + "/" + YBDB_RELEASES));
 
       for (Blob blob : blobs.iterateAll()) {
-
         String version = extractReleaseVersion(blob.getName(), backupDir);
         if (version != null) {
           log.info("Found version {} in GCS bucket", version);
@@ -963,5 +965,107 @@ public class GCPUtil implements CloudUtil {
       log.error("Unexpected exception while listing releases in GCS: {}", e.getMessage(), e);
     }
     return new HashSet<>();
+  }
+
+  public File downloadYbaBackup(CustomerConfigData configData, String backupDir, Path localDir) {
+    try {
+      CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+      Storage gcsClient = getStorageService(gcsData);
+      CloudLocationInfo cLInfo =
+          getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+
+      // List all backups
+      Page<Blob> blobs = gcsClient.list(cLInfo.bucket, Storage.BlobListOption.prefix(backupDir));
+      Blob mostRecentBackup = null;
+      String mostRecentBackupName = null;
+      Pattern backupPattern = Pattern.compile("backup_.*\\.tgz");
+      Matcher matcher = null;
+
+      for (Blob blob : blobs.iterateAll()) {
+        // Match the blob name against the regex
+        matcher = backupPattern.matcher(blob.getName());
+        if (matcher.find()) {
+          // Find the most recent backup based on update time
+          if (mostRecentBackup == null || blob.getUpdateTime() > mostRecentBackup.getUpdateTime()) {
+            mostRecentBackup = blob;
+            mostRecentBackupName = matcher.group();
+          }
+        }
+      }
+
+      if (mostRecentBackup == null) {
+        log.warn("Could not find YB Anywhere backup in gs://{}", cLInfo.bucket);
+        return null;
+      }
+
+      log.info(
+          "Downloading backup gs://{}/{}",
+          mostRecentBackup.getBucket(),
+          mostRecentBackup.getName());
+      File localFile = localDir.resolve(mostRecentBackupName).toFile();
+      Files.createDirectories(localFile.getParentFile().toPath());
+      mostRecentBackup.downloadTo(localFile.toPath());
+      return localFile;
+
+    } catch (StorageException e) {
+      log.error("Error downloading YB Anywhere backup: {}", e.getMessage(), e);
+    } catch (Exception e) {
+      log.error("Unexecpted exception downloading YB Anywhere backup: {}", e.getMessage(), e);
+    }
+    return null;
+  }
+
+  public boolean downloadRemoteReleases(
+      CustomerConfigData configData,
+      Set<String> releaseVersions,
+      String releasesPath,
+      String backupDir) {
+    for (String version : releaseVersions) {
+      Path versionPath;
+      try {
+        versionPath = Files.createDirectories(Path.of(releasesPath, version));
+      } catch (Exception e) {
+        log.error(
+            "Error creating local releases directory for version {}: {}", version, e.getMessage());
+        return false;
+      }
+
+      // Find all filepaths that match version (x86 and aarch64)
+      try {
+        CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+        Storage gcsClient = getStorageService(gcsData);
+        CloudLocationInfo cLInfo =
+            getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+
+        // Get all blobs in gs://bucket/backupDir/YBDB_RELEASES/version
+        Page<Blob> releases =
+            gcsClient.list(
+                cLInfo.bucket,
+                Storage.BlobListOption.prefix(
+                    String.format("%s/%s/%s", backupDir, YBDB_RELEASES, version)));
+        for (Blob release : releases.iterateAll()) {
+          // Name the local file same as GCS basename (yugabyte-version-arch.tar.gz)
+          Path localRelease =
+              versionPath.resolve(
+                  release.getName().substring(release.getName().lastIndexOf('/') + 1));
+          log.info(
+              "Attempting to download release from gs://{}/{} to {}",
+              cLInfo.bucket,
+              release.getName(),
+              localRelease);
+          release.downloadTo(localRelease);
+        }
+
+      } catch (StorageException e) {
+        log.error("GCS error occurred while downloading releases: {}", e.getMessage(), e);
+        return false;
+      } catch (Exception e) {
+        log.error(
+            "Unexpected exception while downloading releases from GCS: {}", e.getMessage(), e);
+        return false;
+      }
+    }
+
+    return true;
   }
 }

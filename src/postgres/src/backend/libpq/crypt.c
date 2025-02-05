@@ -29,13 +29,13 @@
 #include "pg_yb_utils.h"
 
 static bool
-yb_is_role_allowed_for_tserver_auth(const char* role, const char **logdetail)
+yb_is_role_allowed_for_tserver_auth(const char *role, const char **logdetail)
 {
 	/* Currently disallow any role but "postgres" */
 	if (strcmp(role, "postgres"))
 	{
-		*logdetail = psprintf(
-			_("Role must be \"postgres\": got \"%s\"."), role);
+		*logdetail = psprintf(_("Role must be \"postgres\": got \"%s\"."),
+							  role);
 		return false;
 	}
 	return true;
@@ -98,7 +98,7 @@ get_role_password(const char *role, const char **logdetail)
 }
 
 bool
-yb_get_role_password(const char *role, const char **logdetail, uint64_t* auth_key)
+yb_get_role_password(const char *role, const char **logdetail, uint64_t *auth_key)
 {
 	*auth_key = YBCGetSharedAuthKey();
 	return true;

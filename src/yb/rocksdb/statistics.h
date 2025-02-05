@@ -285,7 +285,7 @@ class Statistics {
   virtual void histogramData(uint32_t type,
                              HistogramData* const data) const = 0;
   virtual const yb::AggregateStats& getAggregateStats(uint32_t histogramType) const = 0;
-  virtual void recordTick(uint32_t tickerType, uint64_t count = 0) = 0;
+  virtual void recordTick(uint32_t tickerType, uint64_t count = 1) = 0;
   virtual void setTickerCount(uint32_t tickerType, uint64_t count) = 0;
   virtual void measureTime(uint32_t histogramType, uint64_t time) = 0;
   virtual void addHistogram(uint32_t histogramType, const yb::AggregateStats& stats) = 0;

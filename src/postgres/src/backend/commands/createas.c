@@ -52,7 +52,7 @@
 #include "utils/snapmgr.h"
 
 /*  YB includes. */
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 
 typedef struct
@@ -558,7 +558,8 @@ intorel_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	 * going to fill it; otherwise, no change needed.
 	 */
 	if (is_matview && !into->skipData)
-		SetMatViewPopulatedState(intoRelationDesc, true);
+		SetMatViewPopulatedState(intoRelationDesc, true,
+								 false /* yb_in_place_refresh */ );
 
 	/*
 	 * Fill private fields of myState for use by later routines

@@ -898,7 +898,7 @@ TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3) {
 
   PGConn conn_user = ASSERT_RESULT(PGConnBuilder({
         .host = ts->bind_host(),
-        .port = ts->pgsql_rpc_port(),
+        .port = ts->ysql_port(),
         .user = kUser,
       }).Connect());
 
@@ -923,7 +923,7 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
   ExternalTabletServer* ts = cluster_->tserver_daemons()[ts_idx];
   PGConn conn_user = VERIFY_RESULT(PGConnBuilder({
         .host = ts->bind_host(),
-        .port = ts->pgsql_rpc_port(),
+        .port = ts->ysql_port(),
         .user = kUser,
       }).Connect());
 
@@ -946,7 +946,7 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
   LOG(INFO) << "Verify the revoke is in effect";
   PGConn conn_user2 = VERIFY_RESULT(PGConnBuilder({
         .host = ts->bind_host(),
-        .port = ts->pgsql_rpc_port(),
+        .port = ts->ysql_port(),
         .user = kUser,
       }).Connect());
   auto res = conn_user2.FetchFormat("SELECT * FROM $0tab", kUser);

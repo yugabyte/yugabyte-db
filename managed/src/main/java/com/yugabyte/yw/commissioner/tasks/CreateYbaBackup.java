@@ -18,12 +18,12 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.common.CloudUtil;
-import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.StorageUtil;
+import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -45,7 +45,7 @@ import play.libs.Json;
 @Slf4j
 public class CreateYbaBackup extends AbstractTaskBase {
 
-  private final CloudUtilFactory cloudUtilFactory;
+  private final StorageUtilFactory storageUtilFactory;
   private final PlatformReplicationHelper replicationHelper;
   private final PlatformReplicationManager replicationManager;
   private final ReleaseManager releaseManager;
@@ -55,12 +55,12 @@ public class CreateYbaBackup extends AbstractTaskBase {
       BaseTaskDependencies baseTaskDependencies,
       PlatformReplicationHelper replicationHelper,
       PlatformReplicationManager replicationManager,
-      CloudUtilFactory cloudUtilFactory,
+      StorageUtilFactory storageUtilFactory,
       ReleaseManager releaseManager) {
     super(baseTaskDependencies);
     this.replicationHelper = replicationHelper;
     this.replicationManager = replicationManager;
-    this.cloudUtilFactory = cloudUtilFactory;
+    this.storageUtilFactory = storageUtilFactory;
     this.releaseManager = releaseManager;
   }
 
@@ -132,20 +132,20 @@ public class CreateYbaBackup extends AbstractTaskBase {
           INTERNAL_SERVER_ERROR,
           "Could not find customer config with provided storage config UUID during create.");
     }
-    CloudUtil cloudUtil = cloudUtilFactory.getCloudUtil(customerConfig.getName());
-    if (!cloudUtil.uploadYbaBackup(customerConfig.getDataObject(), backup, taskParams.dirName)) {
+    StorageUtil storageUtil = storageUtilFactory.getStorageUtil(customerConfig.getName());
+    if (!storageUtil.uploadYbaBackup(customerConfig.getDataObject(), backup, taskParams.dirName)) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Could not upload YBA backup to cloud storage.");
     }
 
-    if (!cloudUtil.cleanupUploadedBackups(customerConfig.getDataObject(), taskParams.dirName)) {
+    if (!storageUtil.cleanupUploadedBackups(customerConfig.getDataObject(), taskParams.dirName)) {
       log.warn(
           "Error cleaning up uploaded backups to cloud storage, please delete manually to avoid"
               + " incurring unexpected costs.");
     }
 
     Set<String> remoteReleases =
-        cloudUtil.getRemoteReleaseVersions(customerConfig.getDataObject(), taskParams.dirName);
+        storageUtil.getRemoteReleaseVersions(customerConfig.getDataObject(), taskParams.dirName);
     // Get all local full paths
     Map<String, ReleaseContainer> localReleaseContainers =
         releaseManager.getAllLocalReleaseContainersByVersion();
@@ -159,7 +159,7 @@ public class CreateYbaBackup extends AbstractTaskBase {
               .getLocalReleasePathStrings()
               .forEach(
                   release -> {
-                    cloudUtil.uploadYBDBRelease(
+                    storageUtil.uploadYBDBRelease(
                         customerConfig.getDataObject(),
                         new File(release),
                         taskParams.dirName,

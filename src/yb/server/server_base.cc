@@ -85,7 +85,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/thread.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 #include "yb/util/tcmalloc_util.h"
 
 DEFINE_UNKNOWN_int32(num_reactor_threads, -1,

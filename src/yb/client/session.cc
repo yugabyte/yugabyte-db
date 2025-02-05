@@ -14,7 +14,6 @@
 #include "yb/client/session.h"
 
 #include "yb/client/async_rpc.h"
-#include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/error.h"
@@ -412,6 +411,11 @@ void YBSession::SetForceConsistentRead(ForceConsistentRead value) {
   if (batcher_) {
     batcher_->SetForceConsistentRead(value);
   }
+}
+
+void YBSession::SetBatcherBackgroundTransactionMeta(
+    const TransactionMetadata& background_transaction_meta) {
+  Batcher().SetBackgroundTransactionMeta(background_transaction_meta);
 }
 
 bool ShouldSessionRetryError(const Status& status) {

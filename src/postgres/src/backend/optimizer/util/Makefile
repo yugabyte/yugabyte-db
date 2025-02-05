@@ -13,6 +13,8 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = \
+	ybplan.o \
+	\
 	appendinfo.o \
 	clauses.o \
 	inherit.o \
@@ -26,7 +28,6 @@ OBJS = \
 	relnode.o \
 	restrictinfo.o \
 	tlist.o \
-	var.o \
-	ybcplan.o
+	var.o
 
 include $(top_srcdir)/src/backend/common.mk

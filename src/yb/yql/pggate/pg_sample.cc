@@ -31,15 +31,10 @@
 
 #include "yb/yql/pggate/pg_select_index.h"
 
+#include "yb/yql/pggate/util/ybc_guc.h"
+
 DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
     "Add this delay after each table is analyzed.");
-
-DEFINE_RUNTIME_AUTO_int32(
-    ysql_sampling_algorithm, kLocalVolatile,
-    static_cast<int32_t>(yb::YsqlSamplingAlgorithm::FULL_TABLE_SCAN),
-    static_cast<int32_t>(yb::YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING),
-    "Which sampling algorithm to use for YSQL. 0 - scan the whole table, 1 - sample the table for "
-    "a set of blocks, then scan selected blocks to form a final rows sample.");
 
 DEFINE_RUNTIME_int32(
     ysql_docdb_blocks_sampling_method, yb::DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3,
@@ -113,7 +108,11 @@ class PgSamplePicker : public PgSelectIndex {
     sampling_state.set_samplerows(0);           // rows scanned so far
     sampling_state.set_rowstoskip(-1);          // rows to skip before selecting another
     sampling_state.set_rstate_w(rand_state.w);  // Vitter algorithm's W
-    sampling_state.set_sampling_algorithm(YsqlSamplingAlgorithm(FLAGS_ysql_sampling_algorithm));
+    if (yb_allow_block_based_sampling_algorithm) {
+      sampling_state.set_sampling_algorithm(YsqlSamplingAlgorithm(yb_sampling_algorithm));
+    } else {
+      sampling_state.set_sampling_algorithm(YsqlSamplingAlgorithm::FULL_TABLE_SCAN);
+    }
     sampling_state.set_docdb_blocks_sampling_method(
         DocDbBlocksSamplingMethod(FLAGS_ysql_docdb_blocks_sampling_method));
     auto& rand = *sampling_state.mutable_rand_state();

@@ -16,6 +16,7 @@ package yb.master;
 
 option java_package = "org.yb.master";
 
+import "yb/common/common_net.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
@@ -202,6 +203,23 @@ message RollbackYsqlMajorCatalogVersionResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message GetYsqlMajorCatalogUpgradeStateRequestPB {}
+
+enum YsqlMajorCatalogUpgradeState {
+  YSQL_MAJOR_CATALOG_UPGRADE_UNINITIALIZED = 0;
+  YSQL_MAJOR_CATALOG_UPGRADE_DONE = 1;
+  YSQL_MAJOR_CATALOG_UPGRADE_PENDING = 2;
+  YSQL_MAJOR_CATALOG_UPGRADE_IN_PROGRESS = 3;
+  YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK = 4;
+  YSQL_MAJOR_CATALOG_UPGRADE_ROLLBACK_IN_PROGRESS = 5;
+  YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK = 6;
+}
+
+message GetYsqlMajorCatalogUpgradeStateResponsePB {
+  optional MasterErrorPB error = 1;
+  optional YsqlMajorCatalogUpgradeState state = 2;
+}
+
 message CheckIfPitrActiveRequestPB {}
 
 message CheckIfPitrActiveResponsePB {
@@ -337,6 +355,8 @@ service MasterAdmin {
       returns (FinalizeYsqlMajorCatalogUpgradeResponsePB);
   rpc RollbackYsqlMajorCatalogVersion(RollbackYsqlMajorCatalogVersionRequestPB)
       returns (RollbackYsqlMajorCatalogVersionResponsePB);
+  rpc GetYsqlMajorCatalogUpgradeState(GetYsqlMajorCatalogUpgradeStateRequestPB)
+      returns (GetYsqlMajorCatalogUpgradeStateResponsePB);
 
   rpc CheckIfPitrActive(CheckIfPitrActiveRequestPB)
       returns (CheckIfPitrActiveResponsePB);

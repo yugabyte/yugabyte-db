@@ -40,7 +40,7 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
   public void testModifiedTableWrite() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t(k INT PRIMARY KEY, v1 INT DEFAULT 10, v2 INT DEFAULT 20)");
-      int count = BuildTypeUtil.isSanitizerBuild() ? 10 : 50;
+      final int count = 10;
 
       final AtomicBoolean errorsDetected = new AtomicBoolean(false);
       final AtomicBoolean stopped = new AtomicBoolean(false);
@@ -52,9 +52,10 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
         b.withTServer(count % miniCluster.getNumTServers());
         connections[i] = b.connect();
       }
+      final AtomicInteger expectedExceptionsCount = new AtomicInteger(0);
       threads[0] = new Thread(() -> {
         try (Statement lstmt = connections[0].createStatement()) {
-          while (!stopped.get() && !errorsDetected.get()) {
+          while (!stopped.get() && !errorsDetected.get() && expectedExceptionsCount.get() == 0) {
             barrier.await();
             for (int i = 0; i < 20; ++i) {
               lstmt.execute("ALTER TABLE t DROP COLUMN IF EXISTS v");
@@ -71,13 +72,12 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
           barrier.reset();
         }
       });
-      final AtomicInteger expectedExceptionsCount = new AtomicInteger(0);
       for (int i = 1; i < count; ++i) {
         final int idx = i;
         threads[i] = new Thread(() -> {
           try (Statement lstmt = connections[idx].createStatement()) {
             for (int item_idx = 0;
-                 !stopped.get() && !errorsDetected.get() && item_idx < 1000000;
+                 !stopped.get() && !errorsDetected.get() && expectedExceptionsCount.get() == 0;
                  item_idx += 2) {
               barrier.await();
               try {
@@ -115,8 +115,7 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
       }
       Arrays.stream(threads).forEach(t -> t.start());
       final long startTimeMs = System.currentTimeMillis();
-      while (System.currentTimeMillis() - startTimeMs < BuildTypeUtil.adjustTimeout(100000) &&
-             !errorsDetected.get()) {
+      while (!errorsDetected.get() && expectedExceptionsCount.get() == 0) {
         Thread.sleep(1000);
       }
       stopped.set(true);

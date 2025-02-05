@@ -476,13 +476,13 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
       const TxnSnapshotId& snapshot_id, const TableId& table_id) {
     auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
     auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().GetTableById(table_id));
-    auto tablets = VERIFY_RESULT(table->GetTablets(master::IncludeInactive::kTrue));
+    auto tablets = VERIFY_RESULT(table->GetTabletsIncludeInactive());
     auto* coordinator = down_cast<master::MasterSnapshotCoordinator*>(
         &master_leader->master()->snapshot_coordinator());
     for (const auto& tablet : tablets) {
       if (!coordinator->TEST_IsTabletCoveredBySnapshot(tablet->id(), snapshot_id)) {
         return STATUS_FORMAT(
-            IllegalState, "Covering snapshot for tablet $0 not found", tablet->id());
+            IllegalState, "Snapshot $0 does not cover tablet $1", snapshot_id, tablet->id());
       }
     }
     return Status::OK();

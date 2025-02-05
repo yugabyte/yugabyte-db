@@ -139,6 +139,12 @@ public class DrConfig extends Model {
     return drConfig;
   }
 
+  /** It updates the dr config object and all of its xCluster configs in a transaction. */
+  @Transactional
+  public void update() {
+    super.update();
+  }
+
   public XClusterConfig addXClusterConfig(UUID sourceUniverseUUID, UUID targetUniverseUUID) {
     return addXClusterConfig(sourceUniverseUUID, targetUniverseUUID, ConfigType.Txn);
   }

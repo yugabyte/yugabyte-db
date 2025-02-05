@@ -7,11 +7,17 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
@@ -97,9 +103,15 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           createDownloadTasks(toOrderedSet(nodes.asPair()), newVersion);
 
           boolean ysqlMajorVersionUpgrade = false;
+          boolean requireAdditionalSuperUserForCatalogUpgrade = false;
           if (prevYBSoftwareConfig != null) {
             ysqlMajorVersionUpgrade =
                 gFlagsValidation.ysqlMajorVersionUpgrade(
+                    prevYBSoftwareConfig.getSoftwareVersion(),
+                    universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+            requireAdditionalSuperUserForCatalogUpgrade =
+                isSuperUserRequiredForCatalogUpgrade(
+                    universe,
                     prevYBSoftwareConfig.getSoftwareVersion(),
                     universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
           }
@@ -110,7 +122,8 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
                 nodes.tserversList,
                 newVersion,
                 getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
-                false /* reProvisionRequired */);
+                false /* reProvisionRequired */,
+                ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS : null);
           }
 
           if (nodes.mastersList.size() > 0) {
@@ -126,6 +139,7 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
                 getNonMasterNodes(nodes.mastersList, nodes.tserversList),
                 newVersion,
                 getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
+                ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS : null,
                 false /* activeRole */);
 
             createMasterUpgradeFlowTasks(
@@ -133,7 +147,20 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
                 nodes.mastersList,
                 newVersion,
                 getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
+                ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS : null,
                 true /* activeRole */);
+          }
+
+          if (ysqlMajorVersionUpgrade) {
+            // Un-set the flag set for ysql major version upgrade.
+            createSetExpressionPushdownFlagInMemoryTask(
+                universe, getNodesToEnableExpressionPushdown(universe), true /* flagValue */);
+            createServerConfUpdateTaskForYsqlMajorUpgrade(
+                universe, universe.getTServers(), YsqlMajorVersionUpgradeState.ROLLBACK_COMPLETE);
+
+            if (requireAdditionalSuperUserForCatalogUpgrade) {
+              createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
+            }
           }
 
           // Check software version on each node.
@@ -147,5 +174,22 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
               false /* isSoftwareRollbackAllowed */);
         });
+  }
+
+  private List<NodeDetails> getNodesToEnableExpressionPushdown(Universe universe) {
+    List<NodeDetails> nodes = new ArrayList<>();
+    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
+      for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
+        if (node.isTserver) {
+          Map<String, String> gflag =
+              GFlagsUtil.getGFlagsForNode(
+                  node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters);
+          if (!GFlagsUtil.checkExperssionPushdownValueInFlags(gflag, "false")) {
+            nodes.add(node);
+          }
+        }
+      }
+    }
+    return nodes;
   }
 }

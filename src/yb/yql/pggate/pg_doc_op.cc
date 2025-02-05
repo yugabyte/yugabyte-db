@@ -64,7 +64,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     return result;
   }
 
-  Status ExecuteInit(const PgExecParameters* exec_params) override {
+  Status ExecuteInit(const YbcPgExecParameters* exec_params) override {
     return Status::OK();
   }
 
@@ -307,7 +307,7 @@ Result<PgDocResponse::Data> PgDocResponse::Get(PgSession& session) {
 PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, const Sender& sender)
     : pg_session_(pg_session), table_(*table), sender_(sender) {}
 
-Status PgDocOp::ExecuteInit(const PgExecParameters *exec_params) {
+Status PgDocOp::ExecuteInit(const YbcPgExecParameters *exec_params) {
   end_of_data_ = false;
   if (exec_params) {
     exec_params_ = *exec_params;
@@ -315,7 +315,7 @@ Status PgDocOp::ExecuteInit(const PgExecParameters *exec_params) {
   return Status::OK();
 }
 
-const PgExecParameters& PgDocOp::ExecParameters() const {
+const YbcPgExecParameters& PgDocOp::ExecParameters() const {
   return exec_params_;
 }
 
@@ -520,10 +520,14 @@ Status PgDocOp::CreateRequests() {
   return CompleteRequests();
 }
 
-Status PgDocOp::PopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) {
+Result<bool> PgDocOp::PopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) {
   RETURN_NOT_OK(DoPopulateByYbctidOps(generator, keep_order));
   request_population_completed_ = true;
-  return CompleteRequests();
+  if (active_op_count_ > 0) {
+    RETURN_NOT_OK(CompleteRequests());
+    return true;
+  }
+  return false;
 }
 
 Status PgDocOp::CompleteRequests() {
@@ -558,7 +562,7 @@ PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
                          const Sender& sender)
     : PgDocOp(pg_session, table, sender), read_op_(std::move(read_op)) {}
 
-Status PgDocReadOp::ExecuteInit(const PgExecParameters* exec_params) {
+Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
   RSTATUS_DCHECK(
       pgsql_ops_.empty() || !exec_params,
       IllegalState, "Exec params can't be changed for already created operations");
@@ -677,6 +681,25 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
     // Assign ybctids to operators.
     auto& read_op = GetReadOp(partition);
     auto& read_req = read_op.read_request();
+
+    // Check bounds, if set.
+    // We also ensure that the bounds are valid ybctids. Hash partitioned relations use hash codes
+    // as partitioning keys, they are not comparable to ybctids. Other partitioning types use keys
+    // comparable with ybctids.
+    if (read_req.has_lower_bound()) {
+      const auto& lower_bound = read_req.lower_bound();
+      if (!dockv::PartitionSchema::IsValidHashPartitionKeyBound(lower_bound.key().ToBuffer()) &&
+          (lower_bound.is_inclusive() ? ybctid < lower_bound.key() : ybctid <= lower_bound.key())) {
+        continue;
+      }
+    }
+    if (read_req.has_upper_bound()) {
+      const auto& upper_bound = read_req.upper_bound();
+      if (!dockv::PartitionSchema::IsValidHashPartitionKeyBound(upper_bound.key().ToBuffer()) &&
+          (upper_bound.is_inclusive() ? ybctid > upper_bound.key() : ybctid >= upper_bound.key())) {
+        continue;
+      }
+    }
 
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep

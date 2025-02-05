@@ -253,7 +253,7 @@ In addition to the method-specific options, there is one method-independent auth
 The following record allows a single host with the IP address `192.168.1.10` to connect to any database (`all`) as any user (`all`) without a password (`trust`).
 
 ```sh
-host all 192.168.1.10 255.255.255.255 trust
+host all all 192.168.1.10/32 trust
 ```
 
 #### local entry

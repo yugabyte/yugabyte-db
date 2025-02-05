@@ -552,10 +552,10 @@ Perform the following steps to prepare your source-replica database:
     --upgraded to ybvoyager_import_data_batches_metainfo_v3 post v1.6
     CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_batches_metainfo_v3 (
                migration_uuid VARCHAR2(36),
-               data_file_name VARCHAR2(250),
+               data_file_name VARCHAR2(4000),
                batch_number NUMBER(10),
-               schema_name VARCHAR2(250),
-               table_name VARCHAR2(250),
+               schema_name VARCHAR2(4000),
+               table_name VARCHAR2(4000),
                rows_imported NUMBER(19),
                PRIMARY KEY (migration_uuid, data_file_name, batch_number, schema_name, table_name)
     );
@@ -572,7 +572,7 @@ Perform the following steps to prepare your source-replica database:
 
     CREATE TABLE ybvoyager_metadata.ybvoyager_imported_event_count_by_table (
             migration_uuid VARCHAR2(36),
-            table_name VARCHAR2(250),
+            table_name VARCHAR2(4000),
             channel_no INT,
             total_events NUMBER(19),
             num_inserts NUMBER(19),
@@ -955,7 +955,7 @@ Cutover is the last phase, where you switch your application over from the sourc
 
 Keep monitoring the metrics displayed on `export data from source` and `import data to target` processes. After you notice that the import of events is catching up to the exported events, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data to target process to help you determine the cutover.
 
-<!--When initiating cutover, you can choose the change data capture replication protocol to use using the [--use-yb-grpc-connector](../../reference/cutover-archive/cutover/) flag. By default the flag is true, and migration will use the gRPC replication protocol to export data from target. For YugabyteDB v2024.1.1 or later, you can set the flag to false to choose the PostgreSQL replication protocol. Before importing the schema you need to ensure that there aren't any ALTER TABLE commands that rewrite the table. You can merge the ALTER TABLE commands into their respective CREATE TABLE commands. For more information on CDC in YugabyteDB, refer to [Change data capture](../../../explore/change-data-capture/).-->
+<!--When initiating cutover, you can choose the change data capture replication protocol to use using the [--use-yb-grpc-connector](../../reference/cutover-archive/cutover/) flag. By default the flag is true, and migration will use the gRPC replication protocol to export data from target. For YugabyteDB v2024.1.1 or later, you can set the flag to false to choose the PostgreSQL replication protocol. Before importing the schema you need to ensure that there aren't any ALTER TABLE commands that rewrite the table. You can merge the ALTER TABLE commands into their respective CREATE TABLE commands. For more information on CDC in YugabyteDB, refer to [Change data capture](../../../develop/change-data-capture/).-->
 
 Perform the following steps as part of the cutover process:
 

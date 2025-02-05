@@ -1922,7 +1922,7 @@ _equalDropProfileStmt(const YbDropProfileStmt *a, const YbDropProfileStmt *b)
 }
 
 static bool
-_equalCreateTableGroupStmt(const CreateTableGroupStmt *a, const CreateTableGroupStmt *b)
+_equalYbCreateTableGroupStmt(const YbCreateTableGroupStmt *a, const YbCreateTableGroupStmt *b)
 {
 	COMPARE_STRING_FIELD(tablegroupname);
 	COMPARE_STRING_FIELD(tablespacename);
@@ -3254,7 +3254,7 @@ _equalBitString(const BitString *a, const BitString *b)
 }
 
 static bool
-_equalBackfillIndexStmt(const BackfillIndexStmt *a, const BackfillIndexStmt *b)
+_equalYbBackfillIndexStmt(const YbBackfillIndexStmt *a, const YbBackfillIndexStmt *b)
 {
 	COMPARE_SCALAR_FIELD(oid_list);
 	COMPARE_NODE_FIELD(bfinfo);
@@ -3271,7 +3271,7 @@ _equalYbBackfillInfo(const YbBackfillInfo *a, const YbBackfillInfo *b)
 }
 
 static bool
-_equalRowBounds(const RowBounds *a, const RowBounds *b)
+_equalYbRowBounds(const YbRowBounds *a, const YbRowBounds *b)
 {
 	COMPARE_STRING_FIELD(partition_key);
 	COMPARE_STRING_FIELD(row_key_start);
@@ -3787,8 +3787,8 @@ equal(const void *a, const void *b)
 		case T_YbDropProfileStmt:
 			retval = _equalDropProfileStmt(a, b);
 			break;
-		case T_CreateTableGroupStmt:
-			retval = _equalCreateTableGroupStmt(a, b);
+		case T_YbCreateTableGroupStmt:
+			retval = _equalYbCreateTableGroupStmt(a, b);
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _equalCreateTableSpaceStmt(a, b);
@@ -4096,14 +4096,14 @@ equal(const void *a, const void *b)
 		case T_PublicationTable:
 			retval = _equalPublicationTable(a, b);
 			break;
-		case T_BackfillIndexStmt:
-			retval = _equalBackfillIndexStmt(a, b);
+		case T_YbBackfillIndexStmt:
+			retval = _equalYbBackfillIndexStmt(a, b);
 			break;
 		case T_YbBackfillInfo:
 			retval = _equalYbBackfillInfo(a, b);
 			break;
-		case T_RowBounds:
-			retval = _equalRowBounds(a, b);
+		case T_YbRowBounds:
+			retval = _equalYbRowBounds(a, b);
 			break;
 
 		case T_YbExprColrefDesc:

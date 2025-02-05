@@ -69,6 +69,12 @@ $ ./autogen.sh && ./configure --with-pgsql && make -j && sudo make install
 
   <div id="rhel" class="tab-pane fade" role="tabpanel" aria-labelledby="rhel-tab">
 
+{{< note title="Note" >}}
+
+RHEL package is only for EL8
+
+{{< /note >}}
+
 ```sh
 wget https://github.com/yugabyte/sysbench/releases/download/1.0.0-yb/sysbench-1.0.0-1.el8.x86_64.rpm
 
@@ -77,6 +83,12 @@ sudo yum install -y sysbench-1.0.0-1.el8.x86_64.rpm
 
   </div>
   <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
+
+{{< note title="Note" >}}
+
+The MacOS package is only for Apple Silicon.
+
+{{< /note >}}
 
 ```sh
 brew install postgresql@14 wget
@@ -129,18 +141,18 @@ $ sysbench <workload>                       \
 Run a workload as follows:
 
 ```sh
-$ sysbench <workload>               \
-      --tables=10                   \
-      --table-size=100000           \
-      --range_key_partitioning=true \
-      --db-driver=pgsql             \
-      --pgsql-host=127.0.0.1        \
-      --pgsql-port=5433             \
-      --pgsql-user=yugabyte         \
-      --pgsql-db=yugabyte           \
-      --threads=64                  \
-      --time=120                    \
-      --warmup-time=120             \
+$ sysbench <workload>                       \
+      --tables=10                           \
+      --table-size=100000                   \
+      --range_key_partitioning=true         \
+      --db-driver=pgsql                     \
+      --pgsql-host=<comma-separated-ips>    \
+      --pgsql-port=5433                     \
+      --pgsql-user=yugabyte                 \
+      --pgsql-db=yugabyte                   \
+      --threads=64                          \
+      --time=120                            \
+      --warmup-time=120                     \
       run
 ```
 

@@ -137,7 +137,7 @@ func (c *Context) ReleaseType() string {
 
 // Architecture of YugabyteDB release
 func (c *Context) Architecture() string {
-	arch := ""
+	arch := "-"
 	for i, v := range c.r.GetArtifacts() {
 		vArch := ""
 		if len(strings.TrimSpace(v.GetArchitecture())) != 0 {
@@ -156,7 +156,7 @@ func (c *Context) Architecture() string {
 
 // Universes of YugabyteDB release
 func (c *Context) Universes() string {
-	universes := ""
+	universes := "-"
 	for i, v := range c.r.GetUniverses() {
 		if i == 0 {
 			universes = v.GetName()

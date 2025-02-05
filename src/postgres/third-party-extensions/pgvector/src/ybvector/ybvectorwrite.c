@@ -34,8 +34,8 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_type.h"
 #include "catalog/yb_type.h"
-#include "commands/ybccmds.h"
-#include "executor/ybcModifyTable.h"
+#include "commands/yb_cmds.h"
+#include "executor/ybModifyTable.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "pg_yb_utils.h"
@@ -66,19 +66,15 @@ typedef struct {
  * Binds vector index option during creation.
  */
 void
-bindVectorIndexOptions(YBCPgStatement handle,
+bindVectorIndexOptions(YbcPgStatement handle,
 					   IndexInfo *indexInfo,
 					   TupleDesc indexTupleDesc,
-					   YbPgVectorIdxType ybpg_idx_type)
+					   YbcPgVectorIdxType ybpg_idx_type,
+					   YbcPgVectorDistType dist_type)
 {
-	YbPgVectorIdxOptions options;
+	YbcPgVectorIdxOptions options;
 	options.idx_type = ybpg_idx_type;
-
-	/*
-	 * Hardcoded for now.
-	 * TODO(tanuj): Pass down distance info from the used distance opclass.
-	 */
-	options.dist_type = YB_VEC_DIST_L2;
+	options.dist_type = dist_type;
 
 	/* We only support indexes with one vector attribute for now. */
 	Assert(indexTupleDesc->natts == 1);
@@ -96,7 +92,7 @@ bindVectorIndexOptions(YBCPgStatement handle,
  * Copied from ybginwrite.c.
  */
 static void
-doBindsForIdx(YBCPgStatement stmt,
+doBindsForIdx(YbcPgStatement stmt,
 			  void *indexstate,
 			  Relation index,
 			  Datum *values,
@@ -144,7 +140,7 @@ doBindsForIdx(YBCPgStatement stmt,
  * ybginwrite.c.
  */
 static void
-doBindsForIdxWrite(YBCPgStatement stmt,
+doBindsForIdxWrite(YbcPgStatement stmt,
 				   void *indexstate,
 				   Relation index,
 				   Datum *values,
@@ -162,7 +158,7 @@ doBindsForIdxWrite(YBCPgStatement stmt,
  * ybginwrite.c.
  */
 static void
-doBindsForIdxDelete(YBCPgStatement stmt,
+doBindsForIdxDelete(YbcPgStatement stmt,
 				   void *indexstate,
 				   Relation index,
 				   Datum *values,
@@ -455,6 +451,9 @@ ybvectorcopartitionedbackfill(Relation heap, Relation index, struct IndexInfo *i
 IndexBuildResult *
 ybvectorcopartitionedbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 {
+	HandleYBStatus(YBCPgWaitVectorIndexReady(
+		YBCGetDatabaseOid(index), index->rd_id));
+
 	IndexBuildResult *result = palloc0(sizeof(IndexBuildResult));
 
 	return result;

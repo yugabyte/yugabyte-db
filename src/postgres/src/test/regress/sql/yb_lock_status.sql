@@ -117,12 +117,12 @@ END ;
 $$ LANGUAGE plpgsql;
 
 -- Basic queries
-SELECT true FROM yb_lock_status(null, null);
-SELECT true FROM yb_lock_status('yb_lock_tests'::regclass, null);
-SELECT true FROM yb_lock_status('yb_lock_tests'::regclass::int4, null);
-SELECT true FROM yb_lock_status(null, 'bogus');
-SELECT true FROM yb_lock_status(null, '10000000-2000-3000-1000-400000000000');
-SELECT true FROM yb_lock_status('yb_lock_tests'::regclass, '10000000-2000-3000-1000-400000000000');
+SELECT true::bool FROM yb_lock_status(null, null);
+SELECT true::bool FROM yb_lock_status('yb_lock_tests'::regclass, null);
+SELECT true::bool FROM yb_lock_status('yb_lock_tests'::regclass::int4, null);
+SELECT true::bool FROM yb_lock_status(null, 'bogus');
+SELECT true::bool FROM yb_lock_status(null, '10000000-2000-3000-1000-400000000000');
+SELECT true::bool FROM yb_lock_status('yb_lock_tests'::regclass, '10000000-2000-3000-1000-400000000000');
 
 -- READ COMMITTED
 -- Basic insert

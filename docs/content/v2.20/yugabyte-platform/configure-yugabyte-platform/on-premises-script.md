@@ -1,14 +1,16 @@
 ---
 title: Manually provision on-premises nodes using a script
-headerTitle: Assisted manual provisioning
+headerTitle: Legacy assisted manual provisioning
 linkTitle: Legacy assisted manual
 description: Provision the on-premises nodes using a script.
-headContent: Provision on-premises nodes using the script
+headContent: Manually provision on-premises nodes using a script
 menu:
   v2.20_yugabyte-platform:
     identifier: on-premises-script
     parent: on-premises-nodes
     weight: 20
+aliases:
+  - /v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/
 type: docs
 ---
 

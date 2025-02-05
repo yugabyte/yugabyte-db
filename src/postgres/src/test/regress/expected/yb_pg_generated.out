@@ -73,7 +73,7 @@ LINE 1: ...t PRIMARY KEY, b int GENERATED ALWAYS AS identity GENERATED ...
 -- reference to system column not allowed in generated column
 -- (except tableoid, which we test below)
 CREATE TABLE gtest_err_6a (a int PRIMARY KEY, b bool GENERATED ALWAYS AS (xmin <> 37) STORED); -- YB note: xmin column not supported in YB
-ERROR:  System column "xmin" is not supported yet
+ERROR:  system column "xmin" is not supported yet
 -- various prohibited constructs
 CREATE TABLE gtest_err_7a (a int PRIMARY KEY, b int GENERATED ALWAYS AS (avg(a)) STORED);
 ERROR:  aggregate functions are not allowed in column generation expressions
@@ -735,7 +735,7 @@ CREATE TABLE gtest29 (
 );
 INSERT INTO gtest29 (a) VALUES (3), (4);
 ALTER TABLE gtest29 ALTER COLUMN a DROP EXPRESSION;  -- error
-ERROR:  This ALTER TABLE command is not yet supported.
+ERROR:  this ALTER TABLE command is not yet supported
 -- YB note: port additional tests once drop expression is supported.
 -- with inheritance
 CREATE TABLE gtest30 (

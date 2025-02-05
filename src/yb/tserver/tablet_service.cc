@@ -64,7 +64,6 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/util/callsite_profiling.h"
 
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/ql_rowblock.h"
@@ -93,16 +92,19 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/tserver/heartbeater.h"
+#include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/read_query.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/crc.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -116,6 +118,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -128,6 +131,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
+#include "yb/util/uuid.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/ysql_binary_runner.h"
 
@@ -279,10 +283,17 @@ DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
 
+DEFINE_RUNTIME_bool(ysql_debug_log_write_requests, false,
+    "Print all YSQL write requests received by this process to the log."
+    "Note: Enabling this flag might log sensitive information.");
+TAG_FLAG(ysql_debug_log_write_requests, advanced);
+TAG_FLAG(ysql_debug_log_write_requests, unsafe);
+
 double TEST_delay_create_transaction_probability = 0;
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
+
+YB_STRONGLY_TYPED_HEX_UUID_IMPL(PgTxnSnapshotLocalId);
 
 using consensus::ChangeConfigRequestPB;
 using consensus::ChangeConfigResponsePB;
@@ -382,6 +393,64 @@ void PerformAtLeader(
       SetupErrorAndRespond(resp->mutable_error(), status, context);
     }
   }
+}
+
+Result<PgTxnSnapshot> GetLocalPgTxnSnapshotImpl(
+    TabletServerIf& server, const std::string& snapshot_id_uuid) {
+  return server.GetLocalPgTxnSnapshot(VERIFY_RESULT(
+      FullyDecodePgTxnSnapshotLocalId(snapshot_id_uuid)));
+}
+
+Status PrintYSQLWriteRequest(
+    const WriteRequestPB& req, const RpcContext& context, const Tablet& tablet) {
+  if (req.pgsql_write_batch_size() == 0) {
+    return Status::OK();
+  }
+  const auto& metadata = *tablet.metadata();
+
+  std::stringstream ss;
+  ss << "YSQL Write Request: " << std::endl << "From: " << context.requestor_string() << std::endl;
+  if (req.has_write_batch() && req.write_batch().has_transaction()) {
+    ss << "TransactionId: "
+       << VERIFY_RESULT(FullyDecodeTransactionId(req.write_batch().transaction().transaction_id()))
+       << std::endl;
+  }
+  for (const auto& entry : req.pgsql_write_batch()) {
+    ss << std::endl;
+
+    auto stmt_type = PgsqlWriteRequestPB::PgsqlStmtType_Name(entry.stmt_type());
+    boost::replace_all(stmt_type, "PGSQL_", "");
+    ss << stmt_type << ": " << std::endl;
+
+    if (entry.force_catalog_modifications()) {
+      ss << "\tforce_catalog_modifications: true" << std::endl;
+    }
+    const auto table_info = VERIFY_RESULT(metadata.GetTableInfo(entry.table_id()));
+    ss << "\tTable: " << table_info->table_name << " [" << entry.table_id() << "]" << std::endl;
+
+    ss << "\tKey: ";
+    if (entry.has_ybctid_column_value()) {
+      ss << "ybctid [" << entry.ybctid_column_value().ShortDebugString() << "]";
+    }
+    if (entry.has_ybctid_column_value() && !entry.range_column_values().empty()) {
+      ss << ", ";
+    }
+    if (!entry.range_column_values().empty()) {
+      ss << "range [" << pb_util::JoinRepeatedPBs(entry.range_column_values()) << "]";
+    }
+    ss << std::endl;
+    if (!entry.column_new_values().empty() || !entry.column_values().empty()) {
+      ss << "\tColumns: ";
+      ss << pb_util::JoinRepeatedPBs(entry.column_new_values());
+      if (!entry.column_new_values().empty() && !entry.column_values().empty()) {
+        ss << ", ";
+      }
+      ss << pb_util::JoinRepeatedPBs(entry.column_values());
+      ss << std::endl;
+    }
+  }
+  LOG(INFO) << ss.str();
+  return Status::OK();
 }
 
 } // namespace
@@ -2222,43 +2291,24 @@ Status TabletServiceImpl::PerformWrite(
   TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
                "tablet_id", req->tablet_id());
   VLOG(2) << "Received Write RPC: " << req->DebugString();
+
   UpdateClock(*req, server_->Clock());
 
   auto tablet =
       VERIFY_RESULT(LookupLeaderTablet(server_->tablet_peer_lookup(), req->tablet_id(), resp));
   RETURN_NOT_OK(CheckWriteThrottling(req->rejection_score(), tablet.peer.get()));
 
+  if (FLAGS_ysql_debug_log_write_requests) {
+    WARN_NOT_OK(
+        PrintYSQLWriteRequest(*req, *context, *tablet.tablet),
+        "Failed to print YSQL write request");
+  }
+
   if (tablet.tablet->metadata()->hidden()) {
     return STATUS(
         NotFound, "Tablet not found", req->tablet_id(),
         TabletServerError(TabletServerErrorPB::TABLET_NOT_FOUND));
   }
-
-#if defined(DUMP_WRITE)
-  if (req->has_write_batch() && req->write_batch().has_transaction()) {
-    VLOG(1) << "Write with transaction: " << req->write_batch().transaction().ShortDebugString();
-    if (req->pgsql_write_batch_size() != 0) {
-      auto txn_id = CHECK_RESULT(FullyDecodeTransactionId(
-          req->write_batch().transaction().transaction_id()));
-      for (const auto& entry : req->pgsql_write_batch()) {
-        if (entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
-          auto key = entry.column_new_values(0).expr().value().int32_value();
-          LOG(INFO) << txn_id << " UPDATE: " << key << " = "
-                    << entry.column_new_values(1).expr().value().string_value();
-        } else if (
-            entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
-            entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
-          dockv::DocKey doc_key;
-          CHECK_OK(doc_key.FullyDecodeFrom(entry.ybctid_column_value().value().binary_value()));
-          LOG(INFO) << txn_id << " INSERT: " << doc_key.hashed_group()[0].GetInt32() << " = "
-                    << entry.column_values(0).expr().value().string_value();
-        } else if (entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_DELETE) {
-          LOG(INFO) << txn_id << " DELETE: " << entry.ShortDebugString();
-        }
-      }
-    }
-  }
-#endif
 
   if (PREDICT_FALSE(req->has_write_batch() && !req->has_external_hybrid_time() &&
       (!req->write_batch().write_pairs().empty() || !req->write_batch().read_pairs().empty()))) {
@@ -3437,6 +3487,20 @@ void TabletServiceImpl::AdminExecutePgsql(
   }
 }
 
+void TabletServiceImpl::GetLocalPgTxnSnapshot(
+    const GetLocalPgTxnSnapshotRequestPB* req, GetLocalPgTxnSnapshotResponsePB* resp,
+    rpc::RpcContext context) {
+  const auto result = GetLocalPgTxnSnapshotImpl(*server_, req->snapshot_id());
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), &context);
+    return;
+  }
+  const auto& snapshot = *result;
+  snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
+  snapshot.read_time.ToPB(resp->mutable_snapshot_read_time());
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::TestRetry(
     const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {
@@ -3455,5 +3519,4 @@ void TabletServiceAdminImpl::TestRetry(
 void TabletServiceImpl::Shutdown() {
 }
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

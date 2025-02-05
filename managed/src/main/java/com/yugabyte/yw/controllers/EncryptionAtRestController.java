@@ -19,11 +19,16 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.CiphertrustEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.CiphertrustEARServiceUtil.CipherTrustKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.CiphertrustManagerClient.AuthType;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
@@ -66,6 +71,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -79,11 +85,16 @@ import play.mvc.Result;
 public class EncryptionAtRestController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
 
-  // All these fields must be kept the same from the old authConfig (if it has)
+  // Below KMS fields must be kept the same from the old authConfig (if it has)
   public static final List<String> awsKmsNonEditableFields =
       AwsKmsAuthConfigField.getNonEditableFields();
-  // Below AWS fields can be editable. If no new field is specified, use the same old one.
+  public static final List<String> cipherTrustKmsNonEditableFields =
+      CipherTrustKmsAuthConfigField.getNonEditableFields();
+
+  // Below KMS fields can be editable. If no new field is specified, use the same old one.
   public static final List<String> awsKmsEditableFields = AwsKmsAuthConfigField.getEditableFields();
+  public static final List<String> editableFieldsCipherTrust =
+      CipherTrustKmsAuthConfigField.getEditableFields();
 
   private static Set<String> API_URL =
       ImmutableSet.of("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io");
@@ -100,6 +111,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
   @Inject GcpEARServiceUtil gcpEARServiceUtil;
 
   @Inject AzuEARServiceUtil azuEARServiceUtil;
+
+  @Inject CiphertrustEARServiceUtil ciphertrustEARServiceUtil;
+
+  @Inject RuntimeConfGetter confGetter;
 
   private void checkIfKMSConfigExists(UUID customerUUID, ObjectNode formData) {
     String kmsConfigName = formData.get("name").asText();
@@ -188,6 +203,20 @@ public class EncryptionAtRestController extends AuthenticatedController {
           throw new PlatformServiceException(BAD_REQUEST, e.toString());
         }
         break;
+      case CIPHERTRUST:
+        try {
+          ciphertrustEARServiceUtil.validateKMSProviderConfigFormData(formData);
+          LOG.info(
+              "Finished validating Ciphertrust provider config form data for key '{}'.",
+              ciphertrustEARServiceUtil.getConfigFieldValue(
+                  formData, CipherTrustKmsAuthConfigField.KEY_NAME.fieldName));
+        } catch (Exception e) {
+          LOG.error(
+              "Could not finish validating Ciphertrust provider config form data. Error: {}",
+              e.toString());
+          throw new PlatformServiceException(BAD_REQUEST, e.toString());
+        }
+        break;
       default:
         throw new PlatformServiceException(
             BAD_REQUEST, "Unrecognized key provider: " + keyProvider);
@@ -272,6 +301,29 @@ public class EncryptionAtRestController extends AuthenticatedController {
           }
         }
         LOG.info("Verified that all the fields in the AZU edit request are editable");
+        break;
+      case CIPHERTRUST:
+        for (String field : cipherTrustKmsNonEditableFields) {
+          if (formData.has(field)) {
+            if (!authconfig.has(field)
+                || (authconfig.has(field) && !authconfig.get(field).equals(formData.get(field)))) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format("CIPHERTRUST KmsConfig field '%s' cannot be changed.", field));
+            }
+          }
+        }
+        // Check that auth type is present and valid.
+        if (!formData.has(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName)
+            || StringUtils.isBlank(
+                formData.get(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName).asText())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "CIPHERTRUST KmsConfig field '%s' is required.",
+                  CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName));
+        }
+        LOG.info("Verified that all the fields in the CIPHERTRUST edit request are editable.");
         break;
       default:
         throw new PlatformServiceException(
@@ -387,12 +439,60 @@ public class EncryptionAtRestController extends AuthenticatedController {
           }
         }
         break;
+      case CIPHERTRUST:
+        // Copy all the non-editable fields from the authConfig to the formData.
+        for (String field : cipherTrustKmsNonEditableFields) {
+          if (authConfig.has(field)) {
+            formData.set(field, authConfig.get(field));
+          }
+        }
+        AuthType authTypeEnum =
+            AuthType.valueOf(
+                authConfig.path(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName).asText());
+        if (AuthType.REFRESH_TOKEN.equals(authTypeEnum)) {
+          if (!formData.has(CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName)
+              && authConfig.has(CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName)) {
+            // If the refresh token is not present in the formData, add it from the authConfig.
+            formData.set(
+                CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName,
+                authConfig.get(CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName));
+          }
+        } else if (AuthType.PASSWORD.equals(authTypeEnum)) {
+          if (!formData.has(CipherTrustKmsAuthConfigField.USERNAME.fieldName)
+              && authConfig.has(CipherTrustKmsAuthConfigField.USERNAME.fieldName)) {
+            // If the username is not present in the formData, add it from the authConfig.
+            formData.set(
+                CipherTrustKmsAuthConfigField.USERNAME.fieldName,
+                authConfig.get(CipherTrustKmsAuthConfigField.USERNAME.fieldName));
+          }
+          if (!formData.has(CipherTrustKmsAuthConfigField.PASSWORD.fieldName)
+              && authConfig.has(CipherTrustKmsAuthConfigField.PASSWORD.fieldName)) {
+            // If the password is not present in the formData, add it from the authConfig.
+            formData.set(
+                CipherTrustKmsAuthConfigField.PASSWORD.fieldName,
+                authConfig.get(CipherTrustKmsAuthConfigField.PASSWORD.fieldName));
+          }
+        }
+        break;
       default:
         throw new PlatformServiceException(
             BAD_REQUEST,
             "Unrecognized key provider while adding non editable fields: " + keyProvider);
     }
     return formData;
+  }
+
+  public void checkCipherTrustRuntimeFlag(KeyProvider keyProvider) {
+    if (KeyProvider.CIPHERTRUST.equals(keyProvider)) {
+      boolean allowCiphertrustKms = confGetter.getGlobalConf(GlobalConfKeys.kmsAllowCiphertrust);
+      if (!allowCiphertrustKms) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Ciphertrust KMS is not allowed. Please enable the runtime flag '%s' first.",
+                GlobalConfKeys.kmsAllowCiphertrust.getKey()));
+      }
+    }
   }
 
   @ApiOperation(value = "Create a KMS configuration", response = YBPTask.class)
@@ -417,6 +517,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             customerUUID.toString(), keyProvider));
     Customer customer = Customer.getOrBadRequest(customerUUID);
     try {
+      checkCipherTrustRuntimeFlag(Enum.valueOf(KeyProvider.class, keyProvider));
       TaskType taskType = TaskType.CreateKMSConfig;
       ObjectNode formData = (ObjectNode) request.body().asJson();
       // checks if a already KMS Config exists with the requested name
@@ -481,6 +582,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
               + customerUUID;
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
+    checkCipherTrustRuntimeFlag(config.getKeyProvider());
     try {
       TaskType taskType = TaskType.EditKMSConfig;
       ObjectNode formData = (ObjectNode) request.body().asJson();
@@ -537,6 +639,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     LOG.info(String.format("Retrieving KMS configuration %s", configUUID.toString()));
     Customer.getOrBadRequest(customerUUID);
     KmsConfig config = KmsConfig.getOrBadRequest(customerUUID, configUUID);
+    checkCipherTrustRuntimeFlag(config.getKeyProvider());
     ObjectNode kmsConfig =
         keyManager.getServiceInstance(config.getKeyProvider().name()).getAuthConfig(configUUID);
     if (kmsConfig == null) {
@@ -607,6 +710,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     try {
       KmsConfig config = KmsConfig.getOrBadRequest(customerUUID, configUUID);
+      checkCipherTrustRuntimeFlag(config.getKeyProvider());
       TaskType taskType = TaskType.DeleteKMSConfig;
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
       taskParams.kmsProvider = config.getKeyProvider();
@@ -661,6 +765,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         customerUUID.toString());
     Customer.getOrBadRequest(customerUUID);
     KmsConfig kmsConfig = KmsConfig.getOrBadRequest(customerUUID, configUUID);
+    checkCipherTrustRuntimeFlag(kmsConfig.getKeyProvider());
     keyManager.getServiceInstance(kmsConfig.getKeyProvider().name()).refreshKms(configUUID);
     auditService()
         .createAuditEntryWithReqBody(

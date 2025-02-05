@@ -170,7 +170,6 @@ To view metrics such as table size, use the name of the parent colocation table.
 
 ## Limitations and considerations
 
-- Creating colocated tables with tablespaces is disallowed. This will be supported in future releases.
 - Metrics for table metrics such as table size are available for the colocation tablet, not for individual colocated tables that are part of the colocation.
 - Tablet splitting is disabled for colocated tables.
 - You can't configure xCluster replication for colocated tables using the YugabyteDB Anywhere UI in the 2.18.0 release. This functionality will be available in a future release.
@@ -240,3 +239,290 @@ To set up xCluster for colocated tables, do the following:
 If new colocated tables are added to the same colocated database on both source and target universes with matching colocation IDs, then they are automatically included in replication.
 
 For information on how to set up xCluster for non-colocated tables, refer to [xCluster deployment](../../deploy/multi-dc/async-replication/).
+
+## Colocated tables with tablespaces
+
+Colocated tables can be placed in [tablespaces](../going-beyond-sql/tablespaces/) {{<tags/feature/ea>}}. When a colocated table is created in a tablespace, the colocation tablet is placed and replicated exclusively in the tablespace.
+
+During Early Access, by default colocation support for tablespaces is not enabled. To enable the feature, set the flag `ysql_enable_colocated_tables_with_tablespaces=true`.
+
+### Create a colocated table in a tablespace
+
+In a [colocated database](#databases), [tables](#tables) are created with colocation by default. To create a colocated table in a tablespace, use the following command:
+
+```sql
+CREATE TABLE <table_name> TABLESPACE <tablespace_name>;
+```
+
+Use the same syntax to create colocated indexes and materialized views in a tablespace as follows:
+
+```sql
+CREATE INDEX <index_name> ON <table_name>(<column_name>) TABLESPACE <tablespace_name>;
+CREATE MATERIALIZED VIEW <view_name> TABLESPACE <tablespace_name> AS <query>;
+```
+
+To create a non-colocated table (in a colocated database) in a tablespace, use the following command:
+
+```sql
+CREATE TABLE <table_name> WITH (COLOCATION=FALSE) TABLESPACE <tablespace_name>;
+```
+
+### View tablespace and colocation properties
+
+To check the tablespace and colocation properties of a table, use the [\d](../../api/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command on the table as follows:
+
+```sql
+\d table_name;
+```
+
+You should see output similar to the following:
+
+```output
+                 Table "public.t"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ col    | integer |           |          |
+Tablespace: "us_east_1a_zone_tablespace"
+Colocation: true
+```
+
+### List all tablegroups and associated tablespaces
+
+To list all tablegroups and their associated tablespaces, use the following query:
+
+```sql
+SELECT * FROM pg_yb_tablegroup;
+```
+
+You should see output similar to the following:
+
+```output
+   grpname       | grpowner | grptablespace | grpacl | grpoptions
+-----------------+----------+---------------+--------+------------
+default          |       10 |             0 |        |
+colocation_16384 |       10 |         16384 |        |
+(2 rows)
+```
+
+The `grpname` column represent the tablegroup's name and the `grptablespace` column shows the OID of the associated tablespace.
+
+### Geo-partitioned colocated tables with tablespaces
+
+YugabyteDB supports [row-level geo-partitioning](../multi-region-deployments/row-level-geo-partitioning/), which distributes each row across child tables based on the region specified by respective tablespaces. This capability enhances data access speed and helps meet compliance policies that require specific data locality.
+
+In a colocated database, you can create colocated geo-partitioned tables to benefit from both colocation and geo-partitioning as follows:
+
+```sql
+CREATE TABLE <partitioned_table_name> PARTITION BY LIST(region);
+
+CREATE TABLE <partition_table1> PARTITION OF <partitioned_table_name> FOR VALUES IN (<region1>) TABLESPACE <tablespace1>;
+
+CREATE TABLE <partition_table2> PARTITION OF <partitioned_table_name> FOR VALUES IN (<region2>) TABLESPACE <tablespace2>;
+
+CREATE TABLE <partition_table3> PARTITION OF <partitioned_table_name> FOR VALUES IN (<region3>) TABLESPACE <tablespace3>;
+```
+
+### Alter tablespaces for colocated relations
+
+Colocated relations (the strategy of storing related data together to optimize performance and query efficiency) cannot be moved independently from one tablespace to another; instead, you can either move all colocated relations or none. The tablespace to which the colocated relations are being moved must not contain any other colocated relations prior to the move.
+
+To move all relations from one tablespace to another, use the following syntax:
+
+```sql
+ALTER TABLE ALL IN TABLESPACE tablespace_1 SET TABLESPACE tablespace_2 CASCADE;
+```
+
+This command moves all relations in `tablespace_1` to `tablespace_2`, including any non-colocated relations. Note that keyword CASCADE is required to move the colocated relations.
+
+To move only colocated relations, you can specify a table to colocate with using the following syntax:
+
+```sql
+ALTER TABLE ALL IN TABLESPACE tablespace_1 COLOCATED WITH table1 SET TABLESPACE tablespace_2 CASCADE;
+```
+
+This command moves only the relations present in `tablespace_1` that are colocated with `table1`, where `table1` must be a colocated table.
+
+Move a single non-colocated table using the following syntax:
+
+```sql
+ALTER TABLE <table_name> SET TABLESPACE <new_tablespace>;
+
+```
+
+#### Failure scenarios for altering tablespaces
+
+The following failure scenarios are applicable to the alter commands from the [Alter tablespaces for colocated relations](#alter-tablespaces-for-colocated-relations) section.
+
+**Scenario 1**: Moving to a tablespace which already contains colocated relations
+
+Consider the following example:
+
+```sql
+CREATE TABLE t1 (col INT PRIMARY KEY, col2 INT) TABLESPACE tsp1;
+CREATE TABLE t2 (col INT PRIMARY KEY, col2 INT) TABLESPACE tsp1;
+CREATE TABLE t3 (col INT PRIMARY KEY, col2 INT) TABLESPACE tsp2;
+
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp2;
+```
+
+```output
+ERROR:  cannot move colocated relations to tablespace tsp2, as it contains existing colocated relation
+```
+
+```sql
+CREATE TABLE t4 (col INT PRIMARY KEY, col2 INT) WITH (COLOCATION = FALSE) TABLESPACE tsp1;
+
+ALTER TABLE t4 SET TABLESPACE tsp2;
+```
+
+```output
+NOTICE:  Data movement for table t4 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+ALTER TABLE
+```
+
+Tables `t1` and `t2` are colocated tables belonging to tablespace `tsp1`, while table `t3` is a colocated table in tablespace `tsp2`. Moving colocated tables (for example, `t1` and `t2`) from `tsp1` to `tsp2` is not allowed. However, a non-colocated table (for example, `t4`) from `tsp1` can be moved to `tsp2`.
+
+**Scenario 2**: Moving colocated relations without the keyword CASCADE
+
+If you move colocated relations without the CASCADE keyword, it results in the following error:
+
+```sql
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp2;
+```
+
+```output
+ERROR:  cannot move colocated relations present in tablespace tsp1
+HINT:  Use ALTER ... CASCADE to move colcated relations.
+```
+
+**Scenario 3**: Using non-colocated tables in COLOCATED WITH syntax
+
+Consider the following example:
+
+```sql
+CREATE TABLE t1 (col INT PRIMARY KEY, col2 INT) TABLESPACE tsp1;
+CREATE TABLE t2 (col INT PRIMARY KEY, col2 INT) WITH (COLOCATION = FALSE) TABLESPACE tsp1;
+
+ALTER TABLE ALL IN TABLESPACE tsp1 COLOCATED WITH t2 SET TABLESPACE tsp2 CASCADE;
+```
+
+```output
+ERROR:  the specified relation is non-colocated which can't be moved using this command
+```
+
+### Back up and restore colocated database using ysql_dump
+
+You can back up and restore a database with colocated tables and tablespaces in two ways:
+
+- With `--use_tablespaces` option in [ysql_dump](../../admin/ysql-dump/). Using this option during backup and restore includes tablespace information. The restored database requires the target universe to contain the necessary nodes for tablespace creation.
+
+- Without `--use_tablespaces` option. When this option is omitted, tablespace information is not stored during backup and restore, and all relations are restored to the YugabyteDB default tablespace `pg_default`.
+
+  After the restore, all colocated entities remain colocated, and you can create tablespaces post-restore as needed. Tables can then be moved to the desired tablespaces using the ALTER syntax.
+
+  - To move non-colocated tables, use the syntax to [alter the tablespace of a non-colocated table](#create-a-colocated-table-in-a-tablespace).
+
+  - To move colocated relations, use the following variant of the previously mentioned command:
+
+      ```sql
+      ALTER TABLE ALL IN TABLESPACE pg_default COLOCATED WITH table1 SET TABLESPACE new_tablespace CASCADE;
+      ```
+
+      This command moves all restored colocated relations in the default tablespace `pg_default` that are colocated with `table1` to `new_tablespace`.
+
+  - Consider the following example schema for before and after backup or restore operation:
+
+      ```sql
+      CREATE TABLE t1 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region)) PARTITION BY LIST (region);
+      CREATE TABLE t1_1 PARTITION OF t1 FOR VALUES IN ('USWEST') TABLESPACE tsp1;
+      CREATE TABLE t1_2 PARTITION OF t1 FOR VALUES IN ('USEAST') TABLESPACE tsp2;
+      CREATE TABLE t1_3 PARTITION OF t1 FOR VALUES IN ('APSOUTH') TABLESPACE tsp3;
+      CREATE TABLE t1_default PARTITION OF t1 DEFAULT;
+
+      CREATE TABLE t2 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region)) PARTITION BY LIST (region);
+      CREATE TABLE t2_1 PARTITION OF t2 FOR VALUES IN ('USWEST') TABLESPACE tsp1;
+      CREATE TABLE t2_2 PARTITION OF t2 FOR VALUES IN ('USEAST') TABLESPACE tsp2;
+      CREATE TABLE t2_3 PARTITION OF t2 FOR VALUES IN ('APSOUTH') TABLESPACE tsp3;
+      CREATE TABLE t2_default PARTITION OF t2 DEFAULT;
+      ```
+
+      The tablegroup information would look like the following:
+
+      ```sql
+      \dgrt
+      ```
+
+      ```output
+                         List of tablegroup tables
+          Group Name    | Group Owner |    Name    | Type  |  Owner
+      ------------------+-------------+------------+-------+----------
+       colocation_16384 | postgres    | t2_1       | table | yugabyte
+       colocation_16384 | postgres    | t1_1       | table | yugabyte
+       colocation_16385 | postgres    | t2_2       | table | yugabyte
+       colocation_16385 | postgres    | t1_2       | table | yugabyte
+       colocation_16386 | postgres    | t2_3       | table | yugabyte
+       colocation_16386 | postgres    | t1_3       | table | yugabyte
+       default          | postgres    | t2_default | table | yugabyte
+       default          | postgres    | t1_default | table | yugabyte
+       default          | postgres    | t2         | table | yugabyte
+       default          | postgres    | t1 	       | table | yugabyte
+      (10 rows)
+      ```
+
+      The Group Name column shows which entities are colocated.
+
+       Each tablegroup belongs to a different tablespace, as shown in the grptablespace column in the following table.
+
+      ```sql
+      SELECT * FROM pg_yb_tablegroup;
+      ```
+
+      ```output
+           grpname      | grpowner | grptablespace | grpacl | grpoptions
+      ------------------+----------+---------------+--------+------------
+       default          |       10 |             0 |        |
+       colocation_16384 |       10 |         16384 |        |
+       colocation_16385 |       10 |         16385 |        |
+       colocation_16386 |       10 |         16386 |        |
+      (4 rows)
+      ```
+
+      The same information after backup or restore without the `--use_tablespaces` option looks like the following:
+
+      ```sql
+      \dgrt
+      ```
+
+      ```output
+                     List of tablegroup tables
+              Group Name        | Group Owner |    Name    | Type  |  Owner
+      --------------------------+-------------+------------+-------+----------
+       colocation_restore_16393 | postgres    | t2_1       | table | yugabyte
+       colocation_restore_16393 | postgres    | t1_1       | table | yugabyte
+       colocation_restore_16399 | postgres    | t2_2       | table | yugabyte
+       colocation_restore_16399 | postgres    | t1_2       | table | yugabyte
+       colocation_restore_16405 | postgres    | t2_3       | table | yugabyte
+       colocation_restore_16405 | postgres    | t1_3       | table | yugabyte
+       default                  | postgres    | t2_default | table | yugabyte
+       default                  | postgres    | t1_default | table | yugabyte
+       default                  | postgres    | t2         | table | yugabyte
+       default                  | postgres    | t1         | table | yugabyte
+      (10 rows)
+      ```
+
+      The colocation property is still maintained after the backup or restore. But all the tables now reside in the same tablespace (the default one):
+
+      ```sql
+      SELECT * FROM pg_yb_tablegroup;
+      ```
+
+      ```output
+               grpname          | grpowner | grptablespace | grpacl | grpoptions
+      --------------------------+----------+---------------+--------+------------
+       default                  |       10 |             0 |        |
+       colocation_restore_16393 |       10 |             0 |        |
+       colocation_restore_16399 |       10 |             0 |        |
+       colocation_restore_16405 |       10 |             0 |        |
+      (4 rows)
+      ```

@@ -617,7 +617,7 @@ Default: `false`
 
 Enables/disables blocking of requests which would bring the total number of tablets in the system over a limit. For more information, see [Tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
 
-Default: `false`. No limits will be enforced if this is false.
+Default: `false`. No limits are enforced if this is false.
 
 ##### split_respects_tablet_replica_limits
 
@@ -925,6 +925,8 @@ Default: `14400` (4 hours)
 
 Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
 
+Default: `true`
+
 ##### --enable_truncate_cdcsdk_table
 
 By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables.
@@ -1025,12 +1027,12 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ##### --allowed_preview_flags_csv
 
-This is a comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 
 {{<warning>}}
-Inclusion in this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You'll still need to configure the flag separately after adding it to this list.
+Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
 {{</warning>}}
 
 ##### --ysql_index_backfill_rpc_timeout_ms

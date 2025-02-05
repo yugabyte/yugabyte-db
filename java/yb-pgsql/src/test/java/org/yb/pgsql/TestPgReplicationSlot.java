@@ -71,8 +71,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     if (isTestRunningWithConnectionManager()) {
-      String preview_flags = "enable_ysql_conn_mgr";
-      flagMap.put("allowed_preview_flags_csv",preview_flags);
       flagMap.put("ysql_conn_mgr_stats_interval", "1");
     }
     flagMap.put(
@@ -3038,8 +3036,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     try {
       result.addAll(receiveMessage(stream, 12));
     } catch (PSQLException e) {
-      assertTrue(e.getMessage().contains("Replica identity CHANGE is not supported for output"
-        + " plugin pgoutput. Consider using output plugin yboutput instead."));
+      assertTrue(e.getMessage().contains("replica identity CHANGE is not supported for output"
+        + " plugin pgoutput"));
     }
   }
 
@@ -3387,5 +3385,16 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     assertEquals(expectedResult, result);
 
     stream.close();
+  }
+
+  @Test
+  public void testYbGetCurrentHybridTimeLsn() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet rs = stmt.executeQuery("SELECT yb_get_current_hybrid_time_lsn()");
+
+      assertTrue(rs.next());
+      assertEquals(1, rs.getMetaData().getColumnCount());
+      assertEquals("int8", rs.getMetaData().getColumnTypeName(1));
+    }
   }
 }

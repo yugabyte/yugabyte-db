@@ -175,14 +175,16 @@ int od_auth_query(od_client_t *client, char *peer)
 	}
 
 	/* preformat and execute query */
-	char query[OD_QRY_MAX_SZ];
+	char *query = malloc(yb_max_query_size + 1);
+	query[yb_max_query_size] = '\0';
 	char *format_pos = rule->auth_query;
 	char *format_end = rule->auth_query + strlen(rule->auth_query);
 	od_query_format(format_pos, format_end, user, peer, query,
-			sizeof(query));
+			yb_max_query_size);
 
 	machine_msg_t *msg;
 	msg = od_query_do(server, "auth query", query, user->value);
+	free(query);
 	if (msg == NULL) {
 		od_debug(&instance->logger, "auth_query", auth_client, server,
 			 "auth query returned empty msg");

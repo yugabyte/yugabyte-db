@@ -87,10 +87,10 @@ CREATE TEMP TABLE temp_foo(i int PRIMARY KEY);
 SET yb_xcluster_ddl_replication.replication_role = BIDIRECTIONAL;
 CREATE TABLE foo(i int PRIMARY KEY);
 DROP TABLE temp_foo, foo; -- should fail
-ERROR:  Unsupported DROP command, found mix of temporary and persisted objects in DDL command.
-To manually replicate, run DDL on the source followed by the target with SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true
+ERROR:  unsupported DROP command, found mix of temporary and persisted objects in DDL command
+DETAIL:  To manually replicate, run DDL on the source followed by the target with SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true
 DROP TABLE foo, temp_foo; -- should fail
-ERROR:  Unsupported DROP command, found mix of temporary and persisted objects in DDL command.
-To manually replicate, run DDL on the source followed by the target with SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true
+ERROR:  unsupported DROP command, found mix of temporary and persisted objects in DDL command
+DETAIL:  To manually replicate, run DDL on the source followed by the target with SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true
 DROP TABLE temp_foo;
 DROP TABLE foo;

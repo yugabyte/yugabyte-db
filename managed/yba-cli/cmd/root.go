@@ -23,6 +23,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/user"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/xcluster"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/log"
 
@@ -97,6 +98,7 @@ func init() {
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(auth.LoginCmd)
 	rootCmd.AddCommand(auth.RegisterCmd)
+	rootCmd.AddCommand(auth.HostCmd)
 	rootCmd.AddCommand(release.ReleaseCmd)
 	rootCmd.AddCommand(provider.ProviderCmd)
 	rootCmd.AddCommand(universe.UniverseCmd)
@@ -108,6 +110,7 @@ func init() {
 	rootCmd.AddCommand(runtimeconfiguration.RuntimeConfigurationCmd)
 	rootCmd.AddCommand(rbac.RBACCmd)
 	rootCmd.AddCommand(user.UserCmd)
+	rootCmd.AddCommand(xcluster.XClusterCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
 	// Example for adding preview commands to the list of available commands

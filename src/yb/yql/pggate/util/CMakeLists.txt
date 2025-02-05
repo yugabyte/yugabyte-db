@@ -17,7 +17,7 @@ set(PGGATE_UTIL_SRCS
     pg_wire.cc
     pg_doc_data.cc
     pg_tuple.cc
-    yb_guc.cc
+    ybc_guc.cc
     ybc_util.cc
     ybc-internal.cc
     )

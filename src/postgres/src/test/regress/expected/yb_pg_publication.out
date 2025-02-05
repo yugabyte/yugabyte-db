@@ -18,12 +18,12 @@ SELECT obj_description(p.oid, 'pg_publication') FROM pg_publication p;
 
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpib_ins_trunct WITH (publish = insert);
-ERROR:  Publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority
+ERROR:  publishing only a subset of DML commands is not yet supported
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 RESET client_min_messages;
 ALTER PUBLICATION testpub_default SET (publish = update);
-ERROR:  Publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority
+ERROR:  publishing only a subset of DML commands is not yet supported
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 -- error cases
 CREATE PUBLICATION testpub_xxx WITH (foo);
 ERROR:  unrecognized publication parameter: "foo"
@@ -37,8 +37,8 @@ ERROR:  unrecognized value for publication option "publish": "cluster"
 (1 row)
 
 ALTER PUBLICATION testpub_default SET (publish = 'insert, update, delete');
-ERROR:  Publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority
+ERROR:  publishing only a subset of DML commands is not yet supported
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 \dRp
                                              List of publications
       Name       |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root
@@ -54,15 +54,15 @@ CREATE VIEW testpub_view AS SELECT 1;
 CREATE TABLE testpub_parted (a int) PARTITION BY LIST (a);
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_foralltables FOR ALL TABLES WITH (publish = 'insert');
-ERROR:  Publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority
+ERROR:  publishing only a subset of DML commands is not yet supported
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 RESET client_min_messages;
 -- YB Note: publishing subset of records is unsupported (#19250).
 CREATE PUBLICATION testpub_foralltables FOR ALL TABLES;
 NOTICE:  tables without primary key will be skipped
 ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update');
-ERROR:  Publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority
+ERROR:  publishing only a subset of DML commands is not yet supported
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 -- YB Note: publishing subset of records is unsupported (#19250).
 ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update, delete, truncate');
 CREATE TABLE testpub_tbl2 (id serial primary key, data text);
@@ -146,8 +146,8 @@ RESET client_min_messages;
 CREATE TABLE testpub_parted1 (LIKE testpub_parted);
 CREATE TABLE testpub_parted2 (LIKE testpub_parted);
 ALTER PUBLICATION testpub_forparted1 SET (publish='insert');
-ERROR:  Publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority
+ERROR:  publishing only a subset of DML commands is not yet supported
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 ALTER TABLE testpub_parted ATTACH PARTITION testpub_parted1 FOR VALUES IN (1);
 ALTER TABLE testpub_parted ATTACH PARTITION testpub_parted2 FOR VALUES IN (2);
 -- works despite missing REPLICA IDENTITY, because updates are not replicated

@@ -23,7 +23,6 @@
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/util/kv_util.h"
@@ -113,7 +112,8 @@ class YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      SkipSeek skip_seek = SkipSeek::kFalse) const = 0;
+      SkipSeek skip_seek = SkipSeek::kFalse,
+      UseVariableBloomFilter use_variable_bloom_filter = UseVariableBloomFilter::kFalse) const = 0;
 
   // Returns up to num_blocks_for_sample number of sample blocks boundaries.
   // Each boundary is an encoded doc key or its prefix.

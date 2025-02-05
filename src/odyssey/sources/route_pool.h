@@ -94,12 +94,18 @@ static inline od_route_t *od_route_pool_new(od_route_pool_t *pool,
 		}
 	}
 
-	route->yb_database_entry = yb_get_db_entry(id->yb_db_oid);
+	route->yb_database_entry = yb_get_oid_obj_entry(YB_DATABASE, id->yb_db_oid);
 	if (route->yb_database_entry == NULL)
 		return NULL;
 
+	route->yb_user_entry = yb_get_oid_obj_entry(YB_USER, id->yb_user_oid);
+	if (route->yb_user_entry == NULL)
+		return NULL;
+
+	od_route_lock(route);
 	od_list_append(&pool->list, &route->link);
 	pool->count++;
+	od_route_unlock(route);
 	return route;
 }
 

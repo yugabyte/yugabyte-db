@@ -20,25 +20,25 @@ CREATE TABLE a_star (
 	a 			int4
 );
 
-CREATE TABLE b_star (
-	b 			text
-) INHERITS (a_star);
+-- CREATE TABLE b_star (
+-- 	b 			text
+-- ) INHERITS (a_star);
 
-CREATE TABLE c_star (
-	c 			name
-) INHERITS (a_star);
+-- CREATE TABLE c_star (
+-- 	c 			name
+-- ) INHERITS (a_star);
 
-CREATE TABLE d_star (
-	d 			float8
-) INHERITS (b_star, c_star);
+-- CREATE TABLE d_star (
+-- 	d 			float8
+-- ) INHERITS (b_star, c_star);
 
-CREATE TABLE e_star (
-	e 			int2
-) INHERITS (c_star);
+-- CREATE TABLE e_star (
+-- 	e 			int2
+-- ) INHERITS (c_star);
 
-CREATE TABLE f_star (
-	f 			polygon
-) INHERITS (e_star);
+-- CREATE TABLE f_star (
+-- 	f 			polygon
+-- ) INHERITS (e_star);
 
 CREATE TABLE aggtest (
 	a 			int2,
@@ -99,14 +99,6 @@ CREATE TABLE array_index_op_test (
 
 CREATE TABLE testjsonb (
        j jsonb
-);
-
-CREATE TABLE unknowntab (
-	u unknown    -- fail
-);
-
-CREATE TYPE unknown_comptype AS (
-	u unknown    -- fail
 );
 
 CREATE TABLE IF NOT EXISTS test_tsvector(

@@ -15,6 +15,8 @@
 
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
@@ -73,8 +75,9 @@ const char* kDDLJsonVersion = "version";
 const char* kDDLJsonSchema = "schema";
 const char* kDDLJsonUser = "user";
 const char* kDDLJsonNewRelMap = "new_rel_map";
-const char* kDDLJsonRelFileOid = "relfile_oid";
 const char* kDDLJsonRelName = "rel_name";
+const char* kDDLJsonRelFileOid = "relfile_oid";
+const char* kDDLJsonEnumLabelInfo = "enum_label_info";
 const char* kDDLJsonManualReplication = "manual_replication";
 const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
@@ -83,10 +86,13 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     // Relations
     "CREATE TABLE",
     "CREATE INDEX",
+    "CREATE TYPE",
     "DROP TABLE",
     "DROP INDEX",
+    "DROP TYPE",
     "ALTER TABLE",
     "ALTER INDEX",
+    "ALTER TYPE",
     // Pass thru DDLs
     "CREATE ACCESS METHOD",
     "CREATE AGGREGATE",
@@ -184,11 +190,13 @@ Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data
 
 XClusterDDLQueueHandler::XClusterDDLQueueHandler(
     client::YBClient* local_client, const NamespaceName& namespace_name,
-    const NamespaceId& namespace_id, const std::string& log_prefix,
-    TserverXClusterContextIf& xcluster_context, ConnectToPostgresFunc connect_to_pg_func)
+    const NamespaceId& source_namespace_id, const NamespaceId& target_namespace_id,
+    const std::string& log_prefix, TserverXClusterContextIf& xcluster_context,
+    ConnectToPostgresFunc connect_to_pg_func)
     : local_client_(local_client),
       namespace_name_(namespace_name),
-      namespace_id_(namespace_id),
+      source_namespace_id_(source_namespace_id),
+      target_namespace_id_(target_namespace_id),
       log_prefix_(log_prefix),
       xcluster_context_(xcluster_context),
       connect_to_pg_func_(std::move(connect_to_pg_func)) {}
@@ -223,7 +231,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
   HybridTime safe_time_ht = VERIFY_RESULT(GetXClusterSafeTimeForNamespace());
   SCHECK(
       !safe_time_ht.is_special(), InternalError, "Found invalid safe time $0 for namespace $1",
-      safe_time_ht, namespace_id_);
+      safe_time_ht, target_namespace_id_);
   SCHECK_GE(
       safe_time_ht, target_safe_ht, TryAgain, "Waiting for other pollers to catch up to safe time");
 
@@ -295,6 +303,15 @@ Result<XClusterDDLQueueHandler::DDLQueryInfo> XClusterDDLQueueHandler::GetDDLQue
   query_info.user =
       HAS_MEMBER_OF_TYPE(doc, kDDLJsonUser, IsString) ? doc[kDDLJsonUser].GetString() : "";
 
+  rapidjson::StringBuffer assignment_buffer;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(assignment_buffer);
+  writer.StartObject();
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonEnumLabelInfo, IsArray)) {
+    writer.Key(kDDLJsonEnumLabelInfo);
+    doc[kDDLJsonEnumLabelInfo].Accept(writer);
+  }
+  writer.EndObject();
+  query_info.json_for_oid_assignment = assignment_buffer.GetString();
   return query_info;
 }
 
@@ -311,7 +328,7 @@ Status XClusterDDLQueueHandler::ProcessNewRelations(
     for (const auto& new_rel : *new_rel_map) {
       VALIDATE_MEMBER(new_rel, kDDLJsonRelFileOid, Int);
       VALIDATE_MEMBER(new_rel, kDDLJsonRelName, String);
-      const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id_));
+      const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id_));
       const auto relfile_oid = new_rel[kDDLJsonRelFileOid].GetInt();
       const auto rel_name = new_rel[kDDLJsonRelName].GetString();
       RETURN_NOT_OK(xcluster_context_.SetSourceTableMappingForCreateTable(
@@ -338,11 +355,19 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
     setup_query << Format("SET ROLE $0;", query_info.user);
   }
 
+  // Pass information needed to assign OIDs that need to be preserved across the universes.
+  setup_query << Format(
+      "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('$0');",
+      query_info.json_for_oid_assignment);
+
   setup_query << "SET yb_skip_data_insert_for_table_rewrite=true;";
 
   RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
   RETURN_NOT_OK(RunAndLogQuery(query_info.query));
-  RETURN_NOT_OK(RunAndLogQuery("SET yb_skip_data_insert_for_table_rewrite=false"));
+  RETURN_NOT_OK(
+      // The SELECT here can't be last; otherwise, RunAndLogQuery complains that rows are returned.
+      RunAndLogQuery("SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('{}');"
+                     "SET yb_skip_data_insert_for_table_rewrite=false;"));
   return Status::OK();
 }
 
@@ -403,7 +428,7 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
 
 Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
   return local_client_->GetXClusterSafeTimeForNamespace(
-      namespace_id_, master::XClusterSafeTimeFilter::DDL_QUEUE);
+      target_namespace_id_, master::XClusterSafeTimeFilter::DDL_QUEUE);
 }
 
 Result<std::vector<std::tuple<int64, int64, std::string>>>

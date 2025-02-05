@@ -27,7 +27,7 @@
 #include "utils/resowner.h"
 
 /* YB includes. */
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 #include "utils/uuid.h"
 
@@ -48,7 +48,7 @@ create_physical_replication_slot(char *name, bool immediately_reserve,
 	/* acquire replication slot, this will check for conflicting names */
 	ReplicationSlotCreate(name, false,
 						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false,
-						  NULL /* yb_plugin_name */, CRS_NOEXPORT_SNAPSHOT,
+						  NULL /* yb_plugin_name */ , CRS_NOEXPORT_SNAPSHOT,
 						  NULL, CRS_SEQUENCE);
 
 	if (immediately_reserve)
@@ -204,7 +204,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	bool		two_phase = PG_GETARG_BOOL(3);
 
 	Name		yb_lsn_type_arg;
-	char		*yb_lsn_type = "SEQUENCE";
+	char	   *yb_lsn_type = "SEQUENCE";
 
 	if (!PG_ARGISNULL(4))
 	{
@@ -226,10 +226,10 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 		if (temporary)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("Temporary replication slot is not yet supported"),
+					 errmsg("temporary replication slot is not yet supported"),
 					 errhint("See https://github.com/yugabyte/yugabyte-db/"
 							 "issues/19263. React with thumbs up to raise its "
-							 "priority")));
+							 "priority.")));
 
 		/*
 		 * Validate output plugin requirement early so that we can avoid the
@@ -272,7 +272,8 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 		 * being set during the creation of the CDC stream in the
 		 * PopulateCDCStateTable function of xrepl_catalog_manager.cc.
 		 */
-		XLogRecPtr consistent_point = 2;
+		XLogRecPtr	consistent_point = 2;
+
 		values[1] = LSNGetDatum(consistent_point);
 	}
 	else
@@ -328,7 +329,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 {
 #define PG_GET_REPLICATION_SLOTS_COLS 14
 /* YB specific fields in pg_get_replication_slots */
-#define YB_PG_GET_REPLICATION_SLOTS_COLS 2
+#define YB_PG_GET_REPLICATION_SLOTS_COLS 3
 
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	XLogRecPtr	currlsn;
@@ -346,8 +347,8 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 	currlsn = GetXLogWriteRecPtr();
 
-	YBCReplicationSlotDescriptor *yb_replication_slots = NULL;
-	size_t yb_numreplicationslots = 0;
+	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
+	size_t		yb_numreplicationslots = 0;
 
 	/*
 	 * Fetch the replication slots from yb-master.
@@ -362,8 +363,8 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 	if (IsYugaByteEnabled() && yb_enable_replication_commands)
 		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
 
-	yb_totalslots = (IsYugaByteEnabled()) ? yb_numreplicationslots :
-										 max_replication_slots;
+	yb_totalslots =
+		IsYugaByteEnabled() ? yb_numreplicationslots : max_replication_slots;
 
 	LWLockAcquire(ReplicationSlotControlLock, LW_SHARED);
 	for (slotno = 0; slotno < yb_totalslots; slotno++)
@@ -377,19 +378,21 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		WALAvailability walstate;
 		int			i;
 
-		const char	*yb_stream_id;
+		const char *yb_stream_id;
 		bool		yb_stream_active;
-		uint64      yb_restart_commit_ht;
+		uint64		yb_restart_commit_ht;
+		const char *yb_lsn_type;
 
 		if (IsYugaByteEnabled())
 		{
-			YBCReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+			YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
 
 			slot_contents.data.database = slot->database_oid;
 			namestrcpy(&slot_contents.data.name, slot->slot_name);
 			namestrcpy(&slot_contents.data.plugin, slot->output_plugin);
 			yb_stream_id = slot->stream_id;
 			yb_stream_active = slot->active;
+			yb_lsn_type = slot->yb_lsn_type;
 
 			slot_contents.data.restart_lsn = slot->restart_lsn;
 			slot_contents.data.confirmed_flush = slot->confirmed_flush;
@@ -410,7 +413,10 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			/* Copy slot contents while holding spinlock, then examine at leisure */
+			/*
+			 * Copy slot contents while holding spinlock, then examine at
+			 * leisure
+			 */
 			SpinLockAcquire(&slot->mutex);
 			slot_contents = *slot;
 			SpinLockRelease(&slot->mutex);
@@ -565,9 +571,11 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		{
 			values[i++] = CStringGetTextDatum(yb_stream_id);
 			values[i++] = Int64GetDatum(yb_restart_commit_ht);
+			values[i++] = CStringGetTextDatum(yb_lsn_type);
 		}
 		else
 		{
+			nulls[i++] = true;
 			nulls[i++] = true;
 			nulls[i++] = true;
 		}
@@ -841,7 +849,7 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 	ReplicationSlot *src = NULL;
 	ReplicationSlot first_slot_contents;
 	ReplicationSlot second_slot_contents;
-	char		*yb_lsn_type = "SEQUENCE";
+	char	   *yb_lsn_type = "SEQUENCE";
 	XLogRecPtr	src_restart_lsn;
 	bool		src_islogical;
 	bool		temporary;

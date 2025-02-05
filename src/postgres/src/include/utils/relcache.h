@@ -131,7 +131,7 @@ extern Relation RelationBuildLocalRelation(const char *relname,
  * Routines to manage assignment of new relfilenode to a relation
  */
 extern void RelationSetNewRelfilenode(Relation relation, char persistence,
-						  bool yb_copy_split_options);
+									  bool yb_copy_split_options);
 extern void RelationAssumeNewRelfilenode(Relation relation);
 
 /*

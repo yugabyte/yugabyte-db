@@ -319,9 +319,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	struct KeyActions *keyactions;
 	struct KeyAction *keyaction;
 
-	OptSplit *splitopt;
+	YbOptSplit *splitopt;
 	char *grpopt;
-	RowBounds *rowbounds;
+	YbRowBounds *rowbounds;
 }
 
 %type <node>	stmt toplevel_stmt schema_stmt routine_body_stmt
@@ -339,7 +339,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateDomainStmt CreateExtensionStmt CreateGroupStmt CreateOpClassStmt
 		CreateOpFamilyStmt AlterOpFamilyStmt CreatePLangStmt
 		CreateSchemaStmt CreateSeqStmt CreateStmt CreateStatsStmt CreateTableSpaceStmt
-		CreateFdwStmt CreateForeignServerStmt CreateForeignTableStmt CreateTableGroupStmt
+		CreateFdwStmt CreateForeignServerStmt CreateForeignTableStmt YbCreateTableGroupStmt
 		CreateAssertionStmt CreateTransformStmt CreateTrigStmt CreateEventTrigStmt
 		CreateUserStmt CreateUserMappingStmt CreateRoleStmt CreatePolicyStmt
 		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt DiscardStmt DoStmt
@@ -363,7 +363,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateMatViewStmt RefreshMatViewStmt CreateAmStmt
 		CreatePublicationStmt AlterPublicationStmt
 		CreateSubscriptionStmt AlterSubscriptionStmt DropSubscriptionStmt
-		BackfillIndexStmt YbCreateProfileStmt YbDropProfileStmt
+		YbBackfillIndexStmt YbCreateProfileStmt YbDropProfileStmt
 
 %type <node>	select_no_parens select_with_parens select_clause
 				simple_select values_clause
@@ -656,7 +656,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <grpopt>	OptTableGroup
 %type <rolespec> OptTableGroupOwner
 
-%type <splitopt> OptSplit SplitClause
+%type <splitopt> YbOptSplit SplitClause
 
 %type <str>		opt_provider security_label
 
@@ -695,7 +695,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
-%type <rowbounds>	RowBounds
+%type <rowbounds>	YbRowBounds
 %type <str>		opt_for_bfinstr
 %type <str>		partition_key
 %type <str>		row_key row_key_end row_key_start
@@ -1038,7 +1038,7 @@ stmt:
 			| AlterStatsStmt
 			| AlterTableStmt
 			| AlterTypeStmt
-			| BackfillIndexStmt
+			| YbBackfillIndexStmt
 			| CallStmt
 			| ClosePortalStmt
 			| CommentStmt
@@ -1155,7 +1155,7 @@ stmt:
 			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
 
 			/* Deprecated statements */
-			| CreateTableGroupStmt
+			| YbCreateTableGroupStmt
 		;
 
 /*****************************************************************************
@@ -3658,7 +3658,7 @@ copy_generic_opt_arg_list_item:
 CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 			OptInherit OptPartitionSpec table_access_method_clause OptWith
 			OnCommitOption OptTableSpace
-			OptSplit OptTableGroup
+			YbOptSplit OptTableGroup
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -3706,7 +3706,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name '('
 			OptTableElementList ')' OptInherit OptPartitionSpec table_access_method_clause
 			OptWith OnCommitOption OptTableSpace
-			OptSplit OptTableGroup
+			YbOptSplit OptTableGroup
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -3754,7 +3754,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 		| CREATE OptTemp TABLE qualified_name OF any_name
 			OptTypedTableElementList OptPartitionSpec table_access_method_clause
 			OptWith OnCommitOption OptTableSpace
-			OptSplit OptTableGroup
+			YbOptSplit OptTableGroup
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -3803,7 +3803,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name OF any_name
 			OptTypedTableElementList OptPartitionSpec table_access_method_clause
 			OptWith OnCommitOption OptTableSpace
-			OptSplit OptTableGroup
+			YbOptSplit OptTableGroup
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -3852,7 +3852,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 		| CREATE OptTemp TABLE qualified_name PARTITION OF qualified_name
 			OptTypedTableElementList PartitionBoundSpec OptPartitionSpec
 			table_access_method_clause OptWith OnCommitOption OptTableSpace
-			OptSplit
+			YbOptSplit
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -3880,7 +3880,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name PARTITION OF
 			qualified_name OptTypedTableElementList PartitionBoundSpec OptPartitionSpec
-			table_access_method_clause OptWith OnCommitOption OptTableSpace	OptSplit
+			table_access_method_clause OptWith OnCommitOption OptTableSpace	YbOptSplit
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -4796,7 +4796,7 @@ OptConsTableSpace:
 ExistingIndex:   USING INDEX name					{ $$ = $3; }
 		;
 
-OptSplit:
+YbOptSplit:
 			SPLIT '(' SplitClause ')'
 				{
 					$$ = $3;
@@ -4807,21 +4807,21 @@ OptSplit:
         }
 			| /* EMPTY */
 				{
-					$$ = (OptSplit*) NULL;
+					$$ = (YbOptSplit*) NULL;
 				}
 		;
 
 SplitClause:
       INTO Iconst TABLETS
       	{
-      		$$ = makeNode(OptSplit);
+      		$$ = makeNode(YbOptSplit);
       		$$->split_type = NUM_TABLETS;
       		$$->num_tablets = $2;
       		$$->split_points = NULL;
       	}
       | AT VALUES '(' yb_split_points ')'
         {
-      	  $$ = makeNode(OptSplit);
+      	  $$ = makeNode(YbOptSplit);
       	  $$->split_type = SPLIT_POINTS;
       	  $$->num_tablets = -1;
       	  $$->split_points = $4;
@@ -5332,13 +5332,13 @@ opt_procedural:
  *
  *****************************************************************************/
 
-CreateTableGroupStmt:
+YbCreateTableGroupStmt:
  		CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions OptTableSpace
  				{
 					parser_ybc_not_support_in_templates(@1, "Tablegroup");
  					parser_ybc_beta_feature(@1, "tablegroup", true);
 
- 					CreateTableGroupStmt *n = makeNode(CreateTableGroupStmt);
+ 					YbCreateTableGroupStmt *n = makeNode(YbCreateTableGroupStmt);
  					n->tablegroupname = $3;
  					n->owner = $4;
  					n->options = $5;
@@ -8501,7 +8501,7 @@ defacl_privilege_target:
 
 IndexStmt:	CREATE opt_unique INDEX yb_opt_concurrently_index opt_index_name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
-			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace OptSplit where_clause
+			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace YbOptSplit where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
 
@@ -8534,7 +8534,7 @@ IndexStmt:	CREATE opt_unique INDEX yb_opt_concurrently_index opt_index_name
 				}
 			| CREATE opt_unique INDEX yb_opt_concurrently_index IF_P NOT EXISTS name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
-			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace OptSplit where_clause
+			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace YbOptSplit where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
 
@@ -8768,13 +8768,13 @@ opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }
 			| /*EMPTY*/						{ $$ = SORTBY_NULLS_DEFAULT; }
 		;
 
-BackfillIndexStmt:
+YbBackfillIndexStmt:
 			BACKFILL INDEX oid_list opt_for_bfinstr
-				READ TIME read_time RowBounds
+				READ TIME read_time YbRowBounds
 				{
 					parser_ybc_not_support_in_templates(@1, "Index backfill");
 
-					BackfillIndexStmt *n = makeNode(BackfillIndexStmt);
+					YbBackfillIndexStmt *n = makeNode(YbBackfillIndexStmt);
 					n->oid_list = $3;
 
 					n->bfinfo = makeNode(YbBackfillInfo);
@@ -8831,9 +8831,9 @@ read_time:
 			}
 		;
 
-RowBounds:	PARTITION partition_key
+YbRowBounds:	PARTITION partition_key
 				{
-					$$ = makeNode(RowBounds);
+					$$ = makeNode(YbRowBounds);
 					/* Strip the leading 'x' */
 					$$->partition_key = $2 + 1;
 					$$->row_key_start = NULL;
@@ -8841,7 +8841,7 @@ RowBounds:	PARTITION partition_key
 				}
 			| PARTITION partition_key FROM row_key_start
 				{
-					$$ = makeNode(RowBounds);
+					$$ = makeNode(YbRowBounds);
 					/* Strip the leading 'x' */
 					$$->partition_key = $2 + 1;
 					$$->row_key_start = $4 + 1;
@@ -8849,7 +8849,7 @@ RowBounds:	PARTITION partition_key
 				}
 			| PARTITION partition_key FROM row_key_start TO row_key_end
 				{
-					$$ = makeNode(RowBounds);
+					$$ = makeNode(YbRowBounds);
 					/* Strip the leading 'x' */
 					$$->partition_key = $2 + 1;
 					$$->row_key_start = $4 + 1;

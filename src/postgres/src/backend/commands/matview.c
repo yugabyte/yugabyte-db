@@ -48,8 +48,8 @@
 
 /* YB includes. */
 #include "commands/dbcommands.h"
-#include "commands/ybccmds.h"
-#include "executor/ybcModifyTable.h"
+#include "commands/yb_cmds.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 
 typedef struct
@@ -79,6 +79,9 @@ static bool is_usable_unique_index(Relation indexRel);
 static void OpenMatViewIncrementalMaintenance(void);
 static void CloseMatViewIncrementalMaintenance(void);
 
+static bool yb_needs_in_place_refresh();
+static void yb_refresh_in_place_update(Relation matviewRel, Oid tempOid);
+
 /*
  * SetMatViewPopulatedState
  *		Mark a materialized view as populated, or not.
@@ -86,7 +89,8 @@ static void CloseMatViewIncrementalMaintenance(void);
  * NOTE: caller must be holding an appropriate lock on the relation.
  */
 void
-SetMatViewPopulatedState(Relation relation, bool newstate)
+SetMatViewPopulatedState(Relation relation, bool newstate,
+						 bool yb_in_place_refresh)
 {
 	Relation	pgrel;
 	HeapTuple	tuple;
@@ -104,6 +108,17 @@ SetMatViewPopulatedState(Relation relation, bool newstate)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u",
 			 RelationGetRelid(relation));
+
+	if (yb_in_place_refresh)
+	{
+		if (((Form_pg_class) GETSTRUCT(tuple))->relispopulated != newstate)
+			elog(ERROR, "Cannot change the populated state of a materialized "
+						"view when in place refresh is enabled");
+
+		heap_freetuple(tuple);
+		table_close(pgrel, RowExclusiveLock);
+		return;
+	}
 
 	((Form_pg_class) GETSTRUCT(tuple))->relispopulated = newstate;
 
@@ -160,6 +175,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	int			save_sec_context;
 	int			save_nestlevel;
 	ObjectAddress address;
+	bool yb_in_place_refresh = yb_needs_in_place_refresh();
 
 	/* Determine strength of lock needed. */
 	concurrent = stmt->concurrent;
@@ -283,10 +299,10 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	 * Tentatively mark the matview as populated or not (this will roll back
 	 * if we fail later).
 	 */
-	SetMatViewPopulatedState(matviewRel, !stmt->skipData);
+	SetMatViewPopulatedState(matviewRel, !stmt->skipData, yb_in_place_refresh);
 
 	/* Concurrent refresh builds new data in temp tablespace, and does diff. */
-	if (concurrent)
+	if (concurrent || yb_in_place_refresh)
 	{
 		tableSpace = GetDefaultTablespace(RELPERSISTENCE_TEMP, false);
 		relpersistence = RELPERSISTENCE_TEMP;
@@ -298,6 +314,13 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	}
 
 	/*
+	 * Required to allow the creation for the temp table since we directly
+	 * call make_new_heap instead of going through DefineRelation.
+	 */
+	if (yb_in_place_refresh)
+		YBCDdlEnableForceCatalogModification();
+
+	/*
 	 * Create the transient table that will receive the regenerated data. Lock
 	 * it against access by any other process until commit (by which time it
 	 * will be gone).
@@ -305,7 +328,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	OIDNewHeap = make_new_heap(matviewOid, tableSpace,
 							   matviewRel->rd_rel->relam,
 							   relpersistence, ExclusiveLock,
-							   false /* yb_copy_split_options */);
+							   false /* yb_copy_split_options */ );
 	LockRelationOid(OIDNewHeap, AccessExclusiveLock);
 	dest = CreateTransientRelDestReceiver(OIDNewHeap);
 
@@ -314,14 +337,17 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 		processed = refresh_matview_datafill(dest, dataQuery, queryString);
 
 	/* Make the matview match the newly generated data. */
-	if (concurrent)
+	if (concurrent || yb_in_place_refresh)
 	{
 		int			old_depth = matview_maintenance_depth;
 
 		PG_TRY();
 		{
-			refresh_by_match_merge(matviewOid, OIDNewHeap, relowner,
-								   save_sec_context);
+			if (!concurrent)
+				yb_refresh_in_place_update(matviewRel, OIDNewHeap);
+			else
+				refresh_by_match_merge(matviewOid, OIDNewHeap, relowner,
+									   save_sec_context);
 		}
 		PG_CATCH();
 		{
@@ -686,10 +712,10 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	if (IsYugaByteEnabled())
 	{
 		appendStringInfo(&querybuf,
-						"CREATE TEMP TABLE %s AS "
-						"SELECT mv.*::%s AS mv, newdata.*::%s AS newdata "
-						"FROM %s mv FULL JOIN %s newdata ON (",
-						diffname, matviewname, tempname, matviewname, tempname);
+						 "CREATE TEMP TABLE %s AS "
+						 "SELECT mv.*::%s AS mv, newdata.*::%s AS newdata "
+						 "FROM %s mv FULL JOIN %s newdata ON (",
+						 diffname, matviewname, tempname, matviewname, tempname);
 	}
 	else
 	{
@@ -863,12 +889,13 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	{
 		resetStringInfo(&querybuf);
 		appendStringInfo(&querybuf, "SELECT newdata, mv FROM %s WHERE ", diffname);
-		TupleDesc tuple_desc = RelationGetDescr(matviewRel);
+		TupleDesc	tuple_desc = RelationGetDescr(matviewRel);
 
 		for (int i = 1; i <= tuple_desc->natts; i++)
 		{
 			Form_pg_attribute attribute = TupleDescAttr(tuple_desc, i - 1);
 			const char *attribute_name = quote_identifier(NameStr(attribute->attname));
+
 			appendStringInfo(&querybuf, "(newdata).%s IS NULL AND (mv).%s IS NULL ",
 							 attribute_name, attribute_name);
 			if (i < tuple_desc->natts)
@@ -898,11 +925,13 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 						 "DELETE FROM %s mv WHERE mv.*::%s OPERATOR(pg_catalog.=) ANY "
 						 "(SELECT mv FROM %s diff WHERE (",
 						 matviewname, matviewname, diffname);
-		TupleDesc tuple_desc = RelationGetDescr(matviewRel);
+		TupleDesc	tuple_desc = RelationGetDescr(matviewRel);
 
-		for (int i = 1; i <= tuple_desc->natts; i++) {
+		for (int i = 1; i <= tuple_desc->natts; i++)
+		{
 			Form_pg_attribute attribute = TupleDescAttr(tuple_desc, i - 1);
 			const char *attribute_name = quote_identifier(NameStr(attribute->attname));
+
 			appendStringInfo(&querybuf, "(diff.mv).%s IS NOT NULL ", attribute_name);
 			if (i < tuple_desc->natts)
 				appendStringInfo(&querybuf, "OR ");
@@ -969,7 +998,7 @@ refresh_by_heap_swap(Oid matviewOid, Oid OIDNewHeap, char relpersistence)
 {
 	finish_heap_swap(matviewOid, OIDNewHeap, false, false, true, true,
 					 RecentXmin, ReadNextMultiXactId(), relpersistence,
-					 false /* yb_copy_split_options */);
+					 false /* yb_copy_split_options */ );
 }
 
 /*
@@ -1046,4 +1075,62 @@ CloseMatViewIncrementalMaintenance(void)
 {
 	matview_maintenance_depth--;
 	Assert(matview_maintenance_depth >= 0);
+}
+
+static bool
+yb_needs_in_place_refresh()
+{
+	return yb_refresh_matview_in_place ||
+		   yb_major_version_upgrade_compatibility > 0;
+}
+
+/*
+ * yb_refresh_in_place_update
+ * Refresh the matview by using the same heap/DocDB table. Deletes all rows from
+ * the table and inserts the data from the temp table.
+ */
+static void
+yb_refresh_in_place_update(Relation matviewRel, Oid tempOid)
+{
+	Assert(IsYugaByteEnabled());
+
+	StringInfoData querybuf;
+	Relation tempRel;
+	char *matviewname;
+	char *tempname;
+
+	initStringInfo(&querybuf);
+	matviewname = quote_qualified_identifier(get_namespace_name(RelationGetNamespace(matviewRel)),
+		RelationGetRelationName(matviewRel));
+	tempRel = table_open(tempOid, NoLock);
+	tempname = quote_qualified_identifier(get_namespace_name(RelationGetNamespace(tempRel)),
+		RelationGetRelationName(tempRel));
+
+	if (SPI_connect() != SPI_OK_CONNECT)
+		elog(ERROR, "SPI_connect failed");
+
+	OpenMatViewIncrementalMaintenance();
+
+	appendStringInfo(&querybuf, "DELETE FROM %s", matviewname);
+
+	if (SPI_exec(querybuf.data, 0) != SPI_OK_DELETE)
+		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+
+	resetStringInfo(&querybuf);
+	appendStringInfo(&querybuf, "INSERT INTO %s SELECT * FROM %s", matviewname,
+					 tempname);
+
+	if (SPI_exec(querybuf.data, 0) != SPI_OK_INSERT)
+		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+
+	CloseMatViewIncrementalMaintenance();
+	table_close(tempRel, NoLock);
+
+	resetStringInfo(&querybuf);
+	appendStringInfo(&querybuf, "DROP TABLE %s", tempname);
+	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
+		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+
+	if (SPI_finish() != SPI_OK_FINISH)
+		elog(ERROR, "SPI_finish failed");
 }

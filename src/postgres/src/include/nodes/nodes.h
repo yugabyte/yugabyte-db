@@ -377,7 +377,7 @@ typedef enum NodeTag
 	T_LockStmt,
 	T_ConstraintsSetStmt,
 	T_ReindexStmt,
-	T_BackfillIndexStmt,
+	T_YbBackfillIndexStmt,
 	T_CheckPointStmt,
 	T_CreateSchemaStmt,
 	T_AlterDatabaseStmt,
@@ -393,7 +393,7 @@ typedef enum NodeTag
 	T_ExecuteStmt,
 	T_DeallocateStmt,
 	T_DeclareCursorStmt,
-	T_CreateTableGroupStmt,
+	T_YbCreateTableGroupStmt,
 	T_CreateTableSpaceStmt,
 	T_DropTableSpaceStmt,
 	T_AlterObjectDependsStmt,
@@ -504,8 +504,8 @@ typedef enum NodeTag
 	T_VacuumRelation,
 	T_PublicationObjSpec,
 	T_PublicationTable,
-	T_OptSplit,
-	T_RowBounds,
+	T_YbOptSplit,
+	T_YbRowBounds,
 
 	/*
 	 * TAGS FOR REPLICATION GRAMMAR PARSE NODES (replnodes.h)
@@ -543,14 +543,14 @@ typedef enum NodeTag
 	T_SupportRequestCost,		/* in nodes/supportnodes.h */
 	T_SupportRequestRows,		/* in nodes/supportnodes.h */
 	T_SupportRequestIndexCondition, /* in nodes/supportnodes.h */
-	T_SupportRequestWFuncMonotonic,	/* in nodes/supportnodes.h */
+	T_SupportRequestWFuncMonotonic, /* in nodes/supportnodes.h */
 
 	/*
 	 * TAGS FOR YUGABYTE NODES.
 	 */
 	T_YbPgExecOutParam,
 	T_YbBackfillInfo,
-	T_PartitionPruneStepFuncOp,
+	T_YbPartitionPruneStepFuncOp,
 	T_YbExprColrefDesc,
 	T_YbSeqScan,
 	T_YbSeqScanState,

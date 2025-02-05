@@ -24,19 +24,19 @@
 class CachedRegexpHolder {
  public:
   CachedRegexpHolder(size_t buffer_size,
-                     YBCPgThreadLocalRegexpCacheCleanup cleanup)
+                     YbcPgThreadLocalRegexpCacheCleanup cleanup)
       : buffer_(buffer_size, 0), cleanup_(cleanup), cache_{.num = 0, .array = buffer_.data()} {}
 
   ~CachedRegexpHolder() {
     cleanup_(&cache_);
   }
 
-  PgThreadLocalRegexpCache& cache() { return cache_; }
+  YbcPgThreadLocalRegexpCache& cache() { return cache_; }
 
  private:
   std::vector<char> buffer_;
-  const YBCPgThreadLocalRegexpCacheCleanup cleanup_;
-  PgThreadLocalRegexpCache cache_ = {};
+  const YbcPgThreadLocalRegexpCacheCleanup cleanup_;
+  YbcPgThreadLocalRegexpCache cache_ = {};
 };
 
 namespace yb::pggate {
@@ -50,6 +50,7 @@ thread_local void* pg_strtok_ptr = nullptr;
 thread_local void* jump_buffer = nullptr;
 thread_local void* err_status = nullptr;
 thread_local std::optional<CachedRegexpHolder> re_cache;
+thread_local YbcPgThreadLocalRegexpMetadata re_metadata;
 
 //-----------------------------------------------------------------------------
 // Memory context.
@@ -107,15 +108,19 @@ void PgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr) {
   pg_strtok_ptr = new_pg_strtok_ptr;
 }
 
-YBCPgThreadLocalRegexpCache* PgGetThreadLocalRegexpCache() {
+YbcPgThreadLocalRegexpCache* PgGetThreadLocalRegexpCache() {
   return re_cache ? &re_cache->cache() : nullptr;
 }
 
-YBCPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
-    size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup) {
+YbcPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
+    size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup) {
   DCHECK(!re_cache);
   re_cache.emplace(buffer_size, cleanup);
   return &re_cache->cache();
+}
+
+YbcPgThreadLocalRegexpMetadata* PgGetThreadLocalRegexpMetadata() {
+  return &re_metadata;
 }
 
 }  // namespace yb::pggate

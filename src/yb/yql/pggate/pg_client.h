@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -117,7 +118,7 @@ PerformResult Get(PerformResultFuture* future);
 
 class PgClient {
  public:
-  PgClient(const YBCPgAshConfig& ash_config,
+  PgClient(const YbcPgAshConfig& ash_config,
            std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
   ~PgClient();
 
@@ -143,6 +144,8 @@ class PgClient {
   Result<tserver::PgListClonesResponsePB> ListDatabaseClones();
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
+
+  Result<bool> PollVectorIndexReady(const PgObjectId& table_id);
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
 
@@ -248,7 +251,7 @@ class PgClient {
       const std::string& stream_id);
 
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
-      const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush);
+      const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
@@ -256,6 +259,11 @@ class PgClient {
 
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
+
+  Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req);
+  Result<tserver::PgImportTxnSnapshotResponsePB> ImportTxnSnapshot(
+      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options);
+  Status ClearExportedTxnSnapshots();
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

@@ -17,7 +17,7 @@ type: docs
 The tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If
-  not, follow the steps in [Quick start](/preview/tutorials/quick-start/).
+  not, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - have C++ 11 or later.
 
 ## Install the Redis C++ driver

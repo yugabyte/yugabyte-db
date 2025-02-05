@@ -54,7 +54,6 @@ To learn more, see [Optimizing YSQL queries using pg_hint_plan](./pg-hint-plan/)
 ## Log all slow queries
 
 You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
-You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
 
 ```sh
 $ ./bin/yb-tserver --ysql_log_min_duration_statement 1000
@@ -74,4 +73,12 @@ To create optimal plans for queries, the query planner needs accurate and up-to-
 
 {{<lead link="./auto-analyze/">}}
 To learn more, see [Auto Analyze service](./auto-analyze/).
+{{</lead>}}
+
+## Export query diagnostics
+
+Capture and export detailed query diagnostic information across multiple dimensions to help identify and resolve database query problems.
+
+{{<lead link="./query-diagnostics/">}}
+To learn more, see [Query diagnostics](./query-diagnostics/).
 {{</lead>}}

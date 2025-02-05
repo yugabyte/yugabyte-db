@@ -46,7 +46,7 @@
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema_pbutil.h"
@@ -1097,6 +1097,45 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
   return Status::OK();
 }
 
+namespace {
+Result<std::pair<TablespaceId, boost::optional<ReplicationInfoPB>>> TryParseTablespaceRow(
+    const qlexpr::QLTableRow& source_row, ColumnId oid_col_id, ColumnId options_id) {
+  // Fetch the oid.
+  auto oid = source_row.GetValue(oid_col_id);
+  if (!oid) {
+    return STATUS(Corruption, "Could not read oid column from pg_tablespace");
+  }
+
+  // Get the tablespace id.
+  const TablespaceId tablespace_id = GetPgsqlTablespaceId(oid->uint32_value());
+
+  // Fetch the options specified for the tablespace.
+  const auto& options = source_row.GetValue(options_id);
+  if (!options) {
+    return STATUS(Corruption, "Could not read spcoptions column from pg_tablespace");
+  }
+
+  VLOG(2) << "Tablespace " << tablespace_id << " -> " << options.value().DebugString();
+
+  // If no spcoptions found, then this tablespace has no placement info
+  // associated with it. Tables associated with this tablespace will not
+  // have any custom placement policy.
+  boost::optional<ReplicationInfoPB> replication_info;
+  if (!options->binary_value().empty()) {
+    // Parse the reloptions array associated with this tablespace and construct
+    // the ReplicationInfoPB. The ql_value is just the raw value read from the pg_tablespace
+    // catalog table. This was stored in postgres as a text array, but processed by DocDB as
+    // a binary value. So first process this binary value and convert it to text array of options.
+    auto placement_options = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
+        options.value()));
+
+    // Fetch the status and print the tablespace option along with the status.
+    replication_info = VERIFY_RESULT(TablespaceParser::FromQLValue(placement_options));
+  }
+  return std::make_pair(tablespace_id, replication_info);
+}
+} // namespace
+
 Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTablespaceInfo() {
   TRACE_EVENT0("master", "ReadPgTablespaceInfo");
 
@@ -1114,79 +1153,12 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
   // placement info for each tablespace encountered in this catalog table.
   auto tablespace_map = std::make_shared<TablespaceIdToReplicationInfoMap>();
   while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
-    // Fetch the oid.
-    auto oid = source_row.GetValue(oid_col_id);
-    if (!oid) {
-      return STATUS(Corruption, "Could not read oid column from pg_tablespace");
-    }
-
-    // Get the tablespace id.
-    const TablespaceId tablespace_id = GetPgsqlTablespaceId(oid->uint32_value());
-
-    // Fetch the options specified for the tablespace.
-    const auto& options = source_row.GetValue(options_id);
-    if (!options) {
-      return STATUS(Corruption, "Could not read spcoptions column from pg_tablespace");
-    }
-
-    VLOG(2) << "Tablespace " << tablespace_id << " -> " << options.value().DebugString();
-
-    // If no spcoptions found, then this tablespace has no placement info
-    // associated with it. Tables associated with this tablespace will not
-    // have any custom placement policy.
-    if (options->binary_value().empty()) {
-      // Storing boost::none lets the client know that the tables associated with
-      // this tablespace will not have any custom placement policy for them.
-      const auto& ret = tablespace_map->emplace(tablespace_id, boost::none);
-      // This map should not have already had an element associated with this
-      // tablespace.
-      DCHECK(ret.second);
+    auto result = TryParseTablespaceRow(source_row, oid_col_id, options_id);
+    if (!result.ok()) {
+      LOG(WARNING) << "Could not parse tablespace row: " << result.status();
       continue;
     }
-
-    // Parse the reloptions array associated with this tablespace and construct
-    // the ReplicationInfoPB. The ql_value is just the raw value read from the pg_tablespace
-    // catalog table. This was stored in postgres as a text array, but processed by DocDB as
-    // a binary value. So first process this binary value and convert it to text array of options.
-    auto placement_options = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
-          options.value()));
-
-    // Fetch the status and print the tablespace option along with the status.
-    ReplicationInfoPB replication_info;
-    PlacementInfoConverter::Placement placement =
-      VERIFY_RESULT(PlacementInfoConverter::FromQLValue(placement_options));
-
-    PlacementInfoPB* live_replicas = replication_info.mutable_live_replicas();
-    for (const auto& block : placement.placement_infos) {
-      auto pb = live_replicas->add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud(block.cloud);
-      pb->mutable_cloud_info()->set_placement_region(block.region);
-      pb->mutable_cloud_info()->set_placement_zone(block.zone);
-      pb->set_min_num_replicas(block.min_num_replicas);
-
-      if (block.leader_preference < 0) {
-        return STATUS(InvalidArgument, "leader_preference cannot be negative");
-      } else if (static_cast<size_t>(block.leader_preference) > placement.placement_infos.size()) {
-        return STATUS(
-            InvalidArgument,
-            "Priority value cannot be more than the number of zones in the preferred list since "
-            "each priority should be associated with at least one zone from the list");
-      } else if (block.leader_preference > 0) {
-        // Contiguity has already been validated at YSQL layer
-        while (replication_info.multi_affinitized_leaders_size() < block.leader_preference) {
-          replication_info.add_multi_affinitized_leaders();
-        }
-
-        auto zone_set =
-            replication_info.mutable_multi_affinitized_leaders(block.leader_preference - 1);
-        auto ci = zone_set->add_zones();
-        ci->set_placement_cloud(block.cloud);
-        ci->set_placement_region(block.region);
-        ci->set_placement_zone(block.zone);
-      }
-    }
-    live_replicas->set_num_replicas(placement.num_replicas);
-
+    auto& [tablespace_id, replication_info] = *result;
     const auto& ret = tablespace_map->emplace(tablespace_id, replication_info);
     // This map should not have already had an element associated with this
     // tablespace.

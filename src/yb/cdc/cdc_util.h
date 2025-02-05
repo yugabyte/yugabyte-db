@@ -14,8 +14,10 @@
 #pragma once
 
 #include <string>
+
 #include "yb/cdc/xrepl_types.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/util/hash_util.h"
 
 namespace yb::cdc {
 
@@ -24,15 +26,11 @@ struct TabletStreamInfo {
   xrepl::StreamId stream_id;
   TabletId tablet_id;
 
-  bool operator==(const TabletStreamInfo& other) const {
-    return stream_id == other.stream_id && tablet_id == other.tablet_id;
-  }
+  bool operator==(const TabletStreamInfo& other) const = default;
+
+  YB_STRUCT_DEFINE_HASH(TabletStreamInfo, stream_id, tablet_id);
 
   std::string ToString() const;
-
-  struct Hash {
-    std::size_t operator()(const TabletStreamInfo& p) const noexcept;
-  };
 };
 
 
@@ -45,7 +43,5 @@ struct CDCCreationState {
     producer_entries_modified.clear();
   }
 };
-
-inline size_t hash_value(const TabletStreamInfo& p) noexcept { return TabletStreamInfo::Hash()(p); }
 
 }  // namespace yb::cdc

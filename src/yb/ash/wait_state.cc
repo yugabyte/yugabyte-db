@@ -498,7 +498,6 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kMVCC_WaitForSafeTime:
-    case WaitStateCode::kLockedBatchEntry_Lock:
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
       return WaitStateType::kWaitOnCondition;
 
@@ -521,8 +520,9 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kConflictResolution_ResolveConficts:
       return WaitStateType::kNetwork;
 
+    case WaitStateCode::kLockedBatchEntry_Lock:
     case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
-      return WaitStateType::kWaitOnCondition;
+      return WaitStateType::kLock;
 
     case WaitStateCode::kRaft_WaitingForReplication:
       return WaitStateType::kNetwork;

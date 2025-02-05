@@ -5,6 +5,8 @@ import {
   I18N_KEY_PREFIX_XCLUSTER_SCHEMA_CHANGE_MODE,
   I18N_KEY_PREFIX_XCLUSTER_TERMS,
   XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL,
+  XCLUSTER_DR_SCHEMA_CHANGE_MODES_DOCUMENTATION_URL,
+  XCLUSTER_REPLICATION_SCHEMA_CHANGE_MODES_DOCUMENTATION_URL,
   XCLUSTER_REPLICATION_DDL_STEPS_DOCUMENTATION_URL
 } from '../constants';
 import { getSchemaChangeMode } from '../ReplicationUtils';
@@ -76,8 +78,8 @@ export const UpgradeXClusterModal = ({
           <a
             href={
               isDrInterface
-                ? XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL
-                : XCLUSTER_REPLICATION_DDL_STEPS_DOCUMENTATION_URL
+                ? XCLUSTER_DR_SCHEMA_CHANGE_MODES_DOCUMENTATION_URL
+                : XCLUSTER_REPLICATION_SCHEMA_CHANGE_MODES_DOCUMENTATION_URL
             }
             target="_blank"
             rel="noopener noreferrer"

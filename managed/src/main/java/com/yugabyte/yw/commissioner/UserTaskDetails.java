@@ -15,12 +15,12 @@ public class UserTaskDetails {
 
   // The various groupings of user facing subtasks.
   public enum SubTaskGroupType {
+    // Default generic subtask group type. Do not use this to set as it's given special treatment.
+    Configuring,
+
     // Used for parent tasks which could have own details/errors. Only for UI/API
     // purposes, not stored in DB.
     Preparation,
-
-    // Ignore this subtask and do not display it to the user.
-    Invalid,
 
     // Perform preflight checks to determine if the node is ready to be configured or provisioned.
     PreflightChecks,
@@ -284,7 +284,10 @@ public class UserTaskDetails {
     CreatePodDisruptionBudgetPolicy,
 
     // Remove Pod Disruption Budget Policy
-    RemovingPodDisruptionBudgetPolicy
+    RemovingPodDisruptionBudgetPolicy,
+
+    // Validate after upgrade
+    PostUpdateValidations
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -294,6 +297,10 @@ public class UserTaskDetails {
     String title;
     String description;
     switch (subTaskGroupType) {
+      case Configuring:
+        title = "Configuring";
+        description = "Applying the configuration.";
+        break;
       case Preparation:
         title = "Action preparation";
         description = "Preparing to execute a selected action.";
@@ -659,6 +666,10 @@ public class UserTaskDetails {
       case RemovingPodDisruptionBudgetPolicy:
         title = "Removing Pod Disruption Budget Policy";
         description = "Removing Pod Disruption Budget Policy";
+        break;
+      case PostUpdateValidations:
+        title = "Validating after updates";
+        description = "Validating updates applied correctly";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

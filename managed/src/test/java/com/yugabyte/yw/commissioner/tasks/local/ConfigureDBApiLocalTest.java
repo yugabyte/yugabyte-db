@@ -9,7 +9,7 @@ import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
@@ -31,6 +32,14 @@ import play.mvc.Result;
 public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
 
   private final String YCQL_PASSWORD = "Pass@123";
+  private final Map<String, String> connectionPoolingGflags =
+      Map.of(
+          "ysql_conn_mgr_max_client_connections",
+          "10001",
+          "ysql_conn_mgr_idle_time",
+          "30",
+          "ysql_conn_mgr_stats_interval",
+          "20");
 
   @Override
   protected Pair<Integer, Integer> getIpRange() {
@@ -151,7 +160,7 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     result = configureYCQL(formData, universe.getUniverseUUID());
     assertOk(result);
     json = Json.parse(contentAsString(result));
-    taskInfo = CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()));
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     verifyYCQL(universe);
@@ -190,6 +199,7 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     formData.enableConnectionPooling = true;
     formData.communicationPorts.internalYsqlServerRpcPort = 6434;
     formData.communicationPorts.ysqlServerRpcPort = 5434;
+    formData.connectionPoolingGflags = connectionPoolingGflags;
 
     Result result = configureYSQL(formData, universe.getUniverseUUID());
     assertOk(result);
@@ -209,5 +219,39 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
         "some_table" /* tableName */,
         true /* authEnabled */,
         true /* cpEnabled */);
+    compareConnectionPoolingGFlags(universe);
+  }
+
+  private void compareConnectionPoolingGFlags(Universe universe) {
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    UniverseTaskBase.ServerType serverType = UniverseTaskBase.ServerType.TSERVER;
+    Map<String, String> gflags =
+        userIntent.specificGFlags.getPerProcessFlags().value.get(serverType);
+    for (NodeDetails node : universe.getNodes()) {
+      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+      if (node.isTserver) {
+        Map<String, String> varz = getVarz(node, universe, serverType);
+        log.info(
+            "expected gflags for node {} server type {} are {}", node.nodeName, serverType, gflags);
+        Map<String, String> gflagsOnDisk = getDiskFlags(node, universe, serverType);
+        connectionPoolingGflags.forEach(
+            (k, v) -> {
+              String expectedValue = v;
+              String actual = varz.getOrDefault(k, "?????");
+              log.info("Actual gflag '{}', value in memory is '{}'.", k, actual);
+              assertEquals("Compare in memory gflag " + k, expectedValue, actual);
+              String onDisk = gflagsOnDisk.getOrDefault(k, "?????");
+              log.info("Actual gflag '{}', value on disk is '{}'.", k, onDisk);
+              assertEquals("Compare on disk gflag " + k, expectedValue, onDisk);
+              String universeDetailsGflag = gflags.getOrDefault(k, "?????");
+              log.info(
+                  "Actual gflag '{}', value in universe details is '{}'.", k, universeDetailsGflag);
+              assertEquals(
+                  "Compare universe details gflag " + k, expectedValue, universeDetailsGflag);
+            });
+      }
+    }
   }
 }

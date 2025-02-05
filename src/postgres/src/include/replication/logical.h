@@ -126,7 +126,7 @@ typedef struct LogicalDecodingContext
 	 *
 	 * The entry (value) remains unused i.e. this is used like a set.
 	 */
-	HTAB		*yb_needs_relcache_invalidation;
+	HTAB	   *yb_needs_relcache_invalidation;
 } LogicalDecodingContext;
 
 
@@ -165,6 +165,6 @@ extern void UpdateDecodingStats(LogicalDecodingContext *ctx);
 extern void YBValidateOutputPlugin(char *plugin);
 
 extern void YBValidateLsnType(char *lsn_type);
-extern CRSLsnType YBParseLsnType(char *lsn_type);
+extern YbCRSLsnType YBParseLsnType(char *lsn_type);
 
 #endif

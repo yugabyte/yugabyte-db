@@ -7,6 +7,7 @@ import (
     "apiserver/cmd/server/templates"
     "embed"
     "io/fs"
+    "net"
     "net/http"
     "os"
     "strconv"
@@ -103,8 +104,6 @@ func main() {
     helper, _ := helpers.NewHelperContainer(log)
 
     serverPort := getEnv(serverPortEnv, "15433")
-
-    port := ":" + serverPort
 
     LoadTemplates()
 
@@ -305,6 +304,6 @@ func main() {
     if helpers.BindAddr == "" {
         helpers.BindAddr = helpers.HOST
     }
-    uiBindAddress := helpers.BindAddr + port
+    uiBindAddress := net.JoinHostPort(helpers.BindAddr, serverPort)
     e.Logger.Fatal(e.Start(uiBindAddress))
 }

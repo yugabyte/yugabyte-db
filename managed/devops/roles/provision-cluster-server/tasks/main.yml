@@ -62,10 +62,13 @@
       value: 0
       state: present
     tags: yb-prebuilt-ami
-
+  # We don't follow symlinks here because we want to check if the symlink exists.
+  # if the symlink exists we don't worry about configuring the core dump directory.
   - name: Check if the core dumps directory or symlink exists
     stat:
-      path: "{{ yb_home_dir }}/cores/"
+      # no slash at the end to check if the symlink exists, otherwise it fails for symlinks
+      path: "{{ yb_home_dir }}/cores"
+      follow: false
     register: core_dumps_dir_stat
     tags: yb-prebuilt-ami
 

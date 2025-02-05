@@ -87,14 +87,20 @@ YB_DEFINE_ENUM(BlockType, (kData)(kIndex));
 // hashed components of key for filtering.
 // BloomFilterAwareFileFilter ignores an SST file completely if there are no keys with the same
 // hashed components as the key specified in constructor.
-class BloomFilterAwareFileFilter : public TableAwareReadFileFilter {
+class BloomFilterAwareFileFilter : public IteratorFilter {
  public:
-  BloomFilterAwareFileFilter();
+  bool Filter(
+      const QueryOptions& options, Slice user_key, FilterKeyCache* filter_key_cache,
+      void* context) const override {
+    return Filter(options, user_key, filter_key_cache, static_cast<TableReader*>(context));
+  }
 
   bool Filter(
-      const ReadOptions& read_options, Slice user_key, FilterKeyCache* filter_key_cache,
-      TableReader* reader) const override;
+      const QueryOptions& options, Slice user_key, FilterKeyCache* filter_key_cache,
+      TableReader* reader) const;
 };
+
+class BinarySearchIndexReader;
 
 // A Table is a sorted map from strings to strings.  Tables are
 // immutable and persistent.  A Table may be safely accessed from
@@ -148,7 +154,7 @@ class BlockBasedTable : public TableReader {
   // @param skip_filters Disables loading/accessing the filter block.
   // key should be internal key in case bloom filters are used.
   Status Get(
-      const ReadOptions& readOptions, const Slice& key, GetContext* get_context,
+      const ReadOptions& read_options, const Slice& key, GetContext* get_context,
       bool skip_filters = false) override;
 
   // Pre-fetch the disk blocks that correspond to the key range specified by
@@ -232,10 +238,8 @@ class BlockBasedTable : public TableReader {
   // to get the correct filter block.
   // Note: even if we check prefix match we still need to get filter based on filter_key, not its
   // prefix, because prefix for the key goes to the same filter block as key itself.
-  CachableEntry<FilterBlockReader> GetFilter(const QueryId query_id,
-                                             bool no_io = false,
-                                             const Slice* filter_key = nullptr,
-                                             Statistics* statistics = nullptr) const;
+  CachableEntry<FilterBlockReader> GetFilter(const QueryOptions& options,
+                                             const Slice* filter_key = nullptr) const;
 
   // Returns index reader.
   // If index reader is not stored in either block or internal cache:
@@ -293,8 +297,7 @@ class BlockBasedTable : public TableReader {
   // Optionally, user can pass a preloaded meta_index_iter for the index that
   // need to access extra meta blocks for index construction. This parameter
   // helps avoid re-reading meta index block if caller already created one.
-  Status CreateDataBlockIndexReader(
-      std::unique_ptr<IndexReader>* index_reader,
+  yb::Result<std::unique_ptr<IndexReader>> CreateDataBlockIndexReader(
       InternalIterator* preloaded_meta_index_iter = nullptr);
 
   // Converts an index entry (i.e. an encoded BlockHandle) into an iterator over the contents of
@@ -307,11 +310,12 @@ class BlockBasedTable : public TableReader {
       const ReadOptions& ro, CachableEntry<Block>* block, BlockType block_type,
       BlockIter* input_iter);
 
-  bool NonBlockBasedFilterKeyMayMatch(FilterBlockReader* filter, const Slice& filter_key) const;
+  bool NonBlockBasedFilterKeyMayMatch(
+      FilterBlockReader* filter, Slice filter_key, Statistics* statistics) const;
 
   Status ReadPropertiesBlock(InternalIterator* meta_iter);
 
-  Status SetupFilter(InternalIterator* meta_iter);
+  Status SetupIteratorFilter(InternalIterator* meta_iter);
 
   // Read the meta block from sst.
   static Status ReadMetaBlock(
@@ -322,7 +326,7 @@ class BlockBasedTable : public TableReader {
       size_t* filter_size = nullptr, Statistics* statistics = nullptr);
 
   // CreateFilterIndexReader from sst
-  Status CreateFilterIndexReader(std::unique_ptr<IndexReader>* filter_index_reader);
+  yb::Result<std::unique_ptr<BinarySearchIndexReader>> CreateFilterIndexReader();
 
   // Helper function to setup the cache key's prefix for block of file passed within a reader
   // instance. Used for both data and metadata files.

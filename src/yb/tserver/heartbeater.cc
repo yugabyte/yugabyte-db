@@ -44,6 +44,7 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/bind.h"
@@ -343,6 +344,8 @@ Status Heartbeater::Thread::SetupRegistration(master::TSRegistrationPB* reg) {
   if (tablet_overhead_limit > 0) {
     resources->set_tablet_overhead_ram_in_bytes(tablet_overhead_limit);
   }
+  VersionInfo::GetVersionInfoPB(reg->mutable_version_info());
+
   return Status::OK();
 }
 
@@ -467,9 +470,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
       auto universe_uuid = VERIFY_RESULT(UniverseUuid::FromString(resp.universe_uuid()));
       RETURN_NOT_OK(server_->ValidateAndMaybeSetUniverseUuid(universe_uuid));
     }
-    if (resp.has_ddl_lock_entries()) {
+    if (resp.has_op_lease_update()) {
       WARN_NOT_OK(
-          server_->BootstrapDdlObjectLocks(resp),
+          server_->BootstrapDdlObjectLocks(resp.op_lease_update()),
           "Error bootstrapping object locks. Not expected.");
     }
 
@@ -486,8 +489,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
           break;
         }
         default:
-          return StatusFromPB(resp.error().status());
-
+          auto status = StatusFromPB(resp.error().status());
+          if (resp.is_fatal_error()) {
+            // yb-master has requested us to terminate the process immediately.
+            LOG(FATAL) << "Unable to join universe: " << status;
+          }
+          return status;
       }
     }
 

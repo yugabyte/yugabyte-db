@@ -18,6 +18,7 @@
 #include <boost/interprocess/mapped_region.hpp>
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/tablet_server.h"
 

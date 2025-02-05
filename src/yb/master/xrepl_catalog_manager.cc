@@ -35,6 +35,7 @@
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master.h"
@@ -143,6 +144,8 @@ DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_uint32(cdc_wal_retention_time_secs);
+DECLARE_uint64(cdc_intent_retention_ms);
+DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 
 
@@ -358,7 +361,8 @@ void CatalogManager::RecordCDCSDKHiddenTablets(
         .table_id_ = hidden_tablet->table()->id(),
         .parent_tablet_id_ =
             tablet_pb.has_split_parent_tablet_id() ? tablet_pb.split_parent_tablet_id() : "",
-        .split_tablets_ = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)}};
+        .split_tablets_ = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)},
+        .hide_time_ = HybridTime(tablet_pb.hide_hybrid_time())};
 
     retained_by_cdcsdk_.emplace(hidden_tablet->id(), std::move(info));
   }
@@ -690,7 +694,7 @@ Status CatalogManager::BackfillMetadataForXRepl(
           set_column_pg_type->set_name(entry.first);
           uint32_t pg_type_oid = entry.second;
 
-          const YBCPgTypeEntity* type_entity =
+          const YbcPgTypeEntity* type_entity =
               docdb::DocPgGetTypeEntity({(int32_t)pg_type_oid, -1});
 
           if (type_entity == nullptr && type_oid_info_map.contains(pg_type_oid)) {
@@ -878,12 +882,13 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   // TODO(#18934): Move to the DDL transactional atomicity model.
   CDCSDKStreamCreationState cdcsdk_stream_creation_state = CDCSDKStreamCreationState::kInitialized;
-  auto se_rollback_failed_create = ScopeExit([this, &stream_id, &cdcsdk_stream_creation_state] {
+  auto se_rollback_failed_create = ScopeExit(
+      [this, &stream_id, &cdcsdk_stream_creation_state, &stream] {
     WARN_NOT_OK(
-        RollbackFailedCreateCDCSDKStream(stream_id, cdcsdk_stream_creation_state),
+        RollbackFailedCreateCDCSDKStream(cdcsdk_stream_creation_state, stream),
         Format(
-            "Failed to cleanup failed CDC stream $0 at state $1", stream_id,
-            cdcsdk_stream_creation_state));
+            "Failed to cleanup failed CDC stream $0 at state $1",
+            stream_id, cdcsdk_stream_creation_state));
   });
 
   ReplicationSlotName slot_name;
@@ -1026,6 +1031,24 @@ Status CatalogManager::CreateNewCdcsdkStream(
         req.cdcsdk_stream_create_options().lsn_type());
   }
 
+  RETURN_NOT_OK(
+      TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kBeforeSysCatalogEntry"));
+
+  // Update the on-disk system catalog.
+  RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
+      sys_catalog_->Upsert(leader_ready_term(), stream), "inserting CDC stream into sys-catalog",
+      resp));
+
+  cdcsdk_stream_creation_state = CDCSDKStreamCreationState::kPreCommitMutation;
+  TRACE("Wrote CDC stream to sys-catalog");
+
+  RETURN_NOT_OK(
+      TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kBeforeInMemoryStateCommit"));
+
+  // Commit the in-memory state.
+  stream->mutable_metadata()->CommitMutation();
+  cdcsdk_stream_creation_state = CDCSDKStreamCreationState::kPostCommitMutation;
+
   {
     // Add the stream to the in-memory map.
     TRACE("Acquired catalog manager lock");
@@ -1049,26 +1072,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   }
   TRACE("Inserted new CDC stream into CatalogManager maps");
 
-  // Any failure beyond this point requires a rollback for CDCSDK streams.
   cdcsdk_stream_creation_state = CDCSDKStreamCreationState::kAddedToMaps;
-
-  RETURN_NOT_OK(
-      TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kBeforeSysCatalogEntry"));
-
-  // Update the on-disk system catalog.
-  RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
-      sys_catalog_->Upsert(leader_ready_term(), stream), "inserting CDC stream into sys-catalog",
-      resp));
-
-  cdcsdk_stream_creation_state = CDCSDKStreamCreationState::kPreCommitMutation;
-  TRACE("Wrote CDC stream to sys-catalog");
-
-  RETURN_NOT_OK(
-      TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kBeforeInMemoryStateCommit"));
-
-  // Commit the in-memory state.
-  stream->mutable_metadata()->CommitMutation();
-  cdcsdk_stream_creation_state = CDCSDKStreamCreationState::kPostCommitMutation;
 
   resp->set_stream_id(stream->id());
 
@@ -1169,28 +1173,21 @@ Status CatalogManager::CreateNewCdcsdkStream(
 }
 
 Status CatalogManager::RollbackFailedCreateCDCSDKStream(
-    const xrepl::StreamId& stream_id, CDCSDKStreamCreationState& cdcsdk_stream_creation_state) {
+    CDCSDKStreamCreationState cdcsdk_stream_creation_state, const CDCStreamInfoPtr& stream) {
   if (cdcsdk_stream_creation_state == CDCSDKStreamCreationState::kInitialized ||
-      cdcsdk_stream_creation_state == CDCSDKStreamCreationState::kReady ||
-      stream_id == xrepl::StreamId::Nil()) {
+      cdcsdk_stream_creation_state == CDCSDKStreamCreationState::kReady) {
     return Status::OK();
   }
 
-  LOG(WARNING) << "Rolling back the CDC stream creation for stream_id = " << stream_id
+  LOG(WARNING) << "Rolling back the CDC stream creation for stream = " << AsString(stream)
                << ", cdcsdk_stream_creation_state = " << cdcsdk_stream_creation_state;
-
-  CDCStreamInfoPtr stream;
-  {
-    TRACE("Acquired catalog manager lock for rolling back CDCSDK stream creation");
-    SharedLock lock(mutex_);
-    stream = cdc_stream_map_[stream_id];
-  }
 
   switch (cdcsdk_stream_creation_state) {
     case CDCSDKStreamCreationState::kAddedToMaps: {
+      std::vector streams{stream};
+      RETURN_NOT_OK(DropXReplStreams(streams, SysCDCStreamEntryPB::DELETING));
       LockGuard lock(mutex_);
-      RETURN_NOT_OK(CleanupXReplStreamFromMaps(stream));
-      break;
+      return CleanupXReplStreamFromMaps(stream);
     }
     case CDCSDKStreamCreationState::kPreCommitMutation:
       // Call AbortMutation since we didn't commit the in-memory changes so that the write lock
@@ -1198,16 +1195,17 @@ Status CatalogManager::RollbackFailedCreateCDCSDKStream(
       stream->mutable_metadata()->AbortMutation();
       FALLTHROUGH_INTENDED;
     case CDCSDKStreamCreationState::kPostCommitMutation: {
-      RETURN_NOT_OK(DropXReplStreams({stream}, SysCDCStreamEntryPB::DELETING));
-      break;
+      std::vector streams(1, stream);
+      return DropXReplStreams(streams, SysCDCStreamEntryPB::DELETING);
     }
 
     case CDCSDKStreamCreationState::kInitialized: FALLTHROUGH_INTENDED;
     case CDCSDKStreamCreationState::kReady:
       VLOG(2) << "Nothing to rollback";
+      return Status::OK();
   }
 
-  return Status::OK();
+  FATAL_INVALID_ENUM_VALUE(CDCSDKStreamCreationState, cdcsdk_stream_creation_state);
 }
 
 Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
@@ -1615,10 +1613,13 @@ Result<std::optional<CDCStreamInfoPtr>> CatalogManager::GetStreamIfValidForDelet
 }
 
 Status CatalogManager::DropXReplStreams(
-    const std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State delete_state) {
+    std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State delete_state) {
   if (streams.empty()) {
     return Status::OK();
   }
+  std::sort(streams.begin(), streams.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs->StreamId() < rhs->StreamId();
+  });
   RSTATUS_DCHECK(
       delete_state == SysCDCStreamEntryPB::DELETING_METADATA ||
           delete_state == SysCDCStreamEntryPB::DELETING,
@@ -2528,7 +2529,7 @@ Status CatalogManager::GetDroppedTablesFromCDCSDKStream(
     }
     // GetTablets locks lock_ in shared mode.
     if (table) {
-      tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
+      tablets = VERIFY_RESULT(table->GetTabletsIncludeInactive());
     }
 
     // For the table dropped, GetTablets() will be empty.
@@ -2694,8 +2695,39 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
       "No entry found in tablets_to_keep_per_stream map for the stream");
 
     if (!tablets->contains(entry.tablet_id)) {
-      // Tablet is no longer part of this stream so delete it.
-      keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+      // Either this tablet belongs to a dropped table or a dynamic table. If the corresponding
+      // table of the tablet (all the tables in case of a colocated tablet) belongs to the dropped
+      // table list computed previously, then the cdc_state entry will be deleted. If the tablet
+      // itself is not found, we can safely delete the cdc_state entry.
+      auto tablet_info_result = GetTabletInfo(entry.tablet_id);
+      if (!tablet_info_result.ok()) {
+        keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+        continue;
+      }
+
+      auto table_ids = (*tablet_info_result)->GetTableIds();
+      DCHECK_GT(table_ids.size(), 0);
+      bool all_tables_on_tablet_dropped = true;
+      for (const auto& table_id : table_ids) {
+        if (drop_stream_table_list[entry.stream_id].contains(table_id)) {
+          continue;
+        }
+        // In a race scenario between cleanup of non eligible tables from CDC stream & same table
+        // being dropped, removal of cdc state entries for this non eligible table is done via drop
+        // table metadata cleanup flow.
+        auto table_info = GetTableInfo(table_id);
+        if (table_info && !IsTableEligibleForCDCSDKStream(
+                              table_info, table_info->LockForRead(), /* check_schema */ true)) {
+          continue;
+        }
+        all_tables_on_tablet_dropped = false;
+        break;
+      }
+
+      // Skip deleting the cdc state table entry if atleast one table is still present.
+      if (all_tables_on_tablet_dropped) {
+        keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+      }
     }
   }
 
@@ -2781,6 +2813,9 @@ Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
       sys_catalog_->Delete(epoch, streams_to_delete),
       "Error deleting XRepl streams from sys-catalog");
 
+  for (auto& lock : locks) {
+    lock.Commit();
+  }
   TRACE("Removing from maps");
   {
     LockGuard lock(mutex_);
@@ -2790,9 +2825,6 @@ Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
   }
   LOG(INFO) << "Successfully deleted XRepl streams: " << CDCStreamInfosAsString(streams_to_delete);
 
-  for (auto& lock : locks) {
-    lock.Commit();
-  }
   return Status::OK();
 }
 
@@ -2928,11 +2960,26 @@ Status CatalogManager::GetCDCStream(
         stream_lock->pb.cdcsdk_disable_dynamic_table_addition());
   }
 
-  if (FLAGS_ysql_yb_allow_replication_slot_lsn_types &&
-      stream_lock->pb.has_cdcsdk_ysql_replication_slot_lsn_type()) {
+  // We need to ensure that we do not check the lsn type option when we are
+  // dealing with a gRPC stream. Adding a check to only access the lsn type values
+  // when we have a slot name present which essentially indicates that we are in
+  // the context of logical replication.
+  if (stream_lock->pb.has_cdcsdk_ysql_replication_slot_name()) {
     auto cdc_stream_info_options = stream_info->mutable_cdc_stream_info_options();
-    cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_lsn_type(
-        stream_lock->pb.cdcsdk_ysql_replication_slot_lsn_type());
+
+    auto replication_slot_lsn_type = ReplicationSlotLsnType::ReplicationSlotLsnType_SEQUENCE;
+
+    if (FLAGS_ysql_yb_allow_replication_slot_lsn_types &&
+        stream_lock->pb.has_cdcsdk_ysql_replication_slot_lsn_type()) {
+      replication_slot_lsn_type = stream_lock->pb.cdcsdk_ysql_replication_slot_lsn_type();
+    } else {
+      VLOG(2) << "No cdcsdk_ysql_replication_slot_lsn_type found for stream: " << stream->id()
+              << " and slot " << stream_lock->pb.cdcsdk_ysql_replication_slot_name()
+              << " with flag value: " << FLAGS_ysql_yb_allow_replication_slot_lsn_types
+              << ". Keeping default value of 'SEQUENCE'.";
+    }
+
+    cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_lsn_type(replication_slot_lsn_type);
   }
 
   auto replica_identity_map = stream_lock->pb.replica_identity_map();
@@ -3371,9 +3418,11 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
 
       std::optional<cdc::CDCStateTableEntry> parent_entry_opt;
       if (stream_type == cdc::CDCSDK) {
-         parent_entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
-          {split_tablet_ids.source, stream->StreamId()},
-          cdc::CDCStateTableEntrySelector().IncludeActiveTime().IncludeCDCSDKSafeTime()));
+        parent_entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+            {split_tablet_ids.source, stream->StreamId()}, cdc::CDCStateTableEntrySelector()
+                                                               .IncludeCheckpoint()
+                                                               .IncludeActiveTime()
+                                                               .IncludeCDCSDKSafeTime()));
         DCHECK(parent_entry_opt);
       }
 
@@ -3399,17 +3448,24 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         }
       }
 
-      // Insert children entries into cdc_state now, set the opid to 0.0 and the timestamp to
-      // NULL. When we process the parent's SPLIT_OP in GetChanges, we will update the opid to
-      // the SPLIT_OP so that the children pollers continue from the next records. When we process
-      // the first GetChanges for the children, then their timestamp value will be set. We use
-      // this information to know that the children has been polled for. Once both children have
-      // been polled for, then we can delete the parent tablet via the bg task
+      // Insert children entries into cdc_state now. In case of logical replication set the opid to
+      // parent entry's opid. The split will be detected in the immediate next GetChanges call on
+      // this tablet and we will transition to the children tablets. In other cases, set the opid to
+      // 0.0 and the timestamp to NULL. When we process the parent's SPLIT_OP in GetChanges, we will
+      // update the opid to the SPLIT_OP so that the children pollers continue from the next
+      // records. When we process the first GetChanges for the children, then their timestamp value
+      // will be set. We use this information to know that the children has been polled for. Once
+      // both children have been polled for, then we can delete the parent tablet via the bg task
       // DoProcessXClusterParentTabletDeletion.
       for (const auto& child_tablet_id :
            {split_tablet_ids.children.first, split_tablet_ids.children.second}) {
         cdc::CDCStateTableEntry entry(child_tablet_id, stream->StreamId());
-        entry.checkpoint = OpId().Min();
+        if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
+            DCHECK(parent_entry_opt->checkpoint);
+            entry.checkpoint = *parent_entry_opt->checkpoint;
+        } else {
+            entry.checkpoint = OpId().Min();
+        }
 
         if (stream_type == cdc::CDCSDK) {
           entry.active_time = last_active_time;
@@ -3499,39 +3555,45 @@ Status CatalogManager::BootstrapProducer(
   LOG(INFO) << "Servicing BootstrapProducer request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
 
-  const bool pg_database_type = req->db_type() == YQL_DATABASE_PGSQL;
-  SCHECK(
-      pg_database_type || req->db_type() == YQL_DATABASE_CQL, InvalidArgument,
-      "Invalid database type");
-  SCHECK(
-      req->has_namespace_name() && !req->namespace_name().empty(), InvalidArgument,
-      "No namespace specified");
+  SCHECK_EQ(req->db_type(), YQL_DATABASE_PGSQL, InvalidArgument, "Invalid database type");
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, namespace_name);
   SCHECK_GT(req->table_name_size(), 0, InvalidArgument, "No tables specified");
-  if (pg_database_type) {
-    SCHECK_EQ(
-        req->pg_schema_name_size(), req->table_name_size(), InvalidArgument,
-        "Number of tables and number of pg schemas must match");
-  } else {
-    SCHECK_EQ(
-        req->pg_schema_name_size(), 0, InvalidArgument,
-        "Pg Schema does not apply to CQL databases");
-  }
+  SCHECK_EQ(
+      req->pg_schema_name_size(), req->table_name_size(), InvalidArgument,
+      "Number of tables and number of pg schemas must match");
+
+  NamespaceIdentifierPB ns_id;
+  ns_id.set_database_type(req->db_type());
+  ns_id.set_name(req->namespace_name());
+  auto ns = VERIFY_RESULT(FindNamespace(ns_id));
+  // We can skip sequence data, since that is only used in db scoped xCluster which does not call
+  // this function.
+  auto all_tables = VERIFY_RESULT(
+      GetTablesEligibleForXClusterReplication(*this, ns->id(), /*include_sequences_data= */ false));
 
   cdc::BootstrapProducerRequestPB bootstrap_req;
   master::TSDescriptorPtr ts = nullptr;
   for (int i = 0; i < req->table_name_size(); i++) {
-    string pg_schema_name = pg_database_type ? req->pg_schema_name(i) : "";
-    auto table_info = GetTableInfoFromNamespaceNameAndTableName(
-        req->db_type(), req->namespace_name(), req->table_name(i), pg_schema_name);
-    SCHECK(
-        table_info, NotFound, Format("Table $0.$1$2 not found"), req->namespace_name(),
-        (pg_schema_name.empty() ? "" : pg_schema_name + "."), req->table_name(i));
+    auto& pg_schema_name = req->pg_schema_name(i);
 
-    bootstrap_req.add_table_ids(table_info->id());
-    resp->add_table_ids(table_info->id());
+    auto table_designator = std::find_if(
+        all_tables.begin(), all_tables.end(),
+        [&table_name = req->table_name(i),
+         &pg_schema_name = req->pg_schema_name(i)](const TableDesignator& table_designator) {
+          return table_designator.name() == table_name &&
+                 table_designator.pgschema_name() == pg_schema_name;
+        });
+    SCHECK(
+        table_designator != all_tables.end(), NotFound, Format("Table $0.$1$2 not found"),
+        req->namespace_name(), (pg_schema_name.empty() ? "" : pg_schema_name + "."),
+        req->table_name(i));
+
+    bootstrap_req.add_table_ids(table_designator->id);
+    resp->add_table_ids(table_designator->id);
 
     // Pick a valid tserver to bootstrap from.
     if (!ts) {
+      auto table_info = VERIFY_RESULT(FindTableById(table_designator->id));
       ts = VERIFY_RESULT(VERIFY_RESULT(table_info->GetTablets()).front()->GetLeader());
     }
   }
@@ -4385,7 +4447,6 @@ bool CatalogManager::IsTablePartOfCDCSDK(
 
 std::unordered_set<xrepl::StreamId> CatalogManager::GetCDCSDKStreamsForTable(
     const TableId& table_id) const {
-  SharedLock lock(mutex_);
   DCHECK(xrepl_maps_loaded_);
   auto table_ids = FindOrNull(cdcsdk_tables_to_stream_map_, table_id);
   if (!table_ids) {
@@ -4394,6 +4455,74 @@ std::unordered_set<xrepl::StreamId> CatalogManager::GetCDCSDKStreamsForTable(
   return *table_ids;
 }
 
+Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
+    const std::unordered_set<xrepl::StreamId>& stream_ids) {
+  if (stream_ids.empty()) {
+    return HybridTime::kInvalid;
+  }
+
+  // All these streams are on the same tablet (hence same DB). We can only have either logical
+  // replication or gRPC replication on any DB. If the first stream present in cdc_stream_map_
+  // among the ones passed, does't contain replication slot name it means that this DB has gRPC
+  // streams.
+  for (const auto stream_id : stream_ids) {
+    if (cdc_stream_map_.contains(stream_id)) {
+      if (cdc_stream_map_[stream_id]->GetCdcsdkYsqlReplicationSlotName().empty()) {
+        return HybridTime::kInvalid;
+      }
+      break;
+    }
+  }
+
+  HybridTime min_restart_time_across_all_slots;
+  for (const auto& stream_id : stream_ids) {
+    auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+        {kCDCSDKSlotEntryTabletId, stream_id},
+        cdc::CDCStateTableEntrySelector().IncludeRecordIdCommitTime()));
+    RSTATUS_DCHECK(entry_opt, NotFound, "Slot entry not found for stream_id : {}", stream_id);
+    RSTATUS_DCHECK(
+        entry_opt->record_id_commit_time.has_value(), NotFound,
+        "Restart time not found for slot with stream_id : {}", stream_id);
+    min_restart_time_across_all_slots =
+        std::min(min_restart_time_across_all_slots, HybridTime(*entry_opt->record_id_commit_time));
+  }
+
+  return min_restart_time_across_all_slots;
+}
+
+Result<std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>>
+CatalogManager::GetCDCSDKStreamCreationTimeMap(
+    const std::unordered_set<xrepl::StreamId>& stream_ids) {
+  std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
+  for (const auto stream_id : stream_ids) {
+    auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+    RSTATUS_DCHECK(
+        stream, NotFound, "Entry for stream: {} not found in cdc_stream_map_", stream_id);
+
+    auto stream_lock_pb = stream->LockForRead()->pb;
+    if (stream_lock_pb.has_stream_creation_time()) {
+      stream_creation_time_map.emplace(stream_id, stream_lock_pb.stream_creation_time());
+    } else {
+      stream_creation_time_map.emplace(stream_id, std::nullopt);
+    }
+  }
+  return stream_creation_time_map;
+}
+
+bool CatalogManager::IsCDCSDKTabletExpiredOrNotOfInterest(
+    HybridTime last_active_time, std::optional<HybridTime> stream_creation_time) {
+  if (last_active_time.AddMilliseconds(FLAGS_cdc_intent_retention_ms) < Clock()->Now()) {
+    return true;
+  }
+
+  auto not_of_interest_limit_secs =
+      GetAtomicFlag(&FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) + 2;
+  if (!stream_creation_time.has_value() || last_active_time != *stream_creation_time ||
+      last_active_time.AddSeconds(not_of_interest_limit_secs) > Clock()->Now()) {
+    return false;
+  }
+  return true;
+}
 
 void CatalogManager::RunXReplBgTasks(const LeaderEpoch& epoch) {
   if (!FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) {
@@ -4674,7 +4803,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
   }
 
   std::unordered_set<TabletId> tablets_to_delete;
-  std::vector<cdc::CDCStateTableEntry> entries_to_update;
   std::vector<cdc::CDCStateTableKey> entries_to_delete;
 
   // Check cdc_state table to see if the children tablets are being polled.
@@ -4685,8 +4813,18 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
       continue;
     }
 
-    // For each hidden tablet, check if for each stream we have an entry in the mapping for them.
-    const auto stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
+    // For each hidden tablet, get all the streams on it and related info about the streams.
+    std::unordered_set<xrepl::StreamId> stream_ids;
+    HybridTime min_restart_time_across_slots;
+    std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
+    {
+      SharedLock lock(mutex_);
+      stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
+      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
+      if (min_restart_time_across_slots.is_valid()) {
+        stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
+      }
+    }
 
     size_t count_tablet_streams_to_delete = 0;
     size_t count_streams_already_deleted = 0;
@@ -4696,8 +4834,10 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
       // If the entry for the tablet does not exist, then we can go ahead with deletion of the
       // tablet.
       auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
-          {tablet_id, stream_id},
-          cdc::CDCStateTableEntrySelector().IncludeCheckpoint().IncludeLastReplicationTime()));
+          {tablet_id, stream_id}, cdc::CDCStateTableEntrySelector()
+                                      .IncludeCheckpoint()
+                                      .IncludeLastReplicationTime()
+                                      .IncludeActiveTime()));
 
       // This means we already deleted the entry for this stream in a previous iteration.
       if (!entry_opt) {
@@ -4751,6 +4891,24 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
         // Also delete the parent tablet from cdc_state for all completed streams.
         entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
         count_tablet_streams_to_delete++;
+        continue;
+      }
+
+      // This is the case where the tablet is not being polled by the replication slot corresponding
+      // to the stream id. We can delete the hidden tablet if:
+      //   1. The min_restart_time_across_slots is greater than the hide time of the hidden tablet.
+      //   2. If the tablet has expired or become not of interest. This is because if a tablet
+      //   has expired or become not of interest, all its barriers will be lifted, hence making it
+      //   unconsumable for CDC.
+      // Also delete the parent tablet entry from cdc_state table.
+      DCHECK(entry_opt->active_time);
+      auto last_active_time = HybridTime::FromMicros(*entry_opt->active_time);
+      if (min_restart_time_across_slots.is_valid() &&
+          (hidden_tablet.hide_time_ < min_restart_time_across_slots ||
+           IsCDCSDKTabletExpiredOrNotOfInterest(
+               last_active_time, stream_creation_time_map.at(stream_id)))) {
+        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+        count_tablet_streams_to_delete++;
       }
     }
 
@@ -4759,13 +4917,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
     }
   }
 
-  Status s = cdc_state_table_->UpdateEntries(entries_to_update);
-  if (!s.ok()) {
-    LOG(ERROR) << "Unable to flush operations to update cdc streams: " << s;
-    return s.CloneAndPrepend("Error updating cdc stream rows from cdc_state table");
-  }
-
-  s = cdc_state_table_->DeleteEntries(entries_to_delete);
+  auto s = cdc_state_table_->DeleteEntries(entries_to_delete);
   if (!s.ok()) {
     LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
     return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
@@ -4922,7 +5074,7 @@ Status CatalogManager::UpdateCheckpointForTabletEntriesInCDCState(
     const xrepl::StreamId& stream_id, const std::unordered_set<TableId>& tables_in_stream_metadata,
     const TableInfoPtr& table_to_be_removed) {
   bool is_colocated_table = table_to_be_removed->IsColocatedUserTable();
-  TabletInfos tablets = VERIFY_RESULT(table_to_be_removed->GetTablets(IncludeInactive::kTrue));
+  auto tablets = VERIFY_RESULT(table_to_be_removed->GetTabletsIncludeInactive());
   if (tablets.empty()) {
     return Status::OK();
   }

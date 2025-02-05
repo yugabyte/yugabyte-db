@@ -60,7 +60,7 @@ To configure and run this application, make sure that you've completed these pre
 
 ### YugabyteDB
 
-YugabyteDB is up and running. If you are new to YugabyteDB, you can have YugabyteDB up and running within five minutes by following the steps in [Quick start](/preview/tutorials/quick-start/).
+YugabyteDB is up and running. If you are new to YugabyteDB, you can have YugabyteDB up and running within five minutes by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 
 ### Python
 

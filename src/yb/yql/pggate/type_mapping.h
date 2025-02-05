@@ -37,10 +37,10 @@ template<typename c_type> struct ReturnTypeMapper {
   }
 };
 
-template<> struct ReturnTypeMapper<YBCStatus> {
+template<> struct ReturnTypeMapper<YbcStatus> {
   typedef Status cxx_ret_type;
 
-  static YBCStatus ToC(cxx_ret_type cxx_value) {
+  static YbcStatus ToC(cxx_ret_type cxx_value) {
     return ::yb::ToYBCStatus(cxx_value);
   }
 };

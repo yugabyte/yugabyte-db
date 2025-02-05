@@ -85,6 +85,22 @@ SET yb_read_from_followers = true;
 START TRANSACTION READ ONLY;
 SELECT * FROM t WHERE k='k1';
 COMMIT;
+SET yb_read_from_followers = false;
+```
+
+```output
+ k  | v
+----+----
+ k1 | v1
+```
+
+Use SET LOCAL inside a transaction to have follower reads turned on only for the transaction. Set `yb_read_from_followers` before any statement is executed in the block:
+
+```sql
+START TRANSACTION READ ONLY;
+SET LOCAL yb_read_from_followers = true;
+SELECT * FROM t WHERE k='k1';
+COMMIT;
 ```
 
 ```output

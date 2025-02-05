@@ -140,6 +140,20 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
     return hybrid_time_.ToUint64();
   }
 
+  void SetBackfillDone();
+  void SetBackfillPosition(Slice key, HybridTime backfill_read_ht);
+
+  bool backfill_done() const {
+    return backfill_done_;
+  }
+
+  Slice backfill_key() const {
+    return backfill_key_;
+  }
+
+  HybridTime backfill_read_ht() const {
+    return backfill_read_ht_;
+  }
 
  private:
   OpId op_id_;
@@ -177,9 +191,13 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   ------------------------------------------------------------------------------------------------
   */
   ByteBuffer<64> hybrid_time_filter_;
+
+  bool backfill_done_ = false;
+  HybridTime backfill_read_ht_;
+  std::string backfill_key_;
 };
 
-typedef rocksdb::UserFrontiersBase<ConsensusFrontier> ConsensusFrontiers;
+using ConsensusFrontiers = rocksdb::UserFrontiersBase<ConsensusFrontier>;
 
 inline void set_op_id(const OpId& op_id, ConsensusFrontiers* frontiers) {
   frontiers->Smallest().set_op_id(op_id);

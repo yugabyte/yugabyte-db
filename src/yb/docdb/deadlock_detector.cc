@@ -85,7 +85,8 @@ YB_STRONGLY_TYPED_UUID(DetectorId);
 using LocalProbeProcessorCallback = std::function<void(
     const Status&, const tserver::ProbeTransactionDeadlockResponsePB&)>;
 using WaiterTxnTuple = std::tuple<
-    const TransactionId, const std::string, std::shared_ptr<const BlockingData>>;
+    const TransactionId, const std::string, std::shared_ptr<const BlockingData>,
+    const boost::optional<uint64_t>>;
 
 // Container class which supports efficiently fetching items uniquely indexed by probe_num as well
 // as efficiently removing items which were added before a threshold time or which are associated
@@ -442,6 +443,42 @@ class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadloc
         &handle_);
   }
 
+  // For deadlocks cycles consisting of session advisory lock requests alone, we don't abort
+  // the session level transaction. Instead, we just increment the pg session request version
+  // at the coordinator that helps release the waiting request at the wait-queue.
+  void IncPgSessionReqVersion(
+      const TransactionId& id, const TabletId& status_tablet,
+      const std::string& err_msg, PgSessionRequestVersion pg_session_req_version) {
+    tserver::UpdateTransactionRequestPB req;
+    req.set_propagated_hybrid_time(client_->Clock()->Now().ToUint64());
+    req.set_tablet_id(status_tablet);
+    auto* state = req.mutable_state();
+    state->set_transaction_id(id.data(), id.size());
+    state->set_status(TransactionStatus::PENDING);
+    StatusToPB(
+        STATUS_EC_FORMAT(
+            Expired, TransactionError(TransactionErrorCode::kDeadlock),
+            err_msg).CloneAndAddErrorCode(
+                PgsqlError(YBPgErrorCode::YB_PG_T_R_DEADLOCK_DETECTED)),
+        state->mutable_deadlock_reason());
+    state->set_pg_session_req_version(pg_session_req_version + 1);
+    rpcs_->RegisterAndStart(
+        UpdateTransaction(
+            TransactionRpcDeadline(),
+            nullptr,
+            client_,
+            &req,
+            [shared_this = shared_from(this), txn_id = id]
+                (const auto& status, const auto& req, const auto& resp) {
+              VLOG_WITH_FUNC(1) << "Increment PgSessionReqVersion for deadlocked txn " << txn_id
+                                << " completed. status: " << status
+                                << " resp: " << resp.ShortDebugString();
+              shared_this->rpcs_->Unregister(shared_this->handle_);
+              shared_this->callback_();
+            }),
+        &handle_);
+  }
+
   void SetCallback(std::function<void()>&& callback) {
     callback_ = std::move(callback);
   }
@@ -657,15 +694,23 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           // waiters_ map is guarded by mutex_, hence resetting an entry's 'blocking_data_' field
           // is thread safe. Copies of the 'blocking_data_' shared_ptr that might operate outside
           // the scope of mutex_ continue to work on older versions of 'blocking_data_'.
-          waiters_.modify(waiter_it, [&blocking_data](WaiterInfoEntry& entry) {
+          waiters_.modify(waiter_it, [&waiter, &blocking_data](WaiterInfoEntry& entry) {
+            if (waiter.has_pg_session_req_version() && waiter.pg_session_req_version()) {
+              entry.pg_session_req_version_ = entry.pg_session_req_version_
+                  ? std::max(*entry.pg_session_req_version_, waiter.pg_session_req_version())
+                  : waiter.pg_session_req_version();
+            }
             entry.ResetBlockingData(blocking_data);
           });
         } else {
           VLOG_WITH_PREFIX(1) << "Creating new stored waiter " << waiter_txn_id
                               << " with start time " << wait_start_time;
           blocking_data = std::make_shared<BlockingData>(BlockingData());
-          auto it = waiters_.emplace(
-                WaiterInfoEntry(waiter_txn_id, tserver_uuid, blocking_data));
+          WaiterInfoEntry waiter_entry(waiter_txn_id, tserver_uuid, blocking_data);
+          if (waiter.has_pg_session_req_version() && waiter.pg_session_req_version()) {
+            waiter_entry.pg_session_req_version_ = waiter.pg_session_req_version();
+          }
+          auto it = waiters_.emplace(std::move(waiter_entry));
           DCHECK(it.second);
           waiter_it = it.first;
         }
@@ -702,8 +747,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         // TODO(wait-queues): Tracking tserver uuid here is unnecessary as it isn't required in
         // GetProbesToSend. We adhere to this format so that GetProbesToSend function can be re-used
         // for both 'waiters_'  as well as 'waiters_to_probe'.
-        waiters_to_probe.push_back(
-            {waiter_it->txn_id(), "" /* tserver uuid */, waiter_it->blocking_data()});
+        waiters_to_probe.push_back({
+            waiter_it->txn_id(), "" /* tserver uuid */, waiter_it->blocking_data(),
+            boost::none /* pg_session_req_version */});
         // Restore the old blocker(s) data for the waiter entry, if any.
         if (old_blocking_data) {
           CHECK(waiter_it != waiters_.end());
@@ -764,8 +810,8 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
  private:
   void AddLocalDeadlock(
       const TransactionId& local_txn, tserver::ProbeTransactionDeadlockResponsePB* resp) {
-    auto local_txn_start = controller_->GetTxnStart(local_txn);
-    if (!local_txn_start) {
+    auto local_txn_info = controller_->GetTransactionInfo(local_txn);
+    if (!local_txn_info) {
       LOG(WARNING) << "Local transaction committed or aborted after deadlock detected: "
                     << local_txn << ". "
                     << "Clearing deadlock status from probe response.";
@@ -776,9 +822,27 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
 
     auto* new_entry = resp->add_deadlock();
     new_entry->set_id(local_txn.data(), local_txn.size());
-    new_entry->set_txn_start_us(*local_txn_start);
+    new_entry->set_txn_start_us(local_txn_info->start_us);
+    if (local_txn_info->pg_session_req_version) {
+      new_entry->set_is_pg_session_txn(true);
+      new_entry->set_pg_session_req_version(*local_txn_info->pg_session_req_version);
+    }
     new_entry->set_tablet_id(status_tablet_);
     new_entry->set_detector_id(detector_id_.data(), detector_id_.size());
+  }
+
+  void ResolvePgSessionsDeadlock(
+      const tserver::ProbeTransactionDeadlockResponsePB& resp, const std::string& msg) {
+    for (const auto& txn_info : resp.deadlock()) {
+      auto resolver = std::make_shared<RemoteDeadlockResolver>(&rpcs_, &client());
+      auto txn_id_res = FullyDecodeTransactionId(txn_info.id());
+      if (!txn_id_res.ok()) {
+        LOG(DFATAL) << "Failed to decode transaction id in deadlock, which shouldn't happen,";
+        continue;
+      }
+      resolver->IncPgSessionReqVersion(
+          *txn_id_res, txn_info.tablet_id(), msg, txn_info.pg_session_req_version());
+    }
   }
 
   void ResolveDeadlock(
@@ -790,6 +854,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     MicrosTime max_txn_start = 0;
     TabletId newest_txn_status_tablet;
     std::ostringstream deadlock_debug_msg;
+    int session_level_txns_count = 0;
     for (const auto& txn_info : resp.deadlock()) {
       auto waiter_or_status = FullyDecodeTransactionId(txn_info.id());
       if (!waiter_or_status.ok()) {
@@ -802,6 +867,14 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
       auto s = ScopeExit([&waiter, &deadlock_debug_msg]() {
         deadlock_debug_msg << waiter.ToString() << "->";
       });
+      if (txn_info.has_is_pg_session_txn() && txn_info.is_pg_session_txn()) {
+        // Don't abort session level transactions in order to break a deadlock. If the deadlock
+        // involves at least one regular transaction, the earliest one among them would be aborted.
+        // Session only deadlocks are handled below.
+        deadlock_debug_msg << "[session level txn]";
+        session_level_txns_count++;
+        continue;
+      }
       if (!txn_info.has_txn_start_us()) {
         LOG(DFATAL) << "txn_start_us not set in deadlock info. This should never happen.";
         deadlock_debug_msg << "<no txn_start_us>";
@@ -814,6 +887,11 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         }
         deadlock_debug_msg << "<" << txn_info.txn_start_us() << ">";
       }
+    }
+    if (session_level_txns_count && session_level_txns_count == resp.deadlock().size()) {
+      return ResolvePgSessionsDeadlock(
+          resp,
+          Format("Increment version for txns in deadlock cycle $0", deadlock_debug_msg.str()));
     }
     auto deadlock_msg = Format(
         "Transaction $0 aborted due to a deadlock: $1",
@@ -836,8 +914,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           auto waiter_entries = boost::make_iterator_range(
               detector->waiters_.get<TransactionIdTag>().equal_range(origin_txn_id));
           for (auto entry : waiter_entries) {
-            waiters_to_probe.push_back(
-                {origin_txn_id, "" /* tserver uuid */, entry.blocking_data()});
+            waiters_to_probe.push_back({
+                origin_txn_id, "" /* tserver uuid */, entry.blocking_data(),
+                boost::none /* pg_session_req_version */});
           }
         }
         for (const auto& probe : detector->GetProbesToSend(waiters_to_probe)) {
@@ -859,7 +938,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     //
     // TODO(wait-queues): Coalesce multiple entries in waiters with the same waiter_txn_id into a
     // single LocalProbeProcessor.
-    for (const auto& [waiter_txn_id, _, blocking_infos] : waiters) {
+    for (const auto& [waiter_txn_id, _1, blocking_infos, _2] : waiters) {
       if (blocking_infos->empty()) {
         LOG_WITH_PREFIX(WARNING) << "Tried getting probes for waiter with no blockers "
                                  << waiter_txn_id;
@@ -930,7 +1009,8 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
   }
 
   std::vector<std::shared_ptr<const BlockingData>> GetBlockingDataUnlocked(
-      const DetectorId& detector_id, uint32_t probe_num, const TransactionId& waiting_txn_id)
+      const DetectorId& detector_id, uint32_t probe_num, const TransactionId& waiting_txn_id,
+      boost::optional<PgSessionRequestVersion> pg_session_req_version)
       REQUIRES_SHARED(mutex_) {
     std::vector<std::shared_ptr<const BlockingData>> blocking_datas;
     auto waiter_entries =
@@ -942,6 +1022,14 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
             << "detector  " << detector_id.ToString() << " "
             << "with probe_num " << probe_num << " "
             << "and waiter " << waiting_txn_id;
+      }
+      if (pg_session_req_version && entry.pg_session_req_version() &&
+          *pg_session_req_version > *entry.pg_session_req_version()) {
+        LOG_WITH_PREFIX(INFO)
+            << "Dropping probe with pg_session_req_version: " << *entry.pg_session_req_version()
+            << " for transaction: " << waiting_txn_id << " as the coordinator"
+            << " has a higher pg_session_req_version: " << *pg_session_req_version;
+        continue;
       }
       blocking_datas.push_back(entry.blocking_data());
     }
@@ -962,17 +1050,17 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
                         << " and local blocker: " << local_blocking_txn_id;
 
     auto blocking_subtxn_set = VERIFY_RESULT(SubtxnSet::FromPB(req.blocking_subtxn_set().set()));
-    auto blocking_probe_status =
+    auto blocking_probe_res =
         controller_->CheckProbeActive(local_blocking_txn_id, blocking_subtxn_set);
     // If no subtxn of the blocker txn's blocking_subtxn_set is active, drop the probe.
-    if (!blocking_probe_status.ok()) {
+    if (!blocking_probe_res.ok()) {
       VLOG_WITH_PREFIX_AND_FUNC(1)
           << "Dropping probe_num: " << probe_num << ", waiter: " << probe_origin_txn_id
           << ", blocked on: " << local_blocking_txn_id << " with inactive/aborted"
           << " subtxns:" << yb::ToString(blocking_subtxn_set) << ".";
-      return blocking_probe_status;
+      return blocking_probe_res.status();
     }
-
+    const auto& pg_session_req_version = blocking_probe_res->pg_session_req_version;
     std::vector<std::shared_ptr<const BlockingData>> blockers_per_ts;
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
@@ -1045,7 +1133,8 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
                 << " at detector " << detector_id_;
       }
 
-      blockers_per_ts = GetBlockingDataUnlocked(detector_id, probe_num, local_blocking_txn_id);
+      blockers_per_ts = GetBlockingDataUnlocked(
+          detector_id, probe_num, local_blocking_txn_id, pg_session_req_version);
     }
     if (blockers_per_ts.empty()) {
       VLOG_WITH_PREFIX_AND_FUNC(1) << "Dropping probe with no blocker"

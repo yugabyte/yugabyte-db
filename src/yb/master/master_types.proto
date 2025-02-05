@@ -17,6 +17,7 @@ package yb.master;
 option java_package = "org.yb.master";
 
 import "yb/common/common_types.proto";
+import "yb/common/version_info.proto";
 import "yb/common/wire_protocol.proto";
 
 enum RelationType {
@@ -208,6 +209,8 @@ message TSRegistrationPB {
 
   // Resources available at the tserver.
   optional ResourcesPB resources = 3;
+
+  optional VersionInfoPB version_info = 4;
 }
 
 message TServerMetricsPB {

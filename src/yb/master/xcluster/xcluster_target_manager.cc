@@ -78,7 +78,6 @@ Status XClusterTargetManager::Init() {
   DCHECK(!safe_time_service_);
   safe_time_service_ = std::make_unique<XClusterSafeTimeService>(
       &master_, &catalog_manager_, master_.metric_registry());
-  RETURN_NOT_OK(safe_time_service_->Init());
 
   return Status::OK();
 }
@@ -172,8 +171,7 @@ Result<HybridTime> XClusterTargetManager::GetXClusterSafeTime(
   return HybridTime(l->pb.safe_time_map().at(namespace_id));
 }
 
-Result<XClusterNamespaceToSafeTimeMap> XClusterTargetManager::GetXClusterNamespaceToSafeTimeMap()
-    const {
+XClusterNamespaceToSafeTimeMap XClusterTargetManager::GetXClusterNamespaceToSafeTimeMap() const {
   XClusterNamespaceToSafeTimeMap result;
   auto l = safe_time_info_.LockForRead();
 
@@ -585,8 +583,9 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
   SCHECK_FORMAT(replication_info, NotFound, "Replication group $0 not found", replication_group_id);
 
   const auto cluster_config = VERIFY_RESULT(catalog_manager_.GetClusterConfig());
-  auto l = replication_info->LockForRead();
-  return GetUniverseReplicationInfo(l->pb, cluster_config);
+  // Make pb copy to avoid potential deadlock while calling GetUniverseReplicationInfo.
+  auto pb = replication_info->LockForRead()->pb;
+  return GetUniverseReplicationInfo(pb, cluster_config);
 }
 
 Status XClusterTargetManager::ClearXClusterSourceTableId(
@@ -1068,9 +1067,7 @@ Status XClusterTargetManager::SetupUniverseReplication(
     data.target_namespace_ids.push_back(ns_info->id());
   }
 
-  data.source_table_ids.insert(
-      data.source_table_ids.begin(), req->producer_table_ids().begin(),
-      req->producer_table_ids().end());
+  data.source_table_ids.assign(req->producer_table_ids().begin(), req->producer_table_ids().end());
 
   return SetupUniverseReplication(std::move(data), epoch);
 }

@@ -138,6 +138,11 @@ public enum TaskType {
       CustomerTask.TaskType.CreatePitrConfig,
       CustomerTask.TargetType.Universe),
 
+  UpdatePitrConfig(
+      com.yugabyte.yw.commissioner.tasks.UpdatePitrConfig.class,
+      CustomerTask.TaskType.UpdatePitrConfig,
+      CustomerTask.TargetType.Universe),
+
   DeletePitrConfig(
       com.yugabyte.yw.commissioner.tasks.DeletePitrConfig.class,
       CustomerTask.TaskType.DeletePitrConfig,
@@ -416,6 +421,11 @@ public enum TaskType {
       CustomerTask.TaskType.Switchover,
       CustomerTask.TargetType.DrConfig),
 
+  SwitchoverDrConfigRollback(
+      com.yugabyte.yw.commissioner.tasks.SwitchoverDrConfigRollback.class,
+      CustomerTask.TaskType.Switchover,
+      CustomerTask.TargetType.DrConfig),
+
   EditDrConfig(
       com.yugabyte.yw.commissioner.tasks.EditDrConfig.class,
       CustomerTask.TaskType.Edit,
@@ -624,6 +634,11 @@ public enum TaskType {
       CustomerTask.TaskType.Decommission,
       CustomerTask.TargetType.Node),
 
+  CloneNamespace(
+      com.yugabyte.yw.commissioner.tasks.CloneNamespace.class,
+      CustomerTask.TaskType.CloneNamespace,
+      CustomerTask.TargetType.Universe),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -794,6 +809,9 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired.class),
 
   DeleteBootstrapIds(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds.class),
+
+  XClusterNetworkConnectivityCheck(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterNetworkConnectivityCheck.class),
 
   DeleteReplication(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication.class),
 
@@ -974,6 +992,9 @@ public enum TaskType {
 
   ManageAlertDefinitions(com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions.class),
 
+  ManageCatalogUpgradeSuperUser(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.class),
+
   MarkSourceMetric(com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric.class),
 
   UniverseSetTlsParams(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams.class),
@@ -1027,6 +1048,9 @@ public enum TaskType {
 
   RollbackYsqlMajorVersionCatalogUpgrade(
       com.yugabyte.yw.commissioner.tasks.subtasks.RollbackYsqlMajorVersionCatalogUpgrade.class),
+
+  FinalizeYsqlMajorCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.FinalizeYsqlMajorCatalogUpgrade.class),
 
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),
@@ -1202,6 +1226,8 @@ public enum TaskType {
           .put(DeleteBackupScheduleKubernetes, 100)
           .put(EditBackupSchedule, 101)
           .put(EditBackupScheduleKubernetes, 101)
+          .put(CloneNamespace, 102)
+          .put(UpdatePitrConfig, 103)
           // Table ops (110-119):
           .put(CreateCassandraTable, 110)
           .put(CreateTableSpacesInUniverse, 111)

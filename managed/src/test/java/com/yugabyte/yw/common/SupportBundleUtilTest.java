@@ -19,7 +19,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -108,11 +107,9 @@ public class SupportBundleUtilTest extends FakeDBApplication {
             "application-log-2022-02-03.gz",
             "application-log-2022-02-04.gz",
             "application-log-2022-02-05.gz");
-    List<Path> outputList =
-        supportBundleUtil.filterList(
-            unfilteredList.stream().map(Paths::get).collect(Collectors.toList()),
-            Arrays.asList(testRegexPattern));
-    assertEquals(outputList, filteredList.stream().map(Paths::get).collect(Collectors.toList()));
+    List<String> outputList =
+        supportBundleUtil.filterList(unfilteredList, Arrays.asList(testRegexPattern));
+    assertEquals(outputList, filteredList);
   }
 
   @Test
@@ -290,13 +287,9 @@ public class SupportBundleUtilTest extends FakeDBApplication {
             "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
                 + "log.WARNING.20221122-000000.00");
 
-    List<Path> unFilteredLogFilePathList =
-        unfilteredLogFilePaths.stream().map(Paths::get).collect(Collectors.toList());
-    List<Path> expectedLogFilePathList =
-        expectedLogFilePaths.stream().map(Paths::get).collect(Collectors.toList());
-    List<Path> filteredLogFilePaths =
+    List<String> filteredLogFilePaths =
         supportBundleUtil.filterFilePathsBetweenDates(
-            unFilteredLogFilePathList,
+            unfilteredLogFilePaths,
             Arrays.asList(
                 universe_logs_regex_pattern,
                 postgres_logs_regex_pattern,
@@ -305,8 +298,8 @@ public class SupportBundleUtilTest extends FakeDBApplication {
             endDate);
 
     assertTrue(
-        expectedLogFilePathList.containsAll(filteredLogFilePaths)
-            && filteredLogFilePaths.containsAll(expectedLogFilePathList));
+        expectedLogFilePaths.containsAll(filteredLogFilePaths)
+            && filteredLogFilePaths.containsAll(expectedLogFilePaths));
   }
 
   @Test

@@ -239,6 +239,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public void runUpgrade(Runnable upgradeLambda, @Nullable Consumer<Universe> firstRunTxnCallback) {
+    runUpgrade(upgradeLambda, firstRunTxnCallback, null /* onFailureTask */);
+  }
+
+  public void runUpgrade(
+      Runnable upgradeLambda,
+      @Nullable Consumer<Universe> firstRunTxnCallback,
+      Runnable onFailureTask) {
     if (maybeRunOnlyPrechecks()) {
       return;
     }
@@ -264,6 +271,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error: ", getName(), t);
+      if (onFailureTask != null) {
+        log.info("Running on failure upgrade task");
+        onFailureTask.run();
+        log.info("Finished on failure upgrade task");
+      }
 
       if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
         Universe universe = getUniverse();
@@ -920,7 +932,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       ServerType processType,
       Map<String, String> oldGflags,
       Map<String, String> newGflags,
-      UniverseTaskParams.CommunicationPorts communicationPorts) {
+      UniverseTaskParams.CommunicationPorts communicationPorts,
+      Map<String, String> connectionPoolingGflags) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(
             userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
@@ -929,6 +942,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if (communicationPorts != null) {
       params.communicationPorts = communicationPorts;
       params.overrideNodePorts = true;
+    }
+    if (connectionPoolingGflags != null) {
+      params.connectionPoolingGflags = connectionPoolingGflags;
     }
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
@@ -955,6 +971,27 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         null /* communicationPorts */);
   }
 
+  protected void createServerConfFileUpdateTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      Set<ServerType> processTypes,
+      UniverseDefinitionTaskParams.Cluster curCluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> curClusters,
+      UniverseDefinitionTaskParams.Cluster newCluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> newClusters,
+      UniverseTaskParams.CommunicationPorts communicationPorts) {
+    createServerConfFileUpdateTasks(
+        userIntent,
+        nodes,
+        processTypes,
+        curCluster,
+        curClusters,
+        newCluster,
+        newClusters,
+        null /* communicationPorts */,
+        null /* connectionPoolingGflags */);
+  }
+
   /**
    * Create a task to update server conf files on DB nodes.
    *
@@ -975,7 +1012,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       Collection<UniverseDefinitionTaskParams.Cluster> curClusters,
       UniverseDefinitionTaskParams.Cluster newCluster,
       Collection<UniverseDefinitionTaskParams.Cluster> newClusters,
-      UniverseTaskParams.CommunicationPorts communicationPorts) {
+      UniverseTaskParams.CommunicationPorts communicationPorts,
+      Map<String, String> connectionPoolingGflags) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
       return;
@@ -993,7 +1031,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           GFlagsUtil.getGFlagsForNode(node, processType, curCluster, curClusters);
       subTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(
-              userIntent, node, processType, oldGFlags, newGFlags, communicationPorts));
+              userIntent,
+              node,
+              processType,
+              oldGFlags,
+              newGFlags,
+              communicationPorts,
+              connectionPoolingGflags));
     }
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

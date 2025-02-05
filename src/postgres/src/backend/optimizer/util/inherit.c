@@ -36,7 +36,7 @@
 #include "utils/rel.h"
 
 /* Yugabyte includes */
-#include "executor/ybcExpr.h"
+#include "executor/ybExpr.h"
 #include "pg_yb_utils.h"
 
 static void expand_partitioned_rtentry(PlannerInfo *root, RelOptInfo *relinfo,
@@ -555,7 +555,8 @@ expand_single_inheritance_child(PlannerInfo *root, RangeTblEntry *parentrte,
 	 */
 	if (childOID != parentOID)
 	{
-		bool is_yb_relation = IsYBRelation(parentrel);
+		bool		is_yb_relation = IsYBRelation(parentrel);
+
 		childrte->selectedCols = translate_col_privs(parentrte->selectedCols,
 													 appinfo->translated_vars,
 													 is_yb_relation);
@@ -720,7 +721,7 @@ translate_col_privs(const Bitmapset *parent_privs,
 	bool		whole_row;
 	int			attno;
 	ListCell   *lc;
-	const int firstLowInvalidAttrNumber = YBGetFirstLowInvalidAttrNumber(is_yb_relation);
+	const int	firstLowInvalidAttrNumber = YBGetFirstLowInvalidAttrNumber(is_yb_relation);
 
 	/* System attributes have the same numbers in all tables */
 	for (attno = firstLowInvalidAttrNumber + 1; attno < 0; attno++)

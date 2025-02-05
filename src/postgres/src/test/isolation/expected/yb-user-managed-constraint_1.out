@@ -2,9 +2,9 @@ Parsed test spec with 2 sessions
 
 starting permutation: s1_serializable_txn s2_serializable_txn s1_update s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s2_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
@@ -21,9 +21,9 @@ k|v1|v2|?column?
 
 starting permutation: s1_repeatable_read_txn s2_repeatable_read_txn s1_update s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
@@ -41,9 +41,9 @@ k|v1|v2|?column?
 
 starting permutation: s2_enable_retries s1_read_committed_txn s2_read_committed_txn s1_update s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_enable_retries: SET yb_max_query_layer_retries = 60;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
@@ -61,9 +61,9 @@ k|v1|v2|?column?
 
 starting permutation: s1_serializable_txn s1_update s2_update s1_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
 step s2_update: UPDATE t SET v2 = add_with_limit(v2, v1, 35) WHERE k = 1; <waiting ...>
@@ -78,9 +78,9 @@ k|v1|v2|?column?
 
 starting permutation: s1_repeatable_read_txn s1_update s2_update s1_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
 step s2_update: UPDATE t SET v2 = add_with_limit(v2, v1, 35) WHERE k = 1; <waiting ...>
@@ -95,9 +95,9 @@ k|v1|v2|?column?
 
 starting permutation: s2_enable_retries s1_read_committed_txn s1_update s2_update s1_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_enable_retries: SET yb_max_query_layer_retries = 60;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
@@ -113,9 +113,9 @@ k|v1|v2|?column?
 
 starting permutation: s1_serializable_txn s2_serializable_txn s1_update_case s2_update_case s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s2_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s1_update_case:
@@ -136,9 +136,9 @@ k|v1|v2|?column?
 
 starting permutation: s1_repeatable_read_txn s2_repeatable_read_txn s1_update_case s2_update_case s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1_update_case:
@@ -159,9 +159,9 @@ k|v1|v2|?column?
 
 starting permutation: s2_enable_retries s1_read_committed_txn s2_read_committed_txn s1_update_case s2_update_case s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_enable_retries: SET yb_max_query_layer_retries = 60;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
@@ -183,9 +183,9 @@ k|v1|v2|?column?
 
 starting permutation: s1_serializable_txn s1_update_case s2_update_case s1_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s1_update_case:
   UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
@@ -204,9 +204,9 @@ k|v1|v2|?column?
 
 starting permutation: s1_repeatable_read_txn s1_update_case s2_update_case s1_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1_update_case:
   UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
@@ -225,9 +225,9 @@ k|v1|v2|?column?
 
 starting permutation: s2_enable_retries s1_read_committed_txn s1_update_case s2_update_case s1_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_enable_retries: SET yb_max_query_layer_retries = 60;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s1_update_case:

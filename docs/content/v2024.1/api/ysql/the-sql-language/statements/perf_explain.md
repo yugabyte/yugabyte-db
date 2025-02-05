@@ -57,6 +57,10 @@ Display low-level runtime statistics related to the distributed storage layer (d
 
 Define the desired output format, choosing from TEXT, XML, JSON, or YAML. Non-text output retains the same information as the text format, but is more programmatically accessible (default: `TEXT`).
 
+### SUMMARY
+
+Display the overall timing and counters of the various execution nodes in the query execution plan (default: `TRUE`).
+
 ## Examples
 
 Create a sample table.

@@ -727,7 +727,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 			 */
 			if (IsYBRelationById(relid))
 			{
-				YbTableProperties yb_props = YbGetTablePropertiesById(relid);
+				YbcTableProperties yb_props = YbGetTablePropertiesById(relid);
 				bool is_first_key = (attn == 0);
 
 				is_colocated    = yb_props->is_colocated;

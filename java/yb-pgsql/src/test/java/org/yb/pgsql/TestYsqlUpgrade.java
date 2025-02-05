@@ -23,6 +23,7 @@ import static org.yb.AssertionWrappers.fail;
 
 import java.io.File;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
@@ -172,6 +173,10 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
     // reltuples column is filtered out, so column index is one less than normal.
     static final int RELHASOIDS_COL_IDX = 32;
+
+    // Used to ignore the collversion for some rows in pg_collation.
+    public static final int COLLNAME_COL_IDX = 1;
+    public static final int COLLVERSION_COL_IDX = 10;
   }
 
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlUpgrade.class);
@@ -1019,6 +1024,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   public void migratingIsEquivalentToReinitdb() throws Exception {
     final SysCatalogSnapshot preSnapshotCustom, preSnapshotTemplate1;
     createPgTablegroupTableIfNotExists();
+    checkColumnIndexes();
 
     try (Connection conn = customDbCb.connect();
          Statement stmt = conn.createStatement()) {
@@ -1893,9 +1899,45 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       assertCollectionSizes("Table '" + tableName + "' has different size after migration!",
           reinitdbRows, migratedRows);
 
-      for (int i = 0; i < migratedRows.size(); ++i)
-        assertRow("Table '" + tableName + "': ", reinitdbRows.get(i), migratedRows.get(i));
+      for (int i = 0; i < migratedRows.size(); ++i) {
+        Row reinitdbRow = reinitdbRows.get(i);
+        Row migratedRow = migratedRows.get(i);
+        if (tableName.equals("pg_collation") &&
+            !reinitdbRow.getString(SysCatalogSnapshot.COLLNAME_COL_IDX).startsWith("en_US")) {
+          /*
+           * Different flavors of Linux have different versions of libc,
+           * which provides the en_US.utf8 collation.
+           * We're comparing the current snapshot to one generated on an Alma8 machine,
+           * so we might get a mismatch in the collversion column. Ignore it for now.
+           */
+          reinitdbRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
+          migratedRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
+        }
+        assertRow("Table '" + tableName + "': ", reinitdbRow, migratedRow);
+      }
     });
+  }
+
+  /**
+   * Check that we have the right constants for column indexes in pg_collation.
+   */
+  private void checkColumnIndexes() throws Exception {
+    try (Connection conn = customDbCb.connect();
+          Statement stmt = conn.createStatement()) {
+      ResultSet rs = stmt.executeQuery(
+          "SELECT attnum FROM pg_attribute WHERE attrelid = 'pg_collation'::regclass " +
+          "AND attname = 'collname'");
+      rs.next();
+
+      // attnums are 1-indexed, so we need to add 1 to the expected value.
+      assertEquals(SysCatalogSnapshot.COLLNAME_COL_IDX + 1, rs.getInt(1));
+
+      rs = stmt.executeQuery(
+          "SELECT attnum FROM pg_attribute WHERE attrelid = 'pg_collation'::regclass " +
+          "AND attname = 'collversion'");
+      rs.next();
+      assertEquals(SysCatalogSnapshot.COLLVERSION_COL_IDX + 1, rs.getInt(1));
+    }
   }
 
   /**

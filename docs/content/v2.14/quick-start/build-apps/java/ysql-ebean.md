@@ -83,7 +83,7 @@ The source for the above application can be found in the [Using ORMs with Yugaby
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/) to have YugabyteDB up and running in minutes.
+- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/) to have YugabyteDB up and running in minutes.
 - Java Development Kit (JDK) 1.8 is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
 - [sbt](https://www.scala-sbt.org/1.x/docs/) is installed.
 

@@ -83,8 +83,7 @@ FullFilterBlockReader::FullFilterBlockReader(
   block_contents_ = std::move(contents);
 }
 
-bool FullFilterBlockReader::KeyMayMatch(const Slice& key,
-    uint64_t block_offset) {
+bool FullFilterBlockReader::KeyMayMatch(Slice key, uint64_t block_offset) {
   assert(block_offset == kNotValid);
   if (!whole_key_filtering_) {
     return true;

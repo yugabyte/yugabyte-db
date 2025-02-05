@@ -118,14 +118,6 @@ class WriteOperation;
 
 using AddTableListener = std::function<Status(const TableInfo&)>;
 
-class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
- public:
-  virtual std::string Key() const = 0;
- protected:
-  friend class RefCountedThreadSafe<TabletScopedIf>;
-  virtual ~TabletScopedIf() { }
-};
-
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
@@ -433,9 +425,6 @@ class Tablet : public AbstractTablet,
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
       docdb::SkipSeek skip_seek = docdb::SkipSeek::kFalse) const;
-
-  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
-      const TableId& table_id) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> CreateCDCSnapshotIterator(
       const dockv::ReaderProjection& projection,
@@ -976,14 +965,21 @@ class Tablet : public AbstractTablet,
 
   Status AbortSQLTransactions(CoarseTimePoint deadline) const;
 
+  // TODO: Move mutex to private section.
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
 
-  // Serializes access to setting/revising/releasing CDCSDK retention barriers
-  mutable simple_spinlock cdcsdk_retention_barrier_lock_;
-  MonoTime cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
-
   void CleanupIntentFiles();
+
+  std::optional<google::protobuf::RepeatedPtrField<std::string>> VectorIndexFinishedBackfills();
+
+  bool TEST_HasVectorIndexes() const {
+    return has_vector_indexes_.load();
+  }
+
+  void TEST_SleepBeforeApplyIntents(MonoDelta value) {
+    TEST_sleep_before_apply_intents_ = value;
+  }
 
  private:
   friend class Iterator;
@@ -1240,9 +1236,12 @@ class Tablet : public AbstractTablet,
   // allow_inplace_insert is set to true only during initial tablet bootstrap, so nobody should
   // hold external pointer to vector index list at this moment.
   Status CreateVectorIndex(
-      const TableInfo& index_table, const TableInfo& indexed_table, bool allow_inplace_insert)
+      const TableInfo& index_table, const TableInfoPtr& indexed_table, bool allow_inplace_insert)
       REQUIRES(vector_indexes_mutex_);
   docdb::VectorIndexesPtr VectorIndexesList() const EXCLUDES(vector_indexes_mutex_);
+  Status BackfillVectorIndex(
+      const docdb::VectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice key,
+      HybridTime read_ht);
 
   docdb::HistoryCutoff AllowedHistoryCutoff();
 
@@ -1320,6 +1319,12 @@ class Tablet : public AbstractTablet,
   std::unordered_map<TableId, docdb::VectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
   docdb::VectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
+
+  // Serializes access to setting/revising/releasing CDCSDK retention barriers
+  mutable simple_spinlock cdcsdk_retention_barrier_lock_;
+  MonoTime cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
+
+  MonoDelta TEST_sleep_before_apply_intents_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

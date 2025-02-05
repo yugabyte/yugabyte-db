@@ -17,15 +17,15 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/common/init.h"
+
 #include "yb/server/async_client_initializer.h"
 #include "yb/server/clock.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
-#include "yb/util/init.h"
 #include "yb/util/mem_tracker.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status_log.h"
 

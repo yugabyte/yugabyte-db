@@ -169,7 +169,7 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
           : sortByTableDuplicate
     },
     resolver: yupResolver(
-      getValidationSchema(restoreContext[0], keyspacesAvailableInTargetUniverse, t),
+      getValidationSchema(restoreContext[0], keyspacesAvailableInTargetUniverse, t)
     )
   });
 
@@ -218,12 +218,12 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
           onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
             setSearchText(e.target.value);
           }}
-          placeHolder={t('newRestoreModal.selectTables.searchTableName')}
+          placeHolder={t('newRestoreModal.renameKeyspaces.searchKeyspaceName')}
         />
       </Box>
       <div className={classes.renameInputCtrls}>
         <div className={classes.tableHeader}>
-          <div>{t('newRestoreModal.renameKeyspaces.currenyKeyspacename')}</div>
+          <div>{t('newRestoreModal.renameKeyspaces.currentKeyspaceName')}</div>
           <div>{t('newRestoreModal.renameKeyspaces.assignNewName')}</div>
         </div>
         <Grid container>

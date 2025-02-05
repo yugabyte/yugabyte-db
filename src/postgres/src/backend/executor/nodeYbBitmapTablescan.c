@@ -44,12 +44,12 @@ static TableScanDesc CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scansta
 static TupleTableSlot *
 YbBitmapTableNext(YbBitmapTableScanState *node)
 {
-	YbTIDBitmap  *ybtbm;
+	YbTIDBitmap *ybtbm;
 	TableScanDesc tsdesc;
 	TupleTableSlot *slot;
 	YbTBMIterateResult *ybtbmres;
 	ExprContext *econtext;
-	YbScanDesc ybScan;
+	YbScanDesc	ybScan;
 
 	/*
 	 * extract necessary information from index scan node
@@ -89,8 +89,8 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 			 * scan slot to hold as many attributes as there are pushed
 			 * aggregates.
 			 */
-			TupleDesc tupdesc =
-				CreateTemplateTupleDesc(list_length(node->aggrefs));
+			TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->aggrefs));
+
 			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc,
 								  &TTSOpsVirtual);
 
@@ -130,14 +130,16 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 			if (ybtbmres)
 				yb_tbm_free_iter_result(ybtbmres);
 
-			const int ybctid_size = node->average_ybctid_bytes > 0
-				? node->average_ybctid_bytes : 26;
-			const int row_limit = ybScan->exec_params->yb_fetch_row_limit;
-			const int size_limit = ybScan->exec_params->yb_fetch_size_limit /
-								   ybctid_size;
+			const int	ybctid_size = (node->average_ybctid_bytes > 0 ?
+									   node->average_ybctid_bytes :
+									   26);
+			const int	row_limit = ybScan->exec_params->yb_fetch_row_limit;
+			const int	size_limit = (ybScan->exec_params->yb_fetch_size_limit /
+									  ybctid_size);
 
-			const int count = Min(row_limit > 0 ? row_limit : INT_MAX,
-								  size_limit > 0 ? size_limit : INT_MAX);
+			const int	count = Min(row_limit > 0 ? row_limit : INT_MAX,
+									size_limit > 0 ? size_limit : INT_MAX);
+
 			node->ybtbmres = ybtbmres = yb_tbm_iterate(node->ybtbmiterator,
 													   count);
 			if (!ybtbmres)
@@ -245,8 +247,8 @@ ExecYbBitmapTableScan(PlanState *pstate)
 static TableScanDesc
 CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 {
-	YbScanDesc		ybScan;
-	PushdownExprs  *yb_pushdown;
+	YbScanDesc	ybScan;
+	YbPushdownExprs *yb_pushdown;
 	TableScanDesc tsdesc;
 
 	/* Make a copy so it can be modified */
@@ -261,25 +263,25 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 	if (!scanstate->recheck_local_quals)
 		plan.recheck_local_quals = NULL;
 
-	yb_pushdown = YbInstantiatePushdownParams(
-			scanstate->work_mem_exceeded ? &plan.fallback_pushdown
-										 : &plan.rel_pushdown,
-			scanstate->ss.ps.state);
+	yb_pushdown = YbInstantiatePushdownParams((scanstate->work_mem_exceeded ?
+											   &plan.fallback_pushdown :
+											   &plan.rel_pushdown),
+											  scanstate->ss.ps.state);
 
 
 	ybScan = ybcBeginScan(scanstate->ss.ss_currentRelation,
-						  NULL /* index */,
-						  false /* xs_want_itup */,
-						  0 /* nkeys */,
-						  NULL /* keys */,
-						  (Scan *) &plan /* pg_scan_plan */,
-						  yb_pushdown /* rel_pushdown */,
-						  NULL /* idx_pushdown */,
-						  scanstate->aggrefs /* aggrefs */,
-						  0 /* distinct_prefixlen */,
+						  NULL /* index */ ,
+						  false /* xs_want_itup */ ,
+						  0 /* nkeys */ ,
+						  NULL /* keys */ ,
+						  (Scan *) &plan /* pg_scan_plan */ ,
+						  yb_pushdown /* rel_pushdown */ ,
+						  NULL /* idx_pushdown */ ,
+						  scanstate->aggrefs /* aggrefs */ ,
+						  0 /* distinct_prefixlen */ ,
 						  &scanstate->ss.ps.state->yb_exec_params,
-						  true /* is_internal_scan */,
-						  false /* fetch_ybctids_only */);
+						  true /* is_internal_scan */ ,
+						  false /* fetch_ybctids_only */ );
 
 	if (yb_pushdown)
 		pfree(yb_pushdown);
@@ -292,9 +294,9 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 
 	if (scanstate->recheck_required && !scanstate->work_mem_exceeded)
 	{
-		PushdownExprs *recheck_pushdown = YbInstantiatePushdownParams(
-			&plan.recheck_pushdown,
-			scanstate->ss.ps.state);
+		YbPushdownExprs *recheck_pushdown = YbInstantiatePushdownParams(&plan.recheck_pushdown,
+																		scanstate->ss.ps.state);
+
 		if (recheck_pushdown)
 		{
 			YbApplyPrimaryPushdown(ybScan->handle, recheck_pushdown);
@@ -413,7 +415,7 @@ YbBitmapTableScanState *
 ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 {
 	YbBitmapTableScanState *scanstate;
-	Relation				currentRelation;
+	Relation	currentRelation;
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));

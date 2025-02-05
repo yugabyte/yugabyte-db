@@ -57,6 +57,9 @@ ql::CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const s
 void StmtCounters::WriteAsJson(
     JsonWriter *jw, const ql::CQLMessage::QueryId& query_id) const {
   jw->StartObject();
+  jw->String("keyspace");
+  jw->String(this->keyspace);
+
   jw->String("query_id");
   // Write only the 8 bytes of the query_id instead of 16.
   jw->Int64(ql::CQLMessage::QueryIdAsUint64(query_id));

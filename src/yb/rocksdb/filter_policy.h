@@ -67,7 +67,7 @@ class FilterBitsReader {
   virtual ~FilterBitsReader() {}
 
   // Check if the entry match the bits in filter
-  virtual bool MayMatch(const Slice& entry) = 0;
+  virtual bool MayMatch(Slice entry) = 0;
 };
 
 // We add a new format of filter block called full filter block

@@ -16,11 +16,11 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.common.CloudUtil;
-import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.StorageUtil;
+import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
@@ -35,7 +35,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class RestoreContinuousBackup extends AbstractTaskBase {
 
-  private final CloudUtilFactory cloudUtilFactory;
+  private final StorageUtilFactory storageUtilFactory;
   private final PlatformReplicationHelper replicationHelper;
   private final PlatformReplicationManager replicationManager;
   private final Config appConfig;
@@ -46,13 +46,13 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
       BaseTaskDependencies baseTaskDependencies,
       PlatformReplicationHelper replicationHelper,
       PlatformReplicationManager replicationManager,
-      CloudUtilFactory cloudUtilFactory,
+      StorageUtilFactory storageUtilFactory,
       Config appConfig,
       ReleaseManager releaseManager) {
     super(baseTaskDependencies);
     this.replicationHelper = replicationHelper;
     this.replicationManager = replicationManager;
-    this.cloudUtilFactory = cloudUtilFactory;
+    this.storageUtilFactory = storageUtilFactory;
     this.appConfig = appConfig;
     this.releaseManager = releaseManager;
   }
@@ -81,9 +81,9 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
           INTERNAL_SERVER_ERROR,
           "Could not find customer config with provided storage config UUID during restore.");
     }
-    CloudUtil cloudUtil = cloudUtilFactory.getCloudUtil(customerConfig.getName());
+    StorageUtil storageUtil = storageUtilFactory.getStorageUtil(customerConfig.getName());
     File backup =
-        cloudUtil.downloadYbaBackup(
+        storageUtil.downloadYbaBackup(
             customerConfig.getDataObject(),
             taskParams.backupDir,
             replicationHelper.getReplicationDirFor(taskParams.storageConfigUUID.toString()));
@@ -94,11 +94,11 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
 
     // Restore any missing YBDB releases from remote storage
     Set<String> toDownloadReleases =
-        cloudUtil.getRemoteReleaseVersions(customerConfig.getDataObject(), taskParams.backupDir);
+        storageUtil.getRemoteReleaseVersions(customerConfig.getDataObject(), taskParams.backupDir);
     Map<String, ReleaseContainer> localReleaseContainers =
         releaseManager.getAllLocalReleaseContainersByVersion();
     toDownloadReleases.removeAll(localReleaseContainers.keySet());
-    if (!cloudUtil.downloadRemoteReleases(
+    if (!storageUtil.downloadRemoteReleases(
         customerConfig.getDataObject(),
         toDownloadReleases,
         appConfig.getString(Util.YB_RELEASES_PATH),

@@ -72,6 +72,8 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 {
 	od_instance_t *instance = server->global->instance;
 	kiwi_fe_error_t error;
+	int detail_len = 0;
+	int hint_len = 0;
 
 	od_client_t *yb_server_client = server->client;
 	od_client_t *yb_external_client = (yb_server_client->yb_is_authenticating) ?
@@ -92,6 +94,7 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 	if (error.detail) {
 		od_error(&instance->logger, context, yb_external_client, server,
 			 "DETAIL: %s", error.detail);
+		detail_len = strlen(error.detail);
 	}
 
 	/* catch and store error to be forwarded later if we are in deploy phase */
@@ -104,21 +107,46 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 	if (error.hint) {
 		od_error(&instance->logger, context, yb_external_client, server,
 			 "HINT: %s", error.hint);
+		hint_len = strlen(error.hint);
 
 		if (strcmp(error.hint, "Database might have been dropped by another user") == 0)
 		{
 			/* Reset the route and close the client */
-			((od_route_t*)server->route)->yb_database_entry->status = YB_DB_DROPPED;
+			((od_route_t*)server->route)->yb_database_entry->status = YB_OID_DROPPED;
 
 			if (yb_external_client != NULL &&
 			    ((od_client_t *)yb_external_client)->type ==
 				    OD_POOL_CLIENT_EXTERNAL)
-				od_frontend_error(
-					yb_external_client,
-					KIWI_CONNECTION_DOES_NOT_EXIST,
-					error.hint, od_io_error(&server->io));
+			{
+				machine_msg_t *msg;
+				msg = kiwi_be_write_error_as(NULL, error.severity, error.code,
+				     error.detail, detail_len, error.hint,
+				     hint_len, error.message, strlen(error.message));
+				/* YB: best-effort forward to client, already handling error */
+				if (msg == NULL)
+					return;
+				od_write(&yb_external_client->io, msg);
+			}
 		}
 	}
+
+	if (strstr(error.message, "invalid role OID")) {
+		/* Reset the route and close the client */
+		((od_route_t*)server->route)->yb_user_entry->status = YB_OID_DROPPED;
+
+		if (yb_external_client != NULL &&
+			((od_client_t *)yb_external_client)->type == OD_POOL_CLIENT_EXTERNAL)
+			{
+				machine_msg_t *msg;
+				msg = kiwi_be_write_error_as(NULL, error.severity, error.code,
+				     error.detail, detail_len, error.hint,
+				     hint_len, error.message, strlen(error.message));
+				/* YB: best-effort forward to client, already handling error */
+				if (msg == NULL)
+					return;
+				od_write(&yb_external_client->io, msg);
+			}	
+		}
 }
 
 int od_backend_ready(od_server_t *server, char *data, uint32_t size)
@@ -233,8 +261,8 @@ static inline int od_backend_startup(od_server_t *server,
 		strcpy(db_name, (char *)route->yb_database_entry->name);
 		db_name_len = route->yb_database_entry->name_len + 1;
 
-		strcpy(user_name, (char *)route->id.user);
-		user_name_len = route->id.user_len;
+		strcpy(user_name, (char *)route->yb_user_entry->name);
+		user_name_len = route->yb_user_entry->name_len + 1;
 
 		/*
 		 * The connection between connection manager and the backend is always
@@ -487,7 +515,7 @@ static inline int od_backend_startup(od_server_t *server,
 				/* Read the oid details */
 				rc = yb_handle_oid_pkt_client(instance, client, msg);
 			else
-				rc = yb_handle_oid_pkt_server(instance, server, msg, db_name);
+				rc = yb_handle_oid_pkt_server(instance, server, msg);
 
 			machine_msg_free(msg);
 			if (rc == -1)

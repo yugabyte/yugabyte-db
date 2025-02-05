@@ -817,11 +817,11 @@ class GoogleCloudAdmin():
                     pricing_map[key] = pricing_map_all[key]
             return pricing_map
         except Exception as e:
-            logging.warn("[app] Exception {} determining GCP pricing info".format(e))
+            logging.warning("[app] Exception {} determining GCP pricing info".format(e))
         return {}
 
     @gcp_request_limit_retry
-    def get_instances(self, zone, instance_name, get_all=False, filters=None):
+    def get_instances(self, zone, instance_name, get_all=False, filters=None, node_uuid=None):
         # TODO: filter should work to do (zone eq args.zone), but it doesn't right now...
         filter_params = []
         if filters:
@@ -853,6 +853,13 @@ class GoogleCloudAdmin():
             server_types = [i["value"] for i in metadata if i["key"] == "server_type"]
             node_uuid_tags = [i["value"] for i in metadata if i["key"] == "node-uuid"]
             universe_uuid_tags = [i["value"] for i in metadata if i["key"] == "universe-uuid"]
+            host_node_uuid = node_uuid_tags[0] if node_uuid_tags else None
+            # Matching label or no label for backward compatibility.
+            if host_node_uuid is not None and node_uuid is not None \
+                    and host_node_uuid != node_uuid:
+                logging.warning("VM {}({}) with node UUID {} is not found.".
+                                format(instance_name, host_node_uuid, node_uuid))
+                continue
             private_ip = None
             primary_subnet = None
             secondary_private_ip = None
@@ -891,7 +898,7 @@ class GoogleCloudAdmin():
                 zone=zone,
                 instance_type=machine_type,
                 server_type=server_types[0] if server_types else None,
-                node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
+                node_uuid=host_node_uuid,
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 launched_by=None,
                 launch_time=data.get("creationTimestamp"),

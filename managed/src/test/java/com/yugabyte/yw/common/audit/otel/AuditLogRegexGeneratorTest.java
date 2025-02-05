@@ -33,7 +33,7 @@ public class AuditLogRegexGeneratorTest extends FakeDBApplication {
     assertThat(
         result.getRegex(),
         equalTo(
-            "[%][a][=](?P<application_name>[^ ]+)[ ][|][ ][%][u][=](?P<user_name>[^ ]+)[ ][|]["
+            "[%][a][=](?P<application_name>.+)[ ][|][ ][%][u][=](?P<user_name>[^ ]+)[ ][|]["
                 + " ][%][d][=](?P<database_name>[^ ]+)[ ][|][ ][%][r][=](?P<remote_host_port>[^"
                 + " ]+)[ ][|][ ][%][h][=](?P<remote_host>[^ ]+)[ ][|]["
                 + " ][%][p][=](?P<process_id>\\d+)[ ][|]["

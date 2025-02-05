@@ -87,15 +87,15 @@ templates:
     createForNewCustomer: true
     defaultThresholdMap:
       WARNING:
-        threshold: 900.0
+        threshold: 15
     targetType: PLATFORM
     defaultThresholdCondition: GREATER_THAN
-    defaultThresholdUnit: SECOND
+    defaultThresholdUnit: MINUTE
     thresholdReadOnly: false
-    thresholdUnitName: seconds
+    thresholdUnitName: min
     labels:
       affected_instance_addrs: >-
-        {{ range $index, $element := query "count by (instance_address) (time() - last_over_time(yba_ha_last_backup_seconds[1m]) > {{ query_threshold }}) > 0"}}
+        {{ range $index, $element := query "count by (instance_address) ((time() - last_over_time(yba_ha_last_backup_seconds[1m]) / 60) > {{ query_threshold }}) > 0"}}
         {{ if $index }},{{ end }}{{ $element.Labels.instance_address }}{{ end }}
     annotations:
       summary: >-
@@ -389,7 +389,7 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "sum by (universe_uuid, node_name) ((ybp_health_check_node_master_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) * ignoring (saved_name) (ybp_health_check_node_master_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
-        == bool 1)) + sum by (universe_uuid, node_name) ((ybp_health_check_node_tserver_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
+        == bool 1)) > 0 or sum by (universe_uuid, node_name) ((ybp_health_check_node_tserver_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) * ignoring (saved_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         == bool 1)) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
@@ -570,7 +570,7 @@ templates:
     labels:
       affected_node_names: >-
         {{ range $index, $element := query "sum by (universe_uuid, node_name) (ybp_health_check_node_master_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
-        < bool 1) + sum by (universe_uuid, node_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
+        < bool 1) > 0 or sum by (universe_uuid, node_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
@@ -1279,6 +1279,37 @@ templates:
       summary: >-
         XCluster config tables are in bad state for universe '{{ $labels.source_name }}'
         Affected XCluster configs: {{ $labels.affected_xcluster_configs }}
+
+  SAFETIME_LAG:
+    name: XCluster Transactional Safe Time Lag
+    description: Max xCluster transactional safe time lag for 10 minutes in ms on the target universe is above threshold; Safe time on the target universe has not progressed for a long time
+    queryTemplate: max by (universe_uuid) (max_over_time(consumer_safe_time_lag{universe_uuid="__universeUuid__"}[10m])) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        paramName: yb.alert.safetime_lag_ms
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query
+        "max by (universe_uuid, node_name)
+        (max_over_time(consumer_safe_time_lag{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
+        {{ query_condition }} {{ query_threshold }})" }}
+        {{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+      affected_namespace_ids: >-
+        {{ range $index, $element := query
+        "max by (universe_uuid, namespace_id)
+        (max_over_time(consumer_safe_time_lag{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
+        {{ query_condition }} {{ query_threshold }})" }}
+        {{if $index}},{{end}}{{ $element.Labels.namespace_id }}{{ end }}
+    annotations:
+      summary: >-
+        Max xCluster transactional safe time lag for the target universe '{{ $labels.source_name }}' is above
+        {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+
 
   PRIVATE_ACCESS_KEY_STATUS:
     name: Private access key permission status

@@ -28,15 +28,13 @@ namespace yb {
 constexpr auto kExpectedDdlError =
     "YSQL DDLs, and catalog modifications are not allowed during a major YSQL upgrade";
 
-static const MonoDelta kNoDelayBetweenNodes = 0s;
-
 class YsqlMajorUpgradeDdlBlockingTest : public Pg15UpgradeTestBase {
  public:
   YsqlMajorUpgradeDdlBlockingTest() = default;
 
   void SetUp() override {
     Pg15UpgradeTestBase::SetUp();
-    if (IsTestSkipped()) {
+    if (Test::IsSkipped()) {
       return;
     }
 
@@ -168,14 +166,10 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, TestDdlsDuringUpgrade) {
   ASSERT_OK(RunDdlFunctions(kMixedModeTserverPg11));
 
   // Finalize upgrade without upgrading all tservers
-  ASSERT_OK(FinalizeYsqlMajorCatalogUpgrade());
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
   upgrade_state_ = UpgradeState::kAfterUpgrade;
 
-  ASSERT_OK(RunDdlFunctions(kMixedModeTserverPg15));
-
-  // Pg11 tserver should not be allowed to update the catalog after catalog upgrade has been
-  // finalized.
-  ASSERT_OK(RunDdlFunctions(kMixedModeTserverPg11, /*error_expected=*/true));
+  ASSERT_OK(RunDdlFunctions(std::nullopt));
 }
 
 // Make sure we cannot run DDLs during a failed upgrade.
@@ -204,6 +198,52 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, TestFailedUpgrade) {
   ASSERT_OK(WaitForClusterToStabilize());
 
   ASSERT_OK(RunDdlFunctions(kMixedModeTserverPg11));
+}
+
+// Make sure we can upgrade even when postgres, and system_platform databases do not exist.
+// Make sure prechecks fail if yugabyte database does not exist.
+// Make sure we cannot create or drop databases during the upgrade.
+TEST_F(YsqlMajorUpgradeDdlBlockingTest, CreateAndDropDBs) {
+  {
+    auto template1_conn = ASSERT_RESULT(cluster_->ConnectToDB("template1", std::nullopt));
+    ASSERT_OK(template1_conn.ExecuteFormat("DROP DATABASE postgres"));
+    ASSERT_OK(template1_conn.ExecuteFormat("DROP DATABASE system_platform"));
+    ASSERT_OK(template1_conn.ExecuteFormat("DROP DATABASE yugabyte"));
+
+    ASSERT_NOK_STR_CONTAINS(ValidateUpgradeCompatibility(), kPgUpgradeFailedError);
+
+    ASSERT_OK(template1_conn.ExecuteFormat("CREATE DATABASE yugabyte"));
+    ASSERT_OK(ValidateUpgradeCompatibility());
+  }
+
+  ASSERT_OK(CreateSimpleTable());
+  ASSERT_OK(ExecuteStatement("CREATE DATABASE new_db1"));
+
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  auto validate_db_ddls_fail = [this] {
+    ASSERT_NOK_STR_CONTAINS(
+        ExecuteStatement("CREATE DATABASE new_db2"),
+        "No new namespaces can be created during a major YSQL upgrade");
+    ASSERT_NOK_STR_CONTAINS(ExecuteStatement("DROP DATABASE new_db1"), kExpectedDdlError);
+  };
+
+  ASSERT_NO_FATALS(validate_db_ddls_fail());
+
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+
+  ASSERT_NO_FATALS(validate_db_ddls_fail());
+
+  ASSERT_OK(RestartAllTServersInCurrentVersion(kNoDelayBetweenNodes));
+
+  ASSERT_NO_FATALS(validate_db_ddls_fail());
+
+  ASSERT_OK(FinalizeUpgrade());
+
+  ASSERT_OK(ExecuteStatement("CREATE DATABASE new_db2"));
+  ASSERT_OK(ExecuteStatement("DROP DATABASE new_db1"));
+
+  ASSERT_OK(InsertRowInSimpleTableAndValidate());
 }
 
 }  // namespace yb

@@ -29,6 +29,7 @@
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_type.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -183,7 +184,7 @@ inline bool MaybeSleepForTests(ash::WaitStateCode wait_event, ash::PggateRPC pgg
 
 } // namespace
 
-RowMarkType GetRowMarkType(const PgExecParameters* exec_params) {
+RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params) {
   return exec_params && exec_params->rowmark > -1
       ? static_cast<RowMarkType>(exec_params->rowmark)
       : RowMarkType::ROW_MARK_ABSENT;
@@ -260,9 +261,9 @@ Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
     exec_params_mutator(exec_params);
     RETURN_NOT_OK(doc_op.ExecuteInit(&exec_params));
     // Populate doc_op with ybctids which belong to current table.
-    RETURN_NOT_OK(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
+    RSTATUS_DCHECK(VERIFY_RESULT(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
       return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
-    }), static_cast<size_t>(end - it)}));
+    }), static_cast<size_t>(end - it)})), IllegalState, "Failed to create requests, can't fetch");
     RETURN_NOT_OK(doc_op.Execute());
   }
 
@@ -290,6 +291,13 @@ Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
   }
 
   return Status::OK();
+}
+
+Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid) {
+  char* value = nullptr;
+  int64_t bytes = 0;
+  pg_types.GetYbctid().datum_to_yb(ybctid, &value, &bytes);
+  return Slice(value, bytes);
 }
 
 } // namespace yb::pggate

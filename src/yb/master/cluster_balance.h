@@ -132,8 +132,10 @@ class ClusterLoadBalancer {
   virtual const TabletInfoMap& GetTabletMap() const REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Get an iterator for the tables.
-  virtual TableIndex::TablesRange GetTables() const
-      REQUIRES_SHARED(catalog_manager_->mutex_);
+  virtual TableIndex::PrimaryTablesRange GetTables() const
+      REQUIRES_SHARED(catalog_manager_->mutex_) {
+    return catalog_manager_->tables_->GetPrimaryTables();
+  }
 
   // Get the table info object for given table uuid.
   virtual const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const

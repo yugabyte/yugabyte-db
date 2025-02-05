@@ -98,15 +98,15 @@ class PgDmlRead : public PgDml {
   // Add a lower bound to the scan. If a lower bound has already been added
   // this call will set the lower bound to the stricter of the two bounds.
   Status AddRowLowerBound(
-      YBCPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
+      YbcPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
 
   // Add an upper bound to the scan. If an upper bound has already been added
   // this call will set the upper bound to the stricter of the two bounds.
   Status AddRowUpperBound(
-      YBCPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
+      YbcPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
 
   // Execute.
-  Status Exec(const PgExecParameters* exec_params);
+  Status Exec(const YbcPgExecParameters* exec_params);
   void SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids);
 
   Status ANNBindVector(PgExpr* vector);
@@ -156,16 +156,13 @@ class PgDmlRead : public PgDml {
   [[nodiscard]] bool IsConcreteRowRead() const;
   Status ProcessEmptyPrimaryBinds();
   [[nodiscard]] bool IsAllPrimaryKeysBound() const;
-  Result<std::vector<Slice>> BuildYbctidsFromPrimaryBinds();
+  Result<std::unique_ptr<YbctidProvider>> BuildYbctidsFromPrimaryBinds();
 
-  Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* params);
+  Status SubstitutePrimaryBindsWithYbctids();
   Result<dockv::DocKey> EncodeRowKeyForBound(
-      YBCPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound);
+      YbcPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound);
 
-  Status InitDocOp(const PgExecParameters* params, bool is_concrete_row_read);
-  Status InitDocOp(const PgExecParameters* params) {
-    return InitDocOp(params, IsConcreteRowRead());
-  }
+  Status InitDocOp(const YbcPgExecParameters* params);
 
   // Holds original doc_op_ object after call of the UpgradeDocOp method.
   // Required to prevent structures related to request from being freed.

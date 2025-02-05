@@ -1,13 +1,12 @@
 ---
 title: YugabyteDB Quick start for Docker
 headerTitle: Quick start
-linkTitle: Docker
-headcontent: Create a local cluster on a single host
+linkTitle: Quick start
+headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on Docker.
 aliases:
   - /preview/quick-start/docker/
   - /preview/deploy/docker/docker-compose
-
 type: docs
 unversioned: true
 ---
@@ -20,7 +19,7 @@ unversioned: true
     </a>
   </li>
   <li class="active">
-    <a href="../../quick-start/" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">
       Use a local cluster
     </a>
@@ -31,7 +30,7 @@ The local cluster setup on a single host is intended for development and learnin
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -168,7 +167,7 @@ docker exec -it yugabyte bash -c '/home/yugabyte/bin/ysqlsh --echo-queries --hos
 ```
 
 ```output
-ysqlsh (11.2-YB-{{< yb-version version="preview" >}}-b545)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

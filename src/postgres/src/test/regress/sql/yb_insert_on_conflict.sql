@@ -46,6 +46,30 @@ ROLLBACK;
 --- Accessing the EXCLUDED row from the RETURNING clause should be disallowed
 INSERT INTO ab_tab VALUES (generate_series(-3, 13)) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.a RETURNING EXCLUDED.b, b, (b % 5);
 
+--- SPI
+BEGIN;
+SELECT yb_run_spi($$
+    INSERT INTO ab_tab VALUES (1) ON CONFLICT DO NOTHING RETURNING a
+$$, 1);
+SELECT count(*), min(a), max(a) FROM ab_tab;
+SELECT yb_run_spi($$
+    INSERT INTO ab_tab VALUES (null) ON CONFLICT DO NOTHING RETURNING a
+$$, 1);
+SELECT count(*), min(a), max(a) FROM ab_tab;
+SELECT yb_run_spi($$
+    INSERT INTO ab_tab VALUES (generate_series(-10, 20)) ON CONFLICT DO NOTHING RETURNING b
+$$, 100);
+SELECT count(*), min(a), max(a) FROM ab_tab;
+SELECT yb_run_spi($$
+    INSERT INTO ab_tab VALUES (generate_series(-20, 30)) ON CONFLICT DO NOTHING RETURNING b, a
+$$, 15);
+SELECT count(*), min(a), max(a) FROM ab_tab;
+SELECT yb_run_spi($$
+    INSERT INTO ab_tab VALUES (generate_series(-30, 40)) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.a RETURNING (a + b)
+$$, 45);
+SELECT count(*), min(a), max(a) FROM ab_tab;
+ABORT;
+
 --- Multiple arbiter indexes
 CREATE UNIQUE INDEX NONCONCURRENTLY br_idx ON ab_tab (b ASC);
 -- No constraint specification.
@@ -484,71 +508,70 @@ TABLE triggers_fired;
 TABLE trigger_test;
 
 --- Foreign key
-CREATE TABLE parent_table (n numeric, t text, b bool, PRIMARY KEY (t, n));
-CREATE TABLE child_table (b bool PRIMARY KEY, n numeric, t text, FOREIGN KEY (t, n) REFERENCES parent_table);
+CREATE TABLE parent_table (n numeric, t text, b bool, PRIMARY KEY (t, n ASC));
+CREATE TABLE child_table (k numeric, n numeric, t text, CONSTRAINT fk FOREIGN KEY (t, n) REFERENCES parent_table, PRIMARY KEY (k ASC));
 INSERT INTO parent_table VALUES (1, '1', true), (2, '2', true);
-INSERT INTO child_table VALUES (false, 1, '1') ON CONFLICT DO NOTHING;
-INSERT INTO child_table VALUES (false, 1, '1') ON CONFLICT (b) DO UPDATE SET b = true;
+INSERT INTO child_table VALUES (0, 1, '1') ON CONFLICT DO NOTHING;
+INSERT INTO child_table VALUES (0, 1, '1') ON CONFLICT (k) DO UPDATE SET k = 1;
 TABLE child_table;
-INSERT INTO child_table VALUES (false, 2, '1') ON CONFLICT (b) DO UPDATE SET b = true;
-INSERT INTO child_table VALUES (true, 2, '1') ON CONFLICT (b) DO UPDATE SET t = '2';
+INSERT INTO child_table VALUES (0, 2, '1') ON CONFLICT (k) DO UPDATE SET k = 1;
+INSERT INTO child_table VALUES (1, 2, '1') ON CONFLICT (k) DO UPDATE SET t = '2';
 TABLE child_table;
-
---- WITH
-CREATE TABLE with_a (i int, PRIMARY KEY (i DESC));
-CREATE TABLE with_b (i int, PRIMARY KEY (i ASC));
-INSERT INTO with_a VALUES (generate_series(1, 10));
-INSERT INTO with_b VALUES (generate_series(11, 20));
+INSERT INTO parent_table VALUES (2, '2', false), (1, '1', false) ON CONFLICT (t, n) DO UPDATE SET t = EXCLUDED.t || EXCLUDED.t;
+INSERT INTO parent_table VALUES (2, '2', false) ON CONFLICT (t, n) DO UPDATE SET t = EXCLUDED.t || EXCLUDED.t;
+SELECT * FROM parent_table ORDER BY t, n;
+TRUNCATE parent_table CASCADE;
+INSERT INTO parent_table (n, t) SELECT g, '' FROM generate_series(0, 5) g;
+INSERT INTO child_table (n, t, k) SELECT g, '', g FROM generate_series(0, 4) g;
+-- NO ACTION
+ALTER TABLE child_table DROP CONSTRAINT fk;
+ALTER TABLE child_table ADD CONSTRAINT fk FOREIGN KEY (t, n) REFERENCES parent_table (t, n) ON DELETE NO ACTION ON UPDATE NO ACTION;
 BEGIN;
-WITH w(i) AS (
-    INSERT INTO with_a VALUES (generate_series(1, 11)) ON CONFLICT (i) DO NOTHING RETURNING i
-) INSERT INTO with_b VALUES (generate_series(1, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
-TABLE with_a;
-TABLE with_b;
+INSERT INTO parent_table (n, t) SELECT g, '' FROM generate_series(0, 5) g
+    ON CONFLICT (n, t) DO UPDATE SET n = EXCLUDED.n - 1;
+TABLE parent_table;
+TABLE child_table;
 ABORT;
+-- RESTRICT
+ALTER TABLE child_table DROP CONSTRAINT fk;
+ALTER TABLE child_table ADD CONSTRAINT fk FOREIGN KEY (t, n) REFERENCES parent_table (t, n) ON DELETE RESTRICT ON UPDATE RESTRICT;
 BEGIN;
-WITH w(i) AS (
-    INSERT INTO with_a VALUES (generate_series(1, 11)) ON CONFLICT (i) DO NOTHING RETURNING i
-) INSERT INTO with_a VALUES (generate_series(1, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
-TABLE with_a;
+INSERT INTO parent_table (n, t) SELECT g, '' FROM generate_series(0, 5) g
+    ON CONFLICT (n, t) DO UPDATE SET n = EXCLUDED.n - 1;
+TABLE parent_table;
+TABLE child_table;
 ABORT;
+-- CASCADE + self-referential NO ACTION
+ALTER TABLE child_table DROP CONSTRAINT fk;
+ALTER TABLE child_table ADD CONSTRAINT fk FOREIGN KEY (t, n) REFERENCES parent_table (t, n) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE child_table ADD CONSTRAINT u UNIQUE (n);
+ALTER TABLE child_table ADD CONSTRAINT self_fk FOREIGN KEY (k) REFERENCES child_table (n) ON DELETE NO ACTION ON UPDATE NO ACTION;
 BEGIN;
-WITH w(i) AS (
-    INSERT INTO with_a VALUES (generate_series(6, 11)) ON CONFLICT (i) DO NOTHING RETURNING i
-) INSERT INTO with_a VALUES (generate_series(10, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
-TABLE with_a;
+INSERT INTO parent_table (n, t) SELECT g, '' FROM generate_series(0, 5) g
+    ON CONFLICT (n, t) DO UPDATE SET n = EXCLUDED.n - 1;
+TABLE parent_table;
+TABLE child_table;
 ABORT;
+-- CASCADE + self-referential CASCADE
+ALTER TABLE child_table DROP CONSTRAINT self_fk;
+ALTER TABLE child_table ADD CONSTRAINT self_fk FOREIGN KEY (k) REFERENCES child_table (n) ON DELETE CASCADE ON UPDATE CASCADE;
 BEGIN;
-WITH w(i) AS (
-    INSERT INTO with_a VALUES (11) RETURNING i
-) INSERT INTO with_a VALUES (generate_series(10, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
-TABLE with_a;
+INSERT INTO parent_table (n, t) SELECT g, '' FROM generate_series(0, 5) g
+    ON CONFLICT (n, t) DO UPDATE SET n = EXCLUDED.n - 1;
+TABLE parent_table;
+TABLE child_table;
 ABORT;
+-- CASCADE + no-update/no-delete self-referential
+ALTER TABLE child_table DROP CONSTRAINT self_fk;
+ALTER TABLE child_table DROP CONSTRAINT u;
+ALTER TABLE child_table ADD CONSTRAINT self_fk FOREIGN KEY (n) REFERENCES child_table (k) ON DELETE CASCADE ON UPDATE CASCADE;
 BEGIN;
-WITH w(i) AS (
-    DELETE FROM with_a WHERE i = 10 RETURNING i
-) INSERT INTO with_a VALUES (generate_series(9, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
-TABLE with_a;
-ABORT;
-BEGIN;
-WITH w(i) AS (
-    INSERT INTO with_a VALUES (generate_series(6, 11)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 100 RETURNING i
-) INSERT INTO with_a SELECT CASE
-    WHEN u < 12 THEN u
-    WHEN u < 14 THEN -(u + (SELECT max(i) FROM w))
-    ELSE u
-    END FROM generate_series(9, 15) u ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 10;
-TABLE with_a;
-ABORT;
-BEGIN;
-WITH w(i) AS (
-    INSERT INTO with_a VALUES (generate_series(6, 10)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 100 RETURNING i
-) INSERT INTO with_a SELECT CASE
-    WHEN u < 11 THEN u
-    WHEN u < 13 THEN -(u + (SELECT max(i) FROM w))
-    ELSE u
-    END FROM generate_series(10, 15) u ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 10;
-TABLE with_a;
+INSERT INTO parent_table (n, t) VALUES (-1, 'other');
+INSERT INTO child_table (n, t, k) VALUES (-1, 'other', -1);
+INSERT INTO parent_table (n, t) SELECT g, '' FROM generate_series(0, 5) g
+    ON CONFLICT (n, t) DO UPDATE SET n = EXCLUDED.n - 1;
+TABLE parent_table;
+TABLE child_table;
 ABORT;
 
 --- GH-25070

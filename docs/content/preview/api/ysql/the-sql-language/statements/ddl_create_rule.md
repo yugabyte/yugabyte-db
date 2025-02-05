@@ -14,7 +14,7 @@ type: docs
 
 ## Synopsis
 
-Use the `CREATE RULE` statement to create a rule.
+Use the CREATE RULE statement to create a rule.
 
 ## Syntax
 
@@ -41,7 +41,7 @@ yugabyte=# INSERT INTO t1 VALUES (3, 4);
 yugabyte=# SELECT * FROM t1;
 ```
 
-```
+```output
  a | b
 ---+---
 (0 rows)
@@ -51,7 +51,7 @@ yugabyte=# SELECT * FROM t1;
 yugabyte=# SELECT * FROM t2;
 ```
 
-```
+```output
  a | b
 ---+---
  3 | 4
@@ -60,5 +60,6 @@ yugabyte=# SELECT * FROM t2;
 
 ## See also
 
-- [`DROP RULE`](../ddl_drop_rule)
-- [postgresql-docs-create-rule](https://www.postgresql.org/docs/current/sql-createrule.html)
+- [DROP RULE](../ddl_drop_rule)
+
+[postgresql-docs-create-rule]: https://www.postgresql.org/docs/15/sql-createrule.html

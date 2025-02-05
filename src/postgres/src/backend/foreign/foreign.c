@@ -39,6 +39,7 @@
 #include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
+#include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
@@ -46,7 +47,7 @@
 
 /*  YB includes. */
 #include "pg_yb_utils.h"
-#include "executor/ybc_fdw.h"
+#include "executor/yb_fdw.h"
 
 /*
  * GetForeignDataWrapper -	look up the foreign-data wrapper by OID.
@@ -341,6 +342,15 @@ GetFdwRoutine(Oid fdwhandler)
 	Datum		datum;
 	FdwRoutine *routine;
 
+	/* Check if the access to foreign tables is restricted */
+	if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_FOREIGN_TABLE) != 0))
+	{
+		/* there must not be built-in FDW handler  */
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("access to non-system foreign table is restricted")));
+	}
+
 	datum = OidFunctionCall0(fdwhandler);
 	routine = (FdwRoutine *) DatumGetPointer(datum);
 
@@ -451,10 +461,13 @@ GetFdwRoutineForRelation(Relation relation, bool makecopy)
 
 	if (relation->rd_fdwroutine == NULL)
 	{
-		if (IsYBRelation(relation)) {
+		if (IsYBRelation(relation))
+		{
 			/* Get the custom YB FDW directly */
-			fdwroutine = (FdwRoutine *) ybc_fdw_handler();
-		} else {
+			fdwroutine = (FdwRoutine *) yb_fdw_handler();
+		}
+		else
+		{
 			/* Get the info by consulting the catalogs and the FDW code */
 			fdwroutine = GetFdwRoutineByRelId(RelationGetRelid(relation));
 		}

@@ -1,3 +1,48 @@
+YB Foreword
+===========
+
+Yugabyte makes use of pgindent, but due to differences, the workflow is
+different.
+
+- Yugabyte does not have a buildfarm that generates typedefs.list.  Therefore,
+  the types have to be added somewhat manually.
+  - Add Yugabyte-added type names to yb_typedefs.list.  These should have "yb"
+    (case insensitive) present in the name.  Here is one way to collect these
+    items (assuming ~/code/postgres has upstream postgres code checked out at
+    the corresponding commit):
+
+        diff \
+          <(cd src/postgres; git ls-files ^third-party-extensions ../yb/yql/pggate/***/ybc_*.h | ctags -L - --languages=c,c++ --c-kinds=gstu --c++-kinds=gstu -f /dev/stdout | awk '{print$1}' | uniq) \
+          <(cd ~/code/postgres; git ls-files | ctags -L - --languages=c,c++ --c-kinds=gstu --c++-kinds=gstu -f /dev/stdout | awk ' {print$1}' | uniq) | grep '<'
+
+    ctags can find most type names.  The command above compares the ctags
+    output between Yugabyte code and upstream postgres code and reports the
+    types that are defined in Yugabyte only.  All these should have "yb" (case
+    insensitive) present in them, and it should not be the case that upstream
+    postgres has type names that Yugabyte does not (though this may show up in
+    case there are future upstream PG commit point imports).  See the test plan
+    of commit 6a56ce7bcdeb0478c791efaa322b58c61007fd39 that should serve as a
+    sanity check before proceeding to use pgindent.
+
+    In addition to the types found by the above command, here are a few more
+    items that should be added manually:
+    - Any Form_foo should be accompanied by FormData_foo.
+    - Any types defined using YB_DEFINE_HANDLE_TYPE should have a corresponding
+      entry.
+  - Add further third-party typedefs to yb_thirdparty_typedefs.list.  For
+    example, types in hdrhistogram or the standard library.
+- Yugabyte has other files which might have to be exempt from modification by
+  pgindent.  Add such items to yb_exclude_file_patterns in the same manner as
+  exclude_file_patterns.
+- The existing typedefs.list and exclude_file_patterns should not be touched
+  and should be left under the control of upstream postgres.  In order to make
+  use of the YB variants of these files, run yb_pgindent, a wrapper around
+  pgindent that merges the additional YB files with the PG ones.  One more
+  thing that is needed is the --indent option, pointing to
+  /path/to/pg_bsd_indent_repo/pg_bsd_indent.  For example,
+
+      src/tools/pgindent/yb_pgindent --indent=~/code/pg_bsd_indent/pg_bsd_indent
+
 pgindent'ing the PostgreSQL source tree
 =======================================
 

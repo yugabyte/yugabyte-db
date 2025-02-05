@@ -4,11 +4,14 @@ package com.yugabyte.yw.commissioner;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -24,9 +27,13 @@ import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -121,7 +128,7 @@ public class TaskQueueTest extends PlatformGuiceApplicationBaseTest {
 
   private ITaskParams createTaskParams(UUID targetUuid) {
     ITaskParams mockITaskParams = mock(ITaskParams.class);
-    when(mockITaskParams.getTargetUuid()).thenReturn(targetUuid);
+    when(mockITaskParams.getTargetUuid(any())).thenReturn(targetUuid);
     return mockITaskParams;
   }
 
@@ -180,9 +187,7 @@ public class TaskQueueTest extends PlatformGuiceApplicationBaseTest {
               .taskUuid(UUID.randomUUID())
               .build(),
           runnableTaskCreator,
-          (t, p) -> {
-            when(t.isRunning()).thenReturn(true);
-          });
+          (t, p) -> when(t.isRunning()).thenReturn(true));
     }
     PlatformServiceException exception =
         assertThrows(
@@ -200,7 +205,7 @@ public class TaskQueueTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testTaskNonQueueable() throws Exception {
+  public void testTaskNonQueuable() throws Exception {
     UUID targetUuid = UUID.randomUUID();
     taskQueue.enqueue(
         TaskParams.builder()
@@ -254,6 +259,56 @@ public class TaskQueueTest extends PlatformGuiceApplicationBaseTest {
         runnableTaskCreator,
         (t, p) -> {});
     assertNotNull("First task must be run", runnableTaskRef.get());
-    verify(runnableTaskRef.get(), times(1)).abort(any());
+    verify(runnableTaskRef.get(), times(1)).setAbortTimeSupplier(any());
+  }
+
+  @Test
+  public void testTaskCancel() throws Exception {
+    UUID targetUuid = UUID.randomUUID();
+    Function<TaskParams, RunnableTask> runnableTaskCreator =
+        createRunnableTaskCreator(() -> {}, true);
+    int taskCount = 10;
+    List<UUID> taskUuids = new ArrayList<>();
+    for (int i = 0; i < taskCount; i++) {
+      final int idx = i;
+      UUID taskUuid = UUID.randomUUID();
+      taskUuids.add(taskUuid);
+      taskQueue.enqueue(
+          TaskParams.builder()
+              .taskParams(createTaskParams(targetUuid))
+              .taskType(TaskType.CreateUniverse)
+              .taskUuid(taskUuid)
+              .build(),
+          runnableTaskCreator,
+          (t, p) -> {
+            if (idx == 0) {
+              when(t.isRunning()).thenReturn(true);
+            }
+          });
+    }
+    assertEquals(taskCount, taskQueue.size(targetUuid));
+    RunnableTask firstTask = taskQueue.find(taskUuids.get(0));
+    for (int i = 0; i < taskCount; i++) {
+      int queueSize = taskQueue.size(targetUuid);
+      UUID pickedUuid = taskUuids.get(i);
+      RunnableTask task = taskQueue.find(pickedUuid);
+      boolean isCancelled = taskQueue.cancel(pickedUuid);
+      if (pickedUuid.equals(firstTask.getTaskUUID())) {
+        assertFalse(isCancelled);
+        assertEquals(firstTask, taskQueue.find(pickedUuid));
+        assertEquals(queueSize, taskQueue.size(targetUuid));
+      } else {
+        assertTrue(isCancelled);
+        assertNull(taskQueue.find(pickedUuid));
+        assertEquals(queueSize - 1, taskQueue.size(targetUuid));
+        verify(task, times(1))
+            .updateTaskDetailsOnError(eq(State.Aborted), any(CancellationException.class));
+      }
+    }
+    assertEquals(1, taskQueue.size(targetUuid));
+    when(firstTask.isRunning()).thenReturn(false);
+    taskQueue.cancel(firstTask.getTaskUUID());
+    assertNull(taskQueue.find(firstTask.getTaskUUID()));
+    assertEquals(0, taskQueue.size(targetUuid));
   }
 }

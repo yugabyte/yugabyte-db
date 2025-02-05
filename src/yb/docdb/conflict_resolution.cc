@@ -144,6 +144,22 @@ class ConflictResolverContext {
 
   virtual bool IsSingleShardTransaction() const = 0;
 
+  virtual boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const {
+    return boost::none;
+  }
+
+  virtual TransactionId background_txn_id() const {
+    return TransactionId::Nil();
+  }
+
+  virtual TabletId background_txn_status_tablet() const {
+    return TabletId();
+  }
+
+  virtual bool ShouldWaitAsBackgroundTxn() const {
+    return false;
+  }
+
   std::string LogPrefix() const {
     return ToString() + ": ";
   }
@@ -686,10 +702,14 @@ class WaitOnConflictResolver : public ConflictResolver {
   }
 
   void TryPreWait() {
-    DCHECK(!status_tablet_id_.empty());
+    const auto& waiter_txn = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_id() : context_->transaction_id();
+    const auto& waiter_status_tablet = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_status_tablet() : status_tablet_id_;
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
-        context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
-        serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
+        waiter_txn, context_->subtransaction_id(), lock_batch_, waiter_status_tablet,
+        serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_,
+        context_->PgSessionRequestVersion(), deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
@@ -707,10 +727,15 @@ class WaitOnConflictResolver : public ConflictResolver {
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
+    const auto& waiter_txn = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_id() : context_->transaction_id();
+    const auto& waiter_status_tablet = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_status_tablet() : status_tablet_id_;
     RETURN_NOT_OK(wait_queue_->WaitOn(
-        context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
-        ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
-        context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
+        waiter_txn, context_->subtransaction_id(), lock_batch_,
+        ConsumeTransactionDataAndReset(), waiter_status_tablet, serial_no_,
+        context_->GetTxnStartUs(), request_start_us_, request_id_,
+        context_->PgSessionRequestVersion(), deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2)));
     MaybeSetWaitStartTime();
@@ -890,23 +915,21 @@ class StrongConflictChecker {
 
   Status Check(
       Slice intent_key, bool strong, ConflictManagementPolicy conflict_management_policy) {
-    const auto bloom_filter_prefix = VERIFY_RESULT(ExtractFilterPrefixFromKey(intent_key));
-    if (!value_iter_.Initialized() || bloom_filter_prefix != value_iter_bloom_filter_prefix_) {
+    if (!value_iter_.Initialized()) {
       auto hybrid_time_file_filter =
           FLAGS_docdb_ht_filter_conflict_with_committed ? CreateHybridTimeFileFilter(read_time_)
                                                         : nullptr;
       value_iter_ = CreateRocksDBIterator(
           resolver_.doc_db().regular,
           resolver_.doc_db().key_bounds,
-          BloomFilterMode::USE_BLOOM_FILTER,
-          intent_key,
+          BloomFilterOptions::Variable(),
           rocksdb::kDefaultQueryId,
           hybrid_time_file_filter,
           /* iterate_upper_bound = */ nullptr,
           rocksdb::CacheRestartBlockKeys::kFalse);
-      value_iter_bloom_filter_prefix_ = bloom_filter_prefix;
     }
-    value_iter_.Seek(intent_key);
+    value_iter_.UpdateFilterKey(intent_key);
+    const auto* entry = &value_iter_.Seek(intent_key);
 
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
@@ -929,16 +952,16 @@ class StrongConflictChecker {
     // change, so it is only directly in conflict with a committed record that deletes or replaces
     // that entire document subtree (similar to a strong intent), so it would have the same exact
     // key as the weak intent (not including hybrid time).
-    while (value_iter_.Valid() &&
+    while (entry->Valid() &&
            (intent_key.starts_with(KeyEntryTypeAsChar::kGroupEnd) ||
-            value_iter_.key().starts_with(intent_key))) {
-      auto existing_key = value_iter_.key();
+            entry->key.starts_with(intent_key))) {
+      auto existing_key = entry->key;
       auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
       if (existing_key.empty() ||
           existing_key[existing_key.size() - 1] != KeyEntryTypeAsChar::kHybridTime) {
         return STATUS_FORMAT(
             Corruption, "Hybrid time expected at end of key: $0",
-            value_iter_.key().ToDebugString());
+            entry->key.ToDebugString());
       }
       if (!strong && existing_key.size() != intent_key.size() + 1) {
         VLOG_WITH_PREFIX(4)
@@ -950,9 +973,9 @@ class StrongConflictChecker {
           << "Check value overwrite, key: " << SubDocKey::DebugSliceToString(intent_key)
           << ", read time: " << read_time_
           << ", doc ht: " << doc_ht.hybrid_time()
-          << ", found key: " << SubDocKey::DebugSliceToString(value_iter_.key())
+          << ", found key: " << SubDocKey::DebugSliceToString(entry->key)
           << ", after start: " << (doc_ht.hybrid_time() >= read_time_)
-          << ", value: " << value_iter_.value().ToDebugString();
+          << ", value: " << entry->value.ToDebugString();
       if (doc_ht.hybrid_time() >= read_time_) {
         if (conflict_management_policy == SKIP_ON_CONFLICT) {
           return STATUS(InternalError, "Skip locking since entity was modified in regular db",
@@ -969,7 +992,7 @@ class StrongConflictChecker {
       buffer_.Reset(existing_key);
       // Already have ValueType::kHybridTime at the end
       buffer_.AppendHybridTime(DocHybridTime::kMin);
-      ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
+      entry = &ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
     }
 
     return value_iter_.status();
@@ -988,7 +1011,6 @@ class StrongConflictChecker {
 
   // RocksDb iterator with bloom filter can be reused in case keys has same hash component.
   BoundedRocksDbIterator value_iter_;
-  Slice value_iter_bloom_filter_prefix_;
 };
 
 class ConflictResolverContextBase : public ConflictResolverContext {
@@ -1122,7 +1144,26 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   Status InitTxnMetadata(ConflictResolver* resolver) override {
     metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
+    if (write_batch_.has_background_transaction_id()) {
+      background_transaction_id_ =
+          VERIFY_RESULT(FullyDecodeTransactionId(write_batch_.background_transaction_id()));
+      std::string_view status_tablet_string(write_batch_.background_txn_status_tablet());
+      background_txn_status_tablet_.emplace(status_tablet_string);
+      should_wait_as_background_txn_ = PgSessionRequestVersion().value_or(false);
+    }
     return Status::OK();
+  }
+
+  TransactionId background_txn_id() const override {
+    return *background_transaction_id_;
+  }
+
+  TabletId background_txn_status_tablet() const override {
+    return *background_txn_status_tablet_;
+  }
+
+  bool ShouldWaitAsBackgroundTxn() const override {
+    return should_wait_as_background_txn_;
   }
 
  private:
@@ -1246,7 +1287,8 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   }
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
-    return other == *transaction_id_;
+    return other == *transaction_id_ ||
+           (background_transaction_id_ && other == *background_transaction_id_);
   }
 
   TransactionId transaction_id() const override {
@@ -1264,6 +1306,13 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     return false;
   }
 
+  boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const override {
+    if (write_batch_.has_pg_session_req_version() && write_batch_.pg_session_req_version()) {
+      return write_batch_.pg_session_req_version();
+    }
+    return boost::none;
+  }
+
   std::string ToString() const override {
     return yb::ToString(transaction_id_);
   }
@@ -1276,6 +1325,23 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   // Id of transaction when is writing intents, for which we are resolving conflicts.
   Result<TransactionId> transaction_id_;
+
+  // This ensures no conflicts occur between session-level and transaction-level advisory
+  // locks within the same session.
+  // - For session-level advisory lock requests: the below points to
+  //   the in-progress DocDB transaction, if any.
+  // - For transaction-level advisory lock requests: the below points to
+  //   the session-level transaction, if exists.
+  boost::optional<TransactionId> background_transaction_id_ = boost::none;
+  boost::optional<TabletId> background_txn_status_tablet_ = boost::none;
+
+  // When set, indicates that we need to wait as background transaction. Currently, this is used
+  // in the following path alone,
+  // - When a session advisory lock request is issued in an explicit transaction block, we wait
+  //   as the regular/plain transaction as opposed to entering the wait queue with the session
+  //   level transaction. This is necessary for breaking any potential deadlocks spanning session
+  //   advisory locks, transaction advisory locks, and row level locks.
+  bool should_wait_as_background_txn_ = false;
 
   TransactionMetadata metadata_;
 

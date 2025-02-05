@@ -28,7 +28,7 @@ namespace yb {
 
 void Pg15UpgradeTestBase::SetUp() {
   UpgradeTestBase::SetUp();
-  if (IsTestSkipped()) {
+  if (Test::IsSkipped()) {
     return;
   }
   CHECK_OK_PREPEND(StartClusterInOldVersion(), "Failed to start cluster in old version");
@@ -41,12 +41,31 @@ void Pg15UpgradeTestBase::SetUp() {
       "RESET yb_non_ddl_txn_for_sys_tables_allowed"}));
 }
 
+Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user_name) {
+  const auto tserver = cluster_->tablet_server(0);
+  const auto data_path = JoinPathSegments(tserver->GetDataDirs().front(), "../../pg_data");
+
+  const std::vector<std::string> args = {
+    GetPgToolPath("pg_upgrade"),
+    "--old-datadir", data_path,
+    "--old-host", tserver->bind_host(),
+    "--old-port", AsString(tserver->pgsql_rpc_port()),
+    "--username", user_name,
+    "--check"
+  };
+
+  LOG(INFO) << "Running " << AsString(args);
+
+  return Subprocess::Call(args);
+}
+
 Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {
+  RETURN_NOT_OK(ValidateUpgradeCompatibility());
+
   LOG(INFO) << "Upgrading cluster to mixed mode";
 
-  static const MonoDelta no_delay_between_nodes = 0s;
   RETURN_NOT_OK_PREPEND(
-      RestartAllMastersInCurrentVersion(no_delay_between_nodes), "Failed to restart masters");
+      RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes), "Failed to restart masters");
 
   RETURN_NOT_OK_PREPEND(
       PerformYsqlMajorCatalogUpgrade(), "Failed to run ysql major catalog upgrade");
@@ -88,9 +107,8 @@ Status Pg15UpgradeTestBase::RollbackUpgradeFromMixedMode() {
   RETURN_NOT_OK_PREPEND(
       RollbackYsqlMajorCatalogVersion(), "Failed to run ysql major catalog rollback");
 
-  static const MonoDelta no_delay_between_nodes = 0s;
   RETURN_NOT_OK_PREPEND(
-      RestartAllMastersInOldVersion(no_delay_between_nodes), "Failed to restart masters");
+      RestartAllMastersInOldVersion(kNoDelayBetweenNodes), "Failed to restart masters");
 
   return Status::OK();
 }
@@ -165,7 +183,7 @@ Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlsh(
   args.push_back("--host");
   args.push_back(tserver->bind_host());
   args.push_back("--port");
-  args.push_back(AsString(tserver->pgsql_rpc_port()));
+  args.push_back(AsString(tserver->ysql_port()));
   args.push_back("-c");
   args.push_back(sql_statement);
 
@@ -224,6 +242,13 @@ Status Pg15UpgradeTestBase::TestUpgradeWithSimpleTable() {
 }
 
 Status Pg15UpgradeTestBase::TestRollbackWithSimpleTable() {
+  // Create an extra DB with a table to make sure the rollback with multiple DBs work.
+  {
+    RETURN_NOT_OK(ExecuteStatement("CREATE DATABASE db1"));
+    auto db1_conn = VERIFY_RESULT(cluster_->ConnectToDB("db1"));
+    RETURN_NOT_OK(db1_conn.Execute("CREATE TABLE t (a INT)"));
+  }
+
   RETURN_NOT_OK(CreateSimpleTable());
 
   RETURN_NOT_OK(UpgradeClusterToMixedMode());

@@ -383,7 +383,7 @@ message PgsqlBackfillSpecPB {
   optional bytes next_row_key = 3;
 }
 
-// Make sure this is in sync with YBCPgMetricsCaptureType in ybc_pg_typedefs.h.
+// Make sure this is in sync with YbcPgMetricsCaptureType in ybc_pg_typedefs.h.
 enum PgsqlMetricsCaptureType {
   PGSQL_METRICS_CAPTURE_NONE = 0;
   PGSQL_METRICS_CAPTURE_ALL = 1;
@@ -718,4 +718,10 @@ message PgsqlLockRequestPB {
 
   optional bytes partition_key = 6;
   optional uint32 hash_code = 7;
+}
+
+message PgTxnSnapshotPB {
+  optional uint32 db_oid = 1;
+  optional uint32 isolation_level = 2;
+  optional bool read_only = 3;
 }

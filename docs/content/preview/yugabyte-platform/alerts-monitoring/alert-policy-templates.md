@@ -86,6 +86,15 @@ Last snapshot task for universe `'$universe_name'` failed. To retry, check PITR 
 min(ybp_pitr_config_status{universe_uuid = "__universeUuid__"}) {{ query_condition }} 1
 ```
 
+#### xCluster config tables are in bad state
+
+There are issues with table replication. For example, there is a table schema mismatch between primary and replica universes in xCluster replication or xCluster DR; or tables were added or dropped from either primary or replica, but have not been added or dropped from the other; or there was an extended network partition.
+
+```promql
+min(last_over_time(ybp_xcluster_table_status{source_universe_uuid
+= "__universeUuid__"}[5m])) {{ query_condition }} {{ query_threshold }}
+```
+
 ### DB templates
 
 #### DB compaction overload
@@ -670,14 +679,6 @@ YSQLSH connection failure detected for universe `'$universe_name'` on `$value` T
 
 ```promql
 count by (universe_uuid) (yb_node_ysql_connect{universe_uuid="__universeUuid__"} < 1) {{ query_condition }} {{ query_threshold }}
-```
-
-#### New YSQL tables added
-
-New YSQL tables are added to the source universe `'$universe_name'` in the database with an existing xCluster configuration, but not added to the xCluster replication.
-
-```promql
-((count by (namespace_name, universe_uuid)(count by(namespace_name, table_id, universe_uuid)(rocksdb_current_version_sst_files_size{universe_uuid="__universeUuid__",table_type="PGSQL_TABLE_TYPE"}))) - count by(namespace_name, universe_uuid)(count by(namespace_name, universe_uuid, table_id)(async_replication_sent_lag_micros{universe_uuid="__universeUuid__",table_type="PGSQL_TABLE_TYPE"}))) {{ query_condition }} {{ query_threshold }}
 ```
 
 #### Number of YSQL connections is high

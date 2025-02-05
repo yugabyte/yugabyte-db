@@ -6,9 +6,9 @@ Parsed test spec with 2 sessions
 
 starting permutation: s1_select s1_serializable_txn s2_serializable_txn s1_upd_price s2_upd_disc_price s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_select: SELECT * FROM products;
 product_id|date_added              |name|price|discounted_price|date_expires
 ----------+------------------------+----+-----+----------------+----------------------------
@@ -32,9 +32,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s1_select s1_serializable_txn s2_serializable_txn s1_upd_pk_date_added s2_upd_date_expires s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_select: SELECT * FROM products;
 product_id|date_added              |name|price|discounted_price|date_expires
 ----------+------------------------+----+-----+----------------+----------------------------
@@ -58,9 +58,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s1_select s1_serializable_txn s2_serializable_txn s1_upd_price s2_insert_on_conflict1 s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_select: SELECT * FROM products;
 product_id|date_added              |name|price|discounted_price|date_expires
 ----------+------------------------+----+-----+----------------+----------------------------
@@ -87,9 +87,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s1_select s1_serializable_txn s2_serializable_txn s1_upd_pk_date_added s2_insert_on_conflict2 s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_select: SELECT * FROM products;
 product_id|date_added              |name|price|discounted_price|date_expires
 ----------+------------------------+----+-----+----------------+----------------------------
@@ -116,9 +116,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s1_select s1_serializable_txn s2_serializable_txn s1_upd_date_expires s2_insert_on_conflict3 s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_select: SELECT * FROM products;
 product_id|date_added              |name|price|discounted_price|date_expires
 ----------+------------------------+----+-----+----------------+----------------------------
@@ -145,9 +145,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s1_repeatable_read_txn s1_select s2_repeatable_read_txn s1_upd_price s2_upd_disc_price s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1_select: SELECT * FROM products;
 product_id|date_added              |name|price|discounted_price|date_expires
@@ -171,9 +171,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s1_repeatable_read_txn s1_select s2_repeatable_read_txn s1_upd_pk_date_added s2_upd_date_expires s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1_select: SELECT * FROM products;
 product_id|date_added              |name|price|discounted_price|date_expires
@@ -197,9 +197,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s1_repeatable_read_txn s1_select s2_repeatable_read_txn s1_upd_price s2_insert_on_conflict1 s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1_select: SELECT * FROM products;
 product_id|date_added              |name|price|discounted_price|date_expires
@@ -226,9 +226,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s1_repeatable_read_txn s1_select s2_repeatable_read_txn s1_upd_date_expires s2_insert_on_conflict3 s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1_select: SELECT * FROM products;
 product_id|date_added              |name|price|discounted_price|date_expires
@@ -255,9 +255,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s2_enable_retries s1_read_committed_txn s1_select s2_read_committed_txn s1_upd_price s2_upd_disc_price s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_enable_retries: SET yb_max_query_layer_retries = 60;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s1_select: SELECT * FROM products;
@@ -282,9 +282,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s2_enable_retries s1_read_committed_txn s1_select s2_read_committed_txn s1_upd_pk_date_added s2_upd_date_expires s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_enable_retries: SET yb_max_query_layer_retries = 60;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s1_select: SELECT * FROM products;
@@ -309,9 +309,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s2_enable_retries s1_read_committed_txn s1_select s2_read_committed_txn s1_upd_price s2_insert_on_conflict1 s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_enable_retries: SET yb_max_query_layer_retries = 60;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s1_select: SELECT * FROM products;
@@ -339,9 +339,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s2_enable_retries s1_read_committed_txn s1_select s2_read_committed_txn s1_upd_pk_date_added s2_insert_on_conflict2 s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_enable_retries: SET yb_max_query_layer_retries = 60;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s1_select: SELECT * FROM products;
@@ -369,9 +369,9 @@ product_id|date_added              |name|price|discounted_price|date_expires
 
 starting permutation: s2_enable_retries s1_read_committed_txn s1_select s2_read_committed_txn s1_upd_date_expires s2_insert_on_conflict3 s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_enable_retries: SET yb_max_query_layer_retries = 60;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s1_select: SELECT * FROM products;

@@ -194,12 +194,12 @@ lnext:
 		if (!IsolationUsesXactSnapshot())
 			lockflags |= TUPLE_LOCK_FLAG_FIND_LAST_VERSION;
 
-		Assert(
-			IsYBBackedRelation(erm->relation) == node->yb_are_row_marks_for_yb_rels);
+		Assert(IsYBBackedRelation(erm->relation) ==
+			   node->yb_are_row_marks_for_yb_rels);
 		if (node->yb_are_row_marks_for_yb_rels)
 		{
-			test = YBCLockTuple(
-				erm->relation, datum, erm->markType, erm->waitPolicy, estate);
+			test = YBCLockTuple(erm->relation, datum, erm->markType,
+								erm->waitPolicy, estate);
 		}
 		else
 		{
@@ -288,7 +288,10 @@ lnext:
 
 		if (!IsYBBackedRelation(erm->relation))
 		{
-			/* Remember locked tuple's TID for EPQ testing and WHERE CURRENT OF */
+			/*
+			 * Remember locked tuple's TID for EPQ testing and WHERE CURRENT
+			 * OF
+			 */
 			erm->curCtid = tid;
 		}
 	}
@@ -383,8 +386,9 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	 */
 	lrstate->lr_arowMarks = NIL;
 	epq_arowmarks = NIL;
-	bool row_lock_for_yb_rel_found = false;
-	bool row_lock_for_non_yb_rel_found = false;
+	bool		row_lock_for_yb_rel_found = false;
+	bool		row_lock_for_non_yb_rel_found = false;
+
 	foreach(lc, node->rowMarks)
 	{
 		PlanRowMark *rc = lfirst_node(PlanRowMark, lc);
@@ -421,7 +425,7 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	if (row_lock_for_yb_rel_found && row_lock_for_non_yb_rel_found)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Mixing Yugabyte relations and not Yugabyte "
+				 errmsg("mixing Yugabyte relations and not Yugabyte "
 						"relations with row locks is not supported")));
 
 	lrstate->yb_are_row_marks_for_yb_rels = row_lock_for_yb_rel_found;

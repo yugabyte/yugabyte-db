@@ -14,10 +14,8 @@
 #include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
 
 #include "yb/master/master_admin.proxy.h"
-#include "yb/tools/yb-admin_client.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/sync_point.h"
-#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::literals;
 
@@ -31,7 +29,7 @@ class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
 
   void SetUp() override {
     Pg15UpgradeTestBase::SetUp();
-    if (IsTestSkipped()) {
+    if (Test::IsSkipped()) {
       return;
     }
 
@@ -69,6 +67,9 @@ class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
   Status CompleteUpgradeAndValidate() {
     RETURN_NOT_OK(WaitForYsqlMajorCatalogUpgradeToFinish());
 
+    RETURN_NOT_OK(ValidateYsqlMajorCatalogUpgradeState(
+        master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
+
     LOG(INFO) << "Restarting yb-tserver " << kMixedModeTserverPg15 << " in current version";
     auto mixed_mode_pg15_tserver = cluster_->tablet_server(kMixedModeTserverPg15);
     RETURN_NOT_OK(RestartTServerInCurrentVersion(
@@ -81,11 +82,102 @@ class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
 
     return InsertRowInSimpleTableAndValidate();
   }
+
+  Status ValidateYsqlMajorCatalogUpgradeState(master::YsqlMajorCatalogUpgradeState state) {
+    rpc::RpcController rpc;
+    rpc.set_timeout(10s);
+    master::GetYsqlMajorCatalogUpgradeStateRequestPB req;
+    master::GetYsqlMajorCatalogUpgradeStateResponsePB resp;
+    RETURN_NOT_OK(GetMasterAdminProxy().GetYsqlMajorCatalogUpgradeState(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+
+    SCHECK(
+        resp.state() == state, IllegalState,
+        Format(
+            "Expected state: $0, actual state: $1",
+            master::YsqlMajorCatalogUpgradeState_Name(state),
+            master::YsqlMajorCatalogUpgradeState_Name(resp.state())));
+
+    RETURN_NOT_OK(ValidateYsqlMajorUpgradeCatalogStateViaYbAdmin(state));
+    return Status::OK();
+  }
+
+  Status ValidateYsqlMajorUpgradeCatalogStateViaYbAdmin(
+      master::YsqlMajorCatalogUpgradeState state) {
+    std::string output;
+    RETURN_NOT_OK(cluster_->CallYbAdmin({"get_ysql_major_version_catalog_state"}, 10min, &output));
+
+    switch (state) {
+      case master::YSQL_MAJOR_CATALOG_UPGRADE_UNINITIALIZED:
+        // Bad enum, fail the call.
+        break;
+      case master::YSQL_MAJOR_CATALOG_UPGRADE_DONE:
+        SCHECK_STR_CONTAINS(
+            output, "YSQL major catalog upgrade already completed, or is not required.");
+        return Status::OK();
+      case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING:
+        SCHECK_STR_CONTAINS(
+            output, "YSQL major catalog upgrade for YSQL major upgrade has not yet started.");
+        return Status::OK();
+      case master::YSQL_MAJOR_CATALOG_UPGRADE_IN_PROGRESS:
+        SCHECK_STR_CONTAINS(output, "YSQL major catalog upgrade is in progress.");
+        return Status::OK();
+      case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK:
+        SCHECK_STR_CONTAINS(output, "YSQL major catalog upgrade failed.");
+        return Status::OK();
+      case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK:
+        SCHECK_STR_CONTAINS(output, "YSQL major catalog awaiting finalization or rollback.");
+        return Status::OK();
+      case master::YSQL_MAJOR_CATALOG_UPGRADE_ROLLBACK_IN_PROGRESS:
+        SCHECK_STR_CONTAINS(output, "YSQL major catalog rollback is in progress.");
+        return Status::OK();
+    }
+    return STATUS_FORMAT(IllegalState, "Unknown state: $0", state);
+  }
+
+  Result<bool> HasPreviousVersionCatalogTables(std::optional<std::string> db_name = std::nullopt) {
+    master::ListTablesRequestPB req;
+    master::ListTablesResponsePB resp;
+
+    auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+    rpc::RpcController controller;
+    RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &controller));
+
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+
+    for (const auto& table : resp.tables()) {
+      if (db_name && table.namespace_().name() != *db_name) {
+        continue;
+      }
+      if (IsPriorVersionYsqlCatalogTable(table.id())) {
+        LOG(INFO) << "Found previous version catalog table: " << table.ShortDebugString();
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  Status WaitForPreviousVersionCatalogDeletion() {
+    return LoggedWaitFor(
+        [this]() -> Result<bool> { return !VERIFY_RESULT(HasPreviousVersionCatalogTables()); },
+        5min, "Waiting for previous version catalog tables to be deleted");
+  }
 };
 
 // Start multiple ysql major upgrade RPCs simultaneously. Only one RPC should succeed.
 TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousUpgrades) {
+  ASSERT_NOK_STR_CONTAINS(
+      ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_DONE),
+      "invalid method name");
+
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  ASSERT_OK(ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING));
 
   const int kNumSimultaneousRpcs = 2;
 
@@ -95,6 +187,13 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousUpgrades) {
   for (int i = 0; i < kNumSimultaneousRpcs; i++) {
     AsyncStartYsqlMajorUpgrade(resps[i], rpcs[i], latch);
   }
+
+  // The upgrade takes longer than 5s in all builds.
+  SleepFor(5s);
+  // Make sure ysql major catalog rollback is blocked while we are running ysql major upgrade.
+  ASSERT_NOK_STR_CONTAINS(
+      RollbackYsqlMajorCatalogVersion(),
+      "Global initdb or ysql major catalog upgrade/rollback is already in progress");
 
   latch.Wait();
 
@@ -109,10 +208,16 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousUpgrades) {
   }
   ASSERT_EQ(num_success, 1);
 
+  ASSERT_OK(ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_IN_PROGRESS));
+
   ASSERT_OK(CompleteUpgradeAndValidate());
+
+  ASSERT_OK(ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_DONE));
 
   ASSERT_NOK_STR_CONTAINS(
       PerformYsqlMajorCatalogUpgrade(), "Ysql Catalog is already on the current major version");
+
+  ASSERT_OK(WaitForPreviousVersionCatalogDeletion());
 }
 
 // Start multiple ysql major upgrade rollback RPCs simultaneously. Only one RPC should succeed.
@@ -121,6 +226,8 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
 
   // Calling rollback before upgrade should succeed immediately.
   ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+
+  ASSERT_OK(ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING));
 
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 
@@ -132,6 +239,17 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
   for (int i = 0; i < kNumSimultaneousRpcs; i++) {
     AsyncStartYsqlMajorRollback(resps[i], rpcs[i], latch);
   }
+
+  // Make sure ysql major catalog upgrade is blocked while we are running ysql major upgrade
+  // rollback.
+  // Wait for the async work to start. The rollback takes more than 2s in all builds.
+  SleepFor(2s);
+  ASSERT_NOK_STR_CONTAINS(
+      PerformYsqlMajorCatalogUpgrade(),
+      "Invalid state transition from PERFORMING_ROLLBACK to PERFORMING_INIT_DB");
+
+  ASSERT_OK(ValidateYsqlMajorCatalogUpgradeState(
+      master::YSQL_MAJOR_CATALOG_UPGRADE_ROLLBACK_IN_PROGRESS));
 
   latch.Wait();
 
@@ -146,57 +264,14 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
   }
   ASSERT_EQ(num_success, 1);
 
+  ASSERT_OK(ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING));
+
   ASSERT_OK(RestartAllMastersInOldVersion(kNoDelayBetweenNodes));
-  ASSERT_OK(InsertRowInSimpleTableAndValidate());
-}
 
-// Make sure ysql major catalog rollback is blocked while we are running ysql major upgrade.
-TEST_F(YsqlMajorUpgradeRpcsTest, RollbackDuringUpgrade) {
-  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
-
-  master::StartYsqlMajorCatalogUpgradeResponsePB upgrade_response;
-  master::RollbackYsqlMajorCatalogVersionResponsePB rollback_response;
-
-  rpc::RpcController rpc;
-  CountDownLatch latch(1);
-
-  AsyncStartYsqlMajorUpgrade(upgrade_response, rpc, latch);
-
-  // The upgrade takes longer than 5s in all builds.
-  SleepFor(5s);
   ASSERT_NOK_STR_CONTAINS(
-      RollbackYsqlMajorCatalogVersion(),
-      "Global initdb or ysql major catalog upgrade/rollback is already in progress");
+      ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_DONE),
+      "invalid method name");
 
-  latch.Wait();
-  ASSERT_TRUE(rpc.finished());
-
-  ASSERT_FALSE(upgrade_response.has_error()) << upgrade_response.error().ShortDebugString();
-
-  ASSERT_OK(CompleteUpgradeAndValidate());
-}
-
-// Make sure ysql major catalog upgrade is blocked while we are running ysql major upgrade rollback.
-TEST_F(YsqlMajorUpgradeRpcsTest, UpgradeDuringRollback) {
-  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
-  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
-
-  master::RollbackYsqlMajorCatalogVersionResponsePB rollback_response;
-  rpc::RpcController rpc;
-  CountDownLatch latch(1);
-
-  AsyncStartYsqlMajorRollback(rollback_response, rpc, latch);
-
-  // The rollback takes around 2s in all builds.
-  SleepFor(2s);
-  ASSERT_NOK(PerformYsqlMajorCatalogUpgrade());
-
-  latch.Wait();
-  ASSERT_TRUE(rpc.finished());
-
-  ASSERT_FALSE(rollback_response.has_error()) << rollback_response.ShortDebugString();
-
-  ASSERT_OK(RestartAllMastersInOldVersion(kNoDelayBetweenNodes));
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
 }
 
@@ -207,10 +282,6 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MasterCrashDurin
   auto master_leader = cluster_->GetLeaderMaster();
 
   auto state_to_fail_at = master::YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE;
-#ifdef __APPLE__
-  // Mac machines are slow so fail earlier.
-  state_to_fail_at = master::YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB;
-#endif
 
   // Block the upgrade from finishing.
   ASSERT_OK(cluster_->SetFlag(
@@ -233,6 +304,9 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MasterCrashDurin
 
   auto ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
   ASSERT_STR_CONTAINS(ysql_catalog_config, "state: FAILED");
+  ASSERT_OK(
+      ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK));
+
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
 
   ASSERT_OK(master_leader->Restart());
@@ -258,6 +332,8 @@ TEST_F(YsqlMajorUpgradeRpcsTest, MasterCrashDuringMonitoring) {
 
   auto ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
   ASSERT_STR_CONTAINS(ysql_catalog_config, "state: MONITORING");
+  ASSERT_OK(ValidateYsqlMajorCatalogUpgradeState(
+      master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
 
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
 
@@ -306,21 +382,71 @@ TEST_F(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterEveryPhase) {
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
 }
 
+TEST_F(YsqlMajorUpgradeRpcsTest, CleanupPreviousCatalog) {
+  const auto db_name = "db1";
+  ASSERT_TRUE(ASSERT_RESULT(HasPreviousVersionCatalogTables()));
+  ASSERT_FALSE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db_name)));
+
+  ASSERT_OK(ExecuteStatement(Format("CREATE DATABASE $0", db_name)));
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+  ASSERT_TRUE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db_name)));
+
+  // Block the cleanup.
+  {
+    auto master_leader = cluster_->GetLeaderMaster();
+    ASSERT_OK(cluster_->SetFlag(
+        master_leader, "TEST_ysql_fail_cleanup_previous_version_catalog", "true"));
+  }
+
+  ASSERT_OK(CompleteUpgradeAndValidate());
+  ASSERT_TRUE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db_name)));
+
+  // Make sure our block worked.
+  SleepFor(10s);
+  ASSERT_TRUE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db_name)));
+
+  // Drop the database should still cleanup both old and new catalog of this db.
+  ASSERT_OK(ExecuteStatement(Format("DROP DATABASE $0", db_name)));
+  ASSERT_FALSE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db_name)));
+
+  // Check other databases still hve the old catalog since we have blocked it.
+  for (const auto& db : {"template0", "template1", "yugabyte", "postgres"}) {
+    ASSERT_TRUE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db)));
+  }
+
+  // Failover master leader to make sure new leader picks up the cleanup and can handle dropped
+  // databases. This new leader does not have the block gFlag set.
+  tserver::TabletServerErrorPB::Code error_code;
+  ASSERT_OK(cluster_->StepDownMasterLeader(&error_code));
+  ASSERT_OK(WaitForPreviousVersionCatalogDeletion());
+}
+
 class YsqlMajorUpgradeYbAdminTest : public Pg15UpgradeTestBase {
  public:
   YsqlMajorUpgradeYbAdminTest() = default;
 
  protected:
   Status PerformYsqlMajorCatalogUpgrade() override {
-    return cluster_->CallYbAdmin({"ysql_major_version_catalog_upgrade"}, 10min);
+    return cluster_->CallYbAdmin({"upgrade_ysql_major_version_catalog"}, 10min);
   }
 
+  Status FinalizeYsqlMajorCatalogUpgrade() override {
+    return cluster_->CallYbAdmin({"finalize_ysql_major_version_catalog"}, 10min);
+  }
+
+  Status FinalizeUpgrade() override { return cluster_->CallYbAdmin({"finalize_upgrade"}, 10min); }
+
   Status RollbackYsqlMajorCatalogVersion() override {
-    return cluster_->CallYbAdmin({"rollback_ysql_major_version_upgrade"}, 10min);
+    return cluster_->CallYbAdmin({"rollback_ysql_major_version_catalog"}, 10min);
   }
 };
 
-TEST_F(YsqlMajorUpgradeYbAdminTest, Upgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
+TEST_F(YsqlMajorUpgradeYbAdminTest, Upgrade) {
+  ASSERT_OK(TestUpgradeWithSimpleTable());
+  // Finalize should be idempotent.
+  ASSERT_OK(FinalizeUpgrade());
+}
 
 TEST_F(YsqlMajorUpgradeYbAdminTest, Rollback) { ASSERT_OK(TestRollbackWithSimpleTable()); }
 

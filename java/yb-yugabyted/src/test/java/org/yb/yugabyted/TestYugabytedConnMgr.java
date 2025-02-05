@@ -31,7 +31,6 @@ public class TestYugabytedConnMgr extends BaseYbdClientTest {
         clusterConfigurations = new ArrayList<>();
         Map<String, String> tserverFlags = new HashMap<>();
         tserverFlags.put("enable_ysql_conn_mgr", "true");
-        tserverFlags.put("allowed_preview_flags_csv", "{enable_ysql_conn_mgr}");
 
         for (int i = 0; i < clusterParameters.numNodes; i++) {
             MiniYugabytedNodeConfigurations nodeConfigurations =
@@ -59,16 +58,10 @@ public class TestYugabytedConnMgr extends BaseYbdClientTest {
         JSONObject jsonObject = new JSONObject(jsonResponse);
         JSONArray flags = jsonObject.getJSONArray("flags");
 
-        boolean allowedPreviewFlagsCsvFound = false;
         boolean enableYsqlConnMgrFound = false;
 
         for (int i = 0; i < flags.length(); i++) {
             JSONObject flag = flags.getJSONObject(i);
-            if (flag.getString("name").equals("allowed_preview_flags_csv") &&
-                flag.getString("value").equals("enable_ysql_conn_mgr") &&
-                flag.getString("type").equals("Custom")) {
-                allowedPreviewFlagsCsvFound = true;
-            }
             if (flag.getString("name").equals("enable_ysql_conn_mgr") &&
                 flag.getString("value").equals("true") &&
                 flag.getString("type").equals("Custom")) {
@@ -76,8 +69,6 @@ public class TestYugabytedConnMgr extends BaseYbdClientTest {
             }
         }
 
-        assertTrue("allowed_preview_flags_csv flag should be found",
-                                                    allowedPreviewFlagsCsvFound);
         assertTrue("enable_ysql_conn_mgr flag should be found",
                                                     enableYsqlConnMgrFound);
     }

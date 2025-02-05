@@ -95,7 +95,7 @@ typedef struct FixedParallelState
 	pid_t		parallel_leader_pid;
 	BackendId	parallel_leader_backend_id;
 	bool		parallel_master_is_yb_session;
-	YBCPgSessionState parallel_master_yb_session_state;
+	YbcPgSessionState parallel_master_yb_session_state;
 	TimestampTz xact_ts;
 	TimestampTz stmt_ts;
 	SerializableXactHandle serializable_xact_handle;
@@ -225,6 +225,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	FixedParallelState *fps;
 	dsm_handle	session_dsm_handle = DSM_HANDLE_INVALID;
 	Snapshot	transaction_snapshot;
+
 	/*
 	 * Postgres unconditionally takes the snapshot, however Yugabyte has
 	 * undesired side effect if transaction isolation is READ COMMITTED: it
@@ -1422,10 +1423,12 @@ ParallelWorkerMain(Datum main_arg)
 	entrypt = LookupParallelWorkerFunction(library_name, function_name);
 
 	/* Restore database connection. */
-	YbBackgroundWorkerInitializeConnectionByOid(
-		fps->database_id, fps->authenticated_user_id,
-		fps->parallel_master_is_yb_session ?
-			&fps->parallel_master_yb_session_state.session_id : NULL, 0);
+	YbBackgroundWorkerInitializeConnectionByOid(fps->database_id,
+												fps->authenticated_user_id,
+												(fps->parallel_master_is_yb_session ?
+												 &fps->parallel_master_yb_session_state.session_id :
+												 NULL),
+												0);
 
 	/*
 	 * Set the client encoding to the database encoding, since that is what

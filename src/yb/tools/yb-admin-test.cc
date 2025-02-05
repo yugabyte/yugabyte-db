@@ -1248,12 +1248,6 @@ TEST_F(AdminCliTest, PromoteAutoFlags) {
       "PromoteAutoFlags completed successfully\n"
       "New AutoFlags were promoted\n"
       "New config version: 2");
-
-  status = CallAdmin(kPromoteAutoFlagsCmd, "kNewInstallsOnly", "true", "force");
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(
-      status.ToString(),
-      "Unable to promote AutoFlags: max_class cannot be set to kNewInstallsOnly.");
 }
 
 TEST_F(AdminCliTest, RollbackAutoFlags) {

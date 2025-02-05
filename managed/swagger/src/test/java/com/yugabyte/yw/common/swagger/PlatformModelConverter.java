@@ -31,11 +31,15 @@ public class PlatformModelConverter implements ModelConverter {
   public static String excludeYbaDeprecatedOption;
   private static YBADeprecationProcessor deprecationProcessor;
 
+  public static String excludeYbaInternalOption;
+  private static YBAInternalProcessor internalProcessor;
+
   static void register() {
     // remove if one is already registers to avoid duplicates in tests
     ModelConverters.getInstance().removeConverter(SINGLETON);
     ModelConverters.getInstance().addConverter(SINGLETON);
     deprecationProcessor = new YBADeprecationProcessor(excludeYbaDeprecatedOption);
+    internalProcessor = new YBAInternalProcessor(excludeYbaInternalOption);
   }
 
   private static final ImmutableSet<String> SKIPPED_PACKAGES =

@@ -227,13 +227,19 @@ class Iterator : public Cleanable {
   virtual bool ScanForward(
       Slice upperbound, KeyFilterCallback* key_filter_callback,
       ScanCallback* scan_callback) {
-    assert(false);
+    DCHECK(false);
     return false;
   }
 
   virtual void UseFastNext(bool value) {
-    assert(false);
+    DCHECK(false);
   }
+
+  // Iterator could be created with filter in deferred mode specified via ReadOptions.
+  // In this case iterators for all sources (SST files and MemTables) are created.
+  // But it is allowed to update user key for filter via UpdateFilterKey.
+  // The filter does not change current entry, but applied during calls to Seek/Next.
+  virtual void UpdateFilterKey(Slice user_key_for_filter) = 0;
 };
 
 class DataBlockAwareIndexIterator : public Iterator {

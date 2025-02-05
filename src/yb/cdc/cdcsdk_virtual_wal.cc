@@ -42,13 +42,12 @@
     } \
   } while (0)
 
-DEFINE_RUNTIME_uint32(
-    cdcsdk_max_consistent_records, 500,
-    "Controls the maximum number of records sent in GetConsistentChanges "
-    "response");
+DEFINE_RUNTIME_uint32(cdcsdk_max_consistent_records, 500,
+    "Controls the maximum number of records sent in GetConsistentChanges response. Only used when "
+    "cdc_vwal_use_byte_threshold_for_consistent_changes flag is set to false.");
 
 DEFINE_RUNTIME_uint64(
-    cdcsdk_publication_list_refresh_interval_secs, 3600 /* 1 hour */,
+    cdcsdk_publication_list_refresh_interval_secs, 900 /* 15 mins */,
     "Interval in seconds at which the table list in the publication will be refreshed");
 
 DEFINE_RUNTIME_uint64(
@@ -72,6 +71,14 @@ DEFINE_RUNTIME_bool(
     cdcsdk_enable_dynamic_table_support, true,
     "This flag can be used to switch the dynamic addition of tables ON or OFF.");
 
+DEFINE_RUNTIME_bool(cdc_use_byte_threshold_for_vwal_changes, true,
+    "This controls the size of GetConsistentChanges RPC response. If true, records will be limited "
+    "by cdc_stream_records_threshold_size_bytes flag. If false, records will be limited by "
+    "cdcsdk_max_consistent_records flag.");
+TAG_FLAG(cdc_use_byte_threshold_for_vwal_changes, advanced);
+
+DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
+
 namespace yb {
 namespace cdc {
 
@@ -79,11 +86,13 @@ using RecordInfo = CDCSDKVirtualWAL::RecordInfo;
 using TabletRecordInfoPair = CDCSDKVirtualWAL::TabletRecordInfoPair;
 
 CDCSDKVirtualWAL::CDCSDKVirtualWAL(
-    CDCServiceImpl* cdc_service, const xrepl::StreamId& stream_id, const uint64_t session_id)
+    CDCServiceImpl* cdc_service, const xrepl::StreamId& stream_id, const uint64_t session_id,
+    ReplicationSlotLsnType lsn_type)
     : cdc_service_(cdc_service),
       stream_id_(stream_id),
       vwal_session_id_(session_id),
-      log_prefix_(Format("VWAL [$0:$1]: ", stream_id_, vwal_session_id_)) {}
+      log_prefix_(Format("VWAL [$0:$1]: ", stream_id_, vwal_session_id_)),
+      slot_lsn_type_(lsn_type) {}
 
 std::string CDCSDKVirtualWAL::LogPrefix() const {
   return log_prefix_;
@@ -388,6 +397,14 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators() {
   return Status::OK();
 }
 
+bool CanAddMoreRecords(uint64_t records_byte_size, int record_count) {
+  if (FLAGS_cdc_use_byte_threshold_for_vwal_changes) {
+    return records_byte_size < FLAGS_cdc_stream_records_threshold_size_bytes;
+  }
+
+  return record_count < static_cast<int>(FLAGS_cdcsdk_max_consistent_records);
+}
+
 Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     GetConsistentChangesResponsePB* resp, HostPort hostport, CoarseTimePoint deadline) {
   auto start_time = GetCurrentTimeMicros();
@@ -427,9 +444,9 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   }
 
   GetConsistentChangesRespMetadata metadata;
-  auto max_records = static_cast<int>(FLAGS_cdcsdk_max_consistent_records);
-  while (resp->cdc_sdk_proto_records_size() < max_records && !sorted_records.empty() &&
-         empty_tablet_queues.size() == 0) {
+  uint64_t resp_records_size = 0;
+  while (CanAddMoreRecords(resp_records_size, resp->cdc_sdk_proto_records_size()) &&
+         !sorted_records.empty() && empty_tablet_queues.size() == 0) {
     auto tablet_record_info_pair = VERIFY_RESULT(
         GetNextRecordToBeShipped(&sorted_records, &empty_tablet_queues, hostport, deadline));
     const auto tablet_id = tablet_record_info_pair.first;
@@ -526,17 +543,24 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       metadata.min_lsn = std::min(metadata.min_lsn, row_message->pg_lsn());
       metadata.max_lsn = std::max(metadata.max_lsn, row_message->pg_lsn());
 
+      auto& record_entry = metadata.txn_id_to_ct_records_map_[*txn_id_result];
       switch (record->row_message().op()) {
         case RowMessage_Op_INSERT: {
           metadata.insert_records++;
+          record_entry.second += 1;
+          record_entry.first = *lsn_result;
           break;
         }
         case RowMessage_Op_UPDATE: {
           metadata.update_records++;
+          record_entry.second += 1;
+          record_entry.first = *lsn_result;
           break;
         }
         case RowMessage_Op_DELETE: {
           metadata.delete_records++;
+          record_entry.second += 1;
+          record_entry.first = *lsn_result;
           break;
         }
         case RowMessage_Op_BEGIN: {
@@ -570,7 +594,10 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
           break;
       }
 
+      VLOG_WITH_PREFIX(4) << "shipping record: " << record->ShortDebugString();
+
       auto records = resp->add_cdc_sdk_proto_records();
+      resp_records_size += (*record).ByteSizeLong();
       records->CopyFrom(*record);
     }
   }
@@ -602,7 +629,8 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     oss.clear();
     oss << "Sending non-empty GetConsistentChanges response from total tablet queues: "
         << tablet_queues_.size() << " with total_records: " << resp->cdc_sdk_proto_records_size()
-        << ", total_txns: " << metadata.txn_ids.size() << ", min_txn_id: "
+        << ", resp size: " << resp_records_size << ", total_txns: " << metadata.txn_ids.size()
+        << ", min_txn_id: "
         << ((metadata.min_txn_id == std::numeric_limits<uint32_t>::max()) ? 0 : metadata.min_txn_id)
         << ", max_txn_id: " << metadata.max_txn_id << ", min_lsn: "
         << (metadata.min_lsn == std::numeric_limits<uint64_t>::max() ? 0 : metadata.min_lsn)
@@ -619,6 +647,19 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         << ", Number of unacked txns in VWAL: " << unacked_txn;
 
     YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
+
+    if (VLOG_IS_ON(3) && metadata.txn_ids.size() > 0) {
+      std::ostringstream txn_oss;
+
+      txn_oss << "Records per txn details:";
+
+      for (const auto& entry : metadata.txn_id_to_ct_records_map_) {
+        txn_oss << "{txn_id, ct, dml}: {" << entry.first << ", " << entry.second.first << ", "
+                << entry.second.second << "} ";
+      }
+
+      VLOG_WITH_PREFIX(3) << (txn_oss).str();
+    }
   }
 
   VLOG_WITH_PREFIX(1)
@@ -884,7 +925,19 @@ Result<uint64_t> CDCSDKVirtualWAL::GetRecordLSN(
   // duplicate records like BEGIN/COMMIT that can be received in case of multi-shard transaction or
   // multiple transactions with same commit_time.
   if (curr_unique_record_id->GreaterThanDistributedLSN(last_seen_unique_record_id_)) {
-    last_seen_lsn_ += 1;
+    switch (slot_lsn_type_) {
+      case ReplicationSlotLsnType_SEQUENCE:
+        last_seen_lsn_ += 1;
+        break;
+      case ReplicationSlotLsnType_HYBRID_TIME:
+        last_seen_lsn_ = curr_unique_record_id->GetCommitTime();
+        break;
+      default:
+        return STATUS_FORMAT(
+            IllegalState,
+            Format("Invalid LSN type specified $0 for stream $1", slot_lsn_type_, stream_id_));
+    }
+
     return last_seen_lsn_;
   }
 

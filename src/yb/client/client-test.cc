@@ -817,11 +817,11 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
 TEST_F(ClientTest, TestListTables) {
   auto tables = ASSERT_RESULT(client_->ListTables("", true));
   std::sort(tables.begin(), tables.end(), [](const YBTableName& n1, const YBTableName& n2) {
-    return n1.ToString() < n2.ToString();
+    return n1.ToString(/* include_id= */ false) < n2.ToString(/* include_id= */ false);
   });
   ASSERT_EQ(2 + master::kNumSystemTablesWithTxn, tables.size());
-  ASSERT_EQ(kTableName, tables[0]) << "Tables:" << AsString(tables);
-  ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << AsString(tables);
+  ASSERT_EQ(kTableName, tables[0]) << "Tables: " << AsString(tables);
+  ASSERT_EQ(kTable2Name, tables[1]) << "Tables: " << AsString(tables);
   tables.clear();
   tables = ASSERT_RESULT(client_->ListTables("testtb2"));
   ASSERT_EQ(1, tables.size());

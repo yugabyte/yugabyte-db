@@ -483,8 +483,8 @@ CREATE MATERIALIZED VIEW mv TABLESPACE mv_tblspace1 AS SELECT * FROM test_yb;
 Tablespace: "mv_tblspace1"
 
 ALTER MATERIALIZED VIEW mv SET TABLESPACE mv_tblspace2;
-NOTICE:  Data movement for table mv is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table mv is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 \d mv;
            Materialized view "public.mv"
  Column |  Type   | Collation | Nullable | Default

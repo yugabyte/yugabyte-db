@@ -26,22 +26,22 @@
  */
 typedef struct ColumnIOData
 {
-	Oid		 column_type;
-	Oid		 typiofunc;
-	Oid		 typioparam;
-	bool	 typisvarlena;
-	FmgrInfo proc;
+	Oid			column_type;
+	Oid			typiofunc;
+	Oid			typioparam;
+	bool		typisvarlena;
+	FmgrInfo	proc;
 } ColumnIOData;
 
 typedef struct RecordIOData
 {
-	Oid			 record_type;
-	int32		 record_typmod;
-	int			 ncolumns;
+	Oid			record_type;
+	int32		record_typmod;
+	int			ncolumns;
 	ColumnIOData columns[FLEXIBLE_ARRAY_MEMBER];
 } RecordIOData;
 
-Datum record_out_internal(HeapTupleHeader rec, TupleDesc *tupdesc_ptr,
-						  FmgrInfo *flinfo);
+Datum		record_out_internal(HeapTupleHeader rec, TupleDesc *tupdesc_ptr,
+								FmgrInfo *flinfo);
 
 #endif							/* ROWTYPES_H */

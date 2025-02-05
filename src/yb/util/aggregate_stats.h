@@ -15,6 +15,7 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -26,6 +27,8 @@ YB_STRONGLY_TYPED_BOOL(PreserveTotalStats);
 class AggregateStats {
  public:
   AggregateStats();
+
+  ~AggregateStats();
 
   // Copy-construct a (non-consistent) snapshot of other.
   explicit AggregateStats(const AggregateStats& other);
@@ -66,6 +69,44 @@ class AggregateStats {
 
   size_t DynamicMemoryUsage() const { return sizeof(*this); }
 
+  Status SetUpPreAggregationForPrometheus(
+      std::shared_ptr<AtomicInt<int64_t>> aggregated_prometheus_total_sum_value,
+      std::shared_ptr<AtomicInt<int64_t>> aggregated_prometheus_total_count_value);
+
+  bool IsPreAggregatedForPrometheus() const;
+
+  // Aggregate total_sum_ and total_count_ from multiple AggregateStats instances.
+  // Aggregated value holders are updated whenever total_sum_ and total_count_ are updated.
+  class Aggregator {
+   public:
+    Aggregator() = default;
+
+    Status InitializeValueHolders(
+        std::shared_ptr<AtomicInt<int64_t>> aggregated_prometheus_sum_value_holder,
+        std::shared_ptr<AtomicInt<int64_t>> aggregated_prometheus_count_value_holder);
+
+    void SumIncrementBy(int64_t value) {
+      if (sum_holder_ != nullptr) {
+        sum_holder_->IncrementBy(value);
+      }
+    }
+
+    void CountIncrementBy(int64_t value) {
+      if (count_holder_ != nullptr) {
+        count_holder_->IncrementBy(value);
+      }
+    }
+
+    bool HasValueHolders() const {
+      return sum_holder_ != nullptr && count_holder_ != nullptr;
+    }
+
+   private:
+    // Both sum_holder_ and count_holder_ must either be nullptrs or non-nullptrs.
+    std::shared_ptr<AtomicInt<int64_t>> sum_holder_;
+    std::shared_ptr<AtomicInt<int64_t>> count_holder_;
+  };
+
  private:
   // Non-resetting sum and counts.
   AtomicInt<int64_t> total_sum_;
@@ -75,6 +116,8 @@ class AggregateStats {
   AtomicInt<uint64_t> current_count_;
   AtomicInt<int64_t> min_value_;
   AtomicInt<int64_t> max_value_;
+
+  Aggregator aggregator_;
 
   AggregateStats& operator=(const AggregateStats& other) = delete;
 };

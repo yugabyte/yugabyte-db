@@ -92,8 +92,8 @@ namespace yb::pgwrapper {
 // SQL helpers
 namespace {
 
-// Another name as YbTableProperties is a pointer in ybc_pg_typedefs.h, it may be confusing.
-using PgYbTableProperties = YbTablePropertiesData;
+// Another name as YbcTableProperties is a pointer in ybc_pg_typedefs.h, it may be confusing.
+using PgYbTableProperties = YbcTablePropertiesData;
 
 // Fetches rows count with a simple request.
 GetValueResult<PGUint64> FetchTableRowsCount(

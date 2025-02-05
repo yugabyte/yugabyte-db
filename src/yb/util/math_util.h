@@ -38,8 +38,13 @@ constexpr T1 constexpr_max(const T1& t1, const T2& t2, Args&&... args) {
 }
 
 template <class T>
-constexpr T ceil_div(const T& n, const T& div) {
+constexpr T ceil_div(T n, T div) {
   return (n + div - 1) / div;
+}
+
+template<typename T>
+constexpr T round_up_multiple_of(T n, T div) {
+  return ceil_div(n, div) * div;
 }
 
 template <class T>

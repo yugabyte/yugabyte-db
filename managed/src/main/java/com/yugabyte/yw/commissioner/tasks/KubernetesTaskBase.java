@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.KubernetesPartitions;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -126,7 +127,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     private boolean enableYbc;
     private String ybcSoftwareVersion;
 
-    public KubernetesGflagsUpgradeCommonParams(Universe universe, Cluster cluster) {
+    public KubernetesGflagsUpgradeCommonParams(
+        Universe universe, Cluster cluster, RuntimeConfGetter confGetter) {
       UniverseDefinitionTaskParams universeParams = universe.getUniverseDetails();
       Cluster primaryCluster = universeParams.getPrimaryCluster();
       KubernetesPlacement primaryClusterPlacement =
@@ -157,7 +159,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               ? new KubernetesPlacement(cluster.placementInfo, true /* isReadOnlyCluster */)
               : primaryClusterPlacement;
       this.enableYbc = universe.isYbcEnabled();
-      this.ybcSoftwareVersion = universe.getUniverseDetails().getYbcSoftwareVersion();
+      this.ybcSoftwareVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
     }
   }
 
@@ -1077,7 +1079,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       enableYbc,
                       ybcSoftwareVersion,
                       false,
-                      null),
+                      null,
+                      true /* useNewMasterDiskSize */,
+                      true /* useNewTserverDiskSize */),
               commandType.getSubTaskGroupName(),
               UserTaskDetails.SubTaskGroupType.Provisioning,
               false);
@@ -2020,7 +2024,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             enableYbc,
             ybcSoftwareVersion,
             usePreviousGflagsChecksum,
-            previousGflagsChecksumMap));
+            previousGflagsChecksumMap,
+            true /* useNewMasterDiskSize */,
+            true /* useNewTserverDiskSize */));
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
   }
@@ -2062,7 +2068,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         enableYbc,
         ybcSoftwareVersion,
         false /* usePreviousGflagsChecksum */,
-        null /* previousGflagsChecksumMap */);
+        null /* previousGflagsChecksumMap */,
+        true, /* useNewMasterDiskSize */
+        true /* useNewTserverDiskSize */);
   }
 
   public KubernetesCommandExecutor getSingleKubernetesExecutorTaskForServerTypeTask(
@@ -2084,7 +2092,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean enableYbc,
       String ybcSoftwareVersion,
       boolean usePreviousGflagsChecksum,
-      Map<ServerType, String> previousGflagsChecksumMap) {
+      Map<ServerType, String> previousGflagsChecksumMap,
+      boolean useNewMasterDiskSize,
+      boolean useNewTserverDiskSize) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -2147,6 +2157,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     params.usePreviousGflagsChecksum = usePreviousGflagsChecksum;
     params.previousGflagsChecksumMap = previousGflagsChecksumMap;
+    params.useNewMasterDiskSize = useNewMasterDiskSize;
+    params.useNewTserverDiskSize = useNewTserverDiskSize;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;

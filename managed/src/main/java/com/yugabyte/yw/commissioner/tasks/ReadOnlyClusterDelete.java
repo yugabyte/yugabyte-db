@@ -58,18 +58,9 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
   public void run() {
     log.info("Started {} task for uuid={}", getName(), params().getUniverseUUID());
 
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(params().expectedUniverseVersion, null /* Txn callback */);
     try {
-
-      // Set the 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe = null;
-      if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1 /* expectedUniverseVersion */);
-      } else {
-        universe =
-            lockAndFreezeUniverseForUpdate(
-                params().expectedUniverseVersion, null /* Txn callback */);
-      }
-
       List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
       if (Collections.isEmpty(roClusters)) {
         String msg =

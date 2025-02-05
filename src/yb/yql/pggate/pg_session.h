@@ -62,8 +62,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   PgSession(
       PgClient& pg_client,
       scoped_refptr<PgTxnManager> pg_txn_manager,
-      const YBCPgCallbacks& pg_callbacks,
-      YBCPgExecStatsState& stats_state,
+      const YbcPgCallbacks& pg_callbacks,
+      YbcPgExecStatsState& stats_state,
       YbctidReader&& ybctid_reader,
       bool is_pg_binary_upgrade,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
@@ -251,7 +251,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  Status ValidatePlacement(const std::string& placement_info);
+  Status ValidatePlacement(const std::string& placement_info, bool check_satisfiable);
 
   void TrySetCatalogReadPoint(const ReadHybridTime& read_ht);
 
@@ -296,15 +296,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<int64_t> GetCronLastMinute();
 
   Status AcquireAdvisoryLock(
-      const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode, bool wait, bool session);
-  Status ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode);
+      const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);
+  Status ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode);
   Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
-
-  void SetForceAllowCatalogModifications(bool allowed);
-
-  bool AreCatalogModificationsForceAllowed() const { return force_allow_catalog_modifications_; }
-
-  bool IsMajorPgVersionUpgrade() const { return is_major_pg_version_upgrade_; }
 
  private:
   Result<PgTableDescPtr> DoLoadTable(
@@ -366,7 +360,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   PgDocMetrics metrics_;
 
-  const YBCPgCallbacks& pg_callbacks_;
+  const YbcPgCallbacks& pg_callbacks_;
 
   // Should write operations be buffered?
   bool buffering_enabled_ = false;
@@ -379,8 +373,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   const bool is_major_pg_version_upgrade_;
 
   const WaitEventWatcher& wait_event_watcher_;
-
-  bool force_allow_catalog_modifications_ = false;
 };
 
 }  // namespace yb::pggate

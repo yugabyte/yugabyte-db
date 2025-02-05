@@ -492,11 +492,9 @@ typedef enum CoercionForm
  */
 typedef enum YbConcurrencyContext
 {
-	YB_CONCURRENCY_DISABLED,			/* CONCURRENTLY is disabled */
-	YB_CONCURRENCY_IMPLICIT_ENABLED,	/* CONCURRENTLY is implicitly
-										 * enabled */
-	YB_CONCURRENCY_EXPLICIT_ENABLED		/* CONCURRENTLY is explicitly
-										 * enabled */
+	YB_CONCURRENCY_DISABLED,	/* CONCURRENTLY is disabled */
+	YB_CONCURRENCY_IMPLICIT_ENABLED,	/* CONCURRENTLY is implicitly enabled */
+	YB_CONCURRENCY_EXPLICIT_ENABLED /* CONCURRENTLY is explicitly enabled */
 } YbConcurrencyContext;
 
 /*

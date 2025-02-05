@@ -22,7 +22,7 @@ helm repo update
 To upgrade to a specific version while preserving overrides you might have applied to your initial YugabyteDB Anywhere installation or previous upgrades, execute the following command:
 
 ```sh
-helm upgrade yw-test yugabytedb/yugaware --version 2.13.0 -n yb-platform --reuse-values --wait
+helm upgrade yw-test yugabytedb/yugaware --version {{<yb-version version="v2.14" format="short">}} -n yb-platform --reset-then-reuse-values --set image.tag={{<yb-version version="v2.14" format="build">}} --wait
 ```
 
-If you do not wish to port your overrides, do not include `reuse-values`. Instead, you may choose to pass your existing overrides file by adding `--values custom-values.yaml` to your command during the upgrade.
+If you do not wish to port your overrides, do not include `--reset-then-reuse-values`. Instead, you may choose to pass your existing overrides file by adding `--values custom-values.yaml` to your command during the upgrade.

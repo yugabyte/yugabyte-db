@@ -1116,7 +1116,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
 }
 
 Status BackfillTable::ClearCheckpointStateInTablets() {
-  auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
+  auto tablets = VERIFY_RESULT(indexed_table_->GetTablets(GetTabletsMode::kOrderByTabletId));
   for (const auto& tablet : tablets) {
     tablet->mutable_metadata()->StartMutation();
     auto& pb = tablet->mutable_metadata()->mutable_dirty()->pb;

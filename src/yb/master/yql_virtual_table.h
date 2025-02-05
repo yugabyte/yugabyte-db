@@ -111,7 +111,8 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const docdb::ReadOperationData& read_operation_data,
       const docdb::YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      docdb::SkipSeek skip_seek = docdb::SkipSeek::kFalse) const override {
+      docdb::SkipSeek skip_seek,
+      docdb::UseVariableBloomFilter use_variable_bloom_filter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return nullptr;
   }

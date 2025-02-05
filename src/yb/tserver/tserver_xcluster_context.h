@@ -27,18 +27,19 @@ class HybridTime;
 class XClusterSafeTimeMap;
 
 namespace tserver {
+
 class TserverXClusterContext : public TserverXClusterContextIf {
  public:
   TserverXClusterContext() {}
 
   Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const override;
 
-  bool IsReadOnlyMode(const NamespaceId namespace_id) const override;
+  bool IsReadOnlyMode(const NamespaceId& namespace_id) const override;
 
   bool SafeTimeComputationRequired() const override;
-  bool SafeTimeComputationRequired(const NamespaceId namespace_id) const override;
+  bool SafeTimeComputationRequired(const NamespaceId& namespace_id) const override;
 
-  void UpdateSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
+  void UpdateSafeTimeMap(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
   Status SetSourceTableMappingForCreateTable(
       const YsqlFullTableName& table_name, const PgObjectId& source_table_id) override

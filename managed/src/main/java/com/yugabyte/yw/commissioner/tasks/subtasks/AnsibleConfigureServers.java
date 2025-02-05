@@ -58,6 +58,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean isMaster = false;
     public boolean enableYSQL = false;
     public boolean enableConnectionPooling = false;
+    public Map<String, String> connectionPoolingGflags = new HashMap<>();
     public boolean enableYCQL = false;
     public boolean enableYSQLAuth = false;
     public boolean enableYCQLAuth = false;
@@ -144,20 +145,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         // Once isMaster is set, it can be tied to a cluster.
         resetMasterState =
             isChangeMasterConfigDone(universe, node, false, node.cloudInfo.private_ip);
-      }
-    }
-
-    if (universe.getUniverseDetails().isSoftwareRollbackAllowed
-        && universe.getUniverseDetails().prevYBSoftwareConfig != null) {
-      String currentVersion =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-      String oldVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
-      if (gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, currentVersion)
-          && taskParams().ysqlMajorVersionUpgradeState == null) {
-        log.debug(
-            "Setting ysqlMajorVersionUpgradeState to Pre_finalize for universe {}",
-            universe.getUniverseUUID());
-        taskParams().ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
       }
     }
 

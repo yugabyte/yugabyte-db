@@ -150,6 +150,8 @@ class StreamMetadata {
       const xrepl::StreamId& stream_id, RefreshStreamMapOption opts, client::YBClient* client)
       EXCLUDES(load_mutex_);
 
+  std::string ToString() const;
+
  private:
   Status GetStreamInfoFromMaster(const xrepl::StreamId& stream_id, client::YBClient* client)
       REQUIRES(load_mutex_) EXCLUDES(table_ids_mutex_, tablet_metadata_map_mutex_);

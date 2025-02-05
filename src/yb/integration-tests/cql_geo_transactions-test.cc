@@ -94,7 +94,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     return transaction_manager_->GetLoadedStatusTabletsVersion();
   }
 
-  void MakePlacementInfo(master::PlacementInfoPB* placement_info, int region) {
+  void MakePlacementInfo(PlacementInfoPB* placement_info, int region) {
     placement_info->set_num_replicas(1);
     auto pb = placement_info->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud("cloud0");
@@ -107,7 +107,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     auto current_version = GetCurrentVersion();
 
     std::string name = strings::Substitute("transactions_region$0", region);
-    master::ReplicationInfoPB replication_info;
+    ReplicationInfoPB replication_info;
     MakePlacementInfo(replication_info.mutable_live_replicas(), region);
     ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
 
@@ -121,7 +121,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     for (int i = 1; i <= num_tablet_servers(); ++i) {
       YBTableName table_name{YQL_DATABASE_CQL, kNamespace,
                              strings::Substitute("$0$1", kTablePrefix, i)};
-      master::PlacementInfoPB placement_info;
+      PlacementInfoPB placement_info;
       MakePlacementInfo(&placement_info, i);
 
       ASSERT_OK(session.ExecuteQuery(strings::Substitute(

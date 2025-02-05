@@ -11,6 +11,12 @@
 
 bool version_matching = false;
 bool version_matching_connect_higher_version = false;
+/*
+ * YB TODO(mkumar): GH#24724 Implement a solution to process the quries
+ * in batches rather than only increasing the size of query array.
+ */
+int yb_max_query_size = OD_QRY_MAX_SZ;
+int yb_wait_timeout = YB_DEFAULT_WAIT_TIMEOUT;
 
 static inline void od_frontend_close(od_client_t *client)
 {
@@ -144,6 +150,28 @@ yb_frontend_error_is_db_does_not_exist(od_client_t *client)
 		return false;
 
 	return strcmp(error.code, KIWI_UNDEFINED_DATABASE) == 0;
+}
+
+static inline bool
+yb_frontend_error_is_role_does_not_exist(od_client_t *client)
+{
+	od_instance_t *instance = client->global->instance;
+	od_server_t *server = client->server;
+	assert(server != NULL);
+
+	if (server->error_connect == NULL)
+		return false;
+
+	kiwi_fe_error_t error;
+	int rc;
+
+	rc = kiwi_fe_read_error(machine_msg_data(server->error_connect),
+				machine_msg_size(server->error_connect),
+				&error);
+	if (rc == -1)
+		return false;
+
+	return strcmp(error.code, KIWI_INVALID_AUTHORIZATION_SPECIFICATION) == 0;
 }
 
 static int od_frontend_startup(od_client_t *client)
@@ -294,18 +322,30 @@ od_frontend_attach(od_client_t *client, char *context,
 				continue;
 			}
 
-			if (yb_frontend_error_is_db_does_not_exist(client)) {
-				yb_resolve_db_status(server->global,
-					((od_route_t *)server->route)->yb_database_entry,
-					NULL);
+			/* YB: check auth failure status codes to update OID status */
+			if (yb_frontend_error_is_db_does_not_exist(client))
+				((od_route_t *)server->route)->yb_database_entry->status = YB_OID_DROPPED;
+			else if (yb_frontend_error_is_role_does_not_exist(client))
+				((od_route_t *)server->route)->yb_user_entry->status = YB_OID_DROPPED;
 
-				if (((od_route_t *)server->route)
-					    ->yb_database_entry->status == YB_DB_ACTIVE) {
-					od_router_close(router, client);
-					continue;
-				}
-			}
+			return OD_ESERVER_CONNECT;
+		}
 
+		/* In case we create a new server but the logical client version of
+		 * transactional backend is greater than the client's version then disconnect
+		 * the client. This can happen for existing logical connections that are
+		 * authenticated but during issuing the query, some ALTER ROLE SET or
+		 * ALTER DATABASE set command has been executed that bumped up the
+		 * current_version in pg_yb_logical_client_version.
+		*/
+		if (version_matching &&
+			!version_matching_connect_higher_version &&
+			 client->logical_client_version < server->logical_client_version) {
+			od_log(&instance->logger, context, client, server,
+			       "no matching server version found for client as client's logical version = %d "
+				    "and server's logical version = %d",
+			       client->logical_client_version,
+			       server->logical_client_version);
 			return OD_ESERVER_CONNECT;
 		}
 
@@ -902,11 +942,13 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 
 		break;
 	}
+#ifndef YB_SUPPORT_FOUND
 	case KIWI_BE_PARSE_COMPLETE:
 		if (route->rule->pool->reserve_prepared_statement) {
 			// skip msg
 			is_deploy = 1;
 		}
+#endif
 	default:
 		break;
 	}
@@ -1117,8 +1159,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 	od_route_t *route = client->route;
 	assert(route != NULL);
 
-	int prev_named_prep_stmt = 1;
-
 	kiwi_fe_type_t type = *data;
 	if (type == KIWI_FE_TERMINATE)
 		return OD_STOP;
@@ -1169,6 +1209,42 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				break; // skip this, we obly need to rewrite statement
 			}
 
+			/* YB: unnamed prepared statement, check if re-parse needed */
+			if (operator_name[0] == '\0') {
+				assert(client->yb_unnamed_prep_stmt.description);
+
+				if (od_id_cmp(&client->id, &server->yb_unnamed_prep_stmt_client_id))
+					break;
+
+				machine_msg_t *msg_new = NULL;
+				msg_new = kiwi_fe_write_parse_description(
+					NULL, client->yb_unnamed_prep_stmt.operator_name,
+					client->yb_unnamed_prep_stmt.operator_name_len,
+					client->yb_unnamed_prep_stmt.description,
+					client->yb_unnamed_prep_stmt.description_len,
+					YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
+
+				if (instance->config.log_query ||
+					route->rule->log_query) {
+					od_frontend_log_parse(
+						instance, client,
+						"rewrite parse",
+						machine_msg_data(msg_new),
+						machine_msg_size(msg_new));
+				}
+
+				od_stat_parse(&route->stats);
+				rc = od_write(&server->io, msg_new);
+				if (rc == -1) {
+					od_error(&instance->logger,
+						"rewrite parse", NULL, server,
+						"write error: %s",
+						od_io_error(&server->io));
+					return OD_ESERVER_WRITE;
+				}
+				break;
+			}
+
 			assert(client->prep_stmt_ids);
 			retstatus = OD_SKIP;
 			int opname_start_offset =
@@ -1198,12 +1274,19 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			od_hash_t body_hash =
 				od_murmur_hash(desc->data, desc->len);
 
+			od_hash_t client_hash = od_murmur_hash(
+				client->id.id, strlen(client->id.id));
+
+			/* YB: prepare statement name based on optimization mode */
+			od_hash_t yb_stmt_hash = yb_prepare_stmt_hash(body_hash, keyhash, client_hash,
+										instance->config.yb_optimized_extended_query_protocol);
+
 			od_debug(&instance->logger, "rewrite describe", client,
 				 server, "statement: %.*s, hash: %08x",
-				 desc->len, desc->data, body_hash);
+				 desc->len, desc->data, yb_stmt_hash);
 
 			char opname[OD_HASH_LEN];
-			od_snprintf(opname, OD_HASH_LEN, "%08x", body_hash);
+			od_snprintf(opname, OD_HASH_LEN, "%08x", yb_stmt_hash);
 
 			int refcnt = 0;
 			od_hashmap_elt_t value;
@@ -1212,7 +1295,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			od_hashmap_elt_t *value_ptr = &value;
 
 			// send parse msg if needed
-			if (od_hashmap_insert(server->prep_stmts, body_hash,
+			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
 					      desc, &value_ptr) == 0) {
 				od_debug(
 					&instance->logger,
@@ -1221,11 +1304,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					"deploy %.*s operator hash %u to server",
 					desc->len, desc->data, keyhash);
 				// rewrite msg
-				// allocate prepered statement under name equal to body hash
+				// allocate prepered statement under name equal to yb_stmt_hash
 
 				msg = kiwi_fe_write_parse_description(
 					NULL, opname, OD_HASH_LEN, desc->data,
-					desc->len);
+					desc->len, YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
 				if (msg == NULL) {
 					return OD_ESERVER_WRITE;
 				}
@@ -1294,9 +1377,19 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				return OD_ECLIENT_READ;
 			}
 
+			/* YB: unnamed prepared statement, separately track */
 			if (desc.operator_name[0] == '\0') {
-				/* no need for odyssey to track unnamed prepared statements */
-				prev_named_prep_stmt = 0;
+				yb_prepared_statement_free(&client->yb_unnamed_prep_stmt);
+
+				rc = yb_prepared_statement_alloc(&client->yb_unnamed_prep_stmt,
+								desc.operator_name, desc.operator_name_len,
+								desc.description, desc.description_len);
+				if (rc == -1) {
+					return OD_EOOM;
+				}
+
+				server->yb_unnamed_prep_stmt_client_id = client->id;
+
 				break;
 			}
 
@@ -1329,7 +1422,15 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					       size - opname_start_offset -
 						       desc.operator_name_len);
 
+			od_hash_t client_hash = od_murmur_hash(
+				client->id.id, strlen(client->id.id));
+
+			/* YB: prepare statement name based on optimization mode */
+			od_hash_t yb_stmt_hash = yb_prepare_stmt_hash(body_hash, keyhash, client_hash,
+										instance->config.yb_optimized_extended_query_protocol);
+
 			assert(client->prep_stmt_ids);
+#ifndef YB_SUPPORT_FOUND
 			if (od_hashmap_insert(client->prep_stmt_ids, keyhash,
 					      &key, &value_ptr)) {
 				if (value_ptr->len != desc.description_len ||
@@ -1390,6 +1491,21 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					return OD_ESERVER_WRITE;
 				}
 			}
+#endif
+
+			/*
+			 * YB: it should not matter if stmt exists in client hashmap,
+			 * unconditionally send Parse and deal with any potential errors
+			 * as provided by server.
+			 *
+			 * The only exception is when we are in optimized extended query
+			 * protocol mode, in which case we send a special no-op Parse
+			 * to the server if the query was already parsed on it.
+			 */
+			od_hashmap_insert(client->prep_stmt_ids, keyhash, &key, &value_ptr);
+
+			char buf[OD_HASH_LEN];
+			od_snprintf(buf, OD_HASH_LEN, "%08x", yb_stmt_hash);
 
 			key.len = desc.description_len;
 			key.data = desc.description;
@@ -1400,7 +1516,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			value_ptr = &value;
 
-			if (od_hashmap_insert(server->prep_stmts, body_hash,
+			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
 					      &key, &value_ptr) == 0) {
 				od_debug(
 					&instance->logger,
@@ -1409,7 +1525,13 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					"deploy %.*s operator hash %u to server",
 					key.len, key.data, keyhash);
 				// rewrite msg
-				// allocate prepered statement under name equal to body hash
+				// allocate prepered statement under name equal to yb_stmt_hash
+
+				msg = kiwi_fe_write_parse_description(NULL, buf, OD_HASH_LEN,
+					desc.description, desc.description_len, KIWI_FE_PARSE);
+				if (msg == NULL) {
+					return OD_ESERVER_WRITE;
+				}
 
 				if (instance->config.log_query ||
 				    route->rule->log_query) {
@@ -1422,6 +1544,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 				// stat backend parse msg
 				od_stat_parse(&route->stats);
+
 				rc = od_write(&server->io, msg);
 				if (rc == -1) {
 					od_error(&instance->logger, "parse",
@@ -1434,16 +1557,34 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				int *refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
 
-				if (instance->config.log_query ||
-				    route->rule->log_query) {
-					od_stat_parse_reuse(&route->stats);
-					od_log(&instance->logger, "parse",
-					       client, server,
-					       "stmt already exists, simply report its ok");
+				if (!instance->config.yb_optimized_extended_query_protocol) {
+					od_debug(&instance->logger, "parse",
+						 client, server,
+						 "unoptimized parse, send packet to server");
+					msg = kiwi_fe_write_parse_description(NULL, buf, OD_HASH_LEN,
+						desc.description, desc.description_len, KIWI_FE_PARSE);
 				}
-				machine_msg_free(msg);
-			}
+				else { // no-op parse
+					od_debug(&instance->logger, "parse",
+						 client, server,
+						 "optimized parse, send no-op to server");
+					msg = kiwi_fe_write_parse_description(NULL, buf, OD_HASH_LEN, desc.description,
+						desc.description_len, YB_KIWI_FE_NO_PARSE_PARSE_COMPLETE);
+				}
+				if (msg == NULL) {
+					return OD_ESERVER_WRITE;
+				}
 
+				rc = od_write(&server->io, msg);
+				if (rc == -1) {
+					od_error(&instance->logger, "parse",
+						 NULL, server,
+						 "write error: %s",
+						 od_io_error(&server->io));
+					return OD_ESERVER_WRITE;
+				}
+			}
+#ifndef YB_SUPPORT_FOUND
 			machine_msg_t *pmsg;
 			pmsg = kiwi_be_write_parse_complete(NULL);
 			if (pmsg == NULL) {
@@ -1458,6 +1599,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					 od_io_error(&client->io));
 				return OD_ESERVER_WRITE;
 			}
+#endif
+			forwarded = 1;
 		}
 		break;
 	case KIWI_FE_BIND:
@@ -1478,8 +1621,39 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				return OD_ECLIENT_READ;
 			}
 
-			/* unnamed prepared statement, ignore processing of the packet */
+			/* YB: unnamed prepared statement, check if re-parse needed */
 			if (operator_name[0] == '\0') {
+				assert(client->yb_unnamed_prep_stmt.description);
+
+				if (od_id_cmp(&client->id, &server->yb_unnamed_prep_stmt_client_id))
+					break;
+
+				machine_msg_t *msg_new = NULL;
+				msg_new = kiwi_fe_write_parse_description(
+					NULL, client->yb_unnamed_prep_stmt.operator_name,
+					client->yb_unnamed_prep_stmt.operator_name_len,
+					client->yb_unnamed_prep_stmt.description,
+					client->yb_unnamed_prep_stmt.description_len,
+					YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
+
+				if (instance->config.log_query ||
+					route->rule->log_query) {
+					od_frontend_log_parse(
+						instance, client,
+						"rewrite parse",
+						machine_msg_data(msg_new),
+						machine_msg_size(msg_new));
+				}
+
+				od_stat_parse(&route->stats);
+				rc = od_write(&server->io, msg_new);
+				if (rc == -1) {
+					od_error(&instance->logger,
+						"rewrite parse", NULL, server,
+						"write error: %s",
+						od_io_error(&server->io));
+					return OD_ESERVER_WRITE;
+				}
 				break;
 			}
 
@@ -1510,10 +1684,17 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			od_hash_t body_hash =
 				od_murmur_hash(desc->data, desc->len);
+			od_hash_t client_hash =
+				od_murmur_hash(client->id.id,
+					       strlen(client->id.id));
+
+			/* YB: prepare statement name based on optimization mode */
+			od_hash_t yb_stmt_hash = yb_prepare_stmt_hash(body_hash, keyhash, client_hash,
+										instance->config.yb_optimized_extended_query_protocol);
 
 			od_debug(&instance->logger, "rewrite bind", client,
 				 server, "statement: %.*s, hash: %08x",
-				 desc->len, desc->data, body_hash);
+				 desc->len, desc->data, yb_stmt_hash);
 
 			od_hashmap_elt_t value;
 			int refcnt = 1;
@@ -1522,9 +1703,9 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			od_hashmap_elt_t *value_ptr = &value;
 
 			char opname[OD_HASH_LEN];
-			od_snprintf(opname, OD_HASH_LEN, "%08x", body_hash);
+			od_snprintf(opname, OD_HASH_LEN, "%08x", yb_stmt_hash);
 
-			if (od_hashmap_insert(server->prep_stmts, body_hash,
+			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
 					      desc, &value_ptr) == 0) {
 				od_debug(
 					&instance->logger,
@@ -1533,11 +1714,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					"deploy %.*s operator hash %u to server",
 					desc->len, desc->data, keyhash);
 				// rewrite msg
-				// allocate prepered statement under name equal to body hash
+				// allocate prepered statement under name equal to yb_stmt_hash
 
 				msg = kiwi_fe_write_parse_description(
 					NULL, opname, OD_HASH_LEN, desc->data,
-					desc->len);
+					desc->len, YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
 
 				if (msg == NULL) {
 					return OD_ESERVER_WRITE;
@@ -1569,7 +1750,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			msg = od_frontend_rewrite_msg(data, size,
 						      opname_start_offset,
 						      operator_name_len,
-						      body_hash);
+						      yb_stmt_hash);
 
 			if (msg == NULL) {
 				return OD_ESERVER_WRITE;
@@ -1667,26 +1848,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			od_error(&instance->logger, "error while forwarding",
 				client, server, "Got error while forwarding the packet");
 			return OD_ESERVER_WRITE;
-		}
-
-		/* unnamed prepared statement was parsed, send ParseComplete to client */
-		if (prev_named_prep_stmt == 0) {
-
-			machine_msg_t *pcmsg;
-			pcmsg = kiwi_be_write_parse_complete(NULL);
-
-			if (pcmsg == NULL) {
-				return OD_ESERVER_WRITE;
-			}
-
-			rc = od_write(&client->io, pcmsg);
-
-			if (rc == -1) {
-				od_error(&instance->logger, "parse", client,
-					 NULL, "write error: %s",
-					 od_io_error(&client->io));
-				return OD_ESERVER_WRITE;
-			}
 		}
 
 		retstatus = OD_SKIP;
@@ -1817,14 +1978,6 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 
 	for (;;) {
 		for (;;) {
-			if (yb_is_route_invalid(client->route)) {
-				od_frontend_fatal(
-					client, KIWI_CONNECTION_FAILURE,
-					"Database might have been dropped by another user");
-				status = OD_ECLIENT_READ;
-				break;
-			}
-
 			if (od_should_drop_connection(client, server)) {
 				/* Odyssey is going to shut down or client conn is dropped
 				* due some idle timeout, we drop the connection  */
@@ -2394,7 +2547,7 @@ void od_frontend(void *arg)
 			&instance->logger, "auth backend", client, NULL,
 			"invalidate all existing active and idle backends of the route"
 			", with user = %s, db = %s, having %d idle backends and %d active backends",
-			(char *)route->id.user,
+			(char *)route->yb_user_entry->name,
 			(char *)route->yb_database_entry->name,
 			route->server_pool.count_idle,
 			route->server_pool.count_active);
@@ -2850,8 +3003,9 @@ int yb_auth_via_auth_backend(od_client_t *client)
 		goto cleanup;
 	}
 
-	/* Set the value of the db_oid received from the auth backend. */
+	/* Set the value of the user_oid and db_oid received from the auth backend. */
 	client->yb_db_oid = control_conn_client->yb_db_oid;
+	client->yb_user_oid = control_conn_client->yb_user_oid;
 
 cleanup:
 	/* Send any saved errors to the client. */

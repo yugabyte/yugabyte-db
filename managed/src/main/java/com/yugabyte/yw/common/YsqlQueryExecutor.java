@@ -60,14 +60,21 @@ public class YsqlQueryExecutor {
           "pg_read_all_stats",
           "pg_stat_scan_tables",
           "pg_signal_backend",
+          "pg_checkpoint",
           "pg_read_server_files",
           "pg_write_server_files",
           "pg_execute_server_program",
+          "pg_database_owner",
+          "pg_read_all_data",
+          "pg_write_all_data",
           "yb_extension",
           "yb_fdw",
           "yb_db_admin",
           "yugabyte",
           "yb_superuser");
+
+  private static final ImmutableSet<String> ADDITIONAL_ROLES_FOR_PRECREATED_DB_ADMIN =
+      ImmutableSet.of("pg_monitor");
 
   private static final String DEL_PG_ROLES_CMD_1 =
       "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
@@ -473,6 +480,16 @@ public class YsqlQueryExecutor {
       }
 
       allQueries.setLength(0);
+      if (universeYSQLVersion.isPresent() && universeYSQLVersion.get() >= 15) {
+        query =
+            String.format(
+                "GRANT %s TO %s WITH ADMIN OPTION",
+                String.join(", ", ADDITIONAL_ROLES_FOR_PRECREATED_DB_ADMIN), DB_ADMIN_ROLE_NAME);
+        allQueries.append(String.format("%s; ", query));
+        query =
+            String.format("GRANT CREATE ON SCHEMA PUBLIC TO %s WITH GRANT OPTION", data.username);
+        allQueries.append(String.format("%s; ", query));
+      }
 
       versionMatch =
           universe.getVersions().stream()

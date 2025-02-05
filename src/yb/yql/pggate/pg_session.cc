@@ -23,7 +23,7 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/pg_types.h"
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
@@ -47,6 +47,7 @@
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 using namespace std::literals;
 
@@ -230,6 +231,31 @@ Status UpdateReadTime(tserver::PgPerformOptionsPB* options, const ReadHybridTime
   return Status::OK();
 }
 
+void ApplyForceCatalogModification(PgsqlReadOp& op) {
+
+}
+
+void ApplyForceCatalogModification(PgsqlOp& op) {
+  if (op.is_write()) {
+    down_cast<PgsqlWriteOp&>(op).write_request().set_force_catalog_modifications(true);
+  }
+}
+
+template<class PB>
+void AdvisoryLockRequestInitCommon(
+    PB& req, uint64_t session_id, const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode) {
+  req.set_session_id(session_id);
+  req.set_db_oid(lock_id.database_id);
+  auto& req_lock = *req.add_locks();
+  auto& req_lock_id = *req_lock.mutable_lock_id();
+  req_lock_id.set_classid(lock_id.classid);
+  req_lock_id.set_objid(lock_id.objid);
+  req_lock_id.set_objsubid(lock_id.objsubid);
+  req_lock.set_lock_mode(mode == YbcAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
+      ? tserver::AdvisoryLockMode::LOCK_EXCLUSIVE : tserver::AdvisoryLockMode::LOCK_SHARE);
+
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -394,8 +420,8 @@ class PgSession::RunHelper {
 PgSession::PgSession(
     PgClient& pg_client,
     scoped_refptr<PgTxnManager> pg_txn_manager,
-    const YBCPgCallbacks& pg_callbacks,
-    YBCPgExecStatsState& stats_state,
+    const YbcPgCallbacks& pg_callbacks,
+    YbcPgExecStatsState& stats_state,
     YbctidReader&& ybctid_reader,
     bool is_pg_binary_upgrade,
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
@@ -704,7 +730,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
     options.set_use_catalog_session(true);
   } else {
-    pg_txn_manager_->SetupPerformOptions(&options, ops_options.ensure_read_time_is_set);
+    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(
+        &options, ops_options.ensure_read_time_is_set));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -833,7 +860,7 @@ Result<bool> PgSession::ForeignKeyReferenceExists(
   // Add the keys found in docdb to the FK cache.
   RETURN_NOT_OK(ybctid_reader_(
       database_id, ybctids, fk_intent_region_local_tables_,
-      make_lw_function([](PgExecParameters& params) {
+      make_lw_function([](YbcPgExecParameters& params) {
         params.rowmark = ROW_MARK_KEYSHARE;
       })));
   for (const auto& ybctid : ybctids) {
@@ -901,7 +928,10 @@ void PgSession::ClearInsertOnConflictBuffer(void* plan) {
       });
 
   DCHECK(iter != insert_on_conflict_buffers_.end());
-  // Only clear the global intents cache if this is the final buffer. */
+  // This should only be called in case the keys_ map was manually cleared beforehand.  Otherwise,
+  // we could run into memory leaks of the slots in that map.
+  DCHECK_EQ(iter->second.GetNumIndexKeys(), 0);
+  // Only clear the global intents cache if this is the final buffer.
   iter->second.Clear(insert_on_conflict_buffers_.size() == 1 /* clear_intents */);
   insert_on_conflict_buffers_.erase(iter);
 }
@@ -970,7 +1000,7 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
   tserver::PgPerformOptionsPB options;
-  pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
+  RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options));
   auto status = pg_client_.RollbackToSubTransaction(id, &options);
   VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
   return status;
@@ -988,32 +1018,18 @@ void PgSession::SetDdlHasSyscatalogChanges() {
   pg_txn_manager_->SetDdlHasSyscatalogChanges();
 }
 
-Status PgSession::ValidatePlacement(const std::string& placement_info) {
-  tserver::PgValidatePlacementRequestPB req;
-
-  Result<PlacementInfoConverter::Placement> result =
-      PlacementInfoConverter::FromString(placement_info);
-
+Status PgSession::ValidatePlacement(const std::string& placement_info, bool check_satisfiable) {
   // For validation, if there is no replica_placement option, we default to the
-  // cluster configuration which the user is responsible for maintaining
-  if (!result.ok() && result.status().IsInvalidArgument()) {
-    return Status::OK();
+  // cluster configuration which the user is responsible for maintaining.
+  if (placement_info.empty()) return Status::OK();
+
+  ReplicationInfoPB replication_info = VERIFY_RESULT(TablespaceParser::FromString(placement_info));
+  if (check_satisfiable) {
+    tserver::PgValidatePlacementRequestPB req;
+    *req.mutable_replication_info() = std::move(replication_info);
+    return pg_client_.ValidatePlacement(&req);
   }
-
-  RETURN_NOT_OK(result);
-
-  PlacementInfoConverter::Placement placement = result.get();
-  for (const auto& block : placement.placement_infos) {
-    auto pb = req.add_placement_infos();
-    pb->set_cloud(block.cloud);
-    pb->set_region(block.region);
-    pb->set_zone(block.zone);
-    pb->set_min_num_replicas(block.min_num_replicas);
-    pb->set_leader_preference(block.leader_preference);
-  }
-  req.set_num_replicas(placement.num_replicas);
-
-  return pg_client_.ValidatePlacement(&req);
+  return Status::OK();
 }
 
 template<class Generator>
@@ -1040,20 +1056,30 @@ Result<PerformFuture> PgSession::DoRunAsync(
   RunHelper runner(
       this, group_session_type, in_txn_limit, force_non_bufferable,
       ForceFlushBeforeNonBufferableOp{multiple_ops_for_processing});
-  const auto is_ddl = pg_txn_manager_->IsDdlMode();
-  auto processor = [this, &runner, is_ddl, group_session_type,
-                    non_ddl_txn_for_sys_tables_allowed](const auto& table_op) -> Status {
-    DCHECK(!table_op.IsEmpty());
-    const auto& table = *table_op.table;
-    const auto& op = *table_op.operation;
-    const auto session_type = VERIFY_RESULT(GetRequiredSessionType(
-        *pg_txn_manager_, table, *op, non_ddl_txn_for_sys_tables_allowed));
-    RSTATUS_DCHECK_EQ(
-        session_type, group_session_type,
-        IllegalState, "Operations on different sessions can't be mixed");
-    has_write_ops_in_ddl_mode_ = has_write_ops_in_ddl_mode_ || (is_ddl && !IsReadOnly(*op));
-    return runner.Apply(table, op);
-  };
+  const auto ddl_force_catalog_mod_opt = pg_txn_manager_->GetDdlForceCatalogModification();
+  auto processor =
+      [this,
+       is_ddl = ddl_force_catalog_mod_opt.has_value(),
+       force_catalog_modification = is_major_pg_version_upgrade_ ||
+                                    ddl_force_catalog_mod_opt.value_or(false) ||
+                                    YBIsMajorUpgradeInitDb(),
+       group_session_type, &runner, non_ddl_txn_for_sys_tables_allowed](const auto& table_op) {
+        DCHECK(!table_op.IsEmpty());
+        const auto& table = *table_op.table;
+        const auto& op = *table_op.operation;
+        const auto session_type = VERIFY_RESULT(GetRequiredSessionType(
+            *pg_txn_manager_, table, *op, non_ddl_txn_for_sys_tables_allowed));
+        RSTATUS_DCHECK_EQ(
+            session_type, group_session_type,
+            IllegalState, "Operations on different sessions can't be mixed");
+        if (force_catalog_modification &&
+            table.schema().table_properties().is_ysql_catalog_table()) {
+          ApplyForceCatalogModification(*op);
+        }
+        has_write_ops_in_ddl_mode_ =
+            has_write_ops_in_ddl_mode_ || (is_ddl && !IsReadOnly(*op));
+        return runner.Apply(table, op);
+    };
   RETURN_NOT_OK(processor(first_table_op));
   for (; !table_op.IsEmpty(); table_op = generator()) {
     RETURN_NOT_OK(processor(table_op));
@@ -1140,51 +1166,34 @@ Status PgSession::SetCronLastMinute(int64_t last_minute) {
 Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMinute(); }
 
 Status PgSession::AcquireAdvisoryLock(
-    const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode, bool wait, bool session) {
-  tserver::PgPerformOptionsPB options;
+    const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session) {
 
+  tserver::PgAcquireAdvisoryLockRequestPB req;
+  AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
+  req.set_wait(wait);
   // No need to populate the txn metadata for session level advisory locks.
-  if (!session) {
+  if (session) {
+    req.set_session(session);
+  } else {
+    auto& options = *req.mutable_options();
     // If isolation level is READ_COMMITTED, set priority of the transaction to kHighestPriority.
     RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
       false /* read_only */,
       pg_txn_manager_->GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED
           ? kHighestPriority : kLowerPriorityRange));
-    pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
+    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options));
     // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
     // then it should be safe to skip set_force_global_transaction.
     options.set_force_global_transaction(true);
   }
-
-  tserver::PgAcquireAdvisoryLockRequestPB req;
-  req.set_session_id(pg_client_.SessionID());
-  req.set_db_oid(lock_id.database_id);
-  auto* lock = req.add_locks();
-  lock->mutable_lock_id()->set_classid(lock_id.classid);
-  lock->mutable_lock_id()->set_objid(lock_id.objid);
-  lock->mutable_lock_id()->set_objsubid(lock_id.objsubid);
-  lock->set_lock_mode(mode == YBAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
-      ? tserver::AdvisoryLockMode::LOCK_EXCLUSIVE
-      : tserver::AdvisoryLockMode::LOCK_SHARE);
-  req.set_wait(wait);
-  req.set_session(session);
-  *req.mutable_options() = std::move(options);
   return pg_client_.AcquireAdvisoryLock(&req, CoarseTimePoint());
 }
 
-Status PgSession::ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode) {
+Status PgSession::ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode) {
   // ReleaseAdvisoryLock is only used for session level advisory locks, hence no need to populate
   // the req with txn meta.
   tserver::PgReleaseAdvisoryLockRequestPB req;
-  req.set_session_id(pg_client_.SessionID());
-  req.set_db_oid(lock_id.database_id);
-  auto* lock = req.add_locks();
-  lock->mutable_lock_id()->set_classid(lock_id.classid);
-  lock->mutable_lock_id()->set_objid(lock_id.objid);
-  lock->mutable_lock_id()->set_objsubid(lock_id.objsubid);
-  lock->set_lock_mode(mode == YBAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
-      ? tserver::AdvisoryLockMode::LOCK_EXCLUSIVE
-      : tserver::AdvisoryLockMode::LOCK_SHARE);
+  AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
   return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());
 }
 
@@ -1193,10 +1202,6 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
   req.set_session_id(pg_client_.SessionID());
   req.set_db_oid(db_oid);
   return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());
-}
-
-void PgSession::SetForceAllowCatalogModifications(bool allowed) {
-  force_allow_catalog_modifications_ = allowed;
 }
 
 }  // namespace yb::pggate

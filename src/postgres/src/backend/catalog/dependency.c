@@ -89,7 +89,7 @@
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "commands/yb_profile.h"
 #include "commands/tablegroup.h"
 #include "miscadmin.h"
@@ -1307,8 +1307,8 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	SysScanDesc scan;
 	HeapTuple	tup;
 	ObjectAddress implicit_tablegroup;
-	bool		  is_colocated_tables_with_tablespace_enabled =
-		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+	bool		is_colocated_tables_with_tablespace_enabled =
+	*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 
 	/* DROP hook of the objects being removed */
 	InvokeObjectDropHookArg(object->classId, object->objectId,
@@ -1373,6 +1373,7 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
 		Form_pg_depend depform = (Form_pg_depend) GETSTRUCT(tup);
+
 		CatalogTupleDelete(*depRel, tup);
 
 		if (MyDatabaseColocated &&
@@ -1396,7 +1397,7 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 		OidIsValid(implicit_tablegroup.objectId))
 	{
 		deleteSharedDependencyRecordsFor(implicit_tablegroup.classId, implicit_tablegroup.objectId,
-			implicit_tablegroup.objectSubId);
+										 implicit_tablegroup.objectSubId);
 		RemoveTablegroupById(implicit_tablegroup.objectId, true);
 	}
 	/*
@@ -1447,7 +1448,7 @@ doDeletion(const ObjectAddress *object, int flags)
 
 					Assert(object->objectSubId == 0);
 
-					Relation index = RelationIdGetRelation(object->objectId);
+					Relation	index = RelationIdGetRelation(object->objectId);
 
 					if (IsYBRelation(index) && !index->rd_index->indisprimary)
 						YBCDropIndex(index);
@@ -1460,8 +1461,8 @@ doDeletion(const ObjectAddress *object, int flags)
 				{
 					if (object->objectSubId != 0)
 					{
-						Relation yb_rel =
-							RelationIdGetRelation(object->objectId);
+						Relation	yb_rel =
+						RelationIdGetRelation(object->objectId);
 
 						if (IsYBRelation(yb_rel) &&
 							!(flags & YB_SKIP_YB_DROP_COLUMN))
@@ -1474,7 +1475,7 @@ doDeletion(const ObjectAddress *object, int flags)
 					}
 					else
 					{
-						Relation rel = RelationIdGetRelation(object->objectId);
+						Relation	rel = RelationIdGetRelation(object->objectId);
 
 						if (IsYBRelation(rel))
 							YBCDropTable(rel);
@@ -3037,7 +3038,7 @@ getObjectClass(const ObjectAddress *object)
 		case TransformRelationId:
 			return OCLASS_TRANSFORM;
 
-		/* YB cases */
+			/* YB cases */
 		case YbProfileRelationId:
 			return OCLASS_YBPROFILE;
 

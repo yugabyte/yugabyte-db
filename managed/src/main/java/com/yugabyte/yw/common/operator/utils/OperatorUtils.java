@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -35,6 +36,7 @@ import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -126,9 +128,13 @@ public class OperatorUtils {
   /*--- YBUniverse related help methods ---*/
 
   public boolean shouldUpdateYbUniverse(
-      UserIntent currentUserIntent, int newNumNodes, DeviceInfo newDeviceInfo) {
+      UserIntent currentUserIntent,
+      int newNumNodes,
+      DeviceInfo newDeviceInfo,
+      DeviceInfo newMasterDeviceInfo) {
     return !(currentUserIntent.numNodes == newNumNodes)
-        || !currentUserIntent.deviceInfo.volumeSize.equals(newDeviceInfo.volumeSize);
+        || !currentUserIntent.deviceInfo.volumeSize.equals(newDeviceInfo.volumeSize)
+        || !currentUserIntent.masterDeviceInfo.volumeSize.equals(newMasterDeviceInfo.volumeSize);
   }
 
   public String getKubernetesOverridesString(
@@ -229,6 +235,36 @@ public class OperatorUtils {
     return di;
   }
 
+  public DeviceInfo mapMasterDeviceInfo(
+      io.yugabyte.operator.v1alpha1.ybuniversespec.MasterDeviceInfo spec) {
+    DeviceInfo di = new DeviceInfo();
+
+    if (spec == null) {
+      return defaultMasterDeviceInfo();
+    }
+
+    Long numVols = spec.getNumVolumes();
+    if (numVols != null) {
+      di.numVolumes = numVols.intValue();
+    }
+
+    Long volSize = spec.getVolumeSize();
+    if (volSize != null) {
+      di.volumeSize = volSize.intValue();
+    }
+
+    di.storageClass = spec.getStorageClass();
+
+    return di;
+  }
+
+  public DeviceInfo defaultMasterDeviceInfo() {
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 50;
+    masterDeviceInfo.numVolumes = 1;
+    return masterDeviceInfo;
+  }
+
   public boolean universeAndSpecMismatch(Customer cust, Universe u, YBUniverse ybUniverse) {
     return universeAndSpecMismatch(cust, u, ybUniverse, null);
   }
@@ -243,6 +279,11 @@ public class OperatorUtils {
 
     UserIntent currentUserIntent = universeDetails.getPrimaryCluster().userIntent;
 
+    // Handle previously unset masterDeviceInfo
+    if (currentUserIntent.masterDeviceInfo == null) {
+      currentUserIntent.masterDeviceInfo = defaultMasterDeviceInfo();
+    }
+
     Provider provider =
         Provider.getOrBadRequest(cust.getUuid(), UUID.fromString(currentUserIntent.provider));
     // Get all required params
@@ -251,7 +292,11 @@ public class OperatorUtils {
         getKubernetesOverridesString(ybUniverse.getSpec().getKubernetesOverrides());
     String incomingYbSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
     DeviceInfo incomingDeviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
+    DeviceInfo incomingMasterDeviceInfo =
+        mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
     int incomingNumNodes = (int) ybUniverse.getSpec().getNumNodes().longValue();
+    Boolean pauseChangeRequired =
+        ybUniverse.getSpec().getPaused() != u.getUniverseDetails().universePaused;
 
     if (prevTaskToRerun != null) {
       TaskType specificTaskTypeToRerun = prevTaskToRerun.getTaskType();
@@ -260,7 +305,10 @@ public class OperatorUtils {
           UniverseDefinitionTaskParams prevTaskParams =
               Json.fromJson(prevTaskToRerun.getTaskParams(), UniverseDefinitionTaskParams.class);
           return shouldUpdateYbUniverse(
-              prevTaskParams.getPrimaryCluster().userIntent, incomingNumNodes, incomingDeviceInfo);
+              prevTaskParams.getPrimaryCluster().userIntent,
+              incomingNumNodes,
+              incomingDeviceInfo,
+              incomingMasterDeviceInfo);
         case KubernetesOverridesUpgrade:
           KubernetesOverridesUpgradeParams overridesUpgradeTaskParams =
               Json.fromJson(
@@ -277,17 +325,32 @@ public class OperatorUtils {
           return false;
       }
     }
-
-    return (!StringUtils.equals(incomingOverrides, currentUserIntent.universeOverrides))
-        || checkIfGFlagsChanged(
-            u,
-            u.getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .specificGFlags /*Current gflags */,
-            specGFlags)
-        || shouldUpdateYbUniverse(currentUserIntent, incomingNumNodes, incomingDeviceInfo)
-        || !StringUtils.equals(currentUserIntent.ybSoftwareVersion, incomingYbSoftwareVersion);
+    Boolean mismatch = false;
+    mismatch =
+        mismatch || !StringUtils.equals(incomingOverrides, currentUserIntent.universeOverrides);
+    log.trace("overrides mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || checkIfGFlagsChanged(
+                u,
+                u.getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .specificGFlags /*Current gflags */,
+                specGFlags);
+    log.trace("gflags mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || shouldUpdateYbUniverse(
+                currentUserIntent, incomingNumNodes, incomingDeviceInfo, incomingMasterDeviceInfo);
+    log.trace("nodes mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || !StringUtils.equals(currentUserIntent.ybSoftwareVersion, incomingYbSoftwareVersion);
+    log.trace("version mismatch: {}", mismatch);
+    mismatch = mismatch || pauseChangeRequired;
+    log.trace("pause mismatch: {}", mismatch);
+    return mismatch;
   }
 
   /*--- Release related help methods ---*/
@@ -359,5 +422,38 @@ public class OperatorUtils {
       log.error("Error in deleting release", re);
     }
     log.info("Removed release {}", release.getMetadata().getName());
+  }
+
+  public String getAndParseSecretForKey(String name, @Nullable String namespace, String key) {
+    Secret secret = getSecret(name, namespace);
+    if (secret == null) {
+      log.warn("Secret {} not found", name);
+      return null;
+    }
+    return parseSecretForKey(secret, key);
+  }
+
+  public Secret getSecret(String name, @Nullable String namespace) {
+    try (final KubernetesClient kubernetesClient =
+        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+      if (StringUtils.isBlank(namespace)) {
+        log.info("Getting secret '{}' from default namespace", name);
+        namespace = "default";
+      }
+      return kubernetesClient.secrets().inNamespace(namespace).withName(name).get();
+    }
+  }
+
+  // parseSecretForKey checks secret data for the key. If not found, it will then check stringData.
+  // Returns null if the key is not found at all.
+  // Also handles null secret.
+  public String parseSecretForKey(Secret secret, String key) {
+    if (secret == null) {
+      return null;
+    }
+    if (secret.getData().get(key) != null) {
+      return new String(Base64.getDecoder().decode(secret.getData().get(key)));
+    }
+    return secret.getStringData().get(key);
   }
 }

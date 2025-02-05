@@ -152,7 +152,7 @@ Result<QLValuePB> SetValueHelper<bool>::Apply(const bool bool_val, const DataTyp
 
 template <typename Container>
 Result<QLValuePB> ConvertArrayToQLValue(
-    const Container& array_vals, YBCPgOid oid,
+    const Container& array_vals, YbcPgOid oid,
     std::function<const char*(const typename Container::value_type&)> get_item_pointer) {
   QLValuePB value_pb;
   size_t size;
@@ -178,19 +178,19 @@ Result<QLValuePB> ConvertArrayToQLValue(
 }
 
 Result<QLValuePB> SetValueHelper<std::vector<std::string>>::Apply(
-    const std::vector<std::string>& str_vals, YBCPgOid oid) {
+    const std::vector<std::string>& str_vals, YbcPgOid oid) {
   return ConvertArrayToQLValue(
       str_vals, oid, [](const std::string& item) -> const char* { return item.data(); });
 }
 
 Result<QLValuePB> SetValueHelper<google::protobuf::RepeatedPtrField<std::string>>::Apply(
-    const google::protobuf::RepeatedPtrField<std::string>& str_vals, YBCPgOid oid) {
+    const google::protobuf::RepeatedPtrField<std::string>& str_vals, YbcPgOid oid) {
   return ConvertArrayToQLValue(
       str_vals, oid, [](const std::string& item) -> const char* { return item.data(); });
 }
 
 Result<QLValuePB> SetValueHelper<std::vector<TransactionId>>::Apply(
-    const std::vector<TransactionId>& transaction_vals, YBCPgOid oid) {
+    const std::vector<TransactionId>& transaction_vals, YbcPgOid oid) {
   return ConvertArrayToQLValue(transaction_vals, oid, [](const TransactionId& item) -> const char* {
     return reinterpret_cast<const char*>(item.data());
   });
@@ -213,7 +213,7 @@ Status SetColumnValueFromQLValue(
 }
 
 Result<ValueAndIsNullPair<uint32_t>> GetValueHelper<uint32_t>::Retrieve(
-    const QLValuePB& ql_val, const YBCPgTypeEntity* pg_type) {
+    const QLValuePB& ql_val, const YbcPgTypeEntity* pg_type) {
   if (pg_type->yb_type != YB_YQL_DATA_TYPE_UINT32) {
     return STATUS_FORMAT(InvalidArgument, "unexpected data type $0", YB_YQL_DATA_TYPE_UINT32);
   }
@@ -222,7 +222,7 @@ Result<ValueAndIsNullPair<uint32_t>> GetValueHelper<uint32_t>::Retrieve(
 }
 
 Result<ValueAndIsNullPair<Uuid>> GetValueHelper<Uuid>::Retrieve(
-    const QLValuePB& ql_val, const YBCPgTypeEntity* pg_type) {
+    const QLValuePB& ql_val, const YbcPgTypeEntity* pg_type) {
   if (pg_type->yb_type != YB_YQL_DATA_TYPE_BINARY) {
     return STATUS_FORMAT(InvalidArgument, "unexpected data type $0", YB_YQL_DATA_TYPE_BINARY);
   }
@@ -235,11 +235,11 @@ Result<ValueAndIsNullPair<Uuid>> GetValueHelper<Uuid>::Retrieve(
       VERIFY_RESULT(Uuid::FullyDecode(Slice(ql_val.binary_value()))), false);
 }
 
-Result<std::tuple<ColumnId, YBCPgOid, DataType>> ColumnIndexAndType(
+Result<std::tuple<ColumnId, YbcPgOid, DataType>> ColumnIndexAndType(
     const std::string& col_name, const Schema& schema) {
   const auto column_id = VERIFY_RESULT(schema.ColumnIdByName(col_name));
   const auto column = VERIFY_RESULT(schema.column_by_id(column_id));
-  const YBCPgOid oid = column.get().pg_type_oid();
+  const YbcPgOid oid = column.get().pg_type_oid();
   const DataType data_type = column.get().type_info()->type;
   return std::make_tuple(column_id, oid, data_type);
 }

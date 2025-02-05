@@ -29,7 +29,7 @@
 #include "access/transam.h" /* For FirstNormalObjectId */
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
-#include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
+#include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 
  /*
   * Extension version number, for supporting older extension versions' objects

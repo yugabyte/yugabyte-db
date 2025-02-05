@@ -35,7 +35,8 @@ static const char *pg_strtok_ptr = NULL;
 bool		restore_location_fields = false;
 #endif
 
-static const char *GetPgStrTokPtr()
+static const char *
+GetPgStrTokPtr()
 {
 	if (IsMultiThreadedMode())
 	{
@@ -47,11 +48,12 @@ static const char *GetPgStrTokPtr()
 	}
 }
 
-static void SetPgStrTokPtr(const char *new_pg_strtok_ptr)
+static void
+SetPgStrTokPtr(const char *new_pg_strtok_ptr)
 {
 	if (IsMultiThreadedMode())
 	{
-		YBCPgSetThreadLocalStrTokPtr((char*)new_pg_strtok_ptr);
+		YBCPgSetThreadLocalStrTokPtr((char *) new_pg_strtok_ptr);
 	}
 	else
 	{

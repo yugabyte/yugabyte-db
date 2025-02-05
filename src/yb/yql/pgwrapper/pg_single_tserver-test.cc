@@ -90,15 +90,16 @@ class PgSingleTServerTest : public PgMiniTestBase {
     return 1;
   }
 
-  void SetupColocatedTableAndRunBenchmark(
+  void SetupTableAndRunBenchmark(
       const std::string& create_table_cmd, const std::string& insert_cmd,
       const std::string& select_cmd, int rows, int block_size, int reads, bool compact,
       bool aggregate) {
     auto conn = ASSERT_RESULT(Connect());
+    if (use_colocation_) {
+      ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with COLOCATION = true", kDatabaseName));
 
-    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with COLOCATION = true", kDatabaseName));
-
-    conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+      conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    }
 
     ASSERT_OK(conn.Execute(create_table_cmd));
 
@@ -252,6 +253,10 @@ class PgSingleTServerTest : public PgMiniTestBase {
     return std::make_pair(block_cache_hit_count, block_cache_miss_count);
   }
 
+  void TestIndexScan(int fetch_column_idx);
+
+  bool use_colocation_ = true;
+
  private:
   std::string colocated_table_id_;
 };
@@ -278,7 +283,7 @@ class PgMiniBigPrefetchTest : public PgSingleTServerTest {
     const std::string create_cmd = "CREATE TABLE t (a int PRIMARY KEY)";
     const std::string insert_cmd = "INSERT INTO t SELECT generate_series($0, $1)";
     const std::string select_cmd = select ? "SELECT * FROM t" : "SELECT count(*) FROM t";
-    SetupColocatedTableAndRunBenchmark(
+    SetupTableAndRunBenchmark(
         create_cmd, insert_cmd, select_cmd, rows, block_size, reads, compact,
         /* aggregate = */ !select);
   }
@@ -377,7 +382,7 @@ TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns);
   auto insert_cmd = InsertNValuesCommand(kNumColumns);
   const std::string select_cmd = "SELECT * FROM t";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, NumScanRows(), kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate= */ false);
 }
@@ -391,7 +396,7 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_ON_MACOS(HybridTimeFilterDuringCo
 
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns);
   auto insert_cmd = InsertNValuesCommand(kNumColumns);
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, /* select_cmd= */ "", NumScanRows(), kScanBlockSize,
       FLAGS_TEST_scan_reads, /* compact= */ false, /* aggregate= */ false);
   auto [block_cache_hit_count, block_cache_miss_count] =
@@ -417,21 +422,31 @@ TEST_F_EX(PgSingleTServerTest, ScanWithLowerLimit, PgMiniBigPrefetchTest) {
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns);
   auto insert_cmd = InsertNValuesCommand(kNumColumns);
   const std::string select_cmd = "SELECT * FROM t WHERE a > 0";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, NumScanRows(), kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
 
-TEST_F_EX(PgSingleTServerTest, IndexScan, PgMiniBigPrefetchTest) {
+void PgSingleTServerTest::TestIndexScan(int fetch_column_idx) {
   constexpr int kNumColumns = 2;
 
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns, false) + ";";
   create_cmd += "CREATE INDEX ON t (c0 ASC);";
   auto insert_cmd = InsertNValuesCommand(kNumColumns - 1);
-  const std::string select_cmd = "SELECT c0 FROM t WHERE c0 > 0";
-  SetupColocatedTableAndRunBenchmark(
+  const std::string select_cmd = Format("SELECT c$0 FROM t WHERE c0 > 0", fetch_column_idx);
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, NumScanRows() / 2, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
+}
+
+TEST_F_EX(PgSingleTServerTest, IndexScan, PgMiniBigPrefetchTest) {
+  use_colocation_ = true;
+  TestIndexScan(0);
+}
+
+TEST_F_EX(PgSingleTServerTest, IndexScanNoColocation, PgMiniBigPrefetchTest) {
+  use_colocation_ = false;
+  TestIndexScan(1);
 }
 
 TEST_F_EX(PgSingleTServerTest, ScanWithCompaction, PgMiniBigPrefetchTest) {
@@ -460,7 +475,7 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipPK, PgMiniBigPrefetchTest) {
   create_cmd += "value INT, PRIMARY KEY (" + pk + "))";
   insert_cmd += "generate_series($0, $1))";
   const std::string select_cmd = "SELECT value FROM t";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
@@ -482,7 +497,7 @@ TEST_F_EX(PgSingleTServerTest, ScanBigPK, PgMiniBigPrefetchTest) {
   }
   insert_cmd += ", generate_series($0, $1))";
   const std::string select_cmd = "SELECT k FROM t";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
@@ -508,7 +523,7 @@ TEST_F_EX(PgSingleTServerTest, ScanComplexPK, PgMiniBigPrefetchTest) {
   create_cmd += "value INT, PRIMARY KEY (" + pk + "))";
   insert_cmd += ")";
   const std::string select_cmd = "SELECT * FROM t";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
@@ -533,7 +548,7 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipValues, PgMiniBigPrefetchTest) {
   insert_cmd += insert_cmd_suffix;
   insert_cmd += ")";
   const std::string select_cmd = "SELECT value FROM t";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
@@ -544,7 +559,7 @@ TEST_F(PgSingleTServerTest, ScanOneColumn) {
   std::string create_cmd = "CREATE TABLE t (k BIGINT, PRIMARY KEY (k ASC));";
   std::string insert_cmd = "INSERT INTO t (k) VALUES (generate_series($0, $1))";
   const std::string select_cmd = "SELECT k FROM t WHERE k > 0";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
@@ -575,7 +590,7 @@ class PgSmallPrefetchTest : public PgSingleTServerTest {
     const std::string create_cmd = "CREATE TABLE t (a int PRIMARY KEY)";
     const std::string insert_cmd = "INSERT INTO t SELECT generate_series($0, $1)";
     const std::string select_cmd = "SELECT * from t where a in (SELECT generate_series(1, 10000))";
-    SetupColocatedTableAndRunBenchmark(
+    SetupTableAndRunBenchmark(
         create_cmd, insert_cmd, select_cmd, rows, block_size, reads, /* compact = */ true,
         /* aggregate = */ false);
   }

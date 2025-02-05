@@ -178,8 +178,11 @@ static relopt_bool boolRelOpts[] =
 			RELOPT_KIND_HEAP,
 			AccessExclusiveLock
 		},
-		/* true by default so that table created in colocated database will be
-		 * colocated. This option will be ignored in non-colocated database. */
+
+		/*
+		 * true by default so that table created in colocated database will be
+		 * colocated. This option will be ignored in non-colocated database.
+		 */
 		true
 	},
 	{
@@ -189,8 +192,11 @@ static relopt_bool boolRelOpts[] =
 			RELOPT_KIND_HEAP,
 			AccessExclusiveLock
 		},
-		/* true by default so that table created in colocated database will be
-		 * colocated. This option will be ignored in non-colocation database. */
+
+		/*
+		 * true by default so that table created in colocated database will be
+		 * colocated. This option will be ignored in non-colocation database.
+		 */
 		true
 	},
 	{
@@ -420,7 +426,7 @@ static relopt_int intRelOpts[] =
 	{{NULL}}
 };
 
-static relopt_oid oidRelOpts[] =
+static yb_relopt_oid oidRelOpts[] =
 {
 	{
 		{
@@ -441,7 +447,8 @@ static relopt_oid oidRelOpts[] =
 			AccessExclusiveLock
 		},
 		InvalidOid,
-		1 /* parse_utilcmd takes care of OID >= FirstNormalObjectId for user tables */,
+		1,						/* parse_utilcmd takes care of OID >=
+								 * FirstNormalObjectId for user tables */
 		OID_MAX
 	},
 	{
@@ -452,7 +459,8 @@ static relopt_oid oidRelOpts[] =
 			AccessExclusiveLock
 		},
 		InvalidOid,
-		1 /* parse_utilcmd takes care of OID >= FirstNormalObjectId for user tables */,
+		1,						/* parse_utilcmd takes care of OID >=
+								 * FirstNormalObjectId for user tables */
 		OID_MAX
 	},
 	/* list terminator */
@@ -627,10 +635,10 @@ static relopt_string stringRelOpts[] =
 			RELOPT_KIND_YB_TABLESPACE,
 			AccessExclusiveLock
 		},
-		0 /* default_len */,
-		true /* default_isnull */,
+		0,						/* default_len */
+		true,					/* default_isnull */
 		validatePlacementConfiguration,
-		NULL /* default_val */
+		NULL					/* default_val */
 	},
 	/* list terminator */
 	{{NULL}}
@@ -893,7 +901,7 @@ allocate_reloption(bits32 kinds, int type, const char *name, const char *desc,
 			size = sizeof(relopt_int);
 			break;
 		case RELOPT_TYPE_OID:
-			size = sizeof(relopt_oid);
+			size = sizeof(yb_relopt_oid);
 			break;
 		case RELOPT_TYPE_REAL:
 			size = sizeof(relopt_real);
@@ -1443,6 +1451,7 @@ ybExcludeNonPersistentReloptions(Datum options)
 
 	Datum	   *optiondatums;
 	int			noptions;
+
 	deconstruct_array(array, TEXTOID, -1, false, 'i',
 					  &optiondatums, NULL, &noptions);
 
@@ -1451,9 +1460,10 @@ ybExcludeNonPersistentReloptions(Datum options)
 
 	for (int i = 0; i < noptions; i++)
 	{
-		char *s = TextDatumGetCString(optiondatums[i]);
+		char	   *s = TextDatumGetCString(optiondatums[i]);
 
-		char *p = strchr(s, '=');
+		char	   *p = strchr(s, '=');
+
 		if (p)
 			*p = '\0';
 
@@ -1787,7 +1797,7 @@ parse_one_reloption(relopt_value *option, char *text_str, int text_len,
 			break;
 		case RELOPT_TYPE_OID:
 			{
-				relopt_oid *optoid = (relopt_oid *) option->gen;
+				yb_relopt_oid *optoid = (yb_relopt_oid *) option->gen;
 
 				parsed = parse_oid(value, &option->values.oid_val, NULL);
 				if (validate && !parsed)
@@ -1963,7 +1973,7 @@ fillRelOptions(void *rdopts, Size basesize,
 					case RELOPT_TYPE_OID:
 						*(Oid *) itempos = options[i].isset ?
 							options[i].values.oid_val :
-							((relopt_oid *) options[i].gen)->default_val;
+							((yb_relopt_oid *) options[i].gen)->default_val;
 						break;
 					case RELOPT_TYPE_REAL:
 						*(double *) itempos = options[i].isset ?
@@ -2187,7 +2197,7 @@ partitioned_table_reloptions(Datum reloptions, bool validate)
 		/* YB supports colocation_id option for partioned tables. */
 		static const relopt_parse_elt tab[] = {
 			{"colocation_id", RELOPT_TYPE_OID,
-			 offsetof(YbParitionedTableOptions, colocation_id)},
+			offsetof(YbParitionedTableOptions, colocation_id)},
 		};
 
 		return (bytea *) build_reloptions(reloptions, validate,
@@ -2321,7 +2331,7 @@ yb_tablespace_reloptions(Datum reloptions, bool validate)
 {
 	relopt_value *options;
 	YBTableSpaceOpts *tsopts;
-	int     numoptions;
+	int			numoptions;
 	static const relopt_parse_elt yb_tab[] = {
 		{"replica_placement", RELOPT_TYPE_STRING, offsetof(YBTableSpaceOpts, placement_offset)}
 	};
@@ -2329,14 +2339,15 @@ yb_tablespace_reloptions(Datum reloptions, bool validate)
 	options = parseRelOptions(reloptions, validate, RELOPT_KIND_YB_TABLESPACE, &numoptions);
 
 	/* if none set, we're done */
-	if (numoptions == 0) {
+	if (numoptions == 0)
+	{
 		return NULL;
 	}
 
 	tsopts = allocateReloptStruct(sizeof(YBTableSpaceOpts), options, numoptions);
 
 	fillRelOptions((void *) tsopts, sizeof(YBTableSpaceOpts), options, numoptions,
-				validate, yb_tab, lengthof(yb_tab));
+				   validate, yb_tab, lengthof(yb_tab));
 
 	pfree(options);
 

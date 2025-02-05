@@ -84,9 +84,9 @@
 #include "access/yb_scan.h"
 #include "catalog/index.h"
 #include "catalog/pg_database.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "executor/ybOptimizeModifyTable.h"
-#include "optimizer/ybcplan.h"
+#include "optimizer/ybplan.h"
 #include "parser/parsetree.h"
 #include "utils/typcache.h"
 
@@ -232,13 +232,14 @@ static TupleTableSlot *mergeGetUpdateNewTuple(ResultRelInfo *relinfo,
 static void YbPostProcessDml(CmdType cmd_type,
 							 Relation rel,
 							 TupleTableSlot *newslot);
+static void YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state);
 static void YbAddSlotToBatch(ModifyTableContext *context,
 							 ResultRelInfo *resultRelInfo,
 							 TupleTableSlot *planSlot,
 							 TupleTableSlot *slot,
-							 YBCPgStatement blockInsertStmt);
+							 YbcPgStatement blockInsertStmt);
 static TupleTableSlot *YbFlushSlotsFromBatch(ModifyTableContext *context,
-											 YBCPgStatement blockInsertStmt);
+											 YbcPgStatement blockInsertStmt);
 
 static bool YbExecCheckIndexConstraints(EState *estate,
 										ResultRelInfo *resultRelInfo,
@@ -251,16 +252,20 @@ static bool YbExecCheckIndexConstraints(EState *estate,
 static bool YbExecInsertPrologue(ModifyTableContext *context,
 								 ResultRelInfo *resultRelInfo,
 								 TupleTableSlot **slot,
-								 YBCPgStatement blockInsertStmt);
+								 YbcPgStatement blockInsertStmt);
 static TupleTableSlot *YbExecInsertAct(ModifyTableContext *context,
 									   ResultRelInfo *resultRelInfo,
 									   TupleTableSlot *slot,
-									   YBCPgStatement blockInsertStmt,
+									   YbcPgStatement blockInsertStmt,
 									   bool canSetTag,
 									   TupleTableSlot **inserted_tuple,
 									   ResultRelInfo **insert_destrel);
 
 static void YbFreeInsertOnConflictBatchState(YbInsertOnConflictBatchState *state);
+static void YbDropInsertOnConflictReadSlots(YbInsertOnConflictBatchState *state);
+
+static Bitmapset *YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
+												ResultRelInfo *resultRelInfo);
 
 /*
  * Verify that the tuples to be produced by INSERT match the
@@ -828,7 +833,7 @@ static bool
 YbExecInsertPrologue(ModifyTableContext *context,
 					 ResultRelInfo *resultRelInfo,
 					 TupleTableSlot **slot,
-					 YBCPgStatement blockInsertStmt)
+					 YbcPgStatement blockInsertStmt)
 {
 	ModifyTableState *mtstate = context->mtstate;
 	EState	   *estate = context->estate;
@@ -941,7 +946,7 @@ static TupleTableSlot *
 ExecInsert(ModifyTableContext *context,
 		   ResultRelInfo *resultRelInfo,
 		   TupleTableSlot *slot,
-		   YBCPgStatement blockInsertStmt,
+		   YbcPgStatement blockInsertStmt,
 		   bool canSetTag,
 		   TupleTableSlot **inserted_tuple,
 		   ResultRelInfo **insert_destrel)
@@ -968,13 +973,14 @@ ExecInsert(ModifyTableContext *context,
 	}
 
 	if (onconflict != ONCONFLICT_NONE &&
-		!YbIsInsertOnConflictReadBatchingEnabled(resultRelInfo) &&
+		!resultRelInfo->ri_ybIocBatchingPossible &&
 		mtstate->yb_ioc_state != NULL &&
 		mtstate->yb_ioc_state->num_slots > 0)
 	{
 		TupleTableSlot *planSlot = context->planSlot;
 		TupleTableSlot *returnSlot = YbFlushSlotsFromBatch(context,
 														   blockInsertStmt);
+
 		/* Restore plan slot */
 		context->planSlot = planSlot;
 
@@ -991,7 +997,7 @@ ExecInsert(ModifyTableContext *context,
 		return NULL;
 
 	if (onconflict != ONCONFLICT_NONE &&
-		YbIsInsertOnConflictReadBatchingEnabled(resultRelInfo))
+		resultRelInfo->ri_ybIocBatchingPossible)
 	{
 		TupleTableSlot *returnSlot = NULL;
 
@@ -999,8 +1005,11 @@ ExecInsert(ModifyTableContext *context,
 						 planSlot, slot,
 						 blockInsertStmt);
 		/* When we've reached the desired batch size, enter flushing mode. */
-		if (mtstate->yb_ioc_state->num_slots == resultRelInfo->ri_BatchSize)
+		if (mtstate->yb_ioc_state->num_slots ==
+			yb_insert_on_conflict_read_batch_size)
+		{
 			returnSlot = YbFlushSlotsFromBatch(context, blockInsertStmt);
+		}
 
 		return returnSlot;
 	}
@@ -1015,7 +1024,7 @@ static TupleTableSlot *
 YbExecInsertAct(ModifyTableContext *context,
 				ResultRelInfo *resultRelInfo,
 				TupleTableSlot *slot,
-				YBCPgStatement blockInsertStmt,
+				YbcPgStatement blockInsertStmt,
 				bool canSetTag,
 				TupleTableSlot **inserted_tuple,
 				ResultRelInfo **insert_destrel)
@@ -1278,8 +1287,12 @@ YbExecInsertAct(ModifyTableContext *context,
 					 * ExecGetReturningSlot() in the DO NOTHING case...
 					 */
 					Assert(onconflict == ONCONFLICT_NOTHING);
-					if (IsYBRelation(resultRelationDesc)) {
-						// YugaByte does not use Postgres transaction control code.
+					if (IsYBRelation(resultRelationDesc))
+					{
+						/*
+						 * YugaByte does not use Postgres transaction control
+						 * code.
+						 */
 						InstrCountTuples2(&mtstate->ps, 1);
 						result = NULL;
 						goto conflict_resolved;
@@ -1352,7 +1365,10 @@ YbExecInsertAct(ModifyTableContext *context,
 				}
 			}
 
-			/* Since there was no more insertion conflict, we're done with ON CONFLICT DO UPDATE */
+			/*
+			 * Since there was no more insertion conflict, we're done with ON
+			 * CONFLICT DO UPDATE
+			 */
 		}
 		else
 		{
@@ -1360,6 +1376,7 @@ YbExecInsertAct(ModifyTableContext *context,
 			if (IsYBRelation(resultRelationDesc))
 			{
 				MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+
 				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate);
 
 				/* insert index entries for tuple */
@@ -1551,7 +1568,7 @@ ExecDeletePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				   ItemPointer tupleid, HeapTuple oldtuple,
 				   TupleTableSlot **epqreturnslot)
 {
-	Relation resultRelationDesc = resultRelInfo->ri_RelationDesc;
+	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 
 	/*
 	 * Unlike upstream PG, Yugabyte indexes have deletes explicitly written to
@@ -1733,14 +1750,15 @@ ExecDelete(ModifyTableContext *context,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
-		bool row_found = YBCExecuteDelete(resultRelationDesc,
-										  context->planSlot,
-										  ((ModifyTable *)context->mtstate->ps.plan)->ybReturningColumns,
-										  context->mtstate->yb_fetch_target_tuple,
-										  estate->yb_es_is_single_row_modify_txn
-													? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
-										  changingPart,
-										  estate);
+		bool		row_found = YBCExecuteDelete(resultRelationDesc,
+												 context->planSlot,
+												 ((ModifyTable *) context->mtstate->ps.plan)->ybReturningColumns,
+												 context->mtstate->yb_fetch_target_tuple,
+												 (estate->yb_es_is_single_row_modify_txn ?
+												  YB_SINGLE_SHARD_TRANSACTION :
+												  YB_TRANSACTIONAL),
+												 changingPart,
+												 estate);
 
 		if (!row_found)
 		{
@@ -1753,7 +1771,7 @@ ExecDelete(ModifyTableContext *context,
 
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
 		{
-			Datum	ybctid = YBCGetYBTupleIdFromSlot(context->planSlot);
+			Datum		ybctid = YBCGetYBTupleIdFromSlot(context->planSlot);
 
 			/* Delete index entries of the old tuple */
 			ExecDeleteIndexTuples(resultRelInfo, ybctid, oldtuple, estate);
@@ -1933,7 +1951,7 @@ ldelete:;
 
 	YbPostProcessDml(CMD_DELETE,
 					 resultRelationDesc,
-					 NULL /* newslot */);
+					 NULL /* newslot */ );
 
 	if (canSetTag)
 		(estate->es_processed)++;
@@ -2025,7 +2043,7 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
 	TupleConversionMap *tupconv_map;
 	bool		tuple_deleted;
 	TupleTableSlot *epqslot = NULL;
-	bool    prev_yb_is_single_row_modify_txn = estate->yb_es_is_single_row_modify_txn;
+	bool		prev_yb_is_single_row_modify_txn = estate->yb_es_is_single_row_modify_txn;
 
 	context->cpUpdateReturningSlot = NULL;
 	context->cpUpdateRetrySlot = NULL;
@@ -2185,8 +2203,8 @@ ExecUpdatePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	 * For a Yugabyte table, we need to update the secondary indexes.
 	 */
 	if ((IsYBRelation(resultRelationDesc) ?
-			 (YBRelHasSecondaryIndices(resultRelationDesc)) :
-			 resultRelationDesc->rd_rel->relhasindex) &&
+		 (YBRelHasSecondaryIndices(resultRelationDesc)) :
+		 resultRelationDesc->rd_rel->relhasindex) &&
 		resultRelInfo->ri_IndexRelationDescs == NULL)
 		ExecOpenIndices(resultRelInfo, false);
 
@@ -2403,9 +2421,9 @@ YBExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				bool canSetTag, UpdateContext *updateCxt,
 				Bitmapset **cols_marked_for_update, bool *is_pk_updated)
 {
-	EState	*estate = context->estate;
-	Relation resultRelationDesc = resultRelInfo->ri_RelationDesc;
-	bool	 partition_constraint_failed;
+	EState	   *estate = context->estate;
+	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
+	bool		partition_constraint_failed;
 
 	updateCxt->crossPartUpdate = false;
 
@@ -2419,7 +2437,7 @@ YBExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 yb_lreplace:;
 
 	/* ensure slot is independent, consider e.g. EPQ */
-	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true /* materialize*/, NULL);
+	HeapTuple	tuple = ExecFetchSlotHeapTuple(slot, true /* materialize */ , NULL);
 
 	/*
 	 * Check the constraints of the tuple.
@@ -2436,7 +2454,7 @@ yb_lreplace:;
 	 */
 	partition_constraint_failed =
 		resultRelationDesc->rd_rel->relispartition &&
-		!ExecPartitionCheck(resultRelInfo, slot, estate, false /* emitError */);
+		!ExecPartitionCheck(resultRelInfo, slot, estate, false /* emitError */ );
 
 	/* Check any RLS UPDATE WITH CHECK policies */
 	if (!partition_constraint_failed &&
@@ -2459,13 +2477,15 @@ yb_lreplace:;
 	 * arbiter index, which is notable for expression indexes.
 	 * TODO(kramanathan): Optimize this by forming the tuple ID from the slot.
 	 */
-	if (YbIsInsertOnConflictReadBatchingEnabled(resultRelInfo))
+	if (resultRelInfo->ri_ybIocBatchingPossible &&
+		context->mtstate->yb_ioc_state)
 	{
 		ItemPointerData unusedConflictTid;
+
 		YbExecCheckIndexConstraints(estate, resultRelInfo,
 									context->mtstate->yb_ioc_state, slot,
 									&unusedConflictTid,
-									NULL /* ybConflictSlot */,
+									NULL /* ybConflictSlot */ ,
 									DO_UPDATE_UPDATE_PHASE);
 	}
 
@@ -2476,7 +2496,7 @@ yb_lreplace:;
 	if (partition_constraint_failed)
 	{
 		TupleTableSlot *inserted_tuple;
-		ResultRelInfo  *insert_destrel = NULL;
+		ResultRelInfo *insert_destrel = NULL;
 
 		/*
 		 * ExecCrossPartitionUpdate will first DELETE the row from the
@@ -2533,13 +2553,9 @@ yb_lreplace:;
 		goto yb_lreplace;
 	}
 
-	RangeTblEntry *rte =
-		rt_fetch(resultRelInfo->ri_RangeTableIndex, estate->es_range_table);
-
-	bool row_found = false;
-	bool beforeRowUpdateTriggerFired =
-		resultRelInfo->ri_TrigDesc &&
-		resultRelInfo->ri_TrigDesc->trig_update_before_row;
+	bool		row_found = false;
+	bool		beforeRowUpdateTriggerFired = (resultRelInfo->ri_TrigDesc &&
+											   resultRelInfo->ri_TrigDesc->trig_update_before_row);
 
 	/*
 	 * A bitmapset of columns whose values are written to the main table.
@@ -2554,7 +2570,8 @@ yb_lreplace:;
 	 * This guardrail may be removed in the future. This also helps avoid
 	 * having a dependency on row locking.
 	 */
-	*cols_marked_for_update = bms_copy(rte->updatedCols);
+	*cols_marked_for_update = YbFetchColumnsMarkedForUpdate(context,
+															resultRelInfo);
 
 	if (resultRelInfo->ri_NumGeneratedNeeded > 0)
 	{
@@ -2562,14 +2579,16 @@ yb_lreplace:;
 		 * Include any affected generated columns. Note that generated columns
 		 * are, conceptually, updated after BEFORE triggers have run.
 		 */
-		Bitmapset *generatedCols =
-			ExecGetExtraUpdatedCols(resultRelInfo, estate);
+		Bitmapset  *generatedCols = ExecGetExtraUpdatedCols(resultRelInfo,
+															estate);
+
 		Assert(!bms_is_empty(generatedCols));
 		*cols_marked_for_update = bms_union(*cols_marked_for_update,
 											generatedCols);
 	}
 
 	ModifyTable *plan = (ModifyTable *) context->mtstate->ps.plan;
+
 	YbCopySkippableEntities(&estate->yb_skip_entities, plan->yb_skip_entities);
 
 	/*
@@ -2586,9 +2605,11 @@ yb_lreplace:;
 	 */
 	if (!estate->yb_es_is_single_row_modify_txn)
 	{
-		YbComputeModifiedColumnsAndSkippableEntities(
-			context->mtstate, resultRelInfo, estate, oldtuple, tuple,
-			cols_marked_for_update, beforeRowUpdateTriggerFired);
+		YbComputeModifiedColumnsAndSkippableEntities(context->mtstate,
+													 resultRelInfo, estate,
+													 oldtuple, tuple,
+													 cols_marked_for_update,
+													 beforeRowUpdateTriggerFired);
 	}
 
 	/*
@@ -2608,8 +2629,9 @@ yb_lreplace:;
 		row_found = YBCExecuteUpdate(resultRelInfo, context->planSlot, slot,
 									 oldtuple, estate, plan,
 									 context->mtstate->yb_fetch_target_tuple,
-									 estate->yb_es_is_single_row_modify_txn
-											? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
+									 (estate->yb_es_is_single_row_modify_txn ?
+									  YB_SINGLE_SHARD_TRANSACTION :
+									  YB_TRANSACTIONAL),
 									 *cols_marked_for_update, canSetTag);
 
 	return row_found;
@@ -2639,35 +2661,39 @@ ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 		 * tuple do not affect indices.
 		 */
 		if ((YBCRelInfoHasSecondaryIndices(resultRelInfo) ||
-			 YbIsInsertOnConflictReadBatchingEnabled(resultRelInfo)) &&
+			 (resultRelInfo->ri_ybIocBatchingPossible &&
+			  mtstate->yb_ioc_state)) &&
 			mtstate->yb_fetch_target_tuple)
 		{
-			recheckIndexes =  YbExecUpdateIndexTuples(
-				resultRelInfo, slot, YBCGetYBTupleIdFromSlot(context->planSlot),
-				oldtuple, tupleid, context->estate, yb_cols_marked_for_update,
-				yb_is_pk_updated, mtstate->yb_is_inplace_index_update_enabled);
+			recheckIndexes = YbExecUpdateIndexTuples(resultRelInfo, slot,
+													 YBCGetYBTupleIdFromSlot(context->planSlot),
+													 oldtuple, tupleid,
+													 context->estate,
+													 yb_cols_marked_for_update,
+													 yb_is_pk_updated,
+													 mtstate->yb_is_inplace_index_update_enabled);
 		}
 	}
 	else
 	{
 		if (resultRelInfo->ri_NumIndices > 0 && updateCxt->updateIndexes)
 			recheckIndexes = ExecInsertIndexTuples(resultRelInfo,
-												slot, context->estate,
-												true, false,
-												NULL, NIL);
+												   slot, context->estate,
+												   true, false,
+												   NULL, NIL);
 	}
 
 	if (!((ModifyTable *) mtstate->ps.plan)->no_row_trigger)
 	{
 		/* AFTER ROW UPDATE Triggers */
 		ExecARUpdateTriggers(context->estate, resultRelInfo,
-								NULL, NULL,
-								tupleid, oldtuple, slot,
-								recheckIndexes,
-								mtstate->operation == CMD_INSERT ?
-								mtstate->mt_oc_transition_capture :
-								mtstate->mt_transition_capture,
-								false);
+							 NULL, NULL,
+							 tupleid, oldtuple, slot,
+							 recheckIndexes,
+							 (mtstate->operation == CMD_INSERT ?
+							  mtstate->mt_oc_transition_capture :
+							  mtstate->mt_transition_capture),
+							 false);
 	}
 
 	/*
@@ -3067,7 +3093,7 @@ ExecOnConflictUpdate(ModifyTableContext *context,
 	Relation	relation = resultRelInfo->ri_RelationDesc;
 	ExprState  *onConflictSetWhere = resultRelInfo->ri_onConflict->oc_WhereClause;
 	HeapTuple	ybOldTuple = NULL;
-	bool 		ybShouldFree = false;
+	bool		ybShouldFree = false;
 	TupleTableSlot *existing = resultRelInfo->ri_onConflict->oc_Existing;
 	TM_FailureData tmfd;
 	LockTupleMode lockmode;
@@ -3089,7 +3115,8 @@ ExecOnConflictUpdate(ModifyTableContext *context,
 	 * However, YugaByte writes the conflict tuple including its "ybctid" to execution state "estate"
 	 * and then frees the slot when done.
 	 */
-	if (IsYBRelation(relation)) {
+	if (IsYBRelation(relation))
+	{
 		/* Initialize result without calling postgres. */
 		test = TM_Ok;
 		ItemPointerSetInvalid(&tmfd.ctid);
@@ -3224,7 +3251,7 @@ yb_skip_transaction_control_check:
 		Assert(ybConflictSlot);
 		ybOldTuple = ExecFetchSlotHeapTuple(ybConflictSlot,
 											false, &ybShouldFree);
-		ExecStoreHeapTuple(ybOldTuple, existing, false /* shouldFree */);
+		ExecStoreHeapTuple(ybOldTuple, existing, false /* shouldFree */ );
 		TABLETUPLE_YBCTID(context->planSlot) = HEAPTUPLE_YBCTID(ybOldTuple);
 	}
 
@@ -3283,6 +3310,7 @@ yb_skip_transaction_control_check:
 	 */
 
 	ItemPointer ybTid = IsYBRelation(relation) ? NULL : conflictTid;
+
 	/* Execute UPDATE with projection */
 	*returning = ExecUpdate(context, resultRelInfo,
 							ybTid, ybOldTuple,
@@ -3509,8 +3537,8 @@ lmerge_matched:;
 					 */
 					ExecUpdateEpilogue(context, &updateCxt, resultRelInfo,
 									   tupleid, NULL, newslot, recheckIndexes,
-									   NULL /* yb_cols_marked_for_update */,
-									   false /* yb_is_pk_updated */);
+									   NULL /* yb_cols_marked_for_update */ ,
+									   false /* yb_is_pk_updated */ );
 					mtstate->mt_merge_updated += 1;
 				}
 
@@ -4169,12 +4197,9 @@ ExecPrepareTupleRouting(ModifyTableState *mtstate,
 	if (map != NULL)
 	{
 		TupleTableSlot *new_slot = partrel->ri_PartitionTupleSlot;
+
 		slot = execute_attr_map_slot(map->attrMap, slot, new_slot);
 	}
-
-	/* YB: inherit batch size from parent */
-	if (YbIsInsertOnConflictReadBatchingEnabled(targetRelInfo))
-		partrel->ri_BatchSize = targetRelInfo->ri_BatchSize;
 
 	/*
 	 * For a partitioned relation, table constraints (such as FK) are visible on a
@@ -4255,18 +4280,23 @@ ExecModifyTable(PlanState *pstate)
 	context.epqstate = &node->mt_epqstate;
 	context.estate = estate;
 
-	YBCPgStatement blockInsertStmt = NULL;
-	bool hasInserts = false;
-	Relation relation = resultRelInfo->ri_RelationDesc;
-	if (IsYBRelation(relation) && operation == CMD_INSERT) {
-		HandleYBStatus(YBCPgNewInsertBlock(
-			YBCGetDatabaseOid(relation), YbGetRelfileNodeId(relation),
-			YBCIsRegionLocal(relation),
-			estate->yb_es_is_single_row_modify_txn ? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
-			&blockInsertStmt));
+	YbcPgStatement blockInsertStmt = NULL;
+	bool		hasInserts = false;
+	Relation	relation = resultRelInfo->ri_RelationDesc;
+
+	if (IsYBRelation(relation) && operation == CMD_INSERT)
+	{
+		HandleYBStatus(YBCPgNewInsertBlock(YBCGetDatabaseOid(relation),
+										   YbGetRelfileNodeId(relation),
+										   YBCIsRegionLocal(relation),
+										   (estate->yb_es_is_single_row_modify_txn ?
+											YB_SINGLE_SHARD_TRANSACTION :
+											YB_TRANSACTIONAL),
+										   &blockInsertStmt));
 	}
 
 	TupleTableSlot *ybReturnSlot = NULL;
+
 	if (node->yb_ioc_state)
 	{
 		/*
@@ -4393,7 +4423,7 @@ ExecModifyTable(PlanState *pstate)
 		tupleid = NULL;
 		oldtuple = NULL;
 
-		Relation relation = resultRelInfo->ri_RelationDesc;
+		Relation	relation = resultRelInfo->ri_RelationDesc;
 
 		/*
 		 * For UPDATE/DELETE/MERGE, fetch the row identity info for the tuple
@@ -4426,8 +4456,9 @@ ExecModifyTable(PlanState *pstate)
 				if (AttributeNumberIsValid(resultRelInfo->ri_YbWholeRowAttNo))
 				{
 					/* Extract the old row from wholerow junk attribute. */
-					Datum wholerow = ExecGetJunkAttribute(
-						slot, resultRelInfo->ri_YbWholeRowAttNo, &isNull);
+					Datum		wholerow = ExecGetJunkAttribute(slot,
+																resultRelInfo->ri_YbWholeRowAttNo,
+																&isNull);
 
 					/* shouldn't ever get a null result... */
 					if (isNull)
@@ -4525,20 +4556,28 @@ ExecModifyTable(PlanState *pstate)
 			case CMD_INSERT:
 				hasInserts = true;
 				/* Initialize projection info if first time for this table */
-				/* YB_TODO(neil@yugabyte) Check to see if this is still needed.
-				 *   bool prev_yb_is_single_row_modify_txn =
-				 *       estate->es_yb_is_single_row_modify_txn;
+
+				/*
+				 * YB_TODO(neil@yugabyte) Check to see if this is still
+				 * needed.
+				 *
+				 * bool prev_yb_is_single_row_modify_txn =
+				 *     estate->es_yb_is_single_row_modify_txn;
 				 */
 				if (unlikely(!resultRelInfo->ri_projectNewInfoValid))
 					ExecInitInsertProjection(node, resultRelInfo);
 				slot = ExecGetInsertNewTuple(resultRelInfo, context.planSlot);
 				slot = ExecInsert(&context, resultRelInfo, slot, blockInsertStmt,
 								  node->canSetTag, NULL, NULL);
-				/* YB_TODO(neil@yugabyte)
-				 * Check to see if this is still needed.
+
+				/*
+				 * YB_TODO(neil@yugabyte) Check to see if this is still
+				 * needed.
 				 */
 				/* Revert ExecPrepareTupleRouting's state change. */
-				/* estate->es_yb_is_single_row_modify_txn = prev_yb_is_single_row_modify_txn; */
+				/*
+				 * estate->es_yb_is_single_row_modify_txn = prev_yb_is_single_row_modify_txn;
+				 */
 				break;
 
 			case CMD_UPDATE:
@@ -4569,8 +4608,8 @@ ExecModifyTable(PlanState *pstate)
 						Relation	relation = resultRelInfo->ri_RelationDesc;
 
 						if (!table_tuple_fetch_row_version(relation, tupleid,
-														SnapshotAny,
-														oldSlot))
+														   SnapshotAny,
+														   oldSlot))
 							elog(ERROR, "failed to fetch tuple being updated");
 					}
 					slot = internalGetUpdateNewTuple(resultRelInfo, context.planSlot,
@@ -4622,7 +4661,8 @@ ExecModifyTable(PlanState *pstate)
 			return ybReturnSlot;
 	}
 
-	if (blockInsertStmt) {
+	if (blockInsertStmt)
+	{
 		if (hasInserts)
 			YBCApplyWriteStmt(blockInsertStmt, relation);
 		else
@@ -4880,16 +4920,15 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 					resultRelInfo->ri_YbWholeRowAttNo =
 						ExecFindJunkAttributeInTlist(subplan->targetlist, "wholerow");
 
-					Assert(!YbWholeRowAttrRequired(
-							   resultRelInfo->ri_RelationDesc, operation) ||
-						   AttributeNumberIsValid(
-							   resultRelInfo->ri_YbWholeRowAttNo));
+					Assert(!YbWholeRowAttrRequired(resultRelInfo->ri_RelationDesc,
+												   operation) ||
+						   AttributeNumberIsValid(resultRelInfo->ri_YbWholeRowAttNo));
 
 				}
 			}
 			else if (relkind == RELKIND_RELATION ||
-				relkind == RELKIND_MATVIEW ||
-				relkind == RELKIND_PARTITIONED_TABLE)
+					 relkind == RELKIND_MATVIEW ||
+					 relkind == RELKIND_PARTITIONED_TABLE)
 			{
 				resultRelInfo->ri_RowIdAttNo =
 					ExecFindJunkAttributeInTlist(subplan->targetlist, "ctid");
@@ -5200,10 +5239,11 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 				resultRelInfo->ri_FdwRoutine->GetForeignModifyBatchSize(resultRelInfo);
 			Assert(resultRelInfo->ri_BatchSize >= 1);
 		}
-		else if (IsYBRelation(resultRelInfo->ri_RelationDesc))
-			resultRelInfo->ri_BatchSize = yb_insert_on_conflict_read_batch_size;
 		else
 			resultRelInfo->ri_BatchSize = 1;
+
+		if (YbIsInsertOnConflictReadBatchingPossible(resultRelInfo))
+			resultRelInfo->ri_ybIocBatchingPossible = true;
 	}
 
 	/*
@@ -5240,15 +5280,7 @@ ExecEndModifyTable(ModifyTableState *node)
 	 * CONFLICT batching happens.
 	 */
 	if (node->yb_ioc_state)
-	{
-		/*
-		 * First, free up the key cache (and intents cache if possible)
-		 * corresponding to this state.
-		 */
-		YBCPgClearInsertOnConflictCache(node->yb_ioc_state);
-
 		YbFreeInsertOnConflictBatchState(node->yb_ioc_state);
-	}
 
 	/*
 	 * Allow any FDWs to shut down
@@ -5324,9 +5356,10 @@ ExecReScanModifyTable(ModifyTableState *node)
  * Should be called after INSERT/UPDATE/DELETE has been processed.
  * For DELETE, both desc and newtup will be NULL.
  */
-static void YbPostProcessDml(CmdType cmd_type,
-							 Relation rel,
-							 TupleTableSlot *newslot)
+static void
+YbPostProcessDml(CmdType cmd_type,
+				 Relation rel,
+				 TupleTableSlot *newslot)
 {
 	/*
 	 * TODO(alex, myang):
@@ -5336,22 +5369,69 @@ static void YbPostProcessDml(CmdType cmd_type,
 }
 
 static void
-YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state,
-								 int batch_size)
+YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state)
 {
 	*state = palloc0(sizeof(YbInsertOnConflictBatchState));
-	(*state)->slots = palloc(sizeof(TupleTableSlot *) * batch_size);
-	(*state)->planSlots = palloc(sizeof(TupleTableSlot *) * batch_size);
+	(*state)->slots = palloc(sizeof(TupleTableSlot *) *
+							 yb_insert_on_conflict_read_batch_size);
+	(*state)->planSlots = palloc(sizeof(TupleTableSlot *) *
+								 yb_insert_on_conflict_read_batch_size);
 }
 
 static void
 YbFreeInsertOnConflictBatchState(YbInsertOnConflictBatchState *state)
 {
 	Assert(state);
-	Assert(state->pending_relids == NIL);
+
+	/*
+	 * Drop input slots and read slots (this should only be the case when
+	 * ExecutePlan numberTuples is nonzero and reached).
+	 */
+	list_free(state->pending_relids);
+	for (int i = 0; i < state->num_slots; ++i)
+	{
+		if (state->slots[i])
+		{
+			ExecDropSingleTupleTableSlot(state->slots[i]);
+			Assert(state->planSlots[i]);
+			ExecDropSingleTupleTableSlot(state->planSlots[i]);
+		}
+	}
 	pfree(state->slots);
 	pfree(state->planSlots);
+	YbDropInsertOnConflictReadSlots(state);
+
+	/*
+	 * Remove map from maps.
+	 */
+	YBCPgClearInsertOnConflictCache(state);
+
+	/*
+	 * Free state.
+	 */
 	pfree(state);
+}
+
+static void
+YbDropInsertOnConflictReadSlots(YbInsertOnConflictBatchState *state)
+{
+	/*
+	 * Drop the slots stored by the batch-read operation one by one. Doing
+	 * this here (rather than in pggate) keeps all the slot management code
+	 * in one place: slots are allocated in execIndexing and deallocated in
+	 * this function.
+	 */
+	YbcPgInsertOnConflictKeyInfo info = {NULL};
+	const uint64_t key_count = YBCPgGetInsertOnConflictKeyCount(state);
+
+	for (uint64_t i = 0; i < key_count; i++)
+	{
+		HandleYBStatus(YBCPgDeleteNextInsertOnConflictKey(state,
+														  &info));
+		if (info.slot)
+			ExecDropSingleTupleTableSlot(info.slot);
+	}
+	Assert(YBCPgGetInsertOnConflictKeyCount(state) == 0);
 }
 
 /*
@@ -5362,16 +5442,16 @@ YbAddSlotToBatch(ModifyTableContext *context,
 				 ResultRelInfo *resultRelInfo,
 				 TupleTableSlot *planSlot,
 				 TupleTableSlot *slot,
-				 YBCPgStatement blockInsertStmt)
+				 YbcPgStatement blockInsertStmt)
 {
 	MemoryContext oldContext;
 	EState	   *estate = context->estate;
 
 	oldContext = MemoryContextSwitchTo(estate->es_query_cxt);
 
+	Assert(resultRelInfo->ri_ybIocBatchingPossible);
 	if (!context->mtstate->yb_ioc_state)
-		YbInitInsertOnConflictBatchState(&context->mtstate->yb_ioc_state,
-										 resultRelInfo->ri_BatchSize);
+		YbInitInsertOnConflictBatchState(&context->mtstate->yb_ioc_state);
 	YbInsertOnConflictBatchState *state = context->mtstate->yb_ioc_state;
 
 	/*
@@ -5420,7 +5500,7 @@ YbAddSlotToBatch(ModifyTableContext *context,
  */
 static TupleTableSlot *
 YbFlushSlotsFromBatch(ModifyTableContext *context,
-					  YBCPgStatement blockInsertStmt)
+					  YbcPgStatement blockInsertStmt)
 {
 	TupleTableSlot *slot;
 	TupleTableSlot *planSlot;
@@ -5441,6 +5521,7 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 	if (!state->flush_idx)
 	{
 		ListCell   *l1;
+
 		foreach(l1, state->pending_relids)
 		{
 			resultRelInfo = (ResultRelInfo *) lfirst(l1);
@@ -5495,8 +5576,8 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 														 slot,
 														 blockInsertStmt,
 														 canSetTag,
-														 NULL /* inserted_tuple */,
-														 NULL /* insert_destRel*/);
+														 NULL /* inserted_tuple */ ,
+														 NULL /* insert_destRel */ );
 
 			/* Restore scantuple */
 			econtext->ecxt_scantuple = save_scantuple;
@@ -5518,23 +5599,7 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 		state->flush_idx = 0;
 	}
 
-	/*
-	 * Drop the slots stored by the batch-read operation one by one. Doing
-	 * this here (rather than in pggate) keeps all the slot management code
-	 * in one place: slots are allocated in execIndexing and deallocated in
-	 * this function.
-	 */
-	YBCPgInsertOnConflictKeyInfo info = {NULL};
-	const uint64_t key_count = YBCPgGetInsertOnConflictKeyCount(state);
-	for (uint64_t i = 0; i < key_count; i++)
-	{
-		HandleYBStatus(YBCPgDeleteNextInsertOnConflictKey(state,
-														  &info));
-		if (info.slot)
-			ExecDropSingleTupleTableSlot(info.slot);
-	}
-	Assert(YBCPgGetInsertOnConflictKeyCount(state) == 0);
-
+	YbDropInsertOnConflictReadSlots(state);
 	state->num_slots = 0;
 	Assert(!state->flush_idx);
 	Assert(state->pending_relids == NIL);
@@ -5560,7 +5625,7 @@ YbExecCheckIndexConstraints(EState *estate,
 	List	   *descriptors = NIL;
 	ListCell   *lc;
 	bool		retval = true;
-	YBCPgInsertOnConflictKeyState keyState;
+	YbcPgInsertOnConflictKeyState keyState;
 
 	/*
 	 * Lossy or not, we recheck the condition since we don't know which
@@ -5581,15 +5646,15 @@ YbExecCheckIndexConstraints(EState *estate,
 	numIndices = resultRelInfo->ri_NumIndices;
 	arbiterIndexes = resultRelInfo->ri_onConflictArbiterIndexes;
 
-	if (!YbIsInsertOnConflictReadBatchingEnabled(resultRelInfo))
+	if (!(resultRelInfo->ri_ybIocBatchingPossible && yb_ioc_state))
 		return ExecCheckIndexConstraints(resultRelInfo, slot, estate,
 										 conflictTid, arbiterIndexes,
 										 ybConflictSlot);
 
 	for (i = 0; i < numIndices; i++)
 	{
-		Relation index = relationDescs[i];
-		IndexInfo *indexInfo = indexInfoArray[i];
+		Relation	index = relationDescs[i];
+		IndexInfo  *indexInfo = indexInfoArray[i];
 
 		if (!YbShouldCheckUniqueOrExclusionIndex(indexInfo, index,
 												 resultRelInfo->ri_RelationDesc,
@@ -5631,8 +5696,9 @@ YbExecCheckIndexConstraints(EState *estate,
 		 * nulls into account for NULLS NOT DISTINCT), that could be a problem.
 		 * TODO(jason): revisit when exclusion constraint is supported.
 		 */
-		YBCPgYBTupleIdDescriptor *descr =
-			YBCBuildUniqueIndexYBTupleId(index, values, isnull);
+		YbcPgYBTupleIdDescriptor *descr = YBCBuildUniqueIndexYBTupleId(index,
+																	   values,
+																	   isnull);
 
 		/*
 		 * If this function is invoked from YbExecUpdateAct, we can skip the
@@ -5673,7 +5739,8 @@ YbExecCheckIndexConstraints(EState *estate,
 				if (phase == DO_UPDATE_INSERT_PHASE)
 				{
 					Assert(ybConflictSlot && !*ybConflictSlot);
-					YBCPgInsertOnConflictKeyInfo info = {NULL};
+					YbcPgInsertOnConflictKeyInfo info = {NULL};
+
 					HandleYBStatus(YBCPgDeleteInsertOnConflictKey(descr,
 																  yb_ioc_state,
 																  &info));
@@ -5704,10 +5771,10 @@ YbExecCheckIndexConstraints(EState *estate,
 				YBCPgClearAllInsertOnConflictCaches();
 
 				ereport(ERROR,
-					(errcode(ERRCODE_CARDINALITY_VIOLATION),
-					/* translator: %s is a SQL command name */
-					errmsg("%s command cannot affect row a second time", "ON CONFLICT DO UPDATE"),
-					errhint("Ensure that no rows proposed for insertion within the same command have duplicate constrained values.")));
+						(errcode(ERRCODE_CARDINALITY_VIOLATION),
+				/* translator: %s is a SQL command name */
+						 errmsg("%s command cannot affect row a second time", "ON CONFLICT DO UPDATE"),
+						 errhint("Ensure that no rows proposed for insertion within the same command have duplicate constrained values.")));
 
 			case KEY_NOT_FOUND:
 				descriptors = lappend(descriptors, descr);
@@ -5723,4 +5790,50 @@ yb_check_constr_cleanup:;
 
 	list_free(descriptors);
 	return retval;
+}
+
+/*
+ * Function to return a bitmapset of columns that are marked for update by the
+ * planner.
+ */
+Bitmapset *
+YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
+							  ResultRelInfo *partitionRelInfo)
+{
+	ModifyTableState *mtstate = context->mtstate;
+	EState	   *estate = context->estate;
+	RangeTblEntry *rte = rt_fetch(partitionRelInfo->ri_RangeTableIndex,
+								  estate->es_range_table);
+	ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
+	Bitmapset  *cols_marked_for_update = bms_copy(rte->updatedCols);
+	Bitmapset  *partition_cols = NULL;
+
+	if (!(plan->onConflictAction == ONCONFLICT_UPDATE &&
+		  mtstate->mt_partition_tuple_routing &&
+		  partitionRelInfo->ri_RootToPartitionMap))
+
+		return cols_marked_for_update;
+
+	/*
+	 * The given query is an ON CONFLICT .. DO UPDATE query on a partitioned
+	 * table. In such cases, the plan state may not hold details of the correct
+	 * partition whose tuple is to be updated, as the tuple may not have been
+	 * routed at planning time. Moreover, the partition has defined its columns
+	 * in an order that is different to that of the root table. In such cases,
+	 * it is essential to re-map the attribute numbers in the updated columns
+	 * bitmapset to that of the partition's.
+	 * For example:
+	 * A parent table 'base' has columns in the order [a, b, c] while one of its
+	 * partitions 'p1' has columns in the order [b, c, a].
+	 * Suppose columns 'a' and 'b' are marked for update.
+	 * The planner will produce the following bitmapset: {a -> 10, b -> 11}
+	 * based on 'base' while the correct mapping for 'p1' is as follows:
+	 * {b -> 10, a -> 12}.
+	 */
+	partition_cols = execute_attr_map_cols(partitionRelInfo->ri_RootToPartitionMap->attrMap,
+										   cols_marked_for_update,
+										   partitionRelInfo->ri_RelationDesc);
+
+	bms_free(cols_marked_for_update);
+	return partition_cols;
 }

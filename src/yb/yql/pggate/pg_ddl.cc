@@ -73,7 +73,7 @@ PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
                                    PgOid database_oid,
                                    PgOid source_database_oid,
                                    PgOid next_oid,
-                                   YbCloneInfo *yb_clone_info,
+                                   YbcCloneInfo *yb_clone_info,
                                    bool colocated,
                                    bool use_transaction)
     : BaseType(pg_session) {
@@ -161,7 +161,7 @@ PgCreateTableBase::PgCreateTableBase(
     bool is_shared_table,
     bool is_sys_catalog_table,
     bool if_not_exist,
-    PgYbrowidMode ybrowid_mode,
+    YbcPgYbrowidMode ybrowid_mode,
     bool is_colocated_via_database,
     const PgObjectId& tablegroup_oid,
     ColocationId colocation_id,
@@ -231,7 +231,7 @@ Status PgCreateTableBase::SetNumTablets(int32_t num_tablets) {
   return Status::OK();
 }
 
-Status PgCreateTableBase::SetVectorOptions(YbPgVectorIdxOptions* options) {
+Status PgCreateTableBase::SetVectorOptions(YbcPgVectorIdxOptions* options) {
   auto options_pb = req_.mutable_vector_idx_options();
   options_pb->set_dist_type(static_cast<PgVectorDistanceType>(options->dist_type));
   options_pb->set_idx_type(static_cast<PgVectorIndexType>(options->idx_type));
@@ -242,7 +242,7 @@ Status PgCreateTableBase::SetVectorOptions(YbPgVectorIdxOptions* options) {
 
   req_.set_is_unique_index(false);
 
-  if (options->idx_type == YbPgVectorIdxType::YB_VEC_DUMMY) {
+  if (options->idx_type == YbcPgVectorIdxType::YB_VEC_DUMMY) {
     // Disable multi-tablet for this for now.
     RETURN_NOT_OK(SetNumTablets(1));
   }
@@ -280,7 +280,7 @@ PgCreateTable::PgCreateTable(
     bool is_shared_table,
     bool is_sys_catalog_table,
     bool if_not_exist,
-    PgYbrowidMode ybrowid_mode,
+    YbcPgYbrowidMode ybrowid_mode,
     bool is_colocated_via_database,
     const PgObjectId& tablegroup_oid,
     ColocationId colocation_id,
@@ -305,7 +305,7 @@ PgCreateIndex::PgCreateIndex(
     bool is_shared_table,
     bool is_sys_catalog_table,
     bool if_not_exist,
-    PgYbrowidMode ybrowid_mode,
+    YbcPgYbrowidMode ybrowid_mode,
     bool is_colocated_via_database,
     const PgObjectId& tablegroup_oid,
     ColocationId colocation_id,
@@ -398,9 +398,9 @@ PgAlterTable::PgAlterTable(
 }
 
 Status PgAlterTable::AddColumn(const char *name,
-                               const YBCPgTypeEntity *attr_type,
+                               const YbcPgTypeEntity *attr_type,
                                int order,
-                               YBCPgExpr missing_value) {
+                               YbcPgExpr missing_value) {
   auto& col = *req_.mutable_add_columns()->Add();
   col.set_attr_name(name);
   col.set_attr_ybtype(attr_type->yb_type);
@@ -502,7 +502,7 @@ Status PgDropDBSequences::Exec() {
 
 PgCreateReplicationSlot::PgCreateReplicationSlot(
     const PgSession::ScopedRefPtr& pg_session, const char* slot_name, const char* plugin_name,
-    PgOid database_oid, YBCPgReplicationSlotSnapshotAction snapshot_action, YBCLsnType lsn_type)
+    PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type)
     : BaseType(pg_session) {
   req_.set_database_oid(database_oid);
   req_.set_replication_slot_name(slot_name);

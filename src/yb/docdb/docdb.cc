@@ -78,8 +78,8 @@ using namespace std::placeholders;
 DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1680,
              "Max number of intent records allowed in single cdc batch. ");
 
-DEFINE_RUNTIME_bool(cdc_cache_intent_block, false,
-                    "When set to true, cache the intent block read for CDC.");
+DEFINE_RUNTIME_bool(cdc_enable_caching_db_block, true,
+                    "When set to true, cache the DB block read for CDC in block cache.");
 
 namespace yb {
 namespace docdb {
@@ -330,14 +330,14 @@ Result<ApplyTransactionState> GetIntentsBatch(
   const Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
 
   auto reverse_index_iter = CreateRocksDBIterator(
-      intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      !FLAGS_cdc_cache_intent_block ? rocksdb::kNoCacheQueryId : rocksdb::kDefaultQueryId,
+      intents_db, &KeyBounds::kNoBounds, BloomFilterOptions::Inactive(),
+      !FLAGS_cdc_enable_caching_db_block ? rocksdb::kNoCacheQueryId : rocksdb::kDefaultQueryId,
       /* file_filter = */ nullptr, &reverse_index_upperbound,
       rocksdb::CacheRestartBlockKeys::kFalse);
 
   BoundedRocksDbIterator intent_iter = CreateRocksDBIterator(
-      intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      !FLAGS_cdc_cache_intent_block ? rocksdb::kNoCacheQueryId : rocksdb::kDefaultQueryId,
+      intents_db, key_bounds, BloomFilterOptions::Inactive(),
+      !FLAGS_cdc_enable_caching_db_block ? rocksdb::kNoCacheQueryId : rocksdb::kDefaultQueryId,
       /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
       rocksdb::CacheRestartBlockKeys::kFalse);
 

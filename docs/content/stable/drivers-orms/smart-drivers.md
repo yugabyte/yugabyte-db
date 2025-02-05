@@ -42,7 +42,7 @@ YugabyteDB smart drivers have the following key features.
 | [Cluster aware](#cluster-aware-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
 | [Node type aware](#node-type-aware-load-balancing) | If your cluster has read replicas, distribute connections based on the node type (primary or read replica). (Not supported by all smart drivers.) |
 | [Topology aware](#topology-aware-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
-| [Configurable&nbsp;refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
+| [Configurable&nbsp;refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable. |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
 ## Overview
@@ -138,8 +138,6 @@ For example, using the Go smart driver, you can change the interval to four minu
 ```go
 "postgres://username:password@host:5433/database_name?load_balance=true&yb_servers_refresh_interval=240"
 ```
-
-(Note that currently this feature is not available in the YugabyteDB Python Smart Driver.)
 
 ### Topology-aware load balancing
 
@@ -283,7 +281,7 @@ YugabyteDB Aeon requires TLS/SSL. Depending on the smart driver, using load bala
 | Go | Yes | |
 | Node.js | Yes | In the ssl object, set `rejectUnauthorized` to true, `ca` to point to your cluster CA certificate, and `servername` to the cluster host name. |
 
-For more information on using TLS/SSL in YugabyteDB Aeon, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+For more information on using TLS/SSL in YugabyteDB Aeon, refer to [Encryption in transit](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 ## Learn more
 

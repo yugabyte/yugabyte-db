@@ -17,8 +17,8 @@ import com.google.common.collect.ImmutableMap;
 
 import java.util.*;
 
+import org.yb.CommonNet;
 import org.yb.CommonNet.CloudInfoPB;
-import org.yb.master.CatalogEntityInfo;
 
 public class PlacementBlock {
   final String cloud;
@@ -75,8 +75,8 @@ public class PlacementBlock {
       "placement_zone", zone);
   }
 
-  public CatalogEntityInfo.PlacementBlockPB toPB() {
-    return CatalogEntityInfo.PlacementBlockPB.newBuilder()
+  public CommonNet.PlacementBlockPB toPB() {
+    return CommonNet.PlacementBlockPB.newBuilder()
       .setCloudInfo(
         CloudInfoPB.newBuilder()
           .setPlacementCloud(cloud)

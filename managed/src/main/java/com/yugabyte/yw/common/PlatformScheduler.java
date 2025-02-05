@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -31,45 +32,39 @@ public class PlatformScheduler {
     this.shutdownHookHandler = shutdownHookHandler;
   }
 
-  public Cancellable schedule(
-      String name, Duration initialDelay, Duration interval, Runnable runnable) {
+  private Cancellable createShutdownAwareSchedule(
+      String name, Runnable runnable, Function<Runnable, Cancellable> scheduleFactory) {
     final AtomicBoolean isRunning = new AtomicBoolean();
     final Object lock = new Object();
-
-    Cancellable cancellable =
-        actorSystem
-            .scheduler()
-            .scheduleWithFixedDelay(
-                initialDelay,
-                interval,
-                () -> {
-                  boolean shouldRun = false;
-                  synchronized (lock) {
-                    // Synchronized block in shutdown and this should be serialized.
-                    shouldRun =
-                        !shutdownHookHandler.isShutdown()
-                            && !HighAvailabilityConfig.isFollower()
-                            && isRunning.compareAndSet(false, true);
-                  }
-                  if (shouldRun) {
-                    try {
-                      runnable.run();
-                    } finally {
-                      isRunning.set(false);
-                      if (shutdownHookHandler.isShutdown()) {
-                        synchronized (lock) {
-                          lock.notify();
-                        }
-                      }
-                    }
-                  } else {
-                    log.warn(
-                        "Previous run of scheduler {} is in progress, is being shut down, or YBA is"
-                            + " in follower mode.",
-                        name);
-                  }
-                },
-                executionContext);
+    Runnable wrappedRunnable =
+        () -> {
+          boolean shouldRun = false;
+          synchronized (lock) {
+            // Synchronized block in shutdown and this should be serialized.
+            shouldRun =
+                !shutdownHookHandler.isShutdown()
+                    && !HighAvailabilityConfig.isFollower()
+                    && isRunning.compareAndSet(false, true);
+          }
+          if (shouldRun) {
+            try {
+              runnable.run();
+            } finally {
+              isRunning.set(false);
+              if (shutdownHookHandler.isShutdown()) {
+                synchronized (lock) {
+                  lock.notify();
+                }
+              }
+            }
+          } else {
+            log.warn(
+                "Previous run of scheduler {} is in progress, is being shut down, or YBA is in"
+                    + " follower mode.",
+                name);
+          }
+        };
+    Cancellable cancellable = scheduleFactory.apply(wrappedRunnable);
     shutdownHookHandler.addShutdownHook(
         cancellable,
         can -> {
@@ -93,29 +88,21 @@ public class PlatformScheduler {
     return cancellable;
   }
 
-  public Cancellable scheduleOnce(String name, Duration initialDelay, Runnable runnable) {
-    final AtomicBoolean isRunning = new AtomicBoolean();
+  public Cancellable schedule(
+      String name, Duration initialDelay, Duration interval, Runnable runnable) {
+    return createShutdownAwareSchedule(
+        name,
+        runnable,
+        r ->
+            actorSystem
+                .scheduler()
+                .scheduleWithFixedDelay(initialDelay, interval, r, executionContext));
+  }
 
-    return actorSystem
-        .scheduler()
-        .scheduleOnce(
-            initialDelay,
-            () -> {
-              boolean shouldRun = false;
-              synchronized (isRunning) {
-                shouldRun =
-                    isRunning.compareAndSet(false, true) && !HighAvailabilityConfig.isFollower();
-              }
-              if (shouldRun) {
-                try {
-                  runnable.run();
-                } finally {
-                  isRunning.set(false);
-                }
-              } else {
-                log.warn("Scheduler {} did not run because YBA is in follower mode.", name);
-              }
-            },
-            executionContext);
+  public Cancellable scheduleOnce(String name, Duration initialDelay, Runnable runnable) {
+    return createShutdownAwareSchedule(
+        name,
+        runnable,
+        r -> actorSystem.scheduler().scheduleOnce(initialDelay, r, executionContext));
   }
 }

@@ -18,15 +18,20 @@ import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.logging.LogUtil;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
 import jakarta.inject.Inject;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -52,9 +57,11 @@ public class TaskQueue {
   public TaskQueue(
       ShutdownHookHandler shutdownHookHandler, PlatformExecutorFactory platformExecutorFactory) {
     this(DEFAULT_QUEUE_CAPACITY);
+    shutdownHookHandler.addShutdownHook(this, tq -> tq.shutdown(), 120 /* weight */);
   }
 
-  public TaskQueue(int capacity) {
+  @VisibleForTesting
+  TaskQueue(int capacity) {
     this.capacity = capacity;
   }
 
@@ -91,6 +98,8 @@ public class TaskQueue {
     synchronized boolean add(Node node) {
       checkState(node != null, "Node cannot be null");
       ensureCapacity();
+      log.debug(
+          "Queuing task {}. Existing queue size is {}", node.taskRunnable.getTaskType(), size());
       node.next = null;
       node.previous = null;
       if (head == null || tail == null) {
@@ -116,6 +125,8 @@ public class TaskQueue {
       if (node == null || !node.isMember || size <= 0) {
         return false;
       }
+      log.debug(
+          "Removing task {}. Existing queue size is {}", node.taskRunnable.getTaskType(), size());
       if (node == head) {
         head = node.next;
       }
@@ -147,6 +158,18 @@ public class TaskQueue {
         node = next;
       }
     }
+
+    synchronized Node find(Predicate<Node> predicate) {
+      Node node = head;
+      while (node != null) {
+        Node next = node.next;
+        if (predicate.test(node)) {
+          return node;
+        }
+        node = next;
+      }
+      return null;
+    }
   }
 
   @VisibleForTesting
@@ -164,6 +187,30 @@ public class TaskQueue {
       this.taskRunnable = taskRunnable;
       this.taskParams = taskParams;
       this.correlationId = correlationId;
+    }
+  }
+
+  private void shutdown() {
+    Iterator<Map.Entry<UUID, Queue>> iter = targetTaskQueues.entrySet().iterator();
+    while (iter.hasNext()) {
+      Map.Entry<UUID, Queue> entry = iter.next();
+      targetKeyLock.acquireLock(entry.getKey());
+      try {
+        Queue queue = entry.getValue();
+        queue.remove(
+            n -> {
+              if (n.taskRunnable.isRunning()) {
+                // Task executor will handle it.
+                return false;
+              }
+              n.taskRunnable.updateTaskDetailsOnError(
+                  State.Aborted, new CancellationException("Platform shutdown"));
+              return true;
+            });
+      } finally {
+        targetKeyLock.releaseLock(entry.getKey());
+      }
+      iter.remove();
     }
   }
 
@@ -194,16 +241,44 @@ public class TaskQueue {
     return new Node(taskRunnable, taskParams.getTaskParams(), correlationId);
   }
 
+  private Duration getQueueWaitTime(TaskParams taskParams, RunnableTask taskRunnable) {
+    Duration waitTime =
+        taskRunnable
+            .getTask()
+            .getQueueWaitTime(taskParams.getTaskType(), taskParams.getTaskParams());
+    if (waitTime == null) {
+      log.error(
+          "Task {} is not queuable on existing task {}({})",
+          taskParams.getTaskType(),
+          taskRunnable.getTaskType(),
+          taskRunnable.getTaskUUID());
+      throw new PlatformServiceException(
+          CONFLICT,
+          String.format(
+              "Task %s cannot be queued on existing task %s",
+              taskParams.getTaskType(), taskRunnable.getTaskType()));
+    }
+    return waitTime;
+  }
+
   public int size(UUID targetUuid) {
     Queue queue = targetTaskQueues.get(targetUuid);
     return queue == null ? 0 : queue.size();
   }
 
+  /**
+   * Queue the given task with the task params.
+   *
+   * @param taskParams the task params.
+   * @param taskRunnnableCreator the runnable task creator callback.
+   * @param taskRunnableConsumer the task submitter callback.
+   * @return the queued runnable task.
+   */
   public RunnableTask enqueue(
       TaskParams taskParams,
       Function<TaskParams, RunnableTask> taskRunnnableCreator,
       BiConsumer<RunnableTask, ITaskParams> taskRunnableConsumer) {
-    UUID targetUuid = taskParams.getTaskParams().getTargetUuid();
+    UUID targetUuid = taskParams.getTaskParams().getTargetUuid(taskParams.getTaskType());
     if (targetUuid == null) {
       log.info("Unknown target for task {}. Queuing is not supported", taskParams.getTaskType());
       RunnableTask taskRunnable =
@@ -213,36 +288,15 @@ public class TaskQueue {
     }
     targetKeyLock.acquireLock(targetUuid);
     try {
-      Duration queueWaitTime = Duration.ZERO;
       Queue queue = getOrCreateQueue(targetUuid);
       Node head = queue.size == 0 ? null : queue.peek();
-      if (head != null) {
-        ITask currentTask = head.taskRunnable.getTask();
-        Duration waitTime =
-            currentTask.getQueueWaitTime(taskParams.getTaskType(), taskParams.getTaskParams());
-        if (waitTime == null) {
-          log.error(
-              "Task {} is not queuable on existing task {}({})",
-              taskParams.getTaskType(),
-              head.taskRunnable.getTaskType(),
-              head.taskRunnable.getTaskUUID());
-          throw new PlatformServiceException(
-              CONFLICT,
-              String.format(
-                  "Task %s cannot be queued on existing task %s",
-                  taskParams.getTaskType(), head.taskRunnable.getTaskType()));
-        }
-        queueWaitTime = waitTime;
-      }
+      Duration queueWaitTime =
+          head == null ? Duration.ZERO : getQueueWaitTime(taskParams, head.taskRunnable);
       queue.ensureCapacity();
       Node node =
           createQueueNode(
               taskParams, taskRunnnableCreator, queueWaitTime.plus(Duration.ofMinutes(1)));
       // Always add to the queue to keep track of in-progress task too.
-      log.info(
-          "Queuing task {}. Existing queue size is {}",
-          node.taskRunnable.getTaskType(),
-          queue.size());
       queue.add(node);
       if (head == null) {
         try {
@@ -256,7 +310,21 @@ public class TaskQueue {
             "Aborting the currently running task {} in {} secs",
             head.taskRunnable.getTaskType(),
             queueWaitTime.getSeconds());
-        head.taskRunnable.abort(queueWaitTime);
+        final Instant now = Instant.now();
+        // This is to cache the queue wait time to avoid duplicate calculation.
+        final AtomicReference<Pair<Duration, Instant>> waitAbortTime =
+            new AtomicReference<>(new Pair<>(queueWaitTime, now.plus(queueWaitTime)));
+        head.taskRunnable.setAbortTimeSupplier(
+            () -> {
+              Duration waitTime = getQueueWaitTime(taskParams, head.taskRunnable);
+              return waitAbortTime
+                  .updateAndGet(
+                      p ->
+                          p.getFirst().equals(waitTime)
+                              ? p
+                              : new Pair<>(waitTime, now.plus(waitTime)))
+                  .getSecond();
+            });
       } else {
         // This is not expected to happen.
         // Fail and remove all the tasks in the queue if it happens due to bugs.
@@ -285,6 +353,13 @@ public class TaskQueue {
     }
   }
 
+  /**
+   * Remove the completed task from the queue and submit the next waiting task.
+   *
+   * @param completedTask the completed task.
+   * @param taskRunnableConsumer the task submitter callback.
+   * @return the submitted task.
+   */
   public RunnableTask dequeue(
       RunnableTask completedTask, BiConsumer<RunnableTask, ITaskParams> taskRunnableConsumer) {
     UUID targetUuid = taskTargets.get(completedTask.getTaskUUID());
@@ -329,5 +404,60 @@ public class TaskQueue {
       }
     }
     return null;
+  }
+
+  /**
+   * Find the task with the given UUID in the queue.
+   *
+   * @param taskUuid the task UUID.
+   * @return the runnable task if it is found else null.
+   */
+  public RunnableTask find(UUID taskUuid) {
+    UUID targetUuid = taskTargets.get(taskUuid);
+    if (targetUuid != null) {
+      targetKeyLock.acquireLock(targetUuid);
+      try {
+        Queue queue = targetTaskQueues.get(targetUuid);
+        Node node =
+            queue == null ? null : queue.find(n -> taskUuid.equals(n.taskRunnable.getTaskUUID()));
+        if (node != null) {
+          return node.taskRunnable;
+        }
+      } finally {
+        targetKeyLock.releaseLock(targetUuid);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Cancel or remove a queued task that is still not running.
+   *
+   * @param taskUuid the task UUID to be cancelled.
+   * @return true if it is found and removed.
+   */
+  public boolean cancel(UUID taskUuid) {
+    UUID targetUuid = taskTargets.get(taskUuid);
+    if (targetUuid != null) {
+      targetKeyLock.acquireLock(targetUuid);
+      try {
+        Queue queue = targetTaskQueues.get(targetUuid);
+        Node node =
+            queue == null ? null : queue.find(n -> taskUuid.equals(n.taskRunnable.getTaskUUID()));
+        if (node != null && !node.taskRunnable.isRunning()) {
+          queue.remove(node);
+          String msg =
+              String.format(
+                  "Task %s(%s) is aborted while waiting in the queue",
+                  node.taskRunnable.getTaskType(), node.taskRunnable.getTaskUUID());
+          log.info(msg);
+          node.taskRunnable.updateTaskDetailsOnError(State.Aborted, new CancellationException(msg));
+          return true;
+        }
+      } finally {
+        targetKeyLock.releaseLock(targetUuid);
+      }
+    }
+    return false;
   }
 }

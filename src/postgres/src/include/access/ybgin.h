@@ -48,10 +48,11 @@ extern void ybgincostestimate(struct PlannerInfo *root,
 							  double *indexPages);
 extern bytea *ybginoptions(Datum reloptions, bool validate);
 extern bool ybginvalidate(Oid opclassoid);
-extern void ybginbindschema(YBCPgStatement handle,
+extern void ybginbindschema(YbcPgStatement handle,
 							struct IndexInfo *indexInfo,
 							TupleDesc indexTupleDesc,
-							int16 *coloptions);
+							int16 *coloptions,
+							Oid *opclassIds);
 extern IndexScanDesc ybginbeginscan(Relation rel, int nkeys, int norderbys);
 extern void ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 						ScanKey orderbys, int norderbys);

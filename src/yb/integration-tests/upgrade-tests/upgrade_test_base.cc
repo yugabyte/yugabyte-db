@@ -23,7 +23,7 @@
 #include "yb/util/debug.h"
 #include "yb/util/env_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include "yb/server/server_base.pb.h"
@@ -181,18 +181,6 @@ Status RestartDaemonInVersion(T& daemon, const std::string& bin_path) {
   return daemon.Restart();
 }
 
-void AppendCsvFlagValue(
-    std::vector<std::string>& flag_list, const std::string& flag_name,
-    const std::string& value_to_add) {
-  for (auto& flag : flag_list) {
-    if (flag.starts_with(Format("--$0=", flag_name))) {
-      flag += Format(",$0", value_to_add);
-      return;
-    }
-  }
-  flag_list.push_back(Format("--$0=$1", flag_name, value_to_add));
-}
-
 // Add the flag_name to undefok list, so that it can be set on all versions even if the version does
 // not contain the flag. If the flag_list already contains an undefok flag, append to it, else
 // insert a new entry.
@@ -227,6 +215,8 @@ bool IsUpgradeSupported(const std::string& from_version) {
 
 }  // namespace
 
+const MonoDelta UpgradeTestBase::kNoDelayBetweenNodes = 0s;
+
 UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
     : old_version_info_(CHECK_RESULT(GetBuildInfoForVersion(from_version))) {
   LOG(INFO) << "Old version: " << old_version_info_.version << ": "
@@ -235,24 +225,28 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 
 void UpgradeTestBase::SetUp() {
   if (IsSanitizer()) {
-    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported with sanitizers";
   }
 
-  if (old_version_info_.version.empty()) {
-    test_skipped_ = true;
-    CHECK(false) << "Build info for old version not set";
-    return;
+// Disable mac tests in the lab since the lab runs multiple tests in parallel on the mac causing
+// these to timeout.
+#ifdef __APPLE__
+  if (getenv("YB_SPARK_COPY_MODE")) {
+    GTEST_SKIP() << "Upgrade testing not supported on mac spark machines";
+  }
+#endif
+
+  if (GetRelevantUrl(old_version_info_).empty()) {
+    GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
+                 << " for this OS architecture and build type";
   }
 
   if (GetRelevantUrl(old_version_info_).empty()) {
-    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
                  << " for this OS architecture and build type";
   }
 
   if (!IsUpgradeSupported(old_version_info_.version)) {
-    test_skipped_ = true;
     GTEST_SKIP() << "PG15 upgrade not supported from version " << old_version_info_.version;
   }
 
@@ -325,8 +319,8 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
                                    current_version_info_.ysql_major_version();
 
   if (IsYsqlMajorVersionUpgrade()) {
-    // YB_TODO: Remove when support for expression pushdown in mixed mode is implemented.
-    RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
+    RETURN_NOT_OK(
+        cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "11"));
   }
 
   return Status::OK();
@@ -512,6 +506,10 @@ Status UpgradeTestBase::FinalizeYsqlMajorCatalogUpgrade() {
           req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
+  }
+
+  if (IsYsqlMajorVersionUpgrade()) {
+    RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "0"));
   }
 
   return Status::OK();

@@ -114,6 +114,7 @@ import org.bouncycastle.util.io.pem.PemReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonNet;
+import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.YQLDatabase;
 import org.yb.Schema;
@@ -121,7 +122,6 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
 import org.yb.master.MasterClientOuterClass;
 import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
@@ -1154,6 +1154,72 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Initiates a major catalog upgrade for YSQL.
+   *
+   * @return a Deferred object that will contain the response of the upgrade request.
+   */
+  public Deferred<StartYsqlMajorCatalogUpgradeResponse> startYsqlMajorCatalogUpgrade() {
+    checkIsClosed();
+    StartYsqlMajorCatalogUpgradeRequest rpc =
+        new StartYsqlMajorCatalogUpgradeRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Checks if the YSQL major catalog upgrade is done.
+   *
+   * @return a Deferred object that will be called back with the response indicating whether the
+   *     YSQL major catalog upgrade is done.
+   */
+  public Deferred<IsYsqlMajorCatalogUpgradeDoneResponse> isYsqlMajorCatalogUpgradeDone() {
+    checkIsClosed();
+    IsYsqlMajorCatalogUpgradeDoneRequest rpc =
+        new IsYsqlMajorCatalogUpgradeDoneRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Finalizes the YSQL major catalog upgrade.
+   *
+   * @return a Deferred object that will contain the response of the finalize operation.
+   */
+  public Deferred<FinalizeYsqlMajorCatalogUpgradeResponse> finalizeYsqlMajorCatalogUpgrade() {
+    checkIsClosed();
+    FinalizeYsqlMajorCatalogUpgradeRequest rpc =
+        new FinalizeYsqlMajorCatalogUpgradeRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Initiates a rollback of the YSQL major catalog version.
+   *
+   * @return a Deferred object that will contain the response of the rollback operation.
+   */
+  public Deferred<RollbackYsqlMajorCatalogVersionResponse> rollbackYsqlMajorCatalogVersion() {
+    checkIsClosed();
+    RollbackYsqlMajorCatalogVersionRequest rpc =
+        new RollbackYsqlMajorCatalogVersionRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Retrieves the YSQL major catalog upgrade state.
+   *
+   * @return a Deferred object containing the response of the YSQL major catalog upgrade state.
+   */
+  public Deferred<GetYsqlMajorCatalogUpgradeStateResponse> getYsqlMajorCatalogUpgradeState() {
+    checkIsClosed();
+    GetYsqlMajorCatalogUpgradeStateRequest rpc =
+        new GetYsqlMajorCatalogUpgradeStateRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Get the master tablet id.
    *
    * @return the constant master tablet uuid.
@@ -1942,6 +2008,21 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
+  public Deferred<EditSnapshotScheduleResponse> editSnapshotSchedule(
+      UUID snapshotScheduleUUID,
+      long retentionInSecs,
+      long timeIntervalInSecs) {
+    checkIsClosed();
+    EditSnapshotScheduleRequest request =
+        new EditSnapshotScheduleRequest(
+            this.masterTable,
+            snapshotScheduleUUID,
+            retentionInSecs,
+            timeIntervalInSecs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
   public Deferred<DeleteSnapshotScheduleResponse> deleteSnapshotSchedule(
       UUID snapshotScheduleUUID) {
     checkIsClosed();
@@ -1995,6 +2076,51 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<DeleteSnapshotResponse> deleteSnapshot(UUID snapshotUUID) {
     checkIsClosed();
     DeleteSnapshotRequest request = new DeleteSnapshotRequest(this.masterTable, snapshotUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<CloneNamespaceResponse> cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String targetKeyspaceName,
+      long cloneTimeInMillis) {
+    checkIsClosed();
+    CloneNamespaceRequest request =
+        new CloneNamespaceRequest(
+            this.masterTable,
+            databaseType,
+            sourceKeyspaceName,
+            targetKeyspaceName,
+            cloneTimeInMillis);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<CloneNamespaceResponse> cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String keyspaceId,
+      String targetKeyspaceName,
+      long cloneTimeInMillis) {
+    checkIsClosed();
+    CloneNamespaceRequest request =
+        new CloneNamespaceRequest(
+            this.masterTable,
+            databaseType,
+            sourceKeyspaceName,
+            keyspaceId,
+            targetKeyspaceName,
+            cloneTimeInMillis);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListClonesResponse> listClones(
+      String keyspaceId, Integer cloneSeqNo) {
+    checkIsClosed();
+    ListClonesRequest request =
+        new ListClonesRequest(this.masterTable, keyspaceId, cloneSeqNo);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

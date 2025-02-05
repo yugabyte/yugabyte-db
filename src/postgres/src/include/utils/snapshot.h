@@ -124,8 +124,8 @@ typedef struct SnapshotData *Snapshot;
 
 typedef struct YbReadTimePointHandle
 {
-	bool has_value;
-	uint64 value;
+	bool		has_value;
+	uint64		value;
 } YbReadTimePointHandle;
 
 /*
