@@ -44,9 +44,9 @@ Although [migration assessment](../reference/assess-migration/) and [schema anal
 
 The pg_stat_statements extension in PostgreSQL tracks execution statistics of SQL queries by normalizing them. Because normalization removes the constants, migration assessment can't detect issues related to the constants for the following scenarios:
 
-- `JSON_TABLE` ([JSON Query function](../known-issues/postgresql/#postgresql-12-and-later-features)) usage in DML statements.
-- [Non-decimal integer literals in DML statements.](../known-issues/postgresql/#postgresql-12-and-later-features)
-- [Two-Phase Commit (XA syntax)](../known-issues/postgresql/#two-phase-commit).
+- `JSON_TABLE` ([JSON Query function](../known-issues/postgresql/#postgresql-12-and-later-features)) usage in DML statements
+- [Non-decimal integer literals in DML statements](../known-issues/postgresql/#postgresql-12-and-later-features)
+- [Two-Phase Commit (XA syntax)](../known-issues/postgresql/#two-phase-commit)
 
 For example:
 
