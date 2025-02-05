@@ -35,7 +35,8 @@ public class RestoreYbaBackup extends AbstractTaskBase {
 
   @Override
   public void run() {
-    log.info("Dummy exeuction of RestoreYbaBackup");
+    RestoreYbaBackup.Params taskParams = taskParams();
+    log.info("Execution of RestoreYbaBackup with localPath " + taskParams.localPath);
     return;
   }
 }

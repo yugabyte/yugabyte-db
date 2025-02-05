@@ -609,6 +609,11 @@ public enum TaskType {
       CustomerTask.TaskType.SyncMasterAddresses,
       CustomerTask.TargetType.Universe),
 
+  CreateContinuousBackup(
+      com.yugabyte.yw.commissioner.tasks.CreateContinuousBackup.class,
+      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TargetType.Yba),
+
   CreateYbaBackup(
       com.yugabyte.yw.commissioner.tasks.CreateYbaBackup.class,
       CustomerTask.TaskType.CreateYbaBackup,
@@ -616,12 +621,12 @@ public enum TaskType {
 
   RestoreYbaBackup(
       com.yugabyte.yw.commissioner.tasks.RestoreYbaBackup.class,
-      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TaskType.RestoreYbaBackup,
       CustomerTask.TargetType.Yba),
 
   RestoreContinuousBackup(
       com.yugabyte.yw.commissioner.tasks.RestoreContinuousBackup.class,
-      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TaskType.RestoreYbaBackup,
       CustomerTask.TargetType.Yba),
 
   EnableNodeAgentInUniverse(
