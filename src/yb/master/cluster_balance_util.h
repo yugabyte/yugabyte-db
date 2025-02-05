@@ -230,7 +230,7 @@ struct Options {
   // time.
   bool kAllowLimitOverReplicatedTablets = true;
 
-  // Max number of running tablet replicas that are over the configured limit.
+  // Max number of running tablet replicas that are over the configured limit per table.
   int kMaxOverReplicatedTablets = FLAGS_load_balancer_max_over_replicated_tablets;
 
   // Max number of over-replicated tablet peer removals to do in any one run of the load balancer.
