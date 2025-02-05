@@ -348,6 +348,7 @@
         "tserverHttpPort": "T-Server HTTP Port",
         "tserverRpcPort": "T-Server RPC Port",
         "ybcPackagePath": "YBC Package Path",
+        "ybControllerrRpcPort": "YB Controller RPC Port",
         "yqlServerHttpPort": "YCQL HTTP Port",
         "yqlServerRpcPort": "YCQL Port",
         "ysqlServerHttpPort": "YSQL HTTP Port",

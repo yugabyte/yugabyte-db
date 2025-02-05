@@ -50,6 +50,7 @@ export interface CommunicationPorts {
   ysqlServerHttpPort: number;
   ysqlServerRpcPort: number;
   nodeExporterPort: number;
+  ybControllerrRpcPort: number;
 }
 
 export enum StorageType {
@@ -313,6 +314,7 @@ export interface CommunicationPorts {
   ysqlServerRpcPort: number;
   nodeExporterPort: number;
   internalYsqlServerRpcPort?: number;
+  ybControllerrRpcPort: number;
 }
 
 export interface DeviceInfo {
@@ -593,7 +595,8 @@ export const DEFAULT_COMMUNICATION_PORTS: CommunicationPorts = {
   ysqlServerHttpPort: 13000,
   ysqlServerRpcPort: 5433,
   internalYsqlServerRpcPort: 6433,
-  nodeExporterPort: 9300
+  nodeExporterPort: 9300,
+  ybControllerrRpcPort: 18018
 };
 
 export const DEFAULT_CLOUD_CONFIG: CloudConfigFormValue = {
