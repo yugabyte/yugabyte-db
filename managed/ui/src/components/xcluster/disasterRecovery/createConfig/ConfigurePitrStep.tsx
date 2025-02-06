@@ -9,7 +9,7 @@ import {
   YBReactSelectField
 } from '../../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
-import { DurationUnit } from '../constants';
+import { DurationUnit, PITR_RETENTION_PERIOD_UNIT_OPTIONS } from '../constants';
 import { YBInputField, YBTooltip } from '../../../../redesign/components';
 import { getPitrRetentionPeriodMinValue } from '../utils';
 
@@ -21,23 +21,6 @@ interface ConfigureAlertStepProps {
 
 const TRANSLATION_KEY_PREFIX =
   'clusterDetail.disasterRecovery.config.createModal.step.configurePitr';
-
-// The expectation is that all `DurationUnit`s are presented as options here.
-export const PITR_RETENTION_PERIOD_UNIT_OPTIONS: ReactSelectOption[] = [
-  {
-    label: 'Seconds',
-    value: DurationUnit.SECOND
-  },
-  {
-    label: 'Minutes',
-    value: DurationUnit.MINUTE
-  },
-  {
-    label: 'Hours',
-    value: DurationUnit.HOUR
-  },
-  { label: 'Days', value: DurationUnit.DAY }
-];
 
 export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) => {
   const { control, watch, setValue, trigger, formState } = useFormContext<
@@ -62,9 +45,6 @@ export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) =
     }
   }, [pitrRetentionPeriodUnit]);
 
-  // We enforce a minimum snapshot interval of 5 minutes to prevent extremely short intervals.
-  // More frequent snapshots cause more disk usage because the compactions won't be as optimal due to
-  // more smaller sst tables being flushed every time a snapshot is created.
   const pitrRetentionPeriodMinValue = getPitrRetentionPeriodMinValue(pitrRetentionPeriodUnit);
 
   const handlePitrRetentionPeriodUnitChange = (option: ReactSelectOption) => {
@@ -88,9 +68,9 @@ export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) =
             {t('instruction')}
           </Typography>
           <div className={modalClasses.fieldLabel}>
-            <Typography variant="body2">{t('retentionPeriodSeconds.label')}</Typography>
+            <Typography variant="body2">{t('retentionPeriod.label')}</Typography>
             <YBTooltip
-              title={<Typography variant="body2">{t('retentionPeriodSeconds.tooltip')}</Typography>}
+              title={<Typography variant="body2">{t('retentionPeriod.tooltip')}</Typography>}
             >
               <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
             </YBTooltip>
