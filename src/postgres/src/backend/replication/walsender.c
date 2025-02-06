@@ -926,6 +926,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	TupleDesc	tupdesc;
 	Datum		values[4];
 	bool		nulls[4];
+	bool yb_is_pg_export_snapshot_enabled = *YBCGetGFlags()->ysql_enable_pg_export_snapshot;
 
 	Assert(!MyReplicationSlot);
 
@@ -992,9 +993,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		if (snapshot_action == CRS_EXPORT_SNAPSHOT)
 		{
 			if (IsYugaByteEnabled())
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Exporting snapshot is not yet supported")));
+				YBCheckSnapshotsAllowed(false /* check_isolation_level */ );
 
 			if (IsTransactionBlock())
 				ereport(ERROR,
@@ -1003,13 +1002,21 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 			need_full_snapshot = true;
 		}
-
-		/* 
-		 * YB has its own snapshot mechanism that does not require the command
-		 * to be created within a transaction, so we disable these checks here.
-		 */
-		else if (snapshot_action == CRS_USE_SNAPSHOT && !IsYugaByteEnabled())
+		else if (snapshot_action == CRS_USE_SNAPSHOT && (!IsYugaByteEnabled() || yb_is_pg_export_snapshot_enabled))
 		{
+			if (IsYugaByteEnabled())
+			{
+				if (XactDeferrable)
+					ereport(ERROR,
+							(errmsg("%s must not be called in a DEFERRABLE transaction",
+									"CREATE_REPLICATION_SLOT ... (SNAPSHOT 'use')")));
+
+				if (YbIsBatchedExecution())
+						ereport(ERROR,
+								(errmsg("%s must not be called in batched execution mode",
+										"CREATE_REPLICATION_SLOT ... (SNAPSHOT 'use')")));
+			}
+
 			if (!IsTransactionBlock())
 				ereport(ERROR,
 						(errmsg("CREATE_REPLICATION_SLOT ... USE_SNAPSHOT "
@@ -1066,12 +1073,28 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 								  cmd->plugin, snapshot_action,
 								  &consistent_snapshot_time, lsn_type);
 
-			if (snapshot_action == CRS_USE_SNAPSHOT)
+			if (snapshot_action == CRS_EXPORT_SNAPSHOT)
+			{
+				snapshot_name = SnapBuildExportSnapshot(NULL,
+														consistent_snapshot_time
+														/* yb_cdc_snapshot_read_time */ );
+			}
+			else if (snapshot_action == CRS_USE_SNAPSHOT)
 			{
 				snprintf(consistent_snapshot_time_string,
 						 sizeof(consistent_snapshot_time_string), "%llu",
 						 (unsigned long long) consistent_snapshot_time);
 				snapshot_name = pstrdup(consistent_snapshot_time_string);
+
+				if (yb_is_pg_export_snapshot_enabled)
+				{
+					SnapshotData snapshot = {};
+					YbInitSnapshot(&snapshot);
+					snapshot.yb_cdc_snapshot_read_time.has_value = true;
+					snapshot.yb_cdc_snapshot_read_time.value = consistent_snapshot_time;
+
+					RestoreTransactionSnapshot(&snapshot, NULL);
+				}
 			}
 
 			/*
@@ -1111,7 +1134,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			 */
 			if (snapshot_action == CRS_EXPORT_SNAPSHOT)
 			{
-				snapshot_name = SnapBuildExportSnapshot(ctx->snapshot_builder);
+				snapshot_name = SnapBuildExportSnapshot(ctx->snapshot_builder,
+														0 /* yb_cdc_snapshot_read_time */ );
 			}
 			else if (snapshot_action == CRS_USE_SNAPSHOT)
 			{

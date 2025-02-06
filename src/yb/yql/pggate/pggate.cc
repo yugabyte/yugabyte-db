@@ -2296,7 +2296,6 @@ Result<tserver::PgCreateReplicationSlotResponsePB> PgApiImpl::ExecCreateReplicat
   return pg_stmt->Exec();
 }
 
-
 Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {
   return pg_session_->ListReplicationSlots();
 }
@@ -2412,12 +2411,14 @@ void PgApiImpl::ForceAllowCatalogModifications(bool allowed) {
 // Export/Import Pg Txn Snapshot.
 //------------------------------------------------------------------------------------------------
 
-Result<std::string> PgApiImpl::ExportSnapshot(const YbcPgTxnSnapshot& snapshot) {
-  return pg_txn_manager_->ExportSnapshot(snapshot);
+Result<std::string> PgApiImpl::ExportSnapshot(
+    const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time) {
+  return pg_txn_manager_->ExportSnapshot(snapshot, explicit_read_time);
 }
 
-Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id) {
-  return pg_txn_manager_->ImportSnapshot(snapshot_id);
+Result<std::optional<YbcPgTxnSnapshot>> PgApiImpl::SetTxnSnapshot(
+    PgTxnSnapshotDescriptor snapshot_descriptor) {
+  return pg_txn_manager_->SetTxnSnapshot(snapshot_descriptor);
 }
 
 bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->HasExportedSnapshots(); }

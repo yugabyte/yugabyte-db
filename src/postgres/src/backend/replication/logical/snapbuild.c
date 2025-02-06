@@ -145,6 +145,9 @@
 #include "storage/procarray.h"
 #include "storage/standby.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /*
  * This struct contains the current state of the snapshot building
  * machinery. Besides a forward declaration in the header, it is not exposed
@@ -530,6 +533,8 @@ SnapBuildBuildSnapshot(SnapBuild *builder)
 	snapshot->curcid = FirstCommandId;
 	snapshot->active_count = 0;
 	snapshot->regd_count = 0;
+	snapshot->yb_cdc_snapshot_read_time.has_value = false;
+	snapshot->yb_cdc_snapshot_read_time.value = 0;
 
 	return snapshot;
 }
@@ -630,9 +635,13 @@ SnapBuildInitialSnapshot(SnapBuild *builder)
  * For that we need to start a transaction in the current backend as the
  * importing side checks whether the source transaction is still open to make
  * sure the xmin horizon hasn't advanced since then.
+ *
+ * YB Note: yb_cdc_snapshot_read_time is the consistent snapshot read time
+ * received cdc service. It is used as the read time while exporting the snapshot.
+ * It is set to zero when Yugabyte is not enabled.
  */
 const char *
-SnapBuildExportSnapshot(SnapBuild *builder)
+SnapBuildExportSnapshot(SnapBuild *builder, uint64_t yb_cdc_snapshot_read_time)
 {
 	Snapshot	snap;
 	char	   *snapname;
@@ -652,7 +661,17 @@ SnapBuildExportSnapshot(SnapBuild *builder)
 	XactIsoLevel = XACT_REPEATABLE_READ;
 	XactReadOnly = true;
 
-	snap = SnapBuildInitialSnapshot(builder);
+	SnapshotData yb_snap = {};
+
+	if (!IsYugaByteEnabled())
+		snap = SnapBuildInitialSnapshot(builder);
+	else
+	{
+		snap = &yb_snap;
+		YbInitSnapshot(snap);
+		snap->yb_cdc_snapshot_read_time.has_value = true;
+		snap->yb_cdc_snapshot_read_time.value = yb_cdc_snapshot_read_time;
+	}
 
 	/*
 	 * now that we've built a plain snapshot, make it active and use the

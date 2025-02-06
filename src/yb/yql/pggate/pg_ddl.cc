@@ -516,6 +516,10 @@ PgCreateReplicationSlot::PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_sess
       req_.set_snapshot_action(
           tserver::PgReplicationSlotSnapshotActionPB::REPLICATION_SLOT_USE_SNAPSHOT);
       break;
+    case YB_REPLICATION_SLOT_EXPORT_SNAPSHOT:
+      req_.set_snapshot_action(
+          tserver::PgReplicationSlotSnapshotActionPB::REPLICATION_SLOT_EXPORT_SNAPSHOT);
+      break;
     default:
       DCHECK(false) << "Unknown snapshot_action " << snapshot_action;
   }

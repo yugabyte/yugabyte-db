@@ -18,6 +18,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -107,6 +108,10 @@ class PerformExchangeFuture {
 
 using PerformResultFuture = std::variant<std::future<PerformResult>, PerformExchangeFuture>;
 using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC)>;
+
+using PgTxnSnapshotId = std::string;
+using PgTxnSnapshotReadTime = uint64_t;
+using PgTxnSnapshotDescriptor = std::variant<PgTxnSnapshotId, PgTxnSnapshotReadTime>;
 
 void Wait(const PerformResultFuture& future);
 bool Ready(const std::future<PerformResult>& future);
@@ -258,8 +263,8 @@ class PgClient {
   Result<int64_t> GetCronLastMinute();
 
   Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req);
-  Result<tserver::PgImportTxnSnapshotResponsePB> ImportTxnSnapshot(
-      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options);
+  Result<tserver::PgSetTxnSnapshotResponsePB> SetTxnSnapshot(
+      PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options);
   Status ClearExportedTxnSnapshots();
 
   using ActiveTransactionCallback = LWFunction<Status(

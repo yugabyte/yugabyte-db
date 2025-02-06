@@ -2899,15 +2899,35 @@ uint64_t YBCGetCurrentHybridTimeLsn() {
   return (HybridTime::FromMicros(GetCurrentTimeMicros()).ToUint64());
 }
 
-YBCStatus YBCPgExportSnapshot(const YbcPgTxnSnapshot* snapshot, char** snapshot_id) {
+YBCStatus YBCPgExportSnapshot(
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const uint64_t* explicit_read_time) {
+  std::optional<uint64_t> explicit_read_time_opt = std::nullopt;
+  if (explicit_read_time) {
+    explicit_read_time_opt = *explicit_read_time;
+  }
   return ExtractValueFromResult(
-      pgapi->ExportSnapshot(*snapshot),
+      pgapi->ExportSnapshot(*snapshot, explicit_read_time_opt),
       [snapshot_id](auto value) { *snapshot_id = YBCPAllocStdString(value); });
 }
 
-YBCStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot) {
+YBCStatus PgSetTxnSnapshotImpl(
+    const PgTxnSnapshotDescriptor& descriptor, YbcPgTxnSnapshot* snapshot) {
   return ExtractValueFromResult(
-      pgapi->ImportSnapshot(snapshot_id), [snapshot](auto value) { *snapshot = value; });
+      pgapi->SetTxnSnapshot(descriptor), [snapshot](const std::optional<YbcPgTxnSnapshot>& value) {
+        if (snapshot) {
+          DCHECK(value.has_value());
+          *snapshot = value.value();
+        }
+      });
+}
+
+YBCStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot) {
+  return PgSetTxnSnapshotImpl(snapshot_id, snapshot);
+}
+
+YBCStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time) {
+  DCHECK_NE(explicit_read_time, 0);
+  return PgSetTxnSnapshotImpl(explicit_read_time, nullptr);
 }
 
 bool YBCPgHasExportedSnapshots() { return pgapi->HasExportedSnapshots(); }

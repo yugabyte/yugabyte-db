@@ -1202,17 +1202,23 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.snapshot_id();
   }
 
-  Result<tserver::PgImportTxnSnapshotResponsePB> ImportTxnSnapshot(
-      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
-    tserver::PgImportTxnSnapshotRequestPB req;
+  Result<tserver::PgSetTxnSnapshotResponsePB> SetTxnSnapshot(
+      PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options) {
+    tserver::PgSetTxnSnapshotRequestPB req;
     req.set_session_id(session_id_);
-    req.set_snapshot_id(snapshot_id.data(), snapshot_id.length());
     *req.mutable_options() = std::move(options);
 
-    tserver::PgImportTxnSnapshotResponsePB resp;
+    if (std::holds_alternative<PgTxnSnapshotReadTime>(snapshot_descriptor)) {
+      ReadHybridTime::FromUint64(std::get<uint64_t>(snapshot_descriptor))
+          .ToPB(req.mutable_explicit_read_time());
+    } else {
+      req.set_snapshot_id(std::get<PgTxnSnapshotId>(snapshot_descriptor));
+    }
+
+    tserver::PgSetTxnSnapshotResponsePB resp;
     RETURN_NOT_OK(DoSyncRPC(
-        &tserver::PgClientServiceProxy::ImportTxnSnapshot, req, resp,
-        ash::PggateRPC::kImportTxnSnapshot));
+        &tserver::PgClientServiceProxy::SetTxnSnapshot, req, resp,
+        ash::PggateRPC::kSetTxnSnapshot));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1699,9 +1705,9 @@ Result<std::string> PgClient::ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequ
   return impl_->ExportTxnSnapshot(req);
 }
 
-Result<tserver::PgImportTxnSnapshotResponsePB> PgClient::ImportTxnSnapshot(
-    std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
-  return impl_->ImportTxnSnapshot(snapshot_id, std::move(options));
+Result<tserver::PgSetTxnSnapshotResponsePB> PgClient::SetTxnSnapshot(
+    PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options) {
+  return impl_->SetTxnSnapshot(snapshot_descriptor, std::move(options));
 }
 
 Status PgClient::ClearExportedTxnSnapshots() { return impl_->ClearExportedTxnSnapshots(); }

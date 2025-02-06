@@ -119,6 +119,16 @@ typedef struct SnapshotData
 	TimestampTz whenTaken;		/* timestamp when snapshot was taken */
 	XLogRecPtr	lsn;			/* position in the WAL stream when taken */
 	YbReadTimePointHandle yb_read_time_point_handle;
+
+	/*
+	 * This field is only applicable if the snapshot is being used for logical
+	 * replication (CDC) purposes. It is the consistent snapshot read time
+	 * received from cdc service. It is used as the read time while
+	 * exporting/setting the snapshot. Its has_value to false when the read time
+	 * to be stored is to be picked from tserver (i.e. pg_export_snapshot or SET
+	 * TRANSACTION SNAPSHOT) or when Yugabyte is not enabled.
+	 */
+	YbReadTimePointHandle yb_cdc_snapshot_read_time;
 } SnapshotData;
 
 /*

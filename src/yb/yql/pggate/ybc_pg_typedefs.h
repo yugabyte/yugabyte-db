@@ -787,7 +787,8 @@ typedef struct YBCBindColumn {
 // It does not include EXPORT_SNAPSHOT since it isn't supported yet.
 typedef enum PgReplicationSlotSnapshotAction {
   YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT,
-  YB_REPLICATION_SLOT_USE_SNAPSHOT
+  YB_REPLICATION_SLOT_USE_SNAPSHOT,
+  YB_REPLICATION_SLOT_EXPORT_SNAPSHOT
 } YBCPgReplicationSlotSnapshotAction;
 
 typedef enum LsnType {

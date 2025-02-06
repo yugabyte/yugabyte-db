@@ -945,8 +945,10 @@ void YBCForceAllowCatalogModifications(bool allowed);
 
 uint64_t YBCGetCurrentHybridTimeLsn();
 
-YBCStatus YBCPgExportSnapshot(const YbcPgTxnSnapshot* snapshot, char** snapshot_id);
+YBCStatus YBCPgExportSnapshot(
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const uint64_t* explicit_read_time);
 YBCStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot);
+YBCStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time);
 
 bool YBCPgHasExportedSnapshots();
 void YBCPgClearExportedTxnSnapshots();

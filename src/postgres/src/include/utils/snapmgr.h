@@ -111,4 +111,7 @@ extern void SerializeSnapshot(Snapshot snapshot, char *start_address);
 extern Snapshot RestoreSnapshot(char *start_address);
 extern void RestoreTransactionSnapshot(Snapshot snapshot, void *master_pgproc);
 
+extern void YBCheckSnapshotsAllowed(bool check_isolation_level);
+extern void YbInitSnapshot(Snapshot snap);
+
 #endif							/* SNAPMGR_H */

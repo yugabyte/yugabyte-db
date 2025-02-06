@@ -3651,11 +3651,13 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
         req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
   }
 
+  auto option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT;
   if (consistent_snapshot_option == "USE_SNAPSHOT") {
-    req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::USE_SNAPSHOT);
-  } else {
-    req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT);
+    option = CDCSDKSnapshotOption::USE_SNAPSHOT;
+  } else if (consistent_snapshot_option == "EXPORT_SNAPSHOT") {
+    option = CDCSDKSnapshotOption::EXPORT_SNAPSHOT;
   }
+  req.set_cdcsdk_consistent_snapshot_option(option);
 
   auto stream_create_options = req.mutable_cdcsdk_stream_create_options();
   if (is_dynamic_tables_enabled) {

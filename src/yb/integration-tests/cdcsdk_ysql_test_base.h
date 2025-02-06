@@ -131,6 +131,7 @@ DECLARE_bool(cdcsdk_enable_cleanup_of_expired_table_entries);
 DECLARE_bool(TEST_cdcsdk_skip_processing_unqualified_tables);
 DECLARE_bool(TEST_cdcsdk_skip_table_removal_from_qualified_list);
 DECLARE_bool(cdc_use_byte_threshold_for_vwal_changes);
+DECLARE_bool(ysql_enable_pg_export_snapshot);
 
 namespace yb {
 
@@ -242,12 +243,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status TruncateTable(PostgresMiniCluster* cluster, const std::vector<string>& table_ids);
 
   // The range is exclusive of end i.e. [start, end)
-  Status WriteRows(
+  static Status WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
       const vector<string>& optional_cols_name = {},
       pgwrapper::PGConn* conn = nullptr);
 
-  Status WriteRowsWithConn(
+  static Status WriteRowsWithConn(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
       pgwrapper::PGConn* conn = nullptr,
       const vector<string>& optional_cols_name = {});
