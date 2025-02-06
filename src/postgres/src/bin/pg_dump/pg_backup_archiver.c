@@ -147,6 +147,17 @@ static void inhibit_data_for_failed_table(ArchiveHandle *AH, TocEntry *te);
 
 static void StrictNamesCheck(RestoreOptions *ropt);
 
+/*
+ * Set the yb_disable_auto_analyze GUC on the database to disable auto analyze. For backwards
+ * compatiblity, check for the presence of the GUC before setting it.
+ */
+static const char *yb_disable_auto_analyze_cmd =
+		"DO $$\n"
+		"BEGIN\n"
+		"IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN\n"
+		"EXECUTE format('ALTER DATABASE %%I SET yb_disable_auto_analyze TO %s', current_database());\n"
+		"END IF;\n"
+		"END $$;\n";
 
 /*
  * Allocate a new DumpOptions block containing all default values.
@@ -731,6 +742,13 @@ RestoreArchive(Archive *AHX)
 					(void) restore_toc_entry(AH, te, false);
 			}
 		}
+	}
+
+	if (AH->public.dopt->include_yb_metadata && !AH->public.ropt->createDB)
+	{
+		ahprintf(AH, "-- YB: re-enable auto analyze after all catalog changes\n");
+		ahprintf(AH, yb_disable_auto_analyze_cmd, "off");
+		ahprintf(AH, "\n");
 	}
 
 	if (ropt->single_txn)
@@ -3144,6 +3162,20 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 				 "\\else\n"
 				 "\\set use_roles true\n"
 				 "\\endif\n");
+
+		/* If the --create option is specified, the target database will be created and connected to.
+		 * The current connection is to another database and we don't want to disable auto analyze on
+		 * that.
+		 *
+		 * TODO: If --create is specified, disable auto analyze after the target database is created
+		 * and we connect to it.
+		 */
+		if (!AH->public.ropt->createDB)
+		{
+			ahprintf(AH,
+				"\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
+			ahprintf(AH, yb_disable_auto_analyze_cmd, "on");
+		}
 	}
 
 	ahprintf(AH, "\n");

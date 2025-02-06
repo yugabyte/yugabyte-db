@@ -364,11 +364,13 @@ TEST_F(PgAnalyzeTest, AnalyzeSamplingColocated) {
             kEstimatedTotalRowsAccuracy[blocks_sampling_method];
 
         if (kEnableVlogsDuringAnalyze) {
-          ASSERT_OK(SET_FLAG(vmodule, "pgsql_operation=4,ql_rocksdb_storage=4"));
+          google::SetVLOGLevel("pgsql_operation", 4);
+          google::SetVLOGLevel("ql_rocksdb_storage", 4);
         }
         ASSERT_OK(conn.ExecuteFormat("ANALYZE VERBOSE $0", table_name));
         if (kEnableVlogsDuringAnalyze) {
-          ASSERT_OK(SET_FLAG(vmodule, "pgsql_operation=0,ql_rocksdb_storage=0"));
+          google::SetVLOGLevel("pgsql_operation", 0);
+          google::SetVLOGLevel("ql_rocksdb_storage", 0);
         }
 
         if (kStatisticsTarget <= 10) {

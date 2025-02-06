@@ -128,7 +128,7 @@ CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
 class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
   void SetUp() override {
-    CHECK_OK(SET_FLAG(vmodule, "cdc*=4"));
+    google::SetVLOGLevel("cdc*", 4);
     YBMiniClusterTestBase::SetUp();
 
     MiniClusterOptions opts;

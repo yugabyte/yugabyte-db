@@ -34,7 +34,7 @@ class PgAnalyzeReadTimeTest : public PgMiniTestBase {
     // ANALYZE is a beta feature.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_beta_features) = true;
     // Easier debugging.
-    // ASSERT_OK(SET_FLAG(vmodule, "read_query=1"));
+    // google::SetVLOGLevel("read_query", 1);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_log_statement) = "all";
     PgMiniTestBase::SetUp();
   }

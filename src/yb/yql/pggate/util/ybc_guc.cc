@@ -106,3 +106,5 @@ int yb_major_version_upgrade_compatibility = 0;
 // Use YBCPgYsqlMajorVersionUpgradeInProgress in order to know if the YSQL major upgrade is in
 // progress.
 bool yb_upgrade_to_pg15_completed = true;
+
+bool yb_disable_auto_analyze = false;

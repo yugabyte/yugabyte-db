@@ -17,6 +17,7 @@
 
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 
 // User specified identifier for this cluster. On the first master leader setup, this is stored in
 // the cluster_config. if not specified, a random UUID is generated.
