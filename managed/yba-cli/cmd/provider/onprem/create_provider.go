@@ -89,7 +89,7 @@ var createOnpremProviderCmd = &cobra.Command{
 				}
 				sshFileContent = string(sshFileContentByte)
 			} else {
-				sshFileContent, err = cmd.Flags().GetString("ssh-keypair-file-content")
+				sshFileContent, err = cmd.Flags().GetString("ssh-keypair-file-contents")
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
