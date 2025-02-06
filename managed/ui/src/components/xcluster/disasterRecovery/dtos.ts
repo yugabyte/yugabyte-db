@@ -26,6 +26,8 @@ export interface DrConfig {
   // Replication Fields
   paused: boolean;
   pitrConfigs: PitrConfig[];
+  pitrRetentionPeriodSec: number;
+  pitrSnapshotIntervalSec: number;
   replicationGroupName: string;
   status: XClusterConfigStatus;
   tableDetails: XClusterTableDetails[];
