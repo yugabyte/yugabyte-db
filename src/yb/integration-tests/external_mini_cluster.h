@@ -219,6 +219,8 @@ struct ExternalMiniClusterOptions {
 
 YB_STRONGLY_TYPED_BOOL(RequireExitCode0);
 
+class LogWaiter;
+
 // A mini-cluster made up of subprocesses running each of the daemons separately. This is useful for
 // black-box or grey-box failure testing purposes -- it provides the ability to forcibly kill or
 // stop particular cluster participants, which isn't feasible in the normal MiniCluster.  On the
@@ -586,6 +588,9 @@ class ExternalMiniCluster : public MiniClusterBase {
       const std::vector<std::string>& args, MonoDelta timeout = MonoDelta::FromSeconds(60),
       std::string* output = nullptr);
 
+  // Get a LogWaiter that waits for the given log message across all masters.
+  LogWaiter GetMasterLogWaiter(const std::string& log_message) const;
+
  protected:
   friend class UpgradeTestBase;
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
@@ -668,6 +673,7 @@ YB_STRONGLY_TYPED_BOOL(SafeShutdown);
 class LogWaiter : public ExternalDaemon::StringListener {
  public:
   LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait);
+  LogWaiter(std::vector<ExternalDaemon*> daemons, const std::string& string_to_wait);
 
   Status WaitFor(MonoDelta timeout);
   bool IsEventOccurred() { return event_occurred_; }
@@ -677,9 +683,9 @@ class LogWaiter : public ExternalDaemon::StringListener {
  private:
   void Handle(const GStringPiece& s) override;
 
-  ExternalDaemon* daemon_;
+  std::vector<ExternalDaemon*> daemons_;
   std::atomic<bool> event_occurred_{false};
-  std::string string_to_wait_;
+  const std::string string_to_wait_;
 };
 
 // Resumes a daemon that was stopped with ExteranlDaemon::Pause() upon

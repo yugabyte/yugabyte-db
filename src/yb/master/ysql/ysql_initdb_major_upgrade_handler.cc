@@ -352,10 +352,12 @@ YsqlInitDBAndMajorUpgradeHandler::GetDbNameToOidListForMajorUpgrade() {
 Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epoch) {
   const auto& master_opts = master_.opts();
 
+  const auto pg_upgrade_data_dir =
+      JoinPathSegments(master_opts.fs_opts.data_paths.front(), "pg_upgrade_data");
+
   // Run local initdb to prepare the node for starting postgres.
   auto pg_conf = VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-      FLAGS_rpc_bind_addresses, master_opts.fs_opts.data_paths.front() + "/pg_data",
-      master_.GetSharedMemoryFd()));
+      FLAGS_rpc_bind_addresses, pg_upgrade_data_dir, master_.GetSharedMemoryFd()));
 
   pg_conf.master_addresses = master_opts.master_addresses_flag;
   pg_conf.pg_port = FLAGS_ysql_upgrade_postgres_port;

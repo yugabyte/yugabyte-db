@@ -457,7 +457,8 @@ Status UpgradeTestBase::WaitForYsqlMajorCatalogUpgradeToFinish() {
   };
 
   return LoggedWaitFor(
-      is_upgrade_done, 10min, "Waiting for ysql major catalog upgrade to complete");
+      is_upgrade_done, 10min, "Waiting for ysql major catalog upgrade to complete",
+      /*initial_delay*/ 1s);
 }
 
 Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {

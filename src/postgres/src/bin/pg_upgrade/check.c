@@ -36,7 +36,7 @@ static char *get_canonical_locale_name(int category, const char *locale);
 
 /* Yugabyte-specific checks */
 
-static void yb_check_pushdown_is_disabled(PGconn *old_cluster_conn);
+static void yb_check_upgrade_compatibility_guc(PGconn *old_cluster_conn);
 
 static void yb_check_system_databases_exist(PGconn *old_cluster_conn);
 
@@ -101,6 +101,25 @@ check_and_dump_old_cluster(bool live_check)
 
 	if (!is_yugabyte_enabled() && !live_check)
 		start_postmaster(&old_cluster, true);
+
+	if (is_yugabyte_enabled())
+	{
+		PGconn *old_cluster_conn = connectToServer(&old_cluster, "template1");
+
+		/*
+		 * --check can be run any time before the upgrade. Upgrade Compatibility
+		 * GUC is only required to be set during the actual upgrade.
+		 */
+		if (!user_opts.check)
+			yb_check_upgrade_compatibility_guc(old_cluster_conn);
+
+		yb_check_old_cluster_user(old_cluster_conn);
+		yb_check_yugabyte_user(old_cluster_conn);
+		yb_check_system_databases_exist(old_cluster_conn);
+
+		PQfinish(old_cluster_conn);
+		check_ok();
+	}
 
 	/* Extract a list of databases and tables from the old cluster */
 	get_db_and_rel_infos(&old_cluster);
@@ -189,28 +208,6 @@ check_and_dump_old_cluster(bool live_check)
 	/* Pre-PG 9.4 had a different 'line' data type internal format */
 	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
 		old_9_3_check_for_line_data_type_usage(&old_cluster);
-
-	if (is_yugabyte_enabled())
-	{
-		PGconn	   *old_cluster_conn = connectToServer(&old_cluster, "template1");
-
-		/*
-		 * Yugabyte does not support expression pushdown during major upgrades.
-		 * Only check this when we are ready to actually upgrade the cluster,
-		 * because users may want to run this check long before the upgrade.
-		 */
-		if (!user_opts.check)
-		{
-			yb_check_pushdown_is_disabled(old_cluster_conn);
-			yb_check_old_cluster_user(old_cluster_conn);
-		}
-
-		yb_check_yugabyte_user(old_cluster_conn);
-		yb_check_system_databases_exist(old_cluster_conn);
-
-		PQfinish(old_cluster_conn);
-		check_ok();
-	}
 
 	/*
 	 * While not a check option, we do this now because this is the only time
@@ -1596,13 +1593,13 @@ get_canonical_locale_name(int category, const char *locale)
 }
 
 /*
- *	yb_check_pushdown_is_disabled()
+ * yb_check_upgrade_compatibility_guc()
  *
- *	Check we are the install user, and that the new cluster
- *	has no other users.
+ * Make sure the yb_major_version_upgrade_compatibility GUC is set to the
+ * correct value.
  */
 static void
-yb_check_pushdown_is_disabled(PGconn *old_cluster_conn)
+yb_check_upgrade_compatibility_guc(PGconn *old_cluster_conn)
 {
 	PGresult   *res;
 
@@ -1634,7 +1631,7 @@ yb_check_system_databases_exist(PGconn *old_cluster_conn)
 							"VALUES ('template0'), ('template1'), ('yugabyte') EXCEPT SELECT datname FROM pg_database;");
 
 	if (PQntuples(res) != 0)
-		pg_fatal("Missing system database %s\n", PQgetvalue(res, 0, 0));
+		pg_fatal("Missing system database '%s'\n", PQgetvalue(res, 0, 0));
 
 	PQclear(res);
 
