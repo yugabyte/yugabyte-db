@@ -81,6 +81,7 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
@@ -798,7 +799,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   auto tablet = tablet_;
   if (tablet) {
     status_pb_out->set_table_type(tablet->table_type());
-    auto vector_index_finished_backfills = tablet->VectorIndexFinishedBackfills();
+    auto vector_index_finished_backfills = tablet->vector_indexes().FinishedBackfills();
     if (vector_index_finished_backfills) {
       *status_pb_out->mutable_vector_index_finished_backfills() =
           std::move(*vector_index_finished_backfills);

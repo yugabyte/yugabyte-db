@@ -171,6 +171,7 @@ class VectorIndexImpl : public VectorIndex {
               const std::string& data_root_dir,
               rpc::ThreadPool& thread_pool,
               const PgVectorIdxOptionsPB& idx_options) {
+    name_ = RemoveLogPrefixColon(log_prefix);
     typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
@@ -255,7 +256,7 @@ class VectorIndexImpl : public VectorIndex {
   }
 
   const std::string& ToString() const override {
-    return lsm_.options().log_prefix;
+    return name_;
   }
 
  private:
@@ -263,17 +264,30 @@ class VectorIndexImpl : public VectorIndex {
     return kVectorIndexDirPrefix + table_id_;
   }
 
-  TableId table_id_;
+  const TableId table_id_;
   const KeyBuffer indexed_table_key_prefix_;
   const ColumnId column_id_;
+  const DocDB doc_db_;
 
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
-  LSM lsm_;
 
-  const DocDB doc_db_;
+  std::string name_;
+  LSM lsm_;
 };
 
 } // namespace
+
+bool VectorIndex::BackfillDone() {
+  if (backfill_done_cache_.load()) {
+    return true;
+  }
+  auto frontier = GetFlushedFrontier();
+  if (frontier && frontier->backfill_done()) {
+    backfill_done_cache_.store(true);
+    return true;
+  }
+  return false;
+}
 
 Result<VectorIndexPtr> CreateVectorIndex(
     const std::string& log_prefix,
@@ -287,18 +301,6 @@ Result<VectorIndexPtr> CreateVectorIndex(
       index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), doc_db);
   RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool, options));
   return result;
-}
-
-bool VectorIndex::BackfillDone() {
-  if (backfill_done_cache_.load()) {
-    return true;
-  }
-  auto frontier = GetFlushedFrontier();
-  if (frontier && frontier->backfill_done()) {
-    backfill_done_cache_.store(true);
-    return true;
-  }
-  return false;
 }
 
 void AddVectorIndexReverseEntry(

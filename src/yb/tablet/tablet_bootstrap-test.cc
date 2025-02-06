@@ -195,10 +195,8 @@ class BootstrapTest : public LogTestBase {
     Schema schema = SchemaBuilder(src_schema).Build();
     auto partition = CreateDefaultPartition(schema);
 
-    auto table_info = std::make_shared<TableInfo>(
-        "TEST: ", Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType,
-        schema, qlexpr::IndexMap(), std::nullopt /* index_info */, 0 /* schema_version */,
-        partition.first, "" /* pg_table_id */, tablet::SkipTableTombstoneCheck::kFalse);
+    auto table_info = TableInfo::TEST_Create(
+        log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType, schema, partition.first);
     auto result = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
       .fs_manager = fs_manager_.get(),
       .table_info = table_info,

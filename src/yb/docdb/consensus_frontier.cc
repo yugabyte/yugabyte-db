@@ -101,11 +101,8 @@ void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
   });
   if (backfill_done_) {
     pb.set_backfill_done(backfill_done_);
-  } else {
-    pb.set_backfill_read_ht(backfill_read_ht_.ToUint64());
-    if (!backfill_key_.empty()) {
-      pb.set_backfill_key(backfill_key_);
-    }
+  } else if (!backfill_key_.empty()) {
+    pb.set_backfill_key(backfill_key_);
   }
   VLOG(3) << "ConsensusFrontierPB: " << pb.ShortDebugString();
   any->PackFrom(pb);
@@ -155,7 +152,6 @@ Status ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   }
   backfill_done_ = pb.backfill_done();
   backfill_key_ = pb.backfill_key();
-  backfill_read_ht_ = HybridTime::FromPB(pb.backfill_read_ht());
   VLOG(3) << "ConsensusFrontier: " << ToString();
   return Status::OK();
 }
@@ -202,10 +198,8 @@ std::string ConsensusFrontier::ToString() const {
   }
   if (backfill_done_) {
     fields += Format("backfill_done: $0 ", backfill_done_);
-  } else if (backfill_read_ht_.is_valid()) {
-    fields += Format(
-        "backfill_read_ht: $0 backfill_key: $1 ",
-        backfill_read_ht_, Slice(backfill_key_).ToDebugHexString());
+  } else if (!backfill_key_.empty()) {
+    fields += Format("backfill_key: $0 ", Slice(backfill_key_).ToDebugHexString());
   }
   return Format("{$0}", fields);
 }
@@ -334,7 +328,7 @@ void ConsensusFrontier::Update(
     if (rhs.backfill_done_) {
       SetBackfillDone();
     } else if (rhs.backfill_key_ > backfill_key_) {
-      SetBackfillPosition(rhs.backfill_key_, rhs.backfill_read_ht_);
+      SetBackfillPosition(rhs.backfill_key_);
     }
   }
 }
@@ -417,12 +411,10 @@ void ConsensusFrontier::MakeExternalSchemaVersionsAtMost(
 void ConsensusFrontier::SetBackfillDone() {
   backfill_done_ = true;
   backfill_key_.clear();
-  backfill_read_ht_ = HybridTime();
 }
 
-void ConsensusFrontier::SetBackfillPosition(Slice key, HybridTime backfill_read_ht) {
+void ConsensusFrontier::SetBackfillPosition(Slice key) {
   backfill_key_ = key.ToBuffer();
-  backfill_read_ht = backfill_read_ht_;
 }
 
 void AddTableSchemaVersion(

@@ -126,8 +126,7 @@ message ConsensusFrontierPB {
   optional fixed64 cotables_cutoff_ht = 8;
 
   optional bool backfill_done = 9;
-  optional fixed64 backfill_read_ht = 10;
-  optional bytes backfill_key = 11;
+  optional bytes backfill_key = 10;
 }
 
 message ApplyTransactionStatePB {

@@ -166,9 +166,7 @@ class ScopedRWOperation {
 
   void Reset();
 
-  std::string resource_name() const {
-    return data_.counter_ ? data_.counter_->resource_name() : "null";
-  }
+  std::string resource_name() const;
 
   static ScopedRWOperation TEST_Create() { return ScopedRWOperation(); }
 

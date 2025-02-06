@@ -103,6 +103,9 @@ struct TableInfo {
   // Partition schema of the table.
   dockv::PartitionSchema partition_schema;
 
+  // Hybrid time when this table was added to the tablet.
+  HybridTime hybrid_time;
+
   // In case the table was rewritten, explicitly store the TableId containing the PG table OID
   // (as the table's TableId no longer matches).
   TableId pg_table_id;
@@ -136,6 +139,7 @@ struct TableInfo {
             const std::optional<qlexpr::IndexInfo>& index_info,
             SchemaVersion schema_version,
             dockv::PartitionSchema partition_schema,
+            HybridTime ht,
             TableId pg_table_id,
             SkipTableTombstoneCheck skip_table_tombstone_check);
   TableInfo(const TableInfo& other,
@@ -181,6 +185,20 @@ struct TableInfo {
 
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
+
+  static TableInfoPtr TEST_CreateWithLogPrefix(
+      std::string log_prefix,
+      std::string table_id,
+      std::string namespace_name,
+      std::string table_name,
+      TableType table_type,
+      const Schema& schema,
+      dockv::PartitionSchema partition_schema);
+
+  template <class... Args>
+  static TableInfoPtr TEST_Create(Args&&... args) {
+    return TEST_CreateWithLogPrefix("TEST: ", std::forward<Args>(args)...);
+  }
 
  private:
   Status DoLoadFromPB(Primary primary, const TableInfoPB& pb);
@@ -528,6 +546,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const std::optional<qlexpr::IndexInfo>& index_info,
       const SchemaVersion schema_version,
       const OpId& op_id,
+      HybridTime ht,
       const TableId& pg_table_id,
       const SkipTableTombstoneCheck skip_table_tombstone_check) EXCLUDES(data_mutex_);
 

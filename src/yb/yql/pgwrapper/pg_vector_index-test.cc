@@ -24,6 +24,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 
@@ -40,6 +41,13 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
+DECLARE_uint64(vector_index_initial_chunk_size);
+
+namespace yb::tablet {
+
+extern bool TEST_block_after_backfilling_first_vector_index_chunks;
+
+}
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
@@ -88,6 +96,8 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
       create_suffix = " WITH (COLOCATED = 1)";
       RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE colocated_db COLOCATION = true"));
       conn = VERIFY_RESULT(Connect());
+    } else if (num_tablets_) {
+      create_suffix += "SPLIT INTO 1 TABLETS";
     }
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
     RETURN_NOT_OK(conn.ExecuteFormat(
@@ -198,6 +208,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
   size_t dimensions_;
   size_t real_dimensions_;
   std::vector<size_t> shuffle_vector_;
+  int num_tablets_ = 0;
 };
 
 uint64_t SumHistograms(const std::vector<const HdrHistogram*>& histograms) {
@@ -303,8 +314,24 @@ Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(
     size_t num_rows, Backfill backfill = Backfill::kFalse) {
   auto conn = VERIFY_RESULT(MakeTable());
   if (backfill) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = num_rows / 5 + 1;
     RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
+    std::future<void> future;
+    if (tablet::TEST_block_after_backfilling_first_vector_index_chunks) {
+      future = std::async([this] {
+        cds::threading::Manager::attachThread();
+        std::this_thread::sleep_for(1s);
+        CHECK_OK(cluster_->mini_tablet_server(1)->Restart());
+        ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks)
+            = false;
+        std::this_thread::sleep_for(5s * kTimeMultiplier);
+        cds::threading::Manager::detachThread();
+      });
+    }
     RETURN_NOT_OK(CreateIndex(conn));
+    if (future.valid()) {
+      future.get();
+    }
   } else {
     RETURN_NOT_OK(CreateIndex(conn));
     RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
@@ -368,6 +395,12 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfill) {
   TestManyRows(AddFilter::kFalse, Backfill::kTrue);
 }
 
+TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
+  num_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
+  TestManyRows(AddFilter::kFalse, Backfill::kTrue);
+}
+
 TEST_P(PgVectorIndexTest, ManyRowsWithFilter) {
   TestManyRows(AddFilter::kTrue);
 }
@@ -406,7 +439,7 @@ void PgVectorIndexTest::TestRestart(tablet::FlushFlags flush_flags) {
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
   for (const auto& peer : peers) {
     auto tablet = peer->shared_tablet();
-    if (tablet->TEST_HasVectorIndexes()) {
+    if (tablet->vector_indexes().TEST_HasIndexes()) {
       tablet->TEST_SleepBeforeApplyIntents(5s * kTimeMultiplier);
       break;
     }
