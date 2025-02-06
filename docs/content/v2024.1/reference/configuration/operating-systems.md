@@ -24,7 +24,7 @@ Unless otherwise noted, operating systems are supported by all supported version
 | Oracle Linux 8   | {{<icon/yes>}} |                | |
 | Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | |
 | Red Hat Enterprise Linux 8 CIS Hardened | {{<icon/yes>}} |      | |
-| Red Hat Enterprise Linux&nbsp;9.3 and later | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<tags/feature/ea>}} |
+| Red Hat Enterprise Linux&nbsp;9.3 and later | {{<icon/yes>}} |  | Recommended for production |
 | Red Hat Enterprise Linux&nbsp;9 CIS Hardened | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<tags/feature/ea>}} |
 | Rocky Linux 8    | {{<icon/yes>}} |                | Supported in v2.20.8, v2024.1.4, and v2024.2 and later.  {{<tags/feature/ea>}} |
 | SUSE&nbsp;Linux&nbsp;Enterprise&nbsp;Server&nbsp;15&nbsp;SP5 | {{<icon/yes>}} |     | {{<tags/feature/ea>}} |
