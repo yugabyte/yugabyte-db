@@ -19878,6 +19878,13 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "promQueries" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Map of query names to custom PromQL queries to collect in promdump",
+          "type" : "object"
+        },
         "prometheusMetricsTypes" : {
           "description" : "List of exports to be included in the prometheus dump",
           "items" : {
