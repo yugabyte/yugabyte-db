@@ -6444,9 +6444,9 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	List	   *local_clauses = NIL;
 	ListCell   *lc;
 	double		remote_filtered_rows;
-	int 		num_result_pages;
-	int 		num_nexts;
-	int 		num_seeks;
+	int			num_result_pages;
+	double		num_nexts;
+	double		num_seeks;
 	int			docdb_result_width;
 
 	if (!enable_seqscan)
@@ -7216,8 +7216,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 								index_ybctid_width);
 
 	/* Add seeks and nexts for result pages */
-	int index_ybctid_num_seeks = index_ybctid_num_result_pages;
-	int index_ybctid_num_nexts = index_ybctid_num_result_pages - 1;
+	double		index_ybctid_num_seeks = index_ybctid_num_result_pages;
+	double		index_ybctid_num_nexts = index_ybctid_num_result_pages - 1;
 
 	Cost index_ybctid_paging_seek_next_costs =
 		(index_ybctid_num_seeks * index_per_seek_cost) +
@@ -7296,11 +7296,12 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 	num_result_pages = yb_get_num_result_pages(num_docdb_result_rows,
 											   docdb_result_width);
-	int result_paging_num_seeks = num_result_pages;
-	int result_paging_num_nexts = num_result_pages + 1;
-	Cost result_paging_seek_next_costs =
-		(result_paging_num_seeks * index_per_seek_cost) +
-		(result_paging_num_nexts * per_next_cost);
+	double		result_paging_num_seeks = num_result_pages;
+	double		result_paging_num_nexts = num_result_pages + 1;
+	Cost		result_paging_seek_next_costs = ((result_paging_num_seeks *
+												  index_per_seek_cost) +
+												 (result_paging_num_nexts *
+												  per_next_cost));
 
 	num_seeks += result_paging_num_seeks;
 	num_nexts += result_paging_num_nexts;
@@ -7371,9 +7372,10 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			 * can be optimized with nexts, but we assume half lookups will be
 			 * seeks and remaining will be nexts.
 			 */
-			int baserel_num_seeks = ceil(num_index_tuples_matched / 2.0);
-			int baserel_num_nexts = ceil(num_index_tuples_matched / 2.0) *
-									(MAX_NEXTS_TO_AVOID_SEEK + 1);
+			double		baserel_num_seeks = ceil(num_index_tuples_matched / 2.0);
+			double		baserel_num_nexts = (ceil(num_index_tuples_matched / 2.0) *
+											 (MAX_NEXTS_TO_AVOID_SEEK + 1));
+
 			num_seeks += baserel_num_seeks;
 			num_nexts += baserel_num_nexts;
 			run_cost += (baserel_per_seek_cost * baserel_num_seeks);
@@ -7549,8 +7551,8 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cost		per_next_cost = 0.0;
 	List	   *local_clauses = NIL;
 	List	   *non_index_clauses = NIL;
-	int 		num_nexts;
-	int 		num_seeks;
+	double		num_nexts;
+	double		num_seeks;
 	int			docdb_result_width;
 	double		tuples_fetched;
 	double		tuples_scanned;
