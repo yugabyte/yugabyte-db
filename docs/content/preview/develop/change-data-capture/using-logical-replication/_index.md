@@ -116,3 +116,5 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 - Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
 
 - Support for tablet splitting with logical replication is disabled from v2024.1.4 and v2024.2.1. Tracked in issue [24918](https://github.com/yugabyte/yugabyte-db/issues/24918).
+
+- A replication slot should be consumed by atmost one consumer at a time. However currently, there does not exist a locking mechanism to enforce this. Hence the user should ensure that multiple consumers should not consume from a slot simultaneously. Tracked in issue [20755](https://github.com/yugabyte/yugabyte-db/issues/20755)
