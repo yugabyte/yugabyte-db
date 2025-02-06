@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a Ruby application using the Pg Gem Driver for YSQL
 menu:
   stable:
-    identifier: ysql-pg-driver
+    identifier: ruby-pg-driver
     parent: ruby-drivers
     weight: 410
 type: docs
@@ -13,7 +13,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
-    <a href="../ysql-pg/" class="nav-link">
+    <a href="../yb-ruby-pg/" class="nav-link">
       YSQL
     </a>
   </li>
@@ -26,16 +26,22 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../ysql-pg/" class="nav-link active">
+    <a href="../yb-ruby-pg/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      Pg Gem Driver
+      YugabyteDB ruby-pg Smart Driver
+    </a>
+  </li>
+  <li >
+    <a href="../ruby-pg/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      Ruby-pg Driver
     </a>
   </li>
 </ul>
 
 ## Prerequisites
 
-Install the Ruby PostgreSQL driver (`pg`) using the following command:
+Install the Ruby PostgreSQL driver (`pg` gem) using the following command:
 
 ```sh
 $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config

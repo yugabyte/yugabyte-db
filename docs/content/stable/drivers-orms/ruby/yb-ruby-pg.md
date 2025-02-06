@@ -3,13 +3,8 @@ title: YugabyteDB Ruby-pg Smart Driver
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Ruby application using YugabyteDB Ruby-pg Smart Driver for YSQL
-aliases:
-  - /develop/client-drivers/ruby/
-  - /preview/develop/client-drivers/ruby/
-  - /preview/develop/build-apps/ruby/
-  - /preview/quick-start/build-apps/ruby/
 menu:
-  preview:
+  stable:
     identifier: yb-ruby-pg-driver
     parent: ruby-drivers
     weight: 410

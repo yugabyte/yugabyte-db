@@ -7,7 +7,7 @@ aliases:
   - /preview/develop/drivers-orms/ruby/ysql-pg/
 menu:
   preview:
-    identifier: ysql-pg-driver
+    identifier: ruby-pg-driver
     parent: ruby-drivers
     weight: 410
 type: docs
@@ -15,7 +15,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
-    <a href="../ysql-pg/" class="nav-link">
+    <a href="../yb-ruby-pg/" class="nav-link">
       YSQL
     </a>
   </li>
