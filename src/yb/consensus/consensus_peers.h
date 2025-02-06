@@ -210,16 +210,16 @@ class Peer : public std::enable_shared_from_this<Peer> {
   void ProcessResponseError(const Status& status);
 
   // Returns true if the peer is closed and the calling function should return.
-  std::unique_lock<simple_spinlock> StartProcessingUnlocked();
+  std::unique_lock<simple_spinlock_with_timestamp> StartProcessingUnlocked();
 
   template <class LockType>
-  std::unique_lock<AtomicTryMutex> LockPerformingUpdate(LockType type) {
-    return std::unique_lock<AtomicTryMutex>(performing_update_mutex_, type);
+  std::unique_lock<AtomicTryMutexWithTimestamp> LockPerformingUpdate(LockType type) {
+    return std::unique_lock<AtomicTryMutexWithTimestamp>(performing_update_mutex_, type);
   }
 
   template <class LockType>
-  std::unique_lock<AtomicTryMutex> LockPerformingHeartbeat(LockType type) {
-    return std::unique_lock<AtomicTryMutex>(performing_heartbeat_mutex_, type);
+  std::unique_lock<AtomicTryMutexWithTimestamp> LockPerformingHeartbeat(LockType type) {
+    return std::unique_lock<AtomicTryMutexWithTimestamp>(performing_heartbeat_mutex_, type);
   }
 
   std::string LogPrefix() const;
@@ -263,12 +263,12 @@ class Peer : public std::enable_shared_from_this<Peer> {
 
   // Held if there is an outstanding request.  This is used in order to ensure that we only have a
   // single request outstanding at a time, and to wait for the outstanding requests at Close().
-  AtomicTryMutex performing_update_mutex_;
+  AtomicTryMutexWithTimestamp performing_update_mutex_;
 
   // Held if there is an outstanding heartbeat request.
   // This is used in order to ensure that we only have a
   // single heartbeat request outstanding at a time.
-  AtomicTryMutex performing_heartbeat_mutex_;
+  AtomicTryMutexWithTimestamp performing_heartbeat_mutex_;
 
   // Heartbeater for remote peer implementations.  This will send status only requests to the remote
   // peers whenever we go more than 'FLAGS_raft_heartbeat_interval_ms' without sending actual data.
@@ -290,7 +290,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
 
   // Lock that protects Peer state changes, initialization, etc.  Must not try to acquire sem_ while
   // holding peer_lock_.
-  mutable simple_spinlock peer_lock_;
+  mutable simple_spinlock_with_timestamp peer_lock_;
   State state_ = kPeerCreated;
   Consensus* consensus_ = nullptr;
   rpc::Messenger* messenger_ = nullptr;
