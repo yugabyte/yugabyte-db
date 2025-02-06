@@ -60,6 +60,7 @@
 #define ACTIVE_SESSION_HISTORY_COLS_V1 12
 #define ACTIVE_SESSION_HISTORY_COLS_V2 13
 #define ACTIVE_SESSION_HISTORY_COLS_V3 14
+#define ACTIVE_SESSION_HISTORY_COLS_V4 15
 
 #define MAX_NESTED_QUERY_LEVEL 64
 
@@ -911,7 +912,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	int			i;
 	static int	ncols = 0;
 
-	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V3)
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V4)
 		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* ASH must be loaded first */
@@ -1033,6 +1034,10 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V3)
 			values[j++] = ObjectIdGetDatum(metadata->database_id);
+
+		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V4)
+			values[j++] =
+				UInt32GetDatum(YBCAshRemoveComponentFromWaitStateCode(sample->encoded_wait_event_code));
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
@@ -1273,7 +1278,7 @@ FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 							   "wait_event_component,wait_event_class,wait_event,"
 							   "top_level_node_id,query_id,pid,"
 							   "client_node_ip,wait_event_aux,sample_weight,"
-							   "wait_event_type,ysql_dbid\n");
+							   "wait_event_type,ysql_dbid,wait_event_code\n");
 
 	for (int i = 0; i < total_elements_to_dump; ++i)
 	{
@@ -1301,13 +1306,14 @@ FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 
 		/* Top level node id */
 		PrintUuidToBuffer(output_buffer, sample->top_level_node_id);
-		appendStringInfo(output_buffer, ",%ld,%d,%s,%s,%f,%s,%d\n",
+		appendStringInfo(output_buffer, ",%ld,%d,%s,%s,%f,%s,%d,%d\n",
 						 (int64) sample->metadata.query_id,
 						 sample->metadata.pid,
 						 client_node_ip,
 						 sample->aux_info,
 						 sample->sample_weight,
 						 pgstat_get_wait_event_type(sample->encoded_wait_event_code),
-						 sample->metadata.database_id);
+						 sample->metadata.database_id,
+						 YBCAshRemoveComponentFromWaitStateCode(sample->encoded_wait_event_code));
 	}
 }

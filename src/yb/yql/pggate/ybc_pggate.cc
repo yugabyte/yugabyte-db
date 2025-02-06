@@ -399,12 +399,6 @@ void AshGetTServerClientAddress(
   }
 }
 
-uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code) {
-  DCHECK_EQ((component >> YB_ASH_COMPONENT_BITS), 0);
-  DCHECK_EQ((code >> YB_ASH_COMPONENT_POSITION), 0);
-  return (component << YB_ASH_COMPONENT_POSITION) | code;
-}
-
 void AshCopyAuxInfo(
     const WaitStateInfoPB& tserver_sample, uint32_t component, YbcAshSample* cb_sample) {
   // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
@@ -431,7 +425,8 @@ void AshCopyTServerSample(
   cb_metadata->database_id = tserver_metadata.database_id();
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
-      AshEncodeWaitStateCodeWithComponent(component, tserver_sample.wait_state_code());
+      ash::WaitStateInfo::AshEncodeWaitStateCodeWithComponent(
+        component, tserver_sample.wait_state_code());
   cb_sample->sample_weight = sample_weight;
   cb_sample->sample_time = sample_time;
 
