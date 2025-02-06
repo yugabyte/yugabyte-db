@@ -241,6 +241,8 @@ extern bool yb_allow_block_based_sampling_algorithm;
 
 extern bool yb_refresh_matview_in_place;
 
+extern bool yb_disable_auto_analyze;
+
 extern int yb_major_version_upgrade_compatibility;
 
 extern bool yb_upgrade_to_pg15_completed;

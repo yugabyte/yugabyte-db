@@ -71,8 +71,7 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
       bool* is_deleted_or_renamed);
   std::string TableNamesForAnalyzeCmd(const std::vector<TableId>& table_ids);
 
-  STATEFUL_SERVICE_IMPL_METHODS(
-      IncreaseMutationCounters);
+  STATEFUL_SERVICE_IMPL_METHODS(IncreaseMutationCounters);
 
   tserver::PgMutationCounter pg_cluster_level_mutation_counter_;
 
@@ -93,6 +92,7 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   // Track if we need to refresh table_id_to_name_ and namespace_id_to_name_
   // in case of table and database rename.
   bool refresh_name_cache_;
+
   // Each postgres database has its own pg_class table, so we use map instead of single value.
   TableMutationsMap pg_class_id_mutations_;
 };
