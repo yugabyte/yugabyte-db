@@ -73,16 +73,6 @@ struct KeyFilterCallbackResult {
   bool cache_key;
 };
 
-// KeyFilterCallback accepts the encoded keys as input, and returns a pair
-// of bool values as output. First bool parameter determines when to skip
-// the key, and second parameter controls the multi-key caching at Iterator
-// layer.
-using KeyFilterCallback = boost::function<KeyFilterCallbackResult(
-    Slice /*prefixed key*/, size_t /*shared_bytes*/, Slice /*delta*/)>;
-// ScanCallback is called for keys which are not skipped.
-using ScanCallback =
-    boost::function<bool(Slice /*key_bytes*/, Slice /*value_bytes*/)>;
-
 struct KeyValueEntry {
   Slice key{static_cast<const char*>(nullptr), nullptr};
   Slice value{static_cast<const char*>(nullptr), nullptr};
@@ -204,55 +194,15 @@ class Iterator : public Cleanable {
   // if the upper bound has increased.
   virtual void RevalidateAfterUpperBoundChange() {}
 
-  // Iterate over the key-values and call the callback functions, until:
-  // 1. Provided upper bound is reached (optional)
-  // 2. Iterator upper bound is reached (if present)
-  // 3. Reaches end of iteration.
-  // Note: this API only works in cases where there are only unique key insertions in the RocksDB.
-  // Because this call skips the merge step for keys encountered during scan.
-  // REQUIRED: Valid()
-  //
-  // Input:
-  //  Upperbound - Current call upperbound, if empty, then iterator upperbound is used.
-  //  KeyFilterCallback - optional callback to filter out keys before they are cached, and a
-  //  mechanism
-  //    to control the multiple key-values at lower layer.
-  //  ScanCallback - callback function to call when visiting a key-value pair.
-  // Output: Returns bool when the upperbound is reached, otherwise returns false when either
-  //  callback failed (i.e. returned false) or lower layer ran into some issue when reading data.
-  //  status() call should be used to figure out the callback failure vs lower layer failure.
-  //
-  // ScanBackward() is not supported using callback, because every previous callback
-  // requires to go back to start of restart_point and find the key before current key.
-  virtual bool ScanForward(
-      Slice upperbound, KeyFilterCallback* key_filter_callback,
-      ScanCallback* scan_callback) {
-    DCHECK(false);
-    return false;
-  }
-
   virtual void UseFastNext(bool value) {
     DCHECK(false);
   }
 
   // Iterator could be created with filter in deferred mode specified via ReadOptions.
   // In this case iterators for all sources (SST files and MemTables) are created.
-  // But it is allowed to update user key for filter via SeekWithNewFilter.
-  // After updating user key for filter, sub iterators that does not match updated filter & key
-  // pair, will be ignored.
-  const KeyValueEntry& SeekWithNewFilter(Slice target, Slice filter_user_key) {
-    return DoSeekWithNewFilter(target, filter_user_key);
-  }
-
-  const KeyValueEntry& SeekWithNewFilter(Slice target) {
-    return DoSeekWithNewFilter(target, target);
-  }
-
- protected:
-  virtual const KeyValueEntry& DoSeekWithNewFilter(Slice target, Slice filter_user_key) {
-    DCHECK(false);
-    return Seek(target);
-  }
+  // But it is allowed to update user key for filter via UpdateFilterKey.
+  // The filter does not change current entry, but applied during calls to Seek/Next.
+  virtual void UpdateFilterKey(Slice user_key_for_filter) = 0;
 };
 
 class DataBlockAwareIndexIterator : public Iterator {

@@ -1040,7 +1040,8 @@ index_create(Relation heapRelation,
 					   colocationId,
 					   tableSpaceId,
 					   YbGetRelfileNodeId(indexRelation),
-					   InvalidOid /* oldRelfileNodeId */ );
+					   InvalidOid /* oldRelfileNodeId */ ,
+					   classObjectId);
 	}
 
 	/*

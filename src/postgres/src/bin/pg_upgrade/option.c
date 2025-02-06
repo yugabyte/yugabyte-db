@@ -236,6 +236,9 @@ parseCommandLine(int argc, char *argv[])
 
 	if (is_yugabyte_enabled())
 	{
+		if (os_info.user == NULL)
+			pg_fatal("missing user name\n");
+
 		old_cluster.yb_user = os_info.user;
 		/* In YB, the new cluster is always connected via the yugabyte user */
 		new_cluster.yb_user = "yugabyte";

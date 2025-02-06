@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import java.io.File;
 import java.util.ArrayList;
@@ -37,7 +38,9 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.YBClient;
+import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
 @Slf4j
 public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
@@ -444,6 +447,23 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return false;
   }
 
+  protected YsqlMajorCatalogUpgradeState getYsqlMajorCatalogUpgradeState(Universe universe) {
+    try (YBClient client =
+        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateClientToNode())) {
+      GetYsqlMajorCatalogUpgradeStateResponse resp = client.getYsqlMajorCatalogUpgradeState();
+      if (resp.hasError()) {
+        log.error("Error while getting YSQL major version catalog upgrade state: ", resp);
+        throw new RuntimeException(
+            "Error while getting YSQL major version catalog upgrade state: "
+                + resp.getServerError().toString());
+      }
+      return resp.getState();
+    } catch (Exception e) {
+      log.error("Error while getting YSQL major version catalog upgrade state: ", e);
+      throw new RuntimeException(e);
+    }
+  }
+
   protected void createGFlagsUpgradeTaskForYSQLMajorUpgrade(
       Universe universe, YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
     createGFlagsUpgradeTaskForYSQLMajorUpgrade(
@@ -454,13 +474,13 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
       Universe universe,
       List<NodeDetails> nodes,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
-    createSetExpressionPushdownFlagInMemoryTask(
+    // Set the flag in memory for all the nodes.
+    createSetYBMajorVersionUpgradeCompatibility(
         universe,
         nodes,
-        ysqlMajorVersionUpgradeState.equals(YsqlMajorVersionUpgradeState.IN_PROGRESS)
-            ? false
-            : true);
+        UpgradeDetails.getMajorUpgradeCompatibilityFlagValue(ysqlMajorVersionUpgradeState));
 
+    // Update server.conf for all the nodes.
     createServerConfUpdateTaskForYsqlMajorUpgrade(universe, nodes, ysqlMajorVersionUpgradeState);
   }
 
@@ -472,7 +492,8 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    SubTaskGroup updateGFlagsTaskGroup = createSubTaskGroup(subGroupDescription);
+    SubTaskGroup updateGFlagsTaskGroup =
+        createSubTaskGroup(subGroupDescription, SubTaskGroupType.UpdatingGFlags);
     for (NodeDetails node : nodes) {
       Map<String, String> gFlags =
           GFlagsUtil.getGFlagsForNode(
@@ -485,7 +506,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
           getServerConfUpdateTaskForYsqlMajorUpgradePerNode(
               cluster.userIntent, node, ServerType.TSERVER, gFlags, ysqlMajorVersionUpgradeState));
     }
-    updateGFlagsTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     getRunnableTask().addSubTaskGroup(updateGFlagsTaskGroup);
   }
 
@@ -508,8 +528,8 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return task;
   }
 
-  protected void createSetExpressionPushdownFlagInMemoryTask(
-      Universe universe, List<NodeDetails> nodes, boolean flagValue) {
+  protected void createSetYBMajorVersionUpgradeCompatibility(
+      Universe universe, List<NodeDetails> nodes, String flagValue) {
     if (nodes.isEmpty()) {
       return;
     }
@@ -518,10 +538,9 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
             ServerType.TSERVER,
             (node, params) -> {
               params.force = true;
-              // Override only expression pushdown flag.
+              // Override only major version upgrade compatibility flag.
               params.gflags =
-                  ImmutableMap.of(
-                      GFlagsUtil.YSQL_YB_ENABLE_EXPRESSION_PUSHDOWN, flagValue ? "true" : "false");
+                  ImmutableMap.of(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
             })
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }

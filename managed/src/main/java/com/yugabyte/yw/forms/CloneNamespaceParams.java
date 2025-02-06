@@ -20,13 +20,17 @@ public class CloneNamespaceParams extends UniverseTaskParams {
 
   @JsonIgnore public UUID customerUUID;
 
+  @ApiModelProperty(value = "PITR Config UUID")
+  @Constraints.Required
+  public UUID pitrConfigUUID;
+
   @ApiModelProperty(value = "Clone namespace name")
   @Constraints.Required
   public String targetKeyspaceName;
 
-  @JsonIgnore public String keyspaceName;
+  @JsonIgnore @Getter @Setter public String keyspaceName;
 
-  @JsonIgnore public TableType tableType;
+  @JsonIgnore @Getter @Setter public TableType tableType;
 
   @ApiModelProperty(
       value =

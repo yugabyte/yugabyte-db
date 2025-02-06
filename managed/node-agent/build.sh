@@ -119,6 +119,13 @@ build_for_platform() {
     echo "Building ${exec_name}"
     executable="$build_output_dir/$exec_name"
     pushd "$project_dir"
+    WHEEL_DIR="./pywheels"
+    mkdir -p "$WHEEL_DIR"
+    # Read requirements.txt and download platform-agnostic wheels
+    while IFS= read -r pkg || [ -n "$pkg" ]; do
+        echo "Downloading $pkg..."
+        python3 -m pip download "$pkg" --no-binary=:all: --dest "$WHEEL_DIR"
+    done < ynp_requirements.txt
     env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
     go build -o "$executable" "$project_dir"/cmd/cli/main.go
     if [ $? -ne 0 ]; then
@@ -203,6 +210,7 @@ package_for_platform() {
     cp -Lf ../version.txt "${version_dir}"/version.txt
     cp -Lf ../version_metadata.json "${version_dir}"/version_metadata.json
     pushd "$project_dir/resources"
+    cp -rf ../pywheels "${script_dir}"/pywheels
     cp -rf preflight_check.sh "${script_dir}"/preflight_check.sh
     cp -rf node-agent-installer.sh "${bin_dir}"/node-agent-installer.sh
     cp -rf ynp "${script_dir}"/ynp

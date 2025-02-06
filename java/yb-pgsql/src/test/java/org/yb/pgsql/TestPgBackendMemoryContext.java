@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.Map.Entry;
 import java.util.List;
 
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -77,6 +78,9 @@ public class TestPgBackendMemoryContext extends BasePgSQLTest {
     //  8192 total in 1 blocks; 7720 free (0 chunks); 472 used
     // [69974] LOG:  level: 1; RowDescriptionContext: \
     //  8192 total in 1 blocks; 6880 free (0 chunks); 1312 used
+
+    Assume.assumeFalse(BasePgSQLTest.NO_PHYSICAL_CONN_ATTACHED,
+      isTestRunningWithConnectionManager());
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("SELECT pg_log_backend_memory_contexts(pg_backend_pid());");

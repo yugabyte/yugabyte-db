@@ -113,6 +113,9 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
 
   ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
   ASSERT_STR_CONTAINS(ysql_catalog_config, "catalog_version: 15");
+
+  // Running validation on the upgraded cluster should fail since its already on the higher version.
+  ASSERT_NOK_STR_CONTAINS(ValidateUpgradeCompatibility(), kPgUpgradeFailedError);
 }
 
 TEST_F(Pg15UpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
@@ -1438,11 +1441,12 @@ TEST_F(Pg15UpgradeTest, YbGinIndex) {
 }
 
 TEST_F(Pg15UpgradeTest, CheckPushdownIsDisabled) {
-  // Whether or not pushdown is enabled, pg_upgrade --check will not error.
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
+  // Whether or not yb_major_version_upgrade_compatibility is enabled, pg_upgrade --check will not
+  // error.
+  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "11"));
   ASSERT_OK(ValidateUpgradeCompatibility());
 
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "true"));
+  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "0"));
   ASSERT_OK(ValidateUpgradeCompatibility());
 
   // However, when we actually run the YSQL upgrade, pg_upgrade will error if pushdown is enabled.

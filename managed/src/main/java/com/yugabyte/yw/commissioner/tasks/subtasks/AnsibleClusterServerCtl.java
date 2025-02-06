@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleClusterServerCtl extends NodeTaskBase {
@@ -69,6 +70,14 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
         log.warn(
             "Universe or node {} does not exist. Skipping server control command - {}",
             taskParams().nodeName,
+            taskParams().command);
+        return;
+      }
+      if (nodeDetails.cloudInfo == null || StringUtils.isEmpty(nodeDetails.cloudInfo.private_ip)) {
+        log.warn(
+            "Node {} has no IP in the universe {}. Skipping server control command - {}",
+            taskParams().nodeName,
+            universeOpt.get().getUniverseUUID(),
             taskParams().command);
         return;
       }

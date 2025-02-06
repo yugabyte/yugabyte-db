@@ -650,12 +650,14 @@ class WaitOnConflictResolver : public ConflictResolver {
       LockBatch* lock_batch,
       uint64_t request_start_us,
       int64_t request_id,
+      bool is_advisory_lock_request,
       CoarseTimePoint deadline)
         : ConflictResolver(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback)),
         wait_queue_(wait_queue), lock_batch_(lock_batch), serial_no_(wait_queue_->GetSerialNo()),
         trace_(Trace::CurrentTrace()), request_start_us_(request_start_us),
-        request_id_(request_id), deadline_(deadline) {}
+        request_id_(request_id), is_advisory_lock_request_(is_advisory_lock_request),
+        deadline_(deadline) {}
 
   ~WaitOnConflictResolver() {
     VLOG(3) << "Wait-on-Conflict resolution complete after " << wait_for_iters_ << " iters.";
@@ -709,7 +711,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         waiter_txn, context_->subtransaction_id(), lock_batch_, waiter_status_tablet,
         serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_,
-        context_->PgSessionRequestVersion(), deadline_,
+        context_->PgSessionRequestVersion(), is_advisory_lock_request_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
@@ -735,7 +737,7 @@ class WaitOnConflictResolver : public ConflictResolver {
         waiter_txn, context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), waiter_status_tablet, serial_no_,
         context_->GetTxnStartUs(), request_start_us_, request_id_,
-        context_->PgSessionRequestVersion(), deadline_,
+        context_->PgSessionRequestVersion(), is_advisory_lock_request_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2)));
     MaybeSetWaitStartTime();
@@ -782,6 +784,7 @@ class WaitOnConflictResolver : public ConflictResolver {
   // Stores the start time of the underlying rpc request that created this resolver.
   uint64_t request_start_us_ = 0;
   const int64_t request_id_;
+  const bool is_advisory_lock_request_;
   CoarseTimePoint deadline_;
 };
 
@@ -928,7 +931,8 @@ class StrongConflictChecker {
           /* iterate_upper_bound = */ nullptr,
           rocksdb::CacheRestartBlockKeys::kFalse);
     }
-    value_iter_.SeekWithNewFilter(intent_key);
+    value_iter_.UpdateFilterKey(intent_key);
+    const auto* entry = &value_iter_.Seek(intent_key);
 
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
@@ -951,16 +955,16 @@ class StrongConflictChecker {
     // change, so it is only directly in conflict with a committed record that deletes or replaces
     // that entire document subtree (similar to a strong intent), so it would have the same exact
     // key as the weak intent (not including hybrid time).
-    while (value_iter_.Valid() &&
+    while (entry->Valid() &&
            (intent_key.starts_with(KeyEntryTypeAsChar::kGroupEnd) ||
-            value_iter_.key().starts_with(intent_key))) {
-      auto existing_key = value_iter_.key();
+            entry->key.starts_with(intent_key))) {
+      auto existing_key = entry->key;
       auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
       if (existing_key.empty() ||
           existing_key[existing_key.size() - 1] != KeyEntryTypeAsChar::kHybridTime) {
         return STATUS_FORMAT(
             Corruption, "Hybrid time expected at end of key: $0",
-            value_iter_.key().ToDebugString());
+            entry->key.ToDebugString());
       }
       if (!strong && existing_key.size() != intent_key.size() + 1) {
         VLOG_WITH_PREFIX(4)
@@ -972,9 +976,9 @@ class StrongConflictChecker {
           << "Check value overwrite, key: " << SubDocKey::DebugSliceToString(intent_key)
           << ", read time: " << read_time_
           << ", doc ht: " << doc_ht.hybrid_time()
-          << ", found key: " << SubDocKey::DebugSliceToString(value_iter_.key())
+          << ", found key: " << SubDocKey::DebugSliceToString(entry->key)
           << ", after start: " << (doc_ht.hybrid_time() >= read_time_)
-          << ", value: " << value_iter_.value().ToDebugString();
+          << ", value: " << entry->value.ToDebugString();
       if (doc_ht.hybrid_time() >= read_time_) {
         if (conflict_management_policy == SKIP_ON_CONFLICT) {
           return STATUS(InternalError, "Skip locking since entity was modified in regular db",
@@ -991,7 +995,7 @@ class StrongConflictChecker {
       buffer_.Reset(existing_key);
       // Already have ValueType::kHybridTime at the end
       buffer_.AppendHybridTime(DocHybridTime::kMin);
-      ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
+      entry = &ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
     }
 
     return value_iter_.status();
@@ -1443,6 +1447,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    tablet::TabletMetrics* tablet_metrics,
                                    LockBatch* lock_batch,
                                    WaitQueue* wait_queue,
+                                   bool is_advisory_lock_request,
                                    CoarseTimePoint deadline,
                                    ResolutionCallback callback) {
   DCHECK(resolution_ht.is_valid());
@@ -1463,7 +1468,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
     DCHECK(lock_batch);
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, request_id, deadline);
+        wait_queue, lock_batch, request_start_us, request_id, is_advisory_lock_request, deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
@@ -1504,7 +1509,8 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
         "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, request_id, deadline);
+        wait_queue, lock_batch, request_start_us, request_id, false /* is_advisory_lock_request */,
+        deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same

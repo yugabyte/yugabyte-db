@@ -2,7 +2,7 @@
 -- YB_FEATURE Testsuite: SELECT
 --   An introduction on whether or not a feature is supported in YugaByte.
 --   This test suite does not go in depth for each command.
--- 
+--
 -- SELECT Statements
 --
 -- Select all.
@@ -117,3 +117,9 @@ SELECT	col_smallint Employee_ID,
 			 				 FROM feature_tab_dml_identifier
 							 WHERE col_id > 5)
 		ORDER BY Employee_ID;
+
+-- GHI #24512
+create table test (a bigint, b bigint);
+insert into test (a, b) select i, 2024000000000 + i from generate_series(1, 1000) as i;
+select max(sub.b) from (select b from test where (b > 2024000000000 AND b < 2025000000000) OFFSET 0 ) as sub;
+drop table test;

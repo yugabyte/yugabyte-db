@@ -7,7 +7,6 @@ import pkgutil
 import sys
 import pwd
 import grp
-import semver
 
 from enum import Enum
 import modules.base_module as mbm
@@ -58,7 +57,8 @@ class ProvisionCommand(Command):
     def _build_script(self, all_templates, phase):
         key = next(iter(self.config), None)
         context = self.config[key]
-        with tempfile.NamedTemporaryFile(mode="w+", dir=context.get('tmp_directory'), delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(mode="w+", dir=context.get('tmp_directory'),
+                                         delete=False) as temp_file:
             temp_file.write("#!/bin/bash\n\n")
             loglevel = context.get('loglevel')
             if loglevel == "DEBUG":
@@ -144,11 +144,14 @@ class ProvisionCommand(Command):
             module = self._module_registry.get(key)
             if module is None:
                 continue
-            if key in self.cloud_only_modules and self.config[key].get('is_cloud', 'False') == 'False':
+            if key in self.cloud_only_modules and \
+                    self.config[key].get('is_cloud', 'False') == 'False':
                 print(f"Skipping {key} because is_cloud is {self.config[key].get('is_cloud')}")
                 continue
-            if key == 'InstallNodeAgent' and self.config[key].get('is_install_node_agent', 'True') == 'False':
-                print(f"Skipping {key} because is_install_node_agent is {self.config[key].get('is_install_node_agent')}")
+            if key == 'InstallNodeAgent' and \
+                    self.config[key].get('is_install_node_agent', 'True') == 'False':
+                print(f"Skipping {key} because is_install_node_agent is "
+                      f"{self.config[key].get('is_install_node_agent')}")
                 continue
             context = self.config[key]
 
@@ -256,7 +259,7 @@ class ProvisionCommand(Command):
         try:
             # Check if Python 3.11 is already installed
             subprocess.run(['python3.11', '--version'], check=True,
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             logger.info("Python 3.11 is already installed.")
         except FileNotFoundError:
             logger.info("Python 3.11 not found. Installing...")
@@ -274,13 +277,11 @@ class ProvisionCommand(Command):
             # Verify installation
             try:
                 subprocess.run(['python3.11', '--version'], check=True,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 logger.info("Python 3.11 installed successfully.")
             except FileNotFoundError:
                 logger.error("Failed to install Python 3.11.")
                 sys.exit(1)
-
-
 
     def execute(self):
         for key in self.config:
@@ -318,14 +319,14 @@ class ProvisionCommand(Command):
         if key is not None:
             context = self.config[key]
             yb_home_dir = context.get('yb_home_dir')
-            current_ynp_version = semver.Version.parse(context.get('version'))
+            current_ynp_version = self._parse_version(context.get('version'))
 
             # Define the full path to the ynp_version file
             ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
             try:
                 # Read the ynp_version from the file
                 with open(ynp_version_file, 'r') as file:
-                    stored_ynp_version = semver.Version.parse(file.read().strip())
+                    stored_ynp_version = self._parse_version(file.read().strip())
             except FileNotFoundError:
                 logger.error(f"The ynp_version file was not found at {ynp_version_file}")
                 sys.exit(1)
@@ -333,13 +334,27 @@ class ProvisionCommand(Command):
                 logger.error(f"Error parsing version from the ynp_version file: {e}")
                 sys.exit(1)
 
-            if current_ynp_version.major != stored_ynp_version.major:
+            if current_ynp_version[0] != stored_ynp_version[0]:
                 logger.info(
                     f"The major versions are different. Current: {current_ynp_version},"
                     f"Stored: {stored_ynp_version}. "
                     "Please run reprovision again on the node"
-                    )
+                )
                 sys.exit(1)
+
+    def _parse_version(self, version):
+        """
+        Parse a version string into a tuple of integers (major, minor, patch).
+        :param version: str, the version string (e.g., '1.2.3').
+        :return: tuple, (major, minor, patch).
+        """
+        try:
+            parts = version.split('.')
+            if len(parts) != 3:
+                raise ValueError(f"Invalid version format: {version}")
+            return tuple(int(part) for part in parts)
+        except (ValueError, AttributeError):
+            raise ValueError(f"Invalid version format: {version}")
 
     def run_preflight_checks(self):
         _, precheck_combined_script = self._generate_template()

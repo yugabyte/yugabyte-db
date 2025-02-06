@@ -59,6 +59,25 @@ using MergerMinIterHeap =
     BinaryHeap<IteratorWrapperType*, MinIteratorComparator<IteratorWrapperType>>;
 
 template <class IteratorWrapperType>
+class IteratorWithSeekBackwardCounter : public IteratorWrapperType {
+ public:
+  template <class... Args>
+  explicit IteratorWithSeekBackwardCounter(Args&&... args)
+      : IteratorWrapperType(std::forward<Args>(args)...) {}
+
+  size_t seek_backward_counter() const {
+    return seek_backward_counter_;
+  }
+
+  void set_seek_backward_counter(size_t value) {
+    seek_backward_counter_ = value;
+  }
+
+ private:
+  size_t seek_backward_counter_ = 0;
+};
+
+template <class IteratorType>
 class VariableFilter {
  public:
   VariableFilter(
@@ -80,12 +99,12 @@ class VariableFilter {
       if (!child->UpdateUserKeyForFilter(filter_context_)) {
         return false;
       }
-      if (forward_only_ && child->had_seek()) {
+      if (child->seek_backward_counter() == seek_backward_counter_) {
         if (child->Valid() && child->key().compare(target) < 0) {
-          child->Seek(target);
+          Seek(*child, target);
         }
       } else {
-        child->Seek(target);
+        Seek(*child, target);
       }
       if (child->Valid()) {
         heap.push(child);
@@ -98,10 +117,11 @@ class VariableFilter {
   void ResetMatchedState() {
     iterators_not_matching_filter_.clear();
     checked_user_key_for_filter_version_ = filter_context_.version;
+    ++seek_backward_counter_;
   }
 
   // Returns true if iterator matches this filter.
-  bool CheckIterator(IteratorWrapperType& child) {
+  bool CheckIterator(IteratorType& child) {
     if (child.UpdateUserKeyForFilter(filter_context_)) {
       return true;
     }
@@ -110,18 +130,53 @@ class VariableFilter {
   }
 
   void UpdateUserKeyForFilter(Slice user_key) {
-    forward_only_ = forward_only_ && user_key.compare(filter_context_.user_key) >= 0;
     filter_context_.user_key = user_key;
     filter_context_.cache.Reset(user_key);
     ++filter_context_.version;
   }
 
+  const KeyValueEntry& Seek(IteratorType& iter, Slice key) {
+    iter.set_seek_backward_counter(seek_backward_counter_);
+    return iter.Seek(key);
+  }
+
+  const KeyValueEntry& SeekToFirst(IteratorType& iter) {
+    iter.set_seek_backward_counter(seek_backward_counter_);
+    return iter.SeekToFirst();
+  }
+
+  const KeyValueEntry& SeekToLast(IteratorType& iter) {
+    LOG(DFATAL) << "Backward scan is not supported in conjunction with filters";
+    return iter.SeekToLast();
+  }
+
  private:
   UserKeyFilterContext filter_context_;
   int64_t checked_user_key_for_filter_version_ = 0;
-  bool forward_only_ = true;
-  boost::container::small_vector<IteratorWrapperType*, kNumIterReserve>
-      iterators_not_matching_filter_;
+  boost::container::small_vector<IteratorType*, kNumIterReserve> iterators_not_matching_filter_;
+  // Merged iterator Seek target key could be after current (forward seek) key and before
+  // current (backward seek) key.
+  //
+  // In forward case we have optimization to avoid fully rebuilding child iterators heap, and also
+  // don't call Seek on child iterators which are already positioned after the target key.
+  //
+  // In backward case we call seek only on child iterators matching the filter and fully rebuild
+  // child iterators heap with child iterators which are valid after such seek.
+  //
+  // When filter is used we could get into situation where backward seek on child iterator was not
+  // called, since child iterator was filtered out.
+  // So if after that child iterator started to match updated filter during forward seek, there are
+  // 2 possible scenarios:
+  // 1) Child iterator performed last backward seek. In this case we could check whether child
+  //    iterator current key is after target key, and if this is the case we can skip Seek on this
+  //    child iterator.
+  // 2) Child iterator missing last backward seek. In this case we should trigger seek on this child
+  //    iterator w/o respecting its current key.
+  // We use VariableFilter::seek_backward_counter_ to track how many backward seeks happened on
+  // merged iterator, and store current value of seek_backward_counter_ in each child iterator when
+  // Seek is called on this child iterator. So we can compare those counters and understand whether
+  // this particular child iterator missing backward seek or not.
+  size_t seek_backward_counter_ = 1;
 };
 
 class NoFilter {
@@ -129,6 +184,21 @@ class NoFilter {
   template <class Heap>
   bool SeekUpdatingHeap(Slice target, Heap& heap) {
     return false;
+  }
+
+  template <class IteratorType>
+  const KeyValueEntry& Seek(IteratorType& iter, Slice key) {
+    return iter.Seek(key);
+  }
+
+  template <class IteratorType>
+  const KeyValueEntry& SeekToFirst(IteratorType& iter) {
+    return iter.SeekToFirst();
+  }
+
+  template <class IteratorType>
+  const KeyValueEntry& SeekToLast(IteratorType& iter) {
+    return iter.SeekToLast();
   }
 
   void ResetMatchedState() {}
@@ -149,17 +219,14 @@ class MergingIteratorBase final
  public:
   using IteratorType = typename IteratorWrapperType::IteratorType;
   using Base = MergingIterator<IteratorType>;
-  using Children = boost::container::small_vector<IteratorWrapperType, kMergeIteratorNumReserved>;
+  using Children = boost::iterator_range<IteratorWrapperType*>;
 
   MergingIteratorBase(
-      const Comparator* comparator, IteratorType** children, int n, bool is_arena_mode)
+      const Comparator* comparator, Arena* arena, IteratorType** children, size_t n)
       : comparator_(comparator),
-        is_arena_mode_(is_arena_mode),
+        is_arena_mode_(arena != nullptr),
         minHeap_(MinIteratorComparator<IteratorWrapperType>(comparator_)) {
-    children_.reserve(n);
-    for (int i = 0; i < n; i++) {
-      children_.emplace_back(children[i]);
-    }
+    AllocateChildren(arena, boost::make_iterator_range_n(children, n));
     minHeap_.reserve(children_.size());
     for (auto& child : children_) {
       if (child.Valid()) {
@@ -169,15 +236,15 @@ class MergingIteratorBase final
     CurrentForward();
   }
 
-  template <class... FilterArgs>
+  template <class Children, class... FilterArgs>
   MergingIteratorBase(
-      const Comparator* comparator, bool is_arena_mode, Children&& children,
+      const Comparator* comparator, Arena* arena, const Children& children,
       FilterArgs&&... filter_args)
       : comparator_(comparator),
-        is_arena_mode_(is_arena_mode),
-        children_(std::move(children)),
+        is_arena_mode_(arena != nullptr),
         child_iterator_filter_(std::forward<FilterArgs>(filter_args)...),
         minHeap_(MinIteratorComparator<IteratorWrapperType>(comparator_)) {
+    AllocateChildren(arena, children);
   }
 
   void AddIterator(IteratorType* iter) {
@@ -198,13 +265,15 @@ class MergingIteratorBase final
     for (auto& child : children_) {
       child.DeleteIter(is_arena_mode_);
     }
+    if (!is_arena_mode_) {
+      delete [] children_.begin();
+    }
   }
 
   const KeyValueEntry& SeekToFirst() override {
     ClearHeaps();
     for (auto& child : children_) {
-      child.SeekToFirst();
-      if (child.Valid()) {
+      if (child_iterator_filter_.SeekToFirst(child).Valid()) {
         minHeap_.push(&child);
       }
     }
@@ -216,8 +285,7 @@ class MergingIteratorBase final
     ClearHeaps();
     InitMaxHeap();
     for (auto& child : children_) {
-      child.SeekToLast();
-      if (child.Valid()) {
+      if (child_iterator_filter_.SeekToLast(child).Valid()) {
         maxHeap_->push(&child);
       }
     }
@@ -251,7 +319,8 @@ class MergingIteratorBase final
           // heap.
           DCHECK_EQ(current_, minHeap_.top());
           if (child_iterator_filter_.CheckIterator(*current_)) {
-            const auto& entry = UpdateHeapAfterCurrentAdvancement(current_->Seek(target));
+            const auto& entry = UpdateHeapAfterCurrentAdvancement(
+                child_iterator_filter_.Seek(*current_, target));
             if (!entry.Valid()) {
               return entry; // Reached the end.
             }
@@ -282,7 +351,7 @@ class MergingIteratorBase final
       }
       {
         PERF_TIMER_GUARD(seek_child_seek_time);
-        child.Seek(target);
+        child_iterator_filter_.Seek(child, target);
       }
       PERF_COUNTER_ADD(seek_child_seek_count, 1);
 
@@ -313,8 +382,16 @@ class MergingIteratorBase final
     // For the heap modifications below to be correct, current_ must be the current top of the heap.
     DCHECK_EQ(current_, minHeap_.top());
 
-    // As current_ points to the current record, move the iterator forward.
-    return UpdateHeapAfterCurrentAdvancement(current_->Next());
+    if (child_iterator_filter_.SeekUpdatingHeap(current_->key(), minHeap_)) {
+      min_heap_best_root_child_ = 0;
+    }
+    if (child_iterator_filter_.CheckIterator(*current_)) {
+      // As current_ points to the current record, move the iterator forward.
+      return UpdateHeapAfterCurrentAdvancement(current_->Next());
+    }
+
+    minHeap_.pop();
+    return CurrentForward();
   }
 
   void RebuildForward() {
@@ -327,7 +404,7 @@ class MergingIteratorBase final
         minHeap_.push(&child);
         continue;
       }
-      child.Seek(key);
+      child_iterator_filter_.Seek(child, key);
       if (!child.Valid()) {
         continue;
       }
@@ -360,7 +437,7 @@ class MergingIteratorBase final
       InitMaxHeap();
       for (auto& child : children_) {
         if (&child != current_) {
-          child.Seek(Base::key());
+          child_iterator_filter_.Seek(child, Base::key());
           if (child.Valid()) {
             // Child is at first entry >= key().  Step back one to be < key()
             DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("MergeIterator::Prev:BeforePrev", &child);
@@ -368,7 +445,7 @@ class MergingIteratorBase final
           } else {
             // Child has no entries >= key().  Position at last entry.
             DEBUG_ONLY_TEST_SYNC_POINT("MergeIterator::Prev:BeforeSeekToLast");
-            child.SeekToLast();
+            child_iterator_filter_.SeekToLast(child);
           }
         }
         if (child.Valid()) {
@@ -463,75 +540,28 @@ class MergingIteratorBase final
     return current_->IsKeyPinned();
   }
 
-  ScanForwardResult ScanForward(
-      const Comparator* user_key_comparator, const Slice& upperbound,
-      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
-    LOG_IF(DFATAL, !Base::Valid()) << "Iterator should be valid.";
-
-    ScanForwardResult result;
-    do {
-      const auto key = rocksdb::ExtractUserKey(current_->key());
-      if (!upperbound.empty() && user_key_comparator->Compare(key, upperbound) >= 0) {
-        break;
-      }
-
-      // Compute the next upperbound.
-      Slice next_upperbound = upperbound;
-      if (minHeap_.size() > 1) {
-        auto next_iterator = minHeap_.second_top();
-        LOG_IF(DFATAL, !next_iterator->Valid()) << "Second top iterator should be valid.";
-        const auto next_user_key = rocksdb::ExtractUserKey(next_iterator->key());
-        if (upperbound.empty() || user_key_comparator->Compare(next_user_key, upperbound) < 0) {
-          next_upperbound = next_user_key;
-
-          // Handle the duplicate keys. Currently YB RegularDB only has duplicate keys for
-          // TransactionApplyState.
-          if (key == next_user_key) {
-            bool skip_key = false;
-            if (key_filter_callback) {
-              auto kf_result =
-                  (*key_filter_callback)(/*prefixed_key=*/Slice(), /*shared_bytes=*/0, key);
-              skip_key = kf_result.skip_key;
-            }
-
-            if (!skip_key) {
-              if (!(*scan_callback)(key, Base::value())) {
-                result.reached_upperbound = false;
-                return result;
-              }
-            }
-
-            Next();
-            result.number_of_keys_visited++;
-            if (!Base::Valid()) {
-              break;
-            }
-          }
-        }
-      }
-
-      auto current_result = current_->ScanForward(
-          user_key_comparator, next_upperbound, key_filter_callback, scan_callback);
-      result.number_of_keys_visited += current_result.number_of_keys_visited;
-      if (!current_result.reached_upperbound) {
-        result.reached_upperbound = false;
-        return result;
-      }
-
-      UpdateHeapAfterCurrentAdvancement(current_->Entry());
-    } while (Base::Valid());
-
-    result.reached_upperbound = true;
-    return result;
-  }
-
-  const KeyValueEntry& SeekWithNewFilter(Slice target, Slice filter_user_key) override {
-    DCHECK(direction_ == Direction::kForward);
-    child_iterator_filter_.UpdateUserKeyForFilter(filter_user_key);
-    return Seek(target);
+  void UpdateFilterKey(Slice user_key_for_filter) override {
+    LOG_IF(DFATAL, direction_ != Direction::kForward) << "Update filter with wrong direction";
+    child_iterator_filter_.UpdateUserKeyForFilter(user_key_for_filter);
   }
 
  private:
+  template <class Children>
+  void AllocateChildren(Arena* arena, const Children& children) {
+    auto num_children = children.size();
+    IteratorWrapperType* start;
+    if (arena) {
+      start = pointer_cast<IteratorWrapperType*>(
+          arena->AllocateAligned(sizeof(IteratorWrapperType) * num_children));
+    } else {
+      start = new IteratorWrapperType[num_children];
+    }
+    for (size_t i = 0; i != num_children; ++i) {
+      new (start + i) IteratorWrapperType(children[i]);
+    }
+    children_ = boost::make_iterator_range_n(start, num_children);
+  }
+
   // Clears heaps for both directions, used when changing direction or seeking
   void ClearHeaps() {
     minHeap_.clear();
@@ -626,18 +656,17 @@ class MergingIteratorBase final
 
 template <typename IteratorType, typename IteratorWrapperType>
 InternalIterator* NewMergingIterator(
-    const Comparator* cmp, IteratorType** list, int n, Arena* arena) {
-  assert(n >= 0);
+    const Comparator* cmp, IteratorType** list, size_t n, Arena* arena) {
   if (n == 0) {
     return NewEmptyInternalIterator(arena);
   } else if (n == 1) {
     return list[0];
   } else {
     if (arena == nullptr) {
-      return new MergingIteratorBase<IteratorWrapperType, NoFilter>(cmp, list, n, false);
+      return new MergingIteratorBase<IteratorWrapperType, NoFilter>(cmp, arena, list, n);
     }
     return arena->NewObject<MergingIteratorBase<IteratorWrapperType, NoFilter>>(
-        cmp, list, n, true);
+        cmp, arena, list, n);
   }
 }
 
@@ -654,24 +683,24 @@ MergeIteratorBuilderBase<IteratorWrapperType>::MergeIteratorBuilderBase(
 
 template <typename IteratorWrapperType>
 void MergeIteratorBuilderBase<IteratorWrapperType>::AddIterator(InternalIterator* iter) {
-  iterators_.emplace_back(iter);
+  iterators_.push_back(iter);
 }
 
 template <typename IteratorWrapperType>
 InternalIterator* MergeIteratorBuilderBase<IteratorWrapperType>::Finish() {
   if (iterators_.size() == 1) {
-    return iterators_.front().iter();
+    return iterators_.front();
   }
   CHECK(!iterators_.empty());
 
   if (filter_) {
-    using Type = MergingIteratorBase<IteratorWrapperType, VariableFilter<IteratorWrapperType>>;
+    using FilterIteratorType = IteratorWithSeekBackwardCounter<IteratorWrapperType>;
+    using Type = MergingIteratorBase<FilterIteratorType, VariableFilter<FilterIteratorType>>;
     return arena_->NewObject<Type>(
-        comparator_, /* is_arena_mode_= */ true, std::move(iterators_), filter_,
-        filter_options_);
+        comparator_, arena_, iterators_, filter_, filter_options_);
   }
   using Type = MergingIteratorBase<IteratorWrapperType, NoFilter>;
-  return arena_->NewObject<Type>(comparator_, /* is_arena_mode_= */ true, std::move(iterators_));
+  return arena_->NewObject<Type>(comparator_, arena_, iterators_);
 }
 
 template <typename IteratorWrapperType>
@@ -691,7 +720,7 @@ template <typename IteratorWrapperType>
 std::unique_ptr<MergingIterator<typename IteratorWrapperType::IteratorType>>
 MergeIteratorInHeapBuilder<IteratorWrapperType>::Finish() {
   return std::make_unique<MergingIteratorBase<IteratorWrapperType, NoFilter>>(
-      comparator_, /* is_arena_mode = */ false, std::move(iterators_));
+      comparator_, nullptr, std::move(iterators_));
 }
 
 template class MergeIteratorBuilderBase<

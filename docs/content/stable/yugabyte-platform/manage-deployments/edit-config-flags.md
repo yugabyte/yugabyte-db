@@ -37,7 +37,7 @@ To customize flags of the read replica of a universe that has a read replica clu
 
 Depending on the flag, the universe may need to be restarted to apply the changes. You can apply changes as follows:
 
-- Immediately using a rolling restart, or [rolling restart in batches](#rolling-restart-in-batches).
+- Immediately using a rolling restart, or [rolling restart in batches](#batched-rolling-restart).
 - Immediately using a concurrent restart.
 - Immediately apply any changes that do not require a restart and wait until the next time the universe is restarted to apply the remaining changes.
 

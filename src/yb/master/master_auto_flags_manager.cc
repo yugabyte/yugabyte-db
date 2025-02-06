@@ -22,9 +22,9 @@
 #include "yb/util/scope_exit.h"
 
 DEFINE_NON_RUNTIME_int32(limit_auto_flag_promote_for_new_universe,
-    yb::to_underlying(yb::AutoFlagClass::kNewInstallsOnly),
+    yb::to_underlying(yb::AutoFlagClass::kExternal),
     "The maximum class value up to which AutoFlags are promoted during new cluster creation. "
-    "Value should be in the range [0-4]. Will not promote any AutoFlags if set to 0.");
+    "Value should be in the range [0-3]. Will not promote any AutoFlags if set to 0.");
 TAG_FLAG(limit_auto_flag_promote_for_new_universe, stable);
 
 DEFINE_test_flag(bool, disable_versioned_auto_flags, false,
@@ -525,12 +525,6 @@ Status MasterAutoFlagsManager::PromoteAutoFlags(
   const auto max_class = VERIFY_RESULT_PREPEND(
       ParseEnumInsensitive<AutoFlagClass>(req->max_flag_class()),
       "Invalid value provided for flag class");
-
-  // It is expected PromoteAutoFlags RPC is triggered only for upgrades, hence it is required
-  // to avoid promotion of flags with AutoFlagClass::kNewInstallsOnly class.
-  SCHECK_LT(
-      max_class, AutoFlagClass::kNewInstallsOnly, InvalidArgument,
-      Format("max_class cannot be set to $0.", ToString(AutoFlagClass::kNewInstallsOnly)));
 
   auto [new_config_version, outcome] = VERIFY_RESULT(PromoteAutoFlags(
       max_class, PromoteNonRuntimeAutoFlags(req->promote_non_runtime_flags()), req->force()));

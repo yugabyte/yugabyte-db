@@ -808,7 +808,7 @@ Status WriteQuery::DoExecute() {
       read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
       request_start_us(), request_id, tablet->doc_db(), partial_range_key_intents,
       transaction_participant, tablet->metrics(),
-      &prepare_result_.lock_batch, wait_queue, deadline(),
+      &prepare_result_.lock_batch, wait_queue, is_advisory_lock_request, deadline(),
       [this](const Result<HybridTime>& result) {
         if (!result.ok()) {
           ExecuteDone(result.status());

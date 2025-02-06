@@ -84,7 +84,8 @@ extern void YBCCreateIndex(const char *indexName,
 						   Oid colocationId,
 						   Oid tablespaceId,
 						   Oid indexRelfileNodeId,
-						   Oid oldRelfileNodeId);
+						   Oid oldRelfileNodeId,
+						   Oid *opclassOids);
 
 extern void YBCBindCreateIndexColumns(YbcPgStatement handle,
 									  IndexInfo *indexInfo,

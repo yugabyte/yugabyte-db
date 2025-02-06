@@ -182,6 +182,7 @@ enum StatefulServiceKind {
 enum CDCSDKSnapshotOption {
   NOEXPORT_SNAPSHOT = 1; // Client does not wish to consume snapshot
   USE_SNAPSHOT = 2; // Client wishes to consume snapshot from the source universe
+  EXPORT_SNAPSHOT = 3; // Client wishes to export snapshot to be used in other session
 }
 
 enum CDCSDKDynamicTablesOption {

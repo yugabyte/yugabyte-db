@@ -104,6 +104,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    tablet::TabletMetrics* tablet_metrics,
                                    LockBatch* lock_batch,
                                    WaitQueue* wait_queue,
+                                   bool is_advisory_lock_request,
                                    CoarseTimePoint deadline,
                                    ResolutionCallback callback);
 

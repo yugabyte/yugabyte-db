@@ -30,10 +30,12 @@
 #include "funcapi.h"
 #include "nodes/execnodes.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
-#define YB_WAIT_EVENT_DESC_COLS 4
+#define YB_WAIT_EVENT_DESC_COLS_V1 4
+#define YB_WAIT_EVENT_DESC_COLS_V2 5
 
 static const char *yb_not_applicable =
 "Inherited from PostgreSQL. Check "
@@ -1235,8 +1237,9 @@ static void
 yb_insert_events_helper(uint32 code, const char *desc, TupleDesc tupdesc,
 						Tuplestorestate *tupstore)
 {
-	Datum		values[YB_WAIT_EVENT_DESC_COLS];
-	bool		nulls[YB_WAIT_EVENT_DESC_COLS];
+	int			ncols = YbGetNumberOfFunctionOutputColumns(F_YB_WAIT_EVENT_DESC);
+	Datum		values[ncols];
+	bool		nulls[ncols];
 
 	MemSet(values, 0, sizeof(values));
 	MemSet(nulls, 0, sizeof(nulls));
@@ -1245,6 +1248,8 @@ yb_insert_events_helper(uint32 code, const char *desc, TupleDesc tupdesc,
 	values[1] = CStringGetTextDatum(pgstat_get_wait_event_type(code));
 	values[2] = CStringGetTextDatum(pgstat_get_wait_event(code));
 	values[3] = CStringGetTextDatum(desc);
+	if (ncols >= YB_WAIT_EVENT_DESC_COLS_V2)
+		values[4] = YBCAshRemoveComponentFromWaitStateCode(UInt32GetDatum(code));
 
 	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 }
@@ -1357,4 +1362,15 @@ yb_wait_event_desc(PG_FUNCTION_ARGS)
 	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
+}
+
+bool
+YbIsIdleWaitEvent(uint32 wait_event_info)
+{
+	uint32		classId = wait_event_info & 0xFF000000;
+
+	if (classId == PG_WAIT_ACTIVITY || classId == PG_WAIT_EXTENSION)
+		return true;
+
+	return false;
 }

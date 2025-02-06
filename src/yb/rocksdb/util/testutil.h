@@ -164,8 +164,8 @@ class VectorIterator : public InternalIterator {
     assert(keys_.size() == values_.size());
   }
 
-  void ExpectSeekToPrefixOnly() {
-    expect_seek_to_prefix_only_ = true;
+  void ExpectSeekToPrefixOnly(bool value) {
+    expect_seek_to_prefix_only_ = value;
   }
 
   const KeyValueEntry& SeekToFirst() override {

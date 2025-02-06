@@ -1430,9 +1430,11 @@ class PgClientServiceImpl::Impl {
       rpc::RpcContext* context) {
     VLOG(1) << "ExportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
     auto session = VERIFY_RESULT(GetSession(req.session_id()));
-    const auto snapshot = PgTxnSnapshot::Make(
-        req.snapshot(), VERIFY_RESULT(session->GetTxnSnapshotReadTime(
-                            req.options(), context->GetClientDeadline())));
+    const auto read_time = req.has_explicit_read_time()
+        ? ReadHybridTime::FromPB(req.explicit_read_time())
+        : VERIFY_RESULT(session->GetTxnSnapshotReadTime(req.options(),
+                                                        context->GetClientDeadline()));
+    const auto snapshot = PgTxnSnapshot::Make(req.snapshot(), read_time);
     resp->set_snapshot_id(VERIFY_RESULT(txn_snapshot_manager_.Register(session->id(), snapshot)));
     return Status::OK();
   }
@@ -1441,17 +1443,21 @@ class PgClientServiceImpl::Impl {
     return txn_snapshot_manager_.Get(snapshot_id);
   }
 
-  Status ImportTxnSnapshot(
-      const PgImportTxnSnapshotRequestPB& req, PgImportTxnSnapshotResponsePB* resp,
+  Status SetTxnSnapshot(
+      const PgSetTxnSnapshotRequestPB& req, PgSetTxnSnapshotResponsePB* resp,
       rpc::RpcContext* context) {
-    VLOG(1) << "ImportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
-    auto snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
+    VLOG(1) << "SetTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
+    PgTxnSnapshot snapshot;
     auto options = req.options();
-    snapshot.read_time.ToPB(options.mutable_read_time());
-    RETURN_NOT_OK(VERIFY_RESULT(GetSession(req.session_id()))->SetTxnSnapshotReadTime(
-        options, context->GetClientDeadline()));
-    snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
-    return Status::OK();
+    if (!req.has_explicit_read_time()) {
+      snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
+      snapshot.read_time.ToPB(options.mutable_read_time());
+      snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
+    } else {
+      *options.mutable_read_time() = req.explicit_read_time();
+    }
+    return VERIFY_RESULT(GetSession(req.session_id()))
+        ->SetTxnSnapshotReadTime(options, context->GetClientDeadline());
   }
 
   Status ClearExportedTxnSnapshots(
@@ -2088,7 +2094,15 @@ class PgClientServiceImpl::Impl {
         expired_session_ids.push_back(session->id());
       }
       expired_sessions.clear();
-      cdc_service->DestroyVirtualWALBatchForCDC(expired_session_ids);
+
+      std::vector<uint64_t> cdc_expired_session_ids =
+          cdc_service->FilterVirtualWalSessions(expired_session_ids);
+      if (cdc_expired_session_ids.empty()) {
+        // Return early as we do not have any CDC session to destroy here.
+        return;
+      }
+
+      cdc_service->DestroyVirtualWALBatchForCDC(cdc_expired_session_ids);
     }
   }
 

@@ -18,28 +18,22 @@
 using std::string;
 using std::vector;
 
-DEFINE_RUNTIME_AUTO_int32(test_auto_flag, kLocalVolatile, 0, 100, "Testing");
+DEFINE_RUNTIME_AUTO_uint64_DO_NOT_USE(test_auto_flag, kLocalVolatile, 0, 100, "Testing");
 DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kLocalPersisted, false, true, "Testing!");
-DEFINE_RUNTIME_AUTO_int32(test_auto_int32, kExternal, 1, 2, "Testing!");
-DEFINE_RUNTIME_AUTO_int64(test_auto_int64, kExternal, 1, 2, "Testing!");
-DEFINE_RUNTIME_AUTO_uint64(test_auto_uint64, kExternal, 1, 2, "Testing!");
-DEFINE_RUNTIME_AUTO_double(test_auto_double, kExternal, 1, 2, "Testing!");
-DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, "false", "true", "Testing!");
+DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(test_auto_string, kExternal, "false", "true", "Testing!");
 
 // Static Assert test flags. These should fail to compile.
-// DEFINE_RUNTIME_AUTO_int32(test_auto_flag, kExternal, 100, 1, "Testing"); // Duplicate flag
-// DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, 10, true, "Testing!"); // Initial value
+// DEFINE_RUNTIME_AUTO_uint64_DO_NOT_USE(test_auto_flag, kExternal, 100, 1, "Testing"); // Duplicate
+// flag DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, 10, true, "Testing!"); // Initial value
 // incompatible
 // DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, false, "true", "Testing!"); // Target value
 // incompatible
-// DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, 1, "test", "Testing!"); // Initial value
-// incompatible String
-// DEFINE_RUNTIME_AUTO_bool(test_auto_string, kExternal, "test", true, "Testing!"); // Target value
-// incompatible String
-// DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, true, true, "Testing!"); // Initial and
-// Target are same
-// DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, "test", "test", "Testing!"); // Initial
-// and Target are same String
+// DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(test_auto_string, kExternal, 1, "test", "Testing!"); //
+// Initial value incompatible String DEFINE_RUNTIME_AUTO_bool(test_auto_string, kExternal, "test",
+// true, "Testing!"); // Target value incompatible String DEFINE_RUNTIME_AUTO_bool(test_auto_bool,
+// kExternal, true, true, "Testing!"); // Initial and Target are same
+// DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(test_auto_string, kExternal, "test", "test", "Testing!");
+// // Initial and Target are same String
 
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
 
@@ -77,10 +71,6 @@ TEST(AutoFlagsTest, TestPromote) {
   VerifyFlagDefault(0);
 
   ASSERT_EQ(FLAGS_test_auto_bool, false);
-  ASSERT_EQ(FLAGS_test_auto_int32, 1);
-  ASSERT_EQ(FLAGS_test_auto_int64, 1);
-  ASSERT_EQ(FLAGS_test_auto_uint64, 1);
-  ASSERT_EQ(FLAGS_test_auto_double, 1);
   ASSERT_EQ(FLAGS_test_auto_string, "false");
 
   const auto* flag_desc = GetAutoFlagDescription(kFlagName);
@@ -105,10 +95,6 @@ TEST(AutoFlagsTest, TestAutoPromoted) {
   VerifyFlagDefault(100);
 
   ASSERT_EQ(FLAGS_test_auto_bool, true);
-  ASSERT_EQ(FLAGS_test_auto_int32, 2);
-  ASSERT_EQ(FLAGS_test_auto_int64, 2);
-  ASSERT_EQ(FLAGS_test_auto_uint64, 2);
-  ASSERT_EQ(FLAGS_test_auto_double, 2);
   ASSERT_EQ(FLAGS_test_auto_string, "true");
 
   // promote again should be no-op
@@ -206,8 +192,7 @@ TEST(AutoFlagsTest, TestDemote) {
 // min_class in base_flags exist in to_check_flags.
 TEST(AutoFlagsTest, AreAutoFlagsCompatible) {
   const string kProcess1 = "p1", kProcess2 = "p2", kProcess3 = "p3";
-  const string kLocalVolatileFlag = "LV1", kLocalPersistedFlag = "LP1", kExternalFlag = "E1",
-               kNewInstallsOnlyFlag = "NI1";
+  const string kLocalVolatileFlag = "LV1", kLocalPersistedFlag = "LP1", kExternalFlag = "E1";
   AutoFlagsInfoMap flag_infos;
   flag_infos[kProcess1].emplace_back(
       kLocalVolatileFlag, AutoFlagClass::kLocalVolatile, RuntimeAutoFlag::kTrue);
@@ -215,8 +200,6 @@ TEST(AutoFlagsTest, AreAutoFlagsCompatible) {
       kLocalPersistedFlag, AutoFlagClass::kLocalPersisted, RuntimeAutoFlag::kTrue);
   flag_infos[kProcess3].emplace_back(
       kExternalFlag, AutoFlagClass::kExternal, RuntimeAutoFlag::kFalse);
-  flag_infos[kProcess3].emplace_back(
-      kNewInstallsOnlyFlag, AutoFlagClass::kNewInstallsOnly, RuntimeAutoFlag::kTrue);
 
   AutoFlagsNameMap base_flags;
   AutoFlagsNameMap to_check_flags;
@@ -257,14 +240,13 @@ TEST(AutoFlagsTest, AreAutoFlagsCompatible) {
   to_check_flags[kProcess3].emplace(kLocalPersistedFlag);
   ASSERT_FALSE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kLocalPersisted)));
 
-  // to_check_flags has extra kNewInstallsOnly and kExternal.
+  // to_check_flags has extra kExternal.
   to_check_flags[kProcess3].emplace(kExternalFlag);
-  to_check_flags[kProcess3].emplace(kNewInstallsOnlyFlag);
   ASSERT_FALSE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kLocalPersisted)));
 
   // Add the missing flag to to_check_flags.
   to_check_flags[kProcess2].emplace(kLocalPersistedFlag);
-  ASSERT_TRUE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kNewInstallsOnly)));
+  ASSERT_TRUE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kExternal)));
 }
 
 }  // namespace yb

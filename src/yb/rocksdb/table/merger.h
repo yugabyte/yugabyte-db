@@ -79,7 +79,7 @@ class MergeIteratorBuilderBase {
  private:
   const Comparator* const comparator_;
   Arena* const arena_;
-  boost::container::small_vector<IteratorWrapperType, kMergeIteratorNumReserved> iterators_;
+  boost::container::small_vector<InternalIterator*, kMergeIteratorNumReserved> iterators_;
   const IteratorFilter* filter_ = nullptr;
   QueryOptions filter_options_;
 };

@@ -537,6 +537,10 @@ const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value) {
   return NoPrefixName(static_cast<ash::PggateRPC>(pggate_rpc_enum_value));
 }
 
+int YBCAshRemoveComponentFromWaitStateCode(uint32_t code) {
+  return ash::WaitStateInfo::AshRemoveComponentFromWaitStateCode(code);
+}
+
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
   return google::GetStackTrace(result, max_depth, skip_count);
 }

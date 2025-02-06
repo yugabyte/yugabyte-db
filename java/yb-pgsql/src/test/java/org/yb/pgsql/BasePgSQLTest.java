@@ -275,6 +275,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return null;
   }
 
+  protected void skipYsqlConnMgr(String reason, boolean isYsqlConnMgr) {
+    if (isYsqlConnMgr) {
+      LOG.info("Switching to postgres port:" + reason);
+      ConnectionEndpoint.DEFAULT = ConnectionEndpoint.POSTGRES;
+    }
+  }
+
   /**
    * Add ysql_pg_conf_csv flag values using this method to avoid clobbering existing values.
    * @param flagMap the map of flags to mutate

@@ -69,16 +69,12 @@ void
 bindVectorIndexOptions(YbcPgStatement handle,
 					   IndexInfo *indexInfo,
 					   TupleDesc indexTupleDesc,
-					   YbcPgVectorIdxType ybpg_idx_type)
+					   YbcPgVectorIdxType ybpg_idx_type,
+					   YbcPgVectorDistType dist_type)
 {
 	YbcPgVectorIdxOptions options;
 	options.idx_type = ybpg_idx_type;
-
-	/*
-	 * Hardcoded for now.
-	 * TODO(tanuj): Pass down distance info from the used distance opclass.
-	 */
-	options.dist_type = YB_VEC_DIST_L2;
+	options.dist_type = dist_type;
 
 	/* We only support indexes with one vector attribute for now. */
 	Assert(indexTupleDesc->natts == 1);

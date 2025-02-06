@@ -1226,7 +1226,8 @@ YBCCreateIndex(const char *indexName,
 			   Oid colocationId,
 			   Oid tablespaceId,
 			   Oid indexRelfileNodeId,
-			   Oid oldRelfileNodeId)
+			   Oid oldRelfileNodeId,
+			   Oid *opclassOids)
 {
 	Oid			namespaceId = RelationGetNamespace(rel);
 	char	   *db_name = get_database_name(YBCGetDatabaseOid(rel));
@@ -1266,7 +1267,8 @@ YBCCreateIndex(const char *indexName,
 														true);
 
 	Assert(amroutine != NULL && amroutine->yb_ambindschema != NULL);
-	amroutine->yb_ambindschema(handle, indexInfo, indexTupleDesc, coloptions);
+	amroutine->yb_ambindschema(handle, indexInfo, indexTupleDesc, coloptions,
+							   opclassOids, reloptions);
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
@@ -2158,8 +2160,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 			repl_slot_snapshot_action = YB_REPLICATION_SLOT_USE_SNAPSHOT;
 			break;
 		case CRS_EXPORT_SNAPSHOT:
-			/* We return an 'Unsupported' error earlier. */
-			pg_unreachable();
+			repl_slot_snapshot_action = YB_REPLICATION_SLOT_EXPORT_SNAPSHOT;
 	}
 
 	/*

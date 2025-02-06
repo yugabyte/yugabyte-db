@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import lombok.extern.slf4j.Slf4j;
@@ -51,11 +52,13 @@ public class RollbackYsqlMajorVersionCatalogUpgrade extends YsqlMajorUpgradeServ
         }
       }
 
-      if (state.equals(
-          YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK)) {
+      if (ImmutableList.of(
+              YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK,
+              YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK)
+          .contains(state)) {
         rollbackYsqlMajorCatalogVersion();
       } else {
-        log.info(
+        log.warn(
             "Skipping starting YSQL major version catalog upgrade rollback as it is not in pending"
                 + " rollback state");
         log.info("Current state: {}", state);

@@ -7027,7 +7027,7 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     }
     // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
     // TODO: SysCatalog::DeleteItem() if we've DELETED all user tables in a DELETING namespace.
-    // TODO: Also properly handle namespace_ids_map_.erase(table->namespace_id())
+    // TODO: Also properly handle RemoveNamespaceFromMaps
   }
 }
 
@@ -8625,9 +8625,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     ns_l.Unlock();
     LOG(WARNING) << "Keyspace creation failed:" << return_status.ToString();
     if (!is_ysql_major_upgrade_in_progress) {
-      LockGuard lock(mutex_);
-      namespace_ids_map_.erase(ns->id());
-      namespace_names_mapper_[db_type].erase(req->name());
+      RemoveNamespaceFromMaps(db_type, ns->id(), req->name());
     }
     return CheckIfNoLongerLeaderAndSetupError(return_status, resp);
   }
@@ -9084,15 +9082,7 @@ Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
   // RUNNING namespace that we've removed from the sys catalog?
 
   // Remove the namespace from all CatalogManager mappings.
-  {
-    LockGuard lock(mutex_);
-    if (namespace_names_mapper_[ns->database_type()].erase(ns->name()) < 1) {
-      LOG(WARNING) << Format("Could not remove namespace from names map, id=$1", ns->id());
-    }
-    if (namespace_ids_map_.erase(ns->id()) < 1) {
-      LOG(WARNING) << Format("Could not remove namespace from ids map, id=$1", ns->id());
-    }
-  }
+  RemoveNamespaceFromMaps(ns->database_type(), ns->id(), ns->name());
 
   // Delete any permissions granted on this keyspace to any role. See comment in DeleteTable() for
   // more details.
@@ -9181,8 +9171,9 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
 
     if (is_ysql_major_upgrade) {
       if (metadata.state() != SysNamespaceEntryPB::RUNNING) {
-        LOG(DFATAL) << "Namespace (" << database->name() << ") has invalid state "
-                    << SysNamespaceEntryPB::State_Name(metadata.state());
+        // YB_TODO: Switch this to DFATAL once #25594 is fixed.
+        LOG(WARNING) << "Namespace (" << database->name() << ") has invalid state "
+                     << SysNamespaceEntryPB::State_Name(metadata.state());
         return;
       }
       if (metadata.ysql_next_major_version_state() != SysNamespaceEntryPB::NEXT_VER_DELETING) {
@@ -13490,6 +13481,24 @@ bool CatalogManager::SkipCatalogVersionChecks() {
     return ysql_manager_->IsMajorUpgradeInProgress();
   }
   return false;
+}
+
+void CatalogManager::RemoveNamespaceFromMaps(
+    YQLDatabase db_type, const NamespaceId& ns_id, const NamespaceName& ns_name) {
+  if (db_type == YQL_DATABASE_PGSQL && ysql_manager_->IsMajorUpgradeInProgress()) {
+    LOG(DFATAL)
+        << "Removing YSQL namespace from maps while major upgrade is in progress is not allowed: "
+        << ns_id;
+    return;
+  }
+
+  LockGuard lock(mutex_);
+  if (namespace_names_mapper_[db_type].erase(ns_name) < 1) {
+    LOG(DFATAL) << Format("Could not remove namespace from names map, id=$1", ns_id);
+  }
+  if (namespace_ids_map_.erase(ns_id) < 1) {
+    LOG(DFATAL) << Format("Could not remove namespace from ids map, id=$1", ns_id);
+  }
 }
 
 }  // namespace master

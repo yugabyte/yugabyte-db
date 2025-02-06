@@ -147,12 +147,12 @@ var setGflagsUniverseCmd = &cobra.Command{
 			specificGFlags = append(specificGFlags, specificGFlag)
 		}
 
-		for i := 0; i < len(clusters); i++ {
-			clusterUserIntent := clusters[i].GetUserIntent()
-			clusterType := clusters[i].GetClusterType()
-			clusterUUID := clusters[i].GetUuid()
-			for _, gflags := range cliSpecificGFlags {
-				isClusterInRequestBodyWIthValidUUID := false
+		for _, gflags := range cliSpecificGFlags {
+			isClusterInRequestBodyWithValidUUID := false
+			for i := 0; i < len(clusters); i++ {
+				clusterUserIntent := clusters[i].GetUserIntent()
+				clusterType := clusters[i].GetClusterType()
+				clusterUUID := clusters[i].GetUuid()
 				if strings.Compare(strings.ToUpper(clusterType), strings.ToUpper(gflags.ClusterType)) == 0 {
 					if strings.Compare(clusterUUID, gflags.ClusterUUID) == 0 {
 						logrus.Debugf(
@@ -161,17 +161,17 @@ var setGflagsUniverseCmd = &cobra.Command{
 							clusterType)
 						clusterUserIntent.SetSpecificGFlags(specificGFlags[i])
 						clusters[i].SetUserIntent(clusterUserIntent)
-						isClusterInRequestBodyWIthValidUUID = true
+						isClusterInRequestBodyWithValidUUID = true
 					}
 				}
-				if !isClusterInRequestBodyWIthValidUUID {
-					logrus.Fatal(
-						formatter.Colorize(
-							"Cluster "+gflags.ClusterUUID+" ("+gflags.ClusterType+
-								")"+" not found in universe\n",
-							formatter.RedColor,
-						))
-				}
+			}
+			if !isClusterInRequestBodyWithValidUUID {
+				logrus.Fatal(
+					formatter.Colorize(
+						"Cluster "+gflags.ClusterUUID+" ("+gflags.ClusterType+
+							")"+" not found in universe\n",
+						formatter.RedColor,
+					))
 			}
 		}
 

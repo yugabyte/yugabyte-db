@@ -65,10 +65,8 @@ YB_DEFINE_ENUM(
     ((kLocalPersisted, 2))
     // Adds/modifies format of data which might be used outside the universe.
     // Example of external processes: XCluster and CDCServer.
-    ((kExternal, 3))
-    // Promotes a flag only for new installs, no promotions for upgrade workflow.
-    // Example: features that are not yet safe for upgrades.
-    ((kNewInstallsOnly, 4)));
+    ((kExternal, 3)));
+    // ((kNewInstallsOnly, 4))); DEPRECATED
 
 // Disable Auto Flag Promotion for a test file
 #define DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST \
@@ -76,22 +74,13 @@ YB_DEFINE_ENUM(
 
 // Runtime AutoFlags
 #define DEFINE_RUNTIME_AUTO_bool(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(bool, name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
+  _DEFINE_AUTO(bool, name, flag_class, initial_val, target_val, RUNTIME, true, txt);
 
-#define DEFINE_RUNTIME_AUTO_int32(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(int32, name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
+#define DEFINE_RUNTIME_AUTO_uint64_DO_NOT_USE(name, flag_class, initial_val, target_val, txt) \
+  _DEFINE_AUTO(uint64, name, flag_class, initial_val, target_val, RUNTIME, true, txt);
 
-#define DEFINE_RUNTIME_AUTO_int64(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(int64, name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
-
-#define DEFINE_RUNTIME_AUTO_uint64(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(uint64, name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
-
-#define DEFINE_RUNTIME_AUTO_double(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(double, name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
-
-#define DEFINE_RUNTIME_AUTO_string(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO_string(name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
+#define DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(name, flag_class, initial_val, target_val, txt) \
+  _DEFINE_AUTO_string(name, flag_class, initial_val, target_val, RUNTIME, true, txt);
 
 struct AutoFlagDescription {
   std::string name;

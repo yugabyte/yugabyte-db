@@ -177,7 +177,7 @@
 
 [[redirects]]
   from = "/preview/admin/cqlsh/"
-  to = "/preview/admin/ycqlsh/"
+  to = "/preview/api/ycqlsh/"
 
 [[redirects]]
   from = "/preview/admin/yb-master/"
@@ -208,112 +208,22 @@
   to = "/preview/api/ysql/"
 
 [[redirects]]
-  from = "/preview/api/redis/"
-  to = "/preview/yedis/"
-
-[[redirects]]
-  from = "/preview/api/redis/auth/"
-  to = "/preview/yedis/api/auth/"
-
-[[redirects]]
-  from = "/preview/api/redis/config/"
-  to = "/preview/yedis/api/config/"
-
-[[redirects]]
-  from = "/preview/api/redis/createdb/"
-  to = "/preview/yedis/api/createdb/"
-
-[[redirects]]
-  from = "/preview/api/redis/deletedb/"
-  to = "/preview/yedis/api/deletedb/"
-
-[[redirects]]
-  from = "/preview/api/redis/listdb/"
-  to = "/preview/yedis/api/listdb/"
-
-[[redirects]]
-  from = "/preview/api/redis/monitor/"
-  to = "/preview/yedis/api/monitor/"
-
-[[redirects]]
-  from = "/preview/api/redis/select/"
-  to = "/preview/yedis/api/select/"
+  from = "/preview/api/redis/*"
+  to = "/preview/yedis/api/:splat"
 
 [[redirects]]
   from = "/preview/api/ycql/quick-start/"
   to = "/preview/quick-start/explore/ycql/"
 
 [[redirects]]
-  from = "/preview/api/yedis/"
-  to = "/preview/yedis/"
+  from = "/preview/api/yedis/*"
+  to = "/preview/yedis/api/:splat"
 
 [[redirects]]
-  from = "/preview/api/yedis/auth/"
-  to = "/preview/yedis/api/auth/"
+  from = "/preview/api/ysql/commands/*"
+  to = "/preview/api/ysql/the-sql-language/statements/:splat"
 
-[[redirects]]
-  from = "/preview/api/yedis/config/"
-  to = "/preview/yedis/api/config/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/dcl_create_role/"
-  to = "/preview/api/ysql/the-sql-language/statements/dcl_create_role/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/dcl_create_user/"
-  to = "/preview/api/ysql/the-sql-language/statements/dcl_create_user/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/dcl_grant/"
-  to = "/preview/api/ysql/the-sql-language/statements/dcl_grant/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_database/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_database/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_extension/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_extension/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_function/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_function/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_index/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_function/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_sequence/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_sequence/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_create_table/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_create_table/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/ddl_drop_extension/"
-  to = "/preview/api/ysql/the-sql-language/statements/ddl_drop_extension/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/dml_insert/"
-  to = "/preview/api/ysql/the-sql-language/statements/dml_insert/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/perf_execute/"
-  to = "/preview/api/ysql/the-sql-language/statements/perf_execute/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/perf_prepare/"
-  to = "/preview/api/ysql/the-sql-language/statements/perf_prepare/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/txn_begin/"
-  to = "/preview/api/ysql/the-sql-language/statements/txn_begin/"
-
-[[redirects]]
-  from = "/preview/api/ysql/commands/txn_set/"
-  to = "/preview/api/ysql/the-sql-language/statements/txn_set/"
+# Architecture
 
 [[redirects]]
   from = "/preview/architecture/2dc-deployments/"
@@ -321,7 +231,7 @@
 
 [[redirects]]
   from = "/preview/architecture/cdc-architecture/"
-  to = "/preview/architecture/docdb-replication/change-data-capture/"
+  to = "/preview/architecture/docdb-replication/cdc-logical-replication/"
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/"
@@ -580,7 +490,7 @@
 
 [[redirects]]
   from = "/preview/reference/drivers/yugabytedb-jdbc-driver/"
-  to = "/preview/reference/drivers/java/yugabyte-jdbc-reference/"
+  to = "/preview/drivers-orms/java/yugabyte-jdbc-reference/"
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
@@ -764,16 +674,16 @@
 
 [[redirects]]
   from = "/v2.14/develop/build-apps/*"
-  to = "/v2.14/develop/learn/"
+  to = "/v2.14/drivers-orms/"
   force = true
 
 [[redirects]]
   from = "/v2.14/tutorials/*"
-  to = "/preview/tutorials/azure/"
+  to = "/preview/tutorials/"
   force = true
 [[redirects]]
   from = "/v2.18/tutorials/*"
-  to = "/preview/tutorials/azure/"
+  to = "/preview/tutorials/"
   force = true
 
 [[redirects]]
@@ -843,65 +753,6 @@
 [[redirects]]
   from = "/v2.14/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   to = "/v2.14/yugabyte-platform/manage-deployments/high-availability/"
-  force = true
-
-# Build an app was in quick-start, then develop, now in tutorials
-
-[[redirects]]
-  from = "/preview/develop/build-apps/*"
-  to = "/preview/tutorials/build-apps/:splat"
-
-[[redirects]]
-  from = "/preview/quick-start/build-apps/*"
-  to = "/preview/tutorials/build-apps/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/"
-  to = "/preview/tutorials/build-apps/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
-  to = "/preview/tutorials/build-apps/cloud-add-ip/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
-  to = "/preview/tutorials/build-apps/c/cloud-ysql-c/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/*"
-  to = "/preview/tutorials/build-apps/csharp/cloud-ysql-csharp/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/*"
-  to = "/preview/tutorials/build-apps/cpp/cloud-ysql-cpp/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/*"
-  to = "/preview/tutorials/build-apps/go/cloud-ysql-go/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/*"
-  to = "/preview/tutorials/build-apps/java/cloud-ysql-jdbc/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/*"
-  to = "/preview/tutorials/build-apps/nodejs/cloud-ysql-node/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/*"
-  to = "/preview/tutorials/build-apps/php/cloud-ysql-php/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/*"
-  to = "/preview/tutorials/build-apps/python/cloud-ysql-python/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/*"
-  to = "/preview/tutorials/build-apps/ruby/cloud-ysql-ruby/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
-  to = "/preview/tutorials/build-apps/rust/cloud-ysql-rust/"
   force = true
 
 # Redirect old cloud docs to root of current
@@ -989,68 +840,122 @@
   to = "https://docs-archive.yugabyte.com/v2.16/"
   force = true
 
+# Build an app for orms
+
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-hibernate/"
-  to = "/preview/drivers-orms/orms/ysql-hibernate/"
+  to = "/preview/drivers-orms/orms/java/ysql-hibernate/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-ebean/"
-  to = "/preview/drivers-orms/orms/ysql-ebean/"
+  to = "/preview/drivers-orms/orms/java/ysql-ebean/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-spring-data/"
-  to = "/preview/drivers-orms/orms/ysql-spring-data/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/go/ysql-pg/"
-  to = "/preview/drivers-orms/orms/ysql-pg/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/go/ysql-gorm/"
-  to = "/preview/drivers-orms/orms/ysql-gorm/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/python/ysql-sqlalchemy/"
-  to = "/preview/drivers-orms/orms/ysql-sqlalchemy/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/python/ysql-django/"
-  to = "/preview/drivers-orms/orms/ysql-django/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/nodejs/ysql-sequelize/"
-  to = "/preview/drivers-orms/orms/ysql-sequelize/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/nodejs/ysql-prisma/"
-  to = "/preview/drivers-orms/orms/ysql-prisma/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/csharp/ysql-entity-framework/"
-  to = "/preview/drivers-orms/orms/ysql-entity-framework/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/csharp/ysql-dapper/"
-  to = "/preview/drivers-orms/orms/ysql-dapper/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/rust/ysql-diesel/"
-  to = "/preview/drivers-orms/orms/ysql-diesel/"
-  force = true
-[[redirects]]
-  from = "/preview/develop/build-apps/java/ysql-sdyb/"
-  to = "/preview/integrations/spring-framework/sdyb/"
+  to = "/preview/drivers-orms/orms/java/ysql-spring-data/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/go/ysql-pg/"
   to = "/preview/drivers-orms/go/pg/"
   force = true
-
-# Build an app for aiopg, now in integrations
-
+[[redirects]]
+  from = "/preview/develop/build-apps/go/ysql-gorm/"
+  to = "/preview/drivers-orms/orms/go/ysql-gorm/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/python/ysql-sqlalchemy/"
+  to = "/preview/drivers-orms/orms/python/ysql-sqlalchemy/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/python/ysql-django/"
+  to = "/preview/drivers-orms/orms/python/ysql-django/"
+  force = true
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-aiopg/"
   to = "/preview/drivers-orms/python/aiopg/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/nodejs/ysql-sequelize/"
+  to = "/preview/drivers-orms/orms/nodejs/ysql-sequelize/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/nodejs/ysql-prisma/"
+  to = "/preview/drivers-orms/orms/nodejs/ysql-prisma/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/csharp/ysql-entity-framework/"
+  to = "/preview/drivers-orms/orms/csharp/ysql-entity-framework/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/csharp/ysql-dapper/"
+  to = "/preview/drivers-orms/orms/csharp/ysql-dapper/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/rust/ysql-diesel/"
+  to = "/preview/drivers-orms/orms/rust/ysql-diesel/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-sdyb/"
+  to = "/preview/integrations/spring-framework/sdyb/"
+  force = true
+
+# Build an app was in quick-start, then develop, now in tutorials
+
+[[redirects]]
+  from = "/preview/develop/build-apps/*"
+  to = "/preview/tutorials/build-apps/:splat"
+
+[[redirects]]
+  from = "/preview/quick-start/build-apps/*"
+  to = "/preview/tutorials/build-apps/"
+
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/"
+  to = "/preview/tutorials/build-apps/"
+
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
+  to = "/preview/tutorials/build-apps/cloud-add-ip/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
+  to = "/preview/tutorials/build-apps/c/cloud-ysql-c/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/*"
+  to = "/preview/tutorials/build-apps/csharp/cloud-ysql-csharp/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/*"
+  to = "/preview/tutorials/build-apps/cpp/cloud-ysql-cpp/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/*"
+  to = "/preview/tutorials/build-apps/go/cloud-ysql-go/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/*"
+  to = "/preview/tutorials/build-apps/java/cloud-ysql-jdbc/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/*"
+  to = "/preview/tutorials/build-apps/nodejs/cloud-ysql-node/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/*"
+  to = "/preview/tutorials/build-apps/php/cloud-ysql-php/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/*"
+  to = "/preview/tutorials/build-apps/python/cloud-ysql-python/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/*"
+  to = "/preview/tutorials/build-apps/ruby/cloud-ysql-ruby/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
+  to = "/preview/tutorials/build-apps/rust/cloud-ysql-rust/"
   force = true
 
 # Manual import was in migrate, now in manage
@@ -1137,6 +1042,24 @@
   to = "/preview/tutorials/cdc-tutorials/:splat"
   force = true
 
+# CDC was in explore, now in Develop
+[[redirects]]
+  from = "/preview/explore/change-data-capture/using-logical-replication/*"
+  to = "/preview/develop/change-data-capture/using-logical-replication/:splat"
+  force = true
+[[redirects]]
+  from = "/stable/explore/change-data-capture/using-logical-replication/*"
+  to = "/stable/develop/change-data-capture/using-logical-replication/:splat"
+  force = true
+
+[[redirects]]
+  from = "/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
+  to = "/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/:splat"
+  force = true
+[[redirects]]
+  from = "/stable/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
+  to = "/stable/develop/change-data-capture/using-yugabytedb-grpc-replication/:splat"
+  force = true
 
 # Redirect older versions of specific sections
 
@@ -1157,12 +1080,12 @@
 
 [[redirects]]
   from = "/:version/integrations/smart-driver/"
-  to = "/preview/reference/drivers/java/yugabyte-jdbc-reference/"
+  to = "/preview/drivers-orms/smart-drivers/"
   force = true
 
 [[redirects]]
   from = "/:version/integrations/jdbc-driver/"
-  to = "/preview/reference/drivers/java/yugabyte-jdbc-reference/"
+  to = "/preview/drivers-orms/java/yugabyte-jdbc-reference/"
   force = true
 
 [[redirects]]
@@ -1187,6 +1110,11 @@
   force = true
 
 [[redirects]]
+  from = "/:version/tutorials/*"
+  to = "/preview/tutorials/:splat"
+  force = true
+
+[[redirects]]
   from = "/:version/yedis/*"
   to = "/preview/yedis/"
   force = true
@@ -1196,24 +1124,12 @@
 
 [[redirects]]
   from = "/preview/quick-start/*"
-  to = "/preview/quick-start/:splat"
+  to = "/preview/tutorials/quick-start/:splat"
   status = 200
 
 [[redirects]]
   from = "/preview/quick-start-yugabytedb-managed/*"
-  to = "/preview/quick-start-yugabytedb-managed/:splat"
-  force = true
-
-# Redirect all non-preview quick start links to preview
-
-[[redirects]]
-  from = "/:version/quick-start/*"
-  to = "/preview/quick-start/"
-  force = true
-
-[[redirects]]
-  from = "/:version/quick-start-yugabytedb-managed/*"
-  to = "/preview/quick-start-yugabytedb-managed/"
+  to = "/preview/tutorials/quick-start-yugabytedb-managed/:splat"
   force = true
 
 # Yugabyte Extensions top hit
@@ -1225,100 +1141,65 @@
 
 [[redirects]]
   from = "/quick-start/install/"
-  to = "/preview/quick-start/#install-yugabytedb"
+  to = "/preview/tutorials/quick-start/macos/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/install/linux/"
-  to = "/preview/quick-start/linux/#install-yugabytedb"
+  to = "/preview/tutorials/quick-start/linux/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/install/docker/"
-  to = "/preview/quick-start/docker/#install-yugabytedb"
+  to = "/preview/tutorials/quick-start/docker/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/install/kubernetes/"
-  to = "/preview/quick-start/kubernetes/#install-yugabytedb"
+  to = "/preview/tutorials/quick-start/kubernetes/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/install/*"
-  to = "/preview/quick-start/#install-yugabytedb"
+  to = "/preview/tutorials/quick-start/macos/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/quick-start/create-local-cluster/"
-  to = "/preview/quick-start/#create-a-local-cluster"
+  to = "/preview/tutorials/quick-start/macos/#create-a-local-cluster"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/create-local-cluster/linux/"
-  to = "/preview/quick-start/linux/#create-a-local-cluster"
+  to = "/preview/tutorials/quick-start/linux/#create-a-local-cluster"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/create-local-cluster/docker/"
-  to = "/preview/quick-start/docker/#create-a-local-cluster"
+  to = "/preview/tutorials/quick-start/docker/#create-a-local-cluster"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/create-local-cluster/kubernetes/"
-  to = "/preview/quick-start/kubernetes/#create-a-local-cluster"
+  to = "/preview/tutorials/quick-start/kubernetes/#create-a-local-cluster"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/create-local-cluster/*"
-  to = "/preview/quick-start/#create-a-local-cluster"
+  to = "/preview/tutorials/quick-start/macos/#create-a-local-cluster"
+  force = true
+
+# Redirect all non-preview quick start links to preview
+
+[[redirects]]
+  from = "/:version/quick-start/*"
+  to = "/preview/tutorials/quick-start/macos/"
   force = true
 
 [[redirects]]
-  from = "/:version/quick-start/create-local-cluster/*"
-  to = "/preview/quick-start/#create-a-local-cluster"
+  from = "/:version/quick-start-yugabytedb-managed/*"
+  to = "/preview/tutorials/quick-start-yugabytedb-managed/"
   force = true
-
-# Build an application redirects to Drivers and ORMs
-
-[[redirects]]
-   from = "/preview/develop/build-apps/java/ysql-yb-jdbc/"
-   to = "/preview/drivers-orms/java/yugabyte-jdbc/"
-
-[[redirects]]
-   from = "/preview/develop/build-apps/java/ysql-jdbc/"
-   to = "/preview/drivers-orms/java/postgres-jdbc/"
-
-[[redirects]]
-   from = "/preview/develop/build-apps/ruby/ysql-rails-activerecord/"
-   to = "/preview/drivers-orms/ruby/activerecord/"
-
-[[redirects]]
-   from = "/preview/develop/build-apps/python/ysql-psycopg2/"
-   to = "/preview/drivers-orms/python/postgres-psycopg2/"
-
-[[redirects]]
-   from = "/preview/develop/build-apps/nodejs/ysql-pg/"
-   to = "/preview/drivers-orms/nodejs/yugabyte-node-driver/"
-
-[[redirects]]
-   from = "/preview/develop/build-apps/csharp/ysql/"
-   to = "/preview/drivers-orms/csharp/postgres-npgsql/"
-
-[[redirects]]
-   from = "/preview/develop/build-apps/go/ysql-yb-pgx/"
-   to = "/preview/drivers-orms/go/yb-pgx/"
-
-[[redirects]]
-   from = "/preview/develop/build-apps/go/ysql-pgx/"
-   to = "/preview/drivers-orms/go/pgx/"
-
-[[redirects]]
-   from = "/preview/develop/build-apps/go/ysql-pq/"
-   to = "/preview/drivers-orms/go/pq/"
-
-[[redirects]]
-   from = "/preview/develop/build-apps/:lang/:driver/"
-   to = "/preview/drivers-orms/:lang/:driver/"
 
 # Foreign data wrappers from SQL features to Advanced features
 
@@ -1329,14 +1210,29 @@
 # Fault tolerance redirects
 
 [[redirects]]
-   from = "/preview/explore/fault-tolerance/*"
+   from = "/preview/explore/fault-tolerance/docker/"
+   to = "/preview/explore/fault-tolerance/macos/"
+[[redirects]]
+   from = "/preview/explore/fault-tolerance/linux/"
+   to = "/preview/explore/fault-tolerance/macos/"
+[[redirects]]
+   from = "/preview/explore/fault-tolerance/kubernetes/"
    to = "/preview/explore/fault-tolerance/macos/"
 
 # Prometheus integration redirects
 
 [[redirects]]
-   from = "/preview/explore/observability/prometheus-integration/*"
-   to = "/preview/explore/observability/prometheus-integration/macos/"
+   from = "/preview/explore/observability/prometheus-integration/macos/"
+   to = "/preview/explore/observability/prometheus-integration/"
+[[redirects]]
+   from = "/preview/explore/observability/prometheus-integration/docker/"
+   to = "/preview/explore/observability/prometheus-integration/"
+[[redirects]]
+   from = "/preview/explore/observability/prometheus-integration/linux/"
+   to = "/preview/explore/observability/prometheus-integration/"
+[[redirects]]
+   from = "/preview/explore/observability/prometheus-integration/kubernetes/"
+   to = "/preview/explore/observability/prometheus-integration/"
 
 ##########################################################
 # Catch-all for old links to /latest (now called /preview)

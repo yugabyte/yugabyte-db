@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -35,6 +36,7 @@ import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -420,5 +422,38 @@ public class OperatorUtils {
       log.error("Error in deleting release", re);
     }
     log.info("Removed release {}", release.getMetadata().getName());
+  }
+
+  public String getAndParseSecretForKey(String name, @Nullable String namespace, String key) {
+    Secret secret = getSecret(name, namespace);
+    if (secret == null) {
+      log.warn("Secret {} not found", name);
+      return null;
+    }
+    return parseSecretForKey(secret, key);
+  }
+
+  public Secret getSecret(String name, @Nullable String namespace) {
+    try (final KubernetesClient kubernetesClient =
+        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+      if (StringUtils.isBlank(namespace)) {
+        log.info("Getting secret '{}' from default namespace", name);
+        namespace = "default";
+      }
+      return kubernetesClient.secrets().inNamespace(namespace).withName(name).get();
+    }
+  }
+
+  // parseSecretForKey checks secret data for the key. If not found, it will then check stringData.
+  // Returns null if the key is not found at all.
+  // Also handles null secret.
+  public String parseSecretForKey(Secret secret, String key) {
+    if (secret == null) {
+      return null;
+    }
+    if (secret.getData().get(key) != null) {
+      return new String(Base64.getDecoder().decode(secret.getData().get(key)));
+    }
+    return secret.getStringData().get(key);
   }
 }

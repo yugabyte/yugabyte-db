@@ -13096,22 +13096,22 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "ChangeConfig",
-      "expr" : "sum(rpc_latency_count{export_type=\"tserver_export\", service_type=\"ConsensusService\", node_prefix=~\"$dbcluster\", server_type=\"yb_consensus\", service_method=\"ChangeConfig\"}) by (service_method)",
+      "expr" : "sum(rate(rpc_latency_count{export_type=\"tserver_export\", service_type=\"ConsensusService\", node_prefix=~\"$dbcluster\", server_type=\"yb_consensus\", service_method=\"ChangeConfig\"}[300s])) by (service_method)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "LeaderStepDown",
-      "expr" : "sum(rpc_latency_count{export_type=\"tserver_export\", service_type=\"ConsensusService\", node_prefix=~\"$dbcluster\", server_type=\"yb_consensus\", service_method=\"LeaderStepDown\"}) by (service_method)",
+      "expr" : "sum(rate(rpc_latency_count{export_type=\"tserver_export\", service_type=\"ConsensusService\", node_prefix=~\"$dbcluster\", server_type=\"yb_consensus\", service_method=\"LeaderStepDown\"}[300s])) by (service_method)",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "LeaderElectionLost",
-      "expr" : "sum(rpc_latency_count{export_type=\"tserver_export\", service_type=\"ConsensusService\", node_prefix=~\"$dbcluster\", server_type=\"yb_consensus\", service_method=\"LeaderElectionLost\"}) by (service_method)",
+      "expr" : "sum(rate(rpc_latency_count{export_type=\"tserver_export\", service_type=\"ConsensusService\", node_prefix=~\"$dbcluster\", server_type=\"yb_consensus\", service_method=\"LeaderElectionLost\"}[300s])) by (service_method)",
       "refId" : "C"
     }, {
       "hide" : false,
       "legendFormat" : "RunLeaderElection",
-      "expr" : "sum(rpc_latency_count{export_type=\"tserver_export\", service_type=\"ConsensusService\", node_prefix=~\"$dbcluster\", server_type=\"yb_consensus\", service_method=\"RunLeaderElection\"}) by (service_method)",
+      "expr" : "sum(rate(rpc_latency_count{export_type=\"tserver_export\", service_type=\"ConsensusService\", node_prefix=~\"$dbcluster\", server_type=\"yb_consensus\", service_method=\"RunLeaderElection\"}[300s])) by (service_method)",
       "refId" : "D"
     } ],
     "gridPos" : {

@@ -22,6 +22,7 @@ import operator
 import string
 import glob
 import tarfile
+import ipaddress
 from datetime import datetime, timedelta
 from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
@@ -39,7 +40,7 @@ else:
     import queue
     from urllib.request import Request, urlopen
     from urllib.error import URLError, HTTPError
-    from urllib.parse import urlencode
+    from urllib.parse import urlencode, urlparse
     import secrets
     PASSWORD_GENNERATOR = secrets.choice
 
@@ -124,9 +125,11 @@ PREREQS_ERROR_MSGS = {
             ' please free the port and restart the node.',
     'ycql_metric_port': 'YCQL metrics port {} is already in use. For accessing the YCQL metrics,' \
             ' please free the port and restart the node.',
+    'clockbound_fail': 'Failed to validate system configuration for clockbound. Please run ' \
+        'bin/configure_clockbound.sh script to install and configure clockbound.',
     'clockbound': 'Clockbound is recommended on AWS/Azure/GCP clusters.' \
-        ' It can reduce read restart errors significantly in concurrent workloads.' \
-        ' Relevant flag: --enhance_time_sync_via_clockbound.',
+        ' It can reduce read restart errors significantly in concurrent workloads. Please run ' \
+        'bin/configure_clockbound.sh script to install and configure clockbound.',
 }
 QUICK_START_LINKS = {
     'mac' : 'https://docs.yugabyte.com/preview/quick-start/',
@@ -682,7 +685,7 @@ def using_time_sync_service():
                   'aws.com', 'google.com']
 
     cmd = ['chronyc', 'sources']
-    out, err, ret_code = run_process(cmd, timeout=1, log_cmd=True)
+    out, _, ret_code = run_process(cmd, timeout=1, log_cmd=True)
     if ret_code == 0:
         for source in allow_list:
             if source in out:
@@ -692,8 +695,24 @@ def using_time_sync_service():
 
 def is_phc_configured():
     cmd = ['systemctl', 'status', 'clockbound']
-    out, err, retcode = run_process(cmd, timeout=1, log_cmd=True)
+    out, _, retcode = run_process(cmd, timeout=1, log_cmd=True)
     return retcode == 0 and 'PHC' in out
+
+# Check if ip is ipv6
+def is_ipv6(ip):
+    try:
+        ip_addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if ip_addr.version == 6:
+        return True
+    return False
+
+# Appends square brackets to ip if ipv6, otherwise does nothing
+def get_url_from_ip(ip):
+    if is_ipv6(ip):
+        return "[" + str(ip) + "]"
+    return str(ip)
 
 class ControlScript(object):
     def __init__(self):
@@ -723,9 +742,6 @@ class ControlScript(object):
         self.set_signals(self.kill_children)
         atexit.register(self.kill_children)
         Output.script_exit_func = self.kill_children
-
-        if self.configs.temp_data.get("enhance_time_sync_via_clockbound"):
-            self.assert_system_configured_for_clockbound()
 
         if self.configs.saved_data.get("read_replica"):
             self.start_rr_process()
@@ -2143,13 +2159,14 @@ class ControlScript(object):
             Output.log_error_and_exit("Cloud based fault tolerance is not supported yet.")
 
         current_masters_with_port_list = self.get_all_masters()
-        current_masters_without_port_list = [ master.split(':')[0] for
+        current_masters_without_port_list = [ urlparse("//" + master).hostname for
                                              master in current_masters_with_port_list ]
-        leader_master = self.get_leader_master().split(':')[0]
-        master_addr = "{}:{}".format(leader_master,
+        leader_master = urlparse("//" + self.get_leader_master()).hostname
+        leader_master_url_address = get_url_from_ip(leader_master)
+        master_addr = "{}:{}".format(leader_master_url_address,
                                         self.configs.saved_data.get("master_rpc_port"))
 
-        leader_master_http_endpoint = "{}:{}".format(leader_master,
+        leader_master_http_endpoint = "{}:{}".format(leader_master_url_address,
                         self.configs.saved_data.get("master_webserver_port"))
         placement_uuid = self.configs.saved_data.get("placement_uuid")
 
@@ -2196,7 +2213,7 @@ class ControlScript(object):
             placement_info = []
             priority_info = []
             for master in current_masters_with_port_list:
-                placement_info.append(placement_locations[master.split(":")[0]])
+                placement_info.append(placement_locations[urlparse("//" + master).hostname])
             placement_info = ",".join(placement_info)
 
         if not self.is_placement_constraint_valid_length(placement_info):
@@ -2374,12 +2391,12 @@ class ControlScript(object):
         masters = ",".join(self.get_all_masters())
 
         # IPs of the masters which are currently in the cluster
-        master_ips = [master.split(':')[0] for master in masters.split(',')]
+        master_ips = [urlparse("//" + master).hostname for master in masters.split(',')]
 
         # Masters which have the key with id as key_id
         masters_with_key = YBAdminProxy.check_key_in_masters(master_addrs=masters, key_id=key_id)
         for i, master in enumerate(masters_with_key):
-            master = master.split(':')[0].split()[1]
+            master = urlparse("//" + master.split()[1]).hostname
             masters_with_key[i] = master
 
         ret = True
@@ -2615,8 +2632,8 @@ class ControlScript(object):
                                  "please use 'yugabyted configure_read_replica modify' command.")
             sys.exit(1)
 
-        leader_master = self.get_leader_master().split(':')[0]
-        leader_master_http_endpoint = "{}:{}".format(leader_master,
+        leader_master = urlparse("//" + self.get_leader_master()).hostname
+        leader_master_http_endpoint = "{}:{}".format(get_url_from_ip(leader_master),
                         self.configs.saved_data.get("master_webserver_port"))
 
         all_tserver_info = self.get_all_tserver_info(leader_master_http_endpoint)
@@ -2671,8 +2688,8 @@ class ControlScript(object):
                                  "command before modifying it.")
             sys.exit(1)
 
-        leader_master = self.get_leader_master().split(':')[0]
-        leader_master_http_endpoint = "{}:{}".format(leader_master,
+        leader_master = urlparse("//" + self.get_leader_master()).hostname
+        leader_master_http_endpoint = "{}:{}".format(get_url_from_ip(leader_master),
                         self.configs.saved_data.get("master_webserver_port"))
 
         all_tserver_info = self.get_all_tserver_info(leader_master_http_endpoint)
@@ -2801,11 +2818,16 @@ class ControlScript(object):
             prereqs_warn_flag = True
 
         # TODO: Uncomment this block when clockbound becomes GA.
-        # # Configuring clockbound is strongly recommended for AWS clusters.
-        # if using_time_sync_service() and not self.configs.temp_data[
-        #         "enhance_time_sync_via_clockbound"]:
-        #     prereqs_warn.add('clockbound')
-        #     prereqs_warn_flag = True
+        # Configuring clockbound is strongly recommended for AWS clusters.
+        if not self.assert_system_configured_for_clockbound():
+            if self.configs.temp_data["enhance_time_sync_via_clockbound"]:
+                prereqs_failed.add('clockbound_fail')
+                prereqs_failed_flag = True
+            elif using_time_sync_service():
+                prereqs_warn.add('clockbound')
+                prereqs_warn_flag = True
+        else:
+            self.configs.temp_data["is_clockbound_configured"] = True
 
         (failed_ports, warning_ports, mandatory_port_available,
         recommended_port_available) = self.check_ports()
@@ -2845,7 +2867,10 @@ class ControlScript(object):
                 mandatory_port_available, recommended_port_available)
 
     def is_port_available(self, advertise_ip, port):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if is_ipv6(advertise_ip):
+            s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        else:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             return s.connect_ex((advertise_ip, int(port))) != 0
         finally:
@@ -2883,13 +2908,13 @@ class ControlScript(object):
         # Get pre-req failures and warnings
         prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn, \
         mandatory_port_available, recommended_port_available = check
-        if prereqs_warn_flag:
-            if OS_NAME == "Linux":
-                help_links.append("- Quick start for Linux: " +
-                                  Output.make_underline(QUICK_START_LINKS['linux']))
-            else:
-               help_links.append("- Quick start for macOS: " +
-                                 Output.make_underline(QUICK_START_LINKS['mac']))
+        # if prereqs_warn_flag:
+        if OS_NAME == "Linux":
+            help_links.append("- Quick start for Linux: " +
+                                Output.make_underline(QUICK_START_LINKS['linux']))
+        else:
+            help_links.append("- Quick start for macOS: " +
+                                Output.make_underline(QUICK_START_LINKS['mac']))
 
         if not mandatory_port_available or not recommended_port_available:
             help_links.append("- Default ports: " + Output.make_underline(DEFAULT_PORTS_LINK))
@@ -3072,10 +3097,44 @@ class ControlScript(object):
         advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
-        master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        master_addresses  = "{}:{}".format(get_url_from_ip(advertise_ip),
+                                           master_rpc_port)
         if join_ip:
-            master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
+            master_addresses  = "{}:{},{}".format(get_url_from_ip(join_ip),
+                                                  master_rpc_port, master_addresses)
         was_already_setup = self.configs.saved_data.get("cluster_member", False)
+
+        warnings = []
+        warnings_for_ui = []
+        warning_help_msg=""
+        is_first_run = True
+
+        # Do the pre-req check before forming master and tserver commands
+        if is_first_run:
+            ulimits_failed = self.script.set_rlimits(print_info=True)
+            if ulimits_failed:
+                msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
+                ", ".join(ulimits_failed))
+                ulimit_warn_msg = msg + "Note {} will still run, although it may fail for " \
+                    "larger workloads. For more info, see {}".format(SCRIPT_NAME, CONFIG_LINK)
+                self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
+
+            prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
+
+            if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
+                Output.print_out(prereqs_check_result['msg'])
+            elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
+
+                warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
+                warning_help_msg = prereqs_check_result['msg']["help_msg"]
+
+                prereqs_check_result['msg'].pop("help_msg")
+                warnings_for_ui = []
+                for k in prereqs_check_result['msg'].keys():
+                    warnings_for_ui.extend([k])
+            elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
+                Output.print_and_log(prereqs_check_result['msg'])
+                sys.exit(1)
 
         common_gflags = self.get_common_flags()
 
@@ -3102,7 +3161,6 @@ class ControlScript(object):
                 self.processes = {}
                 return
 
-        is_first_run = True
         callhome_thread = None
         masters_list_update_thread = None
         #Start the different thread for extracting the YBC binaries
@@ -3137,37 +3195,6 @@ class ControlScript(object):
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
-                # Output.init_animation("Running system checks...")
-                warnings = []
-                warnings_for_ui = []
-                warning_help_msg=""
-                ulimits_failed = self.script.set_rlimits(print_info=True)
-                if ulimits_failed:
-                    msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
-                    ", ".join(ulimits_failed))
-                    ulimit_warn_msg = msg + "Note {} will still run, although it may fail for " \
-                        "larger workloads. For more info, see {}".format(SCRIPT_NAME, CONFIG_LINK)
-                    self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
-
-                prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
-                # Output.update_animation(msg=prereqs_check_result['msg'],
-                #     status=prereqs_check_result['status'])
-                if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
-                    Output.print_out(prereqs_check_result['msg'])
-                elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
-
-                    warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
-                    warning_help_msg = prereqs_check_result['msg']["help_msg"]
-
-                    prereqs_check_result['msg'].pop("help_msg")
-                    warnings_for_ui = []
-                    for k in prereqs_check_result['msg'].keys():
-                        warnings_for_ui.extend([k])
-                elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
-                    Output.print_and_log(prereqs_check_result['msg'])
-                    sys.exit(1)
-
-
                 Output.init_animation("Starting the YugabyteDB Processes...")
 
                 self.post_install_yb()
@@ -3386,10 +3413,33 @@ class ControlScript(object):
         advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
-        master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        master_addresses  = "{}:{}".format(get_url_from_ip(advertise_ip),
+                                           master_rpc_port)
         if join_ip:
-            master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
-        was_already_setup = self.configs.saved_data.get("cluster_member", False)
+            master_addresses  = "{}:{},{}".format(get_url_from_ip(join_ip),
+                                                  master_rpc_port, master_addresses)
+
+        is_first_run = True
+        warnings = []
+        warning_help_msg=""
+        if is_first_run:
+            ulimits_failed = self.script.set_rlimits(print_info=True)
+            if ulimits_failed:
+                msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
+                ", ".join(ulimits_failed))
+                ulimit_warn_msg = msg + "Note {} will still run, although it may fail for " \
+                    "larger workloads. For more info, see {}".format(SCRIPT_NAME, CONFIG_LINK)
+                self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
+
+            prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
+            if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
+                Output.print_out(prereqs_check_result['msg'])
+            elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
+                warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
+                warning_help_msg = prereqs_check_result['msg']["help_msg"]
+            elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
+                Output.print_and_log(prereqs_check_result['msg'])
+                sys.exit(1)
 
         common_gflags = self.get_common_flags()
 
@@ -3411,7 +3461,6 @@ class ControlScript(object):
                 self.processes = {}
                 return
 
-        is_first_run = True
         callhome_thread = None
         masters_list_update_thread = None
         self.stop_callhome = False
@@ -3438,26 +3487,6 @@ class ControlScript(object):
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
-                warnings = []
-                warning_help_msg=""
-                ulimits_failed = self.script.set_rlimits(print_info=True)
-                if ulimits_failed:
-                    msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
-                    ", ".join(ulimits_failed))
-                    ulimit_warn_msg = msg + "Note {} will still run, although it may fail for " \
-                        "larger workloads. For more info, see {}".format(SCRIPT_NAME, CONFIG_LINK)
-                    self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
-
-                prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
-                if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
-                    Output.print_out(prereqs_check_result['msg'])
-                elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
-                    warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
-                    warning_help_msg = prereqs_check_result['msg']["help_msg"]
-                elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
-                    Output.print_and_log(prereqs_check_result['msg'])
-                    sys.exit(1)
-
                 Output.init_animation("Starting the YugabyteDB Processes...")
 
                 self.post_install_yb()
@@ -3562,9 +3591,11 @@ class ControlScript(object):
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         fault_tolerance = self.configs.saved_data.get("fault_tolerance")
-        master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        master_addresses  = "{}:{}".format(get_url_from_ip(advertise_ip),
+                                           master_rpc_port)
         if join_ip:
-            master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
+            master_addresses  = "{}:{},{}".format(get_url_from_ip(join_ip),
+                                                  master_rpc_port, master_addresses)
         certs_dir = self.configs.saved_data.get("certs_dir")
 
         # Check if connection manager is enabled
@@ -3625,14 +3656,18 @@ class ControlScript(object):
 
     def config_time_source_clockbound(self, flags):
         # Configure tserver flag time_source=clockbound
-        # when --enhance_time_sync_via_clockbound is set.
-        if self.configs.temp_data["enhance_time_sync_via_clockbound"]:
+        # when clockbound is installed and configured.
+        if self.configs.temp_data["is_clockbound_configured"]:
             # Check database configuration.
             time_source = self.get_flag_value(flags, "time_source")
             if time_source and time_source != "clockbound":
-                raise ValueError(
-                    "Cannot configure time_source with"
-                    " --enhance_time_sync_via_clockbound.")
+                if self.configs.temp_data["enhance_time_sync_via_clockbound"]:
+                    raise ValueError("--time_source gflag is already set to {}.".format(
+                        time_source) + "Cannot configure time_source with" +
+                        " --enhance_time_sync_via_clockbound.")
+                else:
+                    Output.log("--time_source gflag is already set to {}.".format(time_source) +
+                        " Cannot configure time_source to clockbound.")
 
             # Configure time_source=clockbound if not already.
             if not time_source:
@@ -3652,14 +3687,16 @@ class ControlScript(object):
         advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
-        master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        advertise_url_ip = get_url_from_ip(advertise_ip)
+        master_addresses  = "{}:{}".format(advertise_url_ip, master_rpc_port)
         if join_ip:
-            master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
+            master_addresses  = "{}:{},{}".format(get_url_from_ip(join_ip),
+                                                  master_rpc_port, master_addresses)
 
 
         flag_list = common_flags + [
-            "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
-            "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
+            "--rpc_bind_addresses={}:{}".format(advertise_url_ip, master_rpc_port),
+            "--server_broadcast_addresses={}:{}".format(advertise_url_ip, master_rpc_port),
             "--replication_factor=1",
             "--server_dump_info_path={}".format(
                 os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
@@ -3740,22 +3777,25 @@ class ControlScript(object):
         advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
-        master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        advertise_url_ip = get_url_from_ip(advertise_ip)
+        join_url_ip = get_url_from_ip(join_ip)
+        master_addresses  = "{}:{}".format(advertise_url_ip, master_rpc_port)
         if join_ip:
-            master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
+            master_addresses  = "{}:{},{}".format(join_url_ip, master_rpc_port,
+                                                  master_addresses)
         tserver_rpc_port = self.configs.saved_data.get("tserver_rpc_port")
 
         yb_tserver_cmd = [find_binary_location("yb-tserver")] + common_flags + \
             [
                 "--{}={}".format(TS_MASTER_ADDRS_FLAG, master_addresses),
-                "--rpc_bind_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
-                "--server_broadcast_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
-                "--cql_proxy_bind_address={}:{}".format(
-                    advertise_ip, self.configs.saved_data.get("ycql_port")),
+                "--rpc_bind_addresses={}:{}".format(advertise_url_ip, tserver_rpc_port),
+                "--server_broadcast_addresses={}:{}".format(advertise_url_ip, tserver_rpc_port),
+                "--cql_proxy_bind_address={}:{}".format(advertise_url_ip,
+                                                        self.configs.saved_data.get("ycql_port")),
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info")),
                 "--start_pgsql_proxy", "--pgsql_proxy_bind_address={}:{}".format(
-                    advertise_ip, self.configs.saved_data.get("ysql_port")),
+                    advertise_url_ip, self.configs.saved_data.get("ysql_port")),
                 "--tserver_enable_metrics_snapshotter=true",
                 "--metrics_snapshotter_interval_ms=11000",
                 "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port")),
@@ -4056,18 +4096,13 @@ class ControlScript(object):
         # Sets YW metrics to use local database.
         os.environ["USE_NATIVE_METRICS"] = "true"
 
+    # Returns true if the system has been configured for clock bound.
+    # Runs `configure_clockbound.sh --validate` and returns true if it returns 0.
     def assert_system_configured_for_clockbound(self):
-        Output.init_animation("Validating system config for clockbound...")
         configure_clockbound_path = find_binary_location("configure_clockbound.sh")
         cmd = ["bash", configure_clockbound_path, "--validate"]
-        out, err, retcode = run_process(cmd)
-        if retcode == 0:
-            Output.update_animation("System configured for clockbound.")
-        else:
-            Output.update_animation("Failed to validate system configuration for clockbound.",
-                                    status=Output.ANIMATION_FAIL)
-            Output.log_error_and_exit(
-                Output.make_red("ERROR") + ": Did you run configure_clockbound.sh script?")
+        _, _, retcode = run_process(cmd)
+        return retcode == 0
 
     # Runs post_install script for linux computers.
     def post_install_yb(self):
@@ -4179,7 +4214,7 @@ class ControlScript(object):
         for master_ip in (join_ip, advertise_ip):
             if not master_ip:
                 continue
-            master_addr = "{}:{}".format(master_ip,
+            master_addr = "{}:{}".format(get_url_from_ip(master_ip),
                                         self.configs.saved_data.get("master_rpc_port"))
             all_masters = [ m[1] for m in YBAdminProxy.get_masters(master_addr) ]
             Output.log("Got all masters: {}".format(all_masters))
@@ -4205,14 +4240,14 @@ class ControlScript(object):
         current_masters = self.configs.saved_data.get("current_masters")
         all_masters_and_roles = ""
         if current_masters:
-            all_masters_and_roles = { m[1].split(":")[0]: m[2]
+            all_masters_and_roles = { urlparse("//" + m[1]).hostname: m[2]
                                     for m in YBAdminProxy.get_masters(current_masters) }
         if not all_masters_and_roles:
             join_ip = self.configs.saved_data.get("join")
-            advertise_ip = self.advertise_ip()
-            master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+            master_ip = join_ip if join_ip else self.advertise_ip()
+            master_addr = "{}:{}".format(get_url_from_ip(master_ip),
                                             self.configs.saved_data.get("master_rpc_port"))
-            all_masters_and_roles = { m[1].split(":")[0]: m[2]
+            all_masters_and_roles = { urlparse("//" + m[1]).hostname: m[2]
                                         for m in YBAdminProxy.get_masters(master_addr) }
 
         if master in all_masters_and_roles and all_masters_and_roles[master] == "FOLLOWER":
@@ -4226,7 +4261,7 @@ class ControlScript(object):
         if not tserverIp:
             Output.log("Empty tserverIp passed to get_current_masters_and_leader_from_api")
             return ('','')
-        tserver_addr = "{}:{}".format(tserverIp,
+        tserver_addr = "{}:{}".format(get_url_from_ip(tserverIp),
                             self.configs.saved_data.get("tserver_webserver_port"))
         try:
             tserverMastersAPI = "http://{}/api/v1/masters".format(tserver_addr)
@@ -4243,7 +4278,7 @@ class ControlScript(object):
             masterLeader = ""
             for node in dictOfAllNodes:
                 if node["is_leader"]:
-                    masterLeader = node["master_server"].split(':')[0]
+                    masterLeader = urlparse("//" + node["master_server"]).hostname
                 currentMastersCSV += node["master_server"]
                 lenOfMasters -= 1
                 if lenOfMasters > 0:
@@ -4275,7 +4310,7 @@ class ControlScript(object):
     def get_current_masters_from_api(self, tserverIp):
         if not tserverIp:
             return ""
-        tserver_addr = "{}:{}".format(tserverIp,
+        tserver_addr = "{}:{}".format(get_url_from_ip(tserverIp),
                             self.configs.saved_data.get("tserver_webserver_port"))
         try:
             tserverMastersAPI = "http://{}/api/v1/masters".format(tserver_addr)
@@ -4323,11 +4358,12 @@ class ControlScript(object):
     # Raises a Retryable error if the newly removed master is in the list of master of the cluster
     def remove_master_at_addrs(self, master):
         join_ip = self.configs.saved_data.get("join")
-        advertise_ip = self.advertise_ip()
-        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+        master_ip = join_ip if join_ip else self.advertise_ip()
+        master_addr = "{}:{}".format(get_url_from_ip(master_ip),
                                         self.configs.saved_data.get("master_rpc_port"))
 
-        all_masters = [ m[1].split(":")[0] for m in YBAdminProxy.get_masters(master_addr) ]
+        all_masters = [ urlparse("//" + m[1]).hostname
+                       for m in YBAdminProxy.get_masters(master_addr) ]
         if master not in all_masters:
             return True
 
@@ -4344,8 +4380,8 @@ class ControlScript(object):
                     return master_info[1]
 
         join_ip = self.configs.saved_data.get("join")
-        advertise_ip = self.advertise_ip()
-        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+        master_ip = join_ip if join_ip else self.advertise_ip()
+        master_addr = "{}:{}".format(get_url_from_ip(master_ip),
                                         self.configs.saved_data.get("master_rpc_port"))
         all_masters_info = YBAdminProxy.get_masters(master_addr)
         for master_info in all_masters_info:
@@ -4374,9 +4410,10 @@ class ControlScript(object):
 
     # Get tserver addresses
     def get_tserver_addresses(self):
-        leader_master = self.get_leader_master().split(':')[0]
+        leader_master = urlparse("//" + self.get_leader_master()).hostname
         leader_master_http_endpoint = "{}:{}".format(
-            leader_master, self.configs.saved_data.get("master_webserver_port"))
+            get_url_from_ip(leader_master),
+            self.configs.saved_data.get("master_webserver_port"))
         all_tserver_info = self.get_all_tserver_info(leader_master_http_endpoint)
 
         tserver_addresses = []
@@ -4448,7 +4485,7 @@ class ControlScript(object):
         mismatched_nodes = []
         for node, version in node_versions.items():
             if self.compare_versions(version, highest_version) != 0:
-                mismatched_nodes.append(node.split(':')[0])
+                mismatched_nodes.append(urlparse("//" + node).hostname)
 
         return mismatched_nodes
 
@@ -4457,7 +4494,7 @@ class ControlScript(object):
         dictOfAllNodes = all_tserver_info.get(placement_uuid)
         placementInfoOfEveryNode = {}
         for node in dictOfAllNodes:
-            hostname = node.split(":")[0]
+            hostname = urlparse("//" + node).hostname
             cloudLocationOfHost = "{}.{}.{}".format(dictOfAllNodes[node]["cloud"],
                 dictOfAllNodes[node]["region"], dictOfAllNodes[node]["zone"])
             placementInfoOfEveryNode[hostname] = cloudLocationOfHost
@@ -5620,8 +5657,8 @@ class ControlScript(object):
     # When the 3rd node joins, this method will set the placement location and rf to 3
     def setup_first_cluster_config(self):
         placement_uuid = self.configs.saved_data.get("placement_uuid")
-        leader_master = self.get_leader_master().split(':')[0]
-        leader_master_http_endpoint = "{}:{}".format(leader_master,
+        leader_master = urlparse("//" + self.get_leader_master()).hostname
+        leader_master_http_endpoint = "{}:{}".format(get_url_from_ip(leader_master),
                         self.configs.saved_data.get("master_webserver_port"))
 
         all_tserver_info = self.get_all_tserver_info(leader_master_http_endpoint)
@@ -5634,7 +5671,8 @@ class ControlScript(object):
 
         master_addresses = list(placement_locations.keys())
         master_addresses.append(self.configs.saved_data.get("advertise_address"))
-        master_addresses = ["{}:{}".format(master, self.configs.saved_data.get("master_rpc_port")) \
+        master_addresses = ["{}:{}".format(get_url_from_ip(master),
+                                           self.configs.saved_data.get("master_rpc_port")) \
                                            for master in master_addresses]
         master_addresses = ",".join(master_addresses)
 
@@ -5653,7 +5691,7 @@ class ControlScript(object):
         if not master_addrs:
             join_ip = self.configs.saved_data.get("join")
             master_ip = join_ip if join_ip else self.advertise_ip()
-            master_addrs = "{}:{}".format(master_ip,
+            master_addrs = "{}:{}".format(get_url_from_ip(master_ip),
                                         self.configs.saved_data.get("master_rpc_port"))
 
         # save the current known masters received from the get_current_masters_from_api()
@@ -5674,9 +5712,8 @@ class ControlScript(object):
                                                 self.configs.saved_data.get("cloud_provider"),
                                                 self.configs.saved_data.get("cloud_region"),
                                                 self.configs.saved_data.get("cloud_zone"))
-
-                    master_addresses = "{}:{}".format(
-                                                self.configs.saved_data.get("advertise_address"),
+                    advertise_address = self.configs.saved_data.get("advertise_address")
+                    master_addresses = "{}:{}".format(get_url_from_ip(advertise_address),
                                                 self.configs.saved_data.get("master_rpc_port"))
 
                     if not YBAdminProxy.modify_placement_info(master_addresses, placement_info,
@@ -5729,7 +5766,7 @@ class ControlScript(object):
 
         if not master_addr:
             master_ip = join_ip if join_ip else self.advertise_ip()
-            master_addr = "{}:{}".format(master_ip,
+            master_addr = "{}:{}".format(get_url_from_ip(master_ip),
                                      self.configs.saved_data.get("master_rpc_port"))
         self.configs.saved_data["current_masters"] = master_addr
 
@@ -5776,8 +5813,8 @@ class ControlScript(object):
             return
 
         if len(full_master_list) < 3:
-            my_master_ip = "{}:{}".format(
-                self.advertise_ip(), self.configs.saved_data.get("master_rpc_port"))
+            my_master_ip = "{}:{}".format(get_url_from_ip(self.advertise_ip()),
+                                          self.configs.saved_data.get("master_rpc_port"))
             full_master_list = list(set(full_master_list + [ my_master_ip ]))
             Output.log("Got full master addrs list: {}".format(full_master_list))
 
@@ -5833,8 +5870,8 @@ class ControlScript(object):
         self.configs.saved_data["current_masters"] = master_addrs
         Output.log("Master address list updated, new list: {}".format(master_addrs))
 
-        master_web_addrs = "{}:{}".format(master_web_addrs_ip,
-                                      self.configs.saved_data.get("master_webserver_port"))
+        master_web_addrs = "{}:{}".format(get_url_from_ip(master_web_addrs_ip),
+                                          self.configs.saved_data.get("master_webserver_port"))
 
         ycql_port = self.configs.saved_data.get("ycql_port")
         cql_hostname_param = ""
@@ -5957,12 +5994,13 @@ class ControlScript(object):
         # TODO: Check if YW is disabled. This could be from saving --ui flag, checking PID,
         # or some other method. The first is not preferred because it would deviate from how the
         # other saved data works in that they persist between runs but --ui shoudln't.
+        advertise_url_ip = get_url_from_ip(advertise_ip)
 
-        yw_status = "http://{}:{}".format(advertise_ip,
+        yw_status = "http://{}:{}".format(advertise_url_ip,
                                           self.configs.saved_data.get("webserver_port"))
-        yugabyted_ui_status = "http://{}:{}".format(advertise_ip,
+        yugabyted_ui_status = "http://{}:{}".format(advertise_url_ip,
                                           self.configs.saved_data.get("yugabyted_ui_port"))
-        yb_master_status = "http://{}:{}".format(advertise_ip,
+        yb_master_status = "http://{}:{}".format(advertise_url_ip,
                                           self.configs.saved_data.get("master_webserver_port"))
         console_desc = "Web console"
 
@@ -5984,10 +6022,11 @@ class ControlScript(object):
         else:
             status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
 
-        jdbc_string = "jdbc:postgresql://{}:{}/{}?user={}&password=".format(advertise_ip,
-                                                                            ysql_port,
-                                                                            ysql_db,
-                                                                            ysql_username)
+        jdbc_string = "jdbc:postgresql://{}:{}/{}?user={}&password=".format(
+            advertise_url_ip,
+            ysql_port,
+            ysql_db,
+            ysql_username)
         if self.configs.saved_data.get("secure"):
             jdbc_string += Output.make_cyan("<DB_PASSWORD>")
             status_display_info[jdbc_string] = Output.make_cyan
@@ -6161,12 +6200,12 @@ class ControlScript(object):
 
     # Check whether the hostnames or IP provided is in correct format.
     def validate_hostname_ip(self, ip):
-        # Regex expression for validating IPv4
-        ipv4_regex = r"^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4]"\
-            "[0-9]|1[0-9][0-9]|[1-9]?[0-9])$"
-
-        # Regex expression for validating IPv6
-        ipv6_regex = "((([0-9a-fA-F]){1,4})\\:){7}([0-9a-fA-F]){1,4}"
+        # Validate any IP address
+        try:
+            _ = ipaddress.ip_address(ip)
+            return True
+        except ValueError:
+            pass # Attempt dns and hostname validation
 
         # Regex expression for validating DNS names
         dns_regex = r"^(?=.{1,255}$)(?:(?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.?)+[a-zA-Z]{2,}$"
@@ -6174,24 +6213,8 @@ class ControlScript(object):
         # Regex expression for validating hostname
         hostname_regex = "^[a-zA-Z0-9.-]+$"
 
-        # Regex expression for validating following pattern - 127.0.0.1.
-        ip_address_edge_case_regex = "^[0-9.-]+$"
-
-        ipv4_pattern = re.compile(ipv4_regex)
-        ipv6_pattern = re.compile(ipv6_regex)
         dns_pattern = re.compile(dns_regex)
         hostname_pattern = re.compile(hostname_regex)
-        may_be_ipaddress = re.compile(ip_address_edge_case_regex)
-
-        # Checking if it is a valid IPv4
-        if re.search(ipv4_pattern, ip):
-            return True
-        elif re.search(may_be_ipaddress, ip):
-            return False
-
-        # Checking if it is a valid IPv6
-        if re.search(ipv6_pattern, ip):
-            return True
 
         # Checking if it is a valid FQDN or hostname
         if (re.search(dns_pattern, ip) or
@@ -6271,7 +6294,7 @@ class ControlScript(object):
         if not masterIP:
             Output.log("Empty masterIP passed to get_xcluster_info")
             return []
-        master_addr = "{}:{}".format(masterIP,
+        master_addr = "{}:{}".format(get_url_from_ip(masterIP),
                             self.configs.saved_data.get("master_webserver_port"))
         try:
             timeout = 30
@@ -6666,7 +6689,8 @@ class ControlScript(object):
     # Get the current master leader known to a tserver using api/v1/masters endpoint
     # of the tserver.
     def get_current_master_leader_from_api(self, tserverIP, tserver_webserver_port, timeout=60):
-        tserver_addr = "{}:{}".format(tserverIP, tserver_webserver_port)
+        tserver_addr = "{}:{}".format(get_url_from_ip(tserverIP),
+                                      tserver_webserver_port)
         try:
             tserverMastersAPI = "http://{}/api/v1/masters".format(tserver_addr)
             Output.log("Trying to get masters information from {}".format(tserverMastersAPI) +
@@ -6678,7 +6702,7 @@ class ControlScript(object):
             masterLeader = ""
             for node in dictOfAllNodes:
                 if node["is_leader"]:
-                    masterLeader = node["master_server"].split(':')[0]
+                    masterLeader = urlparse("//" + node["master_server"]).hostname
                     break
 
             Output.log("Tserver {} returned the following".format(tserverIP) +
@@ -7635,12 +7659,13 @@ class ControlScript(object):
                     join_ip = master_leader
 
                     # Get info on all tservers
-                    master_leader_hostport = "{}:{}".format(master_leader, master_webserver_port)
+                    master_leader_hostport = "{}:{}".format(get_url_from_ip(master_leader),
+                                                            master_webserver_port)
                     tservers_info = dict(self.get_all_tserver_info(master_leader_hostport))
 
                     # Check if any existing node has the same IP as advertise address
                     for uuid, nodes in tservers_info.items():
-                        for node in [node.split(":")[0] for node in list(nodes.keys())]:
+                        for node in [urlparse("//" + node).hostname for node in list(nodes.keys())]:
                             if args.advertise_address == node:
                                 Output.log_error_and_exit(Output.make_red("ERROR:") + " A node" +
                                     " is already running on {}, please ".format(join_ip) +
@@ -7659,7 +7684,8 @@ class ControlScript(object):
                         # When a read replica cluster exists use the existing placement UUID
                         else:
                             for uuid, nodes in tservers_info.items():
-                                nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
+                                nodes_list = [urlparse("//" + node).hostname
+                                              for node in list(nodes.keys())]
                                 if master_leader not in nodes_list and len(nodes) != 0:
                                     self.configs.saved_data["placement_uuid"] = uuid
                                     Output.log("Using placement_uuid {} from ".format(uuid) +
@@ -7668,7 +7694,8 @@ class ControlScript(object):
                     else:
                         # Use placement uuid set for the primary cluster when 1st node was started.
                         for uuid, nodes in tservers_info.items():
-                            nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
+                            nodes_list = [urlparse("//" + node).hostname
+                                          for node in list(nodes.keys())]
                             if master_leader in nodes_list:
                                 self.configs.saved_data["placement_uuid"] = uuid
                                 Output.log("Using placement_uuid {} from ".format(uuid) +
@@ -7711,7 +7738,8 @@ class ControlScript(object):
 
             if args.insecure:
                 if join_ip and not cluster_member:
-                    master_hostport = "{}:{}".format(join_ip, master_webserver_port)
+                    master_hostport = "{}:{}".format(get_url_from_ip(join_ip),
+                                                     master_webserver_port)
                     if self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When a User starts the 1st node in secure mode and tries
                         # to start the second node in insecure mode
@@ -7721,7 +7749,8 @@ class ControlScript(object):
                             "secure and an insecure node.")
             elif args.secure:
                 if join_ip and not cluster_member:
-                    master_hostport = "{}:{}".format(join_ip, master_webserver_port)
+                    master_hostport = "{}:{}".format(get_url_from_ip(join_ip),
+                                                     master_webserver_port)
                     if not self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When the user starts the 1st node in insecure mode and
                         # tries to start the second node in secure mode.
@@ -8554,6 +8583,7 @@ class Configs(object):
             "xcluster_target_addresses": "",
             "xcluster_bootstrap_done": "",
             "enhance_time_sync_via_clockbound": False,
+            "is_clockbound_configured": False,
         }
         self.config_file = config_file
 
@@ -8947,7 +8977,8 @@ class Diagnostics(object):
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
 
         master_addrs = "{}:{}".format(
-            advertise_ip, self.configs.saved_data.get("master_rpc_port"))
+            get_url_from_ip(advertise_ip),
+            self.configs.saved_data.get("master_rpc_port"))
         # TODO: This is going to change for multi-node.
         cur_master_addr = master_addrs
         data = {
@@ -8999,7 +9030,8 @@ class YBTableServerCLIProxy(object):
     def update_gflag_in_tserver(tserver_ip, tserver_port, gflag, gflag_value, byForce=False):
         cmd = YBTableServerCLIProxy.cmd_args + \
             [
-                "--server_address={}:{}".format(tserver_ip, tserver_port),
+                "--server_address={}:{}".format(get_url_from_ip(tserver_ip),
+                                                tserver_port),
                 "set_flag",
                 gflag,
                 gflag_value
@@ -9595,7 +9627,7 @@ class YsqlProxy(object):
         self.username, self.password, self.db = self.setup_env_init.get_ysql_credentials(
                                                     get_default_credentials)
         self.cmd_with_password = [path, "postgresql://{}:{}@{}:{}".format(self.username,
-                self.password, ip, port)]
+                self.password, get_url_from_ip(ip), port)]
         self.cmd_without_password = [path, "-h", str(ip), "-p", str(port)]
         env_var = os.environ.copy()
         env_var["PGUSER"] = self.username
@@ -9920,7 +9952,8 @@ class YugaWareProxy(object):
         self.api_token_secure = ""
         self.api_token_insecure = ""
         self.cust_uuid = ""
-        self.url = "http://{}:{}/api/v1".format(ip, webserver_port)
+        self.url = "http://{}:{}/api/v1".format(get_url_from_ip(ip),
+                                                webserver_port)
 
     # Retrieves permanent api_token. Returns error, if any.
     def login(self):

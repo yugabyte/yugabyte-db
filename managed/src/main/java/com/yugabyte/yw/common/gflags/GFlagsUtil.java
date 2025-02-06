@@ -42,6 +42,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
@@ -128,8 +129,8 @@ public class GFlagsUtil {
   public static final String YSQL_ENABLE_READ_REQUEST_CACHING = "ysql_enable_read_request_caching";
   public static final String YSQL_ENABLE_READ_COMMITTED_ISOLATION =
       "ysql_enable_read_committed_isolation";
-  public static final String YSQL_YB_ENABLE_EXPRESSION_PUSHDOWN =
-      "ysql_yb_enable_expression_pushdown";
+  public static final String YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY =
+      "ysql_yb_major_version_upgrade_compatibility";
   public static final String CSQL_PROXY_BIND_ADDRESS = "cql_proxy_bind_address";
   public static final String CSQL_PROXY_WEBSERVER_PORT = "cql_proxy_webserver_port";
   public static final String ALLOW_INSECURE_CONNECTIONS = "allow_insecure_connections";
@@ -670,15 +671,13 @@ public class GFlagsUtil {
           TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC,
           Long.toString(timestampHistoryRetentionForPITR.toSeconds() + historyRetentionBufferSecs));
     }
-    // This is flag is set temporarily to allow ysql major upgrade, we will re-evaluate to keep
-    // experssion pushdown flag enabled during upgrade and pre-finalize.
+    // This flag needs to be set during major version upgrade to being compatible with the old
+    // postgres version.
     if (taskParam.enableYSQL
         && taskParam.ysqlMajorVersionUpgradeState != null
-        && !ImmutableSet.of(
-                YsqlMajorVersionUpgradeState.FINALIZE_IN_PROGRESS,
-                YsqlMajorVersionUpgradeState.ROLLBACK_COMPLETE)
-            .contains(taskParam.ysqlMajorVersionUpgradeState)) {
-      gflags.put(YSQL_YB_ENABLE_EXPRESSION_PUSHDOWN, "false");
+        && UpgradeDetails.ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG.contains(
+            taskParam.ysqlMajorVersionUpgradeState)) {
+      gflags.put(YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, "11");
     }
     return gflags;
   }
@@ -1870,38 +1869,5 @@ public class GFlagsUtil {
       throw new RuntimeException("Failed to parse CSV", e);
     }
     return DEFAULT_LOG_LINE_PREFIX;
-  }
-
-  public static boolean checkExperssionPushdownValueInFlags(
-      Map<String, String> flags, String value) {
-    if (flags.containsKey(YSQL_PG_CONF_CSV)) {
-      String pgConfGFlagValue = flags.get(GFlagsUtil.YSQL_PG_CONF_CSV);
-      if (!StringUtils.isEmpty(pgConfGFlagValue)) {
-        try (CSVParser parser =
-            new CSVParser(new StringReader(pgConfGFlagValue), CSVFormat.DEFAULT)) {
-          for (CSVRecord record : parser) {
-            for (String entry : record) {
-              String[] keyValStrings = entry.split("=", 2);
-              if (keyValStrings.length == 2) {
-                String key = keyValStrings[0].trim();
-                String val = keyValStrings[1].trim();
-                if (key.equals("yb_enable_expression_pushdown") && val.equals(value)) {
-                  return true;
-                }
-              }
-            }
-          }
-        } catch (IOException e) {
-          throw new RuntimeException("Failed to parse CSV", e);
-        }
-      }
-    }
-    if (flags.containsKey(YSQL_YB_ENABLE_EXPRESSION_PUSHDOWN)) {
-      String pushdownFlagValue = flags.get(GFlagsUtil.YSQL_YB_ENABLE_EXPRESSION_PUSHDOWN);
-      if (!StringUtils.isEmpty(pushdownFlagValue) && pushdownFlagValue.trim().equals(value)) {
-        return true;
-      }
-    }
-    return false;
   }
 }

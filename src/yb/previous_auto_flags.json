@@ -10,7 +10,7 @@
         },
         {
           "name": "TEST_auto_flags_new_install",
-          "class": 4,
+          "class": 3,
           "is_runtime": true
         },
         {
@@ -200,7 +200,7 @@
         },
         {
           "name": "TEST_auto_flags_new_install",
-          "class": 4,
+          "class": 3,
           "is_runtime": true
         },
         {

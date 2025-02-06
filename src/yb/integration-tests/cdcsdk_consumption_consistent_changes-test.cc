@@ -4020,5 +4020,67 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAdditionAfterHid
       get_consistent_changes_resp.records[2].row_message().table(), kTableName + table_suffix[1]);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFlushLagMetricWithRestartTimeMovement) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create a table with 1 tablet.
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version =*/));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  // Create a slot and InitVWAL.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1));
+
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = CDCService(tserver);
+  ASSERT_OK(WaitFor(
+      [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
+  auto metrics =
+      ASSERT_RESULT(GetCDCSDKTabletMetrics(*cdc_service, tablets[0].tablet_id(), stream_id));
+
+  // As there is nothing to stream, the flush lag should be zero.
+  ASSERT_EQ(metrics->cdcsdk_flush_lag->value(), 0);
+
+  // Insert 10 records.
+  ASSERT_OK(WriteRowsHelper(0, 10, &test_cluster_, true));
+
+  // Since we have unstreamed data, the flush lag should increase.
+  uint64_t prev_flush_lag = 0;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        prev_flush_lag = metrics->cdcsdk_flush_lag->value();
+        return prev_flush_lag > 0;
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier), "Timed out waiting for flush lag to rise"));
+
+  // Call GetConsistentChanges and consume the data but do not send feedback.
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 12);
+  const auto confirmed_flush_lsn =
+      change_resp.cdc_sdk_proto_records().Get(11).row_message().pg_lsn() + 1;
+  const auto restart_lsn = confirmed_flush_lsn;
+
+  // Since the restart time hasn't moved, the flush lag value should not decrease.
+  ASSERT_GE(metrics->cdcsdk_flush_lag->value(), prev_flush_lag);
+
+  // Provide feedback by calling UpdateAndPersistLSN. This should move the restart time forward.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, confirmed_flush_lsn, restart_lsn));
+
+  // Verify that the flush lag goes down after feedback.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return metrics->cdcsdk_flush_lag->value() < prev_flush_lag; },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Timed out waiting for flush lag to come down"));
+}
+
 }  // namespace cdc
 }  // namespace yb

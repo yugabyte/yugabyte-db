@@ -2046,6 +2046,10 @@ For more information on additional server configuration options, see [YB-Master]
 
 ## Upgrade a YugabyteDB cluster
 
+{{< warning title="Upgrading to v2.25" >}}
+Upgrading to v2.25 from earlier versions is not yet available.
+{{< /warning >}}
+
 To use the latest features of the database and apply the latest security fixes, upgrade your YugabyteDB cluster to the [latest release](https://download.yugabyte.com/#/).
 
 Upgrading an existing YugabyteDB cluster that was deployed using yugabyted includes the following steps:

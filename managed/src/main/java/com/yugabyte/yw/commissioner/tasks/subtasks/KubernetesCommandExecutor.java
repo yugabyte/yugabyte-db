@@ -55,6 +55,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.provider.region.WellKnownIssuerKind;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Service;
 import java.io.BufferedWriter;
@@ -1120,30 +1121,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         rootCA.put("cert", rootCert);
         rootCA.put("key", "");
         tlsInfo.put("rootCA", rootCA);
-        String certManagerIssuer =
-            KubernetesUtil.getK8sPropertyFromConfigOrDefault(
-                null, regionConfig, azConfig, "CERT-MANAGER-ISSUER", null);
-        String certManagerClusterIssuer =
-            KubernetesUtil.getK8sPropertyFromConfigOrDefault(
-                null, regionConfig, azConfig, "CERT-MANAGER-CLUSTERISSUER", null);
 
-        if (certInfo.getCertType() == CertConfigType.K8SCertManager
-            && (StringUtils.isNotEmpty(certManagerClusterIssuer)
-                || StringUtils.isNotEmpty(certManagerIssuer))) {
-          // User configuring a K8SCertManager type of certificate on a Universe and setting
-          // the corresponding azConfig enables the cert-manager integration for this
-          // Universe. The name of Issuer/ClusterIssuer will come from the azConfig.
-          Map<String, Object> certManager = new HashMap<>();
-          certManager.put("enabled", true);
-          certManager.put("bootstrapSelfsigned", false);
-          boolean useClusterIssuer = StringUtils.isNotEmpty(certManagerClusterIssuer);
-          certManager.put("useClusterIssuer", useClusterIssuer);
-          if (useClusterIssuer) {
-            certManager.put("clusterIssuer", certManagerClusterIssuer);
-          } else {
-            certManager.put("issuer", certManagerIssuer);
-          }
-          tlsInfo.put("certManager", certManager);
+        if (certInfo.getCertType() == CertConfigType.K8SCertManager) {
+          tlsInfo.put(
+              "certManager", getCertManagerHelmValues(universeFromDB, regionConfig, azConfig));
         } else {
           CertificateProviderInterface certProvider =
               EncryptionInTransitUtil.getCertificateProviderInstance(
@@ -1628,6 +1609,19 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       // provided
       Map<String, Object> certManager =
           (Map<String, Object>) ((Map<String, Object>) values.get("tls")).get("certManager");
+
+      if (certManager.containsKey("useCustomIssuer")
+          && (Boolean) certManager.get("useCustomIssuer")) {
+        String ybSoftwareVersion =
+            (String) ((Map<String, Object>) values.get("Image")).getOrDefault("tag", "");
+        if (!KubernetesUtil.isCustomIssuerSupported(ybSoftwareVersion)) {
+          throw new RuntimeException(
+              String.format(
+                  "Custom Issuer is not supported for this Yugabyte version. "
+                      + "Please upgrade to %s or later to use this feature.",
+                  KubernetesUtil.MIN_VERSION_CUSTOM_ISSUER_SUPPORT_STABLE));
+        }
+      }
       if (!certManager.containsKey("useClusterIssuer")) {
         throw new RuntimeException(
             "useClusterIssuer is required when tls.certManager.enabled=true");
@@ -1675,5 +1669,60 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       dnsNames.add(String.format("*.yb-masters.%s.svc.%s", taskParams().namespace, kubeDomain));
     }
     return dnsNames;
+  }
+
+  /*
+   * User configuring a K8SCertManager type of certificate on a Universe and setting
+   * the corresponding azConfig enables the cert-manager integration for this
+   * Universe. The name of Issuer/ClusterIssuer will come from the azConfig.
+   * This method retrieves the necessary Helm values for cert-manager integration.
+   */
+  private Map<String, Object> getCertManagerHelmValues(
+      Universe universe, Map<String, String> regionConfig, Map<String, String> azConfig) {
+    Map<String, Object> certManager = new HashMap<>();
+    String certManagerIssuerKind =
+        KubernetesUtil.getK8sPropertyFromConfigOrDefault(
+            null, regionConfig, azConfig, "CERT-MANAGER-ISSUER-KIND", null);
+    String certManagerIssuerName =
+        KubernetesUtil.getK8sPropertyFromConfigOrDefault(
+            null, regionConfig, azConfig, "CERT-MANAGER-ISSUER-NAME", null);
+    String certManagerIssuerGroup =
+        KubernetesUtil.getK8sPropertyFromConfigOrDefault(
+            null, regionConfig, azConfig, "CERT-MANAGER-ISSUER-GROUP", null);
+
+    certManager.put("enabled", true);
+    certManager.put("bootstrapSelfsigned", false);
+
+    if (!StringUtils.isEmpty(certManagerIssuerKind)
+        && !StringUtils.isEmpty(certManagerIssuerName)) {
+
+      // ClusterIssuer
+      if (StringUtils.equals(certManagerIssuerKind, WellKnownIssuerKind.CLUSTER_ISSUER)) {
+        certManager.put("useClusterIssuer", true);
+        certManager.put("clusterIssuer", certManagerIssuerName);
+      }
+      // Issuer
+      else if (StringUtils.equals(certManagerIssuerKind, WellKnownIssuerKind.ISSUER)) {
+        certManager.put("useClusterIssuer", false);
+        certManager.put("issuer", certManagerIssuerName);
+      }
+      // CustomIssuer
+      else {
+        certManager.put("useClusterIssuer", false);
+        certManager.put("useCustomIssuer", true);
+        Map<String, String> customIssuer = new HashMap<>();
+        customIssuer.put("kind", certManagerIssuerKind);
+        customIssuer.put("name", certManagerIssuerName);
+        if (StringUtils.isNotEmpty(certManagerIssuerGroup)) {
+          customIssuer.put("group", certManagerIssuerGroup);
+        }
+        certManager.put("customIssuer", customIssuer);
+      }
+      // Set commonNameRequired if runtimeConfig is set to true.
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.certManagerCommonNameRequired)) {
+        certManager.put("certificates", new HashMap<>(Map.of("commonNameRequired", true)));
+      }
+    }
+    return certManager;
   }
 }

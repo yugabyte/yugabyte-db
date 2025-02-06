@@ -391,6 +391,8 @@ class PgApiImpl {
 
   Status CreateIndexSetVectorOptions(PgStatement *handle, YbcPgVectorIdxOptions *options);
 
+  Status CreateIndexSetHnswOptions(PgStatement *handle, int ef_construction, int m);
+
   Status CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
                                 YbcPgTypeEntity **types, uint64_t *data);
 
@@ -800,8 +802,10 @@ class PgApiImpl {
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
 
-  Result<std::string> ExportSnapshot(const YbcPgTxnSnapshot& snapshot);
-  Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
+  Result<std::string> ExportSnapshot(
+      const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time);
+  Result<std::optional<YbcPgTxnSnapshot>> SetTxnSnapshot(
+      PgTxnSnapshotDescriptor snapshot_descriptor);
 
   bool HasExportedSnapshots() const;
   void ClearExportedTxnSnapshots();

@@ -150,6 +150,7 @@ int YBCGetRandomUniformInt(int a, int b);
 YbcWaitEventDescriptor YBCGetWaitEventDescription(size_t index);
 int YBCGetCircularBufferSizeInKiBs();
 const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value);
+int YBCAshRemoveComponentFromWaitStateCode(uint32_t code);
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 

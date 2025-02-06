@@ -231,7 +231,9 @@ typedef int64 (*yb_amgetbitmap_function) (IndexScanDesc scan,
 typedef void (*yb_ambindschema_function) (YbcPgStatement handle,
 										  struct IndexInfo *indexInfo,
 										  TupleDesc indexTupleDesc,
-										  int16 *coloptions);
+										  int16 *coloptions,
+										  Oid *opclassOids,
+										  Datum reloptions);
 
 /* end index scan */
 typedef void (*amendscan_function) (IndexScanDesc scan);

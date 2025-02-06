@@ -1160,6 +1160,11 @@ Status PgApiImpl::CreateIndexSetVectorOptions(PgStatement* handle, YbcPgVectorId
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle)).SetVectorOptions(options);
 }
 
+Status PgApiImpl::CreateIndexSetHnswOptions(PgStatement* handle, int ef_construction, int m) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle))
+      .SetHnswOptions(ef_construction, m);
+}
+
 Status PgApiImpl::ExecCreateIndex(PgStatement* handle) {
   return ExecDdlWithSyscatalogChanges<PgCreateIndex>(handle, *pg_session_);
 }
@@ -2140,7 +2145,6 @@ Result<tserver::PgCreateReplicationSlotResponsePB> PgApiImpl::ExecCreateReplicat
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateReplicationSlot>(handle)).Exec();
 }
 
-
 Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {
   return pg_session_->ListReplicationSlots();
 }
@@ -2266,12 +2270,14 @@ Status PgApiImpl::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 // Export/Import Pg Txn Snapshot.
 //------------------------------------------------------------------------------------------------
 
-Result<std::string> PgApiImpl::ExportSnapshot(const YbcPgTxnSnapshot& snapshot) {
-  return pg_txn_manager_->ExportSnapshot(snapshot);
+Result<std::string> PgApiImpl::ExportSnapshot(
+    const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time) {
+  return pg_txn_manager_->ExportSnapshot(snapshot, explicit_read_time);
 }
 
-Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id) {
-  return pg_txn_manager_->ImportSnapshot(snapshot_id);
+Result<std::optional<YbcPgTxnSnapshot>> PgApiImpl::SetTxnSnapshot(
+    PgTxnSnapshotDescriptor snapshot_descriptor) {
+  return pg_txn_manager_->SetTxnSnapshot(snapshot_descriptor);
 }
 
 bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->HasExportedSnapshots(); }

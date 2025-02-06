@@ -583,7 +583,7 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
   static constexpr auto kColocatedDB = "cdb";
   static constexpr auto kTableName = "test";
   static const auto kInsertQuery =
-      Format("INSERT INTO $0 VALUES (generate_series(1, 100))", kTableName);
+      Format("INSERT INTO $0 VALUES (generate_series(1, 10))", kTableName);
   std::unordered_set<std::string> bg_workers = {
       "pg_cron",
       "pg_cron launcher",
@@ -614,6 +614,21 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
   ASSERT_OK(conn_->FetchFormat("SELECT cron.schedule('job', '1 second', '$0')",
       "SELECT pg_sleep(1000)"));
 
+  // start query diagnostics
+  ASSERT_OK(conn_->Execute(kInsertQuery));
+  const auto cur_dbid = ASSERT_RESULT(conn_->FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  const auto insert_query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO $0%' "
+      "AND dbid = $1", kTableName, cur_dbid)));
+  ASSERT_OK(conn_->FetchFormat(
+      "SELECT yb_query_diagnostics(query_id => $0, diagnostics_interval_sec => 10)",
+      insert_query_id));
+
+  for (int iterations = 0; iterations < 100; ++iterations) {
+    ASSERT_OK(conn_->Execute(kInsertQuery));
+  }
+
   std::set<std::pair<int32_t, std::string>> pid_with_backend_type;
 
   ASSERT_OK(WaitFor([this, &pid_with_backend_type, &bg_workers]() -> Result<bool> {
@@ -634,6 +649,25 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
     auto pid_count = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM yb_active_session_history WHERE pid = $0", pid)));
     ASSERT_GE(pid_count, 1);
+  }
+}
+
+TEST_F(PgBgWorkersTest, ValidateIdleWaitEventsNotPresent) {
+  std::unordered_set<std::string> pg_idle_wait_events = {
+      "Extension",
+      "QueryDiagnosticsMain"};
+
+  // start pg cron launcher process
+  ASSERT_OK(conn_->Execute("CREATE EXTENSION pg_cron"));
+
+  // Let the ASH collector collect some wait events
+  SleepFor(1min);
+
+  const auto wait_events = ASSERT_RESULT(conn_->FetchRows<std::string>(
+      "SELECT DISTINCT(wait_event) FROM yb_active_session_history"));
+
+  for (const auto& wait_event : wait_events) {
+    ASSERT_EQ(pg_idle_wait_events.contains(wait_event), false);
   }
 }
 

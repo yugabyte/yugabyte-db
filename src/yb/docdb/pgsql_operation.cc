@@ -110,9 +110,8 @@ DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
 // Disable packed row by default in debug builds.
-// TODO: only enabled for new installs only for now, will enable it for upgrades in 2.22+ release.
 constexpr bool kYsqlEnablePackedRowTargetVal = !yb::kIsDebug;
-DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kNewInstallsOnly,
+DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kExternal,
                          !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
                          "Whether packed row is enabled for YSQL.");
 
@@ -138,6 +137,8 @@ DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "take finer column-level locks instead of locking the whole row. This may cause issues with "
     "data integrity for operations with implicit dependencies between columns.");
 
+DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
+                    "Whether to skip filter check during vector index search.");
 
 DECLARE_uint64(rpc_max_message_size);
 
@@ -523,7 +524,7 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> CreateYbctidIterator(
       SkipSeek skip_seek) {
   return data.ql_storage.GetIteratorForYbctid(
       data.request.stmt_id(), projection, read_context, data.txn_op_context,
-      data.read_operation_data, bounds, data.pending_op, skip_seek);
+      data.read_operation_data, bounds, data.pending_op, skip_seek, UseVariableBloomFilter::kTrue);
 }
 
 class FilteringIterator {
@@ -901,6 +902,9 @@ class PgsqlVectorFilter {
   }
 
   Status Init(const PgsqlReadOperationData& data) {
+    if (FLAGS_vector_index_skip_filter_check) {
+      return Status::OK();
+    }
     std::vector<ColumnId> columns;
     ColumnId index_column = data.vector_index->column_id();
     for (const auto& col_ref : data.request.col_refs()) {
@@ -920,6 +924,9 @@ class PgsqlVectorFilter {
   }
 
   bool operator()(const vector_index::VectorId& vector_id) {
+    if (!row_) {
+      return true;
+    }
     auto key = dockv::VectorIdKey(vector_id);
     // TODO(vector_index) handle failure
     auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key.AsSlice()));
@@ -2519,7 +2526,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
 
-  VLOG(4) << "Row count limit: " << row_count_limit << ", size limit: " << response_size_limit;
+  VLOG_WITH_FUNC(4)
+      << "Row count limit: " << row_count_limit << ", size limit: " << response_size_limit;
 
   // Create the projection of regular columns selected by the row block plus any referenced in
   // the WHERE condition. When DocRowwiseIterator::NextRow() populates the value map, it uses this
@@ -2580,7 +2588,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
     ++fetched_rows;
   }
 
-  VLOG(3) << "Stopped iterator after " << match_count << " matches, " << fetched_rows
+  VLOG_WITH_FUNC(3)
+          << "Stopped iterator after " << match_count << " matches, " << fetched_rows
           << " rows fetched. Response buffer size: " << result_buffer_->size()
           << ", response size limit: " << response_size_limit
           << ", deadline is " << (scan_time_exceeded ? "" : "not ") << "exceeded";
@@ -2683,9 +2692,10 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
     }
 
     if (result_buffer_->size() >= response_size_limit) {
-      VLOG(3) << "Stopped iterator after " << found_rows << " rows fetched (out of "
-              << request_.batch_arguments_size() << " matches). Response buffer size: "
-              << result_buffer_->size() << ", response size limit: " << response_size_limit;
+      VLOG_WITH_FUNC(3)
+          << "Stopped iterator after " << found_rows << " rows fetched (out of "
+          << request_.batch_arguments_size() << " matches). Response buffer size: "
+          << result_buffer_->size() << ", response size limit: " << response_size_limit;
       break;
     }
   }

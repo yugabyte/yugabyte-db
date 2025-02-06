@@ -372,6 +372,24 @@ check_cluster_versions(void)
 	check_ok();
 }
 
+void
+yb_check_cluster_versions(void)
+{
+	if (!user_opts.check)
+		return;
+
+	prep_status("Checking cluster versions");
+
+	/* cluster versions should already have been obtained */
+	Assert(old_cluster.major_version != 0);
+
+	if (GET_MAJOR_VERSION(old_cluster.major_version) > 1100)
+		pg_fatal("This version of the utility can only be used for checking "
+				 "YSQL version 11. The cluster is currently on YSQL version %s\n",
+				 old_cluster.major_version_str);
+
+	check_ok();
+}
 
 void
 check_cluster_compatibility(bool live_check)
@@ -1590,11 +1608,10 @@ yb_check_pushdown_is_disabled(PGconn *old_cluster_conn)
 
 	prep_status("Checking expression pushdown is disabled");
 
-	res = executeQueryOrDie(old_cluster_conn, "SHOW yb_enable_expression_pushdown");
+	res = executeQueryOrDie(old_cluster_conn, "SHOW yb_major_version_upgrade_compatibility");
 
-	if (strncmp(PQgetvalue(res, 0, 0), "off", 3))
-		pg_fatal("Expression pushdown (ysql_yb_enable_expression_pushdown) must "
-				 "be disabled during ysql major upgrade. See GH issue #24730\n");
+	if (strncmp(PQgetvalue(res, 0, 0), "11", 2))
+		pg_fatal("yb_major_version_upgrade_compatibility must be set to 11\n");
 
 	PQclear(res);
 
@@ -1638,7 +1655,7 @@ yb_check_user_attributes(PGconn *old_cluster_conn, const char *user_name,
 	const char **role_attr;
 	bool		first_attribute = true;
 
-	prep_status("Checking '%s' user attibutes", user_name);
+	prep_status("Checking '%s' user attributes", user_name);
 
 	initPQExpBuffer(&buf);
 	for (role_attr = role_attrs; *role_attr != NULL; role_attr++)

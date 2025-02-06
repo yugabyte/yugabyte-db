@@ -267,6 +267,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
              scoped_refptr<EventStats>* finished_waiting_latency,
              scoped_refptr<AtomicGauge<uint64_t>>& total_contentious_waiters,
              boost::optional<PgSessionRequestVersion> pg_session_req_version,
+             bool is_advisory_lock_req,
              CoarseTimePoint deadline)
       : id(id_),
         subtxn_id(subtxn_id_),
@@ -286,6 +287,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         total_contentious_waiters_(total_contentious_waiters),
         unlocked_(locks->Unlock()),
         pg_session_req_version_(pg_session_req_version),
+        is_advisory_lock_req_(is_advisory_lock_req),
         deadline_(deadline) {
     LOG_IF_WITH_PREFIX(DFATAL, !txn_start_us && !id.IsNil()) << "Expected non-zero txn_start_us";
     VLOG_WITH_PREFIX(4) << "Constructed waiter";
@@ -342,6 +344,17 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
       VLOG_WITH_PREFIX_AND_FUNC(1)
           << "Skipping InvokeCallback for waiter whose callback was already invoked.";
       return Status::OK();
+    }
+
+    // Explicitly prune inactive wait-for edges for advisory locks as it is required to avoid false
+    // deadlock issues. This is necessary as the semantics of session advisory locks are different,
+    // i.e, the locks can be explicitly released without either of the below (by explicit unlock)
+    // 1. the transaction finishing (commit/abort)
+    // 2. or the subtxn rolling back.
+    if (is_advisory_lock_req_ && waiter_registration && !status_tablet.empty()) {
+      auto status = waiter_registration->PruneInactiveBlockerData(status_tablet);
+      LOG_IF(WARNING, !status.ok()) << status;
+      waiter_registration.reset();
     }
 
     if (status.ok()) {
@@ -470,6 +483,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   std::optional<UnlockedBatch> unlocked_ GUARDED_BY(mutex_) = std::nullopt;
   bool is_wait_queue_shutting_down_ GUARDED_BY(mutex_) = false;
   boost::optional<PgSessionRequestVersion> pg_session_req_version_ = boost::none;
+  const bool is_advisory_lock_req_;
   CoarseTimePoint deadline_;
 };
 
@@ -1252,8 +1266,8 @@ class WaitQueue::Impl {
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       const TabletId& status_tablet_id, uint64_t serial_no,
       int64_t txn_start_us, uint64_t request_start_us, int64_t request_id,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version, CoarseTimePoint deadline,
-      IntentProviderFunc intent_provider, WaitDoneCallback callback) {
+      boost::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
+      CoarseTimePoint deadline, IntentProviderFunc intent_provider, WaitDoneCallback callback) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " request_id=" << request_id
                                  << " txn_start_us=" << txn_start_us
@@ -1288,7 +1302,8 @@ class WaitQueue::Impl {
         RETURN_NOT_OK(SetupWaiterUnlocked(
           waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us,
           request_start_us, request_id, std::move(intent_provider), std::move(callback),
-          std::move(blocker_datas), std::move(blockers), pg_session_req_version, deadline));
+          std::move(blocker_datas), std::move(blockers), pg_session_req_version,
+          is_advisory_lock_req, deadline));
         TRACE("pre-wait will block");
         return true;
       } else {
@@ -1309,8 +1324,8 @@ class WaitQueue::Impl {
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us, int64_t request_id,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version, CoarseTimePoint deadline,
-      IntentProviderFunc intent_provider, WaitDoneCallback callback) {
+      boost::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
+      CoarseTimePoint deadline, IntentProviderFunc intent_provider, WaitDoneCallback callback) {
     TRACE_FUNC();
     AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_entering_wait_queue_ms);
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
@@ -1373,7 +1388,8 @@ class WaitQueue::Impl {
       return SetupWaiterUnlocked(
           waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us,
           request_start_us, request_id,  std::move(intent_provider), std::move(callback),
-          std::move(blocker_datas), std::move(blockers), pg_session_req_version, deadline);
+          std::move(blocker_datas), std::move(blockers), pg_session_req_version,
+          is_advisory_lock_req, deadline);
     }
   }
 
@@ -1384,7 +1400,7 @@ class WaitQueue::Impl {
       IntentProviderFunc intent_provider, WaitDoneCallback callback,
       std::vector<BlockerDataAndConflictInfo>&& blocker_datas,
       std::shared_ptr<ConflictDataManager> blockers,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version,
+      boost::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
       CoarseTimePoint deadline) REQUIRES(mutex_) {
     // TODO(wait-queues): similar to pg, we can wait 1s or so before beginning deadlock detection.
     // See https://github.com/yugabyte/yugabyte-db/issues/13576
@@ -1424,7 +1440,7 @@ class WaitQueue::Impl {
         waiter_txn_id, subtxn_id, locks, serial_no, txn_start_us, request_start_us, request_id,
         clock_->Now(), status_tablet_id, std::move(blocker_datas), std::move(intent_provider),
         std::move(callback), std::move(scoped_reporter), &finished_waiting_latency_,
-        total_contentious_waiters_, pg_session_req_version, deadline);
+        total_contentious_waiters_, pg_session_req_version, is_advisory_lock_req, deadline);
     if (waiter_data->IsSingleShard()) {
       DCHECK(single_shard_waiters_.size() == 0 ||
              waiter_data->wq_entry_time >= single_shard_waiters_.front()->wq_entry_time);
@@ -2032,8 +2048,9 @@ class WaitQueue::Impl {
       filter = [&res, &resume_status](const auto& waiter) {
         const auto& opt_serial_no = waiter->GetPgSessionRequestVersion();
         if (opt_serial_no && *opt_serial_no < res->pg_session_req_version) {
-          resume_status =
-              STATUS_FORMAT(Expired, "Couldn't acquire locks due to a potential deadlock");
+          resume_status = STATUS_EC_FORMAT(
+              Expired, TransactionError(TransactionErrorCode::kDeadlock),
+              "Couldn't acquire locks due to a potential deadlock");
           return true;
         }
         return false;
@@ -2219,11 +2236,12 @@ Status WaitQueue::WaitOn(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
     std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
     uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us, int64_t request_id,
-    boost::optional<PgSessionRequestVersion> pg_session_req_version, CoarseTimePoint deadline,
-    IntentProviderFunc intent_provider, WaitDoneCallback callback) {
+    boost::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
+    CoarseTimePoint deadline, IntentProviderFunc intent_provider, WaitDoneCallback callback) {
   return impl_->WaitOn(
       waiter, subtxn_id, locks, std::move(blockers), status_tablet_id, serial_no, txn_start_us,
-      request_start_us, request_id, pg_session_req_version, deadline, intent_provider, callback);
+      request_start_us, request_id, pg_session_req_version, is_advisory_lock_req, deadline,
+      intent_provider, callback);
 }
 
 
@@ -2231,11 +2249,12 @@ Result<bool> WaitQueue::MaybeWaitOnLocks(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
     const TabletId& status_tablet_id, uint64_t serial_no,
     int64_t txn_start_us, uint64_t request_start_us, int64_t request_id,
-    boost::optional<PgSessionRequestVersion> pg_session_req_version, CoarseTimePoint deadline,
-    IntentProviderFunc intent_provider, WaitDoneCallback callback) {
+    boost::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
+    CoarseTimePoint deadline, IntentProviderFunc intent_provider, WaitDoneCallback callback) {
   return impl_->MaybeWaitOnLocks(
       waiter, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us, request_start_us,
-      request_id, pg_session_req_version, deadline, intent_provider, callback);
+      request_id, pg_session_req_version, is_advisory_lock_req, deadline, intent_provider,
+      callback);
 }
 
 void WaitQueue::Poll(HybridTime now) {

@@ -241,6 +241,21 @@ void ApplyForceCatalogModification(PgsqlOp& op) {
   }
 }
 
+template<class PB>
+void AdvisoryLockRequestInitCommon(
+    PB& req, uint64_t session_id, const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode) {
+  req.set_session_id(session_id);
+  req.set_db_oid(lock_id.database_id);
+  auto& req_lock = *req.add_locks();
+  auto& req_lock_id = *req_lock.mutable_lock_id();
+  req_lock_id.set_classid(lock_id.classid);
+  req_lock_id.set_objid(lock_id.objid);
+  req_lock_id.set_objsubid(lock_id.objsubid);
+  req_lock.set_lock_mode(mode == YbcAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
+      ? tserver::AdvisoryLockMode::LOCK_EXCLUSIVE : tserver::AdvisoryLockMode::LOCK_SHARE);
+
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -742,7 +757,20 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   if (yb_read_time != 0) {
     SCHECK(
         !pg_txn_manager_->IsDdlMode(), IllegalState,
-        "DDL operation should not be performed while yb_read_time is set to nonzero.");
+        "DDL operation can not be performed while yb_read_time is set to nonzero.");
+    // Disallow serializable reads that are not read-only as they need to acquire locks and thus,
+    // not pure reads.
+    SCHECK(
+        pg_txn_manager_->GetIsolationLevel() != IsolationLevel::SERIALIZABLE_ISOLATION,
+        IllegalState,
+        "Transactions with serializable isolation can not be performed while yb_read_time is set "
+        "to nonzero. Try setting the transaction as read only or try another isolation level.");
+    // Only read-only DMLs are allowed when yb_read_time is set to non-zero.
+    for (const auto& pg_op : ops.operations()) {
+      SCHECK(
+          IsReadOnly(*pg_op), IllegalState,
+          "Write DML operation can not be performed while yb_read_time is set to nonzero.");
+    }
     if (yb_is_read_time_ht) {
       ReadHybridTime::FromUint64(yb_read_time).ToPB(options.mutable_read_time());
     } else {
@@ -1152,10 +1180,15 @@ Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMi
 
 Status PgSession::AcquireAdvisoryLock(
     const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session) {
-  tserver::PgPerformOptionsPB options;
 
+  tserver::PgAcquireAdvisoryLockRequestPB req;
+  AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
+  req.set_wait(wait);
   // No need to populate the txn metadata for session level advisory locks.
-  if (!session) {
+  if (session) {
+    req.set_session(session);
+  } else {
+    auto& options = *req.mutable_options();
     // If isolation level is READ_COMMITTED, set priority of the transaction to kHighestPriority.
     RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
       false /* read_only */,
@@ -1166,20 +1199,6 @@ Status PgSession::AcquireAdvisoryLock(
     // then it should be safe to skip set_force_global_transaction.
     options.set_force_global_transaction(true);
   }
-
-  tserver::PgAcquireAdvisoryLockRequestPB req;
-  req.set_session_id(pg_client_.SessionID());
-  req.set_db_oid(lock_id.database_id);
-  auto* lock = req.add_locks();
-  lock->mutable_lock_id()->set_classid(lock_id.classid);
-  lock->mutable_lock_id()->set_objid(lock_id.objid);
-  lock->mutable_lock_id()->set_objsubid(lock_id.objsubid);
-  lock->set_lock_mode(mode == YbcAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
-      ? tserver::AdvisoryLockMode::LOCK_EXCLUSIVE
-      : tserver::AdvisoryLockMode::LOCK_SHARE);
-  req.set_wait(wait);
-  req.set_session(session);
-  *req.mutable_options() = std::move(options);
   return pg_client_.AcquireAdvisoryLock(&req, CoarseTimePoint());
 }
 
@@ -1187,15 +1206,7 @@ Status PgSession::ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvis
   // ReleaseAdvisoryLock is only used for session level advisory locks, hence no need to populate
   // the req with txn meta.
   tserver::PgReleaseAdvisoryLockRequestPB req;
-  req.set_session_id(pg_client_.SessionID());
-  req.set_db_oid(lock_id.database_id);
-  auto* lock = req.add_locks();
-  lock->mutable_lock_id()->set_classid(lock_id.classid);
-  lock->mutable_lock_id()->set_objid(lock_id.objid);
-  lock->mutable_lock_id()->set_objsubid(lock_id.objsubid);
-  lock->set_lock_mode(mode == YbcAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
-      ? tserver::AdvisoryLockMode::LOCK_EXCLUSIVE
-      : tserver::AdvisoryLockMode::LOCK_SHARE);
+  AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
   return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());
 }
 

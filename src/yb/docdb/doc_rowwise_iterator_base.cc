@@ -154,7 +154,9 @@ void DocRowwiseIteratorBase::InitForTableType(
   scan_choices_ = ScanChoices::CreateEmpty();
 }
 
-Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSeek skip_seek) {
+Status DocRowwiseIteratorBase::Init(
+    const qlexpr::YQLScanSpec& doc_spec, SkipSeek skip_seek,
+    UseVariableBloomFilter use_variable_bloom_filter) {
   table_type_ = doc_spec.client_type() == YQL_CLIENT_CQL ? TableType::YQL_TABLE_TYPE
                                                          : TableType::PGSQL_TABLE_TYPE;
   ignore_ttl_ = table_type_ == TableType::PGSQL_TABLE_TYPE;
@@ -172,8 +174,12 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
   const bool is_fixed_point_get =
       !bounds.lower.empty() &&
       VERIFY_RESULT(HashedOrFirstRangeComponentsEqual(bounds.lower, bounds.upper));
-  const auto bloom_filter = is_fixed_point_get ? BloomFilterOptions::Fixed(bounds.lower.AsSlice())
-                                               : BloomFilterOptions::Inactive();
+  auto bloom_filter = BloomFilterOptions::Inactive();
+  if (is_fixed_point_get) {
+    bloom_filter = BloomFilterOptions::Fixed(bounds.lower.AsSlice());
+  } else if (use_variable_bloom_filter) {
+    bloom_filter = BloomFilterOptions::Variable();
+  }
 
   if (is_forward_scan_) {
     has_bound_key_ = !bounds.upper.empty();
@@ -312,10 +318,10 @@ void DocRowwiseIteratorBase::SeekTuple(Slice tuple_id) {
       tuple_key_->Truncate(1 + size);
     }
     tuple_key_->AppendRawBytes(tuple_id);
-    Seek(*tuple_key_);
-  } else {
-    Seek(tuple_id);
+    tuple_id = *tuple_key_;
   }
+  UpdateFilterKey(tuple_id);
+  Seek(tuple_id);
 
   row_key_.Clear();
 }

@@ -249,6 +249,13 @@ Status PgCreateTableBase::SetVectorOptions(YbcPgVectorIdxOptions* options) {
   return Status::OK();
 }
 
+Status PgCreateTableBase::SetHnswOptions(int ef_construction, int m) {
+  auto options_pb = req_.mutable_vector_idx_options();
+  options_pb->set_hnsw_ef(ef_construction);
+  options_pb->set_hnsw_m(m);
+  return Status::OK();
+}
+
 Status PgCreateTableBase::AddSplitBoundary(PgExpr** exprs, int expr_count) {
   auto* values = req_.mutable_split_bounds()->Add()->mutable_values();
   for (int i = 0; i < expr_count; ++i) {
@@ -516,6 +523,10 @@ PgCreateReplicationSlot::PgCreateReplicationSlot(
     case YB_REPLICATION_SLOT_USE_SNAPSHOT:
       req_.set_snapshot_action(
           tserver::PgReplicationSlotSnapshotActionPB::REPLICATION_SLOT_USE_SNAPSHOT);
+      break;
+    case YB_REPLICATION_SLOT_EXPORT_SNAPSHOT:
+      req_.set_snapshot_action(
+          tserver::PgReplicationSlotSnapshotActionPB::REPLICATION_SLOT_EXPORT_SNAPSHOT);
       break;
     default:
       DCHECK(false) << "Unknown snapshot_action " << snapshot_action;

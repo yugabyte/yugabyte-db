@@ -23,6 +23,12 @@ static relopt_kind ivfflat_relopt_kind;
 #endif
 
 /*
+ * YB: _PG_init has been moved to vector.c. PgVector 0.8.0 has _PG_init
+ * in vector.c as well. The below code will be removed once PgVector 0.8.0
+ * is merged into YB.
+ */
+#if 0
+/*
  * Initialize index options and variables
  */
 void
@@ -42,6 +48,7 @@ _PG_init(void)
 							1, 1, IVFFLAT_MAX_LISTS, PGC_USERSET, 0, NULL, NULL, NULL);
 #endif
 }
+#endif
 
 #ifdef YB_IVFFLAT_INDEX_SUPPORT
 /*

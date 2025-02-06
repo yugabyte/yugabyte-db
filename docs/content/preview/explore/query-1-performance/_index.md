@@ -17,7 +17,7 @@ showRightNav: true
 
 Query tuning is the art and science of improving the performance of SQL queries. It involves understanding the database's architecture, query execution plans, and performance metrics. By identifying and addressing performance bottlenecks, you can significantly enhance the responsiveness of your applications and reduce the load on your database infrastructure.
 
-This guide provides a comprehensive overview of query tuning techniques for distributed SQL databases. We will explore various strategies, best practices, and tools to help you optimize your queries and achieve optimal performance.
+This guide provides a comprehensive overview of query tuning techniques for distributed SQL databases. The following sections explore various strategies, best practices, and tools to help you optimize your queries and achieve optimal performance.
 
 ## Identify slow queries
 
@@ -53,7 +53,6 @@ To learn more, see [Optimizing YSQL queries using pg_hint_plan](./pg-hint-plan/)
 
 ## Log all slow queries
 
-You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
 You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
 
 ```sh

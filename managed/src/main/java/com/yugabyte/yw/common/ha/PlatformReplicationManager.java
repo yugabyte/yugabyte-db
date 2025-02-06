@@ -702,9 +702,14 @@ public class PlatformReplicationManager {
     private final String outputDirectory;
 
     public CreatePlatformBackupParams() {
-      this.excludePrometheus = true;
-      this.excludeReleases = true;
-      this.outputDirectory = replicationHelper.getBackupDir().toString();
+      this(true, true, replicationHelper.getBackupDir().toString());
+    }
+
+    public CreatePlatformBackupParams(
+        boolean excludePrometheus, boolean excludeReleases, String outputDirectory) {
+      this.excludePrometheus = excludePrometheus;
+      this.excludeReleases = excludeReleases;
+      this.outputDirectory = outputDirectory;
     }
 
     @Override

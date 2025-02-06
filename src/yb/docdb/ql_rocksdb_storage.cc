@@ -144,7 +144,8 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> QLRocksDBStorage::GetIteratorForYb
     const ReadOperationData& read_operation_data,
     const YbctidBounds& bounds,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
-    SkipSeek skip_seek) const {
+    SkipSeek skip_seek,
+    UseVariableBloomFilter use_variable_bloom_filter) const {
   DocKey lower_doc_key(doc_read_context.get().schema());
 
   if (!bounds.first.empty()) {
@@ -172,7 +173,7 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> QLRocksDBStorage::GetIteratorForYb
         true /* is_forward_scan */,
         lower_doc_key,
         upper_doc_key),
-      skip_seek));
+      skip_seek, use_variable_bloom_filter));
   return std::move(doc_iter);
 }
 

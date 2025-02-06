@@ -99,7 +99,7 @@ class TserverXClusterContextIf;
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
     (ExportTxnSnapshot) \
-    (ImportTxnSnapshot) \
+    (SetTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
     /**/
 

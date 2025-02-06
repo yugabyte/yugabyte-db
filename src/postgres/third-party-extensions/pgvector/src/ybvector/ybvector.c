@@ -36,6 +36,13 @@
 #include "postgres_ext.h"
 #include "utils/lsyscache.h"
 
+void
+YbVectorInit(void)
+{
+	YbHnswInit();
+}
+
+
 /*
  * makeBaseYbVectorHandler: Makes a handler that handles all functionality
  * common to YB vector index access methods.
@@ -46,7 +53,7 @@ makeBaseYbVectorHandler(bool is_copartitioned)
 	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
 
 	amroutine->amstrategies = 0;
-	amroutine->amsupport = 1;
+	amroutine->amsupport = 2;
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = true;
 	amroutine->amcanbackward = false;

@@ -30,7 +30,7 @@
 
 namespace yb::docdb {
 
-using EncodedDistance = size_t;
+using EncodedDistance = uint64_t;
 
 struct VectorIndexInsertEntry {
   ValueBuffer value;

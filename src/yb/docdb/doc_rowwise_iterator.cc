@@ -156,6 +156,10 @@ void DocRowwiseIterator::Refresh(SeekFilter seek_filter) {
   seek_filter_ = seek_filter;
 }
 
+void DocRowwiseIterator::UpdateFilterKey(Slice user_key_for_filter) {
+  db_iter_->UpdateFilterKey(user_key_for_filter);
+}
+
 void DocRowwiseIterator::Seek(Slice key) {
   VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
 
@@ -445,6 +449,7 @@ bool DocRowwiseIterator::LivenessColumnExists() const {
 }
 
 Result<Slice> DocRowwiseIterator::FetchDirect(Slice key) {
+  db_iter_->UpdateFilterKey(key);
   db_iter_->Seek(key, SeekFilter::kAll, Full::kTrue);
   auto fetch_result = VERIFY_RESULT_REF(db_iter_->Fetch());
   return fetch_result.key == key ? fetch_result.value : Slice();

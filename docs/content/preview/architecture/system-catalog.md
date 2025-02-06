@@ -91,7 +91,7 @@ The pg_locks view doesn't have a documented view definition that you can directl
 {{</note>}}
 
 {{<tip>}}
-[pg_locks](#pg-locks) view can be joined to [pg_stat_activity](#pg-stat-activity) view on the _pid_ column to get more information on the session holding or awaiting each lock.
+You can join the pg_locks view to the [pg_stat_activity](#session-activity) view on the _pid_ column to get more information on the session holding or awaiting each lock.
 {{</tip>}}
 
 {{<lead link="../../explore/observability/pg-locks/">}}

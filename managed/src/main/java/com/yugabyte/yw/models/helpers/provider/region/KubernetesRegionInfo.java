@@ -2,9 +2,12 @@ package com.yugabyte.yw.models.helpers.provider.region;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.util.Map;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -31,12 +34,34 @@ public class KubernetesRegionInfo extends KubernetesInfo {
   @ApiModelProperty
   private String kubeDomain;
 
-  @JsonAlias("CERT-MANAGER-CLUSTERISSUER")
+  @JsonAlias("CERT-MANAGER-ISSUER-KIND")
   @ApiModelProperty
+  private String certManagerIssuerKind;
+
+  @JsonAlias("CERT-MANAGER-ISSUER-NAME")
+  @ApiModelProperty
+  private String certManagerIssuerName;
+
+  @JsonAlias("CERT-MANAGER-ISSUER-GROUP")
+  @ApiModelProperty
+  private String certManagerIssuerGroup;
+
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.2.3.0")
+  @JsonAlias("CERT-MANAGER-CLUSTERISSUER")
+  @ApiModelProperty(
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.3.0.</b>. Use"
+              + " certManagerIssuerKind and certManagerIssuerName instead",
+      accessMode = AccessMode.READ_WRITE)
   private String certManagerClusterIssuer;
 
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.2.3.0")
   @JsonAlias("CERT-MANAGER-ISSUER")
-  @ApiModelProperty
+  @ApiModelProperty(
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.3.0.</b>. Use"
+              + " certManagerIssuerKind and certManagerIssuerName instead",
+      accessMode = AccessMode.READ_WRITE)
   private String certManagerIssuer;
 
   @Override
@@ -56,13 +81,29 @@ public class KubernetesRegionInfo extends KubernetesInfo {
     if (kubeDomain != null) {
       envVars.put("KUBE_DOMAIN", kubeDomain);
     }
-    if (certManagerClusterIssuer != null) {
-      envVars.put("CERT-MANAGER-CLUSTERISSUER", certManagerClusterIssuer);
-    }
-    if (certManagerIssuer != null) {
-      envVars.put("CERT-MANAGER-ISSUER", certManagerIssuer);
-    }
+    String issuerKind =
+        certManagerIssuerKind != null
+            ? certManagerIssuerKind
+            : certManagerClusterIssuer != null
+                ? WellKnownIssuerKind.CLUSTER_ISSUER
+                : certManagerIssuer != null ? WellKnownIssuerKind.ISSUER : null;
 
+    String issuerName =
+        certManagerIssuerName != null
+            ? certManagerIssuerName
+            : certManagerClusterIssuer != null
+                ? certManagerClusterIssuer
+                : certManagerIssuer != null ? certManagerIssuer : null;
+
+    if (issuerKind != null) {
+      envVars.put("CERT-MANAGER-ISSUER-KIND", issuerKind);
+    }
+    if (issuerName != null) {
+      envVars.put("CERT-MANAGER-ISSUER-NAME", issuerName);
+    }
+    if (certManagerIssuerGroup != null) {
+      envVars.put("CERT-MANAGER-ISSUER-GROUP", certManagerIssuerGroup);
+    }
     return envVars;
   }
 

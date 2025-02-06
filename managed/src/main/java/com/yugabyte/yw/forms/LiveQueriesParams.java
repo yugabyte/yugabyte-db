@@ -16,6 +16,11 @@ public class LiveQueriesParams {
 
     public String query;
 
+    // query_id and leader pid are only present on pg15 and above.
+    public long query_id = -1L;
+
+    public long leader_pid = -1L;
+
     public String process_start_time;
 
     @JsonIgnore public int process_running_for_ms;

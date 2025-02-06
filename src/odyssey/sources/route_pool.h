@@ -102,8 +102,10 @@ static inline od_route_t *od_route_pool_new(od_route_pool_t *pool,
 	if (route->yb_user_entry == NULL)
 		return NULL;
 
+	od_route_lock(route);
 	od_list_append(&pool->list, &route->link);
 	pool->count++;
+	od_route_unlock(route);
 	return route;
 }
 
