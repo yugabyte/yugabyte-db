@@ -1943,25 +1943,18 @@ public class DrConfigController extends AuthenticatedController {
     boolean changeInParams = false;
 
     if (formData.bootstrapParams != null) {
-      changeInParams = true;
       validateBackupRequestParamsForBootstrapping(
           formData.bootstrapParams.backupRequestParams, customerUUID);
 
       UUID newStorageConfigUUID = formData.bootstrapParams.backupRequestParams.storageConfigUUID;
       int newParallelism = formData.bootstrapParams.backupRequestParams.parallelism;
-      if (drConfig.getStorageConfigUuid().equals(newStorageConfigUUID)
-          && drConfig.getParallelism() == newParallelism) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "No changes were made to drConfig. Current Storage configuration with uuid: %s and"
-                    + " parallelism: %d for drConfig: %s",
-                drConfig.getStorageConfigUuid(), drConfig.getParallelism(), drConfig.getName()));
+      if (!(drConfig.getStorageConfigUuid().equals(newStorageConfigUUID)
+          && drConfig.getParallelism() == newParallelism)) {
+        changeInParams = true;
       }
     }
 
     if (formData.pitrParams != null) {
-      changeInParams = true;
       if (formData.pitrParams.snapshotIntervalSec == 0L) {
         formData.pitrParams.snapshotIntervalSec =
             Math.min(
@@ -1971,16 +1964,11 @@ public class DrConfigController extends AuthenticatedController {
       Long oldRetentionPeriodSec = drConfig.getPitrRetentionPeriodSec();
       Long oldSnapshotIntervalSec = drConfig.getPitrSnapshotIntervalSec();
 
-      if (oldRetentionPeriodSec != null
+      if (!(oldRetentionPeriodSec != null
           && oldRetentionPeriodSec.equals(formData.pitrParams.retentionPeriodSec)
           && oldSnapshotIntervalSec != null
-          && oldSnapshotIntervalSec.equals(formData.pitrParams.snapshotIntervalSec)) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "No changes were made to drConfig. Current retentionPeriodSec: %d and"
-                    + " snapshotIntervalSec: %d for drConfig: %s",
-                oldRetentionPeriodSec, oldSnapshotIntervalSec, drConfig.getName()));
+          && oldSnapshotIntervalSec.equals(formData.pitrParams.snapshotIntervalSec))) {
+        changeInParams = true;
       }
     }
 

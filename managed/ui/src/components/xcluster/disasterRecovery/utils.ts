@@ -55,7 +55,10 @@ export const getNamespaceIdSafetimeEpochUsMap = (
   }, {});
 
 /**
- * YBA prescribes a 5 minute minimum for PITR retention period/
+ * YBA prescribes a 5 minute minimum for PITR retention period to prevent extremely short intervals.
+ *
+ * More frequent snapshots cause more disk usage because the compactions won't be as optimal due to
+ * more smaller sst tables being flushed every time a snapshot is created.
  */
 export const getPitrRetentionPeriodMinValue = (pitrRetentionPeriodUnit: DurationUnit | undefined) =>
   pitrRetentionPeriodUnit === DurationUnit.SECOND
