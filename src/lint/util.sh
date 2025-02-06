@@ -22,10 +22,10 @@ check_ctags() {
     echo "Please install Exuberant Ctags" >/dev/stderr
     if which dnf >/dev/null; then
       echo "HINT: dnf install ctags" >/dev/stderr
-    elif which apt >/dev/null; then
-      echo "HINT: apt install exuberant-ctags" >/dev/stderr
     elif which brew >/dev/null; then
       echo "HINT: brew install ctags" >/dev/stderr
+    elif which apt >/dev/null; then
+      echo "HINT: apt install exuberant-ctags" >/dev/stderr
     fi
     return 1
   fi
