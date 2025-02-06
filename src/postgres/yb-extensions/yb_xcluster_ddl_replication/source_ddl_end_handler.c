@@ -506,13 +506,10 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 				GetEnumLabels(obj_id, &enum_label_list);
 			should_replicate_ddl |= true;
 		}
-		else if (command_tag == CMDTAG_CREATE_SEQUENCE)
+		else if (command_tag == CMDTAG_CREATE_SEQUENCE ||
+				 command_tag == CMDTAG_ALTER_SEQUENCE)
 		{
 			AddSequenceInfo(obj_id, schema, &sequence_info_list);
-			should_replicate_ddl |= !is_temporary_object;
-		}
-		else if (command_tag == CMDTAG_ALTER_SEQUENCE)
-		{
 			should_replicate_ddl |= !is_temporary_object;
 		}
 		else if (command_tag == CMDTAG_ALTER_TABLE &&
@@ -523,6 +520,9 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			 * - ALTER TABLE <sequence> OWNER TO ...
 			 * - ALTER TABLE <sequence> RENAME TO ...
 			 * - ALTER TABLE <sequence> SET SCHEMA ...
+			 *
+			 * None of which change sequence metadata (i.e., pg_sequence) or
+			 * data.
 			 */
 			should_replicate_ddl |= !is_temporary_object;
 		}

@@ -115,56 +115,53 @@ DROP SEQUENCE myseq2;
 --
 -- Alter sequence
 --
--- TODO(#24080): deal with these test cases appropriately once we
--- figure out which of these alters we are handling.
---
 
--- ALTER SEQUENCE IF EXISTS sequence_test2 RESTART WITH 24
---   INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
+ALTER SEQUENCE IF EXISTS sequence_test2 RESTART WITH 24
+  INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
 
--- CREATE SEQUENCE sequence_test2 START WITH 32;
+CREATE SEQUENCE sequence_test2 START WITH 32;
 
--- SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
 
--- ALTER SEQUENCE sequence_test2 RESTART;
--- SELECT nextval('sequence_test2');
+ALTER SEQUENCE sequence_test2 RESTART;
+SELECT nextval('sequence_test2');
 
--- -- test CYCLE and NO CYCLE
--- ALTER SEQUENCE sequence_test2 RESTART WITH 24
---   INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');  -- cycled
+-- test CYCLE and NO CYCLE
+ALTER SEQUENCE sequence_test2 RESTART WITH 24
+  INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');  -- cycled
 
--- ALTER SEQUENCE sequence_test2 RESTART WITH 24
---   NO CYCLE;
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
+ALTER SEQUENCE sequence_test2 RESTART WITH 24
+  NO CYCLE;
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
 
--- ALTER SEQUENCE sequence_test2 RESTART WITH -24 START WITH -24
---   INCREMENT BY -4 MINVALUE -36 MAXVALUE -5 CYCLE;
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');  -- cycled
+ALTER SEQUENCE sequence_test2 RESTART WITH -24 START WITH -24
+  INCREMENT BY -4 MINVALUE -36 MAXVALUE -5 CYCLE;
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');  -- cycled
 
--- ALTER SEQUENCE sequence_test2 RESTART WITH -24
---   NO CYCLE;
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
--- SELECT nextval('sequence_test2');
+ALTER SEQUENCE sequence_test2 RESTART WITH -24
+  NO CYCLE;
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
 
--- -- reset
--- ALTER SEQUENCE IF EXISTS sequence_test2 RESTART WITH 32 START WITH 32
---   INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
+-- reset
+ALTER SEQUENCE IF EXISTS sequence_test2 RESTART WITH 32 START WITH 32
+  INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
 
--- SELECT setval('sequence_test2', 5);
+SELECT setval('sequence_test2', 5);
 
 
 -- Test comments

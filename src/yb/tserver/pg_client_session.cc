@@ -1570,7 +1570,14 @@ class PgClientSession::Impl {
 
     auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-    return session->TEST_ApplyAndFlush(std::move(psql_write));
+    auto s = session->TEST_ApplyAndFlush(psql_write);
+    if (!s.ok() || psql_write->response().status() ==
+        PgsqlResponsePB_RequestStatus::PgsqlResponsePB_RequestStatus_PGSQL_STATUS_OK) {
+      return s;
+    }
+    return STATUS_FORMAT(
+        InternalError, "Unknown error while trying to insert into sequences_data DocDB table: $0",
+        PgsqlResponsePB::RequestStatus_Name(psql_write->response().status()));
   }
 
   Status UpdateSequenceTuple(

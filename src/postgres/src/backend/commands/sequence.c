@@ -49,6 +49,7 @@
 #include "utils/varlena.h"
 
 /*  YB includes. */
+#include "catalog/yb_oid_assignment.h"
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 
@@ -229,7 +230,7 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 
 	if (IsYugaByteEnabled())
 	{
-		if (!IsBinaryUpgrade)
+		if (!IsBinaryUpgrade && !YbUsingSequenceOidAssignment())
 			HandleYBStatus(YBCInsertSequenceTuple(MyDatabaseId,
 												  seqoid,
 												  YbGetCatalogCacheVersion(),
@@ -542,7 +543,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 		 * In the binary upgrade case we know we only need to deal with catalog
 		 * metadata. There is no reason to read the actual sequence tuple.
 		 */
-		if (!IsBinaryUpgrade)
+		if (!IsBinaryUpgrade && !YbUsingSequenceOidAssignment())
 		{
 			HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
 												relid,
@@ -596,7 +597,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 	elm->cached = elm->last;
 
 	/* If needed, rewrite the sequence relation itself */
-	if (need_seq_rewrite)
+	if (need_seq_rewrite && !YbUsingSequenceOidAssignment())
 	{
 		if (IsYugaByteEnabled())
 		{
@@ -1948,13 +1949,13 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	}
 
 	/* crosscheck RESTART (or current value, if changing MIN/MAX) */
-	if (seqdataform->last_value < seqform->seqmin)
+	if (seqdataform->last_value < seqform->seqmin && !YbUsingSequenceOidAssignment())
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("RESTART value (%lld) cannot be less than MINVALUE (%lld)",
 						(long long) seqdataform->last_value,
 						(long long) seqform->seqmin)));
-	if (seqdataform->last_value > seqform->seqmax)
+	if (seqdataform->last_value > seqform->seqmax && !YbUsingSequenceOidAssignment())
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("RESTART value (%lld) cannot be greater than MAXVALUE (%lld)",

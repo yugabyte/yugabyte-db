@@ -21,6 +21,8 @@
 #include "yb/util/logging_test_util.h"
 
 DECLARE_bool(TEST_simulate_EnsureSequenceUpdatesAreInWal_failure);
+DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
+DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_int32(xcluster_ensure_sequence_updates_in_wal_timeout_sec);
@@ -441,6 +443,139 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationEnsureWalsFails) {
   ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
 
   ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace1}));
+}
+
+class XClusterSequenceDDLOrdering : public XClusterDDLReplicationTestBase {
+ public:
+  Status SetUpClustersAndReplication() {
+    RETURN_NOT_OK(SetUpClusters());
+    RETURN_NOT_OK(CheckpointReplicationGroup());
+    RETURN_NOT_OK(CreateReplicationFromCheckpoint());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
+    return Status::OK();
+  }
+
+  /*
+   * DDLs between these pairs of functions will run on the source universe and have their changes to
+   * the sequences_data table immediately replicated.  However, the actual DDLs will not be run on
+   * the target universe until the second of these functions is called.
+   */
+
+  Status BlockDllReplicationNotSeqDataChanges() {
+    // Make sure any DDLs before this function was called get replicated.  We want to delay only
+    // DDLs between calls to these functions.
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+    return Status::OK();
+  }
+
+  Status UnblockDllReplicationAfterSeqDataReplicates() {
+    // Wait for sequences_data replication to drain.
+    std::vector<NamespaceId> sequence_alias_ids;
+    sequence_alias_ids.push_back(xcluster::GetSequencesDataAliasForNamespace(
+        VERIFY_RESULT(GetNamespaceId(producer_client(), namespace_name))));
+    RETURN_NOT_OK(
+        WaitForReplicationDrain(0, kRpcTimeout, /*target_time=*/std::nullopt, sequence_alias_ids));
+
+    // Process any DDLs that were blocked now.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+    return Status::OK();
+  }
+};
+
+TEST_F(XClusterSequenceDDLOrdering, LateCreateSequenceDdl) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  /*
+   * Delay DDLs so the following happens in this order on the target universe:
+   *
+   * - creation of sequences_data row with value 666666
+   * - change of sequences_data row to value 777777
+   * - running of CREATE SEQUENCE DDL
+   */
+  ASSERT_OK(BlockDllReplicationNotSeqDataChanges());
+  {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE my_sequence START WITH 666666 INCREMENT BY 1"));
+    ASSERT_OK(conn.FetchAllAsString("SELECT setval('my_sequence', 777777)"));
+  }
+  ASSERT_OK(UnblockDllReplicationAfterSeqDataReplicates());
+
+  // Verify that the running CREATE SEQUENCE DDL did not override the setval that followed it on the
+  // source.
+  {
+    auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    auto next_value = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('my_sequence')"));
+    ASSERT_GE(next_value, 777777);
+  }
+}
+
+TEST_F(XClusterSequenceDDLOrdering, LateAlterSequenceDdl) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE my_sequence1 START WITH 666666 INCREMENT BY 1"));
+  }
+
+  /*
+   * Delay DDLs so the following happens in this order on the target universe:
+   *
+   * - no-op change of sequences_data row from 666666 to 666666
+   *   (ALTER SEQUENCE normally updates the data if any part of the metadata changes)
+   * - change of sequences_data row to value 777777
+   * - running of ALTER SEQUENCE DDL
+   */
+  ASSERT_OK(BlockDllReplicationNotSeqDataChanges());
+  {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("ALTER SEQUENCE my_sequence1 INCREMENT BY 2"));
+    ASSERT_OK(conn.FetchAllAsString("SELECT setval('my_sequence1', 777777)"));
+  }
+  ASSERT_OK(UnblockDllReplicationAfterSeqDataReplicates());
+
+  // Verify that the replication of the ALTER SEQUENCE DDL did not override the setval that followed
+  // it on the source.
+  {
+    auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    auto next_value = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('my_sequence1')"));
+    ASSERT_GE(next_value, 777777);
+  }
+}
+
+TEST_F(XClusterSequenceDDLOrdering, EarlyDropSequenceDataChange) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE my_sequence1 START WITH  666666 INCREMENT BY 1"));
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE my_sequence2 START WITH -666666 MINVALUE -999999"));
+  }
+
+  /*
+   * Delay DDLs so the following happens in this order on the target universe for each sequence:
+   *
+   * - no-op change of sequences_data row from [-]666666 to [-]666666
+   *   (ALTER SEQUENCE normally updates the data if any part of the metadata changes)
+   * - dropping of the sequences_data row
+   * - running of ALTER SEQUENCE DDL
+   */
+  ASSERT_OK(BlockDllReplicationNotSeqDataChanges());
+  {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("ALTER SEQUENCE my_sequence1 MINVALUE  111111"));
+    ASSERT_OK(conn.Execute("ALTER SEQUENCE my_sequence2 MAXVALUE -111111"));
+    ASSERT_OK(conn.Execute("DROP SEQUENCE my_sequence1"));
+    ASSERT_OK(conn.Execute("DROP SEQUENCE my_sequence2"));
+  }
+
+  // ALTER SEQUENCE normally has validation logic to make sure that the new min/max's do not make
+  // the current value of the sequence outside the range of legal values.
+  //
+  // Here we make sure the ALTER SEQUENCE DDL runs successfully on the target universe in spite of
+  // this even though the underlying sequence_data row no longer exists.
+  ASSERT_OK(UnblockDllReplicationAfterSeqDataReplicates());
 }
 
 }  // namespace yb

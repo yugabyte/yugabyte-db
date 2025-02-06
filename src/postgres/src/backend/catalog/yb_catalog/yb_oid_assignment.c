@@ -244,6 +244,13 @@ PG_FUNCTION_INFO_V1(yb_xcluster_set_next_oid_assignments);
  * sequence not_my_sequence then an error will occur.  It is not an error if
  * the DDL does not create all the sequences mentioned in the assignment.
  *
+ * If the sequence_info key is present then the CREATE and ALTER SEQUENCE DDLs
+ * will not read from or update the sequences_data table: it is assumed that
+ * no validation needs to be done -- normally ALTER only allows changing
+ * min/max such that the current value of the sequence is still covered by the
+ * valid range -- and that any needed changes will occur via the replication
+ * of the sequences_data table.
+ *
  *
  * You can remove the current assignment if any by using
  *
