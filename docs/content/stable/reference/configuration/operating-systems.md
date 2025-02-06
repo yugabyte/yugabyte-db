@@ -19,8 +19,8 @@ Unless otherwise noted, operating systems are supported by all supported version
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :---- |
-| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended for production<br>Recommended development platform<br>Default for YugabyteDB Anywhere-deployed nodes |
-| AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |       |
+| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | |
+| AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended development platform<br/>Default for YugabyteDB Anywhere-deployed nodes |
 | Oracle Linux 8   | {{<icon/yes>}} |                | |
 | Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | |
 | Red Hat Enterprise Linux 8 CIS Hardened | {{<icon/yes>}} |      | |
