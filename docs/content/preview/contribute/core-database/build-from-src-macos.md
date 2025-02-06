@@ -46,7 +46,7 @@ type: docs
 
 {{< note title="Note" >}}
 
-AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
+AlmaLinux 9 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
