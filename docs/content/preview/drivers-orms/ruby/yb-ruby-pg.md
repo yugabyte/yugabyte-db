@@ -44,17 +44,15 @@ type: docs
   </li>
 </ul>
 
-
 The [YugabyteDB ruby-pg smart driver](https://rubygems.org/gems/yugabytedb-ysql) is a Ruby driver for [YSQL](/preview/api/ysql/) based on [ged/ruby-pg](https://github.com/ged/ruby-pg), with additional [connection load balancing](../../smart-drivers/) features.
 
 The driver makes an initial connection to the first contact point provided by the application to discover all the nodes in the cluster. If the driver discovers stale information (by default, older than 5 minutes), it refreshes the list of live endpoints with the next connection attempt.
 
 {{< note title="YugabyteDB Aeon" >}}
 
-To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, either keep the the load balancing features disabled (default setting) or use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, either keep the load balancing features disabled (default setting) or use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
 
 {{< /note >}}
-
 
 ## CRUD operations
 
@@ -122,7 +120,6 @@ The following is an example connection string for connecting to YugabyteDB with 
 yburl = "postgresql://yugabyte:yugabyte@127.0.0.1:5433/yugabyte?load_balance=true&topology_keys=cloud1.region1.zone1:1,cloud1.region1.zone2:2"
 ```
 
-
 After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load balances subsequent connection requests across these servers.
 
 #### Use multiple addresses
@@ -144,12 +141,12 @@ connection = YSQL.connect(yburl)
 
 For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related properties while creating a connection.
 
-```sh
-sslmode: SSL mode used for the connection ('prefer', 'require', 'verify-ca', 'verify-full')
-sslrootcert: Path to the root certificate on your computer. The CA certificate file downloaded as `root.crt`. Modify your path accordingly.
-```
+| Parameter   | Description |
+| :---------- | :---------- |
+| sslmode     | SSL mode used for the connection ('prefer', 'require', 'verify-ca', 'verify-full') |
+| sslrootcert | Path to the root certificate on your computer. For YugabyteDB Aeon, this would be the CA certificate file downloaded as `root.crt`. |
 
-Here is an example:
+For example:
 
 ```ruby
   conn = YSQL.connect(host: '127.0.0.1', port: '5433', dbname: 'yugabyte', user: 'yugabyte',
@@ -157,9 +154,9 @@ Here is an example:
              sslmode: 'verify-full', sslrootcert: '/home/centos/root.crt')
 ```
 
-### Step 3 : Write your application
+### Step 3: Write your application
 
-Create a file `yb-sql-helloworld.rb` and add the following content to it.
+Create a file `yb-sql-helloworld.rb` and add the following content:
 
 ```ruby
 #!/usr/bin/env ruby
@@ -205,7 +202,7 @@ end
 
 Run the application `yb-sql-helloworld.rb` using the following command:
 
-```ruby
+```sh
 ./yb-sql-helloworld.rb
 ```
 
@@ -221,4 +218,3 @@ Query returned: John 35 Ruby
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-

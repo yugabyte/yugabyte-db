@@ -29,6 +29,7 @@ Yugabyte has developed the following smart drivers for YSQL, available as open s
 | [YugabyteDB node-postgres Driver for Node.js](https://github.com/yugabyte/node-postgres) | node-postgres | [Documentation](../nodejs/yugabyte-node-driver/) |
 | [YugabyteDB Npgsql Driver for C#](https://github.com/yugabyte/npgsql) | PostgreSQL Npgsql Driver | [Documentation](../csharp/ysql/) |
 | [YugabyteDB Rust-postgres Driver](https://github.com/yugabyte/rust-postgres) | Rust-Postgres Driver | [Documentation](../rust/yb-rust-postgres) |
+| [YugabyteDB Ruby Driver](https://github.com/yugabyte/ruby-pg) | ged/ruby-pg | [Documentation](../ruby/yb-ruby-pg) |
 
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 
