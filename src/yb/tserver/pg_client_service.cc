@@ -63,12 +63,14 @@
 #include "yb/server/server_base.h"
 
 #include "yb/tserver/pg_client.proxy.h"
+#include "yb/tserver/pg_client_service_util.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -1341,30 +1343,6 @@ class PgClientServiceImpl::Impl {
     slot_info->set_xmin(xmin);
     slot_info->set_record_id_commit_time_ht(record_id_commit_time_ht);
     slot_info->set_last_pub_refresh_time(last_pub_refresh_time);
-    return Status::OK();
-  }
-
-  // DEPRECATED: GetReplicationSlot RPC is a superset of this GetReplicationSlotStatus.
-  // So GetReplicationSlot should be used everywhere.
-  Status GetReplicationSlotStatus(
-      const PgGetReplicationSlotStatusRequestPB& req, PgGetReplicationSlotStatusResponsePB* resp,
-      rpc::RpcContext* context) {
-    // Get the stream_id for the replication slot.
-    auto stream = VERIFY_RESULT(client().GetCDCStream(
-        ReplicationSlotName(req.replication_slot_name()), /* replica_identities */ nullptr));
-    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id));
-
-    bool is_slot_active;
-    uint64_t confirmed_flush_lsn;
-    uint64_t restart_lsn;
-    uint32_t xmin;
-    uint64_t record_id_commit_time_ht;
-    uint64_t last_pub_refresh_time;
-    RETURN_NOT_OK(GetReplicationSlotInfoFromCDCState(
-        stream_id, &is_slot_active, &confirmed_flush_lsn, &restart_lsn, &xmin,
-        &record_id_commit_time_ht, &last_pub_refresh_time));
-    resp->set_replication_slot_status(
-        (is_slot_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
     return Status::OK();
   }
 

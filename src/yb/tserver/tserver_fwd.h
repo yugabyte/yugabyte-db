@@ -39,6 +39,7 @@ class Heartbeater;
 class LocalTabletServer;
 class MetricsSnapshotter;
 class PgClientServiceMockImpl;
+class PgMutationCounter;
 class PgTableCache;
 class PgResponseCache;
 class PgSequenceCache;
@@ -56,6 +57,8 @@ class TabletServerOptions;
 class TabletServerServiceProxy;
 class TabletServiceImpl;
 class TabletServerPathHandlers;
+class TserverXClusterContextIf;
+class YsqlAdvisoryLocksTable;
 
 enum class TabletServerServiceRpcMethodIndexes;
 

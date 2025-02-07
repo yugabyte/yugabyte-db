@@ -111,14 +111,6 @@ service PgClientService {
 
   rpc ListClones(PgListClonesRequestPB) returns (PgListClonesResponsePB);
 
-  // DEPRECATED: GetReplicationSlot RPC is a superset of this GetReplicationSlotStatus.
-  // So GetReplicationSlot should be used everywhere.
-  rpc GetReplicationSlotStatus(PgGetReplicationSlotStatusRequestPB)
-      returns (PgGetReplicationSlotStatusResponsePB);
-  // DEPRECATED
-  rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
-      returns (PgSetActiveSubTransactionResponsePB);
-
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
   };
@@ -535,16 +527,6 @@ enum ReplicationSlotStatus {
   INACTIVE = 1;
 }
 
-message PgGetReplicationSlotStatusRequestPB {
-  string replication_slot_name = 1;
-}
-
-message PgGetReplicationSlotStatusResponsePB {
-  AppStatusPB status = 1;
-
-  ReplicationSlotStatus replication_slot_status = 2;
-}
-
 message PgListLiveTabletServersRequestPB {
   bool primary_only = 1;
   AshMetadataPB ash_metadata = 2;
@@ -738,19 +720,6 @@ message PgRollbackToSubTransactionRequestPB {
 }
 
 message PgRollbackToSubTransactionResponsePB {
-  AppStatusPB status = 1;
-}
-
-// DEPRECATED
-message PgSetActiveSubTransactionRequestPB {
-  uint64 session_id = 1;
-  uint32 sub_transaction_id = 2;
-  // Used to create transaction when we did not have one yet.
-  PgPerformOptionsPB options = 3;
-}
-
-// DEPRECATED
-message PgSetActiveSubTransactionResponsePB {
   AppStatusPB status = 1;
 }
 

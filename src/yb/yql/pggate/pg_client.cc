@@ -574,21 +574,6 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.ready();
   }
 
-  Status SetActiveSubTransaction(
-      SubTransactionId id, tserver::PgPerformOptionsPB* options) {
-    tserver::PgSetActiveSubTransactionRequestPB req;
-    req.set_session_id(session_id_);
-    if (options) {
-      options->Swap(req.mutable_options());
-    }
-    req.set_sub_transaction_id(id);
-
-    tserver::PgSetActiveSubTransactionResponsePB resp;
-
-    RETURN_NOT_OK(proxy_->SetActiveSubTransaction(req, &resp, PrepareController()));
-    return ResponseStatus(resp);
-  }
-
   Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options) {
     tserver::PgRollbackToSubTransactionRequestPB req;
     req.set_session_id(session_id_);
@@ -1585,11 +1570,6 @@ Result<int32> PgClient::TabletServerCount(bool primary_only) {
 
 Result<client::TabletServersInfo> PgClient::ListLiveTabletServers(bool primary_only) {
   return impl_->ListLiveTabletServers(primary_only);
-}
-
-Status PgClient::SetActiveSubTransaction(
-    SubTransactionId id, tserver::PgPerformOptionsPB* options) {
-  return impl_->SetActiveSubTransaction(id, options);
 }
 
 Status PgClient::RollbackToSubTransaction(
