@@ -158,11 +158,32 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
     setOpenNodeAgentDialog(true);
   };
 
-  const formatError = (cell: any, row: any) => {
-    const rowError = row.lastError;
-    const rowErrorCode =  rowError?.code
-    return <span>{rowErrorCode}</span>;
-  };
+  const getNodeAgentStatusLabel = (nodeAgent: NodeAgent) =>
+    nodeAgent.reachable
+      ? t(`statusLabel.${nodeAgent.state}`, 'statusLabel.unknownStatus')
+      : t('statusLabel.unreachable');
+
+  const getNodeAgentErrorLabel = (nodeAgent: NodeAgent) =>
+    universeListQuery.data?.find((universe) => universe.universeUUID === nodeAgent.universeUuid)
+      ?.universeDetails.universePaused && nodeAgent.lastError
+      ? t('errorLabel.universePaused')
+      : nodeAgent.lastError
+      ? t(`errorLabel.${nodeAgent.lastError.code}`)
+      : '';
+
+  /**
+   * Node agent objects with additional fields added on the client side.
+   */
+  const augmentedNodeAgents = nodeAgents.map(
+    (nodeAgent): AugmentedNodeAgent => ({
+      ...nodeAgent,
+      statusLabel: getNodeAgentStatusLabel(nodeAgent),
+      errorLabel: getNodeAgentErrorLabel(nodeAgent)
+    })
+  );
+  const filteredNodeAgents = isErrorFilterChecked
+    ? augmentedNodeAgents.filter((nodeAgent) => nodeAgent.lastError?.code)
+    : augmentedNodeAgents;
 
   return (
     <Box>

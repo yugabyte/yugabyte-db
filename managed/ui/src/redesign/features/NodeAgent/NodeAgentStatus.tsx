@@ -70,8 +70,8 @@ export const NodeAgentStatus: FC<NodeAgentStatusProps> = ({ status, isReachable 
     tagTextColor = helperClasses.tagTextRed;
     imageSrc = Warning;
   } else {
-    switch (status) {
-      case NodeAgentStatusList.READY:
+    switch (nodeAgent.state) {
+      case NodeAgentState.READY:
         tagColor = helperClasses.tagGreen;
         tagTextColor = helperClasses.tagTextGreen;
         imageSrc = Check;
