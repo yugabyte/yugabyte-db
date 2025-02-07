@@ -39,12 +39,10 @@ export const getTabContent = (
 
   const getMetricsSessionTimezone = () => {
     const metricsTimezone = sessionStorage.getItem('metricsTimezone');
-    if (metricsTimezone === DEFAULT_TIMEZONE.value || isEmptyString(metricsTimezone)) {
-      return getUserTimezone();
-    }
     return metricsTimezone;
   };
 
+  const timezone = isMetricsTimezoneEnabled ? getMetricsSessionTimezone() : getUserTimezone();
   if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
     /* Logic here is, since there will be multiple instances of GraphTab
       we basically would have metrics data keyed off tab type. So we
@@ -81,9 +79,7 @@ export const getTabContent = (
             isGranularMetricsEnabled={isGranularMetricsEnabled}
             updateTimestamp={updateTimestamp}
             printMode={printMode}
-            metricsTimezone={
-              isMetricsTimezoneEnabled ? getMetricsSessionTimezone() : getUserTimezone()
-            }
+            metricsTimezone={timezone}
           />
         ) : null;
       })
