@@ -23,9 +23,8 @@ Instead of using YugabyteDB Anywhere-provided certificates, you can use your own
 
 ## Prerequisites
 
-The certificates must meet the following criteria:
+The certificate and private key must be in PEM format.
 
-- Be in the `.pem` format and the private key must be in the `.pem` format, with both of these artifacts available for upload.
 
 YugabyteDB Anywhere produces the node (leaf) certificates from the uploaded certificates and copies the certificate chain, leaf certificate, and private key to the nodes in the cluster.
 
@@ -49,7 +48,7 @@ If the key is protected by a passphrase in the PKCS12 archive, you are prompted 
 
 ### Generate self-signed certificates
 
-You can generate a self-signed certificates using `openssl` command like below:
+You can generate self-signed certificates using openssl as follows:
 
 ```sh
 openssl req -newkey rsa:2048 -nodes -keyout yugabyte_private_key.pem -x509 -days 365 -out yugabyte_cert.pem
@@ -69,9 +68,9 @@ To add self-signed certificates to YugabyteDB Anywhere:
 
 1. In the **Certificate Name** field, enter a meaningful name for your certificate.
 
-1. Click **Upload Root Certificate**, then browse to the root certificate file (`<file-name>.pem`) and upload it.
+1. Click **Upload Root Certificate**, then browse to the root certificate file and upload it.
 
-1. Click **Upload Key**, then browse to the root certificate file (`<file-name>.key`) and upload it.
+1. Click **Upload Key**, then browse to the private key and upload it.
 
 1. In the **Expiration Date** field, specify the expiration date of the root certificate. To find this information, execute the `openssl x509 -in <root-crt-file-path> -text -noout` command and note the **Validity Not After** date.
 
