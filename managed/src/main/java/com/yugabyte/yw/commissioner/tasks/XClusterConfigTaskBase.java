@@ -3118,7 +3118,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       List<MasterTypes.NamespaceIdentifierPB> namespaces =
           client.getNamespacesList().getNamespacesList();
       if (CollectionUtils.isEmpty(dbIds)) {
-        return new HashSet<MasterTypes.NamespaceIdentifierPB>(namespaces);
+        return new HashSet<>(namespaces);
       }
       return namespaces.stream()
           .filter(db -> dbIds.contains(db.getId().toStringUtf8()))

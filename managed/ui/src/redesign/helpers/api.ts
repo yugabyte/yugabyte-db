@@ -252,7 +252,6 @@ export interface DrFailoverRequest {
   primaryUniverseUuid: string;
   // drReplicaUniverseUuid is the new DR replica universe AFTER failover (i.e. current primary universe).
   drReplicaUniverseUuid: string;
-  namespaceIdSafetimeEpochUsMap: { [namespaceId: string]: string };
 }
 
 export interface RestartDrConfigRequest {
