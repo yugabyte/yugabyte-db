@@ -266,8 +266,14 @@ var createBackupCmd = &cobra.Command{
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 			backupUUID := rBackup[0].GetBackupUUID()
+			baseBackupUUID := rBackup[0].GetBaseBackupUUID()
 
-			backupUUIDList := []string{backupUUID}
+			backupUUIDList := make([]string, 0)
+			if len(baseBackupUUID) != 0 {
+				backupUUIDList = append(backupUUIDList, baseBackupUUID)
+			} else {
+				backupUUIDList = append(backupUUIDList, backupUUID)
+			}
 
 			var limit int32 = 10
 			var offset int32 = 0
