@@ -7,7 +7,7 @@ aliases:
   - /preview/develop/drivers-orms/ruby/ysql-pg/
 menu:
   preview:
-    identifier: ruby-pg-driver
+    identifier: ruby-pg-driver-2
     parent: ruby-drivers
     weight: 410
 type: docs

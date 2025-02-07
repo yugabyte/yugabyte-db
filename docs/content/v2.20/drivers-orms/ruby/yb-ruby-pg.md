@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a Ruby application using YugabyteDB Ruby-pg Smart Driver for YSQL
 menu:
   v2.20:
-    identifier: yb-ruby-pg-driver
+    identifier: ruby-pg-driver-1-yb
     parent: ruby-drivers
     weight: 410
 type: docs
