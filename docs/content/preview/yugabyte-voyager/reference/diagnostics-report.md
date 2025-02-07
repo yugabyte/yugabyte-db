@@ -114,6 +114,7 @@ The following are examples of payloads that are collected during some migration 
       }
     ],
     "unsupported_query_constructs": {
+      "Advisory Locks": 2,
       "System Columns": 0,
       "XML Function": 1
     },

@@ -38,7 +38,7 @@ The following example uses the FOR UPDATE row lock with the [fail-on-conflict](.
 
 {{% explore-setup-single %}}
 
-Create an sample table and populate it with sample data, as follows:
+Create a sample table and populate it with sample data, as follows:
 
 ```sql
 yugabyte=# CREATE TABLE t (k VARCHAR, v VARCHAR);
@@ -104,13 +104,13 @@ This should succeed.
 
 ## Advisory locks
 
-{{<tags/feature/tp>}}Advisory locks are available in v2.25.1 and later.
+{{<tags/feature/tp>}}Advisory locks are available in {{<release "2.25.1.0">}} and later.
 
 YSQL also supports advisory locks, where the application manages concurrent access to resources through a cooperative locking mechanism. Advisory locks can be less resource-intensive than table or row locks for certain use cases because they don't involve scanning tables or indexes for lock conflicts. They are session-specific and managed by the client application.
 
 In PostgreSQL, if an advisory lock is taken on one session, all sessions should be able to see the advisory locks acquired by any other session. Similarly, in YugabyteDB, if an advisory lock is acquired on one session, all the sessions should be able to see the advisory locks regardless of the node the session is connected to. This is achieved via the pg_advisory_locks system table, which is dedicated to hosting advisory locks. All advisory lock requests are stored in this system table.
 
-To enable the use of advisory locks in a cluster, you must set the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-locks-flags).
+To enable the use of advisory locks in a cluster, you must set the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
 
 ### Using advisory locks
 
