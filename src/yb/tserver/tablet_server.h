@@ -149,7 +149,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
-  tablet::TSLocalLockManager* ts_local_lock_manager() const override {
+  tserver::TSLocalLockManager* ts_local_lock_manager() const override {
     return ts_local_lock_manager_.get();
   }
 
@@ -533,7 +533,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
 
   // Lock Manager to maintain table/object locking activity in memory.
-  std::unique_ptr<tablet::TSLocalLockManager> ts_local_lock_manager_;
+  std::unique_ptr<tserver::TSLocalLockManager> ts_local_lock_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

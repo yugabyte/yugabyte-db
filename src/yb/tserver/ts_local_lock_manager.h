@@ -26,7 +26,7 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/status.h"
 
-namespace yb::tablet {
+namespace yb::tserver {
 
 YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
 
@@ -92,4 +92,4 @@ class TSLocalLockManager {
   std::unique_ptr<Impl> impl_;
 };
 
-} // namespace yb::tablet
+} // namespace yb::tserver

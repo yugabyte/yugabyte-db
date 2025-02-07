@@ -25,7 +25,7 @@
 using namespace std::literals;
 DECLARE_bool(dump_lock_keys);
 
-namespace yb::tablet {
+namespace yb::tserver {
 
 class TSLocalLockManager::Impl {
  public:
@@ -112,7 +112,7 @@ class TSLocalLockManager::Impl {
     for (const auto& acquire_req : entries.lock_entries()) {
       // This call should not block on anything.
       CoarseTimePoint deadline = CoarseMonoClock::Now() + 1s;
-      RETURN_NOT_OK(AcquireObjectLocks(acquire_req, deadline, tablet::WaitForBootstrap::kFalse));
+      RETURN_NOT_OK(AcquireObjectLocks(acquire_req, deadline, tserver::WaitForBootstrap::kFalse));
     }
     MarkBootstrapped();
     return Status::OK();
@@ -157,4 +157,4 @@ void TSLocalLockManager::TEST_MarkBootstrapped() {
   impl_->MarkBootstrapped();
 }
 
-} // namespace yb::tablet
+} // namespace yb::tserver

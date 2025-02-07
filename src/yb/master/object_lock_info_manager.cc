@@ -81,7 +81,7 @@ class ObjectLockInfoManager::Impl {
   Impl(Master* master, CatalogManager* catalog_manager)
       : master_(master),
         catalog_manager_(catalog_manager),
-        local_lock_manager_(std::make_shared<tablet::TSLocalLockManager>()) {}
+        local_lock_manager_(std::make_shared<tserver::TSLocalLockManager>()) {}
 
   void LockObject(
       AcquireObjectLockRequestPB req, AcquireObjectLocksGlobalResponsePB* resp,
@@ -121,7 +121,7 @@ class ObjectLockInfoManager::Impl {
   std::shared_ptr<ObjectLockInfo> GetOrCreateObjectLockInfo(const std::string& key)
       EXCLUDES(mutex_);
 
-  std::shared_ptr<tablet::TSLocalLockManager> TEST_ts_local_lock_manager() EXCLUDES(mutex_) {
+  std::shared_ptr<tserver::TSLocalLockManager> TEST_ts_local_lock_manager() EXCLUDES(mutex_) {
     // No need to acquire the leader lock for testing.
     LockGuard lock(mutex_);
     return local_lock_manager_;
@@ -134,14 +134,14 @@ class ObjectLockInfoManager::Impl {
   when the master assumes leadership. This will be done by clearing the TSLocalManager and
   replaying the DDL lock requests
   */
-  std::shared_ptr<tablet::TSLocalLockManager> ts_local_lock_manager() EXCLUDES(mutex_) {
+  std::shared_ptr<tserver::TSLocalLockManager> ts_local_lock_manager() EXCLUDES(mutex_) {
     catalog_manager_->AssertLeaderLockAcquiredForReading();
     LockGuard lock(mutex_);
     return local_lock_manager_;
   }
 
  private:
-  std::shared_ptr<tablet::TSLocalLockManager> ts_local_lock_manager_during_catalog_loading()
+  std::shared_ptr<tserver::TSLocalLockManager> ts_local_lock_manager_during_catalog_loading()
       EXCLUDES(mutex_) {
     catalog_manager_->AssertLeaderLockAcquiredForWriting();
     LockGuard lock(mutex_);
@@ -162,7 +162,7 @@ class ObjectLockInfoManager::Impl {
   // The latest lease epoch for each tserver.
   std::unordered_map<std::string, uint64_t> current_lease_epochs_ GUARDED_BY(mutex_);
 
-  std::shared_ptr<tablet::TSLocalLockManager> local_lock_manager_ GUARDED_BY(mutex_);
+  std::shared_ptr<tserver::TSLocalLockManager> local_lock_manager_ GUARDED_BY(mutex_);
 };
 
 template <class Req>
@@ -334,11 +334,11 @@ void ObjectLockInfoManager::UpdateObjectLocks(
 
 void ObjectLockInfoManager::Clear() { impl_->Clear(); }
 
-std::shared_ptr<tablet::TSLocalLockManager> ObjectLockInfoManager::ts_local_lock_manager() {
+std::shared_ptr<tserver::TSLocalLockManager> ObjectLockInfoManager::ts_local_lock_manager() {
   return impl_->ts_local_lock_manager();
 }
 
-std::shared_ptr<tablet::TSLocalLockManager> ObjectLockInfoManager::TEST_ts_local_lock_manager() {
+std::shared_ptr<tserver::TSLocalLockManager> ObjectLockInfoManager::TEST_ts_local_lock_manager() {
   return impl_->TEST_ts_local_lock_manager();
 }
 
@@ -619,7 +619,7 @@ void ObjectLockInfoManager::Impl::Clear() {
   catalog_manager_->AssertLeaderLockAcquiredForWriting();
   LockGuard lock(mutex_);
   object_lock_infos_map_.clear();
-  local_lock_manager_.reset(new tablet::TSLocalLockManager());
+  local_lock_manager_.reset(new tserver::TSLocalLockManager());
 }
 
 void ObjectLockInfoManager::Impl::UpdateTabletServerLeaseEpoch(
@@ -744,7 +744,7 @@ template <>
 Status
 UpdateAllTServers<AcquireObjectLockRequestPB, AcquireObjectLocksGlobalResponsePB>::BeforeRpcs() {
   RETURN_NOT_OK(ValidateLockRequest(req_, requestor_latest_lease_epoch_));
-  std::shared_ptr<tablet::TSLocalLockManager> local_lock_manager;
+  std::shared_ptr<tserver::TSLocalLockManager> local_lock_manager;
   DCHECK(!epoch_.has_value()) << "Epoch should not yet be set for AcquireObjectLockRequestPB";
   {
     SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
@@ -757,7 +757,7 @@ UpdateAllTServers<AcquireObjectLockRequestPB, AcquireObjectLocksGlobalResponsePB
   // Update Local State.
   // TODO: Use RETURN_NOT_OK_PREPEND
   auto s = local_lock_manager->AcquireObjectLocks(
-      req_, context_->GetClientDeadline(), tablet::WaitForBootstrap::kFalse);
+      req_, context_->GetClientDeadline(), tserver::WaitForBootstrap::kFalse);
   if (!s.ok()) {
     LOG(WARNING) << "Failed to release object lock locally." << s;
     return s.CloneAndReplaceCode(Status::kRemoteError);

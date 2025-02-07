@@ -41,7 +41,7 @@ class TSLocalLockManagerTest : public YBTest {
     lm_.TEST_MarkBootstrapped();
   }
 
-  tablet::TSLocalLockManager lm_;
+  tserver::TSLocalLockManager lm_;
 
   Status LockObjects(
       const ObjectLockOwner& owner, uint64_t database_id, const std::vector<uint64_t>& object_ids,
