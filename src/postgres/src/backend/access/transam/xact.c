@@ -2336,6 +2336,8 @@ YBCRestartWriteTransaction()
 static void
 CommitTransaction(void)
 {
+	if (IsYugaByteEnabled())
+		YbIncrementPgTxnsCommitted();
 	TransactionState s = CurrentTransactionState;
 	TransactionId latestXid;
 	bool		is_parallel_worker;

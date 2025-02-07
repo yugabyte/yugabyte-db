@@ -108,6 +108,7 @@
  */
 #include "postgres.h"
 
+#include <assert.h>
 #include <limits.h>
 #include <unistd.h>
 
@@ -173,6 +174,8 @@ typedef struct InvalMessageArray
 
 static InvalMessageArray InvalMessageArrays[2];
 
+#define YB_SUBGROUP_COUNT (sizeof(InvalMessageArrays) / sizeof(InvalMessageArray))
+
 /* Control information for one logical group of messages */
 typedef struct InvalidationMsgsGroup
 {
@@ -235,6 +238,16 @@ typedef struct TransInvalidationInfo
 
 	/* init file must be invalidated? */
 	bool		RelcacheInitFileInval;
+
+	/*
+	 * Number of invalidation messages accumulated so far in the current PG
+	 * BEGIN block transaction. If there are multiple DDL statements in
+	 * the PG transaction, each time we fetch the invalidation messages we
+	 * will get the invalidation messages of all the previous DDL statements.
+	 * We use this count to figure out the tail portion the messages for the
+	 * current DDL statement.
+	 */
+	int			YbNumInvalMsgsInTxn[YB_SUBGROUP_COUNT];
 } TransInvalidationInfo;
 
 static TransInvalidationInfo *transInvalInfo = NULL;
@@ -293,6 +306,14 @@ static void
 AddInvalidationMessage(InvalidationMsgsGroup *group, int subgroup,
 					   const SharedInvalidationMessage *msg)
 {
+	/*
+	 * T_Invalid represents single shard DML statement, or any non-DDL
+	 * statement (e.g., SET SESSION AUTHORIZATION pgcron_cront)
+	 */
+	Assert(YBGetDdlOriginalNodeTag() == T_YbBackfillIndexStmt ||
+		   YBGetDdlOriginalNodeTag() == T_Invalid ||
+		   yb_non_ddl_txn_for_sys_tables_allowed ||
+		   YBGetDdlNestingLevel() > 0);
 	InvalMessageArray *ima = &InvalMessageArrays[subgroup];
 	int			nextindex = group->nextmsg[subgroup];
 
@@ -402,6 +423,8 @@ AddCatcacheInvalidationMessage(InvalidationMsgsGroup *group,
 							   int id, uint32 hashValue, Oid dbId)
 {
 	SharedInvalidationMessage msg;
+	if (yb_test_inval_message_portability)
+		msg = (SharedInvalidationMessage) {0};
 
 	Assert(id < CHAR_MAX);
 	msg.cc.id = (int8) id;
@@ -430,6 +453,8 @@ AddCatalogInvalidationMessage(InvalidationMsgsGroup *group,
 							  Oid dbId, Oid catId)
 {
 	SharedInvalidationMessage msg;
+	if (yb_test_inval_message_portability)
+		msg = (SharedInvalidationMessage) {0};
 
 	msg.cat.id = SHAREDINVALCATALOG_ID;
 	msg.cat.dbId = dbId;
@@ -448,6 +473,8 @@ AddRelcacheInvalidationMessage(InvalidationMsgsGroup *group,
 							   Oid dbId, Oid relId)
 {
 	SharedInvalidationMessage msg;
+	if (yb_test_inval_message_portability)
+		msg = (SharedInvalidationMessage) {0};
 
 	/*
 	 * Don't add a duplicate item. We assume dbId need not be checked because
@@ -480,6 +507,8 @@ AddSnapshotInvalidationMessage(InvalidationMsgsGroup *group,
 							   Oid dbId, Oid relId)
 {
 	SharedInvalidationMessage msg;
+	if (yb_test_inval_message_portability)
+		msg = (SharedInvalidationMessage) {0};
 
 	/* Don't add a duplicate item */
 	/* We assume dbId need not be checked because it will never change */
@@ -951,7 +980,10 @@ xactGetCommittedInvalidationMessages(SharedInvalidationMessage **msgs,
 	}
 
 	/* Must be at top of stack */
-	Assert(transInvalInfo->my_level == 1 && transInvalInfo->parent == NULL);
+	if (IsYugaByteEnabled())
+		Assert(YBGetDdlNestingLevel() == 0);
+	else
+		Assert(transInvalInfo->my_level == 1 && transInvalInfo->parent == NULL);
 
 	/*
 	 * Relcache init file invalidation requires processing both before and
@@ -1003,6 +1035,139 @@ xactGetCommittedInvalidationMessages(SharedInvalidationMessage **msgs,
 	Assert(nmsgs == nummsgs);
 
 	return nmsgs;
+}
+
+int
+YbGetNumInvalMessagesInTxn(int subgroup)
+{
+	return transInvalInfo ? transInvalInfo->YbNumInvalMsgsInTxn[subgroup] : 0;
+}
+
+void
+YbAddNumInvalMessagesInTxn(int subgroup, int numMsgs)
+{
+	/*
+	 * We count the number of invalidation messages in a transaction block which
+	 * may contain more than one embedded DDL statements. We use this count
+	 * to determine the list of invalidation messages associated with each
+	 * embedded DDL statement. For example, if a BEGIN block contains two
+	 * DDL statements and each generated 10 invalidation messages, at the end of
+	 * the first DDL we get 10 messages, at the end of the second DDL we get
+	 * 20 messages which includes the 10 messages of the first DDL. We do not
+	 * want to reapply the first 10 messages so we use this counter to find
+	 * out where the second 10 messages begins.
+	 */
+	if (numMsgs == 0)
+		return;
+	Assert(transInvalInfo);
+	transInvalInfo->YbNumInvalMsgsInTxn[subgroup] += numMsgs;
+}
+
+/* This function is adapted from xactGetCommittedInvalidationMessages. */
+int
+YbGetSubGroupInvalMessages(SharedInvalidationMessage **msgs, int subgroup)
+{
+	SharedInvalidationMessage *msgarray;
+	int			nummsgs;
+	int			nmsgs;
+
+	/* Quick exit if we haven't done anything with invalidation messages. */
+	if (transInvalInfo == NULL)
+	{
+		*msgs = NULL;
+		return 0;
+	}
+
+	Assert(YBGetDdlNestingLevel() == 0);
+
+	nummsgs = NumMessagesInSubGroup(&transInvalInfo->PriorCmdInvalidMsgs, subgroup) +
+		NumMessagesInSubGroup(&transInvalInfo->CurrentCmdInvalidMsgs, subgroup);
+
+	*msgs = msgarray = (SharedInvalidationMessage *)
+		MemoryContextAlloc(CurTransactionContext,
+						   nummsgs * sizeof(SharedInvalidationMessage));
+
+	nmsgs = 0;
+	ProcessMessageSubGroupMulti(&transInvalInfo->PriorCmdInvalidMsgs,
+								subgroup,
+								(memcpy(msgarray + nmsgs,
+										msgs,
+										n * sizeof(SharedInvalidationMessage)),
+								 nmsgs += n));
+	ProcessMessageSubGroupMulti(&transInvalInfo->CurrentCmdInvalidMsgs,
+								subgroup,
+								(memcpy(msgarray + nmsgs,
+										msgs,
+										n * sizeof(SharedInvalidationMessage)),
+								 nmsgs += n));
+	Assert(nmsgs == nummsgs);
+
+	return nmsgs;
+}
+
+void
+YbLogInvalidationMessages(const SharedInvalidationMessage *msgs, int nmsgs)
+{
+	elog(DEBUG1, "msgs=%p, nmsgs=%d", msgs, nmsgs);
+	for (int i = 0; i < nmsgs; ++i)
+		if (msgs[i].id >= 0)
+		{
+			elog(DEBUG1, "msgs[%d]: id=%d sender_pid=%d dbId=%u hashValue=%u\n",
+				i,
+				msgs[i].id,
+				msgs[i].cc.sender_pid,
+				msgs[i].cc.dbId,
+				msgs[i].cc.hashValue);
+		}
+		else
+		{
+			switch (msgs[i].id)
+			{
+				case SHAREDINVALCATALOG_ID: /* -1 */
+					elog(DEBUG1, "msgs[%d]: id=%d sender_pid=%d dbId=%u catId=%u\n",
+						i,
+						msgs[i].id,
+						msgs[i].cat.sender_pid,
+						msgs[i].cat.dbId,
+						msgs[i].cat.catId);
+					break;
+				case SHAREDINVALRELCACHE_ID: /* -2 */
+					elog(DEBUG1, "msgs[%d]: id=%d sender_pid=%d dbId=%u relId=%u\n",
+						i,
+						msgs[i].id,
+						msgs[i].rc.sender_pid,
+						msgs[i].rc.dbId,
+						msgs[i].rc.relId);
+					break;
+				case SHAREDINVALSMGR_ID: /* -3 */
+					elog(DEBUG1, "msgs[%d]: id=%d sender_pid=%d "
+						"backend_hi=%d backend_lo=%u spcNode=%u dbNode=%u relNode=%u\n",
+						i,
+						msgs[i].id,
+						msgs[i].sm.sender_pid,
+						msgs[i].sm.backend_hi,
+						msgs[i].sm.backend_lo,
+						msgs[i].sm.rnode.spcNode,
+						msgs[i].sm.rnode.dbNode,
+						msgs[i].sm.rnode.relNode);
+					break;
+				case SHAREDINVALRELMAP_ID: /* -4 */
+					elog(DEBUG1, "msgs[%d]: id=%d sender_pid=%d dbId=%u\n",
+						i,
+						msgs[i].id,
+						msgs[i].rm.sender_pid,
+						msgs[i].rm.dbId);
+					break;
+				case SHAREDINVALSNAPSHOT_ID: /* -5 */
+					elog(DEBUG1, "msgs[%d]: id=%d sender_pid=%d dbId=%u relId=%u\n",
+						i,
+						msgs[i].id,
+						msgs[i].sn.sender_pid,
+						msgs[i].sn.dbId,
+						msgs[i].sn.relId);
+					break;
+			}
+		}
 }
 
 /*
@@ -1530,6 +1695,8 @@ void
 CacheInvalidateSmgr(RelFileNodeBackend rnode)
 {
 	SharedInvalidationMessage msg;
+	if (yb_test_inval_message_portability)
+		msg = (SharedInvalidationMessage) {0};
 
 	msg.sm.id = SHAREDINVALSMGR_ID;
 	msg.sm.backend_hi = rnode.backend >> 16;
@@ -1560,6 +1727,8 @@ void
 CacheInvalidateRelmap(Oid databaseId)
 {
 	SharedInvalidationMessage msg;
+	if (yb_test_inval_message_portability)
+		msg = (SharedInvalidationMessage) {0};
 
 	msg.rm.id = SHAREDINVALRELMAP_ID;
 	msg.rm.dbId = databaseId;
@@ -1702,4 +1871,12 @@ LogLogicalInvalidations(void)
 													 n * sizeof(SharedInvalidationMessage)));
 		XLogInsert(RM_XACT_ID, XLOG_XACT_INVALIDATIONS);
 	}
+}
+
+void
+YbCheckSharedInvalMessages()
+{
+	static_assert(CatCacheMsgs == YB_CATCACHE_MSGS, "subgroup id mismatch");
+	static_assert(RelCacheMsgs == YB_RELCACHE_MSGS, "subgroup id mismatch");
+	static_assert(YB_SUBGROUP_COUNT == 2, "subgroup # mismatch");
 }

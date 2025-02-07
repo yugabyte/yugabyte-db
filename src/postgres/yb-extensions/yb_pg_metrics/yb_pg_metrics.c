@@ -998,7 +998,8 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 			break;
 	}
 
-	is_statement_executed = true;
+	if (!yb_is_calling_internal_function_for_ddl)
+		is_statement_executed = true;
 
 	/*
 	 * Collecting metric.

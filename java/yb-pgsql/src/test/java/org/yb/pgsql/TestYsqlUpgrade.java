@@ -194,6 +194,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private static final String CATALOG_VERSION_TABLE        = "pg_yb_catalog_version";
   private static final String MIGRATIONS_TABLE             = "pg_yb_migration";
   private static final String LOGICAL_CLIENT_VERSION_TABLE = "pg_yb_logical_client_version";
+  private static final String INVALIDATION_MESSAGES_TABLE  = "pg_yb_invalidation_messages";
 
   /** Guaranteed to be greated than any real OID, needed for sorted entities to appear at the end */
   private static final long PLACEHOLDER_OID = 1234567890L;
@@ -1249,6 +1250,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       postSnapshot.catalog.remove(MIGRATIONS_TABLE);
       postSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
 
+      // Some migration script contains a DDL such as CREATE OR REPLACE VIEW, which is
+      // not skipped when the migration script is run again (In contrast, CREATE TABLE
+      // IF NOT EXISTS will skip re-executing CREATE TABLE when run again). Re-executing
+      // the DDL will leave different rows in pg_yb_invalidation_messages.
+      preSnapshot.catalog.remove(INVALIDATION_MESSAGES_TABLE);
+      postSnapshot.catalog.remove(INVALIDATION_MESSAGES_TABLE);
+
       assertSysCatalogSnapshotsEquals(preSnapshot, postSnapshot);
     }
   }
@@ -1948,8 +1956,15 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
       List<Row> reinitdbRows = simplifiedFreshSnapshot.catalog.get(tableName);
 
-      assertCollectionSizes("Table '" + tableName + "' has different size after migration!",
-          reinitdbRows, migratedRows);
+      // The table pg_yb_invalidation_messages isn't empty in reinitdbRows because of DDLs
+      // executed in test setup code. Also it may not be empty after running migration scripts
+      // that contain DDLs if they are executed after the table pg_yb_invalidation_messages is
+      // created, so we are not expected to see pg_yb_invalidation_messages has same size or
+      // contents between reinitdbRows and migratedRows.
+      if (!tableName.equals(INVALIDATION_MESSAGES_TABLE)) {
+        assertCollectionSizes("Table '" + tableName + "' has different size after migration!",
+            reinitdbRows, migratedRows);
+      }
 
       for (int i = 0; i < migratedRows.size(); ++i) {
         Row reinitdbRow = reinitdbRows.get(i);

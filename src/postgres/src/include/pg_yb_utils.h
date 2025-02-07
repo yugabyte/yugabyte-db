@@ -73,6 +73,13 @@
 #define IS_NON_EMPTY_STR_FLAG(flag) (flag != NULL && flag[0] != '\0')
 
 /*
+ * Must be kept the same as CatCacheMsgs and RelCacheMsgs in inval.c. YB has
+ * added static_assert to ensure that.
+ */
+#define YB_CATCACHE_MSGS (0)
+#define YB_RELCACHE_MSGS (1)
+
+/*
  * Utility to get the current cache version that accounts for the fact that
  * during a DDL we automatically apply the pending syscatalog changes to
  * the local cache (of the current session).
@@ -84,8 +91,11 @@
 extern uint64_t YBGetActiveCatalogCacheVersion();
 
 extern uint64_t YbGetCatalogCacheVersion();
+extern uint64_t YbGetNewCatalogVersion();
 
 extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
+extern void YbResetNewCatalogVersion();
+extern void YbSetNewCatalogVersion(uint64_t new_version);
 
 extern void YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version);
 
@@ -699,6 +709,12 @@ extern bool yb_test_table_rewrite_keep_old_table;
 extern bool yb_test_collation;
 
 /*
+ * If set to true, fill padding bytes with zeros when creating a shared
+ * invalidation message.
+ */
+extern bool yb_test_inval_message_portability;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -788,8 +804,10 @@ extern const char *YbBitmapsetToString(Bitmapset *bms);
  */
 bool		YBIsInitDbAlreadyDone();
 
-int			YBGetDdlNestingLevel();
-void		YbSetIsGlobalDDL();
+extern int YBGetDdlNestingLevel();
+extern NodeTag YBGetDdlOriginalNodeTag();
+extern void YbSetIsGlobalDDL();
+extern void YbIncrementPgTxnsCommitted();
 
 typedef enum YbSysCatalogModificationAspect
 {
@@ -1282,4 +1300,7 @@ extern Oid	YbGetDatabaseOidToIncrementCatalogVersion();
 
 extern bool yb_default_collation_resolved;
 
+extern bool YbInvalidationMessagesTableExists();
+
+extern bool yb_is_calling_internal_function_for_ddl;
 #endif							/* PG_YB_UTILS_H */
