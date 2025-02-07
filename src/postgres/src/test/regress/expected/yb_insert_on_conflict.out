@@ -1351,3 +1351,38 @@ TABLE multidx;
 ---+---
  1 | 2
 (1 row)
+
+--- GH-25836
+CREATE TABLE it (i int2 PRIMARY KEY, t text);
+WITH w AS (
+    INSERT INTO it SELECT g, repeat(g::text, g % 1000) FROM generate_series(1, 5000) g
+        ON CONFLICT (i) DO UPDATE SET i = -EXCLUDED.i RETURNING t
+) SELECT * FROM w LIMIT 5;
+   t
+-------
+ 1
+ 22
+ 333
+ 4444
+ 55555
+(5 rows)
+
+WITH w AS (
+    INSERT INTO it SELECT g, repeat(g::text, g % 1000) FROM generate_series(1001, 4000) g
+        ON CONFLICT (i) DO UPDATE SET i = -EXCLUDED.i RETURNING t
+) SELECT * FROM w LIMIT 5;
+          t
+----------------------
+ 1001
+ 10021002
+ 100310031003
+ 1004100410041004
+ 10051005100510051005
+(5 rows)
+
+SELECT count(*), sign(i) FROM it GROUP BY (sign(i));
+ count | sign
+-------+------
+  2000 |    1
+  3000 |   -1
+(2 rows)

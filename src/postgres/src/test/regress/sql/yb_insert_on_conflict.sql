@@ -596,3 +596,15 @@ CREATE UNIQUE INDEX ON multidx (b);
 INSERT INTO multidx VALUES (1, 2);
 INSERT INTO multidx VALUES (1, 2) ON CONFLICT DO NOTHING;
 TABLE multidx;
+
+--- GH-25836
+CREATE TABLE it (i int2 PRIMARY KEY, t text);
+WITH w AS (
+    INSERT INTO it SELECT g, repeat(g::text, g % 1000) FROM generate_series(1, 5000) g
+        ON CONFLICT (i) DO UPDATE SET i = -EXCLUDED.i RETURNING t
+) SELECT * FROM w LIMIT 5;
+WITH w AS (
+    INSERT INTO it SELECT g, repeat(g::text, g % 1000) FROM generate_series(1001, 4000) g
+        ON CONFLICT (i) DO UPDATE SET i = -EXCLUDED.i RETURNING t
+) SELECT * FROM w LIMIT 5;
+SELECT count(*), sign(i) FROM it GROUP BY (sign(i));

@@ -5390,12 +5390,14 @@ YbFreeInsertOnConflictBatchState(YbInsertOnConflictBatchState *state)
 	list_free(state->pending_relids);
 	for (int i = 0; i < state->num_slots; ++i)
 	{
-		if (state->slots[i])
-		{
-			ExecDropSingleTupleTableSlot(state->slots[i]);
-			Assert(state->planSlots[i]);
-			ExecDropSingleTupleTableSlot(state->planSlots[i]);
-		}
+		/*
+		 * These slots use copied tuple descriptors, so the tuple descriptors
+		 * won't be freed by ExecDropSingleTupleTableSlot; however, there's no
+		 * need to free them explicitly since they'll be freed with the
+		 * per-query memory context.
+		 */
+		ExecDropSingleTupleTableSlot(state->slots[i]);
+		ExecDropSingleTupleTableSlot(state->planSlots[i]);
 	}
 	pfree(state->slots);
 	pfree(state->planSlots);
@@ -5544,11 +5546,9 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 			slot = state->slots[state->flush_idx];
 			/*
 			 * Skip in case this table is a different partition from the one we
-			 * are focusing on.  That includes cases where the slot is null
-			 * because that table was previously flushed out.
+			 * are focusing on.
 			 */
-			if (!slot ||
-				slot->tts_tableOid != resultRelInfo->ri_RelationDesc->rd_id)
+			if (slot->tts_tableOid != resultRelInfo->ri_RelationDesc->rd_id)
 			{
 				state->flush_idx++;
 				continue;
@@ -5582,11 +5582,16 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 			/* Restore scantuple */
 			econtext->ecxt_scantuple = save_scantuple;
 
-			ExecDropSingleTupleTableSlot(slot);
-			ExecDropSingleTupleTableSlot(planSlot);
-
-			state->slots[state->flush_idx] = NULL;
-			state->planSlots[state->flush_idx] = NULL;
+			/*
+			 * Hack to mark the slots of this flush_idx as processed.  We
+			 * cannot set it to NULL because then we lose track of it and
+			 * cannot ExecDropSingleTupleTableSlot; we cannot
+			 * ExecDropSingleTupleTableSlot right now because
+			 * - this slot is shared for future batches
+			 * - dropping it now might free data that is shared with returnSlot
+			 */
+			state->slots[state->flush_idx]->tts_tableOid = InvalidOid;
+			state->planSlots[state->flush_idx]->tts_tableOid = InvalidOid;
 
 			state->flush_idx++;
 
@@ -5600,6 +5605,20 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 	}
 
 	YbDropInsertOnConflictReadSlots(state);
+	for (int i = 0; i < state->num_slots; ++i)
+	{
+		/*
+		 * Since these slots use copied tuple descriptors, they need to be
+		 * freed separately from dropping the slots.
+		 */
+		FreeTupleDesc(state->slots[i]->tts_tupleDescriptor);
+		FreeTupleDesc(state->planSlots[i]->tts_tupleDescriptor);
+		state->slots[i]->tts_tupleDescriptor = NULL;
+		state->planSlots[i]->tts_tupleDescriptor = NULL;
+
+		ExecDropSingleTupleTableSlot(state->slots[i]);
+		ExecDropSingleTupleTableSlot(state->planSlots[i]);
+	}
 	state->num_slots = 0;
 	Assert(!state->flush_idx);
 	Assert(state->pending_relids == NIL);
