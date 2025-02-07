@@ -53,6 +53,7 @@
 
 /* YB includes */
 #include "access/yb_scan.h"
+#include "catalog/pg_yb_catalog_version.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 
@@ -3529,7 +3530,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 * if there are triggers. There is no easy way to tell what columns
 			 * are affected by a trigger, so we should update all indexes.
 			 */
-			if (TupleDescAttr(tupDesc, resno - 1)->attnotnull ||
+			if ((TupleDescAttr(tupDesc, resno - 1)->attnotnull &&
+				 relation->rd_id != YBCatalogVersionRelationId) ||
 				YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
 				!YbCanPushdownExpr(tle->expr, &colrefs))
 			{

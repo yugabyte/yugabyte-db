@@ -2708,6 +2708,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_inval_message_portability", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, fill padding bytes with zeros when creating a "
+						 "shared invalidation message."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_inval_message_portability,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_force_catalog_update_on_next_ddl", PGC_USERSET,
 			DEVELOPER_OPTIONS,
 			gettext_noop("Make the next DDL update the catalog in force mode "

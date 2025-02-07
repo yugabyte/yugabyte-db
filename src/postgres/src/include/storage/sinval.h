@@ -171,4 +171,11 @@ extern void ProcessCommittedInvalidationMessages(SharedInvalidationMessage *msgs
 
 extern void LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg);
 
+extern bool YbCanApplyMessage(const SharedInvalidationMessage *msg);
+
+/* debugging helper */
+extern void YbLogInvalidationMessages(const SharedInvalidationMessage *msgs, int nmsgs);
+
+extern int YbGetSubGroupInvalMessages(SharedInvalidationMessage **msgs, int subgroup);
+
 #endif							/* SINVAL_H */

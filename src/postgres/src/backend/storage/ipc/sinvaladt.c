@@ -790,6 +790,7 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 
 				if (msg->yb_header.sender_pid == procPid)
 				{
+					elog(LOG, "resetState of %d", procPid);
 					stateP->resetState = true;
 					break;
 				}

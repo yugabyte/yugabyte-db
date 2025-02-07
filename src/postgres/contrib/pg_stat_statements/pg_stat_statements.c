@@ -1746,6 +1746,9 @@ pgss_store(const char *query, uint64 queryId,
 	if (!pgss || !pgss_hash)
 		return;
 
+	if (yb_is_calling_internal_function_for_ddl)
+		return;
+
 	/*
 	 * Nothing to do if compute_query_id isn't enabled and no other module
 	 * computed a query identifier.

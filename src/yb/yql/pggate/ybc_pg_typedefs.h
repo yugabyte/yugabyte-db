@@ -418,6 +418,9 @@ typedef struct {
   const int32_t*  ysql_conn_mgr_max_query_size;
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
   const bool*     ysql_enable_pg_export_snapshot;
+  const bool*     TEST_yb_enable_invalidation_messages;
+  const int32_t*  TEST_yb_invalidation_message_expiration_secs;
+  const int32_t*  TEST_yb_max_num_invalidation_messages;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
