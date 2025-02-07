@@ -28,7 +28,7 @@ import { FieldLabel } from '../components/FieldLabel';
 import { SubmitInProgress } from '../components/SubmitInProgress';
 import { FormContainer } from '../components/FormContainer';
 import { FormField } from '../components/FormField';
-import { K8sCertIssuerType, RegionOperation } from '../configureRegion/constants';
+import { RegionOperation } from '../configureRegion/constants';
 import {
   K8sRegionField,
   ConfigureK8sRegionModal
@@ -234,13 +234,14 @@ export const K8sProviderCreateForm = ({
                       }),
                       ...(azFormValues.overrides && { overrides: azFormValues.overrides }),
                       ...(azFormValues.certIssuerName && {
-                        ...(azFormValues.certIssuerType === K8sCertIssuerType.CLUSTER_ISSUER && {
-                          certManagerClusterIssuer: azFormValues.certIssuerName
-                        }),
-                        ...(azFormValues.certIssuerType === K8sCertIssuerType.ISSUER && {
-                          certManagerIssuer: azFormValues.certIssuerName
-                        })
-                      })
+                        certManagerIssuerName: azFormValues.certIssuerName
+                      }),
+                      ...(azFormValues.certIssuerKind && {
+                        certManagerIssuerKind: azFormValues.certIssuerKind
+                      }),
+                      ...(azFormValues.certIssuerGroup && {
+                        certManagerIssuerGroup: azFormValues.certIssuerGroup
+                      }),
                     }
                   }
                 }

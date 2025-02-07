@@ -20,7 +20,7 @@ import {
 } from '../../constants';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
 import { ConfigureK8sAvailabilityZoneField } from './ConfigureK8sAvailabilityZoneField';
-import { K8sCertIssuerType, K8sRegionFieldLabel, RegionOperation } from './constants';
+import { K8sRegionFieldLabel, RegionOperation } from './constants';
 import { getRegionOptions } from './utils';
 import { generateLowerCaseAlphanumericId, getIsRegionFormDisabled } from '../utils';
 import { useQuery } from 'react-query';
@@ -41,9 +41,9 @@ interface ConfigureK8sRegionModalProps extends YBModalProps {
 }
 
 interface K8sRegionCloudInfoFormValues {
-  certIssuerType: K8sCertIssuerType;
-
   certIssuerName?: string;
+  certIssuerGroup?: string;
+  certIssuerKind?: string;
   editKubeConfigContent?: boolean;
   kubeConfigFilepath?: string;
   kubeConfigContent?: File;
@@ -110,6 +110,8 @@ export const ConfigureK8sRegionModal = ({
     zones: array().of(
       object().shape({
         code: string().required('Zone code is required.'),
+        certIssuerName: string().required('Cert-Manager Issuer Name is required.'),
+        certIssuerKind: string().required('Cert-Manager Issuer Kind is required.'),
         editKubeConfigContent: boolean(),
         isNewZone: boolean()
       })
