@@ -1535,3 +1535,58 @@ CREATE TEMPORARY TABLE temp_table(a int, b int);
 CREATE INDEX CONCURRENTLY temp_index ON temp_table(a);
 -- Cleanup.
 DISCARD TEMP;
+-- Test complex index names.
+CREATE TABLE "Test Table" (col1 INT PRIMARY KEY, col2 INT);
+CREATE INDEX "Test Index '" ON "Test Table"(col2);
+CREATE INDEX "Test 'Index'" ON "Test Table"(col2);
+CREATE INDEX "Test Index """ ON "Test Table"(col2);
+CREATE INDEX "Test ""Index""" ON "Test Table"(col2);
+CREATE INDEX "Test_""_index_WITH_""""_different'_'quotes' and spaces" ON "Test Table"(col2);
+\d "Test Table"
+             Table "public.Test Table"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ col1   | integer |           | not null | 
+ col2   | integer |           |          | 
+Indexes:
+    "Test Table_pkey" PRIMARY KEY, lsm (col1 HASH)
+    "Test "Index"" lsm (col2 HASH)
+    "Test 'Index'" lsm (col2 HASH)
+    "Test Index "" lsm (col2 HASH)
+    "Test Index '" lsm (col2 HASH)
+    "Test_"_index_WITH_""_different'_'quotes' and spaces" lsm (col2 HASH)
+
+\d "Test Index '"
+     Index "public.Test Index '"
+ Column |  Type   | Key? | Definition 
+--------+---------+------+------------
+ col2   | integer | yes  | col2
+lsm, for table "public.Test Table"
+
+\d "Test 'Index'"
+     Index "public.Test 'Index'"
+ Column |  Type   | Key? | Definition 
+--------+---------+------+------------
+ col2   | integer | yes  | col2
+lsm, for table "public.Test Table"
+
+\d "Test Index """
+     Index "public.Test Index ""
+ Column |  Type   | Key? | Definition 
+--------+---------+------+------------
+ col2   | integer | yes  | col2
+lsm, for table "public.Test Table"
+
+\d "Test ""Index"""
+     Index "public.Test "Index""
+ Column |  Type   | Key? | Definition 
+--------+---------+------+------------
+ col2   | integer | yes  | col2
+lsm, for table "public.Test Table"
+
+\d "Test_""_index_WITH_""""_different'_'quotes' and spaces"
+Index "public.Test_"_index_WITH_""_different'_'quotes' and spaces"
+ Column |  Type   | Key? | Definition 
+--------+---------+------+------------
+ col2   | integer | yes  | col2
+lsm, for table "public.Test Table"
