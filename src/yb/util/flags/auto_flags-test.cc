@@ -124,20 +124,20 @@ TEST(AutoFlagsTest, TestOverride) {
 TEST(AutoFlagsTest, TestGetFlagsEligibleForPromotion) {
   string max_flag_class;
   AutoFlagsInfoMap available_flags;
-  available_flags["p1"].emplace_back("c1", AutoFlagClass::kLocalVolatile, RuntimeAutoFlag::kTrue);
-  available_flags["p2"].emplace_back("c2", AutoFlagClass::kLocalPersisted, RuntimeAutoFlag::kTrue);
-  available_flags["p3"].emplace_back("c3", AutoFlagClass::kExternal, RuntimeAutoFlag::kFalse);
-  available_flags["p3"].emplace_back("c3r", AutoFlagClass::kExternal, RuntimeAutoFlag::kTrue);
+  available_flags["p1"].emplace_back("c1", AutoFlagClass::kLocalVolatile);
+  available_flags["p2"].emplace_back("c2", AutoFlagClass::kLocalPersisted);
+  available_flags["p3"].emplace_back("c3", AutoFlagClass::kExternal);
+  available_flags["p3"].emplace_back("c4", AutoFlagClass::kExternal);
 
-  auto eligible_flags = AutoFlagsUtil::GetFlagsEligibleForPromotion(
-      available_flags, AutoFlagClass::kLocalVolatile, PromoteNonRuntimeAutoFlags::kFalse);
+  auto eligible_flags =
+      AutoFlagsUtil::GetFlagsEligibleForPromotion(available_flags, AutoFlagClass::kLocalVolatile);
   ASSERT_EQ(eligible_flags.size(), 1);
   ASSERT_TRUE(eligible_flags.contains("p1"));
   ASSERT_EQ(eligible_flags["p1"].size(), 1);
   ASSERT_EQ(eligible_flags["p1"][0].name, "c1");
 
-  eligible_flags = AutoFlagsUtil::GetFlagsEligibleForPromotion(
-      available_flags, AutoFlagClass::kLocalPersisted, PromoteNonRuntimeAutoFlags::kFalse);
+  eligible_flags =
+      AutoFlagsUtil::GetFlagsEligibleForPromotion(available_flags, AutoFlagClass::kLocalPersisted);
   ASSERT_EQ(eligible_flags.size(), 2);
   ASSERT_TRUE(eligible_flags.contains("p1") && eligible_flags.contains("p2"));
   ASSERT_EQ(eligible_flags["p1"].size(), 1);
@@ -145,15 +145,14 @@ TEST(AutoFlagsTest, TestGetFlagsEligibleForPromotion) {
   ASSERT_EQ(eligible_flags["p2"].size(), 1);
   ASSERT_EQ(eligible_flags["p2"][0].name, "c2");
 
-  eligible_flags = AutoFlagsUtil::GetFlagsEligibleForPromotion(
-      available_flags, AutoFlagClass::kExternal, PromoteNonRuntimeAutoFlags::kFalse);
+  eligible_flags =
+      AutoFlagsUtil::GetFlagsEligibleForPromotion(available_flags, AutoFlagClass::kExternal);
   ASSERT_EQ(eligible_flags.size(), 3);
   ASSERT_TRUE(eligible_flags.contains("p3"));
-  ASSERT_EQ(eligible_flags["p3"].size(), 1);
-  ASSERT_EQ(eligible_flags["p3"][0].name, "c3r");
+  ASSERT_EQ(eligible_flags["p3"].size(), 2);
 
-  eligible_flags = AutoFlagsUtil::GetFlagsEligibleForPromotion(
-      available_flags, AutoFlagClass::kExternal, PromoteNonRuntimeAutoFlags::kTrue);
+  eligible_flags =
+      AutoFlagsUtil::GetFlagsEligibleForPromotion(available_flags, AutoFlagClass::kExternal);
   ASSERT_EQ(eligible_flags.size(), 3);
   ASSERT_TRUE(eligible_flags.contains("p3"));
   ASSERT_EQ(eligible_flags["p3"].size(), 2);
@@ -194,12 +193,9 @@ TEST(AutoFlagsTest, AreAutoFlagsCompatible) {
   const string kProcess1 = "p1", kProcess2 = "p2", kProcess3 = "p3";
   const string kLocalVolatileFlag = "LV1", kLocalPersistedFlag = "LP1", kExternalFlag = "E1";
   AutoFlagsInfoMap flag_infos;
-  flag_infos[kProcess1].emplace_back(
-      kLocalVolatileFlag, AutoFlagClass::kLocalVolatile, RuntimeAutoFlag::kTrue);
-  flag_infos[kProcess2].emplace_back(
-      kLocalPersistedFlag, AutoFlagClass::kLocalPersisted, RuntimeAutoFlag::kTrue);
-  flag_infos[kProcess3].emplace_back(
-      kExternalFlag, AutoFlagClass::kExternal, RuntimeAutoFlag::kFalse);
+  flag_infos[kProcess1].emplace_back(kLocalVolatileFlag, AutoFlagClass::kLocalVolatile);
+  flag_infos[kProcess2].emplace_back(kLocalPersistedFlag, AutoFlagClass::kLocalPersisted);
+  flag_infos[kProcess3].emplace_back(kExternalFlag, AutoFlagClass::kExternal);
 
   AutoFlagsNameMap base_flags;
   AutoFlagsNameMap to_check_flags;

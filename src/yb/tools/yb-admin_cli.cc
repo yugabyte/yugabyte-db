@@ -1312,16 +1312,14 @@ Status get_auto_flags_config_action(
   return Status::OK();
 }
 
-const auto promote_auto_flags_args =
-    "[<max_flags_class> (default kExternal) [<promote_non_runtime_flags> (default true) [force]]]";
+const auto promote_auto_flags_args = "[<max_flags_class> (default kExternal) [force]]";
 Status promote_auto_flags_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() > 3) {
+  if (args.size() > 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
   AutoFlagClass max_flag_class = AutoFlagClass::kExternal;
-  bool promote_non_runtime_flags = true;
   bool force = false;
 
   if (args.size() > 0) {
@@ -1330,15 +1328,7 @@ Status promote_auto_flags_action(
   }
 
   if (args.size() > 1) {
-    if (IsEqCaseInsensitive(args[1], "false")) {
-      promote_non_runtime_flags = false;
-    } else if (!IsEqCaseInsensitive(args[1], "true")) {
-      return STATUS(InvalidArgument, "Invalid value provided for promote_non_runtime_flags");
-    }
-  }
-
-  if (args.size() > 2) {
-    if (IsEqCaseInsensitive(args[2], "force")) {
+    if (IsEqCaseInsensitive(args[1], "force")) {
       force = true;
     } else {
       return ClusterAdminCli::kInvalidArguments;
@@ -1346,8 +1336,7 @@ Status promote_auto_flags_action(
   }
 
   RETURN_NOT_OK_PREPEND(
-      client->PromoteAutoFlags(ToString(max_flag_class), promote_non_runtime_flags, force),
-      "Unable to promote AutoFlags");
+      client->PromoteAutoFlags(ToString(max_flag_class), force), "Unable to promote AutoFlags");
   return Status::OK();
 }
 
