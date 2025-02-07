@@ -2442,7 +2442,7 @@ describeOneTableDetails(const char *schemaname,
 				appendPQExpBufferStr(&buf, ", i.indisreplident");
 			else
 				appendPQExpBufferStr(&buf, ", false AS indisreplident");
-			appendPQExpBufferStr(&buf, ", c2.reltablespace");
+			appendPQExpBufferStr(&buf, ", c2.reltablespace, i.indexrelid");
 			appendPQExpBuffer(&buf,
 							  "\nFROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i\n"
 							  "  LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN ('p','u','x'))\n"
@@ -2520,11 +2520,10 @@ describeOneTableDetails(const char *schemaname,
 					/* Get information about tablegroup (if any) */
 					printfPQExpBuffer(&tablegroupbuf,
 									  "SELECT tg.grpname\n"
-									  "FROM yb_table_properties('%s.%s'::regclass) props,\n"
+									  "FROM yb_table_properties(%s) props,\n"
 									  "   pg_yb_tablegroup tg\n"
 									  "WHERE tg.oid = props.tablegroup_oid;",
-									  schemaname,
-									  PQgetvalue(result, i, 0));
+									  PQgetvalue(result, i, 12));
 
 					tgres = PSQLexec(tablegroupbuf.data);
 					char	   *idx_grpname;
