@@ -40,14 +40,15 @@ Create a multi-node cluster:
 
 ```sh
 ybm cluster create \
-  --cluster-name test-cluster \
-  --credentials username=admin,password=password123 \
+  --credentials username=admin,password=password \
   --cloud-provider AWS \
-  --node-config num-cores=2,disk-size-gb=500 \
-  --region-info region=ap-northeast-1,num-nodes=1 \
-  --region-info region=us-west-1,num-nodes=1 \
-  --region-info region=us-west-2,num-nodes=1 \
-  --fault-tolerance=ZONE
+  --cluster-type SYNCHRONOUS \
+  --region-info region=ap-northeast-1,num-nodes=3,num-cores=4,disk-size-gb=200  \
+  --cluster-tier Dedicated \
+  --fault-tolerance ZONE \
+  --database-version Innovation \
+  --cluster-name test-cluster \
+  --wait
 ```
 
 ## Commands
