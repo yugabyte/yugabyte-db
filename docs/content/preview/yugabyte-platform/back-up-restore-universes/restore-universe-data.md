@@ -219,7 +219,6 @@ If you created backups using a [scheduled backup policy with PITR](../schedule-d
 1. Select the **Target Universe** where you want to restore the backup. You also have the option to rename the keyspaces/databases.
 
 1. If the backup is encrypted, choose the appropriate [KMS configuration](../../security/create-kms-config/aws-kms/).
-.
 
 1. If you are renaming keyspaces/databases, click **Next** and enter the new names.
 
