@@ -176,6 +176,10 @@ static void EvaluateRedactArray(const bson_value_t *array, const
 static void SetVariableSpec(ExpressionVariableContext **state, pgbson *variableSpec);
 static inline bool IsBsonDollarProjectFunctionOid(Oid functionOid);
 static inline bool IsBsonDollarAddFieldsFunctionOid(Oid functionOid);
+static pgbson * MergeDocumentWithArrayOverride(pgbson *sourceDocument,
+											   const BsonIntermediatePathNode *
+											   pathSpecTree,
+											   bool overrideNestedArrays);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -567,6 +571,12 @@ bson_dollar_merge_documents(PG_FUNCTION_ARGS)
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
 
+	bool overrideNestedArrays = false;
+	if (PG_NARGS() > 2)
+	{
+		overrideNestedArrays = PG_GETARG_BOOL(2);
+	}
+
 	/* bson_dollar_add_fields with empty projection spec is a no-op */
 	if (IsPgbsonEmptyDocument(pathSpec))
 	{
@@ -596,11 +606,13 @@ bson_dollar_merge_documents(PG_FUNCTION_ARGS)
 		BuildBsonPathTreeForDollarAddFields(&projectionState, &pathSpecIter,
 											skipParseAggregationExpressions,
 											variableSpec);
-		PG_RETURN_POINTER(ProjectDocumentWithState(document, &projectionState));
+		PG_RETURN_POINTER(MergeDocumentWithArrayOverride(document, projectionState.root,
+														 overrideNestedArrays));
 	}
 	else
 	{
-		PG_RETURN_POINTER(ProjectDocumentWithState(document, state));
+		PG_RETURN_POINTER(MergeDocumentWithArrayOverride(document, state->root,
+														 overrideNestedArrays));
 	}
 }
 
@@ -648,24 +660,9 @@ bson_dollar_merge_documents_at_path(PG_FUNCTION_ARGS)
 		&nodeCreated,
 		&parseContext);
 
-	pgbson_writer writer;
-	bson_iter_t documentIterator;
-	PgbsonWriterInit(&writer);
-
-	PgbsonInitIterator(leftDocument, &documentIterator);
-	bool projectNonMatchingField = true;
-	ProjectDocumentState projectDocState = {
-		.isPositionalAlreadyEvaluated = false,
-		.parentDocument = leftDocument,
-		.pendingProjectionState = NULL,
-		.skipIntermediateArrayFields = true,
-	};
-
-	bool isInNestedArray = false;
-	TraverseObjectAndAppendToWriter(&documentIterator, root, &writer,
-									projectNonMatchingField,
-									&projectDocState, isInNestedArray);
-	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
+	bool overrideNestedArrays = true;
+	PG_RETURN_POINTER(MergeDocumentWithArrayOverride(leftDocument, root,
+													 overrideNestedArrays));
 }
 
 
@@ -2645,22 +2642,39 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 		&nodeCreated,
 		&parseContext);
 
+	bool overrideNestedArrays = true;
+	return MergeDocumentWithArrayOverride(document, root, overrideNestedArrays);
+}
+
+
+/*
+ * Merges the pathSpecTree into the sourceDocument similar to $addFields but it also accepts
+ * an additional flag to override nested arrays to be converted into nested document paths.
+ */
+static pgbson *
+MergeDocumentWithArrayOverride(pgbson *sourceDocument, const
+							   BsonIntermediatePathNode *pathSpecTree,
+							   bool overrideNestedArrays)
+{
 	pgbson_writer writer;
-	bson_iter_t documentIterator;
 	PgbsonWriterInit(&writer);
-	PgbsonInitIterator(document, &documentIterator);
+
+	bson_iter_t documentIterator;
+	PgbsonInitIterator(sourceDocument, &documentIterator);
+
 	bool projectNonMatchingField = true;
 	ProjectDocumentState projectDocState = {
 		.isPositionalAlreadyEvaluated = false,
-		.parentDocument = document,
+		.parentDocument = sourceDocument,
 		.pendingProjectionState = NULL,
-		.skipIntermediateArrayFields = true,
+		.skipIntermediateArrayFields = overrideNestedArrays,
 	};
 
 	bool isInNestedArray = false;
-	TraverseObjectAndAppendToWriter(&documentIterator, root, &writer,
+	TraverseObjectAndAppendToWriter(&documentIterator, pathSpecTree, &writer,
 									projectNonMatchingField,
 									&projectDocState, isInNestedArray);
+
 	return PgbsonWriterGetPgbson(&writer);
 }
 

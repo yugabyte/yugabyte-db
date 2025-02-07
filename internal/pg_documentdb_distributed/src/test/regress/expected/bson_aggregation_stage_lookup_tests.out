@@ -1777,6 +1777,67 @@ SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": [{ "b"
  { "a" : { "b" : { "random" : false } } }
 (1 row)
 
+-- UDF tests for merge documents with override Array
+SELECT documentdb_api_internal.bson_dollar_merge_documents(NULL, NULL, NULL);
+ bson_dollar_merge_documents 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": "text"}', '{}', false);
+ bson_dollar_merge_documents 
+---------------------------------------------------------------------
+ { "a" : "text" }
+(1 row)
+
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": "text"}', '{ "a" : true}', false);
+ bson_dollar_merge_documents 
+---------------------------------------------------------------------
+ { "a" : true }
+(1 row)
+
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": { "b": "text", "c": true }}', '{ "a.b.random" : false }', false);
+             bson_dollar_merge_documents              
+---------------------------------------------------------------------
+ { "a" : { "c" : true, "b" : { "random" : false } } }
+(1 row)
+
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": [{ "b": "text", "c": true }, { "b": "text2", "c": false }]}', '{ "a.b.random" : false }', false);
+                                      bson_dollar_merge_documents                                      
+---------------------------------------------------------------------
+ { "a" : [ { "c" : true, "b" : { "random" : false } }, { "c" : false, "b" : { "random" : false } } ] }
+(1 row)
+
+SELECT documentdb_api_internal.bson_dollar_merge_documents(NULL, NULL, NULL);
+ bson_dollar_merge_documents 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": "text"}', '{}', true);
+ bson_dollar_merge_documents 
+---------------------------------------------------------------------
+ { "a" : "text" }
+(1 row)
+
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": "text"}', '{ "a" : true}', true);
+ bson_dollar_merge_documents 
+---------------------------------------------------------------------
+ { "a" : true }
+(1 row)
+
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": { "b": "text", "c": true }}', '{ "a.b.random" : false }', true);
+             bson_dollar_merge_documents              
+---------------------------------------------------------------------
+ { "a" : { "c" : true, "b" : { "random" : false } } }
+(1 row)
+
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": [{ "b": "text", "c": true }, { "b": "text2", "c": false }]}', '{ "a.b.random" : false }', true);
+       bson_dollar_merge_documents        
+---------------------------------------------------------------------
+ { "a" : { "b" : { "random" : false } } }
+(1 row)
+
 BEGIN;
 -- Disable optimization and test as this enabled by default now
 set local documentdb.enableLookupUnwindOptimization to off;

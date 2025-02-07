@@ -641,6 +641,20 @@ SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": { "b":
 SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": { "b": "text", "c": true }}', '{ "random" : false }', 'a.b');
 SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": [{ "b": "text", "c": true }, { "b": "text2", "c": false }]}', '{ "random" : false }', 'a.b');
 
+-- UDF tests for merge documents with override Array
+SELECT documentdb_api_internal.bson_dollar_merge_documents(NULL, NULL, NULL);
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": "text"}', '{}', false);
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": "text"}', '{ "a" : true}', false);
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": { "b": "text", "c": true }}', '{ "a.b.random" : false }', false);
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": [{ "b": "text", "c": true }, { "b": "text2", "c": false }]}', '{ "a.b.random" : false }', false);
+
+SELECT documentdb_api_internal.bson_dollar_merge_documents(NULL, NULL, NULL);
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": "text"}', '{}', true);
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": "text"}', '{ "a" : true}', true);
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": { "b": "text", "c": true }}', '{ "a.b.random" : false }', true);
+SELECT documentdb_api_internal.bson_dollar_merge_documents('{"a": [{ "b": "text", "c": true }, { "b": "text2", "c": false }]}', '{ "a.b.random" : false }', true);
+
+
 BEGIN;
 -- Disable optimization and test as this enabled by default now
 set local documentdb.enableLookupUnwindOptimization to off;
