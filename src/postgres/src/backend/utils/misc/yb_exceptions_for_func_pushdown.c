@@ -31,9 +31,8 @@ const uint32 yb_funcs_safe_for_pushdown[] = {
 	F_RANDOM
 };
 
-const int yb_funcs_safe_for_pushdown_count =
-	sizeof(yb_funcs_safe_for_pushdown) /
-	sizeof(yb_funcs_safe_for_pushdown[0]);
+const int	yb_funcs_safe_for_pushdown_count = (sizeof(yb_funcs_safe_for_pushdown) /
+												sizeof(yb_funcs_safe_for_pushdown[0]));
 
 const uint32 yb_funcs_unsafe_for_pushdown[] = {
 	/* to_tsany.c */
@@ -73,9 +72,16 @@ const uint32 yb_funcs_unsafe_for_pushdown[] = {
 
 	/* These call to_tsvector / to_tsquery */
 	F_TS_MATCH_TT,
-	F_TS_MATCH_TQ
+	F_TS_MATCH_TQ,
+
+	/* Crypto hash functions require resource owner */
+	F_MD5_BYTEA,
+	F_MD5_TEXT,
+	F_SHA224,
+	F_SHA256,
+	F_SHA384,
+	F_SHA512
 };
 
-const int yb_funcs_unsafe_for_pushdown_count =
-	sizeof(yb_funcs_unsafe_for_pushdown) /
-	sizeof(yb_funcs_unsafe_for_pushdown[0]);
+const int	yb_funcs_unsafe_for_pushdown_count = (sizeof(yb_funcs_unsafe_for_pushdown) /
+												  sizeof(yb_funcs_unsafe_for_pushdown[0]));

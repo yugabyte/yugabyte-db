@@ -21,48 +21,26 @@
 
 namespace yb::docdb {
 
-struct VersionedTransaction {
-  TransactionId txn_id;
-  TxnReuseVersion txn_version;
-
-  VersionedTransaction(
-      const TransactionId& txn_id_, TxnReuseVersion txn_version_) : txn_id(txn_id_),
-      txn_version(txn_version_) {}
-
-  YB_STRUCT_DEFINE_HASH(VersionedTransaction, txn_id, txn_version);
-
-  auto operator<=>(const VersionedTransaction&) const = default;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(txn_id, txn_version);
-  }
-};
-
 struct ObjectLockOwner {
-  VersionedTransaction versioned_txn;
+  TransactionId txn_id;
   SubTransactionId subtxn_id;
 
   ObjectLockOwner(
-      const TransactionId& txn_id_, TxnReuseVersion txn_version_, SubTransactionId subtxn_id_)
-      : versioned_txn(txn_id_, txn_version_), subtxn_id(subtxn_id_) {}
-  ObjectLockOwner(const VersionedTransaction& versioned_txn_, SubTransactionId subtxn_id_)
-      : versioned_txn(versioned_txn_), subtxn_id(subtxn_id_) {}
-  ObjectLockOwner(VersionedTransaction&& versioned_txn_, SubTransactionId subtxn_id_)
-      : versioned_txn(std::move(versioned_txn_)), subtxn_id(subtxn_id_) {}
+      const TransactionId& txn_id_, SubTransactionId subtxn_id_)
+      : txn_id(txn_id_), subtxn_id(subtxn_id_) {}
 
   template<class T>
   void PopulateLockRequest(T* req) const {
-    req->set_txn_id(versioned_txn.txn_id.data(), versioned_txn.txn_id.size());
-    req->set_txn_reuse_version(versioned_txn.txn_version);
+    req->set_txn_id(txn_id.data(), txn_id.size());
     req->set_subtxn_id(subtxn_id);
   }
 
-  YB_STRUCT_DEFINE_HASH(ObjectLockOwner, versioned_txn, subtxn_id);
+  YB_STRUCT_DEFINE_HASH(ObjectLockOwner, txn_id, subtxn_id);
 
   auto operator<=>(const ObjectLockOwner&) const = default;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(versioned_txn, subtxn_id);
+    return YB_STRUCT_TO_STRING(txn_id, subtxn_id);
   }
 };
 

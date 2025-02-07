@@ -34,24 +34,24 @@ CREATE TABLE onek (
 	string4		name
 );
 
-CREATE TABLE tenk1 (
-	unique1		int4,
-	unique2		int4,
-	two			int4,
-	four		int4,
-	ten			int4,
-	twenty		int4,
-	hundred		int4,
-	thousand	int4,
-	twothousand	int4,
-	fivethous	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-) WITH OIDS;
+-- CREATE TABLE tenk1 (
+-- 	unique1		int4,
+-- 	unique2		int4,
+-- 	two			int4,
+-- 	four		int4,
+-- 	ten			int4,
+-- 	twenty		int4,
+-- 	hundred		int4,
+-- 	thousand	int4,
+-- 	twothousand	int4,
+-- 	fivethous	int4,
+-- 	tenthous	int4,
+-- 	odd			int4,
+-- 	even		int4,
+-- 	stringu1	name,
+-- 	stringu2	name,
+-- 	string4		name
+-- ) WITH OIDS;
 
 CREATE TABLE tenk2 (
 	unique1 	int4,
@@ -79,27 +79,23 @@ CREATE TABLE person (
 	location 	point
 );
 
+-- CREATE TABLE emp (
+-- 	salary 		int4,
+-- 	manager 	name
+-- ) INHERITS (person) WITH OIDS;
 
-CREATE TABLE emp (
-	salary 		int4,
-	manager 	name
-) INHERITS (person) WITH OIDS;
+-- CREATE TABLE student (
+-- 	gpa 		float8
+-- ) INHERITS (person);
 
-
-CREATE TABLE student (
-	gpa 		float8
-) INHERITS (person);
-
-
-CREATE TABLE stud_emp (
-	percent 	int4
-) INHERITS (emp, student);
-
+-- CREATE TABLE stud_emp (
+-- 	percent 	int4
+-- ) INHERITS (emp, student);
 
 CREATE TABLE city (
 	name		name,
-	location 	box,
-	budget 		city_budget
+	location 	box
+  -- ,budget 		city_budget  -- require type support
 );
 
 CREATE TABLE dept (
@@ -120,11 +116,11 @@ CREATE TABLE road (
 	thepath 	path
 );
 
-CREATE TABLE ihighway () INHERITS (road);
+-- CREATE TABLE ihighway () INHERITS (road);
 
-CREATE TABLE shighway (
-	surface		text
-) INHERITS (road);
+-- CREATE TABLE shighway (
+-- 	surface		text
+-- ) INHERITS (road);
 
 CREATE TABLE real_city (
 	pop			int4,

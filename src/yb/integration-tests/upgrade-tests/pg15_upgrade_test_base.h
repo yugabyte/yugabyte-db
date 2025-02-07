@@ -19,7 +19,7 @@ namespace yb {
 
 class Pg15UpgradeTestBase : public UpgradeTestBase {
  public:
-  Pg15UpgradeTestBase() : UpgradeTestBase(kBuild_2024_2_1_0) {}
+  Pg15UpgradeTestBase() : UpgradeTestBase(kBuild_2024_2_2_0) {}
   virtual ~Pg15UpgradeTestBase() override = default;
 
   void SetUp() override;
@@ -33,9 +33,12 @@ class Pg15UpgradeTestBase : public UpgradeTestBase {
   static constexpr size_t kMixedModeTserverPg15 = 0;
   static constexpr size_t kMixedModeTserverPg11 = 1;
   static constexpr std::optional<size_t> kAnyTserver = std::nullopt;
+  static constexpr auto kPgUpgradeFailedError = "pg_upgrade' terminated with non-zero exit status";
 
   // Run pg_upgrade --check
-  virtual Status ValidateUpgradeCompatibility();
+  virtual Status ValidateUpgradeCompatibility(const std::string& user_name = "yugabyte");
+  Status ValidateUpgradeCompatibilityFailure(
+      const std::string& expected_error, const std::string& user_name = "yugabyte");
 
   // Restarts all masters in the current version, runs ysql major version upgrade, and restarts
   // tserver kMixedModeTserverPg15 in the current version. Other tservers are kept in the pg11

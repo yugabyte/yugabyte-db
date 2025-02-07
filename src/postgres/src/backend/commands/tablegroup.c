@@ -1,37 +1,28 @@
-// tablegroup.c
-//	  Commands to manipulate table groups.
-//	  Tablegroups are used to create colocation groups for tables.
-//
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
-//
-// The following only applies to changes made to this file as part of YugaByte development.
-//
-// Portions Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
-// in compliance with the License.  You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software distributed under the License
-// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-// or implied.  See the License for the specific language governing permissions and limitations
-// under the License.
+/*-------------------------------------------------------------------------
+ *
+ *  tablegroup.c
+ * 	  Commands to manipulate table groups.
+ * 	  Tablegroups are used to create colocation groups for tables.
+ *
+ *  Copyright (c) YugaByte, Inc.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ *  use this file except in compliance with the License.  You may obtain a copy
+ *  of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ *  License for the specific language governing permissions and limitations
+ *  under the License.
+ *
+ * IDENTIFICATION
+ *        src/backend/commands/tablegroup.c
+ *
+ *------------------------------------------------------------------------------
+ */
 
 #include "postgres.h"
 
@@ -61,7 +52,7 @@
 #include "commands/tablespace.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "common/file_perm.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"
@@ -81,8 +72,8 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
-Oid binary_upgrade_next_tablegroup_oid = InvalidOid;
-bool binary_upgrade_next_tablegroup_default = false;
+Oid			binary_upgrade_next_tablegroup_oid = InvalidOid;
+bool		binary_upgrade_next_tablegroup_default = false;
 
 /*
  * Create a table group.
@@ -112,9 +103,12 @@ CreateTableGroup(YbCreateTableGroupStmt *stmt)
 	 */
 	if (!stmt->implicit && !superuser())
 	{
-		AclResult aclresult;
-		// Check that user has create privs on the database to allow creation
-		// of a new tablegroup.
+		AclResult	aclresult;
+
+		/*
+		 * Check that user has create privs on the database to allow creation
+		 * of a new tablegroup.
+		 */
 		aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_DATABASE,
@@ -260,11 +254,11 @@ CreateTableGroup(YbCreateTableGroupStmt *stmt)
 Oid
 get_tablegroup_oid(const char *tablegroupname, bool missing_ok)
 {
-	Oid				result;
-	Relation		rel;
-	TableScanDesc	scandesc;
-	HeapTuple		tuple;
-	ScanKeyData		entry[1];
+	Oid			result;
+	Relation	rel;
+	TableScanDesc scandesc;
+	HeapTuple	tuple;
+	ScanKeyData entry[1];
 
 	if (!YbTablegroupCatalogExists)
 	{
@@ -313,8 +307,8 @@ get_tablegroup_oid(const char *tablegroupname, bool missing_ok)
 char *
 get_tablegroup_name(Oid grp_oid)
 {
-	char		   *result;
-	HeapTuple		tuple;
+	char	   *result;
+	HeapTuple	tuple;
 
 	if (!YbTablegroupCatalogExists)
 	{
@@ -349,10 +343,10 @@ get_tablegroup_name(Oid grp_oid)
 void
 RemoveTablegroupById(Oid grp_oid, bool remove_implicit)
 {
-	Relation		pg_tblgrp_rel;
-	TableScanDesc	scandesc;
-	ScanKeyData		skey[1];
-	HeapTuple		tuple;
+	Relation	pg_tblgrp_rel;
+	TableScanDesc scandesc;
+	ScanKeyData skey[1];
+	HeapTuple	tuple;
 
 	if (!YbTablegroupCatalogExists)
 	{
@@ -415,30 +409,30 @@ RemoveTablegroupById(Oid grp_oid, bool remove_implicit)
 	table_close(pg_tblgrp_rel, NoLock);
 }
 
-char*
+char *
 get_implicit_tablegroup_name(Oid oidSuffix)
 {
 	char	   *tablegroup_name_from_tablespace;
 
 	tablegroup_name_from_tablespace =
-		(char*) palloc((10 /*strlen("colocation")*/ +
-						10 /*Max digits in OID*/ +
-						1 /*Under Scores*/ +
-						1 /*Null Terminator*/) * sizeof(char));
+		(char *) palloc((10 /* strlen("colocation") */ +
+						 10 /* Max digits in OID */ +
+						 1 /* Under Scores */ +
+						 1 /* Null Terminator */ ) * sizeof(char));
 
 	sprintf(tablegroup_name_from_tablespace, "colocation_%u", oidSuffix);
 	return tablegroup_name_from_tablespace;
 }
 
-char*
+char *
 get_restore_tablegroup_name(Oid oidSuffix)
 {
 	char	   *restore_tablegroup_name;
 
 	restore_tablegroup_name =
-		(char*) palloc((19 /* strlen("colocation_restore_") */ +
-						10 /* Max digits in OID */ +
-						1 /* Null Terminator */) * sizeof(char));
+		(char *) palloc((19 /* strlen("colocation_restore_") */ +
+						 10 /* Max digits in OID */ +
+						 1 /* Null Terminator */ ) * sizeof(char));
 
 	sprintf(restore_tablegroup_name, "colocation_restore_%u", oidSuffix);
 	return restore_tablegroup_name;
@@ -450,15 +444,16 @@ get_restore_tablegroup_name(Oid oidSuffix)
 ObjectAddress
 RenameTablegroup(const char *oldname, const char *newname)
 {
-	Oid				tablegroupoid;
-	HeapTuple		newtup;
-	Relation		rel;
-	ObjectAddress	address;
-	HeapTuple		tuple;
-	TableScanDesc	scandesc;
-	ScanKeyData		entry[1];
+	Oid			tablegroupoid;
+	HeapTuple	newtup;
+	Relation	rel;
+	ObjectAddress address;
+	HeapTuple	tuple;
+	TableScanDesc scandesc;
+	ScanKeyData entry[1];
 
-	if (!YbTablegroupCatalogExists) {
+	if (!YbTablegroupCatalogExists)
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("tablegroup system catalog does not exist")));
@@ -482,7 +477,7 @@ RenameTablegroup(const char *oldname, const char *newname)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup \"%s\" does not exist",
-				 oldname)));
+						oldname)));
 	}
 
 	tablegroupoid = ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->oid;
@@ -527,15 +522,16 @@ RenameTablegroup(const char *oldname, const char *newname)
 ObjectAddress
 AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 {
-	Oid					tablegroupoid;
-	HeapTuple			tuple;
-	Relation			rel;
-	ScanKeyData			entry[1];
-	TableScanDesc		scandesc;
-	Form_pg_yb_tablegroup	datForm;
-	ObjectAddress		address;
+	Oid			tablegroupoid;
+	HeapTuple	tuple;
+	Relation	rel;
+	ScanKeyData entry[1];
+	TableScanDesc scandesc;
+	Form_pg_yb_tablegroup datForm;
+	ObjectAddress address;
 
-	if (!YbTablegroupCatalogExists) {
+	if (!YbTablegroupCatalogExists)
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("tablegroup system catalog does not exist")));
@@ -631,12 +627,12 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 void
 ybAlterTablespaceForTablegroup(const char *grpname, Oid newTablespace, const char *newname)
 {
-	Oid					tablegroupoid;
-	HeapTuple			tuple;
-	Relation			rel;
-	ScanKeyData			entry[1];
-	TableScanDesc		scandesc;
-	Form_pg_yb_tablegroup	datForm;
+	Oid			tablegroupoid;
+	HeapTuple	tuple;
+	Relation	rel;
+	ScanKeyData entry[1];
+	TableScanDesc scandesc;
+	Form_pg_yb_tablegroup datForm;
 
 	if (!YbTablegroupCatalogExists)
 	{

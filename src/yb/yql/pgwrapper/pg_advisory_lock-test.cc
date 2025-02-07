@@ -13,12 +13,17 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include "yb/util/countdown_latch.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
+
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_uint32(num_advisory_locks_tablets);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
 
@@ -76,6 +81,7 @@ class PgAdvisoryLockTest : public PgAdvisoryLockTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) =
         kExpiredSessionCleanupMs / 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = kExpiredSessionCleanupMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(5);
     PgAdvisoryLockTestBase::SetUp();
   }
 };
@@ -183,22 +189,34 @@ TEST_F(PgAdvisoryLockTest, VerifyNoConflictBetweenSessionAndTransactionLocks) {
 }
 
 TEST_F(PgAdvisoryLockTest, SessionAdvisoryLocksDeadlock) {
-  auto conn1 = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(10)"));
+  std::atomic<bool> deadlock_detected{false};
+  CountDownLatch num_selects(2);
 
-  {
-    auto conn2 = ASSERT_RESULT(Connect());
-    ASSERT_OK(conn2.Fetch("select pg_advisory_lock(11)"));
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
+    num_selects.CountDown();
+    ASSERT_TRUE(num_selects.WaitFor(5s * kTimeMultiplier));
+    if (!conn.Fetch("select pg_advisory_lock(11)").ok()) {
+      LOG(INFO) << "Connection 1 deadlocked";
+      deadlock_detected = true;
+    }
+  });
 
-    auto status_future = std::async(std::launch::async, [&]() -> Status {
-      RETURN_NOT_OK(conn1.Fetch("select pg_advisory_lock(11)"));
-      return Status::OK();
-    });
-    ASSERT_NOK(conn2.Fetch("select pg_advisory_lock(10)"));
-    ASSERT_NOK(status_future.get());
-  }
+  thread_holder.AddThreadFunctor([&] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Fetch("select pg_advisory_lock(11)"));
+    num_selects.CountDown();
+    ASSERT_TRUE(num_selects.WaitFor(5s * kTimeMultiplier));
+    if (!conn.Fetch("select pg_advisory_lock(10)").ok()) {
+      LOG(INFO) << "Connection 2 deadlocked";
+      deadlock_detected = true;
+    }
+  });
+  thread_holder.JoinAll();
   SleepFor(2 * kExpiredSessionCleanupMs * 1ms * kTimeMultiplier);
-  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(11)"));
+  ASSERT_TRUE(deadlock_detected);
 }
 
 TEST_F(PgAdvisoryLockTest, SessionAdvisoryLockReleaseUnlocksWaiters) {
@@ -213,6 +231,31 @@ TEST_F(PgAdvisoryLockTest, SessionAdvisoryLockReleaseUnlocksWaiters) {
 
   ASSERT_OK(conn1.Fetch("select pg_advisory_unlock(10)"));
   ASSERT_OK(status_future.get());
+}
+
+TEST_F(PgAdvisoryLockTest, SessionLockDeadlockWithRowLocks) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO foo SELECT generate_series(0, 11), 0"));
+
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(10)"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn2.Execute("UPDATE foo SET v=v+1 WHERE k=1"));
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Fetch("select pg_advisory_lock(10)"));
+    return Status::OK();
+  });
+  // Introduce a deadlock with session lock and row lock. Eventually conn1 will go through
+  // because of retries. conn2 cannot be retried since it is not the first statement.
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn1.Execute("UPDATE foo SET v=v+1 where k=1"));
+  ASSERT_TRUE(status_future.wait_for(2s * kTimeMultiplier) == std::future_status::ready);
+  ASSERT_NOK(status_future.get());
+  ASSERT_OK(conn2.RollbackTransaction());
+  ASSERT_OK(conn1.CommitTransaction());
 }
 
 } // namespace yb::pgwrapper

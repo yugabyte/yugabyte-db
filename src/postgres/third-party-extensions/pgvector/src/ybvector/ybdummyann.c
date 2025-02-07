@@ -27,20 +27,22 @@
 #include "postgres.h"
 
 #include "ybvector.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 
 static void
 ybdummyannbindcolumnschema(YbcPgStatement handle,
 						   IndexInfo *indexInfo,
 						   TupleDesc indexTupleDesc,
-						   int16 *coloptions)
+						   int16 *coloptions,
+						   Oid *opclassOids,
+						   Datum reloptions)
 {
 	elog(WARNING,
 		 "ybdummyann is meant for internal-testing only and "
 		 "does not yield ordered results");
-	bindVectorIndexOptions(handle, indexInfo, indexTupleDesc, YB_VEC_DUMMY);
-	YBCBindCreateIndexColumns(
-		handle, indexInfo, indexTupleDesc, coloptions, 0);
+	bindVectorIndexOptions(
+		handle, indexInfo, indexTupleDesc, YB_VEC_DUMMY, YB_VEC_DIST_L2);
+	YBCBindCreateIndexColumns(handle, indexInfo, indexTupleDesc, coloptions, 0);
 }
 
 
@@ -52,8 +54,9 @@ PGDLLEXPORT PG_FUNCTION_INFO_V1(ybdummyannhandler);
 Datum
 ybdummyannhandler(PG_FUNCTION_ARGS)
 {
-	IndexAmRoutine *amroutine =
-		makeBaseYbVectorHandler(false /* is_copartitioned */);
+	IndexAmRoutine *amroutine;
+	amroutine = makeBaseYbVectorHandler(false /* is_copartitioned */ );
+
 	amroutine->yb_ambindschema = ybdummyannbindcolumnschema;
 
 	PG_RETURN_POINTER(amroutine);

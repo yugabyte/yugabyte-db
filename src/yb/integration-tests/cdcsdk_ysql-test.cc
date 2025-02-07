@@ -11671,5 +11671,45 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesAfterMultipleTabletBootstrap) {
   ASSERT_EQ(expected_records_size, received_records);
 }
 
+// The value of cdcsdk_flush_lag metric is always zero for gRPC streams.
+TEST_F(CDCSDKYsqlTest, TestCDCFlushLagMetricWithgRPCModel) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  // Creat a consistent snapshot stream (gRPC stream).
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = CDCService(tserver);
+  ASSERT_OK(WaitFor(
+      [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
+
+  // Insert 200 records and sleep to ensure some iterations of UpdateMetrics have taken place.
+  ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
+  SleepFor(MonoDelta::FromSeconds(3 * kTimeMultiplier));
+
+  // Assert that cdcsdk_flush_lag value is zero.
+  auto metrics =
+      ASSERT_RESULT(GetCDCSDKTabletMetrics(*cdc_service, tablets[0].tablet_id(), stream_id));
+  ASSERT_EQ(metrics->cdcsdk_flush_lag->value(), 0);
+
+  // Insert another 100 records and sleep to ensure some iterations of UpdateMetrics have taken
+  // place.
+  ASSERT_OK(WriteRowsHelper(200, 300, &test_cluster_, true));
+  SleepFor(MonoDelta::FromSeconds(3 * kTimeMultiplier));
+
+  // Assert that cdcsdk_flush_lag value remains zero.
+  ASSERT_EQ(metrics->cdcsdk_flush_lag->value(), 0);
+}
+
 }  // namespace cdc
 }  // namespace yb

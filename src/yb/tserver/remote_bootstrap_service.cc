@@ -81,7 +81,8 @@ using namespace std::literals;
     } \
   } while (false)
 
-DEFINE_RUNTIME_AUTO_uint64(remote_bootstrap_idle_timeout_ms, kLocalVolatile,
+DEFINE_RUNTIME_AUTO_uint64_DO_NOT_USE(
+    remote_bootstrap_idle_timeout_ms, kLocalVolatile,
     static_cast<uint64_t>(2 * yb::MonoTime::kMillisecondsPerHour),
     static_cast<uint64_t>(3 * yb::MonoTime::kMillisecondsPerMinute),
     "Amount of time without activity before a remote bootstrap session which hasn't yet fetched "

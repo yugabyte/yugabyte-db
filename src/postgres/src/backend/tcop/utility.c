@@ -76,7 +76,7 @@
 #include "utils/syscache.h"
 
 #include "pg_yb_utils.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "commands/yb_profile.h"
 
 /* Hook for plugins to get control in ProcessUtility() */
@@ -418,7 +418,10 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_YbCreateProfileStmt:
 		case T_YbDropProfileStmt:
 			{
-				/* YB_TODO(review)(mihnea & sushant) Changed code - DDL is not read-only. */
+				/*
+				 * YB_TODO(review)(mihnea & sushant) Changed code - DDL is not
+				 * read-only.
+				 */
 				return COMMAND_IS_NOT_READ_ONLY;
 			}
 
@@ -672,10 +675,11 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 						break;
 
 					case TRANS_STMT_PREPARE:
-						if  (IsYugaByteEnabled()) {
+						if (IsYugaByteEnabled())
+						{
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									errmsg("PREPARE not supported by YugaByte yet")));
+									 errmsg("PREPARE not supported by YugaByte yet")));
 						}
 						if (!PrepareTransactionBlock(stmt->gid))
 						{

@@ -2,8 +2,11 @@ package models
 
 type ClusterDataInfo struct {
 
+    // The UUID of the universe
+    UniverseUuid string `json:"universe_uuid"`
+
     // The UUID of the cluster
-    Id string `json:"id"`
+    ClusterUuid string `json:"cluster_uuid"`
 
     // The current state of the cluster
     State string `json:"state"`

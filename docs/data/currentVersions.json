@@ -5,9 +5,9 @@
       "series": "v2024.2",
       "alias": "stable",
       "display": "v2024.2 (LTS)",
-      "version": "2024.2.0.0",
-      "versionShort": "2024.2.0",
-      "appVersion": "2024.2.0.0-b145",
+      "version": "2024.2.1.0",
+      "versionShort": "2024.2.1",
+      "appVersion": "2024.2.1.0-b185",
       "isStable": true,
       "isLTS": true,
       "initialRelease": "2024-12-09",
@@ -16,14 +16,14 @@
       "PreviewBehindStable": true
     },
     {
-      "series": "v2.23",
+      "series": "v2.25",
       "alias": "preview",
-      "display": "v2.23 (Preview)",
-      "version": "2.23.1.0",
-      "versionShort": "2.23.1",
-      "appVersion": "2.23.1.0-b220",
+      "display": "v2.25 (Preview)",
+      "version": "2.25.0.0",
+      "versionShort": "2.25.0",
+      "appVersion": "2.25.0.0-b489",
       "isStable": false,
-      "initialRelease": "2024-09-13"
+      "initialRelease": "2025-01-17"
     },
     {
       "series": "v2024.1",

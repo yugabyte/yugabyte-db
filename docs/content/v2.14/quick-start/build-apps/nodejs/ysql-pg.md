@@ -48,7 +48,7 @@ Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites), t
 
 This tutorial assumes that you have installed the following:
 
-- A YugabyteDB cluster. Refer to [Quick Start](/preview/tutorials/quick-start/).
+- A YugabyteDB cluster. Refer to [Quick Start](/preview/tutorials/quick-start/macos/).
 - A recent version of [`node`](https://nodejs.org/en/download/).
 - [`node-postgres`](../../../../reference/drivers/ysql-client-drivers/#node-postgres) driver.
 - [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.

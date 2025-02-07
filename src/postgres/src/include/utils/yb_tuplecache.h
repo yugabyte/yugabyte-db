@@ -34,32 +34,32 @@
 typedef struct YbTupleCacheEntry
 {
 	/* Key must be the first */
-	Oid	key;
-	List *tuples;
+	Oid			key;
+	List	   *tuples;
 } YbTupleCacheEntry;
 
 typedef struct YbTupleCache
 {
-	Relation rel;
-	HTAB *data;
+	Relation	rel;
+	HTAB	   *data;
 } YbTupleCache;
 
-typedef Oid (*YbTupleCacheKeyExtractor)(HeapTuple);
+typedef Oid (*YbTupleCacheKeyExtractor) (HeapTuple);
 
 struct YbTupleCacheIteratorData
 {
-	List *list;
-	ListCell *current;
+	List	   *list;
+	ListCell   *current;
 };
 
 typedef struct YbTupleCacheIteratorData *YbTupleCacheIterator;
 
-void YbLoadTupleCache(YbTupleCache *cache, Oid relid,
-					 YbTupleCacheKeyExtractor key_extractor, const char *cache_name);
-void YbCleanupTupleCache(YbTupleCache *cache);
+void		YbLoadTupleCache(YbTupleCache *cache, Oid relid,
+							 YbTupleCacheKeyExtractor key_extractor, const char *cache_name);
+void		YbCleanupTupleCache(YbTupleCache *cache);
 
 YbTupleCacheIterator YbTupleCacheIteratorBegin(const YbTupleCache *cache, const void *key_ptr);
-HeapTuple YbTupleCacheIteratorGetNext(YbTupleCacheIterator iter);
-void YbTupleCacheIteratorEnd(YbTupleCacheIterator iter);
+HeapTuple	YbTupleCacheIteratorGetNext(YbTupleCacheIterator iter);
+void		YbTupleCacheIteratorEnd(YbTupleCacheIterator iter);
 
-#endif /* YB_TUPLECACHE_H */
+#endif							/* YB_TUPLECACHE_H */

@@ -367,7 +367,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
     // (DB-10760) Role OID-based pool design is needed in addition to waiting
     // for connection count-related statistics for this test to pass when
     // Connection Manager is enabled. Skipping this test temporarily.
-    assumeFalse(BasePgSQLTest.RECREATE_USER_SUPPORT_NEEDED, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.RECREATE_USER_SUPPORT_NEEDED,
+        isTestRunningWithConnectionManager());
 
     // NOTE: The INHERIT attribute is tested separately in testMembershipInheritance.
     try (Statement statement = connection.createStatement()) {
@@ -2854,7 +2855,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
   @Test
   public void testConnectionLimitDecreasedMidSession() throws Exception {
     // (DB-12741) Skip this test if running with connection manager.
-    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR,
+        isTestRunningWithConnectionManager());
 
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
@@ -2930,7 +2932,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
     // requires that the role GUC variable is not changed even after revoking
     // membership from a role group in order to succeed, which would not be the
     // case when Connection Manager is enabled.
-    assumeFalse(BasePgSQLTest.GUC_REPLAY_AFFECTS_CONN_STATE, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.GUC_REPLAY_AFFECTS_CONN_STATE,
+        isTestRunningWithConnectionManager());
 
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
@@ -3234,7 +3237,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
     // This test will further need the support of role OID-based pooling
     // to help support recreate role operations (DROP ROLE followed by
     // CREATE ROLE).
-    assumeFalse(BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED,
+        isTestRunningWithConnectionManager());
 
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");

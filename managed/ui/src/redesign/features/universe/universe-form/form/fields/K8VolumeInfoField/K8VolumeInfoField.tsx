@@ -112,7 +112,7 @@ export const K8VolumeInfoField = ({
                       <YBInput
                         type="number"
                         fullWidth
-                        disabled={nodeTypeTag === NodeType.Master && isEditMode}
+                        disabled={isEditMode}
                         inputProps={{
                           min: 1,
                           'data-testid': `K8VolumeInfoField-${nodeTypeTag}-VolumeInput`

@@ -26,14 +26,14 @@
 
 namespace yb::pggate {
 
-class PgSamplePicker;
-
 //--------------------------------------------------------------------------------------------------
 // SAMPLE collect table statistics and take random rows sample
 //--------------------------------------------------------------------------------------------------
 class PgSample final : public PgStatementLeafBase<PgDmlRead, StmtOp::kSample>  {
  public:
-  // Make PgSamplePicker to process next block of rows in the table.
+  virtual ~PgSample();
+
+  // Make SamplePicker to process next block of rows in the table.
   // The has_more parameter is set to true if table has and needs more blocks.
   // PgSampler is not ready to be executed until this function returns false
   Result<bool> SampleNextBlock();
@@ -46,13 +46,15 @@ class PgSample final : public PgStatementLeafBase<PgDmlRead, StmtOp::kSample>  {
       int targrows, const SampleRandomState& rand_state, HybridTime read_time);
 
  private:
+  class SamplePicker;
+
   explicit PgSample(const PgSession::ScopedRefPtr& pg_session);
 
   Status Prepare(
       const PgObjectId& table_id, bool is_region_local, int targrows,
       const SampleRandomState& rand_state, HybridTime read_time);
 
-  PgSamplePicker& SamplePicker();
+  std::unique_ptr<SamplePicker> sample_picker_;
 };
 
 }  // namespace yb::pggate

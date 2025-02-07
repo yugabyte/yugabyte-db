@@ -222,8 +222,7 @@ alter_table_action =
   ( 'ADD' [ 'COLUMN' ] [ 'IF' 'NOT' 'EXISTS' ] column_name data_type [ alter_column_constraint { alter_column_constraint } ]
     | 'RENAME' 'TO' table_name
     | 'DROP' [ 'COLUMN' ] [ 'IF' 'EXISTS' ] column_name [ 'RESTRICT' | 'CASCADE' ]
-    | 'ALTER' [ 'COLUMN' ] column_name [ 'SET DATA' ]
-      'TYPE' data_type [ 'COLLATE' collation ] [ 'USING' expression ]
+    | 'ALTER' [ 'COLUMN' ] column_name [ alter_column_action ]
     | 'ADD' alter_table_constraint
     | 'DROP' 'CONSTRAINT' constraint_name [ 'RESTRICT' | 'CASCADE' ]
     | 'RENAME' [ 'COLUMN' ] column_name 'TO' column_name
@@ -242,6 +241,16 @@ alter_table_constraint = [ 'CONSTRAINT' constraint_name ] \
                            'FOREIGN' 'KEY' '(' column_names ')' references_clause |
                            'PRIMARY' 'KEY' '(' key_columns ')' ) \
                          [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
+
+alter_column_action = (
+                    [ 'SET DATA' ] 'TYPE' data_type [ 'COLLATE' collation ] [ 'USING' expression ]
+                    | 'SET' 'DEFAULT' expression
+                    | 'DROP' 'DEFAULT'
+                    | 'DROP' 'IDENTITY' [ 'IF EXISTS' ]
+                    | { 'SET' | 'DROP' } 'NOT' 'NULL'
+                    | 'ADD' 'GENERATED' { 'ALWAYS' | 'BY' 'DEFAULT' } 'AS' 'IDENTITY' [ ( sequence_options ) ]
+                    | 'SET' 'GENERATED' { 'ALWAYS' | 'BY' 'DEFAULT' }
+);
 
 alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                           (  'NOT' 'NULL' |
@@ -362,7 +371,8 @@ commit = 'COMMIT' [ 'TRANSACTION' | 'WORK' ] ;
 (* 'COPY' *)
 copy_from = 'COPY' table_name [ '(' column_name { ',' column_name } ')' ] \
             'FROM' ( 'filename' | 'PROGRAM' 'command' | 'STDIN' ) \
-             [ [ 'WITH' ] '(' copy_option { ',' copy_option } ')' ] ;
+             [ [ 'WITH' ] '(' copy_option { ',' copy_option } ')' ] \
+             [ 'WHERE' condition ] ;
 
 copy_to = 'COPY' ( table_name [ '(' column_names ')' ] | subquery ) \
           'TO' ( 'filename' | 'PROGRAM' 'command' | 'STDOUT' ) \
@@ -587,6 +597,7 @@ create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'CONCURRENTLY' | 'NONCONCURRENTLY
                [ 'USING' access_method_name ]
                '(' index_elem { ',' index_elem } ')' \
                [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
+               [ 'NULLS' [ 'NOT' ] 'DISTINCT' ] \
                [ 'TABLESPACE' tablespace_name ] \
                [ 'SPLIT' ( 'INTO' int_literal 'TABLETS'
                       | 'AT' 'VALUES' '(' split_row { ',' split_row } ')' ) ]
@@ -759,6 +770,7 @@ column_constraint = [ 'CONSTRAINT' constraint_name ]
                          | 'NULL'
                          | 'CHECK' '(' expression ')'
                          | 'DEFAULT' expression
+                         | 'GENERATED' 'ALWAYS' 'AS' '(' generation_expr ')' 'STORED'
                          | 'GENERATED' ('ALWAYS' | 'BY DEFAULT') 'AS' 'IDENTITY' [ ( sequence_options ) ]
                          | 'UNIQUE' index_parameters
                          | 'PRIMARY' 'KEY'
@@ -801,7 +813,7 @@ create_table_as = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS
 
 
 (* CREATE TRIGGER *)
-create_trigger = 'CREATE' 'TRIGGER' name
+create_trigger = 'CREATE' [ 'OR' 'REPLACE' ] 'TRIGGER' name
                   ( 'BEFORE' | 'AFTER' | 'INSTEAD' 'OF' ) ( event { 'OR' event } )
                       'ON' table_name
                       [ 'FROM' table_name ] \
@@ -1249,7 +1261,7 @@ trailing_select_clauses = [ 'FROM' ( from_item { ','  from_item } ) ] \
                           [ 'FETCH' ( 'FIRST' | 'NEXT' ) int_expression ( 'ROW' | 'ROWS' ) 'ONLY' ] \
                           { 'FOR' ( 'UPDATE' | 'NO KEY UPDATE' | 'SHARE' | 'KEY SHARE' ) [ 'OF' table_name { ',' table_name} ] [ 'NOWAIT' | 'SKIP LOCKED' ] };
 
-from_item = '<See https://www.postgresql.org/docs/11/sql-select.html>' ;
+from_item = '<See https://www.postgresql.org/docs/15/sql-select.html>' ;
 
 common_table_expression = cte_name [ '(' column_name { ',' column_name } ')' ] 'AS' '(' ( select | values | insert | update | delete ) ')' ;
 
@@ -1459,6 +1471,7 @@ numeric_expression = expression ;
 text_expression = expression ;
 array_expression  = expression ;
 interval_expression = expression ;
+generation_expr = expression ;
 expression = '<expression>' ;
 
 boolean = 'TRUE' | 'FALSE' ;
@@ -1519,6 +1532,7 @@ op_type = data_type ;
 storage_type = data_type ;
 using_expression = expression ;
 check_expression = expression ;
+condition = expression ;
 new_name = name ;
 version = text_literal ;
 extension_name = name ;

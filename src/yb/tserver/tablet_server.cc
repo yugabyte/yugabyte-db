@@ -38,6 +38,9 @@
 #include <thread>
 #include <utility>
 
+#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_service_context.h"
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/transaction_manager.h"
@@ -49,7 +52,6 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/encryption/encrypted_file_factory.h"
-#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/universe_key_manager.h"
 
@@ -58,57 +60,56 @@
 #include "yb/gutil/hash/city.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
+
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/secure.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/yb_rpc.h"
-#include "yb/rpc/secure_stream.h"
 
 #include "yb/server/async_client_initializer.h"
-#include "yb/server/rpc_server.h"
-#include "yb/rpc/secure.h"
-#include "yb/server/webserver.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/server/rpc_server.h"
+#include "yb/server/webserver.h"
 #include "yb/server/ycql_stat_provider.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/backup_service.h"
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/heartbeater_factory.h"
 #include "yb/tserver/metrics_snapshotter.h"
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client_service.h"
-#include "yb/tserver/remote_bootstrap_service.h"
-#include "yb/tserver/stateful_services/pg_cron_leader_service.h"
-#include "yb/tserver/tablet_service.h"
 #include "yb/tserver/pg_table_mutation_count_sender.h"
+#include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
-#include "yb/tserver/backup_service.h"
-#include "yb/tserver/pg_client.pb.h"
-
-#include "yb/cdc/cdc_service.h"
-#include "yb/cdc/cdc_service_context.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
+#include "yb/tserver/stateful_services/pg_cron_leader_service.h"
 #include "yb/tserver/stateful_services/test_echo_service.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
+#include "yb/util/ntp_clock.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
-#include "yb/util/ntp_clock.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
@@ -322,7 +323,16 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
  private:
   TabletServer& tablet_server_;
 };
+
 }  // namespace
+
+struct TabletServer::PgClientServiceHolder {
+  template <class... Args>
+  explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}
+
+  PgClientServiceImpl impl;
+  std::optional<PgClientServiceMockImpl> mock;
+};
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
     : DbServerBase("TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
@@ -755,6 +765,8 @@ void TabletServer::Shutdown() {
 Status TabletServer::BootstrapDdlObjectLocks(
     const master::ClientOperationLeaseUpdatePB& lease_update) {
   VLOG(2) << __func__;
+  // todo(zdrudi):
+  // Need to track the lease. Process the other fields of ClientOperationLeaseUpdatePB.
   if (!lease_update.has_ddl_lock_entries() || !ts_local_lock_manager_) {
     return Status::OK();
   }
@@ -1626,6 +1638,22 @@ Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
   return pgwrapper::CreateInternalPGConnBuilder(
              pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(), deadline)
       .Connect();
+}
+
+Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) {
+  auto pg_client_service = pg_client_service_.lock();
+  RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
+  return pg_client_service->impl.GetLocalPgTxnSnapshot(snapshot_id);
+}
+
+PgClientServiceImpl* TabletServer::TEST_GetPgClientService() {
+  auto holder = pg_client_service_.lock();
+  return holder ? &holder->impl : nullptr;
+}
+
+PgClientServiceMockImpl* TabletServer::TEST_GetPgClientServiceMock() {
+  auto holder = pg_client_service_.lock();
+  return holder && holder->mock.has_value() ? &holder->mock.value() : nullptr;
 }
 
 }  // namespace yb::tserver

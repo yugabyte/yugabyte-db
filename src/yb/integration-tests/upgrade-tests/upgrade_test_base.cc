@@ -23,7 +23,7 @@
 #include "yb/util/debug.h"
 #include "yb/util/env_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include "yb/server/server_base.pb.h"
@@ -49,7 +49,10 @@ std::string GetRelevantUrl(const BuildInfo& info) {
   return kIsDebug ? info.darwin_debug_arm64_url : info.darwin_release_arm64_url;
 #elif defined(__linux__) && defined(__x86_64__)
   return kIsDebug ? info.linux_debug_x86_url : info.linux_release_x86_url;
+#elif defined(__linux__) && defined(__aarch64__)
+  return kIsDebug ? "" : info.linux_release_aarch64_url;
 #endif
+
   return "";
 }
 
@@ -84,6 +87,7 @@ Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
         build_info.build_number = GetXmlPathAsString(node, "build_number");
         build_info.linux_debug_x86_url = GetXmlPathAsString(node, "linux_debug_x86");
         build_info.linux_release_x86_url = GetXmlPathAsString(node, "linux_release_x86");
+        build_info.linux_release_aarch64_url = GetXmlPathAsString(node, "linux_release_aarch64");
         build_info.darwin_debug_arm64_url = GetXmlPathAsString(node, "darwin_debug_arm64");
         build_info.darwin_release_arm64_url = GetXmlPathAsString(node, "darwin_release_arm64");
         return build_info;
@@ -215,6 +219,8 @@ bool IsUpgradeSupported(const std::string& from_version) {
 
 }  // namespace
 
+const MonoDelta UpgradeTestBase::kNoDelayBetweenNodes = 0s;
+
 UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
     : old_version_info_(CHECK_RESULT(GetBuildInfoForVersion(from_version))) {
   LOG(INFO) << "Old version: " << old_version_info_.version << ": "
@@ -223,24 +229,28 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 
 void UpgradeTestBase::SetUp() {
   if (IsSanitizer()) {
-    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported with sanitizers";
   }
 
-  if (old_version_info_.version.empty()) {
-    test_skipped_ = true;
-    CHECK(false) << "Build info for old version not set";
-    return;
+// Disable mac tests in the lab since the lab runs multiple tests in parallel on the mac causing
+// these to timeout.
+#ifdef __APPLE__
+  if (getenv("YB_SPARK_COPY_MODE")) {
+    GTEST_SKIP() << "Upgrade testing not supported on mac spark machines";
+  }
+#endif
+
+  if (GetRelevantUrl(old_version_info_).empty()) {
+    GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
+                 << " for this OS architecture and build type";
   }
 
   if (GetRelevantUrl(old_version_info_).empty()) {
-    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
                  << " for this OS architecture and build type";
   }
 
   if (!IsUpgradeSupported(old_version_info_.version)) {
-    test_skipped_ = true;
     GTEST_SKIP() << "PG15 upgrade not supported from version " << old_version_info_.version;
   }
 
@@ -313,8 +323,8 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
                                    current_version_info_.ysql_major_version();
 
   if (IsYsqlMajorVersionUpgrade()) {
-    // YB_TODO: Remove when support for expression pushdown in mixed mode is implemented.
-    RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
+    RETURN_NOT_OK(
+        cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "11"));
   }
 
   return Status::OK();
@@ -447,7 +457,8 @@ Status UpgradeTestBase::WaitForYsqlMajorCatalogUpgradeToFinish() {
   };
 
   return LoggedWaitFor(
-      is_upgrade_done, 10min, "Waiting for ysql major catalog upgrade to complete");
+      is_upgrade_done, 10min, "Waiting for ysql major catalog upgrade to complete",
+      /*initial_delay*/ 1s);
 }
 
 Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
@@ -500,6 +511,10 @@ Status UpgradeTestBase::FinalizeYsqlMajorCatalogUpgrade() {
           req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
+  }
+
+  if (IsYsqlMajorVersionUpgrade()) {
+    RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "0"));
   }
 
   return Status::OK();

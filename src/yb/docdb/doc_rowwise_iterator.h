@@ -77,6 +77,7 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   Result<HybridTime> RestartReadHt() override;
 
+  void UpdateFilterKey(Slice user_key_for_filter) override;
   void Seek(Slice key) override;
 
   void SeekToDocKeyPrefix(Slice doc_key_prefix) override;
@@ -108,8 +109,7 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
  private:
   void InitIterator(
-      BloomFilterMode bloom_filter_mode = BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      const boost::optional<const Slice>& user_key_for_filter = boost::none,
+      const BloomFilterOptions& bloom_filter = BloomFilterOptions::Inactive(),
       const rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr) override;
 

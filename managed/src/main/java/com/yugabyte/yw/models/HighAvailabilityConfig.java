@@ -30,8 +30,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
@@ -57,8 +55,6 @@ public class HighAvailabilityConfig extends Model {
   private static final Finder<UUID, HighAvailabilityConfig> find =
       new Finder<UUID, HighAvailabilityConfig>(HighAvailabilityConfig.class) {};
 
-  private static long BACKUP_DISCONNECT_TIME_MILLIS = 15 * (60 * 1000);
-
   @JsonIgnore private final int id = 1;
 
   @Id
@@ -70,9 +66,7 @@ public class HighAvailabilityConfig extends Model {
   @JsonProperty("cluster_key")
   private String clusterKey;
 
-  @Temporal(TemporalType.TIMESTAMP)
-  @JsonProperty("last_failover")
-  private Date lastFailover;
+  private Long lastFailover;
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL)
   private List<PlatformInstance> instances;
@@ -82,13 +76,18 @@ public class HighAvailabilityConfig extends Model {
   private boolean acceptAnyCertificate;
 
   public void updateLastFailover(Date lastFailover) {
-    this.lastFailover = lastFailover;
+    this.lastFailover = lastFailover.getTime();
     this.update();
   }
 
   public void updateLastFailover() {
-    this.lastFailover = new Date();
+    this.lastFailover = new Date().getTime();
     this.update();
+  }
+
+  @JsonProperty("last_failover")
+  public Date getLastFailover() {
+    return (this.lastFailover != null) ? new Date(this.lastFailover) : null;
   }
 
   public void updateAcceptAnyCertificate(boolean acceptAnyCertificate) {
@@ -153,13 +152,12 @@ public class HighAvailabilityConfig extends Model {
     config.update();
   }
 
-  @Deprecated
-  public static Optional<HighAvailabilityConfig> get(UUID uuid) {
+  public static Optional<HighAvailabilityConfig> maybeGet(UUID uuid) {
     return Optional.ofNullable(find.byId(uuid));
   }
 
   public static Optional<HighAvailabilityConfig> getOrBadRequest(UUID uuid) {
-    Optional<HighAvailabilityConfig> config = get(uuid);
+    Optional<HighAvailabilityConfig> config = maybeGet(uuid);
     if (!config.isPresent()) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid config UUID");
     }
@@ -211,7 +209,7 @@ public class HighAvailabilityConfig extends Model {
       } else if (this.anyConnected()) {
         return GlobalState.Operational;
       }
-    } else if (this.isFollower()) {
+    } else if (isFollower()) {
       if (this.instances.size() == 1) {
         return GlobalState.AwaitingReplicas;
       } else if (this.getLocal().isPresent()) {

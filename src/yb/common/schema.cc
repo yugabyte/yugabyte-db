@@ -93,7 +93,7 @@ bool ColumnSchema::is_collection() const {
 }
 
 bool ColumnSchema::is_vector() const {
-  return is_vector_;
+  return type_info()->is_vector();
 }
 
 bool ColumnSchema::CompTypeInfo(const ColumnSchema &a, const ColumnSchema &b) {
@@ -634,17 +634,6 @@ void Schema::UpdateMissingValuesFrom(
 Result<const QLValuePB&> Schema::GetMissingValueByColumnId(ColumnId id) const {
   const auto& column_schema = VERIFY_RESULT_REF(column_by_id(id));
   return column_schema.missing_value();
-}
-
-void Schema::SetVectorColumns(const std::vector<ColumnId>& ids) {
-  for (auto column_id : ids) {
-    auto idx = find_column_by_id(column_id);
-    if (idx == kColumnNotFound) {
-      LOG(DFATAL) << "Column idx is not found for column " << column_id << ", ignoring";
-      return;
-    }
-    cols_[idx].MarkAsVector();
-  }
 }
 
 bool Schema::TEST_Equals(const Schema& lhs, const Schema& rhs) {

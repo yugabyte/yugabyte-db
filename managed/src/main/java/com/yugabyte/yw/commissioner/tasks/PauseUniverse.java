@@ -10,8 +10,12 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
@@ -32,6 +36,19 @@ public class PauseUniverse extends UniverseTaskBase {
 
   public Params params() {
     return (Params) taskParams;
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    if (isFirstTry) {
+      // Verify the task params.
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      if (UniverseDefinitionTaskParams.hasEphemeralStorage(universe.getUniverseDetails())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot pause universe with ephemeral storage");
+      }
+    }
   }
 
   @Override

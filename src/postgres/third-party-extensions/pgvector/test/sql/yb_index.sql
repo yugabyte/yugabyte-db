@@ -28,7 +28,7 @@ CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 CREATE TABLE items (id serial PRIMARY KEY, embedding vector(10)) SPLIT INTO 1 TABLETS;
 
 -- Does not order results across tablets yet.
-CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
+CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops) WITH (ef_construction = 100, m = 16);
 
 -- Insert 30 rows of sample data with embeddings having float values between 0 and 1.
 INSERT INTO items (embedding) VALUES

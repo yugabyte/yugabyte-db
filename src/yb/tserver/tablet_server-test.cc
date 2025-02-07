@@ -876,11 +876,8 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   CHECK_OK(dockv::PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
   dockv::Partition partition;
-  auto table_info = std::make_shared<tablet::TableInfo>(
-      "TEST: ", tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId,
-      YQL_TABLE_TYPE, schema, qlexpr::IndexMap(), std::nullopt /* index_info */,
-      0 /* schema_version */, partition_schema, "" /* pg_table_id */,
-      tablet::SkipTableTombstoneCheck::kFalse);
+  auto table_info = tablet::TableInfo::TEST_Create(
+      "TestWriteOutOfBoundsTable", "test_ns", tabletId, YQL_TABLE_TYPE, schema, partition_schema);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
       table_info, tabletId, partition, mini_server_->CreateLocalConfig()));
 

@@ -33,8 +33,9 @@
  */
 typedef struct TIDBitmap TIDBitmap;
 
-typedef union {
-	TIDBitmap *tbm;
+typedef union
+{
+	TIDBitmap  *tbm;
 	YbTIDBitmap *ybtbm;
 } YbTupleBitmap;
 

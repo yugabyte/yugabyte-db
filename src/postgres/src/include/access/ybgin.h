@@ -51,7 +51,9 @@ extern bool ybginvalidate(Oid opclassoid);
 extern void ybginbindschema(YbcPgStatement handle,
 							struct IndexInfo *indexInfo,
 							TupleDesc indexTupleDesc,
-							int16 *coloptions);
+							int16 *coloptions,
+							Oid *opclassIds,
+							Datum reloptions);
 extern IndexScanDesc ybginbeginscan(Relation rel, int nkeys, int norderbys);
 extern void ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 						ScanKey orderbys, int norderbys);

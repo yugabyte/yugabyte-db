@@ -29,8 +29,8 @@
 #include "utils/snapmgr.h"
 
 #include "pg_yb_utils.h"
-#include "executor/ybcModifyTable.h"
-#include "optimizer/ybcplan.h"
+#include "executor/ybModifyTable.h"
+#include "optimizer/ybplan.h"
 
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
@@ -816,12 +816,17 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 				result = false; /* keep compiler quiet */
 				break;
 		}
-		// We flush buffered ops here to ensure that any errors in the ops can be caught by the
-		// PG_CATCH() and mark the portal failed. If some ops are not flushed here and say flushed later
-		// at a place that doesn't catch the error and mark the portal failed, it can result in spurious
-		// WARNING messages (like "Snapshot reference leak") when releasing the portal resources later
-		// (for example via a CreatePortal() call that drops existing duplicate portal of an earlier
-		// execution).
+
+		/*
+		 * We flush buffered ops here to ensure that any errors in the ops can
+		 * be caught by the PG_CATCH() and mark the portal failed. If some ops
+		 * are not flushed here and say flushed later at a place that doesn't
+		 * catch the error and mark the portal failed, it can result in
+		 * spurious WARNING messages (like "Snapshot reference leak") when
+		 * releasing the portal resources later (for example via a
+		 * CreatePortal() call that drops existing duplicate portal of an
+		 * earlier execution).
+		 */
 		if (isTopLevel)
 			YBFlushBufferedOperations();
 	}

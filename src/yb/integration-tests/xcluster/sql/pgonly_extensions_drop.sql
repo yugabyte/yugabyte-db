@@ -1,6 +1,3 @@
--- Fail the script on the first error
-\set ON_ERROR_STOP on
-
 DROP EXTENSION file_fdw;
 
 DROP EXTENSION fuzzystrmatch;
@@ -21,17 +18,17 @@ DROP EXTENSION pgaudit;
 
 -- Extensions that create new types
 
-DROP EXTENSION hll;
+-- DROP EXTENSION hll;
 
-DROP EXTENSION hstore;
+-- DROP EXTENSION hstore;
 
-DROP EXTENSION pg_trgm;
+-- DROP EXTENSION pg_trgm;
 
-DROP EXTENSION pgtap;
+-- DROP EXTENSION pgtap;
 
-DROP EXTENSION tablefunc;
+-- DROP EXTENSION tablefunc;
 
-DROP EXTENSION vector;
+-- DROP EXTENSION vector;
 
 -- Extensions that create tables
 

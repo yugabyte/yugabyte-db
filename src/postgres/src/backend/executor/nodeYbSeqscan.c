@@ -62,7 +62,7 @@ YbSeqNext(YbSeqScanState *node)
 	TupleTableSlot *slot;
 	ExprContext *econtext;
 	MemoryContext oldcontext;
-	YbScanDesc ybScan;
+	YbScanDesc	ybScan;
 
 	/*
 	 * get information from the estate and scan state
@@ -88,28 +88,30 @@ YbSeqNext(YbSeqScanState *node)
 			 * scan slot to hold as many attributes as there are pushed
 			 * aggregates.
 			 */
-			TupleDesc tupdesc = CreateTemplateTupleDesc(list_length(node->aggrefs));
+			TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->aggrefs));
+
 			ExecInitScanTupleSlot(estate, &node->ss, tupdesc, &TTSOpsVirtual);
 			/* Refresh the local pointer. */
 			slot = node->ss.ss_ScanTupleSlot;
 		}
 
-		YbSeqScan *plan = (YbSeqScan *) node->ss.ps.plan;
+		YbSeqScan  *plan = (YbSeqScan *) node->ss.ps.plan;
 		YbPushdownExprs *yb_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
-		YbScanDesc ybScan = ybcBeginScan(node->ss.ss_currentRelation,
-										 NULL /* index */,
-										 false /* xs_want_itup */,
-										 0 /* nkeys */,
-										 NULL /* key */,
-										 (Scan *) plan,
-										 yb_pushdown /* rel_pushdown */,
-										 NULL /* idx_pushdown */,
-										 node->aggrefs,
-										 0 /* distinct_prefixlen */,
-										 &estate->yb_exec_params,
-										 false /* is_internal_scan */,
-										 false /* fetch_ybctids_only */);
+		YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
+		YbScanDesc	ybScan = ybcBeginScan(node->ss.ss_currentRelation,
+										  NULL /* index */ ,
+										  false /* xs_want_itup */ ,
+										  0 /* nkeys */ ,
+										  NULL /* key */ ,
+										  (Scan *) plan,
+										  yb_pushdown /* rel_pushdown */ ,
+										  NULL /* idx_pushdown */ ,
+										  node->aggrefs,
+										  0 /* distinct_prefixlen */ ,
+										  &estate->yb_exec_params,
+										  false /* is_internal_scan */ ,
+										  false /* fetch_ybctids_only */ );
+
 		ybScan->pscan = node->pscan;
 
 		tsdesc = (TableScanDesc) ybScan;
@@ -134,6 +136,7 @@ YbSeqNext(YbSeqScanState *node)
 			 i++)
 		{
 			ExecRowMark *erm = estate->es_rowmarks[i];
+
 			/*
 			 * YB_TODO: This block of code is broken on master (GH #20704). With
 			 * PG commit f9eb7c14b08d2cc5eda62ffaf37a356c05e89b93,
@@ -149,7 +152,7 @@ YbSeqNext(YbSeqScanState *node)
 				erm->markType != ROW_MARK_COPY)
 			{
 				/* YB_TODO(jason): move ybScan = (YbScanDesc)tsdesc; higher. */
-				YbScanDesc ybScan = (YbScanDesc) tsdesc;
+				YbScanDesc	ybScan = (YbScanDesc) tsdesc;
 
 				ybScan->exec_params->rowmark = erm->markType;
 				ybScan->exec_params->pg_wait_policy = erm->waitPolicy;
@@ -159,7 +162,7 @@ YbSeqNext(YbSeqScanState *node)
 		}
 	}
 
-	ybScan = (YbScanDesc)tsdesc;
+	ybScan = (YbScanDesc) tsdesc;
 	/*
 	 * In the case of parallel scan we need to obtain boundaries from the pscan
 	 * before the scan is executed. Also empty row from parallel range scan does
@@ -176,9 +179,10 @@ YbSeqNext(YbSeqScanState *node)
 			{
 				YBParallelPartitionKeys parallel_scan = ybScan->pscan;
 				const char *low_bound;
-				size_t low_bound_size;
+				size_t		low_bound_size;
 				const char *high_bound;
-				size_t high_bound_size;
+				size_t		high_bound_size;
+
 				/*
 				 * If range is found, apply the boundaries, false means the scan
 				 * is done for that worker.
@@ -426,7 +430,7 @@ ExecYbSeqScanInitializeDSM(YbSeqScanState *node,
 	yb_init_partition_key_data(pscan);
 	shm_toc_insert(pcxt->toc, node->ss.ps.plan->plan_node_id, pscan);
 	ybParallelPrepare(pscan, node->ss.ss_currentRelation,
-					  &estate->yb_exec_params, true /* is_forward */);
+					  &estate->yb_exec_params, true /* is_forward */ );
 	node->pscan = pscan;
 }
 
@@ -442,9 +446,10 @@ ExecYbSeqScanReInitializeDSM(YbSeqScanState *node,
 {
 	EState	   *estate = node->ss.ps.state;
 	YBParallelPartitionKeys pscan = node->pscan;
+
 	yb_init_partition_key_data(pscan);
 	ybParallelPrepare(pscan, node->ss.ss_currentRelation,
-					  &estate->yb_exec_params, true /* is_forward */);
+					  &estate->yb_exec_params, true /* is_forward */ );
 }
 
 /* ----------------------------------------------------------------
@@ -462,6 +467,6 @@ ExecYbSeqScanInitializeWorker(YbSeqScanState *node,
 
 	pscan = shm_toc_lookup(pwcxt->toc, node->ss.ps.plan->plan_node_id, false);
 	ybParallelPrepare(pscan, node->ss.ss_currentRelation,
-					  &estate->yb_exec_params, true /* is_forward */);
+					  &estate->yb_exec_params, true /* is_forward */ );
 	node->pscan = pscan;
 }

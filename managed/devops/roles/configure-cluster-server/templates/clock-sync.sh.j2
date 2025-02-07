@@ -61,7 +61,7 @@ check_clock_sync_chrony() {
 }
 
 check_clock_sync_ntpd() {
-  local skew=$(ntpq -p | awk "$1 ~ \"^*\" {print \$9}")
+  local skew=$(ntpq -p | awk '$1 ~ "^*" {print $9}')
   local acceptable_skew_ms=$(${PYTHON_EXECUTABLE} -c "print(${acceptable_clock_skew_sec} * 1000)")
 
   if [[ -z "$skew" ]]; then

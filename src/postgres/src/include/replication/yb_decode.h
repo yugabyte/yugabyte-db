@@ -25,7 +25,7 @@
 
 #include "replication/logical.h"
 
-void YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
-									XLogReaderState *record);
+void		YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
+										   XLogReaderState *record);
 
 #endif

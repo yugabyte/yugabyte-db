@@ -56,7 +56,7 @@
 
 #include "catalog/catalog.h"
 #include "catalog/yb_type.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -248,8 +248,9 @@ YbFillPKFromFKSlot(const RI_ConstraintInfo *riinfo, TupleTableSlot *fkslot,
 {
 	for (int i = 0; i < riinfo->nkeys; i++)
 	{
-		const int fk_attnum = riinfo->fk_attnums[i];
-		const int pk_attnum = riinfo->pk_attnums[i];
+		const int	fk_attnum = riinfo->fk_attnums[i];
+		const int	pk_attnum = riinfo->pk_attnums[i];
+
 		pkslot->tts_values[pk_attnum - 1] =
 			slot_getattr(fkslot, fk_attnum, &pkslot->tts_isnull[pk_attnum - 1]);
 	}
@@ -261,6 +262,7 @@ YbFindIndexRelation(ResultRelInfo *resultRelInfo, Oid indexid)
 {
 	RelationPtr desc = resultRelInfo->ri_IndexRelationDescs;
 	RelationPtr end = desc + resultRelInfo->ri_NumIndices;
+
 	for (; desc != end; ++desc)
 		if (*desc && RelationGetRelid(*desc) == indexid)
 			return *desc;
@@ -273,10 +275,12 @@ YbFindIndexRelation(ResultRelInfo *resultRelInfo, Oid indexid)
 static PartitionTupleRouting *
 YbGetProute(EState *estate, Relation pk_root_rel)
 {
-	ListCell *lc;
-	foreach (lc, estate->yb_es_pk_proutes)
+	ListCell   *lc;
+
+	foreach(lc, estate->yb_es_pk_proutes)
 	{
 		PartitionTupleRouting *proute = lfirst(lc);
+
 		if (YbPartitionTupleRoutingRootRelid(proute) ==
 			RelationGetRelid(pk_root_rel))
 			return proute;
@@ -284,8 +288,9 @@ YbGetProute(EState *estate, Relation pk_root_rel)
 
 	/* Could not find proute for pk_root_rel, create one. */
 	MemoryContext oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
-	PartitionTupleRouting *proute =
-		ExecSetupPartitionTupleRouting(estate, pk_root_rel);
+	PartitionTupleRouting *proute = ExecSetupPartitionTupleRouting(estate,
+																   pk_root_rel);
+
 	estate->yb_es_pk_proutes = lappend(estate->yb_es_pk_proutes, proute);
 	MemoryContextSwitchTo(oldcxt);
 
@@ -302,10 +307,10 @@ YbAllKeyTypesMatch(const RI_ConstraintInfo *riinfo, TupleDesc pkdesc,
 {
 	for (int i = 0; i < riinfo->nkeys; ++i)
 	{
-		const Oid pk_type_id =
-			TupleDescAttr(pkdesc, riinfo->pk_attnums[i] - 1)->atttypid;
-		const Oid fk_type_id =
-			TupleDescAttr(fkdesc, riinfo->fk_attnums[i] - 1)->atttypid;
+		const Oid	pk_type_id = TupleDescAttr(pkdesc,
+											   riinfo->pk_attnums[i] - 1)->atttypid;
+		const Oid	fk_type_id = TupleDescAttr(fkdesc,
+											   riinfo->fk_attnums[i] - 1)->atttypid;
 
 		if (pk_type_id != fk_type_id)
 			return false;
@@ -330,30 +335,34 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
 	 *  1. keys of PK's referenced index can be derived from FK slot.
 	 *  2. partition key of PK is a subset of all its unique indexes.
 	 */
-	TupleTableSlot *pkslot =
-		MakeTupleTableSlot(RelationGetDescr(pk_root_rel), &TTSOpsVirtual);
+	TupleTableSlot *pkslot = MakeTupleTableSlot(RelationGetDescr(pk_root_rel),
+												&TTSOpsVirtual);
+
 	YbFillPKFromFKSlot(riinfo, fkslot, pkslot);
 
 	/* Create ResultRelInfo for pk_rel. */
 	ResultRelInfo pk_root_rri = {0};
+
 	pk_root_rri.ri_RelationDesc = pk_root_rel;
 
 	/* Create dummy ModifyTableState object. */
 	ModifyTableState mtstate = {0};
+
 	mtstate.ps.plan = NULL;
 	mtstate.ps.state = estate;
 	mtstate.mt_nrels = 1;
 	mtstate.resultRelInfo = &pk_root_rri;
 	mtstate.rootResultRelInfo = &pk_root_rri;
 
-	Relation referenced_rel = NULL;
+	Relation	referenced_rel = NULL;
 
 	/* Get current context, will be helpful during error recovery. */
 	MemoryContext cur_context = GetCurrentMemoryContext();
+
 	PG_TRY();
 	{
-		ResultRelInfo *pk_part_rri =
-			ExecFindPartition(&mtstate, &pk_root_rri, proute, pkslot, estate);
+		ResultRelInfo *pk_part_rri = ExecFindPartition(&mtstate, &pk_root_rri,
+													   proute, pkslot, estate);
 
 		*leaf_root_conversion_map = ExecGetChildToRootMap(pk_part_rri);
 
@@ -362,11 +371,12 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
 		else
 		{
 			/* Find the partition's index supporting the FK constraint. */
-			ListCell *lc;
-			foreach (lc, YbRelationGetFKeyReferencedByList(pk_part_rri->ri_RelationDesc))
+			ListCell   *lc;
+
+			foreach(lc, YbRelationGetFKeyReferencedByList(pk_part_rri->ri_RelationDesc))
 			{
-				ForeignKeyCacheInfo *info =
-					lfirst_node(ForeignKeyCacheInfo, lc);
+				ForeignKeyCacheInfo *info = lfirst_node(ForeignKeyCacheInfo,
+														lc);
 
 				if (get_ri_constraint_root(info->conoid) !=
 					riinfo->constraint_root_id)
@@ -402,11 +412,12 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
  *	in referenced and referencing relation doesn't match.
  * ----------
  */
-static YbcPgYBTupleIdDescriptor*
+static YbcPgYBTupleIdDescriptor *
 YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 							TupleTableSlot *fkslot, EState *estate)
 {
-	Relation pk_rel = RelationIdGetRelation(riinfo->pk_relid);
+	Relation	pk_rel = RelationIdGetRelation(riinfo->pk_relid);
+
 	if (!YbAllKeyTypesMatch(riinfo, RelationGetDescr(pk_rel),
 							fkslot->tts_tupleDescriptor))
 	{
@@ -422,13 +433,14 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 		return NULL;
 	}
 
-	Relation pk_idx_rel = RelationIdGetRelation(riinfo->conindid);
-	bool using_index = pk_idx_rel->rd_index != NULL &&
-					   !pk_idx_rel->rd_index->indisprimary;
-	Relation referenced_rel = using_index ? pk_idx_rel : pk_rel;
+	Relation	pk_idx_rel = RelationIdGetRelation(riinfo->conindid);
+	bool		using_index = (pk_idx_rel->rd_index != NULL &&
+							   !pk_idx_rel->rd_index->indisprimary);
+	Relation	referenced_rel = using_index ? pk_idx_rel : pk_rel;
 
 	/* If PK is partitioned, set referenced_rel to the leaf relation/index. */
 	TupleConversionMap *leaf_root_conversion_map = NULL;
+
 	if (pk_rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 	{
 		if (!(referenced_rel = YbFindReferencedPartition(estate, riinfo,
@@ -449,9 +461,10 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 	Assert(!using_index ||
 		   IndexRelationGetNumberOfKeyAttributes(referenced_rel) == riinfo->nkeys);
 
-	Oid referenced_rel_relfilenode_oid = YbGetRelfileNodeId(referenced_rel);
-	Oid referenced_dboid = YBCGetDatabaseOid(referenced_rel);
+	Oid			referenced_rel_relfilenode_oid = YbGetRelfileNodeId(referenced_rel);
+	Oid			referenced_dboid = YBCGetDatabaseOid(referenced_rel);
 	YbcPgYBTupleIdDescriptor *result;
+
 	result =
 		YBCCreateYBTupleIdDescriptor(referenced_dboid,
 									 referenced_rel_relfilenode_oid,
@@ -459,25 +472,28 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 	YbcPgAttrValueDescriptor *next_attr = result->attrs;
 
 	YbcPgTableDesc ybc_referenced_table_desc = NULL;
+
 	HandleYBStatus(YBCPgGetTableDesc(referenced_dboid,
 									 referenced_rel_relfilenode_oid,
 									 &ybc_referenced_table_desc));
 
-	TupleDesc referenced_tupdesc = referenced_rel->rd_att;
+	TupleDesc	referenced_tupdesc = referenced_rel->rd_att;
+
 	for (int i = 0; i < riinfo->nkeys; ++i, ++next_attr)
 	{
-		int pk_attnum = riinfo->pk_attnums[i];
+		int			pk_attnum = riinfo->pk_attnums[i];
+
 		/* If PK relation is partitioned, find partititon's attnum. */
 		if (leaf_root_conversion_map)
 			pk_attnum = leaf_root_conversion_map->attrMap->attnums[pk_attnum - 1];
 		Assert(pk_attnum > 0);
 
-		next_attr->attr_num = using_index ?
-								  YbGetIndexAttnum(referenced_rel, pk_attnum) :
-								  pk_attnum;
+		next_attr->attr_num = (using_index ?
+							   YbGetIndexAttnum(referenced_rel, pk_attnum) :
+							   pk_attnum);
 
-		const FormData_pg_attribute *referenced_attr =
-			TupleDescAttr(referenced_tupdesc, next_attr->attr_num - 1);
+		const FormData_pg_attribute *referenced_attr = TupleDescAttr(referenced_tupdesc,
+																	 next_attr->attr_num - 1);
 
 		next_attr->type_entity = YbDataTypeFromOidMod(next_attr->attr_num,
 													  referenced_attr->atttypid);
@@ -492,6 +508,7 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 			slot_getattr(fkslot, riinfo->fk_attnums[i], &next_attr->is_null);
 
 		YbcPgColumnInfo column_info = {0};
+
 		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_referenced_table_desc,
 												   next_attr->attr_num,
 												   &column_info),
@@ -628,19 +645,21 @@ RI_FKey_check(TriggerData *trigdata)
 		 * relation can be build from referencing table tuple.
 		 */
 		Assert(trigdata->estate);
-		YbcPgYBTupleIdDescriptor *descr =
-			YBCBuildYBTupleIdDescriptor(riinfo, newslot, trigdata->estate);
+		YbcPgYBTupleIdDescriptor *descr = YBCBuildYBTupleIdDescriptor(riinfo,
+																	  newslot,
+																	  trigdata->estate);
 
 		if (descr)
 		{
-			bool found = false;
+			bool		found = false;
+
 			HandleYBStatus(YBCForeignKeyReferenceExists(descr, &found));
 			pfree(descr);
 			if (!found)
 			{
 				ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CHECK_LOOKUPPK);
 				ri_ReportViolation(riinfo, pk_rel, fk_rel, newslot, NULL, qkey.constr_queryno,
-								   false /* partgone */);
+								   false /* partgone */ );
 			}
 			table_close(pk_rel, RowShareLock);
 			return PointerGetDatum(NULL);
@@ -3363,7 +3382,7 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 	descr =
 		YBCBuildYBTupleIdDescriptor(ri_FetchConstraintInfo(trigger,
 														   fk_rel,
-														   false /* rel_is_pk */),
+														   false /* rel_is_pk */ ),
 									new_slot, estate);
 	/*
 	 * Check that ybctid for row in source table can be build from referenced table tuple
@@ -3375,10 +3394,11 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 		 * Foreign key with at least one null value of real (non system) column
 		 * will not be checked, no need to add it into the cache.
 		 */
-		bool null_found = false;
+		bool		null_found = false;
+
 		for (YbcPgAttrValueDescriptor *attr = descr->attrs,
-			*end = descr->attrs + descr->nattrs;
-			attr != end && !null_found; ++attr)
+			 *end = descr->attrs + descr->nattrs;
+			 attr != end && !null_found; ++attr)
 			null_found = attr->is_null && (attr->attr_num > 0);
 
 		if (!null_found)
@@ -3391,7 +3411,7 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
  * Check if a trigger description contains any non RI trigger.
  */
 bool
-HasNonRITrigger(const TriggerDesc* trigDesc)
+HasNonRITrigger(const TriggerDesc *trigDesc)
 {
 	for (int i = trigDesc ? trigDesc->numtriggers : 0; i > 0; i--)
 	{

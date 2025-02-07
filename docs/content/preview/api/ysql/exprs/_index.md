@@ -16,10 +16,9 @@ YSQL supports all PostgreSQL-compatible built-in functions and operators. The fo
 
 | Statement | Description |
 |-----------|-------------|
-| [nextval()](func_nextval) | Returns the next value for the specified sequence in the current session |
-| [currval()](func_currval) | Returns the value returned by the most recent call to _nextval()_ for the specified sequence in the current session |
-| [lastval()](func_lastval) | Returns the value returned by the most recent call to _nextval()_ for _any_ sequence in the current session |
 | [yb_hash_code()](func_yb_hash_code) | Returns the partition hash code for a given set of expressions |
+| [gen_random_uuid()](func_gen_random_uuid) | Returns a random UUID |
+| [Sequence functions](sequence_functions/) | Functions operating on sequences |
 | [Geo-partitioning helper functions](./geo_partitioning_helper_functions/) | Detailed list of geo-partitioning helper functions |
 | [JSON functions and operators](../datatypes/type_json/functions-operators/) | Detailed list of JSON-specific functions and operators |
 | [Array functions and operators](../datatypes/type_array/functions-operators/) | Detailed list of array-specific functions and operators |

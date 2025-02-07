@@ -44,20 +44,19 @@ typedef enum
 typedef struct YbTIDBitmap
 {
 	NodeTag		type;			/* to make it a valid Node */
-	YbcSliceSet	ybctid_set;		/* C++ set that contains my ybctids */
+	YbcSliceSet ybctid_set;		/* C++ set that contains my ybctids */
 	int			nentries;		/* number of entries in the bitmap */
-	YbTBMIteratingState iterating;
-								/* yb_tbm_begin_iterate called? */
-	size_t		bytes_consumed;	/* sum of the size of the ybctids */
+	YbTBMIteratingState iterating;	/* yb_tbm_begin_iterate called? */
+	size_t		bytes_consumed; /* sum of the size of the ybctids */
 	bool		work_mem_exceeded;	/* if bytes_consumed exceeds work_mem */
 } YbTIDBitmap;
 
 /* Result structure for tbm_iterate */
 typedef struct
 {
-	YbcConstSliceVector	ybctid_vector;
-	size_t				index;
-	size_t				prefetched_index;
+	YbcConstSliceVector ybctid_vector;
+	size_t		index;
+	size_t		prefetched_index;
 } YbTBMIterateResult;
 
 /* function prototypes in nodes/tidbitmap.c */

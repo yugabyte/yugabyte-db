@@ -159,10 +159,10 @@ libraryDependencies ++= Seq(
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
   "org.codehaus.janino" % "janino" % "3.1.9",
-  "org.apache.commons" % "commons-lang3" % "3.14.0",
+  "org.apache.commons" % "commons-lang3" % "3.17.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
-  "org.apache.commons" % "commons-compress" % "1.26.0",
-  "org.apache.commons" % "commons-csv" % "1.10.0",
+  "org.apache.commons" % "commons-compress" % "1.27.1",
+  "org.apache.commons" % "commons-csv" % "1.13.0",
   "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
   "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
   "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
@@ -171,7 +171,7 @@ libraryDependencies ++= Seq(
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
-  "org.springframework.security" % "spring-security-core" % "5.8.11",
+  "org.springframework.security" % "spring-security-core" % "5.8.16",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.768",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.768",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.768",
@@ -686,7 +686,7 @@ lazy val pythonGenV2Client = project.in(file("client/python"))
 // Generate a Go API client.
 lazy val gogen = project.in(file("client/go"))
   .settings(
-    openApiInputSpec := "src/main/resources/swagger.json",
+    openApiInputSpec := "src/main/resources/swagger-all.json",
     openApiGeneratorName := "go",
     openApiOutputDir := "client/go/v1",
     openApiGenerateModelTests := SettingDisabled,
@@ -928,8 +928,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.97-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.0-b10"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.98-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b1"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(
@@ -1146,6 +1146,7 @@ lazy val swagger = project
       // Consider generating this only in managedResources
       val swaggerJson = (root / Compile / resourceDirectory).value / "swagger.json"
       val swaggerStrictJson = (root / Compile / resourceDirectory).value / "swagger-strict.json"
+      val swaggerAllJson = (root / Compile / resourceDirectory).value / "swagger-all.json"
       Def.sequential(
         (Test / runMain )
           .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerJson"),
@@ -1156,6 +1157,8 @@ lazy val swagger = project
         // or use '--exclude_deprecated all' to drop all deprecated APIs
         (Test / runMain )
           .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerStrictJson --exclude_deprecated all"),
+        (Test / runMain )
+          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerAllJson --exclude_internal none")
       )
     }.value,
 

@@ -46,7 +46,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/dockv/partition.h"
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"
@@ -117,6 +117,8 @@ class RemoteTabletServer {
   // This will involve a DNS lookup if there is not already an active proxy.
   // If there is an active proxy, does nothing.
   Status InitProxy(YBClient* client);
+
+  Result<std::shared_ptr<tserver::TabletServerServiceProxy>> ObtainProxy(YBClient& client);
 
   // Update information from the given pb.
   // Requires that 'pb''s UUID matches this server.

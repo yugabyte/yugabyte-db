@@ -1160,6 +1160,11 @@ Status PgApiImpl::CreateIndexSetVectorOptions(PgStatement* handle, YbcPgVectorId
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle)).SetVectorOptions(options);
 }
 
+Status PgApiImpl::CreateIndexSetHnswOptions(PgStatement* handle, int ef_construction, int m) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle))
+      .SetHnswOptions(ef_construction, m);
+}
+
 Status PgApiImpl::ExecCreateIndex(PgStatement* handle) {
   return ExecDdlWithSyscatalogChanges<PgCreateIndex>(handle, *pg_session_);
 }
@@ -1231,6 +1236,11 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
   table_id.ToPB(req.mutable_table_id());
   return pg_session_->pg_client().BackfillIndex(
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
+}
+
+Status PgApiImpl::WaitVectorIndexReady(const PgObjectId& table_id) {
+  while (!VERIFY_RESULT(pg_session_->pg_client().PollVectorIndexReady(table_id))) {}
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2052,8 +2062,8 @@ Status PgApiImpl::GetIndexBackfillProgress(std::vector<PgObjectId> oids,
   return pg_session_->GetIndexBackfillProgress(oids, backfill_statuses);
 }
 
-Status PgApiImpl::ValidatePlacement(const char *placement_info) {
-  return pg_session_->ValidatePlacement(placement_info);
+Status PgApiImpl::ValidatePlacement(const char *placement_info, bool check_satisfiable) {
+  return pg_session_->ValidatePlacement(placement_info, check_satisfiable);
 }
 
 void PgApiImpl::StartSysTablePrefetching(const PrefetcherOptions& options) {
@@ -2255,5 +2265,23 @@ Status PgApiImpl::ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvis
 Status PgApiImpl::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
   return pg_session_->ReleaseAllAdvisoryLocks(db_oid);
 }
+
+//------------------------------------------------------------------------------------------------
+// Export/Import Pg Txn Snapshot.
+//------------------------------------------------------------------------------------------------
+
+Result<std::string> PgApiImpl::ExportSnapshot(
+    const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time) {
+  return pg_txn_manager_->ExportSnapshot(snapshot, explicit_read_time);
+}
+
+Result<std::optional<YbcPgTxnSnapshot>> PgApiImpl::SetTxnSnapshot(
+    PgTxnSnapshotDescriptor snapshot_descriptor) {
+  return pg_txn_manager_->SetTxnSnapshot(snapshot_descriptor);
+}
+
+bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->HasExportedSnapshots(); }
+
+void PgApiImpl::ClearExportedTxnSnapshots() { pg_txn_manager_->ClearExportedTxnSnapshots(); }
 
 } // namespace yb::pggate

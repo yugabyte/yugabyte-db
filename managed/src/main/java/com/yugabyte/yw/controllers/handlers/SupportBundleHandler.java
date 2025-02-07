@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -114,6 +115,20 @@ public class SupportBundleHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, "'promDumpStartDate' should be before the 'promDumpEndDate'");
     }
+
+    // Vaidate that the given query names can be used as dir.
+    bundleData
+        .promQueries
+        .keySet()
+        .forEach(
+            queryName -> {
+              try {
+                Paths.get(queryName);
+              } catch (Exception e) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST, "Invalid query name: " + queryName + " in prom queries!");
+              }
+            });
   }
 
   /**

@@ -424,6 +424,8 @@ YbcStatus YBCPgCreateIndexSetNumTablets(YbcPgStatement handle, int32_t num_table
 
 YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdxOptions *options);
 
+YbcStatus YBCPgCreateIndexSetHnswOptions(YbcPgStatement handle, int ef_construction, int m);
+
 YbcStatus YBCPgExecCreateIndex(YbcPgStatement handle);
 
 YbcStatus YBCPgNewDropIndex(YbcPgOid database_oid,
@@ -445,6 +447,10 @@ YbcStatus YBCPgWaitForBackendsCatalogVersion(
     int* num_lagging_backends);
 
 YbcStatus YBCPgBackfillIndex(
+    const YbcPgOid database_oid,
+    const YbcPgOid index_relfilenode_oid);
+
+YbcStatus YBCPgWaitVectorIndexReady(
     const YbcPgOid database_oid,
     const YbcPgOid index_relfilenode_oid);
 
@@ -708,8 +714,9 @@ YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
 
 // System validation -------------------------------------------------------------------------------
-// Validate placement information
-YbcStatus YBCPgValidatePlacement(const char *placement_info);
+// Validate whether placement information is theoretically valid. If check_satisfiable is true,
+// also check whether the current set of tservers can satisfy the requested placement.
+YbcStatus YBCPgValidatePlacement(const char *placement_info, bool check_satisfiable);
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.
@@ -949,6 +956,14 @@ YbcStatus YBCAcquireAdvisoryLock(
     YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);
 YbcStatus YBCReleaseAdvisoryLock(YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode mode);
 YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid);
+
+YbcStatus YBCPgExportSnapshot(
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const uint64_t* explicit_read_time);
+YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot);
+YbcStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time);
+
+bool YBCPgHasExportedSnapshots();
+void YBCPgClearExportedTxnSnapshots();
 
 #ifdef __cplusplus
 }  // extern "C"

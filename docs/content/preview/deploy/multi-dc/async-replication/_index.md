@@ -1,8 +1,8 @@
 ---
 title: xCluster deployments
 headerTitle: xCluster deployment
-linkTitle: xCluster deployments
-description: Deploy unidirectional (master-follower) or bidirectional (multi-master) replication between universes
+linkTitle: xCluster
+description: Deploy unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes
 headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
 menu:
   preview:
@@ -18,15 +18,15 @@ For information on xCluster deployment architecture, replication scenarios, and 
 {{<index/block>}}
 
   {{<index/item
-    title="Deploy xCluster"
-    body="Set up unidirectional or bidirectional replication."
-    href="async-deployment/"
-    icon="fa-light fa-copy">}}
-
-  {{<index/item
     title="Deploy transactional xCluster"
     body="Set up transactional unidirectional replication."
     href="async-replication-transactional/"
     icon="fa-light fa-money-from-bracket">}}
+
+  {{<index/item
+    title="Deploy non-transactional xCluster"
+    body="Set up non-transactional unidirectional or bidirectional replication."
+    href="async-deployment/"
+    icon="fa-light fa-copy">}}
 
 {{</index/block>}}

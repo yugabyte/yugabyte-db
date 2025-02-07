@@ -98,5 +98,6 @@ yugabyte=# SELECT newcnt(*) FROM pg_aggregate;
 
 ## See also
 
-- [`DROP AGGREGATE`](../ddl_drop_aggregate)
-- [postgresql-docs-create-aggregate](https://www.postgresql.org/docs/current/sql-createaggregate.html)
+- [DROP AGGREGATE](../ddl_drop_aggregate)
+
+[postgresql-docs-create-aggregate]: https://www.postgresql.org/docs/11/sql-createaggregate.html

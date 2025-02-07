@@ -172,7 +172,7 @@ public class Util {
 
   public static final String YBA_VERSION_REGEX = "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$";
 
-  private static final List<String> specialCharacters =
+  public static final List<String> SPECIAL_CHARACTERS_STRING_LIST =
       ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
   private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
@@ -780,6 +780,19 @@ public class Util {
     }
   }
 
+  public static String getYwHostnameOrIP() {
+    String host = getHostname();
+    // ignore localhost as this method is intended for producing an identifying label of YBA
+    if (StringUtils.isNotBlank(host) && !host.equalsIgnoreCase("localhost")) {
+      return host;
+    }
+    String ip = getHostIP();
+    if (!ip.equalsIgnoreCase("127.0.0.1")) {
+      return ip;
+    }
+    return "";
+  }
+
   public static String getNodeIp(Universe universe, NodeDetails node) {
     String ip = null;
     if (node.cloudInfo == null || node.cloudInfo.private_ip == null) {
@@ -1240,7 +1253,8 @@ public class Util {
     String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
     String uppercaseLetter = lowercaseLetter.toUpperCase();
     generatedPassword +=
-        (specialCharacters.get(new Random().nextInt(specialCharacters.size()))
+        (SPECIAL_CHARACTERS_STRING_LIST.get(
+                new Random().nextInt(SPECIAL_CHARACTERS_STRING_LIST.size()))
             + lowercaseLetter
             + uppercaseLetter
             + String.valueOf(randomInt));

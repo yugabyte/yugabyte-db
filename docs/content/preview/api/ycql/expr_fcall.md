@@ -9,7 +9,6 @@ menu:
     weight: 1350
 aliases:
   - /preview/api/cassandra/expr_fcall
-  - /preview/api/ycql/expr_fcall
 type: docs
 ---
 
@@ -194,4 +193,4 @@ SELECT TTL(views) FROM page_views;
 
 ## See also
 
-- [All Expressions](..##expressions)
+- [All Expressions](../#expressions)

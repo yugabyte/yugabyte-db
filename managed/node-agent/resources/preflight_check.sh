@@ -36,6 +36,20 @@ ysql_server_http_port="13000"
 ysql_server_rpc_port="5433"
 node_exporter_port="9300"
 
+PYTHON_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8' 'python')
+PYTHON_EXECUTABLE=""
+# Set python executable
+set_python_executable() {
+  for py_executable in "${PYTHON_EXECUTABLES[@]}"; do
+    if which "$py_executable" > /dev/null 2>&1; then
+      PYTHON_EXECUTABLE="$py_executable"
+      export PYTHON_EXECUTABLE
+      return
+    fi
+  done
+}
+set_python_executable
+
 preflight_provision_check() {
   # Check for internet access.
   if [[ "$airgap" = false ]]; then
@@ -147,10 +161,20 @@ check_ntp_synchronization() {
     # Check if one of chronyd, ntpd and systemd-timesyncd is running on the node
     service_regex="Active: active \(running\)"
     service_check=false
+    skew_ms=500
     for ntp_service in chronyd ntp ntpd systemd-timesyncd; do
       service_status=$(systemctl status $ntp_service)
       if [[ $service_status =~ $service_regex ]]; then
         service_check=true
+        if [[ $ntp_service == "chronyd" ]]; then
+          chrony_tracking="$(chronyc tracking)"
+          skew=$(echo "${chrony_tracking}" | awk "/System time/ {print \$4}")
+          skew_ms=$("${PYTHON_EXECUTABLE}" -c "print(int(${skew} * 1000))")
+        elif [[ $ntp_service == "ntp" || $ntp_service == "ntpd" ]]; then
+          skew_ms=$(ntpq -p | awk '$1 ~ "^*" {print $9}')
+        elif [[ $ntp_service == "systemd-timesyncd" ]]; then
+          skew_ms=0
+        fi
         break
       fi
     done
@@ -158,6 +182,11 @@ check_ntp_synchronization() {
       update_result_json "ntp_service_status" true
     else
       update_result_json "ntp_service_status" false
+    fi
+    if [[ $skew_ms -lt 400 ]]; then
+      update_result_json "ntp_skew" true
+    else
+      update_result_json "ntp_skew" false
     fi
   fi
 }

@@ -322,6 +322,7 @@ AddInvalidationMessage(InvalidationMsgsGroup *group, int subgroup,
 	}
 	/* Okay, add message to current group */
 	SharedInvalidationMessage *dest = &ima->msgs[nextindex];
+
 	*dest = *msg;
 	dest->yb_header.sender_pid = getpid();
 	group->nextmsg[subgroup]++;
@@ -633,7 +634,10 @@ RegisterSnapshotInvalidation(Oid dbId, Oid relId)
 void
 LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 {
-	/* In YB mode all messages originated by other processes are silently ignored */
+	/*
+	 * In YB mode all messages originated by other processes are silently
+	 * ignored
+	 */
 	if (IsYugaByteEnabled() && msg->yb_header.sender_pid != getpid())
 		return;
 
@@ -724,10 +728,14 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 void
 InvalidateSystemCaches(void)
 {
-	if (IsYugaByteEnabled()) {
-		// In case of YugaByte it is necessary to refresh YB caches by calling 'YBRefreshCache'.
-		// But it can't be done here as 'YBRefreshCache' can't be called from within the
-		// transaction. Resetting catalog version will force cache refresh as soon as possible.
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * In case of YugaByte it is necessary to refresh YB caches by calling
+		 * 'YBRefreshCache'. But it can't be done here as 'YBRefreshCache'
+		 * can't be called from within the transaction. Resetting catalog
+		 * version will force cache refresh as soon as possible.
+		 */
 		YbResetCatalogCacheVersion();
 		return;
 	}
@@ -772,7 +780,7 @@ InvalidateSystemCachesExtended(bool debug_discard, bool yb_callback)
 void
 CallSystemCacheCallbacks(void)
 {
-	InvalidateSystemCachesExtended(true, true /* yb_callback */);
+	InvalidateSystemCachesExtended(true, true /* yb_callback */ );
 }
 
 /* ----------------------------------------------------------------

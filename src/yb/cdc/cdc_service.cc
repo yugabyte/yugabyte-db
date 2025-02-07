@@ -206,6 +206,9 @@ DEFINE_RUNTIME_AUTO_bool(
 DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
     "When enabled, users will be able to create a CDC stream having IMPLICIT checkpointing.");
 
+DEFINE_RUNTIME_uint32(cdc_max_virtual_wal_per_tserver, 5,
+                      "Maximum VirtualWAL instances that can be present on a tserver at any time.");
+
 DECLARE_int32(log_min_seconds_to_retain);
 
 static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
@@ -1719,6 +1722,7 @@ void CDCServiceImpl::GetChanges(
   }
 
   bool report_tablet_split = false;
+  CDCThroughputMetrics throughput_metrics;
   // Read the latest changes from the Log.
   if (record.GetSourceType() == XCLUSTER) {
     // Check AutoFlags version and fail early on errors before scanning the WAL.
@@ -1777,7 +1781,7 @@ void CDCServiceImpl::GetChanges(
         &commit_timestamp, &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
         consistent_snapshot_time, req->wal_segment_index(), &last_readable_index,
         tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline,
-        getchanges_resp_max_size_bytes);
+        getchanges_resp_max_size_bytes, &throughput_metrics);
     // This specific error from the docdb_pgapi layer is used to identify enum cache entry is
     // out of date, hence we need to repopulate.
     if (status.IsCacheMissError()) {
@@ -1813,7 +1817,7 @@ void CDCServiceImpl::GetChanges(
           &commit_timestamp, &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
           consistent_snapshot_time, req->wal_segment_index(), &last_readable_index,
           tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline,
-          getchanges_resp_max_size_bytes);
+          getchanges_resp_max_size_bytes, &throughput_metrics);
     }
     // This specific error indicates that a tablet split occured on the tablet.
     if (status.IsTabletSplit()) {
@@ -1978,7 +1982,9 @@ void CDCServiceImpl::GetChanges(
     }
   }
   // Update relevant GetChanges metrics before handing off the Response.
-  UpdateTabletMetrics(*resp, producer_tablet, tablet_peer, from_op_id, record, last_readable_index);
+  UpdateTabletMetrics(
+      *resp, producer_tablet, tablet_peer, from_op_id, record, last_readable_index,
+      throughput_metrics);
 
   if (report_tablet_split) {
     RPC_STATUS_RETURN_ERROR(
@@ -2142,6 +2148,31 @@ void CDCServiceImpl::ProcessMetricsForEmptyChildrenTablets(
   }
 }
 
+Result<StreamIdHybridTimeMap> CDCServiceImpl::GetStreamIdToRestartTimeMap(
+    const CDCStateTableRange& table_range, Status* iteration_status) {
+  StreamIdHybridTimeMap stream_id_to_restart_time;
+  for (const auto& entry_result : table_range) {
+    if (!entry_result) {
+      LOG(WARNING) << "Failed to read cdc_state entry. "
+                   << entry_result.status();
+      return entry_result.status();
+    }
+    const auto& entry = *entry_result;
+
+    if (entry.key.tablet_id != kCDCSDKSlotEntryTabletId) {
+      continue;
+    }
+
+    RSTATUS_DCHECK(
+        entry.record_id_commit_time.has_value(), NotFound,
+        "Restart time not present in slot entry for the stream {}", entry.key.stream_id);
+    stream_id_to_restart_time.emplace(entry.key.stream_id, *entry.record_id_commit_time);
+  }
+
+  RETURN_NOT_OK(*iteration_status);
+  return stream_id_to_restart_time;
+}
+
 void CDCServiceImpl::UpdateMetrics() {
   auto tablet_checkpoints = impl_->TabletCheckpointsCopy();
   TabletInfoToLastReplicationTimeMap cdc_state_tablets_to_last_replication_time;
@@ -2155,6 +2186,13 @@ void CDCServiceImpl::UpdateMetrics() {
   if (!range_result) {
     YB_LOG_EVERY_N_SECS(WARNING, 30) << "Could not update metrics: " << range_result.status();
     return;
+  }
+
+  auto stream_id_to_restart_time_result =
+      GetStreamIdToRestartTimeMap(*range_result, &iteration_status);
+  if (!stream_id_to_restart_time_result.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 30) << " Error getting restart times for the slots "
+                                     << stream_id_to_restart_time_result.status();
   }
 
   for (auto entry_result : *range_result) {
@@ -2240,6 +2278,7 @@ void CDCServiceImpl::UpdateMetrics() {
 
       if (!is_leader) {
         tablet_metric->cdcsdk_sent_lag_micros->set_value(0);
+        tablet_metric->cdcsdk_flush_lag->set_value(0);
       } else {
         auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
         auto cdc_state_last_replication_time_micros =
@@ -2248,6 +2287,18 @@ void CDCServiceImpl::UpdateMetrics() {
         ComputeLagMetric(
             last_replicated_micros, last_sent_micros, cdc_state_last_replication_time_micros,
             tablet_metric->cdcsdk_sent_lag_micros);
+
+        if (stream_id_to_restart_time_result.ok()) {
+          if (stream_id_to_restart_time_result->contains(tablet_info.stream_id)) {
+            const int64_t flush_lag_value =
+                last_replicated_micros -
+                (*stream_id_to_restart_time_result)[tablet_info.stream_id].GetPhysicalValueMicros();
+            tablet_metric->cdcsdk_flush_lag->set_value(flush_lag_value > 0 ? flush_lag_value : 0);
+          } else {
+            // We will set the value of cdcsdk_flush_lag metric to zero for gRPC model.
+            tablet_metric->cdcsdk_flush_lag->set_value(0);
+          }
+        }
       }
     } else {
       // xCluster metrics.
@@ -2499,12 +2550,13 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
       if (slot_entries_to_be_deleted && !slot_entries_to_be_deleted->contains(stream_id)) {
         // This is possible when Update Peers and Metrics thread comes into action before the slot
         // entry is added to the cdc_state table.
-        if (!namespace_to_min_record_id_commit_time.contains(namespace_id)) {
+        auto it = namespace_to_min_record_id_commit_time.find(namespace_id);
+        if (it == namespace_to_min_record_id_commit_time.end()) {
           LOG(WARNING) << "Did not find any value for record_id_commit_time for the namespace: "
                        << namespace_id;
           return;
         }
-        cdc_sdk_safe_time = HybridTime(namespace_to_min_record_id_commit_time.at(namespace_id));
+        cdc_sdk_safe_time = HybridTime(it->second);
       }
     } else if (entry.cdc_sdk_safe_time) {
       cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
@@ -2554,7 +2606,8 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
     if (!status.ok()) {
       // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
       // such entries to the expired_tables_map.
-      if (expired_tables_map && checkpoint != OpId::Max()) {
+      if (expired_tables_map && checkpoint != OpId::Max() &&
+          !IsReplicationSlotStream(stream_metadata)) {
         AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
       }
 
@@ -2571,7 +2624,8 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
     if (!status.ok()) {
       // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
       // such entries to the expired_tables_map.
-      if (expired_tables_map && checkpoint != OpId::Max()) {
+      if (expired_tables_map && checkpoint != OpId::Max() &&
+          !IsReplicationSlotStream(stream_metadata)) {
         AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
       }
 
@@ -2731,15 +2785,14 @@ CDCServiceImpl::GetNamespaceMinRecordIdCommitTimeMap(
     }
 
     auto stream_metadata = VERIFY_RESULT(GetStream(stream_id));
-    auto namespace_id = stream_metadata->GetNamespaceId();
+    auto namespace_id = (*stream_metadata).GetNamespaceId();
 
     auto record_id_commit_time = *entry.record_id_commit_time;
-    if (!namespace_to_min_record_id_commit_time.contains(namespace_id)) {
-      namespace_to_min_record_id_commit_time.insert({namespace_id, record_id_commit_time});
-      continue;
+    auto [it, inserted] = namespace_to_min_record_id_commit_time.try_emplace(
+        namespace_id, record_id_commit_time);
+    if (!inserted) {
+      it->second = std::min(it->second, record_id_commit_time);
     }
-    namespace_to_min_record_id_commit_time[namespace_id] =
-        std::min(namespace_to_min_record_id_commit_time[namespace_id], record_id_commit_time);
   }
 
   RETURN_NOT_OK(*iteration_status);
@@ -2884,11 +2937,15 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
       &iteration_status));
 
   // Get the minimum record_id_commit_time for each namespace by looking at all the slot entries.
-  std::unordered_map<NamespaceId, uint64_t> namespace_to_min_record_id_commit_time;
+  Result<std::unordered_map<NamespaceId, uint64_t>> namespace_to_min_record_id_commit_time =
+      std::unordered_map<NamespaceId, uint64_t>();
   StreamIdSet streams_with_tablet_entries_to_be_deleted;
   if (FLAGS_ysql_yb_enable_replication_slot_consumption) {
-    namespace_to_min_record_id_commit_time = VERIFY_RESULT(GetNamespaceMinRecordIdCommitTimeMap(
-        table_range, &iteration_status, &slot_entries_to_be_deleted));
+    namespace_to_min_record_id_commit_time = GetNamespaceMinRecordIdCommitTimeMap(
+        table_range, &iteration_status, &slot_entries_to_be_deleted);
+    LOG_IF(WARNING, !namespace_to_min_record_id_commit_time.ok())
+        << "Failed to get namespace_to_min_record_id_commit_time: "
+        << namespace_to_min_record_id_commit_time.status();
   }
 
   for (auto entry_result : table_range) {
@@ -2958,20 +3015,29 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
       streams_with_tablet_entries_to_be_deleted.insert(stream_id);
     }
 
-    if (stream_metadata.GetSourceType() == CDCSDK) {
-      auto tablet_peer = context_->LookupTablet(tablet_id);
-      if (!tablet_peer) {
-        LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
-                     << ". Will not update its peers in this round";
+    switch (stream_metadata.GetSourceType()) {
+      case CDCRequestSource::CDCSDK: {
+        if (!namespace_to_min_record_id_commit_time.ok()) {
+          continue;
+        }
+        auto tablet_peer = context_->LookupTablet(tablet_id);
+        if (!tablet_peer) {
+          LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
+                       << ". Will not update its peers in this round";
+          continue;
+        }
+
+        ProcessEntryForCdcsdk(
+            entry, stream_metadata, tablet_peer, cdcsdk_min_checkpoint_map,
+            &slot_entries_to_be_deleted, *namespace_to_min_record_id_commit_time,
+            &expired_tables_map);
         continue;
       }
-
-      ProcessEntryForCdcsdk(
-          entry, stream_metadata, tablet_peer, cdcsdk_min_checkpoint_map,
-          &slot_entries_to_be_deleted, namespace_to_min_record_id_commit_time, &expired_tables_map);
-    } else if (stream_metadata.GetSourceType() == XCLUSTER) {
-      ProcessEntryForXCluster(entry, xcluster_tablet_min_opid_map);
+      case CDCRequestSource::XCLUSTER:
+        ProcessEntryForXCluster(entry, xcluster_tablet_min_opid_map);
+        continue;
     }
+    FATAL_INVALID_ENUM_VALUE(CDCRequestSource, stream_metadata.GetSourceType());
   }
 
   RETURN_NOT_OK(iteration_status);
@@ -4223,12 +4289,14 @@ Result<uint64_t> CDCServiceImpl::GetSafeTime(
 void CDCServiceImpl::UpdateTabletMetrics(
     const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
-    const StreamMetadata& stream_metadata, int64_t last_readable_index) {
+    const StreamMetadata& stream_metadata, int64_t last_readable_index,
+    const CDCThroughputMetrics& throughput_metrics) {
   if (stream_metadata.GetSourceType() == XCLUSTER) {
     UpdateTabletXClusterMetrics(resp, producer_tablet, tablet_peer, op_id, last_readable_index);
   } else {
     UpdateTabletCDCSDKMetrics(
-        resp, producer_tablet, tablet_peer, stream_metadata.GetReplicationSlotName());
+        resp, producer_tablet, tablet_peer, throughput_metrics,
+        stream_metadata.GetReplicationSlotName());
   }
 }
 
@@ -4290,6 +4358,7 @@ void CDCServiceImpl::UpdateTabletXClusterMetrics(
 void CDCServiceImpl::UpdateTabletCDCSDKMetrics(
     const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const CDCThroughputMetrics& throughput_metrics,
     const std::optional<std::string>& slot_name) {
   auto tablet_metric_result = GetCDCSDKTabletMetrics(
       *tablet_peer.get(), producer_tablet.stream_id, CreateMetricsEntityIfNotFound::kTrue,
@@ -4302,7 +4371,7 @@ void CDCServiceImpl::UpdateTabletCDCSDKMetrics(
   auto& tablet_metric = tablet_metric_result.get();
 
   const auto cdc_sdk_proto_records_size = resp.cdc_sdk_proto_records_size();
-  tablet_metric->cdcsdk_change_event_count->IncrementBy(cdc_sdk_proto_records_size);
+  tablet_metric->cdcsdk_change_event_count->IncrementBy(throughput_metrics.records_sent);
   tablet_metric->cdcsdk_expiry_time_ms->set_value(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
   if (cdc_sdk_proto_records_size <= 0) {
     auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
@@ -4311,15 +4380,15 @@ void CDCServiceImpl::UpdateTabletCDCSDKMetrics(
     return;
   }
 
-  tablet_metric->cdcsdk_traffic_sent->IncrementBy(
-      cdc_sdk_proto_records_size * resp.cdc_sdk_proto_records(0).ByteSize());
+  tablet_metric->cdcsdk_traffic_sent->IncrementBy(throughput_metrics.bytes_sent);
   auto last_record_time = GetCDCSDKLastSendRecordTime(resp);
   auto last_record_micros = last_record_time
                                 ? last_record_time.value()
                                 : tablet_metric->cdcsdk_last_sent_physicaltime->value();
   auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
   tablet_metric->cdcsdk_last_sent_physicaltime->set_value(last_record_micros);
-  tablet_metric->cdcsdk_sent_lag_micros->set_value(last_replicated_micros - last_record_micros);
+  const int64_t sent_lag_value = last_replicated_micros - last_record_micros;
+  tablet_metric->cdcsdk_sent_lag_micros->set_value(sent_lag_value > 0 ? sent_lag_value : 0);
 }
 
 bool CDCServiceImpl::IsCDCSDKSnapshotDone(const GetChangesRequestPB& req) {
@@ -4879,6 +4948,16 @@ void CDCServiceImpl::InitVirtualWALForCDC(
             session_id),
         resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
+    RPC_CHECK_AND_RETURN_ERROR(
+        session_virtual_wal_.size() < FLAGS_cdc_max_virtual_wal_per_tserver,
+        STATUS_FORMAT(
+            InternalError,
+            "Failed to create VirtualWAL for stream: $0 & session_id: $1 as max capacity reached "
+            "for VirtualWAL "
+            "on tserver",
+            stream_id, session_id),
+        resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
     virtual_wal = std::make_shared<CDCSDKVirtualWAL>(
         this, stream_id, session_id, lsn_type);
     session_virtual_wal_[session_id] = virtual_wal;
@@ -5012,6 +5091,22 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
   context.RespondSuccess();
 }
 
+std::vector<uint64_t> CDCServiceImpl::FilterVirtualWalSessions(
+    const std::vector<uint64_t>& session_ids) {
+  std::vector<uint64_t> vwal_sessions;
+
+  {
+    SharedLock l(mutex_);
+    for (const auto& session_id : session_ids) {
+      if (session_virtual_wal_.contains(session_id)) {
+        vwal_sessions.push_back(session_id);
+      }
+    }
+  }
+
+  return vwal_sessions;
+}
+
 void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids) {
   // Return early without acquiring the mutex_ in case the walsender consumption feature is disabled
   // or there are no sessions to be cleaned up.
@@ -5019,21 +5114,10 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& s
     return;
   }
 
+  // The call to FilterVirtualWalSessions from pg_client_service will ensure that we are only
+  // receiving session_ids here which belong to a virtual WAL session and thus we will also
+  // ensure that we do not end up spewing the following log for every expired session.
   LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request: " << AsString(session_ids);
-
-  auto it = session_ids.begin();
-  {
-    SharedLock lock(mutex_);
-    for (; it != session_ids.end(); ++it) {
-      if (session_virtual_wal_.contains(*it)) {
-        break;
-      }
-    }
-  }
-
-  if (it == session_ids.end()) {
-    return;
-  }
 
   // Ideally, we should not depend on this mutex_ as this function gets called from the session
   // cleanup bg thread from pg_client_service which is time sensitive.
@@ -5042,7 +5126,7 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& s
   {
     std::lock_guard l(mutex_);
 
-    for (; it != session_ids.end(); ++it) {
+    for (auto it = session_ids.begin(); it != session_ids.end(); ++it) {
       if (session_virtual_wal_.erase(*it)) {
         LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
       }

@@ -205,7 +205,8 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
             args.search_pattern,
             get_all=False,
             private_ip=args.node_ip,
-            filters=filters
+            filters=filters,
+            node_uuid=args.node_uuid
         )
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
@@ -234,7 +235,8 @@ class AwsPauseInstancesMethod(AbstractInstancesMethod):
             args.region,
             args.search_pattern,
             get_all=False,
-            private_ip=args.node_ip
+            private_ip=args.node_ip,
+            node_uuid=args.node_uuid
         )
 
         if not host_info:
@@ -263,7 +265,8 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
             args.region,
             args.search_pattern,
             get_all=False,
-            private_ip=args.node_ip
+            private_ip=args.node_ip,
+            node_uuid=args.node_uuid
         )
 
         if not host_info:

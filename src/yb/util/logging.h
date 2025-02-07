@@ -399,4 +399,7 @@ class LogFatalHandlerSink : public google::LogSink {
 
 #define EXPR_VALUE_FOR_LOG(expr) BOOST_PP_STRINGIZE(expr) << "=" << (::yb::ToString(expr))
 
+std::string AddSuffixToLogPrefix(const std::string& log_prefix, const std::string& suffix);
+std::string RemoveLogPrefixColon(const std::string& log_prefix);
+
 } // namespace yb

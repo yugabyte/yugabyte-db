@@ -968,6 +968,26 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "to be created; otherwise, it will fail the operation",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> xClusterNetworkConnectivityCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.network_connectivity_check.enabled",
+          ScopeType.UNIVERSE,
+          "Enable network connectivity check for xCluster",
+          "If this flag is true on the source universe, a ping and port accessibility "
+              + "check from each node of the target universe to all the source universe nodes will "
+              + "be performed",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xClusterNetworkConnectivityCheckPingCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.network_connectivity_check.ping_command_timeout",
+          ScopeType.UNIVERSE,
+          "The timeout used for network connectivity check for xCluster setup",
+          "The network connectivity check for xCluster ping all the source nodes from the "
+              + "target nodes; this is the timeout used to indicate how long the ping command "
+              + "should wait for the response",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",
@@ -1453,5 +1473,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Queue Wait Time for Tasks",
           "Wait time for a queued task before the running task can be evicted forcefully.",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> certManagerCommonNameRequired =
+      new ConfKeyInfo<>(
+          "yb.tls.cert_manager.common_name_required",
+          ScopeType.UNIVERSE,
+          "Common Name Required for Certificates",
+          "If true, YBA will add commonName to the CertificateRequest sent to cert manager.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

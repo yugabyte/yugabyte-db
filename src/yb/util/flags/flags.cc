@@ -62,7 +62,6 @@
 #include "yb/util/string_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/url-coding.h"
-#include "yb/util/version_info.h"
 
 using google::CommandLineFlagInfo;
 using std::cout;
@@ -251,9 +250,6 @@ DECLARE_bool(helpxml);
 TAG_FLAG(helpxml, stable);
 TAG_FLAG(helpxml, advanced);
 
-DECLARE_bool(version);
-TAG_FLAG(version, stable);
-
 DEFINE_NON_RUNTIME_string(dynamically_linked_exe_suffix, "",
     "Suffix to appended to executable names, such as yb-master and yb-tserver during the "
     "generation of Link Time Optimized builds.");
@@ -416,11 +412,6 @@ void DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue only_display_default_values
   }
 
   cout << "</AllFlags>" << endl;
-  exit(0);
-}
-
-void ShowVersionAndExit() {
-  cout << VersionInfo::GetShortVersionString() << endl;
   exit(0);
 }
 
@@ -707,8 +698,6 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     WriteRegistryAsJson(&w);
     std::cout << s.str() << std::endl;
     exit(0);
-  } else if (FLAGS_version) {
-    ShowVersionAndExit();
   } else {
     google::HandleCommandLineHelpFlags();
   }

@@ -385,6 +385,16 @@ int WaitStateInfo::GetCircularBufferSizeInKiBs() {
   return bytes / 1024;
 }
 
+uint32_t WaitStateInfo::AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code) {
+  DCHECK_EQ((component >> YB_ASH_COMPONENT_BITS), 0);
+  DCHECK_EQ((code >> YB_ASH_COMPONENT_POSITION), 0);
+  return (component << YB_ASH_COMPONENT_POSITION) | code;
+}
+
+uint32_t WaitStateInfo::AshRemoveComponentFromWaitStateCode(uint32_t code) {
+  return (~(0xffffffff << YB_ASH_COMPONENT_POSITION)) & code;
+}
+
 //
 // ScopedAdoptWaitState
 //

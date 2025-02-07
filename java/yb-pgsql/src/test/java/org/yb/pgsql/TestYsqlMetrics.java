@@ -215,7 +215,7 @@ public class TestYsqlMetrics extends BasePgSQLTest {
   @Test
   public void testMetricRows() throws Exception {
     try (Statement stmt = connection.createStatement()) {
-      assumeFalse(CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN,
+      skipYsqlConnMgr(CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN,
           isTestRunningWithConnectionManager());
 
       verifyStatementMetricRows(

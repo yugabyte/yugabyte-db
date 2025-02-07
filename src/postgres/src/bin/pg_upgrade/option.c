@@ -81,8 +81,9 @@ parseCommandLine(int argc, char *argv[])
 
 	if (is_yugabyte_enabled())
 	{
-		/* In YB we allow root users to run pg_upgrade.
-		   User name is a required parameter so we can skip the env checks.
+		/*
+		 * In YB we allow root users to run pg_upgrade. User name is a
+		 * required parameter so we can skip the env checks.
 		 */
 		os_user_effective_id = -1;
 	}
@@ -235,6 +236,9 @@ parseCommandLine(int argc, char *argv[])
 
 	if (is_yugabyte_enabled())
 	{
+		if (os_info.user == NULL)
+			pg_fatal("missing user name\n");
+
 		old_cluster.yb_user = os_info.user;
 		/* In YB, the new cluster is always connected via the yugabyte user */
 		new_cluster.yb_user = "yugabyte";
@@ -260,7 +264,7 @@ parseCommandLine(int argc, char *argv[])
 	/* Get values from env if not already set */
 	if (!is_yugabyte_enabled())
 		check_required_directory(&old_cluster.bindir, "PGBINOLD", false,
-								"-b", _("old cluster binaries reside"), false);
+								 "-b", _("old cluster binaries reside"), false);
 	check_required_directory(&new_cluster.bindir, "PGBINNEW", false,
 							 "-B", _("new cluster binaries reside"), true);
 	if (!is_yugabyte_enabled() || user_opts.check)
@@ -273,7 +277,7 @@ parseCommandLine(int argc, char *argv[])
 		 * cluster data dir.
 		 */
 		check_required_directory(&new_cluster.pgdata, "PGDATANEW", false,
-								"-D", _("new cluster data resides"), false);
+								 "-D", _("new cluster data resides"), false);
 	check_required_directory(&user_opts.socketdir, "PGSOCKETDIR", true,
 							 "-s", _("sockets will be created"), false);
 

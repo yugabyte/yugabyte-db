@@ -74,7 +74,10 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   void InitForTableType(
       TableType table_type, Slice sub_doc_key = Slice(), SkipSeek skip_seek = SkipSeek::kFalse);
   // Init QL read scan.
-  Status Init(const qlexpr::YQLScanSpec& spec, SkipSeek skip_seek = SkipSeek::kFalse);
+  Status Init(
+      const qlexpr::YQLScanSpec& spec,
+      SkipSeek skip_seek = SkipSeek::kFalse,
+      UseVariableBloomFilter use_variable_bloom_filter = UseVariableBloomFilter::kFalse);
 
   bool IsFetchedRowStatic() const override;
 
@@ -106,11 +109,11 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
  private:
   virtual void InitIterator(
-      BloomFilterMode bloom_filter_mode = BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      const boost::optional<const Slice>& user_key_for_filter = boost::none,
+      const BloomFilterOptions& bloom_filter = BloomFilterOptions::Inactive(),
       const rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr) = 0;
 
+  virtual void UpdateFilterKey(Slice user_key_for_filter) = 0;
   virtual void Seek(Slice key) = 0;
   virtual void SeekPrevDocKey(Slice key) = 0;
 
@@ -185,7 +188,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   std::optional<dockv::PgKeyDecoder> pg_key_decoder_;
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
-  boost::optional<dockv::KeyBytes> tuple_key_;
+  std::optional<dockv::KeyBytes> tuple_key_;
 
   TableType table_type_;
   bool ignore_ttl_ = false;

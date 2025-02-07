@@ -8,6 +8,7 @@ menu:
   preview_api:
     identifier: aggregate-functions
     parent: api-ysql-exprs
+    weight: 30
 type: indexpage
 showRightNav: true
 ---

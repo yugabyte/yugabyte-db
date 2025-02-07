@@ -1202,10 +1202,13 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       ServerType processType,
       UpgradeTaskType type,
       UpgradeTaskSubType taskSubType) {
-    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UserIntent userIntent =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+    AnsibleConfigureServers.Params params =
+        getBaseAnsibleServerTaskParams(userIntent, node, processType, type, taskSubType);
+
     // Set the device information (numVolumes, volumeSize, etc.)
     params.deviceInfo = userIntent.getDeviceInfoForNode(node);
     // Add the node name.

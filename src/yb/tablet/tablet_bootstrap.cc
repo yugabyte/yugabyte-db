@@ -1027,8 +1027,7 @@ class TabletBootstrap {
 
   Status PlayTabletSnapshotRequest(consensus::LWReplicateMsg* replicate_msg) {
     SnapshotOperation operation(tablet_, replicate_msg->mutable_snapshot_request());
-    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
 
     return operation.Replicated(/* leader_term= */ OpId::kUnknownTerm,
                                 WasPending::kFalse);
@@ -1056,8 +1055,7 @@ class TabletBootstrap {
     }
 
     SplitOperation operation(tablet_, data_.tablet_init_data.tablet_splitter, &split_request);
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
     return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(
         &operation, log_.get(), cmeta_->committed_config());
 
@@ -1073,8 +1071,7 @@ class TabletBootstrap {
   Status PlayCloneOpRequest(consensus::LWReplicateMsg* replicate_msg) {
     CloneOperation operation(
         tablet_, data_.tablet_init_data.tablet_splitter, replicate_msg->mutable_clone_tablet());
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
     // We might be asked to replay CLONE_OP even if it was applied and flushed when
     // FLAGS_force_recover_flushed_frontier is set. ApplyCloneTablet will still succeed in this case
     // because it is a no-op if a clone with the same seq_no is already applied according to the
@@ -1724,9 +1721,8 @@ class TabletBootstrap {
     SCHECK(write->has_write_batch(), Corruption, "A write request must have a write batch");
 
     WriteOperation operation(tablet_, write);
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    HybridTime hybrid_time(replicate_msg->hybrid_time());
-    operation.set_hybrid_time(hybrid_time);
+    operation.SetupFromReplicateMsg(*replicate_msg);
+    auto hybrid_time = operation.hybrid_time();
 
     auto op_id = operation.op_id();
     tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);
@@ -1805,15 +1801,11 @@ class TabletBootstrap {
       return PlayChangeMetadataRequestDeprecated(replicate_msg);
     }
 
-    // If last_flushed_change_metadata_op_id is valid then new code gets executed
-    // wherein we replay everything.
-    const auto op_id = OpId::FromPB(replicate_msg->id());
-
     // Otherwise play.
     auto* request = replicate_msg->mutable_change_metadata_request();
 
     ChangeMetadataOperation operation(tablet_, log_.get(), request);
-    operation.set_op_id(op_id);
+    operation.SetupFromReplicateMsg(*replicate_msg);
     RETURN_NOT_OK(operation.Prepare(tablet::IsLeaderSide::kFalse));
 
     Status s;
@@ -1853,9 +1845,7 @@ class TabletBootstrap {
     auto* req = replicate_msg->mutable_truncate();
 
     TruncateOperation operation(tablet_, req);
-
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    operation.set_hybrid_time(HybridTime::FromPB(replicate_msg->hybrid_time()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
 
     Status s = tablet_->Truncate(&operation);
 
@@ -1872,9 +1862,8 @@ class TabletBootstrap {
 
     UpdateTxnOperation operation(
         /* tablet */ nullptr, replicate_msg->mutable_transaction_state());
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    HybridTime hybrid_time(replicate_msg->hybrid_time());
-    operation.set_hybrid_time(hybrid_time);
+    operation.SetupFromReplicateMsg(*replicate_msg);
+    auto hybrid_time = operation.hybrid_time();
 
     auto op_id = OpId::FromPB(replicate_msg->id());
     tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);

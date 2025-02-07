@@ -24,7 +24,7 @@ In databases, change data capture (CDC) is a set of software design patterns use
 
 - Compliance and auditing - Satisfy auditing and compliance requirements using CDC to maintain records of data changes.
 
-YugabyteDB's CDC implementation uses [PostgreSQL Logical Replication](https://www.postgresql.org/docs/11/logical-replication.html), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model, where publications (source tables) send changes to subscribers (target systems).
+YugabyteDB's CDC implementation uses [PostgreSQL Logical Replication](https://www.postgresql.org/docs/15/logical-replication.html), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model, where publications (source tables) send changes to subscribers (target systems).
 
 CDC via logical replication is supported in YugabyteDB starting from v2024.1.1.
 
@@ -57,7 +57,7 @@ To set up pg_recvlogical, create and start the local cluster by running the foll
 ./bin/yugabyted start \
   --advertise_address=127.0.0.1 \
   --base_dir="${HOME}/var/node1" \
-  --tserver_flags="allowed_preview_flags_csv={cdcsdk_enable_dynamic_table_support},cdcsdk_enable_dynamic_table_support=true,cdcsdk_publication_list_refresh_interval_secs=2"
+  --tserver_flags="cdcsdk_publication_list_refresh_interval_secs=2"
 ```
 
 ### Create tables
@@ -110,7 +110,7 @@ Open a new shell and start pg_recvlogical to connect to the `yugabyte` database 
 
 Any changes that get replicated are printed to stdout.
 
-For more information about pg_recvlogical configuration, refer to the PostgreSQL [pg_recvlogical](https://www.postgresql.org/docs/11/app-pgrecvlogical.html) documentation.
+For more information about pg_recvlogical configuration, refer to the PostgreSQL [pg_recvlogical](https://www.postgresql.org/docs/15/app-pgrecvlogical.html) documentation.
 
 ### Verify replication
 

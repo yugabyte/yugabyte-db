@@ -8,6 +8,9 @@ menu:
     parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
     weight: 620
+    params:
+      classes: separator
+      hideLink: true
 aliases:
   - /preview/yugabyte-platform/overview/configure/
   - /preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/

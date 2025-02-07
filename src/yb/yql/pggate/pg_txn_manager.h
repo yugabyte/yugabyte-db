@@ -87,8 +87,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   }
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
-  void SetupPerformOptions(
-      tserver::PgPerformOptionsPB* options, EnsureReadTimeIsSet ensure_read_time);
+  Status SetupPerformOptions(
+      tserver::PgPerformOptionsPB* options,
+      EnsureReadTimeIsSet ensure_read_time = EnsureReadTimeIsSet::kFalse);
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
@@ -98,6 +99,12 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);
+  Result<std::string> ExportSnapshot(
+      const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time);
+  Result<std::optional<YbcPgTxnSnapshot>> SetTxnSnapshot(
+      PgTxnSnapshotDescriptor snapshot_descriptor);
+  bool HasExportedSnapshots() const;
+  void ClearExportedTxnSnapshots();
 
   struct DdlState {
     bool has_docdb_schema_changes = false;
@@ -153,6 +160,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status ExitSeparateDdlTxnMode(const std::optional<DdlCommitInfo>& commit_info);
 
+  Status CheckSnapshotTimeConflict() const;
+  Status CheckTxnSnapshotOptions(const tserver::PgPerformOptionsPB& options) const;
+
   // ----------------------------------------------------------------------------------------------
 
   PgClient* client_;
@@ -185,6 +195,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   uint64_t priority_ = 0;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
+  bool snapshot_read_time_is_set_ = false;
+  bool has_exported_snapshots_ = false;
 
   YbcPgCallbacks pg_callbacks_;
 

@@ -34,26 +34,18 @@
 #include "utils/rel.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-static void
-YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record);
-static void
-YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record);
-static void
-YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record);
-static void
-YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record);
+static void YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record);
+static void YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record);
+static void YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record);
+static void YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record);
 
-static HeapTuple
-YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
-						 enum ReorderBufferChangeType change_type);
-static int
-YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name);
-static void
-YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
+static HeapTuple YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record,
+										  enum ReorderBufferChangeType change_type);
+static int	YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name);
+static void YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
 
-static void
-YBLogTupleDescIfRequested(const YBCPgVirtualWalRecord *yb_record,
-						  TupleDesc tupdesc);
+static void YBLogTupleDescIfRequested(const YbVirtualWalRecord *yb_record,
+									  TupleDesc tupdesc);
 
 /*
  * Take every record received from the YB VirtualWAL and perform the actions
@@ -85,7 +77,7 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 	/* Now delegate to specific handlers depending on the action type. */
 	switch (record->yb_virtual_wal_record->action)
 	{
-		/* Nothing to handle here. */
+			/* Nothing to handle here. */
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
 			elog(DEBUG4,
 				 "Received DDL record for table: %d, xid: %d, commit_time_ht: "
@@ -105,37 +97,37 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT:
-		{
-			YBDecodeInsert(ctx, record);
-			break;
-		}
+			{
+				YBDecodeInsert(ctx, record);
+				break;
+			}
 
 		case YB_PG_ROW_MESSAGE_ACTION_UPDATE:
-		{
-			YBDecodeUpdate(ctx, record);
-			break;
-		}
+			{
+				YBDecodeUpdate(ctx, record);
+				break;
+			}
 
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
-		{
-			YBDecodeDelete(ctx, record);
-			break;
-		}
+			{
+				YBDecodeDelete(ctx, record);
+				break;
+			}
 
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
-		{
-			YBDecodeCommit(ctx, record);
+			{
+				YBDecodeCommit(ctx, record);
 
-			/*
-			 * Abort the transaction that we started upon receiving the BEGIN
-			 * message.
-			 */
-			AbortCurrentTransaction();
-			Assert(!IsTransactionState());
-			break;
-		}
+				/*
+				 * Abort the transaction that we started upon receiving the BEGIN
+				 * message.
+				 */
+				AbortCurrentTransaction();
+				Assert(!IsTransactionState());
+				break;
+			}
 
-		/* Should never happen. */
+			/* Should never happen. */
 		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN:
 			pg_unreachable();
 	}
@@ -150,10 +142,10 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 static void
 YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-	const YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
-	ReorderBufferChange			*change = ReorderBufferGetChange(ctx->reorder);
-	HeapTuple					tuple;
-	ReorderBufferTupleBuf		*tuple_buf;
+	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
+	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
+	HeapTuple	tuple;
+	ReorderBufferTupleBuf *tuple_buf;
 
 	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
 
@@ -201,18 +193,18 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void
 YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-	const YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
-	ReorderBufferChange		*change = ReorderBufferGetChange(ctx->reorder);
-	Relation				relation;
-	TupleDesc				tupdesc;
-	int						nattrs;
-	HeapTuple				after_op_tuple;
-	HeapTuple				before_op_tuple;
-	ReorderBufferTupleBuf	*after_op_tuple_buf;
-	ReorderBufferTupleBuf	*before_op_tuple_buf;
-	bool					*before_op_is_omitted = NULL;
-	bool					*after_op_is_omitted = NULL;
-	bool 					should_handle_omitted_case;
+	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
+	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
+	Relation	relation;
+	TupleDesc	tupdesc;
+	int			nattrs;
+	HeapTuple	after_op_tuple;
+	HeapTuple	before_op_tuple;
+	ReorderBufferTupleBuf *after_op_tuple_buf;
+	ReorderBufferTupleBuf *before_op_tuple_buf;
+	bool	   *before_op_is_omitted = NULL;
+	bool	   *after_op_is_omitted = NULL;
+	bool		should_handle_omitted_case;
 
 	change->action = REORDER_BUFFER_CHANGE_UPDATE;
 	change->lsn = yb_record->lsn;
@@ -245,10 +237,11 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		memset(before_op_is_omitted, 1, sizeof(bool) * nattrs);
 	}
 
-	Datum after_op_datums[nattrs];
-	bool after_op_is_nulls[nattrs];
-	Datum before_op_datums[nattrs];
-	bool before_op_is_nulls[nattrs];
+	Datum		after_op_datums[nattrs];
+	bool		after_op_is_nulls[nattrs];
+	Datum		before_op_datums[nattrs];
+	bool		before_op_is_nulls[nattrs];
+
 	memset(after_op_is_nulls, 1, sizeof(after_op_is_nulls));
 	memset(before_op_is_nulls, 1, sizeof(before_op_is_nulls));
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
@@ -263,8 +256,8 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 */
 		Assert(col->column_name);
 
-		int attr_idx =
-			YBFindAttributeIndexInDescriptor(tupdesc, col->column_name);
+		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
+																col->column_name);
 
 		if (should_handle_omitted_case)
 		{
@@ -371,10 +364,10 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void
 YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-	const YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
-	ReorderBufferChange			*change = ReorderBufferGetChange(ctx->reorder);
-	HeapTuple					tuple;
-	ReorderBufferTupleBuf		*tuple_buf;
+	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
+	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
+	HeapTuple	tuple;
+	ReorderBufferTupleBuf *tuple_buf;
 
 	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
 
@@ -411,15 +404,16 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void
 YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-	const YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
-	XLogRecPtr					commit_lsn = yb_record->lsn;
-	XLogRecPtr					end_lsn = yb_record->lsn + 1;
-	XLogRecPtr					origin_lsn = yb_record->lsn;
+	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
+	XLogRecPtr	commit_lsn = yb_record->lsn;
+	XLogRecPtr	end_lsn = yb_record->lsn + 1;
+	XLogRecPtr	origin_lsn = yb_record->lsn;
+
 	/*
 	 * We do not send the replication origin information. So any dummy value is
 	 * sufficient here.
 	 */
-	RepOriginId					origin_id = 1;
+	RepOriginId origin_id = 1;
 
 	/*
 	 * Skip the records which the client hasn't asked for. Simpler version of a
@@ -455,13 +449,13 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 }
 
 static HeapTuple
-YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
+YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record,
 						 enum ReorderBufferChangeType change_type)
 {
-	Relation					relation;
-	TupleDesc					tupdesc;
-	int							nattrs;
-	HeapTuple					tuple;
+	Relation	relation;
+	TupleDesc	tupdesc;
+	int			nattrs;
+	HeapTuple	tuple;
 
 	/*
 	 * Note that we don't strictly need to overwrite the replica identity in
@@ -478,34 +472,37 @@ YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
 	nattrs = tupdesc->natts;
 	YBLogTupleDescIfRequested(yb_record, tupdesc);
 
-	Datum datums[nattrs];
-	bool is_nulls[nattrs];
+	Datum		datums[nattrs];
+	bool		is_nulls[nattrs];
+
 	/* Set value to null by default so that we treat dropped columns as null. */
 	memset(is_nulls, true, sizeof(is_nulls));
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		const YbcPgDatumMessage *col = &yb_record->cols[col_idx];
-		int attr_idx =
-			YBFindAttributeIndexInDescriptor(tupdesc, col->column_name);
+		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
+																col->column_name);
 
-		datums[attr_idx] = (change_type == REORDER_BUFFER_CHANGE_INSERT) ?
-							   col->after_op_datum :
-							   col->before_op_datum;
-		is_nulls[attr_idx] = (change_type == REORDER_BUFFER_CHANGE_INSERT) ?
-								 col->after_op_is_null :
-								 col->before_op_is_null;
+		datums[attr_idx] = ((change_type == REORDER_BUFFER_CHANGE_INSERT) ?
+							col->after_op_datum :
+							col->before_op_datum);
+		is_nulls[attr_idx] = ((change_type == REORDER_BUFFER_CHANGE_INSERT) ?
+							  col->after_op_is_null :
+							  col->before_op_is_null);
 	}
 
 	tuple = heap_form_tuple(tupdesc, datums, is_nulls);
 	if (log_min_messages <= DEBUG2)
 	{
-		const char *tuple_string =
-			YbHeapTupleToStringWithIsOmitted(tuple, tupdesc, NULL);
+		const char *tuple_string = YbHeapTupleToStringWithIsOmitted(tuple,
+																	tupdesc,
+																	NULL);
 
 		elog(DEBUG2,
 			 "yb_decode: The heap tuple: %s for operation: %s", tuple_string,
-			 (change_type == REORDER_BUFFER_CHANGE_INSERT) ? "INSERT" :
-															 "DELETE");
+			 ((change_type == REORDER_BUFFER_CHANGE_INSERT) ?
+			  "INSERT" :
+			  "DELETE"));
 
 		pfree((char *) tuple_string);
 	}
@@ -523,7 +520,8 @@ YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
 static int
 YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name)
 {
-	int attr_idx = 0;
+	int			attr_idx = 0;
+
 	for (attr_idx = 0; attr_idx < tupdesc->natts; attr_idx++)
 	{
 		if (tupdesc->attrs[attr_idx].attisdropped)
@@ -537,75 +535,80 @@ YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name)
 			(errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg("could not find column with name %s in tuple"
 					" descriptor", column_name)));
-	return -1;			/* keep compiler quiet */
+	return -1;					/* keep compiler quiet */
 }
 
 static void
 YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-	Oid		table_oid = record->yb_virtual_wal_record->table_oid;
+	Oid			table_oid = record->yb_virtual_wal_record->table_oid;
 
 	switch (record->yb_virtual_wal_record->action)
 	{
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
-		{
-			bool		found;
-
-			/*
-			 * Mark for relcache invalidation to be done on first DML by just
-			 * inserting an entry for the table_oid.
-			 */
-			hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
-						HASH_ENTER, &found);
-			break;
-		}
-
-		case YB_PG_ROW_MESSAGE_ACTION_INSERT: switch_fallthrough();
-		case YB_PG_ROW_MESSAGE_ACTION_UPDATE: switch_fallthrough();
-		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
-		{
-			bool needs_invalidation = false;
-
-			hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
-						HASH_FIND, &needs_invalidation);
-
-			if (needs_invalidation)
 			{
-				uint64_t read_time_ht;
-
-				/* Use the commit_time_ht of the DML. */
-				read_time_ht = record->yb_virtual_wal_record->commit_time_ht;
-
-				elog(DEBUG2,
-					 "Setting yb_read_time to record's commit_time_ht: %" PRIu64,
-					 read_time_ht);
-				YBCUpdateYbReadTimeAndInvalidateRelcache(read_time_ht);
+				bool		found;
 
 				/*
-				 * Let the plugin know that the schema for this table has
-				 * changed, so it must send the new relation object to the
-				 * client.
+				 * Mark for relcache invalidation to be done on first DML by just
+				 * inserting an entry for the table_oid.
 				 */
-				YBReorderBufferSchemaChange(ctx->reorder, table_oid);
-
-				bool found;
 				hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
-							HASH_REMOVE, &found);
-				Assert(found);
+							HASH_ENTER, &found);
+				break;
 			}
-			break;
-		}
 
-		/* Nothing to handle for these types. */
-		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN: switch_fallthrough();
-		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:   switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_INSERT:
+			switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_UPDATE:
+			switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
+			{
+				bool		needs_invalidation = false;
+
+				hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
+							HASH_FIND, &needs_invalidation);
+
+				if (needs_invalidation)
+				{
+					uint64_t	read_time_ht;
+
+					/* Use the commit_time_ht of the DML. */
+					read_time_ht = record->yb_virtual_wal_record->commit_time_ht;
+
+					elog(DEBUG2,
+						 "Setting yb_read_time to record's commit_time_ht: %" PRIu64,
+						 read_time_ht);
+					YBCUpdateYbReadTimeAndInvalidateRelcache(read_time_ht);
+
+					/*
+					 * Let the plugin know that the schema for this table has
+					 * changed, so it must send the new relation object to the
+					 * client.
+					 */
+					YBReorderBufferSchemaChange(ctx->reorder, table_oid);
+
+					bool		found;
+
+					hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
+								HASH_REMOVE, &found);
+					Assert(found);
+				}
+				break;
+			}
+
+			/* Nothing to handle for these types. */
+		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN:
+			switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
+			switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 			return;
 	}
 }
 
 static void
-YBLogTupleDescIfRequested(const YBCPgVirtualWalRecord *yb_record,
+YBLogTupleDescIfRequested(const YbVirtualWalRecord *yb_record,
 						  TupleDesc tupdesc)
 {
 	/* Log tuple descriptor for DEBUG2 onwards. */
@@ -616,9 +619,9 @@ YBLogTupleDescIfRequested(const YBCPgVirtualWalRecord *yb_record,
 		for (int attr_idx = 0; attr_idx < tupdesc->natts; attr_idx++)
 		{
 			elog(DEBUG2, "Col %d: name = %s, dropped = %d, type = %d\n",
-						 attr_idx, tupdesc->attrs[attr_idx].attname.data,
-						 tupdesc->attrs[attr_idx].attisdropped,
-						 tupdesc->attrs[attr_idx].atttypid);
+				 attr_idx, tupdesc->attrs[attr_idx].attname.data,
+				 tupdesc->attrs[attr_idx].attisdropped,
+				 tupdesc->attrs[attr_idx].atttypid);
 		}
 	}
 }

@@ -13,7 +13,6 @@
 
 #include <gmock/gmock.h>
 
-#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
@@ -67,19 +66,6 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
   Result<master::GetXClusterStreamsResponsePB> GetAllXClusterStreams(
       const NamespaceId& namespace_id) {
     return GetXClusterStreams(namespace_id, /*table_names=*/{}, /*pg_schema_names=*/{});
-  }
-
-  Status EnablePITROnClusters() {
-    return RunOnBothClusters([this](Cluster* cluster) -> Status {
-      client::SnapshotTestUtil snapshot_util;
-      snapshot_util.SetProxy(&cluster->client_->proxy_cache());
-      snapshot_util.SetCluster(cluster->mini_cluster_.get());
-
-      RETURN_NOT_OK(snapshot_util.CreateSchedule(
-          nullptr, YQL_DATABASE_PGSQL, namespace_name, client::WaitSnapshot::kTrue,
-          2s * kTimeMultiplier, 20h));
-      return Status::OK();
-    });
   }
 };
 

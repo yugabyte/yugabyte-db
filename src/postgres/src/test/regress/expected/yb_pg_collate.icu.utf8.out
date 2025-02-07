@@ -1200,6 +1200,7 @@ SELECT 'Goldmann' < 'Götz' COLLATE "de-x-icu", 'Goldmann' > 'Götz' COLLATE tes
 -- nondeterministic collations
 CREATE COLLATION ctest_det (provider = icu, locale = '', deterministic = true);
 CREATE COLLATION ctest_nondet (provider = icu, locale = '', deterministic = false);
+ERROR:  nondeterministic collation is not supported
 -- YB: port more queries when nondeterministic collation is supported
 -- cleanup
 RESET search_path;

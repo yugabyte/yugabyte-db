@@ -99,6 +99,8 @@ class Iterator::Empty : public Iterator {
     return Entry();
   }
 
+  void UpdateFilterKey(Slice user_key_for_filter) override {}
+
   Status status() const override { return status_; }
 
  private:
@@ -139,6 +141,10 @@ class DataBlockAwareIndexIterator::Empty : public DataBlockAwareIndexIterator {
     DCHECK(false) << "DataBlockAwareIndexIterator::Empty::GetCurrentDataBlockBounds()";
     return status_;
   };
+
+  void UpdateFilterKey(Slice user_key_for_filter) override {
+    DCHECK(false) << "DataBlockAwareIndexIterator::Empty::UpdateFilterKey()";
+  }
 
   Status status() const override { return status_; }
 

@@ -159,16 +159,34 @@
       ],
       "script-and-regex.script": "src/lint/postgres.sh",
       "script-and-regex.regex":
-        "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+):(?P<original>.*)/m"
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "typedefs_list": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/src/.*typedefs.list$)"
+      ],
+      "script-and-regex.script": "src/lint/typedefs_list.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "unique_sort": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/src/.+/yb[^/]*typedefs.list$)"
+      ],
+      "script-and-regex.script": "src/lint/unique_sort.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+)/m"
     },
     "ybc_pg": {
       "type": "script-and-regex",
       "include": [
-        "(^src/yb/yql/.+/ybc_.*[.]h$)"
+        "(^src/yb/yql/.+/ybc_[^/]*[.]h$)"
       ],
       "script-and-regex.script": "src/lint/ybc_pg.sh",
       "script-and-regex.regex":
-        "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+):(?P<original>.*)/m"
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
     },
     "yql_extern_c": {
       "type": "script-and-regex",
@@ -177,7 +195,7 @@
       ],
       "script-and-regex.script": "src/lint/yql_extern_c.sh",
       "script-and-regex.regex":
-        "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+):(?P<original>.*)/m"
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
     }
   }
 }

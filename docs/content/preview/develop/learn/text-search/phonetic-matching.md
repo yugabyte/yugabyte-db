@@ -18,7 +18,7 @@ type: docs
 
 While looking up exact matches suffices for most scenarios, you need approximate matching in situations where you don't know the exact term you are searching for but may remember the phonetics of the term or parts of the term.
 
-For phonetic matching, YugabyteDB natively supports the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html), which provides multiple functions - Soundex, Metaphone, and Double Metaphone - which you can use to determine phonetic similarities between text.
+For phonetic matching, YugabyteDB natively supports the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/15/fuzzystrmatch.html), which provides multiple functions - Soundex, Metaphone, and Double Metaphone - which you can use to determine phonetic similarities between text.
 
 ## Setup
 

@@ -16,6 +16,7 @@ package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.*;
 
+import org.apache.commons.collections.functors.ExceptionClosure;
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -23,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 
+import java.lang.Thread.State;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -59,70 +61,105 @@ public class TestEnquote extends BaseYsqlConnMgr {
     super.customizeMiniClusterBuilder(builder);
   }
 
-  private static String getSearchPath (Statement stmt) {
-      try (ResultSet rs = stmt.executeQuery("SHOW search_path")) {
-          assertTrue("Expected one row while fetching search_path", rs.next());
+  private static String getGUCValue (Statement stmt, String guc) {
+      try (ResultSet rs = stmt.executeQuery(String.format("SHOW %s", guc))) {
+          assertTrue(
+            String.format("Expected a row while fetching value of %s", guc), rs.next());
           String returnString = rs.getString(1);
           return returnString;
       } catch (Exception e) {
-          fail("Error while fetching search_path value");
+          fail("Error while fetching " + guc + " value " + e);
       }
       return "";
   }
 
- @Test
- public void testEnquote() throws Exception {
+ private void testEnquote(String guc_var, String default_value) throws Exception {
     try (Connection connection = getConnectionBuilder()
                                     .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
                                     .connect();
          Statement statement = connection.createStatement()) {
 
-      // The value of search_path should remain same forever. With connection manager it was been
-      // seen that with every transaction extra quotes been added around search_path, therefore
-      // below iteration will ensure the value of search_path remains same through out.
-      String expectedString = "\"$user\", public";
+      String expectedString;
+      String actualString;
+
       for (int i = 0;i < 3;i++) {
-        assertTrue("Unexpected value of search_path",
-            getSearchPath(statement).equals(expectedString.replaceAll("\\\\", "")));
+        actualString = getGUCValue(statement, guc_var);
+        assertTrue(
+          String.format("Got a mismatch in the value of %s guc variable. " +
+                        "actual: %s, expected: %s",
+                        guc_var, actualString, default_value),
+                        actualString.equals(default_value.replaceAll("\\\\", "")));
       }
 
-      statement.execute("SET search_path TO oracle, \"$user\", public");
+      statement.execute(String.format("SET %s TO oracle, \"$user\", public", guc_var));
       expectedString = "oracle, \"$user\", public";
       for (int i = 0; i < 3; i++) {
-        assertTrue("Unexpected value of search_path",
-            getSearchPath(statement).equals(expectedString.replaceAll("\\\\", "")));
+        actualString = getGUCValue(statement, guc_var);
+        assertTrue(
+          String.format("Got a mismatch in the value of %s guc variable. " +
+                        "actual: %s, expected: %s",
+                        guc_var, actualString, expectedString),
+                        actualString.equals(expectedString.replaceAll("\\\\", "")));
       }
 
-      statement.execute("SET search_path TO 'some_path'");
-      expectedString = "some_path";
+      statement.execute(String.format("SET %s TO 'some_path', 'another_path'", guc_var));
+      expectedString = "some_path, another_path";
       for (int i = 0; i < 3; i++) {
-        assertTrue("Unexpected value of search_path",
-            getSearchPath(statement).equals(expectedString.replaceAll("\\\\", "")));
+        actualString = getGUCValue(statement, guc_var);
+        assertTrue(
+          String.format("Got a mismatch in the value of %s guc variable. " +
+                        "actual: %s, expected: %s",
+                        guc_var, actualString, expectedString),
+                        actualString.equals(expectedString.replaceAll("\\\\", "")));
       }
 
-      statement.execute("SET search_path to 'oracle',\"$user\", public, 'some_path'");
+      statement.execute(String.format("SET %s TO 'oracle',\"$user\", public, 'some_path'",
+                        guc_var));
       expectedString = "oracle, \"$user\", public, some_path";
       for (int i = 0; i < 3; i++) {
-        assertTrue("Unexpected value of search_path",
-            getSearchPath(statement).equals(expectedString.replaceAll("\\\\", "")));
+        actualString = getGUCValue(statement, guc_var);
+        assertTrue(
+          String.format("Got a mismatch in the value of %s guc variable. " +
+                        "actual: %s, expected: %s",
+                        guc_var, actualString, expectedString),
+                        actualString.equals(expectedString.replaceAll("\\\\", "")));
       }
 
-      statement.execute("SET search_path to \"$user\", '\"$some_value\"' ");
+      statement.execute(String.format("SET %s TO \"$user\", '\"$some_value\"' ", guc_var));
       expectedString = "\"$user\", \\\"\\\"\\\"$some_value\\\"\\\"\\\"";
       for (int i = 0; i < 3; i++) {
-        assertTrue("Unexpected value of search_path",
-            getSearchPath(statement).equals(expectedString.replaceAll("\\\\", "")));
+        actualString = getGUCValue(statement, guc_var);
+        assertTrue(
+          String.format("Got a mismatch in the value of %s guc variable. " +
+                        "actual: %s, expected: %s",
+                        guc_var, actualString, expectedString),
+                        actualString.equals(expectedString.replaceAll("\\\\", "")));
       }
 
-      statement.execute("SET search_path to '$user', '\"$some_value\"' ");
+      statement.execute(String.format("SET %s TO '$user', '\"$some_value\"' ", guc_var));
       expectedString = "\"$user\", \\\"\\\"\\\"$some_value\\\"\\\"\\\"";
       for (int i = 0; i < 3; i++) {
-        assertTrue("Unexpected value of search_path",
-            getSearchPath(statement).equals(expectedString.replaceAll("\\\\", "")));
+        actualString = getGUCValue(statement, guc_var);
+        assertTrue(
+          String.format("Got a mismatch in the value of %s guc variable. " +
+                        "actual: %s, expected: %s",
+                        guc_var, actualString, expectedString),
+                        actualString.equals(expectedString.replaceAll("\\\\", "")));
       }
 
+    }
+    catch (Exception e) {
+      fail("Failure while processing " + guc_var + ": " + e.getMessage());
+      LOG.error(String.format("Failure while processing %s", guc_var), e.getMessage());
     }
 
  }
 
+ @Test
+ public void testAvoidEnquoteGucVars() throws Exception {
+
+  testEnquote("search_path", "\"$user\", public");
+  testEnquote("session_preload_libraries", "");
+  testEnquote("local_preload_libraries", "");
+ }
 }

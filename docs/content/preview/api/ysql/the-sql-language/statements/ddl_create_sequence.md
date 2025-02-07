@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `CREATE SEQUENCE` statement to create a sequence in the current schema.
+Use the CREATE SEQUENCE statement to create a sequence in the current schema.
 
 ## Syntax
 
@@ -24,7 +24,7 @@ Use the `CREATE SEQUENCE` statement to create a sequence in the current schema.
 
 ## Semantics
 
-Specify the name of the sequence (*sequence_name*). An error is raised if a sequence with that name already exists in the current schema and `IF NOT EXISTS` is not specified.
+Specify the name of the sequence (*sequence_name*). An error is raised if a sequence with that name already exists in the current schema and IF NOT EXISTS is not specified.
 
 The sequence name must be distinct from any other sequences, tables, indexes, views, or foreign tables in the same schema.
 
@@ -78,18 +78,18 @@ Stores the last value used or the next value to be used.
 
 ### *is_called*
 
-Stores whether `last_val` has been used. If false, `last_val` is the next value in the sequence. Otherwise, `last_val` + `INCREMENT` is the next one.
+Stores whether `last_val` has been used. If false, `last_val` is the next value in the sequence. Otherwise, `last_val` + INCREMENT is the next one.
 
-By default (when `INCREMENT` is 1), each call to `nextval()` updates `last_val` for that sequence. In YSQL, the table holding the sequence's data is replicated as opposed to being in the local file system. Each update to this table requires two RPCs (and will be optimized to one RPC in the future), In any case, the latency experienced by a call to `nextval()` in YSQL will be significantly higher than the same operation in Postgres. To avoid such performance degradation, Yugabyte recommends using a cache value with a value large enough. Cached values are stored in the memory of the local node, and retrieving such values avoids any RPCs, so the latency of one cache allocation can be amortized over all the numbers allocated for the cache.
+By default (when INCREMENT is 1), each call to `nextval()` updates `last_val` for that sequence. In YSQL, the table holding the sequence's data is replicated as opposed to being in the local file system. Each update to this table requires two RPCs (and will be optimized to one RPC in the future), In any case, the latency experienced by a call to `nextval()` in YSQL will be significantly higher than the same operation in PostgreSQL. To avoid such performance degradation, Yugabyte recommends using a cache value with a value large enough. Cached values are stored in the memory of the local node, and retrieving such values avoids any RPCs, so the latency of one cache allocation can be amortized over all the numbers allocated for the cache.
 
-`SERIAL` types create a sequence with a cache with default value of 1. So `SERIAL` types should be avoided, and their equivalent statement should be used.
-Instead of creating a table with a `SERIAL` type like this:
+SERIAL types create a sequence with a cache with default value of 1. So SERIAL types should be avoided, and their equivalent statement should be used.
+Instead of creating a table with a SERIAL type like this:
 
 ```sql
 CREATE TABLE t(k SERIAL)
 ```
 
-You should create a sequence with a large enough cache first, and then set the column that you want to have a serial type to `DEFAULT` to `nextval()` of the sequence.
+You should create a sequence with a large enough cache first, and then set the column that you want to have a serial type to DEFAULT to `nextval()` of the sequence.
 
 ```sql
 CREATE SEQUENCE t_k_seq CACHE 10000;
@@ -182,7 +182,7 @@ nextval
 
 - [`ALTER SEQUENCE`](../ddl_alter_sequence)
 - [`DROP SEQUENCE`](../ddl_drop_sequence)
-- [`currval()`](../../../exprs/func_currval)
-- [`lastval()`](../../../exprs/func_lastval)
-- [`nextval()`](../../../exprs/func_nextval)
-- [`setval()`](../../../exprs/func_setval)
+- [`currval()`](../../../exprs/sequence_functions/func_currval)
+- [`lastval()`](../../../exprs/sequence_functions/func_lastval)
+- [`nextval()`](../../../exprs/sequence_functions/func_nextval)
+- [`setval()`](../../../exprs/sequence_functions/func_setval)

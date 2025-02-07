@@ -29,21 +29,23 @@
 #include "yb/util/yb_pg_errcodes.h"
 #include "ybgate/ybgate_api.h"
 
-// Macro to convert YbgStatus into regular Status.
-// Use it as a reference if you need to create a Status in DocDB to be displayed by Postgres.
-// Basically, STATUS(QLError, "<message>"); makes a good base, it should correctly set location
-// (filename and line number) and error message. The STATUS macro does not support function name.
-// Location is optional, though filename and line number are typically present. If function name is
-// needed, it can be added separately:
-//   s = s.CloneAndAddErrorCode(FuncName(funcname));
-// If error message needs to be translatable template, template arguments should be converted to
-// a vector of strings and added to status this way:
-//   s = s.CloneAndAddErrorCode(PgsqlMessageArgs(args));
-// If needed SQL code may be added to status this way:
-//   s = s.CloneAndAddErrorCode(PgsqlError(sqlerror));
-// It is possible to define more custom codes to send around with a status.
-// They should be handled on the Postgres side, see the HandleYBStatusAtErrorLevel macro in the
-// pg_yb_utils.h for details.
+/*
+ * Macro to convert YbgStatus into regular Status.
+ * Use it as a reference if you need to create a Status in DocDB to be displayed by Postgres.
+ * Basically, STATUS(QLError, "<message>"); makes a good base, it should correctly set location
+ * (filename and line number) and error message. The STATUS macro does not support function name.
+ * Location is optional, though filename and line number are typically present. If function name is
+ * needed, it can be added separately:
+ *   s = s.CloneAndAddErrorCode(FuncName(funcname));
+ * If error message needs to be translatable template, template arguments should be converted to
+ * a vector of strings and added to status this way:
+ *   s = s.CloneAndAddErrorCode(PgsqlMessageArgs(args));
+ * If needed SQL code may be added to status this way:
+ *   s = s.CloneAndAddErrorCode(PgsqlError(sqlerror));
+ * It is possible to define more custom codes to send around with a status.
+ * They should be handled on the Postgres side, see the HandleYBStatusAtErrorLevel macro in the
+ * pg_yb_utils.h for details.
+ */
 #define PG_RETURN_NOT_OK(status) \
 	do { \
 		YbgStatus status_ = status; \

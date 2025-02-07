@@ -346,6 +346,7 @@ void		check_cluster_versions(void);
 void		check_cluster_compatibility(bool live_check);
 void		create_script_for_old_cluster_deletion(char **deletion_script_file_name);
 
+void		yb_check_cluster_versions(void);
 
 /* controldata.c */
 

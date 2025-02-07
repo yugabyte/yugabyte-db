@@ -42,6 +42,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
@@ -128,6 +129,8 @@ public class GFlagsUtil {
   public static final String YSQL_ENABLE_READ_REQUEST_CACHING = "ysql_enable_read_request_caching";
   public static final String YSQL_ENABLE_READ_COMMITTED_ISOLATION =
       "ysql_enable_read_committed_isolation";
+  public static final String YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY =
+      "ysql_yb_major_version_upgrade_compatibility";
   public static final String CSQL_PROXY_BIND_ADDRESS = "cql_proxy_bind_address";
   public static final String CSQL_PROXY_WEBSERVER_PORT = "cql_proxy_webserver_port";
   public static final String ALLOW_INSECURE_CONNECTIONS = "allow_insecure_connections";
@@ -668,6 +671,14 @@ public class GFlagsUtil {
           TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC,
           Long.toString(timestampHistoryRetentionForPITR.toSeconds() + historyRetentionBufferSecs));
     }
+    // This flag needs to be set during major version upgrade to being compatible with the old
+    // postgres version.
+    if (taskParam.enableYSQL
+        && taskParam.ysqlMajorVersionUpgradeState != null
+        && UpgradeDetails.ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG.contains(
+            taskParam.ysqlMajorVersionUpgradeState)) {
+      gflags.put(YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, "11");
+    }
     return gflags;
   }
 
@@ -829,10 +840,6 @@ public class GFlagsUtil {
             encodeBooleanPgAuditFlag(
                 "pgaudit.log_statement_once", ysqlAuditConfig.isLogStatementOnce()));
       }
-    }
-    if (ysqlMajorVersionUpgradeState != null
-        && !ysqlMajorVersionUpgradeState.equals(YsqlMajorVersionUpgradeState.FINALIZE)) {
-      ysqlPgConfCsvEntries.add("yb_enable_expression_pushdown=false");
     }
     return String.join(",", ysqlPgConfCsvEntries);
   }

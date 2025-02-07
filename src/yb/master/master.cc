@@ -159,8 +159,7 @@ Master::Master(const MasterOptions& opts)
       sys_catalog_(new SysCatalogTable(this, metric_registry_.get())),
       ts_manager_(new TSManager(*sys_catalog_, *clock())),
       catalog_manager_(new CatalogManager(this, sys_catalog_.get())),
-      auto_flags_manager_(
-          new MasterAutoFlagsManager(clock(), fs_manager_.get(), catalog_manager_impl())),
+      auto_flags_manager_(new MasterAutoFlagsManager(*this)),
       ysql_backends_manager_(new YsqlBackendsManager(this, catalog_manager_->AsyncTaskPool())),
       path_handlers_(new MasterPathHandlers(this)),
       flush_manager_(new FlushManager(this, catalog_manager())),
@@ -324,7 +323,7 @@ Status Master::RegisterServices() {
       std::make_shared<tserver::PgClientServiceImpl>(
           *master_tablet_server_, client_future(), clock(),
           std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
-          fs_manager_->uuid(), &options(), nullptr /* xcluster_context */)));
+          fs_manager_->uuid(), &options())));
 
   return Status::OK();
 }

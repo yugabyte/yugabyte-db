@@ -69,8 +69,7 @@ public class UpgradeYbcGFlags extends KubernetesTaskBase {
         Set<NodeDetails> nodeDetailSet =
             new HashSet<>(universe.getRunningTserversInPrimaryCluster());
 
-        installYbcOnThePods(
-            nodeDetailSet, false, universeDetails.getYbcSoftwareVersion(), ybcGflagsMap);
+        installYbcOnThePods(nodeDetailSet, false, ybcManager.getStableYbcVersion(), ybcGflagsMap);
         performYbcAction(nodeDetailSet, false, "stop");
         createWaitForYbcServerTask(nodeDetailSet)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -78,8 +77,7 @@ public class UpgradeYbcGFlags extends KubernetesTaskBase {
         List<Cluster> readOnlyClusters = universeDetails.getReadOnlyClusters();
         if (!readOnlyClusters.isEmpty()) {
           nodeDetailSet = universeDetails.getTserverNodesInCluster(readOnlyClusters.get(0).uuid);
-          installYbcOnThePods(
-              nodeDetailSet, true, universeDetails.getYbcSoftwareVersion(), ybcGflagsMap);
+          installYbcOnThePods(nodeDetailSet, true, ybcManager.getStableYbcVersion(), ybcGflagsMap);
           performYbcAction(nodeDetailSet, true, "stop");
           createWaitForYbcServerTask(nodeDetailSet)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

@@ -277,6 +277,15 @@ Status CorruptFile(
 Status ForkAndRunToCompletion(const std::function<void(void)>& child,
                               const std::function<void(void)>& parent = {});
 
+Status ForkAndRunToCrashPoint(const std::function<void(void)>& child,
+                              const std::function<void(void)>& parent,
+                              std::string_view crash_point);
+
+inline Status ForkAndRunToCrashPoint(const std::function<void(void)>& f,
+                                     std::string_view crash_point) {
+  return ForkAndRunToCrashPoint(f, {} /* parent */, crash_point);
+}
+
 } // namespace yb
 
 // Gives ability to define custom parent class for test fixture.

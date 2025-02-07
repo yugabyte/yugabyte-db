@@ -44,7 +44,7 @@ Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites), t
 
 This tutorial assumes that you have installed the following:
 
-- YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](/preview/tutorials/quick-start/).
+- YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - Visual Studio.
 - [.NET SDK 6.0](https://dotnet.microsoft.com/en-us/download) or later.
 

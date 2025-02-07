@@ -544,7 +544,7 @@ void PlainTableReader::Prepare(const Slice& target) {
   }
 }
 
-Status PlainTableReader::Get(const ReadOptions& ro, const Slice& target,
+Status PlainTableReader::Get(const ReadOptions&, const Slice& target,
                              GetContext* get_context, bool skip_filters) {
   // Check bloom filter first.
   Slice prefix_slice;

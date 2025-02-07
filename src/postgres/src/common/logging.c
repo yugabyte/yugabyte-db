@@ -336,6 +336,7 @@ pg_log_generic_v(enum pg_log_level level, enum pg_log_part part,
 }
 
 void
-yb_set_should_log_filename(bool log_filename) {
+yb_set_should_log_filename(bool log_filename)
+{
 	yb_log_filename = log_filename;
 }

@@ -1,0 +1,21 @@
+# third-party-extensions/postgresql_anonymizer/tests/yb_schedule_1
+#
+####################################################################################################
+# postgresql_anonymizer Extension Testsuite
+####################################################################################################
+test: yb_pg_init
+test: yb_pg_detection
+test: yb_pg_ternary
+test: yb_pg_get_function_schema
+test: yb_pg_trusted_schemas
+test: yb_pg_copy
+test: yb_pg_pg_dump
+test: yb_pg_masking_expressions
+test: yb_pg_destruction
+test: yb_pg_noise
+test: yb_pg_shuffle
+test: yb_pg_random
+test: yb_pg_faking
+test: yb_pg_partial
+test: yb_pg_pseudonymization
+test: yb_pg_hashing

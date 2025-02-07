@@ -207,7 +207,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
             mockPlatformScheduler,
             mockReplicationUtil,
             mockFileDataService,
-            mockPrometheusConfigHelper);
+            mockPrometheusConfigHelper,
+            mockConfigHelper);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -259,7 +260,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
                   mockPlatformScheduler,
                   mockReplicationUtil,
                   mockFileDataService,
-                  mockPrometheusConfigHelper));
+                  mockPrometheusConfigHelper,
+                  mockConfigHelper));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());

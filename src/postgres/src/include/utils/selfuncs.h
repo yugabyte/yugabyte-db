@@ -227,15 +227,15 @@ extern Cost index_other_operands_eval_cost(PlannerInfo *root,
 extern List *add_predicate_to_index_quals(IndexOptInfo *index,
 										  List *indexQuals);
 
-extern int yb_batch_expr_size(PlannerInfo *root,
-							  Index path_relid,
-							  Node *batched_expr);
+extern int	yb_batch_expr_size(PlannerInfo *root,
+							   Index path_relid,
+							   Node *batched_expr);
 
 extern void genericcostestimate(PlannerInfo *root, IndexPath *path,
 								double loop_count,
 								GenericCosts *costs);
 
-double get_loop_count(PlannerInfo *root, Index cur_relid, Relids outer_relids);
+double		get_loop_count(PlannerInfo *root, Index cur_relid, Relids outer_relids);
 
 /* Functions in array_selfuncs.c */
 

@@ -119,7 +119,7 @@
 #include "access/heaptoast.h"
 #include "access/yb_scan.h"
 #include "commands/copy.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "tcop/pquery.h"
 #include "pg_yb_utils.h"
 #include "yb_ash.h"
@@ -199,7 +199,7 @@ static bool check_wal_consistency_checking(char **newval, void **extra,
 static void assign_wal_consistency_checking(const char *newval, void *extra);
 
 static bool check_default_replica_identity(char **newval, void **extra,
-							   GucSource source);
+										   GucSource source);
 
 #ifdef HAVE_SYSLOG
 static int	syslog_facility = LOG_LOCAL0;
@@ -265,12 +265,12 @@ static bool check_primary_slot_name(char **newval, void **extra, GucSource sourc
 static bool check_default_with_oids(bool *newval, void **extra, GucSource source);
 
 static bool check_transaction_priority_lower_bound(double *newval, void **extra, GucSource source);
-extern void YBCAssignTransactionPriorityLowerBound(double newval, void* extra);
+extern void YBCAssignTransactionPriorityLowerBound(double newval, void *extra);
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
-extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
+extern void YBCAssignTransactionPriorityUpperBound(double newval, void *extra);
 extern double YBCGetTransactionPriority();
 extern YbcTxnPriorityRequirement YBCGetTransactionPriorityType();
-static bool yb_check_no_txn(int* newval, void **extra, GucSource source);
+static bool yb_check_no_txn(int *newval, void **extra, GucSource source);
 
 static void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
@@ -594,11 +594,11 @@ static struct config_enum_entry recovery_init_sync_method_options[] = {
 	{NULL, 0, false}
 };
 
-const struct config_enum_entry yb_pg_batch_detection_mechanism_options[] = {
-  {"detect_by_peeking", DETECT_BY_PEEKING, false},
-  {"assume_all_batch_executions", ASSUME_ALL_BATCH_EXECUTIONS, false},
-  {"ignore_batch_delete_and_update_may_fail", IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL, false},
-  {NULL, 0, false}
+const struct config_enum_entry yb_batch_detection_mechanism_options[] = {
+	{"detect_by_peeking", DETECT_BY_PEEKING, false},
+	{"assume_all_batch_executions", ASSUME_ALL_BATCH_EXECUTIONS, false},
+	{"ignore_batch_delete_and_update_may_fail", IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL, false},
+	{NULL, 0, false}
 };
 
 static struct config_enum_entry shared_memory_options[] = {
@@ -642,9 +642,9 @@ static const struct config_enum_entry wal_compression_options[] = {
 };
 
 const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
-  {"strict", YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, false},
-  {"relaxed", YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, false},
-  {NULL, 0, false}
+	{"strict", YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, false},
+	{"relaxed", YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, false},
+	{NULL, 0, false}
 };
 
 const struct config_enum_entry yb_sampling_algorithm_options[] = {
@@ -1267,7 +1267,8 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"yb_bnl_optimize_first_batch", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables batched nested loop joins to predict the "			 	 "size of its first batch and optimize if it's "
+			gettext_noop("Enables batched nested loop joins to predict the "
+						 "size of its first batch and optimize if it's "
 						 "smaller than yb_bnl_batch_size."),
 			NULL
 		},
@@ -1288,18 +1289,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"yb_use_hash_splitting_by_default", PGC_USERSET, QUERY_TUNING_OTHER,
-			 gettext_noop("Enables hash splitting as the default method for primary "
-					   "key and index sorting in LSM indexes"),
-			 gettext_noop("When set to true, the default sorting for the first "
-					  "primary/index key column in LSM indexes is HASH, "
-					  "Setting this to false changes the default to ASC, "
-					  "making it compatible with standard PostgreSQL behavior. "
-					  "This setting is useful for optimizing query "
-					  "performance, especially for migrations from PostgreSQL "
-					  "or scenarios where index-based sorting and sharding "
-					  "behavior are critical."),
+			gettext_noop("Enables hash splitting as the default method for primary "
+						 "key and index sorting in LSM indexes"),
+			gettext_noop("When set to true, the default sorting for the first "
+						 "primary/index key column in LSM indexes is HASH, "
+						 "Setting this to false changes the default to ASC, "
+						 "making it compatible with standard PostgreSQL behavior. "
+						 "This setting is useful for optimizing query "
+						 "performance, especially for migrations from PostgreSQL "
+						 "or scenarios where index-based sorting and sharding "
+						 "behavior are critical."),
 
-	 },
+		},
 		&yb_use_hash_splitting_by_default,
 		true,
 		NULL, NULL, NULL
@@ -1307,8 +1308,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_prefer_bnl", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("If enabled, planner will force a preference of batched"
-						" nested loop join plans over classic nested loop"
-						" join plans."),
+						 " nested loop join plans over classic nested loop"
+						 " join plans."),
 			NULL
 		},
 		&yb_prefer_bnl,
@@ -1318,7 +1319,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_enable_batchednl", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of batched nested-loop "
-							 "join plans."),
+						 "join plans."),
 			NULL
 		},
 		&yb_enable_batchednl,
@@ -2628,7 +2629,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_test_fail_next_inc_catalog_version", PGC_USERSET,DEVELOPER_OPTIONS,
+		{"yb_test_fail_next_inc_catalog_version", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set, the next increment catalog version will "
 						 "fail right before it's done. This only works when "
 						 "catalog version is stored in pg_yb_catalog_version."),
@@ -2683,12 +2684,24 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_collation", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, inject code to make psql output stable across "
+						 "linux and mac."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_collation,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_force_catalog_update_on_next_ddl", PGC_USERSET,
 			DEVELOPER_OPTIONS,
 			gettext_noop("Make the next DDL update the catalog in force mode "
-			"which allows it to operate even during ysql major catalog "
-			"upgrades. WARNING: This is a dangerous option and should be used "
-			"only for DDLs on temp tables, and other transient objects."),
+						 "which allows it to operate even during ysql major catalog "
+						 "upgrades. WARNING: This is a dangerous option and should be used "
+						 "only for DDLs on temp tables, and other transient objects."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -2728,8 +2741,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_enable_optimizer_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables use of the PostgreSQL selectivity estimation which utilizes "
-			"table statistics collected with ANALYZE. When disabled, a simpler heuristics based "
-			"selectivity estimation is used."),
+						 "table statistics collected with ANALYZE. When disabled, a simpler heuristics based "
+						 "selectivity estimation is used."),
 			NULL
 		},
 		&yb_enable_optimizer_statistics,
@@ -2769,9 +2782,9 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_enable_hash_batch_in", PGC_USERSET, QUERY_TUNING_METHOD,
-		gettext_noop("GUC variable that enables batching RPCs of generated for IN queries on hash "
-					 "keys issued to the same tablets."),
-		NULL
+			gettext_noop("GUC variable that enables batching RPCs of generated for IN queries on hash "
+						 "keys issued to the same tablets."),
+			NULL
 		},
 		&yb_enable_hash_batch_in,
 		true,
@@ -2857,8 +2870,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_enable_memory_tracking", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enables tracking of memory consumption of the PostgreSQL "
-						  "process. This enhances garbage collection behaviour and memory usage "
-						  "observability."),
+						 "process. This enhances garbage collection behaviour and memory usage "
+						 "observability."),
 			NULL
 		},
 		&yb_enable_memory_tracking,
@@ -2882,7 +2895,7 @@ static struct config_bool ConfigureNamesBool[] =
 		/* YB: Not for general use */
 		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Identifies that connection is created by "
-						"Ysql Connection Manager."),
+						 "Ysql Connection Manager."),
 			NULL
 		},
 		&yb_is_client_ysqlconnmgr,
@@ -3069,6 +3082,21 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_disable_catalog_version_check", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Disable checking that read requests from "
+						 "this pg backend have the latest catalog version."),
+			gettext_noop("User should set this variable with caution. It is "
+						 "under active development and is not recommended for production "
+						 "clusters. Currently, it is used by ysql_dump to read pg catalog "
+						 "as of time."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_catalog_version_check,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("Enable advisory lock feature"),
 			NULL,
@@ -3111,6 +3139,17 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_allow_block_based_sampling_algorithm,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_refresh_matview_in_place", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Refresh materialized views in place."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_refresh_matview_in_place,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -3160,7 +3199,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"yb_explicit_row_locking_batch_size", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Batch size of explicit row locking"),
 			gettext_noop("Set to 1 to conserve default behavior, "
-							"batching is disabled by default."),
+						 "batching is disabled by default."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_explicit_row_locking_batch_size,
@@ -3320,8 +3359,8 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_locks_txn_locks_per_tablet", PGC_USERSET, LOCK_MANAGEMENT,
-		 gettext_noop("Sets the maximum number of rows per transaction per tablet to return in pg_locks."),
-		 NULL
+			gettext_noop("Sets the maximum number of rows per transaction per tablet to return in pg_locks."),
+			NULL
 		},
 		&yb_locks_txn_locks_per_tablet,
 		200, 0, INT_MAX,
@@ -4928,7 +4967,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&yb_toast_catcache_threshold,
-		-1, -1, INT_MAX,
+		2048, -1, INT_MAX,
 		yb_check_toast_catcache_threshold, NULL, NULL
 	},
 
@@ -4958,12 +4997,24 @@ static struct config_int ConfigureNamesInt[] =
 		{"yb_query_diagnostics_circular_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
 			gettext_noop("Size of query diagnostics circular buffer that stores statuses of bundles"),
 			gettext_noop("The circular buffer is filled sequentially until "
-									"it reaches this size, then it wraps around and "
-									"starts overwriting the oldest entries."),
+						 "it reaches this size, then it wraps around and "
+						 "starts overwriting the oldest entries."),
 			GUC_UNIT_KB
 		},
 		&yb_query_diagnostics_circular_buffer_size,
 		64, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_major_version_upgrade_compatibility", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("The compatibility level to use during a YSQL Major version upgrade. "
+						 "Allowed values are 0 and 11."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_major_version_upgrade_compatibility,
+		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -5063,7 +5114,7 @@ static struct config_real ConfigureNamesReal[] =
 	{
 		{"yb_network_fetch_cost", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Sets the planner's estimate of the fixed cost of "
-							 "fetching a batch of rows from a YB relation"),
+						 "fetching a batch of rows from a YB relation"),
 			NULL
 		},
 		&yb_network_fetch_cost,
@@ -5658,6 +5709,12 @@ static struct config_string ConfigureNamesString[] =
 		"C",
 		check_locale_time, assign_locale_time, NULL
 	},
+
+	/*
+	 * YB: Check var.h (odyssey) file to confirm if guc var need to be added in
+	 * avoid_enquote_guc_list list. Basic requirements are if GUC_LIST_INPUT, GUC_LIST_QUOTE flags
+	 * are enabled on a var and can be set in a session without making connection sticky.
+	 */
 
 	{
 		{"session_preload_libraries", PGC_SUSET, CLIENT_CONN_PRELOAD,
@@ -6271,7 +6328,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL
 		},
 		&default_toast_compression,
-		TOAST_PGLZ_COMPRESSION,
+		TOAST_LZ4_COMPRESSION,
 		default_toast_compression_options,
 		NULL, NULL, NULL
 	},
@@ -6628,7 +6685,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&yb_pg_batch_detection_mechanism,
 		DETECT_BY_PEEKING,
-		yb_pg_batch_detection_mechanism_options,
+		yb_batch_detection_mechanism_options,
 		NULL, assign_yb_pg_batch_detection_mechanism, NULL
 	},
 
@@ -6673,12 +6730,12 @@ static struct config_enum ConfigureNamesEnum[] =
 
 	{
 		{"yb_sampling_algorithm", PGC_USERSET, QUERY_TUNING_OTHER,
-		 gettext_noop("Which sampling algorithm to use for YSQL. full_table_scan - scan the"
-					  " whole table and pick random rows, block_based_sampling - sample the"
-					  " table for a set of blocks, then scan selected blocks to form a final"
-					  " rows sample."),
-		 NULL,
-		 0
+			gettext_noop("Which sampling algorithm to use for YSQL. full_table_scan - scan the"
+						 " whole table and pick random rows, block_based_sampling - sample the"
+						 " table for a set of blocks, then scan selected blocks to form a final"
+						 " rows sample."),
+			NULL,
+			0
 		},
 		&yb_sampling_algorithm,
 		YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING,
@@ -6871,7 +6928,7 @@ extra_field_used(struct config_generic *gconf, void *extra)
 				return true;
 			break;
 		case PGC_OID:
-			if (extra == ((struct yb_config_oid*) gconf)->reset_extra)
+			if (extra == ((struct yb_config_oid *) gconf)->reset_extra)
 				return true;
 			break;
 		case PGC_REAL:
@@ -7237,6 +7294,7 @@ find_option(const char *name, bool create_placeholders, bool skip_errors,
 {
 #ifdef ADDRESS_SANITIZER
 	struct config_generic config_placeholder;
+
 	config_placeholder.name = name;
 	const char **key = &config_placeholder.name;
 #else
@@ -7547,7 +7605,7 @@ InitializeGUCOptionsFromEnvironment(void)
 	env = getenv("FLAGS_ysql_prefetch_limit");
 	if (env != NULL)
 		SetConfigOption("yb_fetch_row_limit", env,
-				PGC_POSTMASTER, PGC_S_ENV_VAR);
+						PGC_POSTMASTER, PGC_S_ENV_VAR);
 
 	/*
 	 * rlimit isn't exactly an "environment variable", but it behaves about
@@ -8376,7 +8434,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 								if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
 								{
 									elog(LOG, "Making connection sticky for %s",
-										conf->gen.name);
+										 conf->gen.name);
 									yb_ysql_conn_mgr_sticky_guc = true;
 								}
 							}
@@ -8430,7 +8488,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			/* Report new value if we changed it */
 			if (changed &&
 				((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-				(YbIsClientYsqlConnMgr()  && gconf->context > PGC_BACKEND)))
+				 (YbIsClientYsqlConnMgr() && gconf->context > PGC_BACKEND)))
 			{
 				gconf->status |= GUC_NEEDS_REPORT;
 				report_needed = true;
@@ -8895,8 +8953,9 @@ parse_oid(const char *value, Oid *result, const char **hintmsg)
 	if (errno == ERANGE || val != (int64) ((Oid) val))
 	{
 		if (hintmsg)
-			*hintmsg = val < 0 ? gettext_noop("Value cannot be negative.")
-							   : gettext_noop("Value exceeds Oid range.");
+			*hintmsg = (val < 0 ?
+						gettext_noop("Value cannot be negative.") :
+						gettext_noop("Value exceeds Oid range."));
 		return false;
 	}
 
@@ -9379,11 +9438,11 @@ set_config_option_ext(const char *name, const char *value,
 	if (source == PGC_S_SESSION &&
 		YbIsClientYsqlConnMgr() &&
 		((strncmp(name, "session_authorization", strlen("session_authorization")) == 0) ||
-		(strncmp(name, "role", strlen("role")) == 0)))
-		{
-			elog(LOG, "Making connection sticky for setting %s", name);
-			yb_ysql_conn_mgr_sticky_guc = true;
-		}
+		 (strncmp(name, "role", strlen("role")) == 0)))
+	{
+		elog(LOG, "Making connection sticky for setting %s", name);
+		yb_ysql_conn_mgr_sticky_guc = true;
+	}
 
 	if (elevel == 0)
 	{
@@ -10260,9 +10319,9 @@ set_config_option_ext(const char *name, const char *value,
 
 	if (changeVal &&
 		((record->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-		(YbIsClientYsqlConnMgr() &&
-		record->context > PGC_BACKEND &&
-		!(action & GUC_ACTION_LOCAL))))
+		 (YbIsClientYsqlConnMgr() &&
+		  record->context > PGC_BACKEND &&
+		  !(action & GUC_ACTION_LOCAL))))
 	{
 		record->status |= GUC_NEEDS_REPORT;
 		report_needed = true;
@@ -10288,11 +10347,11 @@ set_config_option_ext(const char *name, const char *value,
 	 *
 	 * PGC_SUSET is used in case of a super user use a SET statement.
 	 */
-	if (changeVal && 			/* Add only if the parameter value is changed */
-		source != YSQL_CONN_MGR && /* Don't add the parameter to the changed
-									* list, if it is set from YSQL CONN MGR */
-		(context == PGC_SUSET || context == PGC_USERSET || /* SET statement */
-		 value == NULL))								   /* RESET statement */
+	if (changeVal &&			/* Add only if the parameter value is changed */
+		source != YSQL_CONN_MGR &&	/* Don't add the parameter to the changed
+									 * list, if it is set from YSQL CONN MGR */
+		(context == PGC_SUSET || context == PGC_USERSET ||	/* SET statement */
+		 value == NULL))		/* RESET statement */
 	{
 		YbAddToChangedSessionParametersList(name);
 	}
@@ -10998,7 +11057,7 @@ void
 ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 {
 	GucAction	action = stmt->is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET;
-	bool YbDbAdminCanSet = false;
+	bool		YbDbAdminCanSet = false;
 
 	if (IsYbDbAdminUser(GetUserId()))
 	{
@@ -11295,6 +11354,7 @@ define_custom_variable(struct config_generic *variable)
 	const char *name = variable->name;
 #ifdef ADDRESS_SANITIZER
 	struct config_generic config_placeholder;
+
 	config_placeholder.name = name;
 	const char **nameAddr = &config_placeholder.name;
 #else
@@ -12631,9 +12691,11 @@ _ShowOption(struct config_generic *record, bool use_units)
 
 					if (use_units && result > 0 && (record->flags & GUC_UNIT))
 					{
-						/* YB_TODO(alex@yugabyte)
+						/*
+						 * YB_TODO(alex@yugabyte)
 						 * - Check if calling "convert_int" is correct.
-						 * - If not correct, implement a function for convert_oid.
+						 * - If not correct, implement a function for
+						 *   convert_oid.
 						 */
 						convert_int_from_base_unit(result, record->flags & GUC_UNIT,
 												   &result, &unit);
@@ -13324,7 +13386,8 @@ read_gucstate_binary(char **srcptr, char *srcend, void *dest, Size size)
 	*srcptr += size;
 }
 
-void YbSetParallelWorker()
+void
+YbSetParallelWorker()
 {
 	yb_is_parallel_worker = true;
 	elog(LOG, "yb_is_parallel_worker has been set to true");
@@ -13463,11 +13526,13 @@ RestoreGUCState(void *gucstate)
 					break;
 				}
 			case PGC_OID:
-			{
-				/* YB_TODO(alex@yugabyte)
-				 * If PGC_OID is still needed, please implement this case in this function.
-				 */
-			}
+				{
+					/*
+					 * YB_TODO(alex@yugabyte)
+					 * If PGC_OID is still needed, please implement this case
+					 * in this function.
+					 */
+				}
 		}
 		/* Now we can reset the struct to PGS_S_DEFAULT state. */
 		InitializeOneGUCOption(gconf);
@@ -14261,16 +14326,17 @@ check_wal_consistency_checking(char **newval, void **extra, GucSource source)
 	return true;
 }
 
-static bool check_default_replica_identity(char **newval, void **extra, GucSource source)
+static bool
+check_default_replica_identity(char **newval, void **extra, GucSource source)
 {
-	char* rawstring;
-	bool is_valid;
+	char	   *rawstring;
+	bool		is_valid;
 
 	rawstring = pstrdup(*newval);
-	is_valid = strcmp(rawstring, "FULL") == 0 ||
-			strcmp(rawstring, "DEFAULT") == 0 ||
-			strcmp(rawstring, "NOTHING") == 0 ||
-			strcmp(rawstring, "CHANGE") == 0;
+	is_valid = (strcmp(rawstring, "FULL") == 0 ||
+				strcmp(rawstring, "DEFAULT") == 0 ||
+				strcmp(rawstring, "NOTHING") == 0 ||
+				strcmp(rawstring, "CHANGE") == 0);
 
 	pfree(rawstring);
 	return is_valid;
@@ -14640,7 +14706,8 @@ yb_show_maxconnections(void)
 {
 	static char buf[32];
 
-	int64 yb_adj_max_con = MaxConnections;
+	int64		yb_adj_max_con = MaxConnections;
+
 	if (IsYugaByteEnabled() && !superuser())
 	{
 		yb_adj_max_con -= (ReservedBackends + max_wal_senders);
@@ -15184,7 +15251,8 @@ check_default_with_oids(bool *newval, void **extra, GucSource source)
 static bool
 check_transaction_priority_lower_bound(double *newval, void **extra, GucSource source)
 {
-	if (*newval > yb_transaction_priority_upper_bound) {
+	if (*newval > yb_transaction_priority_upper_bound)
+	{
 		GUC_check_errdetail("must be less than or equal to yb_transaction_priority_upper_bound (%f).",
 							yb_transaction_priority_upper_bound);
 		return false;
@@ -15193,11 +15261,11 @@ check_transaction_priority_lower_bound(double *newval, void **extra, GucSource s
 	if (IsYBReadCommitted() || YBIsWaitQueueEnabled())
 	{
 		ereport(NOTICE,
-						(errmsg("priorities don't exist for read committed isolation transations, the "
-										"transaction will wait for conflicting transactions to commit before "
-										"proceeding"),
-						 errdetail("This also applies to other isolation levels if using Wait-on-Conflict "
-											"concurrency control.")));
+				(errmsg("priorities don't exist for read committed isolation transations, the "
+						"transaction will wait for conflicting transactions to commit before "
+						"proceeding"),
+				 errdetail("This also applies to other isolation levels if using Wait-on-Conflict "
+						   "concurrency control.")));
 	}
 	return true;
 }
@@ -15205,7 +15273,8 @@ check_transaction_priority_lower_bound(double *newval, void **extra, GucSource s
 static bool
 check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source)
 {
-	if (*newval < yb_transaction_priority_lower_bound) {
+	if (*newval < yb_transaction_priority_lower_bound)
+	{
 		GUC_check_errdetail("must be greater than or equal to yb_transaction_priority_lower_bound (%f).",
 							yb_transaction_priority_lower_bound);
 		return false;
@@ -15214,11 +15283,11 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 	if (IsYBReadCommitted() || YBIsWaitQueueEnabled())
 	{
 		ereport(NOTICE,
-						(errmsg("priorities don't exist for read committed isolation transations, the "
-										"transaction will wait for conflicting transactions to commit before "
-										"proceeding"),
-						 errdetail("This also applies to other isolation levels if using Wait-on-Conflict "
-											"concurrency control.")));
+				(errmsg("priorities don't exist for read committed isolation transations, the "
+						"transaction will wait for conflicting transactions to commit before "
+						"proceeding"),
+				 errdetail("This also applies to other isolation levels if using Wait-on-Conflict "
+						   "concurrency control.")));
 	}
 	return true;
 }
@@ -15282,7 +15351,8 @@ check_backoff_multiplier(double *multiplier, void **extra, GucSource source)
 static bool
 yb_check_toast_catcache_threshold(int *newVal, void **extra, GucSource source)
 {
-	if (*newVal != -1 && *newVal < 128) {
+	if (*newVal != -1 && *newVal < 128)
+	{
 		GUC_check_errdetail("must greater than or equal to 128 bytes, or -1 to disable.");
 		return false;
 	}

@@ -546,7 +546,7 @@ check_XactIsoLevel(int *newval, void **extra, GucSource source)
 		ereport(WARNING,
 				(errmsg("read committed isolation is disabled"),
 				 errdetail("Set yb_enable_read_committed_isolation to enable. When disabled, read "
-						 "committed falls back to using repeatable read isolation.")));
+						   "committed falls back to using repeatable read isolation.")));
 	}
 
 	if (newXactIsoLevel != XactIsoLevel && IsTransactionState())
@@ -593,9 +593,9 @@ check_yb_default_xact_isolation(int *newval, void **extra, GucSource source)
 		!YBIsReadCommittedSupported())
 	{
 		ereport(WARNING,
-					(errmsg("read committed isolation is disabled"),
-					 errdetail("Set yb_enable_read_committed_isolation to enable. When disabled, read "
-							 "committed falls back to using repeatable read isolation.")));
+				(errmsg("read committed isolation is disabled"),
+				 errdetail("Set yb_enable_read_committed_isolation to enable. When disabled, read "
+						   "committed falls back to using repeatable read isolation.")));
 	}
 	return true;
 }
@@ -620,23 +620,29 @@ yb_fetch_effective_transaction_isolation_level(void)
 	}
 }
 
-bool is_staleness_acceptable(int32_t staleness_ms) {
-	int32_t max_clock_skew_usec = YBGetMaxClockSkewUsec();
-	const int kMargin = 2;
-	if (staleness_ms * 1000 < kMargin * max_clock_skew_usec) {
+bool
+is_staleness_acceptable(int32_t staleness_ms)
+{
+	int32_t		max_clock_skew_usec = YBGetMaxClockSkewUsec();
+	const int	kMargin = 2;
+
+	if (staleness_ms * 1000 < kMargin * max_clock_skew_usec)
+	{
 		GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
 		GUC_check_errmsg("cannot enable yb_read_from_followers with a staleness of less than "
-						"%d * (max_clock_skew = %d usec)", kMargin, max_clock_skew_usec);
+						 "%d * (max_clock_skew = %d usec)", kMargin, max_clock_skew_usec);
 		return false;
 	}
 	return true;
 }
 
 bool
-check_follower_reads(bool *newval, void **extra, GucSource source) {
+check_follower_reads(bool *newval, void **extra, GucSource source)
+{
 	if (YBFollowerReadsBehaviorBefore20482())
 	{
-		if (*newval == false) {
+		if (*newval == false)
+		{
 			return true;
 		}
 		return is_staleness_acceptable(yb_follower_read_staleness_ms);
@@ -682,10 +688,12 @@ assign_follower_reads(bool newval, void *extra)
 }
 
 bool
-check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source) {
+check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source)
+{
 	if (YBFollowerReadsBehaviorBefore20482())
 	{
-		if (!YBReadFromFollowersEnabled()) {
+		if (!YBReadFromFollowersEnabled())
+		{
 			return true;
 		}
 		return is_staleness_acceptable(*newval);
@@ -715,7 +723,8 @@ check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source
 	return is_staleness_acceptable(*newval);
 }
 
-void assign_follower_read_staleness_ms(int32_t newval, void *extra)
+void
+assign_follower_read_staleness_ms(int32_t newval, void *extra)
 {
 	yb_follower_read_staleness_ms = newval;
 	if (YBTransactionsEnabled() && !YBFollowerReadsBehaviorBefore20482())
@@ -749,7 +758,7 @@ check_transaction_deferrable(bool *newval, void **extra, GucSource source)
 void
 assign_transaction_deferrable(bool newval, void *extra)
 {
-  XactDeferrable = newval;
+	XactDeferrable = newval;
 	if (YBTransactionsEnabled())
 	{
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));

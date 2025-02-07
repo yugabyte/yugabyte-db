@@ -121,9 +121,11 @@ CMake
 Cobertura
 Codepen
 Cognito
+Cohesity
 colocated
 colocating
 colocation
+Commvault
 compilable
 composable
 Conda
@@ -300,6 +302,7 @@ hotfixing
 http
 https
 Hudi
+hugepages
 idempotence
 idmapper
 Iglu
@@ -387,6 +390,7 @@ mbox
 memoization
 memoize
 memoized
+memoizes
 memoizing
 Memorystore
 mergeability
@@ -459,6 +463,7 @@ pgAdmin
 pgaudit
 PgBouncer
 pgLoader
+pg_stat_statements
 pg_cron
 pg_recvlogical
 Phabricator
@@ -754,6 +759,7 @@ TypeScript
 Ubuntu
 UDTs
 ulimit
+ulimits
 unapplied
 unapprove
 unapproved

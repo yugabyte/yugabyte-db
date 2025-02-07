@@ -57,7 +57,7 @@ The following tutorial creates a Go application that connects to a YugabyteDB cl
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, download, install, and start YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/). Alternatively, you can use [YugabyteDB Managed](http://cloud.yugabyte.com/register) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
+- YugabyteDB is up and running. If you are new to YugabyteDB, download, install, and start YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/macos/). Alternatively, you can use [YugabyteDB Managed](http://cloud.yugabyte.com/register) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 
 - [Go version 1.8](https://golang.org/dl/), or later, is installed.
 

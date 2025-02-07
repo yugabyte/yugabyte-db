@@ -77,8 +77,9 @@
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
-#include "yb/dockv/value_type.h"
 #include "yb/docdb/vector_index.h"
+
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 
@@ -86,6 +87,8 @@
 #include "yb/rocksdb/utilities/checkpoint.h"
 
 #include "yb/rocksutil/yb_rocksdb.h"
+
+#include "yb/rpc/thread_pool.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -102,6 +105,7 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_snapshots.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
@@ -309,6 +313,8 @@ using namespace std::literals;  // NOLINT
 using rocksdb::SequenceNumber;
 
 namespace yb::tablet {
+
+bool TEST_fail_on_seq_scan_with_vector_indexes = false;
 
 using strings::Substitute;
 
@@ -652,8 +658,7 @@ Tablet::Tablet(const TabletInitData& data)
       full_compaction_pool_(data.full_compaction_pool),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
-      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)),
-      vector_index_thread_pool_provider_(data.vector_index_thread_pool_provider) {
+      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->primary_table_schema_version();
@@ -718,6 +723,8 @@ Tablet::Tablet(const TabletInitData& data)
   }
 
   snapshots_ = std::make_unique<TabletSnapshots>(this);
+  vector_indexes_ = std::make_unique<TabletVectorIndexes>(
+      this, data.vector_index_thread_pool_provider);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
 
@@ -829,7 +836,7 @@ auto MakeMaxFileSizeWithTableTTLFunction(const F& f) {
 }
 
 struct Tablet::IntentsDbFlushFilterState {
-  docdb::VectorIndexesPtr vector_indexes;
+  VectorIndexList vector_indexes;
   boost::container::small_vector<int64_t, 4> largest_flushed_index;
   boost::container::small_vector<rocksdb::FlushAbility, 4> flush_ability;
 
@@ -875,7 +882,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   VLOG_WITH_PREFIX(4) << __func__;
 
   if (state->flush_ability.empty() && state->largest_flushed_index.empty()) {
-    state->vector_indexes = VectorIndexesList();
+    state->vector_indexes = VectorIndexList(vector_indexes_->List());
   }
 
   auto frontiers = memtable.Frontiers();
@@ -893,6 +900,9 @@ Result<bool> Tablet::IntentsDbFlushFilter(
           state->AddLargestFlushedIndex(vector_index->GetFlushedFrontier());
         }
       }
+      VLOG_WITH_PREFIX_AND_FUNC(4)
+          << "memtable_index: " << memtable_index << ", largest_flushed_index: "
+          << AsString(state->largest_flushed_index);
     }
 
     bool all_flushed = true;
@@ -918,6 +928,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
         state->flush_ability.push_back(index->GetFlushAbility());
       }
     }
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Flush ability: " << AsString(state->flush_ability);
   }
 
   // If regular db does not have anything to flush, it means that we have just added intents,
@@ -992,7 +1003,7 @@ Status Tablet::OpenKeyValueTablet() {
             history_cutoff());
   }
 
-  RETURN_NOT_OK(OpenVectorIndexes());
+  RETURN_NOT_OK(vector_indexes_->Open());
 
   LOG_WITH_PREFIX(INFO)
       << "Successfully opened a RocksDB database at " << metadata()->rocksdb_dir();
@@ -1147,62 +1158,6 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
   if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
     CleanupIntentFiles();
   }
-  return Status::OK();
-}
-
-Status Tablet::OpenVectorIndexes() NO_THREAD_SAFETY_ANALYSIS {
-  std::unique_lock lock(vector_indexes_mutex_, std::defer_lock);
-  auto tables = metadata_->GetAllColocatedTableInfos();
-  std::sort(tables.begin(), tables.end(), [](const auto& lhs, const auto& rhs) {
-    return lhs->table_id < rhs->table_id;
-  });
-  for (const auto& table_info : tables) {
-    if (!table_info->NeedVectorIndex()) {
-      continue;
-    }
-    VLOG_WITH_PREFIX_AND_FUNC(3) << table_info->ToString();
-    if (!lock.owns_lock()) {
-      lock.lock();
-    }
-    auto it = binary_search_iterator(
-        tables.begin(), tables.end(), table_info->index_info->indexed_table_id(), std::less<void>(),
-        [](const auto& table_info) { return table_info->table_id; });
-    SCHECK(it != tables.end(), IllegalState,
-           "Indexed table not found: $0", table_info->index_info->indexed_table_id());
-    RETURN_NOT_OK(CreateVectorIndex(*table_info, **it, /* allow_inplace_insert = */ true));
-  }
-  return Status::OK();
-}
-
-Status Tablet::CreateVectorIndex(
-    const TableInfo& index_table, const TableInfo& indexed_table, bool allow_inplace_insert) {
-  has_vector_indexes_ = true;
-  if (vector_indexes_map_.count(index_table.table_id)) {
-    LOG(DFATAL) << "Vector index for " << index_table.table_id << " already exists";
-    return Status::OK();
-  }
-  auto vector_index = VERIFY_RESULT(docdb::CreateVectorIndex(
-      MakeTabletLogPrefix(
-          tablet_id(), Format("$0 VI $1", log_prefix_suffix_, index_table.table_id)),
-      metadata_->rocksdb_dir(), *vector_index_thread_pool_provider_(),
-      indexed_table.doc_read_context->table_key_prefix(), *index_table.index_info, doc_db()));
-  auto it = vector_indexes_map_.emplace(index_table.table_id, std::move(vector_index)).first;
-  auto& indexes = vector_indexes_list_;
-  if (!indexes) {
-    indexes = std::make_shared<std::vector<docdb::VectorIndexPtr>>(1, it->second);
-    return Status::OK();
-  }
-  if (allow_inplace_insert) {
-    indexes->push_back(it->second);
-    return Status::OK();
-  }
-
-  auto new_indexes = std::make_shared<docdb::VectorIndexes>();
-  new_indexes->reserve(indexes->size() + 1);
-  *new_indexes = *indexes;
-  new_indexes->push_back(it->second);
-  indexes = std::move(new_indexes);
-
   return Status::OK();
 }
 
@@ -1448,6 +1403,7 @@ Status Tablet::DoEnableCompactions() {
 void Tablet::MarkFinishedBootstrapping() {
   CHECK_EQ(state_, kBootstrapping);
   state_ = kOpen;
+  vector_indexes_->LaunchBackfillsIfNecessary();
 }
 
 bool Tablet::StartShutdown() {
@@ -1588,21 +1544,7 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
       db_uniq_ptr->reset();
     }
   }
-  if (has_vector_indexes_) {
-    decltype(vector_indexes_list_) vector_indexes_list;
-    {
-      std::lock_guard lock(vector_indexes_mutex_);
-      vector_indexes_list.swap(vector_indexes_list_);
-      vector_indexes_map_.clear();
-    }
-    if (vector_indexes_list) {
-      for (const auto& index : *vector_indexes_list) {
-        db_paths.push_back(index->path());
-      }
-    }
-    // TODO(vector_index) It could happen that there are external references to vector index.
-    // Wait actual shutdown.
-  }
+  vector_indexes_->CompleteShutdown(db_paths);
 
   key_bounds_ = docdb::KeyBounds();
   // Reset rocksdb_shutdown_requested_ to the initial state like RocksDBs were never opened,
@@ -1675,15 +1617,6 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
       projection, read_hybrid_time, table_id, deadline, AllowBootstrappingState::kFalse));
   iter->InitForTableType(table_type_, Slice(), skip_seek);
   return std::move(iter);
-}
-
-Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
-    const TableId& table_id) const {
-  const std::shared_ptr<tablet::TableInfo> table_info =
-      VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  CHECK(false);
-  dockv::ReaderProjection projection(table_info->schema());
-  return NewRowIterator(projection, {}, table_id);
 }
 
 Status Tablet::ApplyRowOperations(
@@ -2067,29 +2000,20 @@ Status Tablet::DoHandlePgsqlReadRequest(
         &subtransaction_metadata));
 
     docdb::VectorIndexPtr vector_index;
-    std::string index_table_id;
-    std::string vector_index_table_id;
+    TableId index_table_id;
     if (pgsql_read_request.has_index_request()) {
       index_table_id = pgsql_read_request.index_request().table_id();
       if (pgsql_read_request.index_request().has_vector_idx_options()) {
-        vector_index_table_id = index_table_id;
+        vector_index = vector_indexes_->IndexForTable(index_table_id);
       }
+#ifndef NDEBUG
+    } else if (vector_indexes_->TEST_HasIndexes()) {
+      CHECK(!TEST_fail_on_seq_scan_with_vector_indexes ||
+            pgsql_read_request.has_ybctid_column_value()) << pgsql_read_request.ShortDebugString();
+#endif
     }
     auto index_doc_read_context = !index_table_id.empty()
         ? VERIFY_RESULT(GetDocReadContext(index_table_id)) : nullptr;
-
-    if (!vector_index_table_id.empty()) {
-      SharedLock lock(vector_indexes_mutex_);
-      auto it = vector_indexes_map_.find(vector_index_table_id);
-      if (it != vector_indexes_map_.end()) {
-        vector_index = it->second;
-      } else {
-        LOG_WITH_PREFIX_AND_FUNC(DFATAL)
-            << "Vector index query but don't have vector index for "
-            << vector_index_table_id << ", all vector indexes: "
-            << CollectionToString(vector_indexes_map_, [](const auto& pair) { return pair.first; });
-      }
-    }
 
     docdb::PgsqlReadOperationData data = {
       .read_operation_data = read_operation_data,
@@ -2311,13 +2235,10 @@ Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed
     RETURN_NOT_OK(pending_op);
   }
 
-  docdb::VectorIndexesPtr vector_indexes_list;
-  if (has_vector_indexes_ && HasFlags(flags, FlushFlags::kVectorIndexes)) {
-    vector_indexes_list = VectorIndexesList();
-    // TODO(vector-index) Check flush order between vector indexes and intents db
-    for (const auto& index : *vector_indexes_list) {
-      WARN_NOT_OK(index->Flush(), "Flush vector index");
-    }
+  VectorIndexList vector_indexes_list;
+  if (HasFlags(flags, FlushFlags::kVectorIndexes)) {
+    vector_indexes_list = VectorIndexList(vector_indexes_->List());
+    vector_indexes_list.Flush();
   }
 
   rocksdb::FlushOptions options;
@@ -2337,32 +2258,16 @@ Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed
     if (flush_intents) {
       RETURN_NOT_OK(intents_db_->WaitForFlush());
     }
-    if (vector_indexes_list) {
-      for (const auto& index : *vector_indexes_list) {
-        RETURN_NOT_OK(index->WaitForFlush());
-      }
-    }
+    RETURN_NOT_OK(vector_indexes_list.WaitForFlush());
   }
 
   return Status::OK();
 }
 
-docdb::VectorIndexesPtr Tablet::VectorIndexesList() const {
-  if (!has_vector_indexes_.load(std::memory_order_acquire)) {
-    return nullptr;
-  }
-  SharedLock lock(vector_indexes_mutex_);
-  return vector_indexes_list_;
-}
-
 Status Tablet::WaitForFlush() {
   TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
 
-  if (has_vector_indexes_) {
-    for (const auto& index : *VectorIndexesList()) {
-      RETURN_NOT_OK(index->WaitForFlush());
-    }
-  }
+  RETURN_NOT_OK(VectorIndexList(vector_indexes_->List()).WaitForFlush());
   if (regular_db_) {
     RETURN_NOT_OK(regular_db_->WaitForFlush());
   }
@@ -2399,7 +2304,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   // transaction is done properly in the rare situation where the committed transaction's intents
   // are still in intents db and not yet in regular db.
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
-  auto vector_indexes = VectorIndexesList();
+  auto vector_indexes = vector_indexes_->List();
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
       min_running_ht, &key_bounds_, metadata_.get(), intents_db_.get(), vector_indexes,
@@ -2751,7 +2656,7 @@ Status Tablet::CreatePreparedChangeMetadata(
   return Status::OK();
 }
 
-Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id) {
+Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht) {
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(table_info.schema(), &schema));
 
@@ -2767,23 +2672,22 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   auto table_info_ptr = VERIFY_RESULT(metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
       table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, index_info,
-      table_info.schema_version(), op_id, table_info.pg_table_id(),
+      table_info.schema_version(), op_id, ht, table_info.pg_table_id(),
       SkipTableTombstoneCheck(table_info.skip_table_tombstone_check())));
 
   if (table_info_ptr->NeedVectorIndex()) {
     auto indexed_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
         index_info->indexed_table_id()));
     VLOG_WITH_PREFIX_AND_FUNC(3) << table_info_ptr->ToString();
-    std::lock_guard lock(vector_indexes_mutex_);
-    RETURN_NOT_OK(CreateVectorIndex(
-        *table_info_ptr, *indexed_table_info, /* allow_inplace_insert = */ false));
+    RETURN_NOT_OK(vector_indexes_->CreateIndex(
+        *table_info_ptr, indexed_table_info, state_ == State::kBootstrapping));
   }
 
   return Status::OK();
 }
 
-Status Tablet::AddTable(const TableInfoPB& table_info, const OpId& op_id) {
-  RETURN_NOT_OK(AddTableInMemory(table_info, op_id));
+Status Tablet::AddTable(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht) {
+  RETURN_NOT_OK(AddTableInMemory(table_info, op_id, ht));
   if (!metadata_->IsLazySuperblockFlushEnabled()) {
     RETURN_NOT_OK(metadata_->Flush());
   } else {
@@ -2795,11 +2699,11 @@ Status Tablet::AddTable(const TableInfoPB& table_info, const OpId& op_id) {
 
 // TODO(lazy_sb_flush): Lazily flush the superblock here when extending the feature to cotables.
 Status Tablet::AddMultipleTables(
-    const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos, const OpId& op_id) {
+    const ArenaList<LWTableInfoPB>& table_infos, const OpId& op_id, HybridTime ht) {
   // If nothing has changed then return.
   RSTATUS_DCHECK_GT(table_infos.size(), 0, Ok, "No table to add to metadata");
   for (const auto& table_info : table_infos) {
-    RETURN_NOT_OK(AddTableInMemory(table_info, op_id));
+    RETURN_NOT_OK(AddTableInMemory(table_info.ToGoogleProtobuf(), op_id, ht));
   }
   return metadata_->Flush();
 }
@@ -3877,41 +3781,14 @@ Result<bool> Tablet::HasSSTables() const {
   return !live_files_metadata.empty();
 }
 
-template <class DB>
-OpId MaxPersistentOpIdForDb(DB* db, bool invalid_if_no_new_data) {
-  // A possible race condition could happen, when data is written between this query and
-  // actual log gc. But it is not a problem as long as we are reading committed op id
-  // before MaxPersistentOpId, since we always keep last committed entry in the log during garbage
-  // collection.
-  // See TabletPeer::GetEarliestNeededLogIndex
-  if (db == nullptr ||
-      (invalid_if_no_new_data &&
-       db->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData)) {
-    return OpId::Invalid();
-  }
-
-  rocksdb::UserFrontierPtr frontier = db->GetFlushedFrontier();
-  if (!frontier) {
-    return OpId();
-  }
-
-  return down_cast<docdb::ConsensusFrontier*>(frontier.get())->op_id();
-}
-
 Result<DocDbOpIds> Tablet::MaxPersistentOpId(bool invalid_if_no_new_data) const {
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
   DocDbOpIds result;
-  result.regular = MaxPersistentOpIdForDb(regular_db_.get(), invalid_if_no_new_data);
-  result.intents = MaxPersistentOpIdForDb(intents_db_.get(), invalid_if_no_new_data);
-  auto vector_indexes = VectorIndexesList();
-  if (vector_indexes) {
-    for (const auto& vector_index : *vector_indexes) {
-      result.vector_indexes.push_back(
-          MaxPersistentOpIdForDb(vector_index.get(), invalid_if_no_new_data));
-    }
-  }
+  result.regular = docdb::MaxPersistentOpIdForDb(regular_db_.get(), invalid_if_no_new_data);
+  result.intents = docdb::MaxPersistentOpIdForDb(intents_db_.get(), invalid_if_no_new_data);
+  vector_indexes_->FillMaxPersistentOpIds(result.vector_indexes, invalid_if_no_new_data);
   return result;
 }
 

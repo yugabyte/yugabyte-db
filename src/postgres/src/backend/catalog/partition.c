@@ -230,7 +230,7 @@ map_partition_varattnos(List *expr, int fromrel_varno,
 
 		part_attmap = build_attrmap_by_name(RelationGetDescr(to_rel),
 											RelationGetDescr(from_rel),
-											false /* yb_ignore_type_mismatch */);
+											false /* yb_ignore_type_mismatch */ );
 
 		expr = (List *) map_variable_attnos((Node *) expr,
 											fromrel_varno, 0,
@@ -291,8 +291,10 @@ has_partition_attrs(Relation rel, Bitmapset *attnums, bool *used_in_expr)
 			Bitmapset  *expr_attrs = NULL;
 
 			/* Find all attributes referenced */
-			/* pull_varattnos_min_attr offsets attributes by min_attr - 1. Therefore pass
-			 * YBGetFirstLowInvalidAttributeNumber + 1.
+
+			/*
+			 * pull_varattnos_min_attr offsets attributes by min_attr - 1.
+			 * Therefore pass YBGetFirstLowInvalidAttributeNumber + 1.
 			 */
 			pull_varattnos_min_attr(expr, 1, &expr_attrs,
 									YBGetFirstLowInvalidAttributeNumber(rel) + 1);

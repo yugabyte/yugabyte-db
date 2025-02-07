@@ -800,14 +800,13 @@ Status ClusterAdminClient::GetAutoFlagsConfig() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::PromoteAutoFlags(
-    const string& max_flag_class, const bool promote_non_runtime_flags, const bool force) {
+Status ClusterAdminClient::PromoteAutoFlags(const string& max_flag_class, const bool force) {
   master::PromoteAutoFlagsRequestPB req;
   master::PromoteAutoFlagsResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(timeout_);
   req.set_max_flag_class(max_flag_class);
-  req.set_promote_non_runtime_flags(promote_non_runtime_flags);
+  req.set_promote_non_runtime_flags(false);
   req.set_force(force);
   RETURN_NOT_OK(master_cluster_proxy_->PromoteAutoFlags(req, &resp, &rpc));
   if (resp.has_error()) {
@@ -824,13 +823,8 @@ Status ClusterAdminClient::PromoteAutoFlags(
   }
     std::cout << "New AutoFlags were promoted" << std::endl;
     std::cout << "New config version: " << resp.new_config_version() << std::endl;
-    if (resp.non_runtime_flags_promoted()) {
-      std::cout << "All yb-master and yb-tserver processes need to be restarted in order to apply "
-                   "the promoted AutoFlags"
-                << std::endl;
-    }
 
-  return Status::OK();
+    return Status::OK();
 }
 
 Status ClusterAdminClient::RollbackAutoFlags(uint32_t rollback_version) {
@@ -2335,7 +2329,7 @@ Status ClusterAdminClient::StartYsqlMajorCatalogUpgrade() {
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   } else {
-    std::cout << "ysql major catalog upgrade started\n";
+    std::cout << "YSQL major catalog upgrade started\n";
   }
   return Status::OK();
 }
@@ -2361,13 +2355,13 @@ Status ClusterAdminClient::WaitForYsqlMajorCatalogUpgrade() {
   for (;;) {
     auto result = IsYsqlMajorCatalogUpgradeDone();
     if (!result.ok()) {
-      cout << "Failed to check if ysql major catalog version upgrade is done: " << result.status()
+      cout << "Failed to check if YSQL major catalog version upgrade is done: " << result.status()
            << std::endl;
     } else if (result->done()) {
       if (!result->status().ok()) {
         return result->status();
       }
-      std::cout << "ysql major catalog upgrade completed successfully\n";
+      std::cout << "YSQL major catalog upgrade completed successfully\n";
       return Status::OK();
     }
 
@@ -2390,6 +2384,7 @@ Status ClusterAdminClient::FinalizeYsqlMajorCatalogUpgrade() {
 }
 
 Status ClusterAdminClient::RollbackYsqlMajorCatalogVersion() {
+  std::cout << "YSQL major catalog rollback started\n";
   RpcController rpc;
   rpc.set_timeout(timeout_);
   master::RollbackYsqlMajorCatalogVersionRequestPB req;
@@ -2398,7 +2393,7 @@ Status ClusterAdminClient::RollbackYsqlMajorCatalogVersion() {
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   } else {
-    std::cout << "Rollback successful\n";
+    std::cout << "YSQL major catalog rollback completed successfully\n";
   }
   return Status::OK();
 }
@@ -2422,11 +2417,11 @@ Status ClusterAdminClient::GetYsqlMajorCatalogUpgradeState() {
       return Status::OK();
     case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING:
       std::cout << "YSQL major catalog upgrade for YSQL major upgrade has not yet started.\n"
-                   "Run `ysql_major_version_catalog_upgrade` to start the catalog upgrade\n";
+                   "Run `upgrade_ysql_major_version_catalog` to start the catalog upgrade\n";
       return Status::OK();
     case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK:
       std::cout << "YSQL major catalog upgrade failed.\n"
-                   "Roll back the catalog upgrade using `rollback_ysql_major_version_upgrade`. "
+                   "Roll back the catalog upgrade using `rollback_ysql_major_version_catalog`. "
                    "After that you can either retry the catalog upgrade or roll back yb-masters to "
                    "the older version.\n";
       return Status::OK();
@@ -2441,7 +2436,38 @@ Status ClusterAdminClient::GetYsqlMajorCatalogUpgradeState() {
       return Status::OK();
   }
 
-  return STATUS_FORMAT(IllegalState, "Unknown ysql major upgrade state: $0", resp.state());
+  return STATUS_FORMAT(IllegalState, "Unknown YSQL major upgrade state: $0", resp.state());
+}
+
+Status ClusterAdminClient::FinalizeUpgrade(bool use_single_connection) {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::GetYsqlMajorCatalogUpgradeStateRequestPB req;
+  master::GetYsqlMajorCatalogUpgradeStateResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy_->GetYsqlMajorCatalogUpgradeState(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  if (resp.state() == master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK) {
+    std::cout << "Finalizing YSQL major catalog upgrade" << std::endl;
+    RETURN_NOT_OK(FinalizeYsqlMajorCatalogUpgrade());
+  } else {
+    SCHECK_FORMAT(
+        resp.state() == master::YSQL_MAJOR_CATALOG_UPGRADE_DONE, IllegalState,
+        "Unexpected YSQL major version catalog upgrade state: $0",
+        master::YsqlMajorCatalogUpgradeState_Name(resp.state()));
+  }
+
+  std::cout << std::endl << "Promoting auto flags" << std::endl;
+  RETURN_NOT_OK(PromoteAutoFlags(ToString(AutoFlagClass::kExternal), /*force=*/false));
+
+  std::cout << std::endl << "Upgrading YSQL" << std::endl;
+  RETURN_NOT_OK(UpgradeYsql(use_single_connection));
+
+  std::cout << std::endl << "Upgrade successfully finalized" << std::endl;
+
+  return Status::OK();
 }
 
 Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
@@ -2962,21 +2988,21 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(
   }));
 
   if (resp.snapshots_size() > 1) {
-        LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
-                     << resp.snapshots_size() << " snapshots in the response";
+    LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
+                 << resp.snapshots_size() << " snapshots in the response";
   }
 
   SnapshotInfoPB* snapshot = nullptr;
   for (SnapshotInfoPB& snapshot_entry : *resp.mutable_snapshots()) {
-        if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
+    if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
       snapshot = &snapshot_entry;
       break;
-        }
+    }
   }
   if (!snapshot) {
-        return STATUS_FORMAT(
-            InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
-            resp.snapshots_size(), snapshot_id);
+    return STATUS_FORMAT(
+        InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
+        resp.snapshots_size(), snapshot_id);
   }
 
   if (FLAGS_TEST_metadata_file_format_version == -1) {
@@ -2988,7 +3014,7 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(
         meta.clear_namespace_name();
         entry.set_data(meta.SerializeAsString());
       }
-        }
+    }
   }
 
   cout << "Exporting snapshot " << snapshot_id << " (" << snapshot->entry().state() << ") to file "
@@ -3780,11 +3806,13 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
     req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
   }
 
+  auto option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT;
   if (consistent_snapshot_option == "USE_SNAPSHOT") {
-    req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::USE_SNAPSHOT);
-  } else {
-    req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT);
+    option = CDCSDKSnapshotOption::USE_SNAPSHOT;
+  } else if (consistent_snapshot_option == "EXPORT_SNAPSHOT") {
+    option = CDCSDKSnapshotOption::EXPORT_SNAPSHOT;
   }
+  req.set_cdcsdk_consistent_snapshot_option(option);
 
   auto stream_create_options = req.mutable_cdcsdk_stream_create_options();
   if (is_dynamic_tables_enabled) {

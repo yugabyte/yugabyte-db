@@ -18,7 +18,7 @@ Connect to your YugabyteDB cluster database from your desktop using the [Yugabyt
 | [ysqlsh](../../../api/ysqlsh/) | [YSQL](../../../api/ysql/) | SQL shell for interacting with YugabyteDB using PostgreSQL-compatible YSQL API. |
 | [ycqlsh](../../../api/ycqlsh/) | [YCQL](../../../api/ycql/) | CQL shell for interacting with YugabyteDB using Cassandra-compatible YCQL API. |
 
-Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
+Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/15/app-psql.html) and third-party tools to connect.
 
 ## Prerequisites
 
@@ -71,7 +71,7 @@ Use the ysqlsh and ycqlsh shells to connect to and interact with YugabyteDB usin
 
 ## Connect using psql
 
-To connect using [psql](https://www.postgresql.org/docs/current/app-psql.html), first download the CA certificate for your cluster by clicking **Connect**, selecting **YugabyteDB Client Shell**, and clicking **Download CA Cert**. Then use the following connection string:
+To connect using [psql](https://www.postgresql.org/docs/15/app-psql.html), first download the CA certificate for your cluster by clicking **Connect**, selecting **YugabyteDB Client Shell**, and clicking **Download CA Cert**. Then use the following connection string:
 
 ```sh
 psql --host=<HOST_ADDRESS> --port=5433 \

@@ -13,6 +13,11 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = \
+	tablegroup.o \
+	yb_builtin.o \
+	yb_cmds.o \
+	yb_profile.o \
+	\
 	aggregatecmds.o \
 	alter.o \
 	amcmds.o \
@@ -53,7 +58,6 @@ OBJS = \
 	statscmds.o \
 	subscriptioncmds.o \
 	tablecmds.o \
-	tablegroup.o \
 	tablespace.o \
 	trigger.o \
 	tsearchcmds.o \
@@ -62,9 +66,6 @@ OBJS = \
 	vacuum.o \
 	vacuumparallel.o \
 	variable.o \
-	view.o \
-	ybccmds.o \
-	ybc_builtin.o \
-	yb_profile.o
+	view.o
 
 include $(top_srcdir)/src/backend/common.mk

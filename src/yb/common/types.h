@@ -92,6 +92,8 @@ class TypeInfo {
   }
 
   bool is_collection() const;
+
+  bool is_vector() const;
 };
 
 template<DataType Type> struct DataTypeTraits {};

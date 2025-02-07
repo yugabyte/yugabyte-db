@@ -41,7 +41,7 @@
 #include "commands/progress.h"
 #include "commands/tablecmds.h"
 #include "commands/vacuum.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "miscadmin.h"
 #include "optimizer/optimizer.h"
 #include "pgstat.h"
@@ -661,7 +661,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 							   accessMethod,
 							   relpersistence,
 							   AccessExclusiveLock,
-							   true /* yb_copy_split_options */);
+							   true /* yb_copy_split_options */ );
 
 	/* Copy the heap data into the new table in the desired order */
 	copy_table_data(OIDNewHeap, tableOid, indexOid, verbose,
@@ -675,7 +675,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 					 swap_toast_by_content, false, true,
 					 frozenXid, cutoffMulti,
 					 relpersistence,
-					 true /* yb_copy_split_options */);
+					 true /* yb_copy_split_options */ );
 }
 
 
@@ -748,7 +748,7 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 	OIDNewHeap = heap_create_with_catalog(NewHeapName,
 										  namespaceid,
 										  NewTableSpace,
-										  InvalidOid, /* reltablegroup */
+										  InvalidOid,	/* reltablegroup */
 										  InvalidOid,
 										  InvalidOid,
 										  InvalidOid,
@@ -773,7 +773,7 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 	if (IsYugaByteEnabled() && relpersistence != RELPERSISTENCE_TEMP)
 		YbRelationSetNewRelfileNode(OldHeap, OIDNewHeap,
 									yb_copy_split_options,
-									false /* is_truncate */);
+									false /* is_truncate */ );
 
 	ReleaseSysCache(tuple);
 
@@ -1515,7 +1515,7 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 								 PROGRESS_CLUSTER_PHASE_REBUILD_INDEX);
 
 	reindex_relation(OIDOldHeap, reindex_flags, &reindex_params,
-					 true /* is_yb_table_rewrite */,
+					 true /* is_yb_table_rewrite */ ,
 					 yb_copy_split_options);
 
 	/* Report that we are now doing clean up */

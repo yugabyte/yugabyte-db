@@ -56,7 +56,7 @@ upgrade_masters() {
 run_ysql_catalog_upgrade() {
   echo run_ysql_catalog_upgrade starting at $(date +"%r")
   build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
-    ysql_major_version_catalog_upgrade
+    upgrade_ysql_major_version_catalog
   echo run_ysql_catalog_upgrade finished at $(date +"%r")
 }
 
@@ -80,18 +80,9 @@ run_preflight_checks() {
     --old-host "$PGHOST" --old-port 5433 --username "yugabyte" --check
 }
 
-finalize_ysql_major_version_catalog_upgrade() {
-  echo finalize_ysql_major_version_catalog_upgrade starting at $(date +"%r")
-  build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
-    finalize_ysql_major_version_catalog_upgrade
-  echo finalize_ysql_major_version_catalog_upgrade finished at $(date +"%r")
-}
-
 finalize_upgrade() {
-  finalize_ysql_major_version_catalog_upgrade
-
   build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
-    promote_auto_flags
+    finalize_upgrade
 }
 
 verify_simple_table_mixed_cluster() {

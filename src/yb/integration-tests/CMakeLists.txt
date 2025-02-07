@@ -47,12 +47,14 @@ add_custom_command(
 
 add_custom_target(fips_install DEPENDS ${CMAKE_BINARY_DIR}/openssl-config/openssl-fips.cnf)
 
-file(COPY
-  ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
-  DESTINATION ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql)
-
-add_custom_target(
-  xcluster_ddl_replication_sql DEPENDS ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql)
+add_custom_target(xcluster_ddl_replication_sql
+  COMMAND ${CMAKE_COMMAND} -E remove_directory
+    ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
+    ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql/sql
+  DEPENDS ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
+  COMMENT "Copying SQL files for xcluster_ddl_replication_pgregress-test.cc")
 
 configure_file(
   ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/upgrade-tests/builds.xml
@@ -263,12 +265,14 @@ ADD_YB_TEST(xcluster/xcluster-tablet-split-itest)
 ADD_YB_TEST(xcluster/xcluster-test)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-itest)
 ADD_YB_TEST(retryable_request-test)
+ADD_YB_TEST(upgrade-tests/auto_flag_upgrade-test)
 ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
 ADD_YB_TEST(upgrade-tests/replication_info_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg15_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg15_upgrade_pgregress-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_matview-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)

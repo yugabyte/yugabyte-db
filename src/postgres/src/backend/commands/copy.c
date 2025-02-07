@@ -46,11 +46,11 @@
 #include "commands/progress.h"
 #include "commands/trigger.h"
 #include "executor/execPartition.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "port/pg_bswap.h"
 #include "pgstat.h"
 
-int yb_default_copy_from_rows_per_transaction = DEFAULT_BATCH_ROWS_PER_TRANSACTION;
+int			yb_default_copy_from_rows_per_transaction = DEFAULT_BATCH_ROWS_PER_TRANSACTION;
 
 /*
  *	 DoCopy executes the SQL COPY statement
@@ -163,7 +163,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		attnums = CopyGetAttnums(tupDesc, rel, stmt->attlist);
 		foreach(cur, attnums)
 		{
-			int attno = lfirst_int(cur) - YBGetFirstLowInvalidAttributeNumber(rel);
+			int			attno = lfirst_int(cur) - YBGetFirstLowInvalidAttributeNumber(rel);
 
 			if (is_from)
 				rte->insertedCols = bms_add_member(rte->insertedCols, attno);
@@ -571,7 +571,8 @@ ProcessCopyOptions(ParseState *pstate,
 		}
 		else if (strcmp(defel->defname, "rows_per_transaction") == 0)
 		{
-			int rows = defGetInt32(defel);
+			int			rows = defGetInt32(defel);
+
 			if (rows >= 0)
 				opts_out->batch_size = rows;
 			else
@@ -582,7 +583,8 @@ ProcessCopyOptions(ParseState *pstate,
 		}
 		else if (strcmp(defel->defname, "skip") == 0)
 		{
-			int64_t num_initial_skipped_rows = defGetInt64(defel);
+			int64_t		num_initial_skipped_rows = defGetInt64(defel);
+
 			if (num_initial_skipped_rows >= 0)
 				opts_out->num_initial_skipped_rows = num_initial_skipped_rows;
 			else

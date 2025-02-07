@@ -49,7 +49,7 @@ ${BIN_DIR}/${OS_ARCH}/${BIN_NAME}: ${GO_SOURCE_FILES}
 
 .PHONY: doc
 doc:
-	YBA_FF_TOOLS=true  go run main.go tools gen-doc --format markdown
+	YBA_FF_TOOLS=true YBA_FF_PREVIEW=true go run main.go tools gen-doc --format markdown
 	sed -i 's/\x1B\[32m//g' docs/*
 	sed -i 's/\x1B\[0m//g' docs/*
 

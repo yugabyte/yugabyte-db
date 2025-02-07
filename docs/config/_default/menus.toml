@@ -386,7 +386,7 @@
   weight = 10
   identifier = "yugabytedb"
   pre = "<i class='icon-database'></i>"
-  url = "/stable/"
+  url = "/preview/"
   [home.params]
     classes = "no-transform"
     showSection = true
@@ -396,7 +396,7 @@
   weight = 11
   identifier = "yugabytedb-anywhere"
   pre = "<i class='icon-server'></i>"
-  url = "/stable/yugabyte-platform/"
+  url = "/preview/yugabyte-platform/"
   [home.params]
     classes = "no-transform"
     showSection = true
@@ -497,7 +497,7 @@
   name = "Quick Start"
   weight = 5
   identifier = "quick-start"
-  url = "/preview/tutorials/quick-start/"
+  url = "/preview/tutorials/quick-start/macos/"
   [preview.params]
     classes = "separator"
     showSection = true
@@ -693,7 +693,6 @@
   identifier = "quick-start"
   url = "/preview/tutorials/quick-start-yugabytedb-managed/"
   [preview_tutorials.params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -946,6 +945,7 @@
   weight = 2
   identifier = "yugabytedb-managed"
   [preview_yugabyte-cloud.params]
+    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -1027,7 +1027,7 @@
   name = "Quick Start"
   weight = 4
   identifier = "quick-start"
-  url = "/preview/tutorials/quick-start/"
+  url = "/preview/tutorials/quick-start/macos/"
   [stable.params]
     classes = "separator"
     showSection = true
@@ -1229,7 +1229,7 @@
   name = "Quick Start"
   weight = 4
   identifier = "quick-start"
-  url = "/preview/tutorials/quick-start/"
+  url = "/preview/tutorials/quick-start/macos/"
   ["v2024.1".params]
     classes = "separator"
     showSection = true
@@ -1384,7 +1384,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/preview/tutorials/quick-start/"
+  url = "/preview/tutorials/quick-start/macos/"
   ["v2.20".params]
     classes = "separator"
     showSection = true
@@ -1530,7 +1530,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/preview/tutorials/quick-start/"
+  url = "/preview/tutorials/quick-start/macos/"
   ["v2.18".params]
     classes = "separator"
     showSection = true
@@ -1667,7 +1667,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/preview/tutorials/quick-start/"
+  url = "/preview/tutorials/quick-start/macos/"
   ["v2.14".params]
     classes = "separator"
     showSection = true

@@ -123,19 +123,5 @@ ysqlsh <<EOT
 DROP TABLE sql_identifier_test;
 EOT
 
-# Drop postgres database
-ysqlsh <<EOT
-DROP DATABASE postgres;
-EOT
-
-# Check failure
-grep -q "The source cluster does not have the database: \"postgres\"" \
-  <(run_preflight_checks 2>&1)
-
-# Create postgres database
-ysqlsh <<EOT
-CREATE DATABASE postgres;
-EOT
-
 # Run preflight checks again. The final check should pass.
 run_preflight_checks

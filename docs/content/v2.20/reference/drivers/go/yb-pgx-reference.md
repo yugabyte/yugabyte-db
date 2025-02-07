@@ -71,7 +71,7 @@ The following connection properties need to be added to enable load balancing:
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` connection parameter.
 
-For more information, see [Cluster-aware load balancing](../../smart-drivers/#cluster-aware-load-balancing).
+For more information, see [Cluster-aware load balancing](../../../../drivers-orms/smart-drivers/#cluster-aware-load-balancing).
 
 ### Use the driver
 
@@ -238,7 +238,7 @@ For more details, see the [pgxpool package](https://pkg.go.dev/github.com/jackc/
 
 To build a Go application that communicates securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB cluster. To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
-Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](/preview/tutorials/build-apps/go/ysql-pgx/#ca-certificate).
+Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](/preview/tutorials/build-apps/cloud-add-ip/#download-your-cluster-certificate).
 
 For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as follows at the client side.
 

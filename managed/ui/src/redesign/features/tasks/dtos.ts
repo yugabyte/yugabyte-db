@@ -58,6 +58,7 @@ export interface Task {
   };
   abortable: boolean;
   retryable: boolean;
+  canRollback: boolean;
   correlationId: string;
   userEmail: string;
   subtaskInfos: SubTaskInfo[];

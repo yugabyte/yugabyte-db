@@ -33,7 +33,7 @@
 #include "executor/executor.h"
 #include "executor/ybOptimizeModifyTable.h"
 #include "nodes/ybbitmatrix.h"
-#include "optimizer/ybcplan.h"
+#include "optimizer/ybplan.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"
@@ -75,22 +75,27 @@ YbLogOptimizationSummary(const struct YbUpdateEntity *entity_list,
 static void
 YbLogColumnList(Relation rel, const Bitmapset *cols, const char *message)
 {
-	const int ncols = bms_num_members(cols);
+	const int	ncols = bms_num_members(cols);
+
 	if (!ncols)
 	{
 		elog(DEBUG2, "No cols in category: %s", message);
 		return;
 	}
 
-	char *col_str = (char *) palloc0(10 * ncols * sizeof(char));
+	char	   *col_str = (char *) palloc0(10 * ncols * sizeof(char));
 
-	int length, prev_len, col;
+	int			length,
+				prev_len,
+				col;
 	const AttrNumber offset = YBGetFirstLowInvalidAttributeNumber(rel);
+
 	col = -1;
 	prev_len = 0;
 	while ((col = bms_next_member(cols, col)) >= 0)
 	{
-		AttrNumber attnum = col + offset;
+		AttrNumber	attnum = col + offset;
+
 		length = snprintf(NULL, 0, "%d (%d) ", attnum, col);
 		snprintf(&col_str[prev_len], length + 1, "%d (%d) ", attnum, col);
 		prev_len += length;
@@ -187,8 +192,9 @@ YBAreDatumsStoredIdentically(Datum lhs,
 	 * datumIsEqual, but it does not accept an upper bound arg, and we would
 	 * like to keep that function unchanged.
 	 */
-	const int lhslength = datumGetSize(lhs, attdesc->attbyval, attdesc->attlen);
-	const int rhslength = datumGetSize(rhs, attdesc->attbyval, attdesc->attlen);
+	const int	lhslength = datumGetSize(lhs, attdesc->attbyval, attdesc->attlen);
+	const int	rhslength = datumGetSize(rhs, attdesc->attbyval, attdesc->attlen);
+
 	if (lhslength != rhslength ||
 		lhslength > yb_update_optimization_options.max_cols_size_to_compare)
 		return false;
@@ -217,11 +223,11 @@ YBIsColumnModified(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
 	if (!IsRealYBColumn(rel, attnum))
 		return false;
 
-	bool old_is_null = false;
-	bool new_is_null = false;
-	TupleDesc relTupdesc = RelationGetDescr(rel);
-	Datum old_value = heap_getattr(oldtuple, attnum, relTupdesc, &old_is_null);
-	Datum new_value = heap_getattr(newtuple, attnum, relTupdesc, &new_is_null);
+	bool		old_is_null = false;
+	bool		new_is_null = false;
+	TupleDesc	relTupdesc = RelationGetDescr(rel);
+	Datum		old_value = heap_getattr(oldtuple, attnum, relTupdesc, &old_is_null);
+	Datum		new_value = heap_getattr(newtuple, attnum, relTupdesc, &new_is_null);
 
 	return ((old_is_null != new_is_null) ||
 			(!old_is_null &&
@@ -248,8 +254,9 @@ YBComputeExtraUpdatedCols(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
 						  bool is_update_optimization_enabled,
 						  bool is_onconflict_update)
 {
-	Bitmapset *trig_cond_cols = NULL;
-	Bitmapset *skip_cols = updated_cols;
+	Bitmapset  *trig_cond_cols = NULL;
+	Bitmapset  *skip_cols = updated_cols;
+
 	/*
 	* If the optimization is not enabled, we only need to compare the
 	* columns that are not in the targetlist of the query.
@@ -273,10 +280,11 @@ YBComputeExtraUpdatedCols(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
 		 */
 		for (int idx = 0; idx < rel->trigdesc->numtriggers; ++idx)
 		{
-			Trigger *trigger = &rel->trigdesc->triggers[idx];
+			Trigger    *trigger = &rel->trigdesc->triggers[idx];
+
 			if (!(trigger->tgnattr && (trigger->tgtype & TRIGGER_TYPE_AFTER) &&
-				((trigger->tgtype & TRIGGER_TYPE_UPDATE) ||
-				(is_onconflict_update && (trigger->tgtype & TRIGGER_TYPE_INSERT)))))
+				  ((trigger->tgtype & TRIGGER_TYPE_UPDATE) ||
+				   (is_onconflict_update && (trigger->tgtype & TRIGGER_TYPE_INSERT)))))
 				continue;
 
 			/*
@@ -285,24 +293,27 @@ YBComputeExtraUpdatedCols(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
 			 */
 			for (int col_idx = 0; col_idx < trigger->tgnattr; col_idx++)
 			{
-				const int bms_idx = trigger->tgattr[col_idx] -
-					YBGetFirstLowInvalidAttributeNumber(rel);
+				const int	bms_idx = (trigger->tgattr[col_idx] -
+									   YBGetFirstLowInvalidAttributeNumber(rel));
+
 				trig_cond_cols = bms_add_member(trig_cond_cols, bms_idx);
 			}
 		}
 
 		/* Subtract the cols that have already been compared. */
-		Bitmapset *compared_cols = bms_union(*unmodified_cols, *modified_cols);
+		Bitmapset  *compared_cols = bms_union(*unmodified_cols, *modified_cols);
+
 		trig_cond_cols = bms_difference(trig_cond_cols, compared_cols);
 		skip_cols = bms_union(skip_cols, compared_cols);
 	}
-	TupleDesc tupleDesc = RelationGetDescr(rel);
+	TupleDesc	tupleDesc = RelationGetDescr(rel);
 	const AttrNumber offset = YBGetFirstLowInvalidAttributeNumber(rel);
 
 	for (int idx = 0; idx < tupleDesc->natts; ++idx)
 	{
 		const FormData_pg_attribute *attdesc = TupleDescAttr(tupleDesc, idx);
 		const AttrNumber bms_idx = attdesc->attnum - offset;
+
 		if (bms_is_member(bms_idx, skip_cols) &&
 			!bms_is_member(bms_idx, trig_cond_cols))
 			continue;
@@ -323,7 +334,8 @@ YbUpdateHandleModifiedField(YbBitMatrix *matrix, Bitmapset **modified_entities,
 	 * There is no need to check entities < row_idx as the algorithm guarantees
 	 * that this entity is the first one that references this column.
 	 */
-	int local_entity_idx = entity_idx - 1;
+	int			local_entity_idx = entity_idx - 1;
+
 	while ((local_entity_idx = YbGetNextEntityFromBitMatrix(matrix, field_idx,
 															local_entity_idx)) >= 0)
 		*modified_entities = bms_add_member(*modified_entities, entity_idx);
@@ -345,6 +357,7 @@ YbUpdateHandleUnmodifiedEntity(YbUpdateAffectedEntities *affected_entities,
 							   YbSkippableEntities *skip_entities)
 {
 	struct YbUpdateEntity *entity = &affected_entities->entity_list[entity_idx];
+
 	YbAddEntityToSkipList(entity->etype, entity->oid, skip_entities);
 }
 
@@ -381,24 +394,28 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
 	if (affected_entities == NULL)
 		return NULL;
 
-	bool skip_entities_initially_empty PG_USED_FOR_ASSERTS_ONLY =
-		skip_entities->index_list == NIL &&
-		skip_entities->referenced_fkey_list == NIL &&
-		skip_entities->referencing_fkey_list == NIL;
+	bool		skip_entities_initially_empty PG_USED_FOR_ASSERTS_ONLY;
+
+	skip_entities_initially_empty =
+		(skip_entities->index_list == NIL &&
+		 skip_entities->referenced_fkey_list == NIL &&
+		 skip_entities->referencing_fkey_list == NIL);
 
 	/*
 	 * Clone the update matrix to create a working copy for this tuple. We would
 	 * like to preserve a clean copy for subsequent tuples in this query/plan.
 	 */
 	YbBitMatrix matrix;
+
 	YbCopyBitMatrix(&matrix, &affected_entities->matrix);
 
-	Relation rel = resultRelInfo->ri_RelationDesc;
-	TupleDesc relTupdesc = RelationGetDescr(rel);
-	const int nentities = YB_UPDATE_AFFECTED_ENTITIES_NUM_ENTITIES(affected_entities);
+	Relation	rel = resultRelInfo->ri_RelationDesc;
+	TupleDesc	relTupdesc = RelationGetDescr(rel);
+	const int	nentities = YB_UPDATE_AFFECTED_ENTITIES_NUM_ENTITIES(affected_entities);
 
-	Bitmapset *modified_entities =
-		bms_del_member(bms_add_member(NULL, nentities), nentities);
+	Bitmapset  *modified_entities = bms_del_member(bms_add_member(NULL,
+																  nentities),
+												   nentities);
 
 	for (int entity_idx = 0; entity_idx < nentities; entity_idx++)
 	{
@@ -414,17 +431,19 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
 		 * If we already know that the entity is modified, skip checking its
 		 * columns.
 		 */
-		bool is_modified = bms_is_member(entity_idx, modified_entities);
+		bool		is_modified = bms_is_member(entity_idx, modified_entities);
 
-		int field_idx = -1;
+		int			field_idx = -1;
+
 		while (!is_modified &&
 			   (field_idx = YbGetNextFieldFromBitMatrix(&matrix, entity_idx,
 														field_idx)) >= 0)
 		{
-			AttrNumber attnum = affected_entities->col_info_list[field_idx].attnum;
-			const int idx = YBBmsIndexToAttnum(rel, attnum);
-			const FormData_pg_attribute *attdesc =
-				TupleDescAttr(relTupdesc, idx);
+			AttrNumber	attnum = affected_entities->col_info_list[field_idx].attnum;
+			const int	idx = YBBmsIndexToAttnum(rel, attnum);
+			const FormData_pg_attribute *attdesc = TupleDescAttr(relTupdesc,
+																 idx);
+
 			if (!YbIsColumnComparisonAllowed(*modified_cols, *unmodified_cols) ||
 				YBIsColumnModified(rel, oldtuple, newtuple, attdesc))
 			{
@@ -508,7 +527,7 @@ YbComputeModifiedColumnsAndSkippableEntities(ModifyTableState *mtstate,
 	if (oldtuple == NULL)
 		return;
 
-	Relation rel = resultRelInfo->ri_RelationDesc;
+	Relation	rel = resultRelInfo->ri_RelationDesc;
 
 	/*
 	 * Maintain two bitmapsets - one to track columns that have indeed been
@@ -523,10 +542,11 @@ YbComputeModifiedColumnsAndSkippableEntities(ModifyTableState *mtstate,
 	 * Additionally, the union of unmodified_cols and modified_cols may include
 	 * columns that are not in updated_cols.
 	 */
-	Bitmapset *unmodified_cols = NULL;
-	Bitmapset *modified_cols = NULL;
+	Bitmapset  *unmodified_cols = NULL;
+	Bitmapset  *modified_cols = NULL;
 
 	ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
+
 	if (mtstate->yb_is_update_optimization_enabled)
 	{
 		YbComputeModifiedEntities(resultRelInfo, oldtuple, newtuple,
@@ -553,8 +573,9 @@ YbComputeModifiedColumnsAndSkippableEntities(ModifyTableState *mtstate,
 	 */
 	if (!bms_overlap(YBGetTablePrimaryKeyBms(rel), modified_cols))
 	{
-		Bitmapset *unmodified_pkcols =
-			bms_intersect(YBGetTablePrimaryKeyBms(rel), unmodified_cols);
+		Bitmapset  *unmodified_pkcols = bms_intersect(YBGetTablePrimaryKeyBms(rel),
+													  unmodified_cols);
+
 		*updated_cols = bms_del_members(*updated_cols, unmodified_pkcols);
 		bms_free(unmodified_pkcols);
 	}

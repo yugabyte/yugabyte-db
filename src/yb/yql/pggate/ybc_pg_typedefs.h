@@ -416,6 +416,7 @@ typedef struct {
   const char*     ysql_conn_mgr_sequence_support_mode;
   const int32_t*  ysql_conn_mgr_max_query_size;
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
+  const bool*     ysql_enable_pg_export_snapshot;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -486,7 +487,8 @@ typedef struct {
   YbcPgVectorIdxType idx_type;
   uint32_t dimensions;
   uint32_t attnum;
-  // TODO(tanuj): Add vector index type-specific options
+  uint32_t hnsw_ef;
+  uint32_t hnsw_m;
 } YbcPgVectorIdxOptions;
 
 typedef struct {
@@ -789,7 +791,8 @@ typedef struct {
 // It does not include EXPORT_SNAPSHOT since it isn't supported yet.
 typedef enum {
   YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT,
-  YB_REPLICATION_SLOT_USE_SNAPSHOT
+  YB_REPLICATION_SLOT_USE_SNAPSHOT,
+  YB_REPLICATION_SLOT_EXPORT_SNAPSHOT
 } YbcPgReplicationSlotSnapshotAction;
 
 typedef enum {
@@ -901,6 +904,12 @@ typedef enum {
   YB_ADVISORY_LOCK_SHARED,
   YB_ADVISORY_LOCK_EXCLUSIVE
 } YbcAdvisoryLockMode;
+
+typedef struct {
+  YbcPgOid db_id;
+  int iso_level;
+  bool read_only;
+} YbcPgTxnSnapshot;
 
 #ifdef __cplusplus
 }  // extern "C"

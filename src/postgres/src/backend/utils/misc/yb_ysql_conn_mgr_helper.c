@@ -68,9 +68,9 @@
  */
 #define YB_CREATE_SHMEM_FLAG 0666 | IPC_EXCL | IPC_CREAT
 
-bool yb_is_auth_backend = false;
-bool yb_is_client_ysqlconnmgr = false;
-bool yb_is_parallel_worker = false;
+bool		yb_is_auth_backend = false;
+bool		yb_is_client_ysqlconnmgr = false;
+bool		yb_is_parallel_worker = false;
 
 enum YbSessionParameterUpdateRst
 {
@@ -128,18 +128,18 @@ struct YbYsqlConnMgrShmemHeader
 	 * this value, then the shared memory will be resized to appropriate value
 	 * (increasing the array len value).
 	 */
-	uint32_t session_parameter_array_len;
+	uint32_t	session_parameter_array_len;
 
-	Oid database;
-	Oid user;
-	bool is_superuser;
-	char rolename[SHMEM_MAX_STRING_LEN];
+	Oid			database;
+	Oid			user;
+	bool		is_superuser;
+	char		rolename[SHMEM_MAX_STRING_LEN];
 };
 
 struct YbShmemSessionParameter
 {
-	char name[SHMEM_MAX_STRING_LEN];
-	char value[SHMEM_MAX_STRING_LEN];
+	char		name[SHMEM_MAX_STRING_LEN];
+	char		value[SHMEM_MAX_STRING_LEN];
 };
 
 /*
@@ -151,25 +151,26 @@ struct YbChangedSessionParametersList
 	 * TODO (janand) GH #18301 Use the index of the GUC list instead of string,
 	 * to enhance the performance.
 	 */
-	char session_parameter_name[SHMEM_MAX_STRING_LEN];
+	char		session_parameter_name[SHMEM_MAX_STRING_LEN];
 	struct YbChangedSessionParametersList *next;
 };
 
 struct YbChangedSessionParametersList *yb_changed_session_parameters = NULL;
 
-int yb_logical_client_shmem_key = -1;
+int			yb_logical_client_shmem_key = -1;
 
 int
 get_shmem_size(const int array_len)
 {
-	return sizeof(struct YbYsqlConnMgrShmemHeader) +
-		   sizeof(struct YbShmemSessionParameter) * array_len;
+	return (sizeof(struct YbYsqlConnMgrShmemHeader) +
+			sizeof(struct YbShmemSessionParameter) * array_len);
 }
 
 void
 YbCleanChangedSessionParameters()
 {
 	struct YbChangedSessionParametersList *temp_list;
+
 	while (yb_changed_session_parameters != NULL)
 	{
 		temp_list = yb_changed_session_parameters->next;
@@ -190,7 +191,8 @@ YbAddToChangedSessionParametersList(const char *session_parameter_name)
 	 */
 	if (strlen(session_parameter_name) >= SHMEM_MAX_STRING_LEN)
 	{
-		/* TODO (janand) GH #18302 Handle this exception at the Ysql Conn Mgr
+		/*
+		 * TODO (janand) GH #18302 Handle this exception at the Ysql Conn Mgr
 		 * side.
 		 */
 		ereport(WARNING,
@@ -226,7 +228,8 @@ YbAddToChangedSessionParametersList(const char *session_parameter_name)
 static int
 change_array_len_in_shmem(const key_t shmem_id, const uint32_t new_array_size)
 {
-	char *shmem_ptr;
+	char	   *shmem_ptr;
+
 	if (attach_shmem(shmem_id, &shmem_ptr) < 0)
 		return -1;
 
@@ -244,7 +247,8 @@ static int
 yb_shmem_resize(const key_t shmem_id, const long new_array_size)
 {
 	struct shmid_ds buf;
-	int result = shmctl(shmem_id, IPC_STAT, &buf);
+	int			result = shmctl(shmem_id, IPC_STAT, &buf);
+
 	if (result < 0)
 	{
 		int			save_errno = errno;
@@ -284,50 +288,54 @@ check_resize_needed(const int shmem_id)
 	 * TODO (janand) GH #18303 Compare the shared parameter names in present in
 	 * shared memory and `shmem_parameter_list`, to find the accurate value.
 	 */
-	int max_length_needed = 0;
-	int length_updates = 0;
-	int length_shmem = 0;
+	int			max_length_needed = 0;
+	int			length_updates = 0;
+	int			length_shmem = 0;
 
-	char *shmem_ptr;
+	char	   *shmem_ptr;
 
 	if (attach_shmem(shmem_id, &shmem_ptr) == -1)
 		return -1;
 
 	struct YbYsqlConnMgrShmemHeader shmem_header;
+
 	memcpy(&shmem_header, shmem_ptr, sizeof(struct YbYsqlConnMgrShmemHeader));
 
-	struct YbShmemSessionParameter *shmem_parameter_list =
-		(struct YbShmemSessionParameter
-			 *) (shmem_ptr + sizeof(struct YbYsqlConnMgrShmemHeader));
+	struct YbShmemSessionParameter *shmem_parameter_list;
+
+	shmem_parameter_list = (struct YbShmemSessionParameter *)
+		(shmem_ptr + sizeof(struct YbYsqlConnMgrShmemHeader));
 
 	/* Find the used up length in the array  */
-	for (int i = 0; (strncmp(shmem_parameter_list[i].name, "",
-							 SHMEM_MAX_STRING_LEN) != 0) &&
-					i < shmem_header.session_parameter_array_len;
+	for (int i = 0;
+		 (strncmp(shmem_parameter_list[i].name, "",
+				  SHMEM_MAX_STRING_LEN) != 0) &&
+		 i < shmem_header.session_parameter_array_len;
 		 i++, length_shmem++);
 
 	/* Find the max number of elements needed in the array   */
 	for (struct YbChangedSessionParametersList *temp_list =
-			 yb_changed_session_parameters;
+		 yb_changed_session_parameters;
 		 temp_list != NULL; temp_list = temp_list->next, length_updates++);
 
 	max_length_needed = length_updates + length_shmem;
 
-	unsigned long max_length_supported =
-		shmem_header.session_parameter_array_len;
+	unsigned long max_length_supported = shmem_header.session_parameter_array_len;
 
 	if (detach_shmem(shmem_id, shmem_ptr) == -1)
 		return -1;
 
-	return (max_length_supported <= max_length_needed) ? 2 * max_length_needed :
-														 0;
+	return ((max_length_supported <= max_length_needed) ?
+			2 * max_length_needed :
+			0);
 }
 
 static int
 resize_shmem_if_needed(const key_t shmem_id)
 {
 	/* TODO (janand) GH #18304 Add a java test for resizing the shared memory */
-	int resize_needed = check_resize_needed(shmem_id);
+	int			resize_needed = check_resize_needed(shmem_id);
+
 	if (resize_needed == -1)
 		return -1;
 
@@ -357,15 +365,19 @@ update_session_parameter_value(struct YbShmemSessionParameter *shmem_parameter_l
 		if (strncmp(shmem_parameter_list[*shmem_itr].name,
 					session_parameter_name, SHMEM_MAX_STRING_LEN) == 0)
 		{
-			/* TODO: Use GetConfigOptionByNum instead of GetConfigOptionByName. */
-			char *value =
-				GetConfigOptionByName(session_parameter_name, NULL, false);
+			/*
+			 * TODO: Use GetConfigOptionByNum instead of
+			 * GetConfigOptionByName.
+			 */
+			char	   *value = GetConfigOptionByName(session_parameter_name,
+													  NULL, false);
 
 			if (strlen(value) >= SHMEM_MAX_STRING_LEN)
 			{
-				ereport(WARNING, (errmsg("value `%s` for session parameter %s "
-									   "exceeds the max allowable length",
-									   value, session_parameter_name)));
+				ereport(WARNING,
+						(errmsg("value `%s` for session parameter %s "
+								"exceeds the max allowable length",
+								value, session_parameter_name)));
 				return ERROR_WHILE_STORING_SESSION_PARAMETER;
 			}
 
@@ -395,12 +407,14 @@ add_session_parameter(struct YbShmemSessionParameter *shmem_parameter_list,
 	Assert(strncmp(shmem_parameter_list[shmem_itr].name, "",
 				   SHMEM_MAX_STRING_LEN) == 0);
 
-	char *value = GetConfigOptionByName(session_parameter_name, NULL, false);
+	char	   *value = GetConfigOptionByName(session_parameter_name, NULL, false);
+
 	if (strlen(value) >= SHMEM_MAX_STRING_LEN)
 	{
-		ereport(WARNING, (errmsg("value `%s` for session parameter %s exceeds "
-							   "the max allowable length",
-							   value, session_parameter_name)));
+		ereport(WARNING,
+				(errmsg("value `%s` for session parameter %s exceeds "
+						"the max allowable length",
+						value, session_parameter_name)));
 		return -1;
 	}
 
@@ -415,50 +429,52 @@ update_session_parameters(struct YbShmemSessionParameter *shmem_parameter_list,
 						  const uint32_t max_shmem_array_size)
 {
 	for (struct YbChangedSessionParametersList *temp_list =
-			 yb_changed_session_parameters;
+		 yb_changed_session_parameters;
 		 temp_list != NULL; temp_list = temp_list->next)
 	{
-		char *session_parameter_name = temp_list->session_parameter_name;
-		uint32_t shmem_itr = 0;
-		int rc = update_session_parameter_value(shmem_parameter_list,
-												session_parameter_name,
-												max_shmem_array_size,
-												&shmem_itr);
+		char	   *session_parameter_name = temp_list->session_parameter_name;
+		uint32_t	shmem_itr = 0;
+		int			rc = update_session_parameter_value(shmem_parameter_list,
+														session_parameter_name,
+														max_shmem_array_size,
+														&shmem_itr);
 
 		switch (rc)
 		{
 			case SHMEM_RESIZE_NEEDED:
-				// TODO (janand): Needs to be resized
-				// Unexpected situation.
+				/*
+				 * TODO (janand): Needs to be resized
+				 * Unexpected situation.
+				 */
 				Assert(false);
 				break;
 
 			case ERROR_WHILE_STORING_SESSION_PARAMETER:
-				// Error while storing the session parameter
-				ereport(WARNING, (errmsg("unable to store the session parameter "
-									   "%s",
-									   session_parameter_name)));
+				/* Error while storing the session parameter */
+				ereport(WARNING,
+						(errmsg("unable to store the session parameter %s",
+								session_parameter_name)));
 				break;
 
 			case NEED_TO_ADD_NEW_ELEMENT_IN_SHMEM_ARRAY:
-				// Need to add a new element in the array.
+				/* Need to add a new element in the array. */
 				if (add_session_parameter(shmem_parameter_list,
 										  session_parameter_name,
 										  shmem_itr) < 0)
-					ereport(WARNING, (errmsg("unable to store the session "
-										   "parameter %s",
-										   session_parameter_name)));
+					ereport(WARNING,
+							(errmsg("unable to store the session parameter %s",
+									session_parameter_name)));
 				break;
 
 			case SUCCESSFULLY_UPDATED_SHMEM_VALUE:
-				// Session parameter is updated successfully.
-				ereport(DEBUG5, (errmsg("successfully stored the session "
-										"parameter %s",
-										session_parameter_name)));
+				/* Session parameter is updated successfully. */
+				ereport(DEBUG5,
+						(errmsg("successfully stored the session parameter %s",
+								session_parameter_name)));
 				break;
 
 			default:
-				// Invalid state
+				/* Invalid state */
 				Assert(false);
 		}
 	}
@@ -477,13 +493,16 @@ YbUpdateSharedMemory()
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	if (yb_logical_client_shmem_key == -1)
 	{
-		/* yb_changed_session_parameters can only be present if
-		 * yb_logical_client_shmem_key is set */
+		/*
+		 * yb_changed_session_parameters can only be present if
+		 * yb_logical_client_shmem_key is set
+		 */
 		Assert(yb_changed_session_parameters == NULL);
 		return;
 	}
 
-	int shmem_id = yb_logical_client_shmem_key;
+	int			shmem_id = yb_logical_client_shmem_key;
+
 	yb_logical_client_shmem_key = -1;
 
 	if (yb_changed_session_parameters == NULL)
@@ -492,11 +511,13 @@ YbUpdateSharedMemory()
 	if (resize_shmem_if_needed(shmem_id) < 0)
 		return;
 
-	char *shmem_ptr;
+	char	   *shmem_ptr;
+
 	if (attach_shmem(shmem_id, &shmem_ptr) < 0)
 		return;
 
 	struct YbYsqlConnMgrShmemHeader shmem_header;
+
 	memcpy(&shmem_header, shmem_ptr, sizeof(shmem_header));
 
 	update_session_parameters((struct YbShmemSessionParameter *)
@@ -512,8 +533,8 @@ int
 yb_shmem_get(const Oid user, const char *user_name, bool is_superuser,
 			 const Oid database)
 {
-	int shmem_id;
-	char *shmem_ptr;
+	int			shmem_id;
+	char	   *shmem_ptr;
 
 	if (strlen(user_name) >= SHMEM_MAX_STRING_LEN)
 	{
@@ -536,12 +557,15 @@ yb_shmem_get(const Oid user, const char *user_name, bool is_superuser,
 	if (attach_shmem(shmem_id, &shmem_ptr) < 0)
 		return -1;
 
+	struct YbYsqlConnMgrShmemHeader tmp = {
+		.session_parameter_array_len = DEFAULT_SHMEM_ARR_LEN,
+		.database = database,
+		.user = user,
+		.is_superuser = is_superuser
+	};
+
 	memcpy(shmem_ptr,
-		   &(struct YbYsqlConnMgrShmemHeader){.session_parameter_array_len =
-													DEFAULT_SHMEM_ARR_LEN,
-												.database = database,
-												.user = user,
-												.is_superuser = is_superuser},
+		   &tmp,
 		   sizeof(struct YbYsqlConnMgrShmemHeader));
 
 	strncpy(((struct YbYsqlConnMgrShmemHeader *) shmem_ptr)->rolename,
@@ -559,17 +583,20 @@ SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	yb_logical_client_shmem_key = client_shmem_key;
 
-	char *shared_memory_ptr;
+	char	   *shared_memory_ptr;
+
 	if (attach_shmem(yb_logical_client_shmem_key, &shared_memory_ptr) < 0)
 		return;
 
 	struct YbYsqlConnMgrShmemHeader shmem_header;
+
 	memcpy(&shmem_header, shared_memory_ptr,
 		   sizeof(struct YbYsqlConnMgrShmemHeader));
 
-	struct YbShmemSessionParameter *shmem_parameter_list =
-		(struct YbShmemSessionParameter*)
-				(shared_memory_ptr + sizeof(struct YbYsqlConnMgrShmemHeader));
+	struct YbShmemSessionParameter *shmem_parameter_list;
+
+	shmem_parameter_list = (struct YbShmemSessionParameter *)
+		(shared_memory_ptr + sizeof(struct YbYsqlConnMgrShmemHeader));
 
 	/*
 	 * Due to "pool per user, db combination" setting the user context
@@ -579,7 +606,8 @@ SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 	YbSetUserContext(shmem_header.user, shmem_header.is_superuser, shmem_header.rolename);
 #endif
 
-	int shmem_itr;
+	int			shmem_itr;
+
 	for (shmem_itr = 0; shmem_itr < shmem_header.session_parameter_array_len;
 		 shmem_itr++)
 	{
@@ -663,11 +691,11 @@ YbHandleSetSessionParam(int yb_client_id)
  */
 static int8_t
 SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
-						  Oid *roleid)
+								   Oid *roleid)
 {
 	HeapTuple	roleTup;
 	Form_pg_authid rform;
-	int yb_net_client_connections = 0;
+	int			yb_net_client_connections = 0;
 	char	   *rname;
 
 	/* TODO(janand) GH #19951 Do we need support for initializing via OID */
@@ -713,24 +741,25 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	* connections to yb/database.
 	*/
 
-	uint32_t yb_num_logical_conn = 0,
-				 yb_num_physical_conn_from_ysqlconnmgr = 0;
+	uint32_t	yb_num_logical_conn = 0,
+				yb_num_physical_conn_from_ysqlconnmgr = 0;
 
 	yb_net_client_connections = CountUserBackends(*roleid);
 
 	if (IsYugaByteEnabled() &&
-	YbGetNumYsqlConnMgrConnections(NULL, rname, &yb_num_logical_conn,
-									&yb_num_physical_conn_from_ysqlconnmgr)) {
+		YbGetNumYsqlConnMgrConnections(NULL, rname, &yb_num_logical_conn,
+									   &yb_num_physical_conn_from_ysqlconnmgr))
+	{
 		yb_net_client_connections +=
-		yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+			yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
 
 		if (YbIsYsqlConnMgrWarmupModeEnabled())
 			yb_net_client_connections = yb_num_logical_conn;
 	}
 
 	if (rform->rolconnlimit >= 0 &&
-			!rform->rolsuper &&
-			yb_net_client_connections + 1 > rform->rolconnlimit)
+		!rform->rolsuper &&
+		yb_net_client_connections + 1 > rform->rolconnlimit)
 	{
 		YbSendFatalForLogicalConnectionPacket();
 		ereport(WARNING,
@@ -751,6 +780,7 @@ send_oid_info(const char oid_type, const int oid)
 	Assert(YbIsClientYsqlConnMgr());
 
 	StringInfoData buf;
+
 	CHECK_FOR_INTERRUPTS();
 
 	pq_beginmessage(&buf, 'O');
@@ -792,12 +822,12 @@ YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superus
 	 * TODO (mkumar) GH #24350 Don't send errhint packet if YB_GUC_SUPPORT_VIA_SHMEM
 	 * 			mode is not enabled.
 	 */
-	int new_client_id =
-	#ifdef YB_GUC_SUPPORT_VIA_SHMEM
-		yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
-	#else
-		1;
-	#endif
+	int			new_client_id =
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
+	yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
+#else
+	1;
+#endif
 	if (new_client_id > 0)
 		ereport(NOTICE, (errhint("shmkey=%d", new_client_id)));
 	else
@@ -946,6 +976,7 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 		return false;
 
 	const int32_t shmid = shmget((key_t) atoi(stats_shm_key), 0, 0666);
+
 	if (shmid == -1)
 	{
 		int			save_errno = errno;
@@ -957,6 +988,7 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 	}
 
 	struct ConnectionStats *shmp;
+
 	shmp = (struct ConnectionStats *) shmat(shmid, NULL, 0);
 	if (shmp == NULL)
 	{
@@ -990,9 +1022,9 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 		 * TODO (janand) GH #20745 The values of Ysql Connection Manager stats
 		 * can get changed while reading the shared memory segment.
 		 */
-		*num_logical_conn += shmp[itr].active_clients +
-							 shmp[itr].waiting_clients +
-							 shmp[itr].queued_clients;
+		*num_logical_conn += (shmp[itr].active_clients +
+							  shmp[itr].waiting_clients +
+							  shmp[itr].queued_clients);
 		*num_physical_conn += shmp[itr].active_servers + shmp[itr].idle_servers;
 	}
 

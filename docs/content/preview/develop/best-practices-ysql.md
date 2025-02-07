@@ -52,7 +52,12 @@ For more details, see [Partial indexes](../../explore/ysql-language-features/ind
 
 If you need values in some of the columns to be unique, you can specify your index as UNIQUE.
 
-When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a NULL value is treated as a distinct value, you can have multiple NULL values in a column with a unique index.
+When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows.
+
+{{<note>}}
+By default a NULL value is treated as a distinct value, allowing you to have multiple NULL values in a column with a unique index. This can be turned OFF by adding the [NULLS NOT DISTINCT](../../api/ysql/the-sql-language/statements/ddl_create_index#nulls-not-distinct) option when creating the unique index.
+{{</note>}}
+
 
 {{<lead link="../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/">}}
 For more details, see [Unique indexes](../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/).
@@ -184,7 +189,7 @@ For more information, see [Connection pooling](../../drivers-orms/smart-drivers/
 
 ## Use YSQL Connection Manager
 
-YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/tp>}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
+YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/tp idea="1368">}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
 For more information, refer to the following:
 
@@ -194,6 +199,20 @@ For more information, refer to the following:
 ## Re-use query plans with prepared statements
 
 Whenever possible, use [prepared statements](../../api/ysql/the-sql-language/statements/perf_prepare/) to ensure that YugabyteDB can re-use the same query plan and eliminate the need for a server to parse the query on each operation.
+
+{{<warning title="Avoid explicit PREPARE or EXECUTE">}}
+
+When using server-side pooling, avoid explicit PREPARE and EXECUTE calls and use protocol-level prepared statements instead. Explicit prepare/execute calls can make connections sticky, which prevents you from realizing the benefits of using YSQL Connection Manager{{<tags/feature/tp idea="1368">}} and server-side pooling.
+
+Depending on your driver, you may have to set some parameters to leverage prepared statements. For example, Npgsql supports automatic preparation using the Max Auto Prepare and Auto Prepare Min Usages connection parameters, which you add to your connection string as follows:
+
+```sh
+Max Auto Prepare=100;Auto Prepare Min Usages=5;
+```
+
+Consult your driver documentation.
+
+{{</warning>}}
 
 {{<lead link="https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3">}}
 For more details, see [Prepared statements in PL/pgSQL](https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3).
@@ -211,7 +230,7 @@ For more details, see [Large scans and batch jobs](../../develop/learn/transacti
 
 Use the [JSONB](../../api/ysql/datatypes/type_json) datatype to model JSON data; that is, data that doesn't have a set schema but has a truly dynamic schema.
 
-JSONB in YSQL is the same as the [JSONB datatype in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
+JSONB in YSQL is the same as the [JSONB datatype in PostgreSQL](https://www.postgresql.org/docs/15/datatype-json.html).
 
 You can use JSONB to group less interesting or less frequently accessed columns of a table.
 

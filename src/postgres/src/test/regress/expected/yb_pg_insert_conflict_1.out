@@ -712,12 +712,11 @@ ERROR:  there is no unique or exclusion constraint matching the ON CONFLICT spec
 insert into parted_conflict_test_1 values (2, 'b') on conflict (b) do update set a = excluded.a;
 -- should see (2, 'b')
 select * from parted_conflict_test order by a;
- a | b 
+ a | b
 ---+---
  2 | b
 (1 row)
 
-/* YB: Partition tables with ON CONFLICT DO UPDATE give out wrong results
 -- now check that DO UPDATE works correctly for target partition with
 -- different attribute numbers
 create table parted_conflict_test_2 (b char, a int unique);
@@ -725,19 +724,28 @@ alter table parted_conflict_test attach partition parted_conflict_test_2 for val
 truncate parted_conflict_test;
 insert into parted_conflict_test values (3, 'a') on conflict (a) do update set b = excluded.b;
 insert into parted_conflict_test values (3, 'b') on conflict (a) do update set b = excluded.b;
-
 -- should see (3, 'b')
 select * from parted_conflict_test order by a;
+ a | b
+---+---
+ 3 | b
+(1 row)
 
 -- case where parent will have a dropped column, but the partition won't
-alter table parted_conflict_test drop b, add b char;
+-- YB Note: Dropping and adding a column with the same name is not supported in YB.
+-- Split the operation into two steps.
+alter table parted_conflict_test drop b;
+alter table parted_conflict_test add b char;
 create table parted_conflict_test_3 partition of parted_conflict_test for values in (4);
 truncate parted_conflict_test;
 insert into parted_conflict_test (a, b) values (4, 'a') on conflict (a) do update set b = excluded.b;
 insert into parted_conflict_test (a, b) values (4, 'b') on conflict (a) do update set b = excluded.b where parted_conflict_test.b = 'a';
-
 -- should see (4, 'b')
 select * from parted_conflict_test order by a;
+ a | b
+---+---
+ 4 | b
+(1 row)
 
 -- case with multi-level partitioning
 create table parted_conflict_test_4 partition of parted_conflict_test for values in (5) partition by list (a);
@@ -745,20 +753,27 @@ create table parted_conflict_test_4_1 partition of parted_conflict_test_4 for va
 truncate parted_conflict_test;
 insert into parted_conflict_test (a, b) values (5, 'a') on conflict (a) do update set b = excluded.b;
 insert into parted_conflict_test (a, b) values (5, 'b') on conflict (a) do update set b = excluded.b where parted_conflict_test.b = 'a';
-
 -- should see (5, 'b')
 select * from parted_conflict_test order by a;
+ a | b
+---+---
+ 5 | b
+(1 row)
 
 -- test with multiple rows
 truncate parted_conflict_test;
 insert into parted_conflict_test (a, b) values (1, 'a'), (2, 'a'), (4, 'a') on conflict (a) do update set b = excluded.b where excluded.b = 'b';
 insert into parted_conflict_test (a, b) values (1, 'b'), (2, 'c'), (4, 'b') on conflict (a) do update set b = excluded.b where excluded.b = 'b';
-
 -- should see (1, 'b'), (2, 'a'), (4, 'b')
 select * from parted_conflict_test order by a;
+ a | b
+---+---
+ 1 | b
+ 2 | a
+ 4 | b
+(3 rows)
 
 drop table parted_conflict_test;
-*/ -- YB
 -- test behavior of inserting a conflicting tuple into an intermediate
 -- partitioning level
 create table parted_conflict (a int primary key, b text) partition by range (a);
@@ -795,7 +810,7 @@ insert into parted_conflict values (50, 'cincuenta', 2)
         excluded = (50, text 'cincuenta', 2);
 -- should see (50, 'cincuenta', 2)
 select * from parted_conflict order by a;
- a  |     b     | c 
+ a  |     b     | c
 ----+-----------+---
  50 | cincuenta | 2
 (1 row)

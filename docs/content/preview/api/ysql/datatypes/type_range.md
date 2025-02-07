@@ -2,7 +2,7 @@
 title: Range data types [YSQL]
 headerTitle: Range data types
 linkTitle: Range
-description: YSQL supports the following built-in range data types.int4range for integer; int8range for bigint; numrange for numeric; tsrange for timestamp without time zone; tstzrange for timestamp with time zone; daterange for date.
+description: Range and multirange datatypes
 menu:
   preview_api:
     identifier: api-ysql-datatypes-range
@@ -10,24 +10,23 @@ menu:
 type: docs
 ---
 
-YSQL supports six built-in range data types. Each defines a range of values of a specific underlying data type. (The [PostgreSQL documentation](https://www.postgresql.org/docs/11/rangetypes.html) uses the term "subtype" for "underlying data type".) It's also possible to create user-defined range data types. A later version of the YSQL documentation will explain this.
-
-## Synopsis
-
-Range data type | Underlying data type |
-----------|-------------|
-`int4range` | `integer` (a.k.a. `int`) |
-`int8range` | `bigint` |
-`numrange` | `numeric` |
-`tsrange` | `timestamp without time zone` (a.k.a. `timestamp`) |
-`tstzrange` | `timestamp with time zone` (a.k.a. `timestamptz`) |
-`daterange` | `date` |
-
-## Description
+Range types are special data types that represent a span of values of a specific element type, known as the subtype. For example, a tsrange (timestamp range) can represent the time periods when a meeting room is reserved, where the subtype is timestamp. The subtype must have a clear ordering, so it's easy to determine if a value is inside, before, or after a given range. Range types are powerful because they allow you to store and work with many values within a single range, making it easier to handle scenarios like overlapping or adjacent ranges.
 
 The underlying data type of a range data type must be orderable. Each of the six built-in range data types meets this requirement. A range value is defined by its (smaller) start value and the (larger) end value. A range value therefore corresponds to the "interval" notion in mathematics. (Don't confuse this with the YSQL data type `interval` which denotes an amount of elapsed time and which is defined only by its absolute size.)
 
-### The "interval" notion in mathematics
+## Built-in range types
+
+Range data type |    Multirange    |                Underlying data type
+--------------- | ---------------- | --------------------------------------------------
+`int4range`     | `int4multirange` | `integer` (a.k.a. `int`)
+`int8range`     | `int8multirange` | `bigint`
+`numrange`      | `nummultirange`  | `numeric`
+`tsrange`       | `tsmultirange`   | `timestamp without time zone` (a.k.a. `timestamp`)
+`tstzrange`     | `tstzmultirange` | `timestamp with time zone` (a.k.a. `timestamptz`)
+`daterange`     | `datemultirange` | `date`
+
+
+## The "interval" notion in mathematics
 
 See the Wikipedia article [Interval (mathematics)](https://en.wikipedia.org/wiki/Interval_(mathematics)).
 
@@ -37,7 +36,7 @@ The following notions, and their notation, from mathematics carry over to the YS
 - A _closed_ interval includes all its endpoints, and is denoted with square brackets. For example, _[0,1]_ means greater than or equal to _0_ and less than or equal to _1_.
 - A _half-open_ interval includes only one of its endpoints, and is denoted by mixing the notations for open and closed intervals. For example, _(0,1]_ means greater than _0_ and less than or equal to _1_; and _[0,1)_ means greater than or equal to _0_ and less than _1_.
 
-### Range values in YSQL
+## Range values in YSQL
 
 A range value can be specified either as a literal or using a constructor function.
 
@@ -47,7 +46,7 @@ First, create a table:
 create table t(k int primary key, r1 tsrange, r2 tsrange);
 ```
 
-#### Specify range values using literals
+### Specify range values using literals
 
 The same approach is used to specify range values of all range data types using literals. A text value is defined as follows:
 
@@ -66,13 +65,16 @@ values (
   '[2010-01-01 14:30, 2010-01-01 15:30)',
   '(2010-01-01 15:00, 2010-01-01 16:00]');
 ```
+
 Inspect the bounds:
 
 ```plpgsql
 select lower(r1), upper(r1) from t where k = 1;
 ```
+
 The reported values are insensitive to whether the bound is inclusive or exclusive. This is the result:
-```
+
+```caddyfile{.nocopy}
         lower        |        upper
 ---------------------+---------------------
  2010-01-01 14:30:00 | 2010-01-01 15:30:00
@@ -88,19 +90,20 @@ select
   (upper_inc(r2))::text as "is r2's upper inclusive?"
 from t where k = 1;
 ```
+
 This is the result:
 
-```
+```caddyfile{.nocopy}
  is r1's lower inclusive? | is r1's upper inclusive? | is r2's lower inclusive? | is r2's upper inclusive?
 --------------------------+--------------------------+--------------------------+--------------------------
  true                     | false                    | false                    | true
 ```
 
-#### Specify "tsrange" values using the constructor function
+### Specify "tsrange" values using the constructor function
 
 The constructor function for a particular range data type has the same name as the range data type. The first and second formal parameters are the lower and upper bounds. And the third, optional, formal parameter specifies the inclusive status of each bound as one of these text values:
 
-````
+````sql
 '()'   '(]'   '[)'   '[]'
 ````
 
@@ -124,7 +127,7 @@ values (
 
 This `SELECT` statement shows that the values in the row with _"k = 2"_ are indeed the same as the row with _"k = 1"_ has:
 
-```postgresql
+```plpgsql
 select (
     (select r1 from t where k = 1) = (select r1 from t where k = 2)
 
@@ -137,24 +140,25 @@ select (
 
 This is the result:
 
-```
+```caddyfile{.nocopy}
  result is as expected?
 ------------------------
  true
 ```
 
-#### Unbounded ranges
+### Unbounded ranges
 
-Either, or both of, the lower bound and the upper bound of a range value can be set to express the semantics "unbounded". The [PostgreSQL documentation](https://www.postgresql.org/docs/11/rangetypes.html#RANGETYPES-INFINITE) uses "unbounded" and "infinite" interchangeably to denote such a range. Yugabyte recommends always using the term "unbounded" and avoiding the term "infinite". The reason for this is explained later in this section.
+Either, or both of, the lower bound and the upper bound of a range value can be set to express the semantics "unbounded". The [PostgreSQL documentation](https://www.postgresql.org/docs/15/rangetypes.html#RANGETYPES-INFINITE) uses "unbounded" and "infinite" interchangeably to denote such a range. Yugabyte recommends always using the term "unbounded" and avoiding the term "infinite". The reason for this is explained later in this section.
 
 - When a range value is defined using a literal, an unbounded lower or upper bound is specified as unbounded simply by omitting the value, like this:
 
 ```plpgsql
 select ('(, 5]'::int4range)::text as "canonicalized literal";
 ```
+
 This is the result:
 
-```
+```caddyfile{.nocopy}
  canonicalized literal
 -----------------------
  (,6)
@@ -174,7 +178,7 @@ select (
 
 This is the result:
 
-```
+```caddyfile{.nocopy}
  literal and constructor produce the same result?
 --------------------------------------------------
  true
@@ -189,7 +193,7 @@ select lower_inf(v)::text, upper_inf(v)::text from a;
 
 This is the result:
 
-```
+```caddyfile{.nocopy}
  lower_inf | upper_inf
 -----------+-----------
  true      | true
@@ -199,8 +203,6 @@ The example illustrates the point that, as a special case, a range might be doub
 
 **Note:** Some data types, like for example `timestamp`, support a special `infinity` value which can also be used to define a range. Try this:
 
-
-
 ```plpgsql
 select
   ('infinity'::timestamp)             ::text as "infinity timestamp",
@@ -209,7 +211,7 @@ select
 
 This is the result:
 
-```
+```caddyfile{.nocopy}
  infinity timestamp |   infinity upper bound tsrange
 --------------------+----------------------------------
  infinity           | ["2020-01-01 00:00:00",infinity]
@@ -223,7 +225,7 @@ select (upper_inf('[2020-01-01, infinity]'::tsrange))::text as "upper bound set 
 
 This is the result:
 
-```
+```caddyfile{.nocopy}
  upper bound set to infinity tests as infinity?
 ------------------------------------------------
  false
@@ -241,7 +243,7 @@ select (
 
 This is the result:
 
-```
+```caddyfile{.nocopy}
  infinity bound same as unbounded bound?
 -----------------------------------------
  false
@@ -259,12 +261,51 @@ The earlier recommendation to avoid the term "infinite" when describing a bound 
 
 {{< /tip >}}
 
+## Multirange
 
-### Operations on range values and values of the underlying data type
+A multirange is an ordered list of non-contiguous, non-empty, non-null ranges. YugabyteDB supports a multirange type for each of the supported range types (namely `int4multirange`, `int8multirange`, `nummultirange`, `tsmultirange`, `tstzmultirange`, and `datemultirange`).
+
+For example, to construct a multirange that consists of two non-overlapping ranges, run the following:
+
+```plpgsql
+SELECT int4multirange(int4range(2, 6), int4range(9, 15));
+```
+
+```caddyfile{.nocopy}
+ int4multirange
+----------------
+ {[2,6),[9,15)}
+```
+
+When overlapping ranges are specified, they are combined to form a single multirange.
+
+```plpgsql
+SELECT int4multirange(int4range(2, 6), int4range(5, 15));
+```
+
+```caddyfile{.nocopy}
+ int4multirange
+----------------
+ {[2,15)}
+```
+
+You can also aggregate ranges using the `range_agg` function as follows:
+
+```sql
+SELECT range_agg(num) from (values (int4range(2, 6)), (int4range(5, 15))) as temprange(num);
+```
+
+```caddyfile{.nocopy}
+ range_agg
+-----------
+ {[2,15)}
+```
+
+## Operations on ranges and underlying values
 
 You can find out if a single range value is empty or if two range values intersect; you can derive a new range value as the intersection of two range values; and you can find out if a value of the underlying data type is contained within a range value.
 
-#### Is a range value empty?
+### Isempty
 
 Try this:
 
@@ -274,7 +315,7 @@ select isempty(r1)::text from t where k = 1;
 
 The return data type of `isempty()` is `boolean`. This is the result:
 
-```
+```caddyfile{.nocopy}
  isempty
 ---------
  false
@@ -288,7 +329,7 @@ select isempty(numrange(1.5, 1.5, '[)'))::text;
 
 The third actual argument specifies the default for the corresponding formal parameter as a self-documentation device. This is the result:
 
-```
+```caddyfile{.nocopy}
  isempty
 ---------
  true
@@ -302,7 +343,7 @@ select (numrange(1.5, 1.5, '[)') = 'empty'::numrange)::text as "is empty?";
 
 This (of course) is the result:
 
-```
+```caddyfile{.nocopy}
  is empty?
 ----------
  true
@@ -318,7 +359,7 @@ select isempty(numrange(1.5, 1.0))::text;
 
 The attempt fails with the `22000` error. (This maps to the `data_exception` exception.)
 
-#### Do two range values intersect?
+### Check for intersection
 
 Try this:
 
@@ -328,7 +369,7 @@ select (numrange(1.0, 2.0) && numrange(1.5, 2.5))::text as "range values interse
 
 The return data type of the `&&` intersection operator is `boolean`. This is the result:
 
-```
+```caddyfile{.nocopy}
  range values intersect?
 -------------------------
  true
@@ -336,7 +377,7 @@ The return data type of the `&&` intersection operator is `boolean`. This is the
 
 It you change the lower and upper bounds of the second range value to _3.0_ and _4.0_, then the result becomes `false`, of course.
 
-#### Produce a new range value as the intersection of two range values
+### Intersection of two ranges
 
 Try this:
 
@@ -346,7 +387,7 @@ select (numrange(1.0, 2.0) * numrange(1.5, 2.5))::text as "the intersection";
 
 This is the result:
 
-```
+```caddyfile{.nocopy}
 [1.5,2.0)
 ```
 
@@ -364,9 +405,10 @@ begin
 end;
 $body$;
 ```
+
 The block completes silently showing that the assertion holds.
 
-#### Is a value of a range's underlying data type contained within a range?
+### Check for containment
 
 Try this:
 
@@ -376,7 +418,7 @@ select (17::int <@ int4range(11, 42))::text as "is value within range?";
 
 This is the result:
 
-```
+```caddyfile{.nocopy}
  is value within range?
 ------------------------
  true
@@ -390,7 +432,7 @@ select (int4range(11, 42) @> 17::int)::text as "does range contain value?";
 
 This is the result:
 
-```
+```caddyfile{.nocopy}
  does range contain value?
 ---------------------------
  true
@@ -419,7 +461,7 @@ select (
 
 This is the result:
 
-```
+```caddyfile{.nocopy}
  all the same?
 ---------------
  true
@@ -432,7 +474,7 @@ select r1::text, r2::text, r3::text, r4::text from t where k = 1;
 
 This is the result:
 
-```
+```caddyfile{.nocopy}
   r1   |  r2   |  r3   |  r4
 -------+-------+-------+-------
  [3,8) | [3,8) | [3,8) | [3,8)
@@ -440,6 +482,6 @@ This is the result:
 
 Of course, because as has been seen, the values of _"r1"_, _"r2"_, _"r3"_, and _"r4"_ are identical, it's of no consequence how these were established. The canonical form of the literal is the form that is used to display the value. The test results show that this is the form where the lower bound is _inclusive_ (denoted by the square bracket) and where the upper bound is _exclusive_ (denoted by the parenthesis).
 
-## Current restriction
+## Caveats
 
 See [GitHub Issue #7353](https://github.com/yugabyte/yugabyte-db/issues/7353). It tracks the fact that you cannot create an index on a column list that includes a column with a range data type. Correspondingly, you cannot define a primary key constraint on such a column list.

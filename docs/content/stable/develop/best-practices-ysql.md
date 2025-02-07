@@ -184,7 +184,7 @@ For more information, see [Connection pooling](../../drivers-orms/smart-drivers/
 
 ## Use YSQL Connection Manager
 
-YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/ea>}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
+YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/ea idea="1368">}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
 For more information, refer to the following:
 
@@ -194,6 +194,20 @@ For more information, refer to the following:
 ## Re-use query plans with prepared statements
 
 Whenever possible, use [prepared statements](../../api/ysql/the-sql-language/statements/perf_prepare/) to ensure that YugabyteDB can re-use the same query plan and eliminate the need for a server to parse the query on each operation.
+
+{{<warning title="Avoid explicit PREPARE or EXECUTE">}}
+
+When using server-side pooling, avoid explicit PREPARE and EXECUTE calls and use protocol-level prepared statements instead. Explicit prepare/execute calls can make connections sticky, which prevents you from realizing the benefits of using YSQL Connection Manager{{<tags/feature/ea idea="1368">}} and server-side pooling.
+
+Depending on your driver, you may have to set some parameters to leverage prepared statements. For example, Npgsql supports automatic preparation using the Max Auto Prepare and Auto Prepare Min Usages connection parameters, which you add to your connection string as follows:
+
+```sh
+Max Auto Prepare=100;Auto Prepare Min Usages=5;
+```
+
+Consult your driver documentation.
+
+{{</warning>}}
 
 {{<lead link="https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3">}}
 For more details, see [Prepared statements in PL/pgSQL](https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3).

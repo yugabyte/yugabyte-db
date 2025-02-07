@@ -758,10 +758,11 @@ message IsYsqlDdlVerificationDoneResponsePB {
 
 message AcquireObjectLocksGlobalRequestPB {
   optional bytes txn_id = 1;
-  optional uint64 txn_reuse_version = 2;
-  optional uint32 subtxn_id = 3;
-  optional bytes session_host_uuid = 4;
-  repeated docdb.ObjectLockPB object_locks = 5;
+  optional uint32 subtxn_id = 2;
+  optional bytes session_host_uuid = 3;
+  repeated docdb.ObjectLockPB object_locks = 4;
+  // The lease epoch of the requesting tserver.
+  optional uint64 lease_epoch = 5;
 }
 
 message AcquireObjectLocksGlobalResponsePB {
@@ -770,12 +771,13 @@ message AcquireObjectLocksGlobalResponsePB {
 
 message ReleaseObjectLocksGlobalRequestPB {
   optional bytes txn_id = 1;
-  optional uint64 txn_reuse_version = 2;
-  optional uint32 subtxn_id = 3;
-  optional bytes session_host_uuid = 4;
-  repeated docdb.ObjectLockPB object_locks = 5;
+  optional uint32 subtxn_id = 2;
+  optional bytes session_host_uuid = 3;
+  repeated docdb.ObjectLockPB object_locks = 4;
   // When set, releases locks on all objects held against the given session id.
-  optional bool release_all_locks = 6;
+  optional bool release_all_locks = 5;
+  // The lease epoch of the requesting tserver.
+  optional uint64 lease_epoch = 6;
 }
 
 message ReleaseObjectLocksGlobalResponsePB {

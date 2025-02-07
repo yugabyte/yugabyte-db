@@ -45,7 +45,7 @@
 
 extern bool yb_retrieved_concurrent_index_progress;
 
-uint64_t *yb_pg_stat_retrieve_concurrent_index_progress();
+uint64_t   *yb_pg_stat_retrieve_concurrent_index_progress();
 
 Datum
 pg_stat_get_numscans(PG_FUNCTION_ARGS)
@@ -474,8 +474,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 	ProgressCommandType cmdtype;
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 
-	uint64_t *index_progress = NULL;
-	uint64_t *index_progress_iterator = NULL;
+	uint64_t   *index_progress = NULL;
+	uint64_t   *index_progress_iterator = NULL;
 
 	/* Translate command name into command type code. */
 	if (pg_strcasecmp(cmd, "VACUUM") == 0)
@@ -544,7 +544,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		 * command.
 		 */
 		if (!beentry || (beentry->st_progress_command != cmdtype &&
-						beentry->st_progress_command != PROGRESS_COMMAND_COPY))
+						 beentry->st_progress_command != PROGRESS_COMMAND_COPY))
 			continue;
 
 		/*
@@ -647,6 +647,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 	InitMaterializedSRF(fcinfo, 0);
 
 	YbcPgSessionTxnInfo *txn_infos = NULL;
+
 	if (YBIsEnabledInPostgresEnvVar() && yb_enable_pg_locks)
 	{
 		txn_infos = (YbcPgSessionTxnInfo *)
@@ -654,8 +655,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		/* 1-based index */
 		for (curr_backend = 1; curr_backend <= num_backends; ++curr_backend)
 		{
-			const PgBackendStatus *beentry =
-				pgstat_fetch_stat_beentry(curr_backend);
+			const PgBackendStatus *beentry = pgstat_fetch_stat_beentry(curr_backend);
+
 			if (!beentry)
 				break;
 			txn_infos[curr_backend - 1].session_id = beentry->yb_session_id;
@@ -1013,11 +1014,13 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		}
 
 		nulls[YB_BACKEND_XID_COL] = true;
-		/* The activity_start_timestamp is updated at the start of every
+
+		/*
+		 * The activity_start_timestamp is updated at the start of every
 		 * query. When the query start timestamp is later (greater) than the
-		 * timestamp of the RPC above, this indicates that the data in the
-		 * RPC is out-of-date. In such cases, we skip printing the
-		 * transaction ID.  */
+		 * timestamp of the RPC above, this indicates that the data in the RPC
+		 * is out-of-date. In such cases, we skip printing the transaction ID.
+		 */
 
 		if (yb_enable_pg_locks && beentry->yb_session_id &&
 			beentry->st_activity_start_timestamp <= yb_txn_rpc_timestamp)
@@ -1271,7 +1274,7 @@ pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS)
 	clean_ipv6_addr(beentry->st_clientaddr.addr.ss_family, remote_host);
 
 	PG_RETURN_DATUM(DirectFunctionCall1(inet_in,
-										 CStringGetDatum(remote_host)));
+										CStringGetDatum(remote_host)));
 }
 
 Datum
@@ -1367,7 +1370,7 @@ pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)
 Datum
 yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 {
-	#define PG_YBSTAT_TERMINATED_QUERIES_COLS 6
+#define PG_YBSTAT_TERMINATED_QUERIES_COLS 6
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	TupleDesc	tupdesc;
 	Tuplestorestate *tupstore;
@@ -1400,8 +1403,9 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 #ifdef YB_TODO
 	/* Yugabyte needs new implementation for stats */
 	Oid			db_oid = PG_ARGISNULL(0) ? -1 : PG_GETARG_OID(0);
-	size_t num_queries = 0;
+	size_t		num_queries = 0;
 	PgStat_YBStatQueryEntry *queries = pgstat_fetch_ybstat_queries(db_oid, &num_queries);
+
 	for (size_t i = 0; i < num_queries; i++)
 	{
 		if (has_privs_of_role(GetUserId(), queries[i].st_userid) ||
@@ -2696,12 +2700,13 @@ yb_pg_stat_retrieve_concurrent_index_progress()
 	int			num_indexes = 0;
 	Oid			database_oids[num_backends];
 	Oid			index_oids[num_backends];
-	uint64_t	*progress = NULL;
+	uint64_t   *progress = NULL;
 
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
 	{
 		PgBackendStatus *beentry;
 		LocalPgBackendStatus *local_beentry;
+
 		local_beentry = pgstat_fetch_stat_local_beentry(curr_backend);
 
 		if (!local_beentry)
