@@ -4540,8 +4540,9 @@
               "ConsensusMeta",
               "TabletMeta",
               "YbcLogs",
-              "K8sInfo",
               "NodeAgent",
+              "SystemLogs",
+              "K8sInfo",
               "YbaMetadata",
               "PrometheusMetrics",
               "ApplicationLogs"
@@ -19833,8 +19834,9 @@
               "ConsensusMeta",
               "TabletMeta",
               "YbcLogs",
-              "K8sInfo",
               "NodeAgent",
+              "SystemLogs",
+              "K8sInfo",
               "YbaMetadata",
               "PrometheusMetrics",
               "ApplicationLogs"
@@ -36973,8 +36975,9 @@
                   "ConsensusMeta",
                   "TabletMeta",
                   "YbcLogs",
-                  "K8sInfo",
                   "NodeAgent",
+                  "SystemLogs",
+                  "K8sInfo",
                   "YbaMetadata",
                   "PrometheusMetrics",
                   "ApplicationLogs"
@@ -37000,8 +37003,9 @@
                   "ConsensusMeta",
                   "TabletMeta",
                   "YbcLogs",
-                  "K8sInfo",
                   "NodeAgent",
+                  "SystemLogs",
+                  "K8sInfo",
                   "YbaMetadata",
                   "PrometheusMetrics",
                   "ApplicationLogs"
