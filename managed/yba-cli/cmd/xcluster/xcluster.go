@@ -28,6 +28,10 @@ func init() {
 	XClusterCmd.AddCommand(restartXClusterCmd)
 	XClusterCmd.AddCommand(pauseXClusterCmd)
 	XClusterCmd.AddCommand(resumeXClusterCmd)
-	//  XClusterCmd.AddCommand(createXClusterCmd)
-	//  XClusterCmd.AddCommand(updateXClusterCmd)
+
+	// util.PreviewCommand(XClusterCmd, []*cobra.Command{
+	// 	createXClusterCmd,
+	// 	// updateXClusterCmd,
+	// 	bootstrapTablesXClusterCmd,
+	// })
 }
