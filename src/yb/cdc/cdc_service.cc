@@ -206,6 +206,9 @@ DEFINE_RUNTIME_AUTO_bool(
 DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
     "When enabled, users will be able to create a CDC stream having IMPLICIT checkpointing.");
 
+DEFINE_RUNTIME_uint32(cdc_max_virtual_wal_per_tserver, 5,
+                      "Maximum VirtualWAL instances that can be present on a tserver at any time.");
+
 DECLARE_int32(log_min_seconds_to_retain);
 
 static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
@@ -4944,6 +4947,16 @@ void CDCServiceImpl::InitVirtualWALForCDC(
             AlreadyPresent, "Virtual WAL instance already exists for the session_id: $0",
             session_id),
         resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+    RPC_CHECK_AND_RETURN_ERROR(
+        session_virtual_wal_.size() < FLAGS_cdc_max_virtual_wal_per_tserver,
+        STATUS_FORMAT(
+            InternalError,
+            "Failed to create VirtualWAL for stream: $0 & session_id: $1 as max capacity reached "
+            "for VirtualWAL "
+            "on tserver",
+            stream_id, session_id),
+        resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
     virtual_wal = std::make_shared<CDCSDKVirtualWAL>(
         this, stream_id, session_id, lsn_type);
