@@ -277,7 +277,7 @@ For information on VPC peering in YugabyteDB Aeon, refer to [VPC network](/previ
 
 YugabyteDB Aeon requires TLS/SSL. Depending on the smart driver, using load balancing with a cluster in YugabyteDB Aeon and SSL mode verify-full may require additional configuration. The following table describes support for verify-full for YugabyteDB smart drivers.
 
-| Smart Driver | Support | Notes |
+| Smart&nbsp;Driver | Support | Notes |
 | :--- | :--- | :--- |
 | Java | Yes | Set the `sslhostnameverifier` connection parameter to `com.yugabyte.ysql.YBManagedHostnameVerifier`. |
 | Python | No | Use verify-ca or the upstream psycopg2 driver. |

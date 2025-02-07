@@ -243,7 +243,9 @@ If topology keys are specified, and `fallback-to-topology-keys-only` is true, no
 
 ## Connection pooling
 
-Smart drivers can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to communicate with a completely different region.
+Smart drivers work seamlessly with [YSQL Connection Manager](../../explore/going-beyond-sql/connection-mgr-ysql/).
+
+Smart drivers can also be configured with popular third-party pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to communicate with a completely different region.
 
 The appropriate connection timeout depends on the specific requirements of the application. In addition to the usual considerations, because YugabyteDB is distributed, you also want connections to move to recovered or newly-added nodes as quickly as possible.
 
@@ -279,7 +281,7 @@ For information on VPC peering in YugabyteDB Aeon, refer to [VPC network](/previ
 
 YugabyteDB Aeon requires TLS/SSL. Depending on the smart driver, using load balancing with a cluster in YugabyteDB Aeon and SSL mode verify-full may require additional configuration. The following table describes support for verify-full for YugabyteDB smart drivers.
 
-| Smart Driver | Support | Notes |
+| Smart&nbsp;Driver | Support | Notes |
 | :--- | :--- | :--- |
 | Java | Yes | Set the `sslhostnameverifier` connection parameter to `com.yugabyte.ysql.YBManagedHostnameVerifier`. |
 | Python | No | Use verify-ca or the upstream psycopg2 driver. |
