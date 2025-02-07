@@ -2305,6 +2305,9 @@ describeOneTableDetails(const char *schemaname,
 				appendPQExpBufferStr(&buf, ", false AS indisreplident");
 			if (pset.sversion >= 80000)
 				appendPQExpBufferStr(&buf, ", c2.reltablespace");
+			else
+				appendPQExpBufferStr(&buf, ", null AS reltablespace");
+			appendPQExpBufferStr(&buf, ", i.indexrelid");
 			appendPQExpBufferStr(&buf,
 								 "\nFROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i\n");
 			if (pset.sversion >= 90000)
@@ -2387,11 +2390,10 @@ describeOneTableDetails(const char *schemaname,
 					/* Get information about tablegroup (if any) */
 					printfPQExpBuffer(&tablegroupbuf,
 									  "SELECT tg.grpname\n"
-									  "FROM yb_table_properties('%s.%s'::regclass) props,\n"
+									  "FROM yb_table_properties(%s) props,\n"
 									  "   pg_yb_tablegroup tg\n"
 									  "WHERE tg.oid = props.tablegroup_oid;",
-									  schemaname,
-									  PQgetvalue(result, i, 0));
+									  PQgetvalue(result, i, 12));
 
 					tgres = PSQLexec(tablegroupbuf.data);
 					char* idx_grpname;
