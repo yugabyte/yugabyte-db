@@ -114,7 +114,7 @@ To enable the use of advisory locks in a cluster, you must set the [Advisory loc
 
 ### Using advisory locks
 
-Advisory locks in YugabyteDB are semantically identical to PostgreSQL, and are managed using the same the functions. Refer to [Advisory lock functions](https://www.postgresql.org/docs/15/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS) in the PostgreSQL documentation.
+Advisory locks in YugabyteDB are semantically identical to PostgreSQL, and are managed using the same functions. Refer to [Advisory lock functions](https://www.postgresql.org/docs/15/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS) in the PostgreSQL documentation.
 
 You can acquire an advisory lock in the following ways:
 
