@@ -67,49 +67,6 @@
 #define MAX_INDEX_OPTIONS_LENGTH 1500
 
 
-/*
- * Represents the type of index for a given path.
- * Treat this as a flags so that we can check for
- * plugins.
- */
-typedef enum MongoIndexKind
-{
-	/* Unknow / invalid index plugin */
-	MongoIndexKind_Unknown = 0x0,
-
-	/* Regular asc/desc index */
-	MongoIndexKind_Regular = 0x1,
-
-	/* Hashed index */
-	MongoIndexKind_Hashed = 0x2,
-
-	/* Geospatial 2D index */
-	MongoIndexKind_2d = 0x4,
-
-	/* Text search index */
-	MongoIndexKind_Text = 0x8,
-
-	/* Geospatial 2D index */
-	MongoIndexKind_2dsphere = 0x10,
-
-	/* A CosmosDB Indexing kind */
-	MongoIndexingKind_CosmosSearch = 0x20,
-} MongoIndexKind;
-
-
-typedef struct IndexDefKeyPath
-{
-	/* The path constructed for the index (See IndexDefKey) */
-	const char *path;
-
-	/* The index kind for this path */
-	MongoIndexKind indexKind;
-
-	/* Whether or not this specific key is a wildcard index */
-	bool isWildcard;
-} IndexDefKeyPath;
-
-
 /* Return value of TryCreateCollectionIndexes */
 typedef struct
 {
@@ -231,6 +188,8 @@ extern bool ForceEnableNewUniqueOpClass;
 #define WILDCARD_INDEX_SUFFIX "$**"
 #define DOT_WILDCARD_INDEX_SUFFIX "." WILDCARD_INDEX_SUFFIX
 #define DOUBLE_DOT_IN_INDEX_PATH ".."
+#define TEXT_INDEX_METADATA_FTS "_fts"
+#define TEXT_INDEX_METADATA_FTSX "_ftsx"
 
 #define REINDEX_SUCCESSFUL_DEBUGMSG \
 	"reindexed all collection indexes"
@@ -1769,7 +1728,8 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 
 	if (!indexDef->key->isWildcard)
 	{
-		if (list_length(indexDef->key->keyPathList) == 0)
+		if (list_length(indexDef->key->keyPathList) == 0 &&
+			!indexDef->key->hasTextIndexes)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 							errmsg("Index keys cannot be an empty field")));
@@ -2003,8 +1963,12 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 
 	if (indexDef->weightsDocument != NULL)
 	{
-		/* Wildcard for text can come via weights */
-		bool isTextWildcard = false;
+		/* Wildcard for text can come via weights.
+		 * However, initialize this to the value we built from parsing the key document.
+		 */
+		bool isTextWildcard =
+			indexDef->key->isWildcard &&
+			(indexDef->key->wildcardIndexKind & MongoIndexKind_Text) != 0;
 		bool includeWildCardInWeights = false;
 		bson_value_t docValue = ConvertPgbsonToBsonValue(indexDef->weightsDocument);
 		indexDef->key->textPathList = MergeTextIndexWeights(indexDef->key->textPathList,
@@ -2012,8 +1976,13 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 															includeWildCardInWeights);
 		if (isTextWildcard)
 		{
-			/* Find the text index */
-			if (list_length(indexDef->key->keyPathList) == 0)
+			/* Find the text index.
+			 * When using the metadata term '{ _fts: 'text', _ftsx: 1 }'
+			 * a wildcard text index on the root is specified in the weights document.
+			 * For this case, we do not add the wildcard term to the textPathList.
+			 */
+			if (list_length(indexDef->key->keyPathList) == 0 ||
+				list_length(indexDef->key->textPathList) == 0)
 			{
 				indexDef->key->isWildcard = true;
 			}
@@ -2280,16 +2249,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 								errmsg("Index keys cannot contain an empty field.")));
 			}
 
-			/* Index path key cannot be '_fts' (full text search )*/
-			if (strcmp(indexDefKeyKey, "_fts") == 0)
-			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
-								errmsg(
-									"Index key contains an illegal field name: '_fts'.")));
-			}
-
 			/* wildcard index on a path ? */
-
 			const char *dotWildCardSuffix = strstr(indexDefKeyKey,
 												   DOT_WILDCARD_INDEX_SUFFIX);
 			isWildcardKeyPath = dotWildCardSuffix != NULL;
@@ -2518,7 +2478,8 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			indexDefKey->has2dsphereIndex = true;
 		}
 
-		bool addIndexKey = !wildcardOnWholeDocument;
+		bool addIndexKey = !wildcardOnWholeDocument &&
+						   (keyPath && strcmp(keyPath, TEXT_INDEX_METADATA_FTSX) != 0);
 		if (indexKind == MongoIndexKind_Text)
 		{
 			ReportFeatureUsage(FEATURE_CREATE_INDEX_TEXT);
@@ -2547,10 +2508,12 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			else
 			{
 				/* We always add the first text key (even if it's the root wildcard) */
-				addIndexKey = true;
+				addIndexKey = keyPath == NULL ||
+							  strcmp(keyPath, TEXT_INDEX_METADATA_FTS) != 0;
 			}
 
-			if (!wildcardOnWholeDocument)
+			if (!wildcardOnWholeDocument &&
+				keyPath && strcmp(keyPath, TEXT_INDEX_METADATA_FTS) != 0)
 			{
 				TextIndexWeights *textWeight = palloc0(sizeof(TextIndexWeights));
 				textWeight->path = keyPath;
@@ -2604,6 +2567,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 		}
 
 		indexDefKey->isWildcard = isWildcardKeyPath;
+		indexDefKey->wildcardIndexKind = wildcardIndexKind;
 	}
 
 	/* Check the number of types of indexes excluding the "Regular" index kind */
@@ -4922,7 +4886,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 
 	if (list_length(indexDefKey->keyPathList) == 0)
 	{
-		if (!indexDefKey->isWildcard)
+		if (!indexDefKey->isWildcard && list_length(indexDefKey->textPathList) == 0)
 		{
 			ereport(ERROR, (errmsg("unexpectedly got empty index key list")));
 		}
@@ -4944,17 +4908,16 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 
 		if (indexDefKey->hasTextIndexes)
 		{
-			/* No pathkeys + text index is a text index on the root */
 			appendStringInfo(indexExprStr,
-							 "%s document %s.bson_rum_text_path_ops"
-							 "(iswildcard=true, weights=%s%s%s%s%s)",
+							 "%s document %s.bson_rum_text_path_ops(weights=%s%s%s%s%s%s)",
 							 firstColumnWritten ? "," : "",
 							 ApiCatalogSchemaName,
 							 quote_literal_cstr(SerializeWeightedPaths(
 													indexDefKey->textPathList)),
+							 list_length(indexDefKey->textPathList) == 0 ?
+							 ", iswildcard=true" : "",
 							 languageOptionKey, languageOptionValue,
 							 languageOverrideKey, languageOverrideValue);
-
 			firstColumnWritten = true;
 		}
 		else if (!indexDefWildcardProjTree)
@@ -5050,6 +5013,14 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 						indexTermSizeLimit));
 		}
 
+		/* Init flag that marks if text index options are written.
+		 * For index specs that follow the 'legacy' format, these will be written
+		 * out because there will be a text index term in the keyPathList.
+		 * However, for index specs that specify the metadata term: '{ _fts: 'text', _ftsx: 1 }',
+		 * the text index terms are specified in the weights. Thus they won't be
+		 * written out while iterating the keyPathList.
+		 */
+		bool textOptionsIndexWritten = false;
 		ListCell *keyPathCell = NULL;
 		foreach(keyPathCell, indexDefKey->keyPathList)
 		{
@@ -5076,7 +5047,6 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 							generateNotFoundTerm = true;
 						}
 					}
-
 
 					appendStringInfo(indexExprStr,
 									 "%s document %s.bson_rum_single_path_ops(path=%s%s%s%s)",
@@ -5145,6 +5115,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 									 indexKeyPath->isWildcard ? ", iswildcard=true" : "",
 									 languageOptionKey, languageOptionValue,
 									 languageOverrideKey, languageOverrideValue);
+					textOptionsIndexWritten = true;
 					break;
 				}
 
@@ -5174,6 +5145,25 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 			}
 
 			firstColumnWritten = true;
+		}
+
+		/* We have a compound index with a non-text index and a text index specified with the
+		 * metadata term: '{ _fts: 'text', _ftsx: 1 }'. For this case, the text terms are specified
+		 * in the weights. However, the way we process this spec is that the text terms (including
+		 * the root wildcard term if this a wildcard text index on the root) are not added to the
+		 * keyPathList. So we need to add the index options for those terms here.
+		 */
+		if (indexDefKey->hasTextIndexes && !textOptionsIndexWritten)
+		{
+			appendStringInfo(indexExprStr,
+							 "%s document %s.bson_rum_text_path_ops(weights=%s%s%s%s%s%s)",
+							 firstColumnWritten ? "," : "",
+							 ApiCatalogSchemaName,
+							 quote_literal_cstr(SerializeWeightedPaths(
+													indexDefKey->textPathList)),
+							 indexDefKey->isWildcard ? ", iswildcard=true" : "",
+							 languageOptionKey, languageOptionValue,
+							 languageOverrideKey, languageOverrideValue);
 		}
 	}
 

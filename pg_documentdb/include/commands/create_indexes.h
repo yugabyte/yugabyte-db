@@ -28,6 +28,48 @@
 
 extern int32 MaxIndexesPerCollection;
 
+/*
+ * Represents the type of index for a given path.
+ * Treat this as a flags so that we can check for
+ * plugins.
+ */
+typedef enum MongoIndexKind
+{
+	/* Unknow / invalid index plugin */
+	MongoIndexKind_Unknown = 0x0,
+
+	/* Regular asc/desc index */
+	MongoIndexKind_Regular = 0x1,
+
+	/* Hashed index */
+	MongoIndexKind_Hashed = 0x2,
+
+	/* Geospatial 2D index */
+	MongoIndexKind_2d = 0x4,
+
+	/* Text search index */
+	MongoIndexKind_Text = 0x8,
+
+	/* Geospatial 2D index */
+	MongoIndexKind_2dsphere = 0x10,
+
+	/* A CosmosDB Indexing kind */
+	MongoIndexingKind_CosmosSearch = 0x20,
+} MongoIndexKind;
+
+
+typedef struct IndexDefKeyPath
+{
+	/* The path constructed for the index (See IndexDefKey) */
+	const char *path;
+
+	/* The index kind for this path */
+	MongoIndexKind indexKind;
+
+	/* Whether or not this specific key is a wildcard index */
+	bool isWildcard;
+} IndexDefKeyPath;
+
 
 typedef struct
 {
@@ -66,6 +108,8 @@ typedef struct
 	 * compound wildcard indexes.
 	 */
 	List *keyPathList;
+
+	MongoIndexKind wildcardIndexKind;
 } IndexDefKey;
 
 

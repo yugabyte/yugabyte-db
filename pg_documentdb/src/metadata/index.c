@@ -1738,7 +1738,7 @@ MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights, bool *isWi
 			isWeightWildCard = true;
 			if (isWildCard != NULL)
 			{
-				*isWildCard = true;
+				*isWildCard |= isWeightWildCard;
 			}
 		}
 
@@ -1832,15 +1832,22 @@ WriteIndexKeyForGetIndexes(pgbson_writer *writer, pgbson *keyDocument)
 				writtenTextColumn = true;
 			}
 
-			/* Store the columns for later (weights) */
-			TextIndexWeights *weights = palloc0(sizeof(TextIndexWeights));
-			weights->path = keyView.string;
-			weights->weight = 1.0;
-			fullTextColumns = lappend(fullTextColumns, (void *) weights);
+			if (strcmp(keyView.string, "_fts") != 0)
+			{
+				/* Store the columns for later (weights) */
+				TextIndexWeights *weights = palloc0(sizeof(TextIndexWeights));
+				weights->path = keyView.string;
+				weights->weight = 1.0;
+				fullTextColumns = lappend(fullTextColumns, (void *) weights);
+			}
 		}
 		else
 		{
-			PgbsonWriterAppendValue(&nestedWriter, keyView.string, keyView.length, value);
+			if (strcmp(keyView.string, "_ftsx") != 0)
+			{
+				PgbsonWriterAppendValue(&nestedWriter, keyView.string, keyView.length,
+										value);
+			}
 		}
 	}
 
@@ -2015,7 +2022,14 @@ SerializeIndexSpec(const IndexSpec *indexSpec, bool isGetIndexes,
 
 	if (indexSpec->indexOptions != NULL)
 	{
-		if (textColumns != NIL)
+		/* If we are serialzing for GetIndexes, then we need to massage the index
+		 * spec options to match the reference command response.
+		 * This needs to work for two (equivalent) ways of specifying text indexes:
+		 * 1. { "a": "text" }
+		 * 2. { "_fts": "text", "_ftsx": 1 }, { "weights": { "a": 1 } }
+		 * For the latter case, the text paths are specified in the weights field.
+		 */
+		if (isGetIndexes)
 		{
 			bson_iter_t optionsIter;
 			PgbsonInitIterator(indexSpec->indexOptions, &optionsIter);
