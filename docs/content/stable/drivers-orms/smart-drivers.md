@@ -29,6 +29,7 @@ Yugabyte has developed the following smart drivers for YSQL, available as open s
 | [YugabyteDB node-postgres Driver for Node.js](https://github.com/yugabyte/node-postgres) | node-postgres | [Documentation](../nodejs/yugabyte-node-driver/) |
 | [YugabyteDB Npgsql Driver for C#](https://github.com/yugabyte/npgsql) | PostgreSQL Npgsql Driver | [Documentation](../csharp/ysql/) |
 | [YugabyteDB Rust-postgres Driver](https://github.com/yugabyte/rust-postgres) | Rust-Postgres Driver | [Documentation](../rust/yb-rust-postgres) |
+| [YugabyteDB Ruby Driver](https://github.com/yugabyte/ruby-pg) | ged/ruby-pg | [Documentation](../ruby/yb-ruby-pg) |
 
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 
@@ -242,7 +243,9 @@ If topology keys are specified, and `fallback-to-topology-keys-only` is true, no
 
 ## Connection pooling
 
-Smart drivers can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to communicate with a completely different region.
+Smart drivers work seamlessly with [YSQL Connection Manager](../../explore/going-beyond-sql/connection-mgr-ysql/).
+
+Smart drivers can also be configured with popular third-party pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to communicate with a completely different region.
 
 The appropriate connection timeout depends on the specific requirements of the application. In addition to the usual considerations, because YugabyteDB is distributed, you also want connections to move to recovered or newly-added nodes as quickly as possible.
 
@@ -278,7 +281,7 @@ For information on VPC peering in YugabyteDB Aeon, refer to [VPC network](/previ
 
 YugabyteDB Aeon requires TLS/SSL. Depending on the smart driver, using load balancing with a cluster in YugabyteDB Aeon and SSL mode verify-full may require additional configuration. The following table describes support for verify-full for YugabyteDB smart drivers.
 
-| Smart Driver | Support | Notes |
+| Smart&nbsp;Driver | Support | Notes |
 | :--- | :--- | :--- |
 | Java | Yes | Set the `sslhostnameverifier` connection parameter to `com.yugabyte.ysql.YBManagedHostnameVerifier`. |
 | Python | No | Use verify-ca or the upstream psycopg2 driver. |

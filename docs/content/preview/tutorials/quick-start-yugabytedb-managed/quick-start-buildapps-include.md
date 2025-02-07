@@ -526,14 +526,14 @@ You have successfully executed a basic C# application that works with YugabyteDB
 
   {{% tab header="Ruby" lang="ruby" %}}
 
-The [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) connects to a YugabyteDB cluster using the [Ruby Pg driver](/preview/drivers-orms/ruby/ysql-pg) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Ruby.
+The [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) connects to a YugabyteDB cluster using the [Ruby Pg driver](/preview/drivers-orms/ruby/ruby-pg) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Ruby.
 
 The application requires the following:
 
 - Ruby 3.1 or later.
 - OpenSSL 1.1.1 or later (used by libpq and pg to establish secure SSL connections).
 - [libpq](/preview/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
-- [Ruby pg](/preview/drivers-orms/ruby/ysql-pg/). To install Ruby pg, run the following command:
+- [Ruby pg](/preview/drivers-orms/ruby/ruby-pg/). To install Ruby pg, run the following command:
 
     ```sh
     gem install pg -- --with-pg-include=<path-to-libpq>/libpq/include --with-pg-lib=<path-to-libpq>/libpq/lib
