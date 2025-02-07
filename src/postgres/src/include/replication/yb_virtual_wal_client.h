@@ -31,6 +31,7 @@
 
 extern void YBCInitVirtualWal(List *yb_publication_names);
 extern void YBCDestroyVirtualWal();
+extern void YBCGetTableHashRange(List **options);
 
 extern YbVirtualWalRecord *YBCReadRecord(XLogReaderState *state,
 										 List *publication_names,

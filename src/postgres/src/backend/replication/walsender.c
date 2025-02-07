@@ -1526,6 +1526,9 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 		got_STOPPING = true;
 	}
 
+	if (IsYugaByteEnabled())
+		YBCGetTableHashRange(&cmd->options);
+
 	/*
 	 * Create our decoding context, making it start at the previously ack'ed
 	 * position.

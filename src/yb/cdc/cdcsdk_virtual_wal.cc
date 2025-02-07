@@ -78,6 +78,7 @@ DEFINE_RUNTIME_bool(cdc_use_byte_threshold_for_vwal_changes, true,
 TAG_FLAG(cdc_use_byte_threshold_for_vwal_changes, advanced);
 
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
+DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 
 namespace yb {
 namespace cdc {
@@ -87,12 +88,13 @@ using TabletRecordInfoPair = CDCSDKVirtualWAL::TabletRecordInfoPair;
 
 CDCSDKVirtualWAL::CDCSDKVirtualWAL(
     CDCServiceImpl* cdc_service, const xrepl::StreamId& stream_id, const uint64_t session_id,
-    ReplicationSlotLsnType lsn_type)
+    ReplicationSlotLsnType lsn_type, const uint64_t consistent_snapshot_time)
     : cdc_service_(cdc_service),
       stream_id_(stream_id),
       vwal_session_id_(session_id),
       log_prefix_(Format("VWAL [$0:$1]: ", stream_id_, vwal_session_id_)),
-      slot_lsn_type_(lsn_type) {}
+      slot_lsn_type_(lsn_type),
+      consistent_snapshot_time_(consistent_snapshot_time) {}
 
 std::string CDCSDKVirtualWAL::LogPrefix() const {
   return log_prefix_;
@@ -115,11 +117,81 @@ std::string CDCSDKVirtualWAL::LastSentGetChangesRequestInfo::ToString() const {
   return result;
 }
 
+bool CDCSDKVirtualWAL::IsTabletEligibleForVWAL(
+    const std::string& tablet_id, const PartitionPB& tablet_partition_pb) {
+  dockv::Partition tablet_partition;
+  dockv::Partition::FromPB(tablet_partition_pb, &tablet_partition);
+  const auto& [tablet_start_hash_range, _] =
+      dockv::PartitionSchema::GetHashPartitionBounds(tablet_partition);
+  VLOG_WITH_PREFIX(1) << "tablet " << tablet_id << " has start range: " << tablet_start_hash_range;
+  return (tablet_start_hash_range >= slot_hash_range_->start_range) &&
+         (tablet_start_hash_range < slot_hash_range_->end_range);
+}
+
+Status CDCSDKVirtualWAL::CheckHashRangeConstraints(const CDCStateTableEntry& slot_entry) {
+  // If the slot was started with hash range constraints for the 1st time, persist the hash range in
+  // slot's cdc_state entry so that on a restart, we can compare the original hash range with
+  // provided hash range.
+  RSTATUS_DCHECK_GT(
+      *slot_entry.record_id_commit_time, 0, NotFound,
+      Format(
+          "Couldnt find unique record Id's commit_time on the slot's cdc_state entry for "
+          "stream_id: $0",
+          stream_id_));
+  auto slot_restart_time = *slot_entry.record_id_commit_time;
+  if (slot_entry.start_hash_range.has_value() && slot_entry.end_hash_range.has_value()) {
+    auto original_start_hash_range = *slot_entry.start_hash_range;
+    auto original_end_hash_range = *slot_entry.end_hash_range;
+    RSTATUS_DCHECK_EQ(
+        slot_hash_range_ != nullptr, true, IllegalState,
+        Format(
+            "Slot only meant to be used for the hash range - [$0, $1]. Please provide hash range "
+            "with START_REPLICATION command.",
+            original_start_hash_range, original_end_hash_range));
+    if (slot_hash_range_->start_range != original_start_hash_range ||
+        slot_hash_range_->end_range != original_end_hash_range) {
+      return STATUS_FORMAT(
+          IllegalState, Format(
+                            "Slot hash range should remain unchanged. Original hash range - [$0, "
+                            "$1], Provided hash range - [$2,$3]",
+                            original_start_hash_range, original_end_hash_range,
+                            slot_hash_range_->start_range, slot_hash_range_->end_range));
+    }
+  } else if (slot_hash_range_ && slot_restart_time == consistent_snapshot_time_) {
+    // Note: Slot can be restarted with hash range constraints if it had no constraints initially,
+    // but only if it remain upolled or received no acknowledgments in its first run.
+    CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id_);
+    entry.start_hash_range = slot_hash_range_->start_range;
+    entry.end_hash_range = slot_hash_range_->end_range;
+    LOG_WITH_PREFIX(INFO) << "Updating slot entry in cdc_state with start_hash_range: "
+                          << slot_hash_range_->start_range
+                          << ", end_hash_range: " << slot_hash_range_->end_range;
+    RETURN_NOT_OK(cdc_service_->cdc_state_table_->UpdateEntries({entry}));
+  }
+
+  return Status::OK();
+}
+
 Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     const std::unordered_set<TableId>& table_list, const HostPort hostport,
-    const CoarseTimePoint deadline) {
+    const CoarseTimePoint deadline,
+    std::unique_ptr<ReplicationSlotHashRange> slot_hash_range) {
   DCHECK_EQ(publication_table_list_.size(), 0);
   LOG_WITH_PREFIX(INFO) << "Publication table list: " << AsString(table_list);
+  auto slot_entry_opt = VERIFY_RESULT(cdc_service_->cdc_state_table_->TryFetchEntry(
+      {kCDCSDKSlotEntryTabletId, stream_id_}, CDCStateTableEntrySelector().IncludeData()));
+  SCHECK_FORMAT(
+      slot_entry_opt, NotFound,
+      "CDC State Table entry for the replication slot with stream_id $0 not found", stream_id_);
+
+  if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range) {
+    slot_hash_range_ = std::move(slot_hash_range);
+    LOG_WITH_PREFIX(INFO) << "Slot provided with start_hash_range: "
+                          << slot_hash_range_->start_range
+                          << ", end_hash_range: " << slot_hash_range_->end_range;
+    RETURN_NOT_OK(CheckHashRangeConstraints(*slot_entry_opt));
+  }
+
   for (const auto& table_id : table_list) {
     // TODO: Make parallel calls or introduce a batch GetTabletListToPoll API in CDC which takes a
     // list of tables and provide the information in one shot.
@@ -132,7 +204,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     publication_table_list_.insert(table_id);
   }
 
-  auto s = InitLSNAndTxnIDGenerators();
+  auto s = InitLSNAndTxnIDGenerators(*slot_entry_opt);
   if (!s.ok()) {
     LOG_WITH_PREFIX(ERROR) << Format(
         "Init LSN & TxnID generators failed for stream_id: $0", stream_id_);
@@ -145,15 +217,22 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     RETURN_NOT_OK(s);
   }
 
-  LOG_WITH_PREFIX(INFO) << "Initialised Virtual WAL with tablet queues : " << tablet_queues_.size()
-                        << ", LSN & txnID generator initialised with LSN : " << last_seen_lsn_
-                        << ", txnID: " << last_seen_txn_id_
-                        << ", commit_time: " << last_seen_unique_record_id_->GetCommitTime()
-                        << ", last_pub_refresh_time: " << last_pub_refresh_time
-                        << ", last_decided_pub_refresh_time: "
-                        << last_decided_pub_refresh_time.first << " - "
-                        << (last_decided_pub_refresh_time.second ? "true" : "false")
-                        << ", pub_refresh_times: " << AsString(pub_refresh_times);
+  std::ostringstream oss;
+  oss << "Initialised Virtual WAL with tablet queues : " << tablet_queues_.size()
+      << ", LSN & txnID generator initialised with LSN : " << last_seen_lsn_
+      << ", txnID: " << last_seen_txn_id_
+      << ", commit_time: " << last_seen_unique_record_id_->GetCommitTime()
+      << ", last_pub_refresh_time: " << last_pub_refresh_time
+      << ", last_decided_pub_refresh_time: " << last_decided_pub_refresh_time.first << " - "
+      << (last_decided_pub_refresh_time.second ? "true" : "false")
+      << ", pub_refresh_times: " << AsString(pub_refresh_times);
+
+  if (slot_hash_range_) {
+    oss << ", start_hash_range: " << slot_hash_range_->start_range
+        << ", end_hash_range: " << slot_hash_range_->end_range;
+  }
+
+  LOG_WITH_PREFIX(INFO) << oss.str();
 
   return Status::OK();
 }
@@ -225,6 +304,15 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
 
   for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
     auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
+    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range_) {
+      DCHECK(tablet_checkpoint_pair.has_tablet_locations());
+      DCHECK(tablet_checkpoint_pair.tablet_locations().has_partition());
+      if (!IsTabletEligibleForVWAL(
+              tablet_id, tablet_checkpoint_pair.tablet_locations().partition())) {
+        continue;
+      }
+    }
+
     if (!tablet_id_to_table_id_map_.contains(tablet_id)) {
       tablet_id_to_table_id_map_[tablet_id].insert(table_id);
     }
@@ -335,50 +423,43 @@ Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
   return Status::OK();
 }
 
-Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators() {
-  auto entry_opt = VERIFY_RESULT(cdc_service_->cdc_state_table_->TryFetchEntry(
-      {kCDCSDKSlotEntryTabletId, stream_id_}, CDCStateTableEntrySelector().IncludeData()));
-  if (!entry_opt) {
-    return STATUS_FORMAT(
-        NotFound, "CDC State Table entry for the replication slot with stream_id $0 not found",
-        stream_id_);
-  }
-
+Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(
+    const CDCStateTableEntry& entry_opt) {
   RSTATUS_DCHECK_GT(
-      *entry_opt->restart_lsn, 0, NotFound,
+      *entry_opt.restart_lsn, 0, NotFound,
       Format(
           "Couldnt find restart_lsn on the slot's cdc_state entry for stream_id: $0", stream_id_));
 
   RSTATUS_DCHECK_GT(
-      *entry_opt->xmin, 0, NotFound,
+      *entry_opt.xmin, 0, NotFound,
       Format("Couldnt find xmin on the slot's cdc_state entry for stream_id: $0", stream_id_));
 
   RSTATUS_DCHECK_GT(
-      *entry_opt->record_id_commit_time, 0, NotFound,
+      *entry_opt.record_id_commit_time, 0, NotFound,
       Format(
           "Couldnt find unique record Id's commit_time on the slot's cdc_state entry for "
           "stream_id: $0",
           stream_id_));
 
   RSTATUS_DCHECK_GT(
-      *entry_opt->last_pub_refresh_time, 0, NotFound,
+      *entry_opt.last_pub_refresh_time, 0, NotFound,
       Format(
           "Couldnt find last_pub_refresh_time on the slot's cdc_state entry for stream_id: $0",
           stream_id_));
 
-  last_seen_lsn_ = *entry_opt->restart_lsn;
-  last_received_restart_lsn = *entry_opt->restart_lsn;
+  last_seen_lsn_ = *entry_opt.restart_lsn;
+  last_received_restart_lsn = *entry_opt.restart_lsn;
 
-  last_seen_txn_id_ = *entry_opt->xmin;
+  last_seen_txn_id_ = *entry_opt.xmin;
 
-  last_pub_refresh_time = *entry_opt->last_pub_refresh_time;
+  last_pub_refresh_time = *entry_opt.last_pub_refresh_time;
 
-  pub_refresh_times = ParsePubRefreshTimes(*entry_opt->pub_refresh_times);
+  pub_refresh_times = ParsePubRefreshTimes(*entry_opt.pub_refresh_times);
 
   last_decided_pub_refresh_time =
-      ParseLastDecidedPubRefreshTime(*entry_opt->last_decided_pub_refresh_time);
+      ParseLastDecidedPubRefreshTime(*entry_opt.last_decided_pub_refresh_time);
 
-  auto commit_time = *entry_opt->record_id_commit_time;
+  auto commit_time = *entry_opt.record_id_commit_time;
   // Values from the slot's entry will be used to form a unique record ID corresponding to a COMMIT
   // record with commit_time set to the record_id_commit_time field of the state table.
   std::string commit_record_docdb_txn_id = "";

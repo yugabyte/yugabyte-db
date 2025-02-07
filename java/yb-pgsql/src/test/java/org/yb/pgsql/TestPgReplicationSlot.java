@@ -62,6 +62,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   private static final String PG_OUTPUT_PLUGIN_NAME = "pgoutput";
 
+  private static final String HASH_RANGE_SLOT_OPTION = "hash_range";
+
   @Override
   protected int getInitialNumTServers() {
     return 3;
@@ -3396,5 +3398,203 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       assertEquals(1, rs.getMetaData().getColumnCount());
       assertEquals("int8", rs.getMetaData().getColumnTypeName(1));
     }
+  }
+
+  @Test
+  public void testConsumptionOnSubsetOfTabletsFromMultipleSlots() throws Exception {
+    markClusterNeedsRecreation();
+    Map<String, String> tserverFlags = super.getTServerFlags();
+    tserverFlags.put(
+            "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
+    tserverFlags.put("ysql_yb_enable_consistent_replication_from_hash_range", "true");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test");
+      stmt.execute("CREATE TABLE test (a int primary key, b text) SPLIT INTO 2 tablets");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    String slotName1 = "test_slot_1";
+    String slotName2 = "test_slot_2";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName1, YB_OUTPUT_PLUGIN_NAME);
+    createSlot(replConnection, slotName2, YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO test VALUES(1, 'abc')");
+      stmt.execute("INSERT INTO test VALUES(2, 'def')");
+      stmt.execute("INSERT INTO test VALUES(3, 'ghi')");
+      stmt.execute("INSERT INTO test VALUES(4, 'jkl')");
+      stmt.execute("INSERT INTO test VALUES(5, 'mno')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream1 = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName1)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        // test_slot_1 is expected to poll from tablet-1 whose start range is 0.
+        .withSlotOption(HASH_RANGE_SLOT_OPTION, "0,32768")
+        .start();
+
+    // Transaction 1: 5 records (BEGIN, RELATION, INSERT (pk=1), INSERT(pk=5),
+    // COMMIT)
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    result.addAll(receiveMessage(stream1, 5));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/5"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("abc")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("5"),
+                new PgOutputMessageTupleColumnValue("mno")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    // Close this stream and the connection.
+    stream1.close();
+    conn.close();
+
+    Connection conn2 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection2 = conn2.unwrap(PGConnection.class).getReplicationAPI();
+
+    PGReplicationStream stream2 = replConnection2.replicationStream()
+        .logical()
+        .withSlotName(slotName2)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        // test_slot_2 is expected to poll from tablet-2 whose start range is 32768.
+        .withSlotOption(HASH_RANGE_SLOT_OPTION, "32768,65536")
+        .start();
+
+    // Transaction 1 - 6 records (BEGIN, RELATION, INSERT (pk=2), INSERT (pk=3),
+    // INSERT (pk=4), COMMIT)
+    result.clear();
+    result.addAll(receiveMessage(stream2, 6));
+
+    List<PgOutputMessage> expectedResult2 = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/6"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("def")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("ghi")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("4"),
+                new PgOutputMessageTupleColumnValue("jkl")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/6"), LogSequenceNumber.valueOf("0/7")));
+      }
+    };
+    assertEquals(expectedResult2, result);
+
+    stream2.close();
+  }
+
+  @Test
+  public void testOutOfBoundHashRangeWithSlot() throws Exception {
+    markClusterNeedsRecreation();
+    Map<String, String> tserverFlags = super.getTServerFlags();
+    tserverFlags.put(
+            "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
+    tserverFlags.put("ysql_yb_enable_consistent_replication_from_hash_range", "true");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    String slotName = "test_slot_1";
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    String expectedErrorMessage = "hash_range out of bound";
+    boolean exceptionThrown = false;
+    try {
+      replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .withSlotOption(HASH_RANGE_SLOT_OPTION, "32768,100000")
+        .start();
+    } catch (PSQLException e) {
+      exceptionThrown = true;
+      if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+            e.getMessage(), expectedErrorMessage));
+      }
+    }
+
+    assertTrue("Expected an exception but wasn't thrown", exceptionThrown);
+  }
+
+  @Test
+  public void testNonNumericHashRangeWithSlot() throws Exception {
+    markClusterNeedsRecreation();
+    Map<String, String> tserverFlags = super.getTServerFlags();
+    tserverFlags.put(
+            "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
+    tserverFlags.put("ysql_yb_enable_consistent_replication_from_hash_range", "true");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    String slotName = "test_slot_1";
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    String expectedErrorMessage = "invalid value for hash_range";
+    boolean exceptionThrown = false;
+    try {
+      replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .withSlotOption(HASH_RANGE_SLOT_OPTION, "123abc,456def")
+        .start();
+    } catch (PSQLException e) {
+      exceptionThrown = true;
+      if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+            e.getMessage(), expectedErrorMessage));
+      }
+    }
+
+    assertTrue("Expected an exception but wasn't thrown", exceptionThrown);
   }
 }

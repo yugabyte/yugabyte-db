@@ -2253,7 +2253,8 @@ YBCGetRelfileNodes(Oid *table_oids, size_t num_relations, Oid *relfilenodes)
 
 void
 YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
-						size_t numrelations)
+						size_t numrelations,
+						const YbcReplicationSlotHashRange *slot_hash_range)
 {
 	Assert(MyDatabaseId);
 
@@ -2263,7 +2264,8 @@ YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 	YBCGetRelfileNodes(relations, numrelations, relfilenodes);
 
 	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
-											 relfilenodes, numrelations));
+											 relfilenodes, numrelations,
+											 slot_hash_range));
 
 	pfree(relfilenodes);
 }

@@ -32,7 +32,7 @@ class CDCSDKVirtualWAL {
  public:
   explicit CDCSDKVirtualWAL(
       CDCServiceImpl* cdc_service, const xrepl::StreamId& stream_id, const uint64_t session_id,
-      ReplicationSlotLsnType lsn_type);
+      ReplicationSlotLsnType lsn_type, const uint64_t consistent_snapshot_time);
 
   using RecordInfo =
       std::pair<std::shared_ptr<CDCSDKUniqueRecordID>, std::shared_ptr<CDCSDKProtoRecordPB>>;
@@ -41,7 +41,7 @@ class CDCSDKVirtualWAL {
 
   Status InitVirtualWALInternal(
       const std::unordered_set<TableId>& table_list, const HostPort hostport,
-      const CoarseTimePoint deadline);
+      const CoarseTimePoint deadline, std::unique_ptr<ReplicationSlotHashRange> slot_hash_range);
 
   Status GetConsistentChangesInternal(
       GetConsistentChangesResponsePB* resp, const HostPort hostport,
@@ -141,7 +141,7 @@ class CDCSDKVirtualWAL {
       TabletRecordPriorityQueue* sorted_records, std::vector<TabletId>* empty_tablet_queues,
       const HostPort hostport, const CoarseTimePoint deadline);
 
-  Status InitLSNAndTxnIDGenerators();
+  Status InitLSNAndTxnIDGenerators(const CDCStateTableEntry& slot_entry);
 
   Result<uint64_t> GetRecordLSN(const std::shared_ptr<CDCSDKUniqueRecordID>& curr_unique_record_id);
 
@@ -180,6 +180,11 @@ class CDCSDKVirtualWAL {
       const std::unordered_set<TableId>& tables_to_be_added, const CoarseTimePoint deadline);
 
   std::string LogPrefix() const;
+
+  bool IsTabletEligibleForVWAL(
+      const std::string& tablet_id, const PartitionPB& tablet_partition_pb);
+
+  Status CheckHashRangeConstraints(const CDCStateTableEntry& slot_entry);
 
   CDCServiceImpl* cdc_service_;
 
@@ -285,6 +290,12 @@ class CDCSDKVirtualWAL {
 
   // Store the LSN type the replication slot is created with.
   ReplicationSlotLsnType slot_lsn_type_;
+
+  // Slot's hash range for tablets with end range being exclusive. Tablets whose start hash range
+  // falls within these ranges will be polled.
+  std::unique_ptr<ReplicationSlotHashRange> slot_hash_range_;
+
+  uint64_t consistent_snapshot_time_;
 };
 
 }  // namespace cdc
