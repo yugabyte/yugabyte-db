@@ -128,6 +128,7 @@ static MongoCollection * GetMongoCollectionByNameDatumCore(Datum databaseNameDat
 														   Datum collectionNameDatum,
 														   LOCKMODE lockMode);
 static Datum GetCollectionOrViewCore(PG_FUNCTION_ARGS, bool allowViews);
+static uint64 GetCollectionIdFromShardName(const char *shardName);
 
 /*
  * CollectionCacheIsValid determines whether the collections hashes are
@@ -413,6 +414,50 @@ GetMongoCollectionByColId(uint64 collectionId, LOCKMODE lockMode)
 	CollectionCacheIsValid = true;
 
 	return CopyMongoCollection(&(entryByRelId->collection));
+}
+
+
+/*
+ * GetMongoCollectionByRelationShardId gets the MongoCollection metadata by
+ * relation Id of one of the collection's shard tables. This is used by
+ * change stream aggregation to lookup a collection for a given change's
+ * relation id parsed from the WAL records. It finds the collection Id
+ * from the relation ID using the naming convention of the shard table
+ * name format documents_<collection ID>_<shard ID> and just calls the
+ * GetMongoCollectionByColId to lookup the collection's meta data from
+ * the hash table.
+ */
+MongoCollection *
+GetMongoCollectionByRelationShardId(Oid relationId)
+{
+	/* Get the relation's name using the relationId. */
+	const char *shardName = get_rel_name(relationId);
+
+	/* If the shardName lookup failed, return false. */
+	if (shardName == NULL)
+	{
+		return NULL;
+	}
+
+	/* Get the collection ID from the shard table name. */
+	uint64 collectionId = GetCollectionIdFromShardName(shardName);
+
+	/*
+	 * If the collection Id can't be parsed from relation's name,
+	 * then this is not a valid shard of a collection.
+	 */
+	if (collectionId == 0)
+	{
+		return NULL;
+	}
+
+	/*
+	 * Look up the collection using it's ID and return it. we can directly
+	 * lookup from the RelationIdToCollectionHash here, but this collection may
+	 * have been evicted from cache, so an invalidation may be needed. So
+	 * we call the GetMongoCollectionByColId which handles this already.
+	 */
+	return GetMongoCollectionByColId(collectionId, NoLock);
 }
 
 
@@ -1956,4 +2001,24 @@ UpdateMongoCollectionUsingIds(MongoCollection *mongoCollection, uint64 collectio
 
 	snprintf(mongoCollection->tableName, NAMEDATALEN, DOCUMENT_DATA_TABLE_NAME_FORMAT,
 			 collectionId);
+}
+
+
+static uint64
+GetCollectionIdFromShardName(const char *shardName)
+{
+	uint64 collectionId = 0, shardId = 0;
+
+	/* Use sscanf to parse the string */
+	int scanned = sscanf(shardName, "documents_%lu_%lu", &collectionId, &shardId);
+
+	/* Check if sscanf successfully scanned 2 numbers and the prefix is correct */
+	if (scanned == 2 && strncmp(shardName, "documents_", 10) == 0)
+	{
+		return collectionId;
+	}
+	else
+	{
+		return -1;
+	}
 }

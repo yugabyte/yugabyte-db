@@ -207,6 +207,9 @@ MongoCollection * CopyMongoCollection(const MongoCollection *collection);
 /* get Mongo collection metadata by collection id */
 MongoCollection * GetMongoCollectionByColId(uint64 collectionId, LOCKMODE lockMode);
 
+/* get Mongo collection metadata by realtion ID of a collection's shard */
+MongoCollection * GetMongoCollectionByRelationShardId(Oid relationId);
+
 /* get OID of Mongo documents table by collection id */
 Oid GetRelationIdForCollectionId(uint64 collectionId, LOCKMODE lockMode);
 
