@@ -108,8 +108,3 @@ Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Ruby')
 Query returned: John 35 Ruby
 ```
-
-## Learn more
-
-- Build Ruby applications using [YugabyteDB ruby-pg Driver](../yb-ruby-pg/)
-- Build Ruby applications using [Active Record ORM](../activerecord/)

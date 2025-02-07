@@ -118,7 +118,8 @@ private = true
 |             | Version | Support Level | Example apps |
 | :---------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| Pg Gem Driver                   | [1.5.4](https://github.com/ged/ruby-pg) | Full | [CRUD](/preview/drivers-orms/ruby/ysql-pg/) |
+| YugabyteDB ruby-pg Smart Driver | [0.7](https://github.com/yugabyte/ruby-pg) | Full | [CRUD](/preview/drivers-orms/ruby/yb-ruby-pg/) |
+| Pg Gem Driver                   | [1.5.4](https://github.com/ged/ruby-pg) | Full | [CRUD](/preview/drivers-orms/ruby/ruby-pg/) |
 | YugabyteDB Ruby Driver for YCQL | [3.2.3.2](https://github.com/yugabyte/cassandra-ruby-driver) | Full | [CRUD](/preview/drivers-orms/ruby/ycql/) |
 | **ORM**     | | | |
 | Active Record                   | 7.0.4 | Full | [CRUD](/preview/drivers-orms/ruby/activerecord/) |
