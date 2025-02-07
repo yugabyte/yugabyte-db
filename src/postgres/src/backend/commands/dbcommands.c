@@ -1384,6 +1384,28 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					 errmsg("could not get target database owner name from oid")));
 	}
 
+	if (IsYugaByteEnabled() &&
+		(OidIsValid(dboid) && dboid != Template0DbOid && dboid != PostgresDbOid) &&
+		!IsBinaryUpgrade && !YBIsMajorUpgradeInitDb())
+	{
+		/*
+		 * We do not allow the creation of databases with OIDs since it can
+		 * cause collisions of the catalog table data. This is because older
+		 * data in the catalog tables are lazily deleted, and there is a chance
+		 * that rows from a previous database with the same OID are still
+		 * present.
+		 * In the major upgrade case, the catalog table UUIDs between the
+		 * versions are different, and on rollbacks, we explicitly delete the
+		 * old data.
+		 * template0 and postgres databases have hard coded OIDs which are also
+		 * allowed.
+		 */
+		ereport(WARNING,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("creation of databases with OIDs is not supported in Yugabyte. OID will be ignored")));
+		dboid = InvalidOid;
+	}
+
 	/*
 	 * If database OID is configured, check if the OID is already in use or
 	 * data directory already exists.
@@ -1404,15 +1426,14 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					errmsg("data directory with the specified OID %u already exists", dboid));
 
 		/*
-		 * YB_TODO: Due to GH issue #19656, CREATE DATABASE will fail if the
-		 * OID was used by a database that's been dropped.
+		 * YSQL major upgrade.
 		 */
 		if (IsYugaByteEnabled())
 			YBCCreateDatabase(dboid, dbname, src_dboid,
 							  InvalidOid,	/* next_oid */
 							  dbcolocated,
 							  NULL, /* retry_on_oid_collision */
-							  is_clone ? &yb_clone_info : NULL);
+							  NULL); /* yb_clone_info */
 	}
 	else
 	{
