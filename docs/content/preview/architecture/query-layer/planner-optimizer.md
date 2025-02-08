@@ -31,7 +31,7 @@ To account for the distributed nature of the data, YugabyteDB has implemented a 
 
 {{<tip>}}
 
-The YugabyteDB CBO is {{<tags/feature/ea>}} and disabled by default. To enable it, turn ON the [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) configuration parameter as follows:
+The YugabyteDB CBO is {{<tags/feature/ea idea="483">}} and disabled by default. To enable it, turn ON the [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) configuration parameter as follows:
 
 ```sql
 -- Enable for current session
@@ -96,7 +96,7 @@ After the optimal plan is determined, YugabyteDB generates a detailed execution 
 
 - After you restore a database in YugabyteDB Anywhere or Aeon, you need to run analyze because the statistics that were in the database when it was backed up do not get restored.
 
-    For consistent RTO from restore in a cost model-enabled environment, run analyze manually after restore has finished before you allow end-users into the application. If you allow end-users into the application before analyze is finished user experience may not be correct initially.
+    For consistent RTO from restore in a cost model-enabled environment, run analyze manually after restore has finished and before you allow end users into the application. If you allow end users into the application before analyze is finished, initial execution plans won't be correctly optimized.
 
 ## Learn more
 

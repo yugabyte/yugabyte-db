@@ -20,7 +20,7 @@ Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routi
 
 ## Enable Auto Analyze
 
-The Auto Analyze service is {{<tags/feature/tp>}}. Before you can use the feature, you must enable it by setting `ysql_enable_auto_analyze_service` to true on all YB-Masters, and both `ysql_enable_auto_analyze_service` and `ysql_enable_table_mutation_counter` to true on all YB-Tservers.
+The Auto Analyze service is {{<tags/feature/tp idea="590">}}. Before you can use the feature, you must enable it by setting `ysql_enable_auto_analyze_service` to true on all YB-Masters, and both `ysql_enable_auto_analyze_service` and `ysql_enable_table_mutation_counter` to true on all YB-Tservers.
 
 For example, to create a single-node [yugabyted](../../../reference/configuration/yugabyted/) cluster with Auto Analyze enabled, use the following command:
 
