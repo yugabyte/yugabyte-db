@@ -849,7 +849,7 @@ PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
 
 PGConnPerf::~PGConnPerf() {
   CHECK_OK(process_.Kill(SIGINT));
-  LOG(INFO) << "Perf exec code: " << CHECK_RESULT(process_.Wait());
+  CHECK_OK(process_.Wait());
 }
 
 PGConnBuilder CreateInternalPGConnBuilder(

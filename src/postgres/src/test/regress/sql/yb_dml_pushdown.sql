@@ -922,6 +922,24 @@ UPDATE json_t1 SET json1 = json1 -> 0, json2 = json2||'["c", 3]'::jsonb WHERE k 
 SELECT * FROM json_t1;
 
 -----------------------------------
+-- Test crypto hash functions.
+CREATE TABLE crypto_hash_t1(k int PRIMARY KEY, v1 bytea, v2 text, md5v1 text, md5v2 text, sha1 bytea, sha2 bytea, sha3 bytea, sha4 bytea);
+INSERT INTO crypto_hash_t1(k, v1, v2) values (1, 'foo'::bytea, 'bar'::text);
+UPDATE crypto_hash_t1 SET md5v1 = md5(v1) WHERE k = 1;
+UPDATE crypto_hash_t1 SET md5v2 = md5(v2) WHERE k = 1;
+UPDATE crypto_hash_t1 SET sha1 = sha224(v1) WHERE k = 1;
+UPDATE crypto_hash_t1 SET sha2 = sha256(v1) WHERE k = 1;
+UPDATE crypto_hash_t1 SET sha3 = sha384(v1) WHERE k = 1;
+UPDATE crypto_hash_t1 SET sha4 = sha512(v1) WHERE k = 1;
+
+SELECT * FROM crypto_hash_t1 WHERE md5v1 = md5(v1);
+SELECT * FROM crypto_hash_t1 WHERE md5v2 = md5(v2);
+SELECT * FROM crypto_hash_t1 WHERE sha1 = sha224(v1);
+SELECT * FROM crypto_hash_t1 WHERE sha2 = sha256(v1);
+SELECT * FROM crypto_hash_t1 WHERE sha3 = sha384(v1);
+SELECT * FROM crypto_hash_t1 WHERE sha4 = sha512(v1);
+
+-----------------------------------
 -- Cleanup.
 DROP FUNCTION next_v3;
 DROP FUNCTION assign_one_plus_param_to_v1;
@@ -949,6 +967,7 @@ DROP TABLE array_t2;
 DROP TABLE array_t3;
 DROP TABLE array_t4;
 DROP TABLE json_t1;
+DROP TABLE crypto_hash_t1;
 DROP TYPE rt;
 DROP TYPE two_int;
 DROP TYPE two_text;

@@ -69,7 +69,6 @@ class TserverXClusterContextIf;
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
     (GetReplicationSlot) \
-    (GetReplicationSlotStatus) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \
     (GetTserverCatalogVersionInfo) \
@@ -86,7 +85,6 @@ class TserverXClusterContextIf;
     (GetNewObjectId) \
     (RollbackToSubTransaction) \
     (ServersMetrics) \
-    (SetActiveSubTransaction) \
     (TabletsMetadata) \
     (TabletServerCount) \
     (TruncateTable) \
@@ -99,7 +97,7 @@ class TserverXClusterContextIf;
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
     (ExportTxnSnapshot) \
-    (ImportTxnSnapshot) \
+    (SetTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
     /**/
 

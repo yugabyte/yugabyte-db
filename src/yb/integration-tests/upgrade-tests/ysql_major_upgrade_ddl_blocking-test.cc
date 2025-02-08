@@ -210,7 +210,7 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, CreateAndDropDBs) {
     ASSERT_OK(template1_conn.ExecuteFormat("DROP DATABASE system_platform"));
     ASSERT_OK(template1_conn.ExecuteFormat("DROP DATABASE yugabyte"));
 
-    ASSERT_NOK_STR_CONTAINS(ValidateUpgradeCompatibility(), kPgUpgradeFailedError);
+    ASSERT_OK(ValidateUpgradeCompatibilityFailure("Missing system database 'yugabyte'"));
 
     ASSERT_OK(template1_conn.ExecuteFormat("CREATE DATABASE yugabyte"));
     ASSERT_OK(ValidateUpgradeCompatibility());

@@ -52,7 +52,8 @@ extern void ybginbindschema(YbcPgStatement handle,
 							struct IndexInfo *indexInfo,
 							TupleDesc indexTupleDesc,
 							int16 *coloptions,
-							Oid *opclassIds);
+							Oid *opclassIds,
+							Datum reloptions);
 extern IndexScanDesc ybginbeginscan(Relation rel, int nkeys, int norderbys);
 extern void ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 						ScanKey orderbys, int norderbys);

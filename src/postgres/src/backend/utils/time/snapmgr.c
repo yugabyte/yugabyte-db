@@ -240,8 +240,8 @@ SnapMgrInit(void)
 	}
 }
 
-static void
-YBCheckSnapshotsAllowed()
+void
+YBCheckSnapshotsAllowed(bool check_isolation_level)
 {
 	if (!(*YBCGetGFlags()->ysql_enable_pg_export_snapshot))
 		ereport(ERROR,
@@ -249,21 +249,24 @@ YBCheckSnapshotsAllowed()
 				 errmsg("cannot export or import snapshot when "
 						"ysql_enable_pg_export_snapshot is disabled.")));
 
-	switch (XactIsoLevel)
+	if (check_isolation_level)
 	{
-		/*
-		 * Currently in YSQL, export & import is allowed only in REPEATABLE READ.
-		 */
-		case XACT_READ_COMMITTED:
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot export/import snapshot in READ COMMITTED Isolation Level")));
-			break;
-		case XACT_SERIALIZABLE:
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot export/import snapshot in SERIALIZABLE Isolation Level")));
-			break;
+		switch (XactIsoLevel)
+		{
+			/*
+			 * Currently in YSQL, export & import is allowed only in REPEATABLE READ.
+			 */
+			case XACT_READ_COMMITTED:
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("cannot export/import snapshot in READ COMMITTED Isolation Level")));
+				break;
+			case XACT_SERIALIZABLE:
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("cannot export/import snapshot in SERIALIZABLE Isolation Level")));
+				break;
+		}
 	}
 
 	if (XactDeferrable)
@@ -275,6 +278,20 @@ YBCheckSnapshotsAllowed()
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot export/import a snapshot in Batch Execution.")));
+}
+
+void
+YbInitSnapshot(Snapshot snap)
+{
+	snap->xmin = FirstNormalTransactionId;
+	snap->xmax = FirstNormalTransactionId;
+	snap->xcnt = 0;
+	snap->subxcnt = 0;
+	snap->suboverflowed = false;
+	snap->takenDuringRecovery = false;
+	snap->snapshot_type = SNAPSHOT_MVCC;
+	snap->yb_cdc_snapshot_read_time.has_value = false;
+	snap->yb_cdc_snapshot_read_time.value = 0;
 }
 
 static void
@@ -671,6 +688,9 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 		FirstXactSnapshot->regd_count++;
 		pairingheap_add(&RegisteredSnapshots, &FirstXactSnapshot->ph_node);
 	}
+
+	if (sourcesnap->yb_cdc_snapshot_read_time.has_value)
+		HandleYBStatus(YBCPgSetTxnSnapshot(sourcesnap->yb_cdc_snapshot_read_time.value));
 
 	FirstSnapshotSet = true;
 }
@@ -1205,14 +1225,18 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 }
 
 static char *
-YBCExportSnapshot()
+YBCExportSnapshot(uint64_t yb_cdc_snapshot_read_time)
 {
 	char *snapshot_id = NULL;
 	YbcPgTxnSnapshot snapshot =
 		{.db_id = MyDatabaseId,
 		 .iso_level = XactIsoLevel,
 		 .read_only = XactReadOnly};
-	HandleYBStatus(YBCPgExportSnapshot(&snapshot, &snapshot_id));
+	HandleYBStatus(YBCPgExportSnapshot(&snapshot,
+									   &snapshot_id,
+									   yb_cdc_snapshot_read_time == 0
+									   ? NULL
+									   : &yb_cdc_snapshot_read_time));
 	return snapshot_id;
 }
 
@@ -1238,7 +1262,7 @@ ExportSnapshot(Snapshot snapshot)
 	char		pathtmp[MAXPGPATH];
 
 	if (IsYugaByteEnabled())
-		YBCheckSnapshotsAllowed();
+		YBCheckSnapshotsAllowed(true /* check_isolation_level */ );
 
 	/*
 	 * It's tempting to call RequireTransactionBlock here, since it's not very
@@ -1270,7 +1294,9 @@ ExportSnapshot(Snapshot snapshot)
 				 errmsg("cannot export a snapshot from a subtransaction")));
 
 	if (IsYugaByteEnabled())
-		return YBCExportSnapshot();
+		return YBCExportSnapshot(snapshot->yb_cdc_snapshot_read_time.has_value
+								 ? snapshot->yb_cdc_snapshot_read_time.value
+								 : 0);
 	/*
 	 * We do however allow previous committed subtransactions to exist.
 	 * Importers of the snapshot must see them as still running, so get their
@@ -1515,7 +1541,7 @@ ImportSnapshot(const char *idstr)
 	SnapshotData snapshot;
 
 	if (IsYugaByteEnabled())
-		YBCheckSnapshotsAllowed();
+		YBCheckSnapshotsAllowed(true /* check_isolation_level */ );
 
 	/*
 	 * Must be at top level of a fresh transaction.  Note in particular that
@@ -1558,13 +1584,7 @@ ImportSnapshot(const char *idstr)
 		src_readonly = yb_snapshot.read_only;
 
 		memset(&snapshot, 0, sizeof(snapshot));
-		snapshot.xmin = FirstNormalTransactionId;
-		snapshot.xmax = FirstNormalTransactionId;
-		snapshot.xcnt = 0;
-		snapshot.subxcnt = 0;
-		snapshot.suboverflowed = false;
-		snapshot.takenDuringRecovery = false;
-		snapshot.snapshot_type = SNAPSHOT_MVCC;
+		YbInitSnapshot(&snapshot);
 	}
 	else
 	{
@@ -2378,6 +2398,8 @@ RestoreSnapshot(char *start_address)
 	snapshot->lsn = serialized_snapshot.lsn;
 	snapshot->snapXactCompletionCount = 0;
 	snapshot->yb_read_time_point_handle = YbBuildCurrentReadTimePointHandle();
+	snapshot->yb_cdc_snapshot_read_time.has_value = false;
+	snapshot->yb_cdc_snapshot_read_time.value = 0;
 
 	/* Copy XIDs, if present. */
 	if (serialized_snapshot.xcnt > 0)

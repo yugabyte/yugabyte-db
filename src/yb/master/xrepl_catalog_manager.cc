@@ -954,7 +954,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
   if (req.has_cdcsdk_consistent_snapshot_option()) {
     has_consistent_snapshot_option = true;
     consistent_snapshot_option_use =
-        req.cdcsdk_consistent_snapshot_option() == CDCSDKSnapshotOption::USE_SNAPSHOT;
+        req.cdcsdk_consistent_snapshot_option() == CDCSDKSnapshotOption::USE_SNAPSHOT ||
+        req.cdcsdk_consistent_snapshot_option() == CDCSDKSnapshotOption::EXPORT_SNAPSHOT;
   }
   has_consistent_snapshot_option =
       has_consistent_snapshot_option && FLAGS_yb_enable_cdc_consistent_snapshot_streams;

@@ -1187,7 +1187,8 @@ tserver_consensus_rpcs_per_sec:
 
 tserver_change_config:
   metric: "rpc_latency_count"
-  function: "sum"
+  function: "rate|sum"
+  range: true
   filters:
     export_type: "tserver_export"
     server_type: "yb_consensus"

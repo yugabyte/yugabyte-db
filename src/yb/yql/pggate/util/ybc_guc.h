@@ -140,6 +140,12 @@ extern bool yb_allow_replication_slot_lsn_types;
 extern char* yb_default_replica_identity;
 
 /*
+ * GUC variable that enable replication slot consumption of consistent changes from a hash range
+ * of table.
+ */
+extern bool yb_enable_consistent_replication_from_hash_range;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0

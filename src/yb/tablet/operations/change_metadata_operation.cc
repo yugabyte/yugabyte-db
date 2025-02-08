@@ -240,7 +240,7 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
     case MetadataChange::ADD_TABLE:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
-      RETURN_NOT_OK(tablet->AddTable(request()->add_table().ToGoogleProtobuf(), id));
+      RETURN_NOT_OK(tablet->AddTable(request()->add_table().ToGoogleProtobuf(), id, hybrid_time()));
       break;
     case MetadataChange::REMOVE_TABLE:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
@@ -256,8 +256,7 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
     case MetadataChange::ADD_MULTIPLE_TABLES:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
-      RETURN_NOT_OK(tablet->AddMultipleTables(
-          ToRepeatedPtrField(request()->add_multiple_tables()), id));
+      RETURN_NOT_OK(tablet->AddMultipleTables(request()->add_multiple_tables(), id, hybrid_time()));
       break;
   }
 

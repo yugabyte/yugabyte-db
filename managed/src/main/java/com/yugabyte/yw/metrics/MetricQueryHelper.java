@@ -403,7 +403,8 @@ public class MetricQueryHelper {
     String step = params.get("step");
     if (step == null) {
       if (timeDifference <= 0) {
-        throw new PlatformServiceException(BAD_REQUEST, "Queried time interval should be positive");
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Start time cannot be greater than the end time");
       }
       int defaultPoints =
           confGetter.getConfForScope(customer, CustomerConfKeys.MetricsDefaultPoints);

@@ -50,6 +50,8 @@ typedef struct YbVectorScanOpaqueData
 
 typedef YbVectorScanOpaqueData *YbVectorScanOpaque;
 
+extern void YbHnswInit();
+
 /* ybvector.c */
 extern IndexBuildResult *ybvectorbuild(Relation heap, Relation index,
 									struct IndexInfo *indexInfo);

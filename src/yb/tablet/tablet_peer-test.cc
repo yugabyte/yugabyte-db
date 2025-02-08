@@ -538,7 +538,7 @@ TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
   Schema schema({col}, {col_id});
   SchemaToPB(schema, table_info.mutable_schema());
   OpId op_id(100, 5);
-  ASSERT_OK(tablet->AddTable(table_info, op_id));
+  ASSERT_OK(tablet->AddTable(table_info, op_id, HybridTime()));
   ASSERT_EQ(tablet->metadata()->TEST_LastAppliedChangeMetadataOperationOpId(), op_id);
 }
 

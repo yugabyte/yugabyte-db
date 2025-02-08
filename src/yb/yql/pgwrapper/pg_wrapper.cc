@@ -904,15 +904,7 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
     }
   }
 
-  int status = 0;
-  RETURN_NOT_OK(initdb_subprocess.Start());
-  RETURN_NOT_OK(initdb_subprocess.Wait(&status));
-  if (status != 0) {
-    SCHECK(
-        WIFEXITED(status), InternalError, Format("$0 did not exit normally", initdb_program_path));
-    return STATUS_FORMAT(
-        RuntimeError, "$0 failed with exit code $1", initdb_program_path, WEXITSTATUS(status));
-  }
+  RETURN_NOT_OK(initdb_subprocess.Run());
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
   return Status::OK();
@@ -942,13 +934,9 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   }
 
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
-  Subprocess subprocess(program_path, args);
-
-  auto status = Subprocess::Call(args);
-  if (!status.ok()) {
-    return status.CloneAndAppend(
-        "pg_upgrade failed. Check the standard output and standard error for more details.");
-  }
+  RETURN_NOT_OK_PREPEND(
+      Subprocess::Call(args, /*log_stdout_and_stderr=*/true),
+      "pg_upgrade failed. Check previous errors for more details.");
 
   LOG(INFO) << "pg_upgrade completed successfully";
   return Status::OK();

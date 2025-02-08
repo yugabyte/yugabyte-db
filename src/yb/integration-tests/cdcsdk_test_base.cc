@@ -458,8 +458,8 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
 }
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
-    const std::string& slot_name,
-    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name, std::string namespace_name) {
+    const std::string& slot_name, CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name,
+    std::string namespace_name) {
   auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(namespace_name));
 
   std::string snapshot_action;
@@ -470,6 +470,9 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
     case USE_SNAPSHOT:
       snapshot_action = "USE_SNAPSHOT";
       break;
+    case EXPORT_SNAPSHOT:
+      snapshot_action = "EXPORT_SNAPSHOT";
+      break;
   }
 
   auto result = VERIFY_RESULT(repl_conn.FetchFormat(
@@ -479,18 +482,18 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
   LOG(INFO) << "Snapshot Name: " << (snapshot_name.has_value() ? *snapshot_name : "NULL");
 
   // Fetch the stream_id of the replication slot.
-  auto stream_id = VERIFY_RESULT(repl_conn.FetchRow<std::string>(Format(
-      "select yb_stream_id from pg_replication_slots WHERE slot_name = '$0'",
-      slot_name)));
+  auto stream_id = VERIFY_RESULT(repl_conn.FetchRow<std::string>(
+      Format("SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = '$0'", slot_name)));
   auto xrepl_stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream_id));
 
-  if (verify_snapshot_name)  {
+  if (verify_snapshot_name) {
     auto resp = VERIFY_RESULT(GetCDCStream(xrepl_stream_id));
     auto cstime = resp.stream().cdcsdk_consistent_snapshot_time();
     if (snapshot_option == NOEXPORT_SNAPSHOT) {
       SCHECK_EQ(snapshot_name.has_value(), false, InternalError, "Snapshot name is not NULL");
-    } else {
-      SCHECK_EQ(*snapshot_name, std::to_string(cstime), InternalError,
+    } else if (snapshot_option == USE_SNAPSHOT) {
+      SCHECK_EQ(
+          *snapshot_name, std::to_string(cstime), InternalError,
           "Snapshot Name is not matching the consistent snapshot time");
     }
   }

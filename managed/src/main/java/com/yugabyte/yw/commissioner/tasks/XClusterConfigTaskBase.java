@@ -2659,67 +2659,80 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             clusterConfig,
             sourceTableInfoList,
             targetTableInfoList);
+    List<XClusterTableConfig> tableConfigsNotInReplicationOnSource = tableConfigs.getFirst();
+    List<XClusterTableConfig> tableConfigsNotInReplicationOnTarget = tableConfigs.getSecond();
 
-    tableConfigs
-        .getFirst()
-        .forEach(
-            tableConfig -> {
-              Optional<XClusterTableConfig> existingTableConfig =
-                  xClusterConfig.getTableDetails().stream()
-                      .filter(t -> t.getTableId().equals(tableConfig.getTableId()))
-                      .findFirst();
-              if (!existingTableConfig.isPresent()) {
-                if (xClusterConfig.getType().equals(ConfigType.Db)) {
-                  // For DB replication, extra tables on the source are in the INITIATED state and
-                  // part of the replication group. However, tables that were previously part of
-                  // replication but were dropped from the source are not in the replication group
-                  // and may appear as extra tables on the source. Therefore, we need to set the
-                  // status to DroppedFromTarget.
-                  tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromTarget);
-                }
-                xClusterConfig.addTableConfig(tableConfig);
-              } else {
-                log.info(
-                    "Found table {} with status {} on source universe but already exists in"
-                        + " xCluster config in YBA",
-                    tableConfig.getTableId(),
-                    tableConfig.getStatus());
-              }
-            });
+    tableConfigsNotInReplicationOnSource.forEach(
+        tableConfig -> {
+          Optional<XClusterTableConfig> existingTableConfig =
+              xClusterConfig.getTableDetails().stream()
+                  .filter(t -> t.getTableId().equals(tableConfig.getTableId()))
+                  .findFirst();
+          if (!existingTableConfig.isPresent()) {
+            if (xClusterConfig.getType().equals(ConfigType.Db)) {
+              // For DB replication, extra tables on the source are in the INITIATED state and
+              // part of the replication group. However, tables that were previously part of
+              // replication but were dropped from the source are not in the replication group
+              // and may appear as extra tables on the source. Therefore, we need to set the
+              // status to DroppedFromTarget.
+              tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromTarget);
+            }
+            xClusterConfig.addTableConfig(tableConfig);
+          } else {
+            log.info(
+                "Found table {} with status {} on source universe but already exists in"
+                    + " xCluster config in YBA",
+                tableConfig.getTableId(),
+                tableConfig.getStatus());
+          }
+        });
 
-    if (tableConfigs.getSecond().size() > 0) {
+    if (!tableConfigsNotInReplicationOnTarget.isEmpty()) {
       Map<String, String> targetTableIdToSourceTableIdMap =
           getTargetTableIdToSourceTableIdMap(sourceTableInfoList, targetTableInfoList);
 
-      tableConfigs
-          .getSecond()
-          .forEach(
-              tableConfig -> {
-                String targetTableId = tableConfig.getTableId();
-                String sourceTableId = targetTableIdToSourceTableIdMap.get(targetTableId);
-                if (sourceTableId != null) {
-                  Optional<XClusterTableConfig> existingTableConfig =
-                      xClusterConfig.getTableDetails().stream()
-                          .filter(t -> t.getTableId().equals(sourceTableId))
-                          .findFirst();
-                  if (!existingTableConfig.isPresent()
-                      || existingTableConfig
-                          .get()
-                          .getStatus()
-                          .equals(XClusterTableConfig.Status.ExtraTableOnSource)) {
-                    xClusterConfig.addTableConfig(tableConfig);
-                  } else {
-                    log.info(
-                        "Found table target: {} source: {} with status {} on target universe but"
-                            + " already exists in xCluster config in YBA",
-                        targetTableId,
-                        sourceTableId,
-                        tableConfig.getStatus());
-                  }
-                } else {
-                  xClusterConfig.addTableConfig(tableConfig);
-                }
-              });
+      Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+      Map<String, String> consumerToProducerTableIdMap =
+          xClusterUniverseService
+              .getSourceTableIdToTargetTableIdMapFromClusterConfig(
+                  targetUniverse, xClusterConfig.getReplicationGroupName(), clusterConfig)
+              .entrySet()
+              .stream()
+              .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+
+      tableConfigsNotInReplicationOnTarget.forEach(
+          tableConfig -> {
+            String targetTableId = tableConfig.getTableId();
+            String sourceTableId = targetTableIdToSourceTableIdMap.get(targetTableId);
+            if (sourceTableId != null) {
+              Optional<XClusterTableConfig> existingTableConfig =
+                  xClusterConfig.getTableDetails().stream()
+                      .filter(t -> t.getTableId().equals(sourceTableId))
+                      .findFirst();
+              if (!existingTableConfig.isPresent()
+                  || existingTableConfig
+                      .get()
+                      .getStatus()
+                      .equals(XClusterTableConfig.Status.ExtraTableOnSource)) {
+                xClusterConfig.addTableConfig(tableConfig);
+              } else {
+                log.info(
+                    "Found table target: {} source: {} with status {} on target universe but"
+                        + " already exists in xCluster config in YBA",
+                    targetTableId,
+                    sourceTableId,
+                    tableConfig.getStatus());
+              }
+            } else {
+              // If the source table id associated with this target table id is already part of the
+              // xCluster config, do not add it again.
+              String producerTableId = consumerToProducerTableIdMap.get(targetTableId);
+              if (Objects.isNull(producerTableId)
+                  || !xClusterConfig.getTableIds().contains(producerTableId)) {
+                xClusterConfig.addTableConfig(tableConfig);
+              }
+            }
+          });
     }
   }
 
@@ -2732,7 +2745,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @param tableHandler The UniverseTableHandler object for retrieving table information.
    * @param sourceTableInfoList The list of source table information.
    * @param targetTableInfoList The list of target table information.
-   * @param config The SysClusterConfigEntryPB object for cluster configuration.
+   * @param clusterConfig The SysClusterConfigEntryPB object for cluster configuration.
    */
   private static void addSourceAndTargetTableInfo(
       XClusterConfig xClusterConfig,
@@ -2740,7 +2753,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       UniverseTableHandler tableHandler,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
-      CatalogEntityInfo.SysClusterConfigEntryPB config) {
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig) {
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
 
     List<TableInfoResp> sourceUniverseTableInfoRespList =
@@ -2770,7 +2783,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     Map<String, String> producerConsumerTableIdMap =
         xClusterUniverseService.getSourceTableIdToTargetTableIdMapFromClusterConfig(
-            targetUniverse, xClusterConfig.getReplicationGroupName(), config);
+            targetUniverse, xClusterConfig.getReplicationGroupName(), clusterConfig);
 
     List<TableInfoResp> targetUniverseTableInfoRespList =
         tableHandler.getTableInfoRespFromTableInfo(
@@ -2830,8 +2843,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig,
           List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
           List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList) {
-    List<XClusterTableConfig> targetTableConfigs = new ArrayList<>();
-    List<XClusterTableConfig> sourceTableConfigs = new ArrayList<>();
+    List<XClusterTableConfig> targetTableConfigs;
+    List<XClusterTableConfig> sourceTableConfigs;
 
     targetTableConfigs =
         getTargetOnlyTable(
@@ -3118,7 +3131,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       List<MasterTypes.NamespaceIdentifierPB> namespaces =
           client.getNamespacesList().getNamespacesList();
       if (CollectionUtils.isEmpty(dbIds)) {
-        return new HashSet<MasterTypes.NamespaceIdentifierPB>(namespaces);
+        return new HashSet<>(namespaces);
       }
       return namespaces.stream()
           .filter(db -> dbIds.contains(db.getId().toStringUtf8()))

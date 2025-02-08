@@ -757,7 +757,20 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   if (yb_read_time != 0) {
     SCHECK(
         !pg_txn_manager_->IsDdlMode(), IllegalState,
-        "DDL operation should not be performed while yb_read_time is set to nonzero.");
+        "DDL operation can not be performed while yb_read_time is set to nonzero.");
+    // Disallow serializable reads that are not read-only as they need to acquire locks and thus,
+    // not pure reads.
+    SCHECK(
+        pg_txn_manager_->GetIsolationLevel() != IsolationLevel::SERIALIZABLE_ISOLATION,
+        IllegalState,
+        "Transactions with serializable isolation can not be performed while yb_read_time is set "
+        "to nonzero. Try setting the transaction as read only or try another isolation level.");
+    // Only read-only DMLs are allowed when yb_read_time is set to non-zero.
+    for (const auto& pg_op : ops.operations()) {
+      SCHECK(
+          IsReadOnly(*pg_op), IllegalState,
+          "Write DML operation can not be performed while yb_read_time is set to nonzero.");
+    }
     if (yb_is_read_time_ht) {
       ReadHybridTime::FromUint64(yb_read_time).ToPB(options.mutable_read_time());
     } else {

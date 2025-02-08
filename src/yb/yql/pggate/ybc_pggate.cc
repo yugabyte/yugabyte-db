@@ -399,12 +399,6 @@ void AshGetTServerClientAddress(
   }
 }
 
-uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code) {
-  DCHECK_EQ((component >> YB_ASH_COMPONENT_BITS), 0);
-  DCHECK_EQ((code >> YB_ASH_COMPONENT_POSITION), 0);
-  return (component << YB_ASH_COMPONENT_POSITION) | code;
-}
-
 void AshCopyAuxInfo(
     const WaitStateInfoPB& tserver_sample, uint32_t component, YbcAshSample* cb_sample) {
   // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
@@ -431,7 +425,8 @@ void AshCopyTServerSample(
   cb_metadata->database_id = tserver_metadata.database_id();
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
-      AshEncodeWaitStateCodeWithComponent(component, tserver_sample.wait_state_code());
+      ash::WaitStateInfo::AshEncodeWaitStateCodeWithComponent(
+        component, tserver_sample.wait_state_code());
   cb_sample->sample_weight = sample_weight;
   cb_sample->sample_time = sample_time;
 
@@ -1268,6 +1263,10 @@ YbcStatus YBCPgCreateIndexSetNumTablets(YbcPgStatement handle, int32_t num_table
 
 YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdxOptions *options) {
   return ToYBCStatus(pgapi->CreateIndexSetVectorOptions(handle, options));
+}
+
+YbcStatus YBCPgCreateIndexSetHnswOptions(YbcPgStatement handle, int ef_construction, int m) {
+  return ToYBCStatus(pgapi->CreateIndexSetHnswOptions(handle, ef_construction, m));
 }
 
 YbcStatus YBCPgExecCreateIndex(YbcPgStatement handle) {
@@ -2513,7 +2512,7 @@ void YBCStoreTServerAshSamples(
 
 YbcStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
-    size_t num_relations) {
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range) {
   std::vector<PgObjectId> tables;
   tables.reserve(num_relations);
 
@@ -2522,7 +2521,7 @@ YbcStatus YBCPgInitVirtualWalForCDC(
     tables.push_back(std::move(table_id));
   }
 
-  const auto result = pgapi->InitVirtualWALForCDC(std::string(stream_id), tables);
+  const auto result = pgapi->InitVirtualWALForCDC(std::string(stream_id), tables, slot_hash_range);
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
@@ -2907,15 +2906,35 @@ YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid) {
   return ToYBCStatus(pgapi->ReleaseAllAdvisoryLocks(db_oid));
 }
 
-YbcStatus YBCPgExportSnapshot(const YbcPgTxnSnapshot *snapshot, char** snapshot_id) {
+YbcStatus YBCPgExportSnapshot(
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const uint64_t* explicit_read_time) {
+  std::optional<uint64_t> explicit_read_time_opt = std::nullopt;
+  if (explicit_read_time) {
+    explicit_read_time_opt = *explicit_read_time;
+  }
   return ExtractValueFromResult(
-      pgapi->ExportSnapshot(*snapshot),
+      pgapi->ExportSnapshot(*snapshot, explicit_read_time_opt),
       [snapshot_id](auto value) { *snapshot_id = YBCPAllocStdString(value); });
 }
 
-YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot *snapshot) {
+YbcStatus PgSetTxnSnapshotImpl(
+    const PgTxnSnapshotDescriptor& descriptor, YbcPgTxnSnapshot* snapshot) {
   return ExtractValueFromResult(
-      pgapi->ImportSnapshot(snapshot_id), [snapshot](auto value) { *snapshot = value; });
+      pgapi->SetTxnSnapshot(descriptor), [snapshot](const std::optional<YbcPgTxnSnapshot>& value) {
+        if (snapshot) {
+          DCHECK(value.has_value());
+          *snapshot = value.value();
+        }
+      });
+}
+
+YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot) {
+  return PgSetTxnSnapshotImpl(snapshot_id, snapshot);
+}
+
+YbcStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time) {
+  DCHECK_NE(explicit_read_time, 0);
+  return PgSetTxnSnapshotImpl(explicit_read_time, nullptr);
 }
 
 bool YBCPgHasExportedSnapshots() { return pgapi->HasExportedSnapshots(); }

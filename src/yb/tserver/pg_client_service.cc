@@ -63,12 +63,14 @@
 #include "yb/server/server_base.h"
 
 #include "yb/tserver/pg_client.proxy.h"
+#include "yb/tserver/pg_client_service_util.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -597,7 +599,12 @@ class PgClientServiceImpl::Impl {
         status_req.set_tablet_id(tablet->tablet_id());
         rpc::RpcController controller;
         controller.set_deadline(deadline);
-        RETURN_NOT_OK(leader->proxy()->GetTabletStatus(status_req, &status_resp, &controller));
+        auto status = leader->proxy()->GetTabletStatus(status_req, &status_resp, &controller);
+        if (!status.ok()) {
+          LOG_WITH_FUNC(INFO) << "Failed to query tablet " << tablet->tablet_id() << ": " << status;
+          ready = false;
+          break;
+        }
         bool tablet_ready = false;
         VLOG_WITH_FUNC(4)
             << "Finished on " << tablet->tablet_id() << ": "
@@ -1339,30 +1346,6 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  // DEPRECATED: GetReplicationSlot RPC is a superset of this GetReplicationSlotStatus.
-  // So GetReplicationSlot should be used everywhere.
-  Status GetReplicationSlotStatus(
-      const PgGetReplicationSlotStatusRequestPB& req, PgGetReplicationSlotStatusResponsePB* resp,
-      rpc::RpcContext* context) {
-    // Get the stream_id for the replication slot.
-    auto stream = VERIFY_RESULT(client().GetCDCStream(
-        ReplicationSlotName(req.replication_slot_name()), /* replica_identities */ nullptr));
-    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id));
-
-    bool is_slot_active;
-    uint64_t confirmed_flush_lsn;
-    uint64_t restart_lsn;
-    uint32_t xmin;
-    uint64_t record_id_commit_time_ht;
-    uint64_t last_pub_refresh_time;
-    RETURN_NOT_OK(GetReplicationSlotInfoFromCDCState(
-        stream_id, &is_slot_active, &confirmed_flush_lsn, &restart_lsn, &xmin,
-        &record_id_commit_time_ht, &last_pub_refresh_time));
-    resp->set_replication_slot_status(
-        (is_slot_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
-    return Status::OK();
-  }
-
   Status GetReplicationSlotInfoFromCDCState(
       const xrepl::StreamId& stream_id, bool* active, uint64_t* confirmed_flush_lsn,
       uint64_t* restart_lsn, uint32_t* xmin, uint64_t* record_id_commit_time_ht,
@@ -1430,9 +1413,11 @@ class PgClientServiceImpl::Impl {
       rpc::RpcContext* context) {
     VLOG(1) << "ExportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
     auto session = VERIFY_RESULT(GetSession(req.session_id()));
-    const auto snapshot = PgTxnSnapshot::Make(
-        req.snapshot(), VERIFY_RESULT(session->GetTxnSnapshotReadTime(
-                            req.options(), context->GetClientDeadline())));
+    const auto read_time = req.has_explicit_read_time()
+        ? ReadHybridTime::FromPB(req.explicit_read_time())
+        : VERIFY_RESULT(session->GetTxnSnapshotReadTime(req.options(),
+                                                        context->GetClientDeadline()));
+    const auto snapshot = PgTxnSnapshot::Make(req.snapshot(), read_time);
     resp->set_snapshot_id(VERIFY_RESULT(txn_snapshot_manager_.Register(session->id(), snapshot)));
     return Status::OK();
   }
@@ -1441,17 +1426,21 @@ class PgClientServiceImpl::Impl {
     return txn_snapshot_manager_.Get(snapshot_id);
   }
 
-  Status ImportTxnSnapshot(
-      const PgImportTxnSnapshotRequestPB& req, PgImportTxnSnapshotResponsePB* resp,
+  Status SetTxnSnapshot(
+      const PgSetTxnSnapshotRequestPB& req, PgSetTxnSnapshotResponsePB* resp,
       rpc::RpcContext* context) {
-    VLOG(1) << "ImportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
-    auto snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
+    VLOG(1) << "SetTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
+    PgTxnSnapshot snapshot;
     auto options = req.options();
-    snapshot.read_time.ToPB(options.mutable_read_time());
-    RETURN_NOT_OK(VERIFY_RESULT(GetSession(req.session_id()))->SetTxnSnapshotReadTime(
-        options, context->GetClientDeadline()));
-    snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
-    return Status::OK();
+    if (!req.has_explicit_read_time()) {
+      snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
+      snapshot.read_time.ToPB(options.mutable_read_time());
+      snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
+    } else {
+      *options.mutable_read_time() = req.explicit_read_time();
+    }
+    return VERIFY_RESULT(GetSession(req.session_id()))
+        ->SetTxnSnapshotReadTime(options, context->GetClientDeadline());
   }
 
   Status ClearExportedTxnSnapshots(

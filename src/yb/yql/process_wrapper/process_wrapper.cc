@@ -41,7 +41,9 @@ Result<int> ProcessWrapper::Wait() {
   if (!proc_) {
     return STATUS(IllegalState, "Child process has not been started, cannot wait for it to exit");
   }
-  return proc_->Wait();
+  int retcode;
+  RETURN_NOT_OK(proc_->Wait(&retcode));
+  return retcode;
 }
 
 void ProcessWrapper::Kill() { Kill(SIGQUIT); }

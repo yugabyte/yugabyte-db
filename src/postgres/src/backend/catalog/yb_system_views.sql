@@ -156,3 +156,11 @@ REVOKE EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,b
 GRANT EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,boolean,int8) TO yb_db_admin;
 REVOKE EXECUTE ON FUNCTION yb_cancel_query_diagnostics(int8) FROM public;
 GRANT EXECUTE ON FUNCTION yb_cancel_query_diagnostics(int8) TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_increment_db_catalog_version_with_inval_messages(oid,boolean,bytea,int4)
+  FROM public;
+GRANT EXECUTE ON FUNCTION yb_increment_db_catalog_version_with_inval_messages(oid,boolean,bytea,int4)
+  TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions_with_inval_messages(oid,boolean,bytea,int4)
+  FROM public;
+GRANT EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions_with_inval_messages(oid,boolean,bytea,int4)
+  TO yb_db_admin;

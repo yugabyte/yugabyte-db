@@ -1346,6 +1346,14 @@ lc_collate_is_c(Oid collation)
 		return false;
 
 	/*
+	 * At tserver side (for YB expression pushdown) YBCPgIsYugaByteEnabled()
+	 * is false. We assert at PG side before default collation is resolved,
+	 * only C collation is possible (PG 15 has made all catalog tables with
+	 * collation aware columns to all have C collation.
+	 */
+	Assert(!YBCPgIsYugaByteEnabled() || yb_default_collation_resolved || collation == C_COLLATION_OID);
+
+	/*
 	 * If we're asked about the default collation, we have to inquire of the C
 	 * library.  Cache the result so we only have to compute it once.
 	 */

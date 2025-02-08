@@ -435,6 +435,95 @@ t
 (1 row)
 
 
+starting permutation: s1_lock s2_lock s1_unlock s1_lock s2_unlock s2_lock s1_unlock s2_unlock
+step s1_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+
+(1 row)
+
+step s2_lock: SELECT pg_advisory_lock(1); <waiting ...>
+step s1_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock 
+------------------
+t
+(1 row)
+
+step s2_lock: <... completed>
+pg_advisory_lock
+----------------
+
+(1 row)
+
+step s1_lock: SELECT pg_advisory_lock(1); <waiting ...>
+step s2_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock 
+------------------
+t
+(1 row)
+
+step s1_lock: <... completed>
+pg_advisory_lock
+----------------
+
+(1 row)
+
+step s2_lock: SELECT pg_advisory_lock(1); <waiting ...>
+step s1_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock 
+------------------
+t
+(1 row)
+
+step s2_lock: <... completed>
+pg_advisory_lock
+----------------
+
+(1 row)
+
+step s2_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock 
+------------------
+t
+(1 row)
+
+
+starting permutation: s1_lock s2_begin_rr s2_xact_lock s1_unlock_all s1_lock s2_commit s1_unlock
+step s1_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock: SELECT pg_advisory_xact_lock(1); <waiting ...>
+step s1_unlock_all: SELECT pg_advisory_unlock_all();
+pg_advisory_unlock_all
+----------------------
+
+(1 row)
+
+step s2_xact_lock: <... completed>
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s1_lock: SELECT pg_advisory_lock(1); <waiting ...>
+step s2_commit: COMMIT;
+step s1_lock: <... completed>
+pg_advisory_lock
+----------------
+
+(1 row)
+
+step s1_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock 
+------------------
+t
+(1 row)
+
+
 starting permutation: s1_begin_rr s1_xact_lock s2_begin_rr s2_xact_lock s1_rollback s2_commit
 step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
 step s1_xact_lock: SELECT pg_advisory_xact_lock(1);

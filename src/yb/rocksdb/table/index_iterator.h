@@ -50,13 +50,6 @@ class IndexIteratorBase : public IndexIteratorBaseType {
   const KeyValueEntry& SeekToLast() override;
   Status status() const override;
 
-  bool ScanForward(
-      Slice upperbound, KeyFilterCallback* key_filter_callback,
-      ScanCallback* scan_callback) override {
-    LOG(FATAL) << "IndexIteratorBase::ScanForward is not supported";
-    return false;
-  }
-
   void RevalidateAfterUpperBoundChange() override {
     LOG(FATAL) << "IndexIteratorBase::RevalidateAfterUpperBoundChange is not supported";
   }

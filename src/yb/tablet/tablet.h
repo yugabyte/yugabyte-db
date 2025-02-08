@@ -465,10 +465,10 @@ class Tablet : public AbstractTablet,
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
 
   // Apply replicated add table operation.
-  Status AddTable(const TableInfoPB& table_info, const OpId& op_id);
+  Status AddTable(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
 
   Status AddMultipleTables(
-      const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos, const OpId& op_id);
+      const ArenaList<LWTableInfoPB>& table_infos, const OpId& op_id, HybridTime ht);
 
   // Apply replicated remove table operation.
   Status RemoveTable(const std::string& table_id, const OpId& op_id);
@@ -729,6 +729,10 @@ class Tablet : public AbstractTablet,
     return *snapshots_;
   }
 
+  TabletVectorIndexes& vector_indexes() {
+    return *vector_indexes_;
+  }
+
   SnapshotCoordinator* snapshot_coordinator() {
     return snapshot_coordinator_;
   }
@@ -971,12 +975,6 @@ class Tablet : public AbstractTablet,
 
   void CleanupIntentFiles();
 
-  std::optional<google::protobuf::RepeatedPtrField<std::string>> VectorIndexFinishedBackfills();
-
-  bool TEST_HasVectorIndexes() const {
-    return has_vector_indexes_.load();
-  }
-
   void TEST_SleepBeforeApplyIntents(MonoDelta value) {
     TEST_sleep_before_apply_intents_ = value;
   }
@@ -1050,7 +1048,7 @@ class Tablet : public AbstractTablet,
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
-  Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id);
+  Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
 
   // Returns true if the tablet was created after a split but it has not yet had data from it's
   // parent which are now outside of its key range removed.
@@ -1231,17 +1229,6 @@ class Tablet : public AbstractTablet,
   Result<rocksdb::Options> CommonRocksDBOptions();
   Status OpenRegularDB(const rocksdb::Options& common_options);
   Status OpenIntentsDB(const rocksdb::Options& common_options);
-  Status OpenVectorIndexes();
-  // Creates vector index for specified index and indexed tables.
-  // allow_inplace_insert is set to true only during initial tablet bootstrap, so nobody should
-  // hold external pointer to vector index list at this moment.
-  Status CreateVectorIndex(
-      const TableInfo& index_table, const TableInfoPtr& indexed_table, bool allow_inplace_insert)
-      REQUIRES(vector_indexes_mutex_);
-  docdb::VectorIndexesPtr VectorIndexesList() const EXCLUDES(vector_indexes_mutex_);
-  Status BackfillVectorIndex(
-      const docdb::VectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice key,
-      HybridTime read_ht);
 
   docdb::HistoryCutoff AllowedHistoryCutoff();
 
@@ -1260,6 +1247,8 @@ class Tablet : public AbstractTablet,
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
 
   std::unique_ptr<TabletSnapshots> snapshots_;
+
+  std::unique_ptr<TabletVectorIndexes> vector_indexes_;
 
   SnapshotCoordinator* snapshot_coordinator_ = nullptr;
 
@@ -1302,8 +1291,6 @@ class Tablet : public AbstractTablet,
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
 
-  VectorIndexThreadPoolProvider vector_index_thread_pool_provider_;
-
   simple_spinlock operation_filters_mutex_;
 
   boost::intrusive::list<OperationFilter> operation_filters_ GUARDED_BY(operation_filters_mutex_);
@@ -1313,12 +1300,6 @@ class Tablet : public AbstractTablet,
   std::unique_ptr<log::LogAnchor> completed_split_log_anchor_ GUARDED_BY(operation_filters_mutex_);
 
   std::unique_ptr<OperationFilter> restoring_operation_filter_ GUARDED_BY(operation_filters_mutex_);
-
-  std::atomic<bool> has_vector_indexes_{false};
-  mutable std::shared_mutex vector_indexes_mutex_;
-  std::unordered_map<TableId, docdb::VectorIndexPtr> vector_indexes_map_
-      GUARDED_BY(vector_indexes_mutex_);
-  docdb::VectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
 
   // Serializes access to setting/revising/releasing CDCSDK retention barriers
   mutable simple_spinlock cdcsdk_retention_barrier_lock_;

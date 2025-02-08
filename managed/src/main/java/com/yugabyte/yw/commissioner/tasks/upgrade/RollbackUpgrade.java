@@ -8,16 +8,12 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
@@ -152,10 +148,9 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           }
 
           if (ysqlMajorVersionUpgrade) {
-            // Un-set the flag set for ysql major version upgrade.
-            createSetExpressionPushdownFlagInMemoryTask(
-                universe, getNodesToEnableExpressionPushdown(universe), true /* flagValue */);
-            createServerConfUpdateTaskForYsqlMajorUpgrade(
+            // Un-set the flag yb_major_version_upgrade_compatibility as major version upgrade is
+            // rolled back.
+            createGFlagsUpgradeTaskForYSQLMajorUpgrade(
                 universe, universe.getTServers(), YsqlMajorVersionUpgradeState.ROLLBACK_COMPLETE);
 
             if (requireAdditionalSuperUserForCatalogUpgrade) {
@@ -174,22 +169,5 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
               false /* isSoftwareRollbackAllowed */);
         });
-  }
-
-  private List<NodeDetails> getNodesToEnableExpressionPushdown(Universe universe) {
-    List<NodeDetails> nodes = new ArrayList<>();
-    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
-      for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
-        if (node.isTserver) {
-          Map<String, String> gflag =
-              GFlagsUtil.getGFlagsForNode(
-                  node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters);
-          if (!GFlagsUtil.checkExperssionPushdownValueInFlags(gflag, "false")) {
-            nodes.add(node);
-          }
-        }
-      }
-    }
-    return nodes;
   }
 }

@@ -4610,5 +4610,97 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t3 ALTER COLUMN id TYPE TEXT"));
 }
 
+TEST_F(PgLibPqTest, TablePartitionByCollationTextColumn) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      R"#(
+CREATE DATABASE test_en_us_utf8_db
+LOCALE "en_US.UTF-8"
+TEMPLATE template0;
+      )#"));
+  ASSERT_OK(conn.Execute(
+      R"#(
+CREATE DATABASE test_en_us_x_icu_db
+LOCALE_PROVIDER icu
+ICU_LOCALE "en-US-x-icu"
+LOCALE "en_US.UTF-8"
+TEMPLATE template0
+      )#"));
+  for (int i = 1; i <= 3; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLESPACE tsp$0 LOCATION '/tmp'", i));
+  }
+  const auto createStmt =
+        R"#(
+CREATE TABLE t1 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region)) PARTITION BY LIST (region);
+CREATE TABLE t1_1 PARTITION OF t1 FOR VALUES IN ('uswest') TABLESPACE tsp1;
+CREATE TABLE t1_2 PARTITION OF t1 FOR VALUES IN ('USEAST') TABLESPACE tsp2;
+CREATE TABLE t1_3 PARTITION OF t1 FOR VALUES IN ('apsouth') TABLESPACE tsp3;
+CREATE TABLE t1_default PARTITION OF t1 DEFAULT;
+      )#";
+  std::vector<std::string> regions = {"uswest", "USEAST", "apsouth", "EUWEST", "apsouthEAST"};
+  std::ostringstream insert_table_ss;
+  insert_table_ss << "INSERT INTO t1 VALUES ";
+  for (int i = 0; i < 30; ++i) {
+    if (i > 0) {
+      insert_table_ss << ", ";
+    }
+    insert_table_ss << "(" << i << ", '" << regions[i % 5] << "', " << 100 * i << ")";
+  }
+  auto insertStmt = insert_table_ss.str();
+  LOG(INFO) << "insertStmt: " << insertStmt;
+
+  // Populate default database
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(createStmt));
+  ASSERT_OK(conn.Execute(insertStmt));
+
+  // Populate DB test_en_us_utf8_db.
+  conn = ASSERT_RESULT(ConnectToDB("test_en_us_utf8_db"));
+  ASSERT_OK(conn.Execute(createStmt));
+  ASSERT_OK(conn.Execute(insertStmt));
+
+  // Populate DB test_en_us_x_icu_db.
+  conn = ASSERT_RESULT(ConnectToDB("test_en_us_x_icu_db"));
+  ASSERT_OK(conn.Execute(createStmt));
+  ASSERT_OK(conn.Execute(insertStmt));
+
+  // Trigger prefetching on three DBs that have user defined partition tables.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_use_relcache_file", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_pg_conf_csv", "log_min_messages=debug1"));
+  auto c_expected =
+     "3, EUWEST, 300; 28, EUWEST, 2800; 8, EUWEST, 800; 18, EUWEST, 1800; 23, EUWEST, 2300; "
+     "13, EUWEST, 1300; 1, USEAST, 100; 11, USEAST, 1100; 21, USEAST, 2100; 16, USEAST, 1600; "
+     "6, USEAST, 600; 26, USEAST, 2600; 12, apsouth, 1200; 22, apsouth, 2200; 7, apsouth, 700; "
+     "17, apsouth, 1700; 27, apsouth, 2700; 2, apsouth, 200; 19, apsouthEAST, 1900; "
+     "29, apsouthEAST, 2900; 9, apsouthEAST, 900; 4, apsouthEAST, 400; 14, apsouthEAST, 1400; "
+     "24, apsouthEAST, 2400; 25, uswest, 2500; 0, uswest, 0; 10, uswest, 1000; "
+     "5, uswest, 500; 20, uswest, 2000; 15, uswest, 1500";
+  auto utf8_expected =
+     "12, apsouth, 1200; 7, apsouth, 700; 17, apsouth, 1700; 27, apsouth, 2700; 2, apsouth, 200; "
+     "22, apsouth, 2200; 9, apsouthEAST, 900; 24, apsouthEAST, 2400; 14, apsouthEAST, 1400; "
+     "4, apsouthEAST, 400; 19, apsouthEAST, 1900; 29, apsouthEAST, 2900; 3, EUWEST, 300; "
+     "13, EUWEST, 1300; 23, EUWEST, 2300; 18, EUWEST, 1800; 8, EUWEST, 800; 28, EUWEST, 2800; "
+     "11, USEAST, 1100; 1, USEAST, 100; 26, USEAST, 2600; 6, USEAST, 600; 21, USEAST, 2100; "
+     "16, USEAST, 1600; 20, uswest, 2000; 15, uswest, 1500; 10, uswest, 1000; 0, uswest, 0; "
+     "25, uswest, 2500; 5, uswest, 500";
+  conn = ASSERT_RESULT(Connect());
+  auto result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
+  LOG(INFO) << "c db result: " << result;
+  ASSERT_EQ(result, c_expected);
+  conn = ASSERT_RESULT(ConnectToDB("test_en_us_utf8_db"));
+  result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
+  LOG(INFO) << "test_en_us_utf8_db result: " << result;
+  // MacOS and Linux have different sort order of en_US.UTF-8 collation.
+#if defined(__linux__)
+  ASSERT_EQ(result, utf8_expected);
+#else
+  ASSERT_EQ(result, c_expected);
+#endif
+  conn = ASSERT_RESULT(ConnectToDB("test_en_us_x_icu_db"));
+  result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
+  LOG(INFO) << "test_en_us_x_icu_db result: " << result;
+  ASSERT_EQ(result, utf8_expected);
+}
+
 } // namespace pgwrapper
 } // namespace yb

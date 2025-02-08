@@ -1886,5 +1886,34 @@ TEST_F(PgCatalogVersionTest, AlterDatabaseOwner) {
   ASSERT_OK(conn_test_user2.Execute("DROP DATABASE test_db"));
 }
 
+// Create or replace view should increment catalog version.
+TEST_F(PgCatalogVersionTest, CreateOrReplaceView) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo(a INT, b INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO foo VALUES(1, 2)"));
+
+  auto v1 = ASSERT_RESULT(GetCatalogVersion(&conn1));
+  ASSERT_OK(conn1.Execute("CREATE VIEW v AS SELECT a, b FROM foo"));
+  auto v2 = ASSERT_RESULT(GetCatalogVersion(&conn1));
+  // Create view does not increment catalog version.
+  ASSERT_EQ(v2, v1);
+
+  auto query = "SELECT * FROM v"s;
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto expected_result1 = "1, 2";
+  auto expected_result2 = "2, 1";
+  auto result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  ASSERT_EQ(result, expected_result1);
+  ASSERT_OK(conn1.Execute("CREATE OR REPLACE VIEW v AS SELECT b AS a, a AS b FROM foo"));
+  auto v3 = ASSERT_RESULT(GetCatalogVersion(&conn1));
+  // Create or replace view increments catalog version.
+  ASSERT_EQ(v3, v2 + 1);
+
+  WaitForCatalogVersionToPropagate();
+
+  result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  ASSERT_EQ(result, expected_result2);
+}
+
 } // namespace pgwrapper
 } // namespace yb

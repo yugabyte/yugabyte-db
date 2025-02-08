@@ -19,7 +19,7 @@ import (
 const (
 	defaultBackupListing = "table {{.BackupUUID}}\t{{.Universe}}" +
 		"\t{{.StorageConfiguration}}\t{{.StorageConfigurationType}}\t{{.KMSConfig}}\t{{.BackupType}}" +
-		"\t{{.State}}\t{{.CompletionTime}}"
+		"\t{{.CompletionTime}}\t{{.HasIncrementalBackups}}\t{{.State}}"
 
 	// BackupUUIDHeader to display backup UUID
 	BackupUUIDHeader     = "Backup UUID"

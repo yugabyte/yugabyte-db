@@ -38,7 +38,6 @@ import java.time.Duration;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class UpdateConsistencyCheck extends UniverseTaskBase {
@@ -105,7 +104,7 @@ public class UpdateConsistencyCheck extends UniverseTaskBase {
             CONSISTENCY_CHECK_TABLE_NAME,
             getTaskUUID(),
             configHelper.getYugawareUUID(),
-            getYwHostname()));
+            Util.getYwHostnameOrIP()));
     ysqlResponse =
         ysqlQueryExecutor.executeQueryInNodeShell(
             universe,
@@ -130,18 +129,6 @@ public class UpdateConsistencyCheck extends UniverseTaskBase {
     }
     // Update local YBA sequence number with initial value
     updateUniverseSeqNum(universe, 0);
-  }
-
-  private String getYwHostname() {
-    String host = Util.getHostname();
-    if (StringUtils.isNotBlank(host) && !host.equalsIgnoreCase("localhost")) {
-      return host;
-    }
-    String ip = Util.getHostIP();
-    if (!ip.equalsIgnoreCase("127.0.0.1")) {
-      return ip;
-    }
-    return "";
   }
 
   @Override
@@ -206,7 +193,7 @@ public class UpdateConsistencyCheck extends UniverseTaskBase {
             ybaSeqNumUpdate,
             getTaskUUID(),
             configHelper.getYugawareUUID(),
-            getYwHostname(),
+            Util.getYwHostnameOrIP(),
             ybaSeqNumUpdate,
             ybaSeqNumUpdate,
             getTaskUUID());
@@ -222,7 +209,7 @@ public class UpdateConsistencyCheck extends UniverseTaskBase {
               ybaSeqNumUpdate,
               getTaskUUID(),
               configHelper.getYugawareUUID(),
-              getYwHostname(),
+              Util.getYwHostnameOrIP(),
               ybaSeqNumUpdate,
               ybaSeqNumUpdate,
               getTaskUUID(),

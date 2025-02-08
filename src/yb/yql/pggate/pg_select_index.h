@@ -49,8 +49,6 @@ class PgSelectIndex : public PgSelect {
   // accessing the IndexTable via an outer select (Sequential or primary scans)
   Status PrepareSubquery(
         const PgObjectId& index_id, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req);
-
-  virtual Result<const std::vector<Slice>*> DoFetchYbctidBatch();
 };
 
 }  // namespace yb::pggate

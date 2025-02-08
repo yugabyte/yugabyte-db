@@ -25,8 +25,7 @@
 
 #include "yb/util/uuid.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 inline HybridTime NormalizeHistoryCutoff(HybridTime history_cutoff) {
   if (history_cutoff == HybridTime::kMin) {
@@ -141,7 +140,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   }
 
   void SetBackfillDone();
-  void SetBackfillPosition(Slice key, HybridTime backfill_read_ht);
+  void SetBackfillPosition(Slice key);
 
   bool backfill_done() const {
     return backfill_done_;
@@ -149,10 +148,6 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
 
   Slice backfill_key() const {
     return backfill_key_;
-  }
-
-  HybridTime backfill_read_ht() const {
-    return backfill_read_ht_;
   }
 
  private:
@@ -193,7 +188,6 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   ByteBuffer<64> hybrid_time_filter_;
 
   bool backfill_done_ = false;
-  HybridTime backfill_read_ht_;
   std::string backfill_key_;
 };
 
@@ -225,5 +219,25 @@ void AddTableSchemaVersion(
 uint64_t ExtractGlobalFilter(Slice filter);
 void IterateCotablesFilter(Slice filter, const std::function<void(uint32_t, uint64_t)>& callback);
 
-} // namespace docdb
-} // namespace yb
+template <class DB>
+OpId MaxPersistentOpIdForDb(DB* db, bool invalid_if_no_new_data) {
+  // A possible race condition could happen, when data is written between this query and
+  // actual log gc. But it is not a problem as long as we are reading committed op id
+  // before MaxPersistentOpId, since we always keep last committed entry in the log during garbage
+  // collection.
+  // See TabletPeer::GetEarliestNeededLogIndex
+  if (db == nullptr ||
+      (invalid_if_no_new_data &&
+       db->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData)) {
+    return OpId::Invalid();
+  }
+
+  auto frontier = db->GetFlushedFrontier();
+  if (!frontier) {
+    return OpId();
+  }
+
+  return down_cast<ConsensusFrontier*>(frontier.get())->op_id();
+}
+
+} // namespace yb::docdb

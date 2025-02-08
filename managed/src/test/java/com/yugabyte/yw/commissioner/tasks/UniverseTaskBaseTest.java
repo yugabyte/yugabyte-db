@@ -60,13 +60,11 @@ import java.util.UUID;
 import java.util.concurrent.ThreadPoolExecutor;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import junitparams.converters.Nullable;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
@@ -197,39 +195,6 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       allNodes.addAll(nodes);
     }
     return allNodes;
-  }
-
-  @Test
-  // @formatter:off
-  @Parameters({
-    "onprem, 1.1.1.1, false", // onprem with private IP
-    "onprem, null, true" // onprem without private IP
-  })
-  // @formatter:on
-  public void testCreateDestroyServerTasks(
-      CloudType cloudType, @Nullable String privateIp, boolean setToFailedCleanup) {
-    List<NodeDetails> nodes = setupNodeDetails(cloudType, privateIp);
-    Universe universe = Mockito.mock(Universe.class);
-    when(universe.getNodes()).thenReturn(nodes);
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        new UniverseDefinitionTaskParams.UserIntent();
-    UniverseDefinitionTaskParams.Cluster cluster =
-        new UniverseDefinitionTaskParams.Cluster(
-            UniverseDefinitionTaskParams.ClusterType.PRIMARY, userIntent);
-    UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-    universeDetails.clusters.add(cluster);
-    Mockito.when(universe.getCluster(Mockito.any())).thenReturn(cluster);
-    Mockito.when(universe.getUniverseDetails()).thenReturn(universeDetails);
-    universeTaskBase.createDestroyServerTasks(universe, nodes, false, false, false, true);
-    for (int i = 0; i < NUM_NODES; i++) {
-      // Node should not be in use.
-      NodeInstance ni = NodeInstance.get(nodes.get(i).nodeUuid);
-      if (setToFailedCleanup) {
-        assertEquals(NodeInstance.State.DECOMMISSIONED, ni.getState());
-      } else {
-        assertEquals(NodeInstance.State.USED, ni.getState());
-      }
-    }
   }
 
   @Test

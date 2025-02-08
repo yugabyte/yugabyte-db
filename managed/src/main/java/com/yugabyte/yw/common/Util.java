@@ -780,6 +780,19 @@ public class Util {
     }
   }
 
+  public static String getYwHostnameOrIP() {
+    String host = getHostname();
+    // ignore localhost as this method is intended for producing an identifying label of YBA
+    if (StringUtils.isNotBlank(host) && !host.equalsIgnoreCase("localhost")) {
+      return host;
+    }
+    String ip = getHostIP();
+    if (!ip.equalsIgnoreCase("127.0.0.1")) {
+      return ip;
+    }
+    return "";
+  }
+
   public static String getNodeIp(Universe universe, NodeDetails node) {
     String ip = null;
     if (node.cloudInfo == null || node.cloudInfo.private_ip == null) {

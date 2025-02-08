@@ -19,6 +19,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/util/env_util.h"
 
@@ -56,7 +57,24 @@ Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user
 
   LOG(INFO) << "Running " << AsString(args);
 
-  return Subprocess::Call(args);
+  return Subprocess::Call(args, /*log_stdout_and_stderr=*/true);
+}
+
+Status Pg15UpgradeTestBase::ValidateUpgradeCompatibilityFailure(
+    const std::string& expected_error, const std::string& user_name) {
+  auto log_waiter = StringWaiterLogSink(expected_error);
+  auto status = ValidateUpgradeCompatibility(user_name);
+  if (status.ok()) {
+    return STATUS_FORMAT(
+        IllegalState, "Expected pg_upgrade to fail with error: $0", expected_error);
+  }
+  SCHECK(
+      status.message().Contains(kPgUpgradeFailedError), IllegalState, "Unexpected status: $0",
+      status);
+  SCHECK_FORMAT(
+      log_waiter.IsEventOccurred(), IllegalState, "Expected pg_upgrade to fail with error: $0",
+      expected_error);
+  return Status::OK();
 }
 
 Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {

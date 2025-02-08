@@ -1025,3 +1025,18 @@ NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from ss1, ss2, ss3 p wh
 drop table ss1;
 drop table ss2;
 drop table ss3;
+
+-- 25651 BNL taking mixed heap and minimal tuples from the outer plan tree
+create table ot1(k int primary key, v int);
+create table ot2(k int, v int, primary key(k asc));
+create table it0(k int primary key, v int);
+insert into ot1 values (11, 11), (33, 33), (55, 55), (77, 77), (99, 99);
+insert into ot2 values (22, 22), (44, 44), (66, 66), (88, 88);
+insert into it0 select i, i from generate_series(1, 10000) i;
+analyze it0, ot1, ot2;
+explain
+select * from (select k, v from ot1 union all select k, v from ot2) s join it0 on s.k = it0.k order by s.k;
+select * from (select k, v from ot1 union all select k, v from ot2) s join it0 on s.k = it0.k order by s.k;
+drop table ot1;
+drop table ot2;
+drop table it0;

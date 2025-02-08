@@ -2404,7 +2404,6 @@ setlocales(void)
 	 */
 	/* but we still want to support storing UTF-8 strings. */
 	if (!locale &&
-		!kTestOnlyUseOSDefaultCollation &&
 		(IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb()))
 	{
 		const char *kYBDefaultLocaleForSortOrder = "C";

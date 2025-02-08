@@ -450,3 +450,43 @@ ALTER ROLE test_role CREATEROLE CREATEDB;
 -- The next ALTER ROLE should not increment current_version.
 ALTER ROLE test_role;
 :display_catalog_version;
+
+-- Sanity test yb_increment_db_catalog_version_with_inval_messages
+\set display_all 'SELECT * FROM pg_yb_catalog_version; SELECT db_oid, current_version, messages FROM pg_yb_invalidation_messages'
+SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
+SET yb_disable_catalog_version_check TO on;
+
+-- Messages expire after 10 seconds.
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 10);
+:display_all;
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, null, 10);
+:display_all;
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10);
+:display_all;
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, null, 10);
+:display_all;
+-- Wait for the old message row to expire.
+SELECT pg_sleep(15);
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 10);
+:display_all;
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10);
+:display_all;
+
+-- Wait for the old message row to expire.
+SELECT pg_sleep(15);
+
+-- Sanity test yb_increment_all_db_catalog_versions_with_inval_messages
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, '', 10);
+:display_all;
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, null, 10);
+:display_all;
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
+:display_all;
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, null, 10);
+:display_all;
+-- Wait for the old message row to expire.
+SELECT pg_sleep(15);
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, '', 10);
+:display_all;
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
+:display_all;

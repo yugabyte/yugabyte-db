@@ -3472,19 +3472,19 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			int			resno = tle->resno = list_nth_int(update_colnos,
 														  update_col_index++);
 
-			/*
-			 * If the column is set to itself (SET col = col), it will not
-			 * get updated. So it has no impact on single row computation.
-			 */
-			if (varattno == tle->resno)
-				continue;
-
 			/* Updates involving primary key columns are not single-row. */
 			if (bms_is_member(resno - attr_offset, primary_key_attrs))
 			{
 				RelationClose(relation);
 				return false;
 			}
+
+			/*
+			 * If the column is set to itself (SET col = col), it will not
+			 * get updated. So it has no impact on single row computation.
+			 */
+			if (varattno == tle->resno)
+				continue;
 
 			subpath_tlist = lappend(subpath_tlist, tle);
 			update_attrs = bms_add_member(update_attrs, resno - attr_offset);

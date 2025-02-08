@@ -115,7 +115,9 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
   ASSERT_STR_CONTAINS(ysql_catalog_config, "catalog_version: 15");
 
   // Running validation on the upgraded cluster should fail since its already on the higher version.
-  ASSERT_NOK_STR_CONTAINS(ValidateUpgradeCompatibility(), kPgUpgradeFailedError);
+  ASSERT_OK(ValidateUpgradeCompatibilityFailure(
+      "This version of the utility can only be used for checking YSQL version 11. The cluster is "
+      "currently on YSQL version 15"));
 }
 
 TEST_F(Pg15UpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
@@ -1440,7 +1442,7 @@ TEST_F(Pg15UpgradeTest, YbGinIndex) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, CheckPushdownIsDisabled) {
+TEST_F(Pg15UpgradeTest, CheckUpgradeCompatibilityGuc) {
   // Whether or not yb_major_version_upgrade_compatibility is enabled, pg_upgrade --check will not
   // error.
   ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "11"));
@@ -1449,8 +1451,12 @@ TEST_F(Pg15UpgradeTest, CheckPushdownIsDisabled) {
   ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "0"));
   ASSERT_OK(ValidateUpgradeCompatibility());
 
-  // However, when we actually run the YSQL upgrade, pg_upgrade will error if pushdown is enabled.
+  // However, when we actually run the YSQL upgrade, pg_upgrade will error since now
+  // ysql_yb_major_version_upgrade_compatibility is not set.
+  auto log_waiter =
+      cluster_->GetMasterLogWaiter("yb_major_version_upgrade_compatibility must be set to 11");
   ASSERT_NOK_STR_CONTAINS(UpgradeClusterToMixedMode(), kPgUpgradeFailedError);
+  ASSERT_TRUE(log_waiter.IsEventOccurred());
 }
 
 TEST_F(Pg15UpgradeSequenceTest, Sequences) {
@@ -1540,10 +1546,12 @@ TEST_F(Pg15UpgradeTest, UsersAndRoles) {
 
     auto pg_conn = ASSERT_RESULT(pgwrapper::PGConnBuilder(pg_conn_settings).Connect());
     ASSERT_OK(pg_conn.Execute("DROP USER yugabyte"));
-    ASSERT_NOK_STR_CONTAINS(ValidateUpgradeCompatibility(postgres_user), kPgUpgradeFailedError);
+    ASSERT_OK(ValidateUpgradeCompatibilityFailure("The 'yugabyte' user is missing", postgres_user));
 
     ASSERT_OK(pg_conn.Execute("CREATE USER yugabyte"));
-    ASSERT_NOK_STR_CONTAINS(ValidateUpgradeCompatibility(postgres_user), kPgUpgradeFailedError);
+
+    ASSERT_OK(ValidateUpgradeCompatibilityFailure(
+        "The 'yugabyte' user is missing the 'rolsuper' attribute", postgres_user));
 
     ASSERT_OK(pg_conn.Execute("DROP USER yugabyte"));
     ASSERT_OK(pg_conn.Execute(

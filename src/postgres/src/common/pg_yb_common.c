@@ -36,8 +36,6 @@
 
 #include "utils/elog.h"
 
-const bool	kTestOnlyUseOSDefaultCollation = false;
-
 bool
 YBCIsEnvVarTrue(const char *env_var_name)
 {

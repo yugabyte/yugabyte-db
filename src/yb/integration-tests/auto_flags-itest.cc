@@ -147,7 +147,6 @@ Status TestPromote(
   resp.Clear();
   resp = VERIFY_RESULT(promote_auto_flags(req));
   SCHECK(resp.flags_promoted(), IllegalState, "Invalid flags promoted");
-  SCHECK(!resp.non_runtime_flags_promoted(), IllegalState, "Invalid non runtime flags promoted");
   RETURN_NOT_OK(validate_config_on_all_nodes(resp.new_config_version()));
   previous_config = VERIFY_RESULT(get_current_config());
   SCHECK_EQ(

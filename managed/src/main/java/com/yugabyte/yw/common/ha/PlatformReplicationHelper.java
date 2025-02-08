@@ -479,8 +479,12 @@ public class PlatformReplicationHelper {
   }
 
   public Optional<File> getMostRecentBackup() {
+    return getMostRecentBackup(this.getBackupDir());
+  }
+
+  public Optional<File> getMostRecentBackup(Path backupDir) {
     try {
-      return FileUtils.listFiles(this.getBackupDir(), BACKUP_FILE_PATTERN).stream()
+      return FileUtils.listFiles(backupDir, BACKUP_FILE_PATTERN).stream()
           .max(Comparator.comparingLong(File::lastModified));
     } catch (Exception exception) {
       log.error("Could not locate recent backup", exception);

@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 import play.mvc.Http.Status;
 
 /**
@@ -98,6 +99,39 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             createXClusterSourceRootCertDirPathGFlagTasks();
           }
 
+          boolean skipGflagChangeBeforeMajorUpgrade = false;
+
+          // Check if the YSQL major version upgrade is in a failed state.
+          if (requireAdditionalSuperUserForCatalogUpgrade && nodesToApply.mastersList.size() == 0) {
+            YsqlMajorCatalogUpgradeState state = getYsqlMajorCatalogUpgradeState(universe);
+
+            // Perform rollback if the catalog upgrade is in a failed state
+            if (state.equals(
+                YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK)) {
+              log.info(
+                  "YSQL major version upgrade is in a failed state. Rolling back masters before"
+                      + " upgrade to enable DDLs to create upgrade user.");
+              skipGflagChangeBeforeMajorUpgrade = true;
+
+              // Create tasks for rollback ysql major catalog upgrade.
+              createRollbackYsqlMajorVersionCatalogUpgradeTask();
+
+              // Create tasks for download and rollback of masters.
+              createDownloadTasks(universe.getMasters(), currentVersion);
+              createMasterUpgradeFlowTasks(
+                  universe,
+                  universe.getMasters(),
+                  currentVersion,
+                  getUpgradeContext(currentVersion),
+                  YsqlMajorVersionUpgradeState.IN_PROGRESS,
+                  true // activeRole
+                  );
+
+              // Update nodes to apply changes.
+              nodesToApply = new MastersAndTservers(universe.getMasters(), universe.getTServers());
+            }
+          }
+
           // Download software to nodes which does not have either master or tserver with new
           // version.
           createDownloadTasks(toOrderedSet(nodesToApply.asPair()), newVersion);
@@ -105,8 +139,9 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           // If any master has been updated to new version, then this step would have been
           // completed and we don't need to do it again.
           if (requireYsqlMajorVersionUpgrade) {
-            if (nodesToApply.mastersList.size() == universe.getMasters().size()) {
-              // Set ysql_yb_enable_expression_pushdown to false for tservers for ysql major
+            if (!skipGflagChangeBeforeMajorUpgrade
+                && nodesToApply.mastersList.size() == universe.getMasters().size()) {
+              // Set yb_major_version_upgrade_compatibility to 11 for tservers for ysql major
               // upgrade.
               createGFlagsUpgradeTaskForYSQLMajorUpgrade(
                   universe, YsqlMajorVersionUpgradeState.IN_PROGRESS);

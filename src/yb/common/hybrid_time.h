@@ -173,6 +173,10 @@ class HybridTime {
     return value ? HybridTime(value) : HybridTime();
   }
 
+  uint64_t ToPB() const {
+    return *this ? v : 0;
+  }
+
   HybridTimeRepr value() const { return v; }
 
   // Returns this HybridTime if valid, otherwise returns the one provided.

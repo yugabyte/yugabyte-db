@@ -800,14 +800,13 @@ Status ClusterAdminClient::GetAutoFlagsConfig() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::PromoteAutoFlags(
-    const string& max_flag_class, const bool promote_non_runtime_flags, const bool force) {
+Status ClusterAdminClient::PromoteAutoFlags(const string& max_flag_class, const bool force) {
   master::PromoteAutoFlagsRequestPB req;
   master::PromoteAutoFlagsResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(timeout_);
   req.set_max_flag_class(max_flag_class);
-  req.set_promote_non_runtime_flags(promote_non_runtime_flags);
+  req.set_promote_non_runtime_flags(false);
   req.set_force(force);
   RETURN_NOT_OK(master_cluster_proxy_->PromoteAutoFlags(req, &resp, &rpc));
   if (resp.has_error()) {
@@ -824,13 +823,8 @@ Status ClusterAdminClient::PromoteAutoFlags(
   }
     std::cout << "New AutoFlags were promoted" << std::endl;
     std::cout << "New config version: " << resp.new_config_version() << std::endl;
-    if (resp.non_runtime_flags_promoted()) {
-      std::cout << "All yb-master and yb-tserver processes need to be restarted in order to apply "
-                   "the promoted AutoFlags"
-                << std::endl;
-    }
 
-  return Status::OK();
+    return Status::OK();
 }
 
 Status ClusterAdminClient::RollbackAutoFlags(uint32_t rollback_version) {
@@ -2466,8 +2460,7 @@ Status ClusterAdminClient::FinalizeUpgrade(bool use_single_connection) {
   }
 
   std::cout << std::endl << "Promoting auto flags" << std::endl;
-  RETURN_NOT_OK(PromoteAutoFlags(
-      ToString(AutoFlagClass::kExternal), /*promote_non_runtime_flags=*/false, /*force=*/false));
+  RETURN_NOT_OK(PromoteAutoFlags(ToString(AutoFlagClass::kExternal), /*force=*/false));
 
   std::cout << std::endl << "Upgrading YSQL" << std::endl;
   RETURN_NOT_OK(UpgradeYsql(use_single_connection));
@@ -3813,11 +3806,13 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
     req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
   }
 
+  auto option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT;
   if (consistent_snapshot_option == "USE_SNAPSHOT") {
-    req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::USE_SNAPSHOT);
-  } else {
-    req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT);
+    option = CDCSDKSnapshotOption::USE_SNAPSHOT;
+  } else if (consistent_snapshot_option == "EXPORT_SNAPSHOT") {
+    option = CDCSDKSnapshotOption::EXPORT_SNAPSHOT;
   }
+  req.set_cdcsdk_consistent_snapshot_option(option);
 
   auto stream_create_options = req.mutable_cdcsdk_stream_create_options();
   if (is_dynamic_tables_enabled) {

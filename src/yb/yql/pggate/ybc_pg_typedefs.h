@@ -487,7 +487,8 @@ typedef struct {
   YbcPgVectorIdxType idx_type;
   uint32_t dimensions;
   uint32_t attnum;
-  // TODO(tanuj): Add vector index type-specific options
+  uint32_t hnsw_ef;
+  uint32_t hnsw_m;
 } YbcPgVectorIdxOptions;
 
 typedef struct {
@@ -790,7 +791,8 @@ typedef struct {
 // It does not include EXPORT_SNAPSHOT since it isn't supported yet.
 typedef enum {
   YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT,
-  YB_REPLICATION_SLOT_USE_SNAPSHOT
+  YB_REPLICATION_SLOT_USE_SNAPSHOT,
+  YB_REPLICATION_SLOT_EXPORT_SNAPSHOT
 } YbcPgReplicationSlotSnapshotAction;
 
 typedef enum {
@@ -908,6 +910,11 @@ typedef struct {
   int iso_level;
   bool read_only;
 } YbcPgTxnSnapshot;
+
+typedef struct {
+  uint32_t start_range;
+  uint32_t end_range;
+} YbcReplicationSlotHashRange;
 
 #ifdef __cplusplus
 }  // extern "C"

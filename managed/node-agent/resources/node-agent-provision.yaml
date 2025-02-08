@@ -13,7 +13,7 @@ ynp:
   # User ID for the 'yugabyte' user.
   # Specifies the UID to ensure consistency across nodes.
   yb_user_id: 994
-
+  no_proxy_list: []
   # Indicates if the node is in an air-gapped environment (no internet access).
   # Set to 'true' if the node cannot access external networks.
   # Airgapped
@@ -33,6 +33,17 @@ ynp:
 
   # Install node_agent as part of provisioning.
   is_install_node_agent: true
+
+  # node_agent_port defaults to 9070
+  # needs to also be updated in YBA using runtime config.
+  # Validate all nodes are consistent for this port
+  node_agent_port: 9070
+
+  # node_exporter_port defaults to 9300
+  # needs to also be updated in YBA during universe port mapping as well.
+  # Validate all nodes are consistent for this port
+  node_exporter_port: 9300
+
 
 yba:
   # The base URL of the Yugabyte Anywhere instance.

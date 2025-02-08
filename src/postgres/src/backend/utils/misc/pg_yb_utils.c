@@ -245,6 +245,7 @@ bool		yb_enable_docdb_tracing = false;
 bool		yb_read_from_followers = false;
 bool		yb_follower_reads_behavior_before_fixing_20482 = false;
 int32_t		yb_follower_read_staleness_ms = 0;
+bool 		yb_default_collation_resolved = false;
 
 bool
 IsYugaByteEnabled()
@@ -2534,7 +2535,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				YbIsCatalogNamespaceByName(castNode(ViewStmt, parsetree)->view->schemaname))
 				break;
 
-			is_version_increment = false;
+			/* Create or replace view needs to increment catalog version. */
+			if (!castNode(ViewStmt, parsetree)->replace)
+				is_version_increment = false;
 			break;
 
 		case T_CompositeTypeStmt:	/* Create (composite) type */
@@ -2922,6 +2925,13 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			 */
 			is_version_increment = false;
 			is_breaking_change = false;
+			break;
+
+		case T_SecLabelStmt:
+			/*
+			 * This is related to defining or updating a security label on a
+			 * database object, so this is a breaking change.
+			 */
 			break;
 
 		default:
@@ -4939,26 +4949,19 @@ bool
 YBIsCollationValidNonC(Oid collation_id)
 {
 	/*
-	 * For now we only allow database to have C collation. Therefore for
-	 * DEFAULT_COLLATION_OID it cannot be a valid non-C collation. This
-	 * special case for DEFAULT_COLLATION_OID is made here because YB
-	 * PgExpr code is called before Postgres has properly setup the default
-	 * collation to that of the database connected. So lc_collate_is_c can
-	 * return false for DEFAULT_COLLATION_OID which isn't correct.
-	 * We stop support non-C collation if collation support is disabled.
+	 * Before Postgres has properly setup the default collation as the database
+	 * connection during connection time, we can only be doing catalog table
+	 * accesses and PG15 has made collation aware columns to have explicit C
+	 * collation.
 	 */
+	Assert(yb_default_collation_resolved ||
+		   !OidIsValid(collation_id) ||
+		   collation_id == C_COLLATION_OID);
+
 	bool		is_valid_non_c = (YBIsCollationEnabled() &&
 								  OidIsValid(collation_id) &&
-								  collation_id != DEFAULT_COLLATION_OID &&
 								  !lc_collate_is_c(collation_id));
 
-	/*
-	 * For testing only, we use en_US.UTF-8 for default collation and
-	 * this is a valid non-C collation.
-	 */
-	Assert(!kTestOnlyUseOSDefaultCollation || YBIsCollationEnabled());
-	if (kTestOnlyUseOSDefaultCollation && collation_id == DEFAULT_COLLATION_OID)
-		is_valid_non_c = true;
 	return is_valid_non_c;
 }
 

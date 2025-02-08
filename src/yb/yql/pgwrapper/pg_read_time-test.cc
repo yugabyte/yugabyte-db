@@ -388,6 +388,59 @@ TEST_F(PgMiniTestBase, CheckReadingDataAsOfPastTime) {
   ASSERT_NOK(conn.ExecuteFormat("SET yb_read_time TO '$0 ms'", t2));
 }
 
+// Test that write DMLs are disallowed in a pg session when yb_read_time is set to non-zero.
+TEST_F(PgMiniTestBase, DisallowWriteDMLsWithYbReadTime) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, v INT)"));
+  LOG(INFO) << "Inserting 4 rows into table t";
+  ASSERT_OK(conn.Execute("INSERT INTO t (k,v) SELECT i,i FROM generate_series(1,4) AS i"));
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t"));
+  ASSERT_EQ(count, 4);
+  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      Format("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint")));
+  LOG(INFO) << "Deleting 2 rows from table t";
+  ASSERT_OK(conn.Execute("DELETE FROM t WHERE k>2"));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 2);
+  LOG(INFO) << "Setting yb_read_time to " << t1;
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 4);
+  LOG(INFO) << "Trying to Insert rows when yb_read_time is set to: " << t1;
+  ASSERT_NOK(conn.Execute("INSERT INTO t (k,v) SELECT i,i FROM generate_series(11,20) AS i"));
+  LOG(INFO) << "Trying to update rows when yb_read_time is set to: " << t1;
+  ASSERT_NOK(conn.Execute("UPDATE t SET v=99 WHERE k=2"));
+  LOG(INFO) << "Trying to delete rows when yb_read_time is set to: " << t1;
+  ASSERT_NOK(conn.Execute("DELETE FROM t WHERE k=2"));
+  LOG(INFO) << "Trying to select rows for update when yb_read_time is set to: " << t1;
+  ASSERT_NOK(conn.Execute("SELECT * FROM t FOR UPDATE"));
+  LOG(INFO) << "Trying to select rows for share when yb_read_time is set to: " << t1;
+  ASSERT_NOK(conn.Execute("SELECT * FROM t FOR SHARE"));
+  LOG(INFO) << "Trying to select rows in serializable isolation when yb_read_time is set to: "
+            << t1;
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL SERIALIZABLE"));
+  ASSERT_NOK(conn.Execute("SELECT * FROM t"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  LOG(INFO) << "Trying to select rows in serializable isolation read only transaction when "
+               "yb_read_time is set to: "
+            << t1;
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL SERIALIZABLE READ ONLY"));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  t1 = 0;
+  LOG(INFO) << "Setting yb_read_time to " << t1;
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 2);
+  // Check that we are able to perform write DMls after resetting yb_read_time to 0.
+  LOG(INFO) << "Trying to Insert rows when yb_read_time is set to: " << t1;
+  ASSERT_OK(conn.Execute("INSERT INTO t (k,v) SELECT i,i FROM generate_series(5,6) AS i"));
+  LOG(INFO) << "Trying to update rows when yb_read_time is set to: " << t1;
+  ASSERT_OK(conn.Execute("UPDATE t SET v=99 WHERE k=2"));
+  LOG(INFO) << "Trying to delete rows when yb_read_time is set to: " << t1;
+  ASSERT_OK(conn.Execute("DELETE FROM t WHERE k=1"));
+}
+
 // Test the read-time flag of ysql_dump to generate the schema of the database as of a timestamp t
 // 1- Create two tables
 // 2- Get the current timestamp t

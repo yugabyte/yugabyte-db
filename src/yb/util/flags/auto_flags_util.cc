@@ -50,7 +50,6 @@ const char kProgramMember[] = "program";
 const char kFlagsMember[] = "flags";
 const char kNameMember[] = "name";
 const char kClassMember[] = "class";
-const char kRuntimeMember[] = "is_runtime";
 
 namespace {
 
@@ -72,8 +71,7 @@ string DumpAutoFlagsToJSON(const ProcessName& program_name) {
   //         "flags": [
   //           {
   //             "name": "<flag_name>",
-  //             "class": "<flag_class>",
-  //             "is_runtime": <boolean>
+  //             "class": "<flag_class>"
   //           },...]
   //       },...
   //     ]
@@ -93,7 +91,6 @@ string DumpAutoFlagsToJSON(const ProcessName& program_name) {
 
     AddMember(kNameMember, flag->name, &obj, &allocator);
     obj.AddMember(kClassMember, Value(yb::to_underlying(flag->flag_class)), allocator);
-    obj.AddMember(kRuntimeMember, Value(flag->is_runtime), allocator);
 
     flags.PushBack(obj, allocator);
   }
@@ -142,16 +139,13 @@ Result<AutoFlagsInfoMap> GetAvailableAutoFlags() {
     for (const auto& flag : flags.GetArray()) {
       VALIDATE_MEMBER(flag, kNameMember, IsString, "string");
       VALIDATE_MEMBER(flag, kClassMember, IsInt, "int");
-      VALIDATE_MEMBER(flag, kRuntimeMember, IsBool, "bool");
 
       auto flag_class = VERIFY_RESULT_PREPEND(
           yb::UnderlyingToEnumSlow<yb::AutoFlagClass>(flag[kClassMember].GetInt()),
           AutoFlagsJsonParseErrorMsg() +
               Format("Flag Class '{0}' is invalid.", flag[kClassMember].GetString()));
 
-      output.emplace_back(
-          flag[kNameMember].GetString(), flag_class,
-          RuntimeAutoFlag(flag[kRuntimeMember].GetBool()));
+      output.emplace_back(flag[kNameMember].GetString(), flag_class);
     }
   }
 
@@ -159,13 +153,12 @@ Result<AutoFlagsInfoMap> GetAvailableAutoFlags() {
 }
 
 AutoFlagsInfoMap GetFlagsEligibleForPromotion(
-    const AutoFlagsInfoMap& available_flags, const AutoFlagClass max_flag_class,
-    const PromoteNonRuntimeAutoFlags promote_non_runtime) {
+    const AutoFlagsInfoMap& available_flags, const AutoFlagClass max_flag_class) {
   AutoFlagsInfoMap eligible_flags;
 
   for (const auto& process_flag : available_flags) {
     for (const auto& flag : process_flag.second) {
-      if (flag.flag_class <= max_flag_class && (flag.is_runtime || promote_non_runtime)) {
+      if (flag.flag_class <= max_flag_class) {
         eligible_flags[process_flag.first].emplace_back(flag);
       }
     }
@@ -174,11 +167,10 @@ AutoFlagsInfoMap GetFlagsEligibleForPromotion(
   return eligible_flags;
 }
 
-Result<AutoFlagsInfoMap> GetFlagsEligibleForPromotion(
-    const AutoFlagClass max_flag_class, const PromoteNonRuntimeAutoFlags promote_non_runtime) {
+Result<AutoFlagsInfoMap> GetFlagsEligibleForPromotion(const AutoFlagClass max_flag_class) {
   auto available_flags = VERIFY_RESULT(GetAvailableAutoFlags());
 
-  return GetFlagsEligibleForPromotion(available_flags, max_flag_class, promote_non_runtime);
+  return GetFlagsEligibleForPromotion(available_flags, max_flag_class);
 }
 
 Result<bool> AreAutoFlagsCompatible(

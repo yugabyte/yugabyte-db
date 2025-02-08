@@ -1,3 +1,10 @@
 echo "Start network configuration"
-echo "Nothing to be done"
+{% if no_proxy %}
+# Add it to bashrc for root, and yugabyte user
+echo 'export NO_PROXY="{{ no_proxy }},${NO_PROXY:+,$NO_PROXY}"' >> ~/.bashrc
+echo 'export NO_PROXY="{{ no_proxy }},${NO_PROXY:+,$NO_PROXY}"' >>  {{yb_home_dir}}/.bashrc
+# Export it for the current session.
+export NO_PROXY="{{ no_proxy }},${NO_PROXY:+,$NO_PROXY}"
+{% endif %}
+
 echo "End network configuration"

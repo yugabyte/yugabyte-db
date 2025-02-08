@@ -53,16 +53,18 @@
 #include "yb/gutil/strings/split.h"
 
 #include "yb/util/errno.h"
+#include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/thread.h"
+#include "yb/util/unique_lock.h"
 
+using std::mutex;
 using std::string;
 using std::vector;
-using std::mutex;
-using std::unique_lock;
 using strings::Split;
 using strings::Substitute;
 
@@ -143,6 +145,94 @@ void LogWaitCode(int ret_code, const std::string &process_name) {
 
 } // namespace util
 
+namespace {
+
+class LogTailerThread {
+ public:
+  LogTailerThread(
+      const std::string& process_name, const int child_fd, int severity = google::GLOG_INFO);
+
+  ~LogTailerThread();
+
+ private:
+  void Run(const int child_fd);
+
+  std::string SeverityStr() const;
+
+ private:
+  std::atomic<bool> stopped_{false};
+  const std::string process_name_;
+  const int severity_;
+  scoped_refptr<Thread> thread_;
+};
+
+LogTailerThread::LogTailerThread(const std::string& process_name, const int child_fd, int severity)
+    : process_name_(process_name), severity_(severity) {
+  CHECK_GE(severity_, google::GLOG_INFO);
+  CHECK_LT(severity_, google::GLOG_FATAL);
+
+  CHECK_OK(Thread::Create(
+      "LogTailer", Format("$0[$1]", process_name, SeverityStr()),
+      std::bind(&LogTailerThread::Run, this, child_fd), &thread_));
+}
+
+std::string LogTailerThread::SeverityStr() const {
+  switch (severity_) {
+    case google::GLOG_INFO:
+      return "INFO";
+    case google::GLOG_WARNING:
+      return "WARNING";
+    case google::GLOG_ERROR:
+      return "ERROR";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+void LogTailerThread::Run(const int child_fd) {
+  const auto prefix = Format("[$0] ", process_name_);
+  VLOG(1) << "Starting LogTailer(" << SeverityStr() << ") for " << process_name_;
+  FILE* const fp = fdopen(child_fd, "rb");
+  char buf[65536];
+
+  bool is_eof = false;
+  bool is_fgets_null = false;
+  // NOTE: fgets is a blocking call, which means we might not respond to stopped unless the child
+  // process actually writes to the pipe or stops. This is not expected to happen in practice.
+  while (!(is_eof = feof(fp)) && !(is_fgets_null = (fgets(buf, sizeof(buf), fp) == nullptr)) &&
+         !stopped_) {
+    size_t l = strlen(buf);
+    if (l > 0) {
+      if (buf[l - 1] == '\n') {
+        buf[l - 1] = '\0';
+      }
+      google::LogMessage(__FILE__, __LINE__, severity_).stream() << prefix << buf;
+    }
+  }
+  fclose(fp);
+  VLOG(1) << "Completed LogTailer(" << SeverityStr() << ") for " << process_name_
+          << ": is_eof=" << is_eof << ", is_fgets_null=" << is_fgets_null
+          << ", stopped=" << stopped_;
+}
+
+LogTailerThread::~LogTailerThread() {
+  VLOG(1) << "Stopping LogTailer(" << SeverityStr() << ") for " << process_name_;
+
+  // Wait so that all logs are printed.
+  ThreadJoiner joiner(thread_.get());
+  joiner.give_up_after(MonoDelta::FromSeconds(5));
+  auto status = joiner.Join();
+  if (status.ok()) {
+    return;
+  }
+
+  LOG(WARNING) << "Failed to gracefully join LogTailer(" << SeverityStr() << ") for "
+               << process_name_ << ". Will force it to exit: " << status;
+  stopped_ = true;
+  thread_->Join();
+}
+}  // namespace
+
 Subprocess::Subprocess(string program, vector<string> argv)
     : program_(std::move(program)),
       argv_(std::move(argv)),
@@ -200,7 +290,7 @@ void Subprocess::AddPIDToCGroup(const string& path, pid_t pid) {
 
 void Subprocess::SetFdShared(int stdfd, SubprocessStreamMode mode) {
   CHECK_NE(mode, SubprocessStreamMode::kDisabled);
-  unique_lock<mutex> l(state_lock_);
+  UniqueLock l(state_lock_);
   CHECK_EQ(state_, SubprocessState::kNotStarted);
   CHECK_NE(fd_state_[stdfd], SubprocessStreamMode::kDisabled);
   fd_state_[stdfd] = mode;
@@ -211,13 +301,13 @@ void Subprocess::InheritNonstandardFd(int fd) {
 }
 
 void Subprocess::DisableStderr() {
-  unique_lock<mutex> l(state_lock_);
+  UniqueLock l(state_lock_);
   CHECK_EQ(state_, SubprocessState::kNotStarted);
   fd_state_[STDERR_FILENO] = SubprocessStreamMode::kDisabled;
 }
 
 void Subprocess::DisableStdout() {
-  unique_lock<mutex> l(state_lock_);
+  UniqueLock l(state_lock_);
   CHECK_EQ(state_, SubprocessState::kNotStarted);
   fd_state_[STDOUT_FILENO] = SubprocessStreamMode::kDisabled;
 }
@@ -262,6 +352,26 @@ Status Subprocess::Start() {
     state_ = SubprocessState::kRunning;
   }
   return s;
+}
+
+Status Subprocess::Run(bool log_stdout_and_stderr) {
+  if (log_stdout_and_stderr) {
+    PipeParentStdout();
+    PipeParentStderr();
+  }
+
+  RETURN_NOT_OK(Start());
+
+  std::unique_ptr<LogTailerThread> stdout_logger, stderr_logger;
+  if (log_stdout_and_stderr) {
+    const auto process_name = BaseName(program_);
+    stdout_logger =
+        std::make_unique<LogTailerThread>(process_name, ReleaseChildStdoutFd(), google::GLOG_INFO);
+    stderr_logger = std::make_unique<LogTailerThread>(
+        process_name, ReleaseChildStderrFd(), google::GLOG_WARNING);
+  }
+
+  return Wait();
 }
 
 namespace {
@@ -440,10 +550,17 @@ Status Subprocess::Wait(int* ret) {
   return DoWait(ret, 0);
 }
 
-Result<int> Subprocess::Wait() {
-  int ret = 0;
-  RETURN_NOT_OK(Wait(&ret));
-  return ret;
+Status Subprocess::Wait() {
+  int retcode = 0;
+  RETURN_NOT_OK(Wait(&retcode));
+  if (retcode == 0) {
+    return Status::OK();
+  }
+
+  util::LogWaitCode(retcode, program_);
+  return STATUS(
+      RuntimeError,
+      Format("Subprocess '$0' terminated with non-zero exit status $1", program_, retcode));
 }
 
 Status Subprocess::DoWait(int* ret, int options) {
@@ -454,7 +571,7 @@ Status Subprocess::DoWait(int* ret, int options) {
 
   pid_t child_pid = 0;
   {
-    unique_lock<mutex> l(state_lock_);
+    UniqueLock l(state_lock_);
     if (state_ == SubprocessState::kExited) {
       *ret = cached_rc_;
       return Status::OK();
@@ -475,7 +592,7 @@ Status Subprocess::DoWait(int* ret, int options) {
     return STATUS(TimedOut, "");
   }
 
-  unique_lock<mutex> l(state_lock_);
+  UniqueLock l(state_lock_);
   CHECK_EQ(waitpid_ret_val, child_pid_);
   child_pid_ = 0;
   cached_rc_ = *ret;
@@ -492,7 +609,7 @@ Status Subprocess::KillNoCheckIfRunning(int signal) {
 }
 
 Status Subprocess::KillInternal(int signal, bool must_be_running) {
-  unique_lock<mutex> l(state_lock_);
+  UniqueLock l(state_lock_);
 
   if (must_be_running) {
     CHECK_EQ(state_, SubprocessState::kRunning);
@@ -552,7 +669,7 @@ Result<std::vector<char*>> Subprocess::GetArgvPtrs() {
 }
 
 bool Subprocess::IsRunning() const {
-  unique_lock<mutex> l(state_lock_);
+  UniqueLock l(state_lock_);
   if (state_ == SubprocessState::kRunning) {
     CHECK_NE(child_pid_, 0);
     return kill(child_pid_, 0) == 0;
@@ -566,19 +683,9 @@ Status Subprocess::Call(const string& arg_str) {
   return Call(argv);
 }
 
-Status Subprocess::Call(const vector<string>& argv) {
+Status Subprocess::Call(const vector<string>& argv, bool log_stdout_and_stderr) {
   Subprocess proc(argv[0], argv);
-  RETURN_NOT_OK(proc.Start());
-  int retcode;
-  RETURN_NOT_OK(proc.Wait(&retcode));
-
-  if (retcode == 0) {
-    return Status::OK();
-  }
-  return STATUS(RuntimeError, Substitute(
-      "Subprocess '$0' terminated with non-zero exit status $1",
-      argv[0],
-      retcode));
+  return proc.Run(log_stdout_and_stderr);
 }
 
 Status Subprocess::Call(const vector<string>& argv, string* output, string* error) {
@@ -635,14 +742,14 @@ Status Subprocess::Call(string* output, string* error) {
 }
 
 int Subprocess::CheckAndOffer(int stdfd) const {
-  unique_lock<mutex> l(state_lock_);
+  UniqueLock l(state_lock_);
   CHECK_EQ(state_, SubprocessState::kRunning);
   CHECK_EQ(fd_state_[stdfd], SubprocessStreamMode::kPiped);
   return child_fds_[stdfd];
 }
 
 int Subprocess::ReleaseChildFd(int stdfd) {
-  unique_lock<mutex> l(state_lock_);
+  UniqueLock l(state_lock_);
   CHECK_EQ(state_, SubprocessState::kRunning);
   CHECK_GE(child_fds_[stdfd], 0);
   CHECK_EQ(fd_state_[stdfd], SubprocessStreamMode::kPiped);
@@ -652,13 +759,13 @@ int Subprocess::ReleaseChildFd(int stdfd) {
 }
 
 pid_t Subprocess::pid() const {
-  unique_lock<mutex> l(state_lock_);
+  UniqueLock l(state_lock_);
   CHECK_EQ(state_, SubprocessState::kRunning);
   return child_pid_;
 }
 
 SubprocessState Subprocess::state() const {
-  unique_lock<mutex> l(state_lock_);
+  UniqueLock l(state_lock_);
   return state_;
 }
 
@@ -802,4 +909,4 @@ Status Subprocess::WaitNoBlock(int* ret) {
   return DoWait(ret, WNOHANG);
 }
 
-} // namespace yb
+}  // namespace yb

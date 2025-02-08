@@ -283,7 +283,7 @@ message ValidateAutoFlagsConfigResponsePB {
 
 message PromoteAutoFlagsRequestPB {
   required string max_flag_class = 1;
-  required bool promote_non_runtime_flags = 2;
+  required bool promote_non_runtime_flags = 2; // (DEPRECATE_EOL 2025.1)
   // When force is set, the config version is bumped up even if no new flags are
   // eligible for promote.
   required bool force = 3;
@@ -291,7 +291,7 @@ message PromoteAutoFlagsRequestPB {
 
 message PromoteAutoFlagsResponsePB {
   optional uint32 new_config_version = 1;
-  optional bool non_runtime_flags_promoted = 2;
+  reserved 2; // DEPRECATED non_runtime_flags_promoted
   optional MasterErrorPB error = 3;
   optional bool flags_promoted = 4;
 }

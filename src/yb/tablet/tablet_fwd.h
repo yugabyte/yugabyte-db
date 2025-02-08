@@ -53,6 +53,7 @@ class SplitOperation;
 class TabletMetrics;
 class TabletSnapshots;
 class TabletSplitter;
+class TabletVectorIndexes;
 class TabletStatusListener;
 class TransactionIntentApplier;
 class TransactionCoordinator;

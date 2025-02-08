@@ -14,14 +14,15 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleDestroyServer extends NodeTaskBase {
@@ -60,10 +61,9 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         new UniverseUpdater() {
           @Override
           public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            universeDetails.removeNode(nodeName);
             log.debug(
                 "Removing node {} from universe {}", nodeName, taskParams().getUniverseUUID());
+            universe.getUniverseDetails().removeNode(nodeName);
           }
         };
 
@@ -75,25 +75,36 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
     if (nodeDetails == null) {
-      // Nothing can be done.
       log.warn(
           "Node {} is not found in the universe {}",
           taskParams().nodeName,
           universe.getUniverseUUID());
       return;
     }
-    boolean cleanupFailed = false;
-
-    // Execute the ansible command.
+    UserIntent userIntent =
+        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
+    if (userIntent.providerType == Common.CloudType.onprem
+        && (nodeDetails.cloudInfo == null
+            || StringUtils.isEmpty(nodeDetails.cloudInfo.private_ip))) {
+      // Node IP was never updated, nothing was changed. For onprem, it can just be cleared.
+      // For CSPs, the instance needs to be terminated.
+      log.warn(
+          "Onprem node {} has no IP in the universe {}",
+          taskParams().nodeName,
+          universe.getUniverseUUID());
+      NodeInstance.maybeGetByName(taskParams().nodeName).ifPresent(n -> n.clearNodeDetails());
+      return;
+    }
+    boolean cleanupFailed = true;
     try {
       getNodeManager()
           .nodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
           .processErrors();
+      cleanupFailed = false;
     } catch (Exception e) {
       if (!taskParams().isForceDelete) {
         throw e;
       } else {
-        cleanupFailed = true;
         log.debug(
             "Ignoring error deleting instance {} due to isForceDelete being set.",
             taskParams().nodeName,
@@ -101,11 +112,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    UserIntent userIntent =
-        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
-
-    if (taskParams().deleteRootVolumes
-        && !userIntent.providerType.equals(Common.CloudType.onprem)) {
+    if (taskParams().deleteRootVolumes && userIntent.providerType != Common.CloudType.onprem) {
       try {
         getNodeManager()
             .nodeCommand(NodeManager.NodeCommandType.Delete_Root_Volumes, taskParams())
@@ -135,23 +142,18 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    if (userIntent.providerType.equals(Common.CloudType.onprem)
+    if (userIntent.providerType == Common.CloudType.onprem
         && nodeDetails.state != NodeDetails.NodeState.Decommissioned) {
-      // Free up the node.
-      try {
-        NodeInstance providerNode = NodeInstance.getByName(taskParams().nodeName);
+      Optional<NodeInstance> nodeInstanceOpt = NodeInstance.maybeGetByName(taskParams().nodeName);
+      if (nodeInstanceOpt.isPresent()) {
         if (cleanupFailed) {
           log.info(
               "Failed to clean node instance {}. Setting to decommissioned state",
               taskParams().nodeName);
-          providerNode.setToFailedCleanup(universe, nodeDetails);
+          nodeInstanceOpt.get().setToFailedCleanup(universe, nodeDetails);
         } else {
-          providerNode.clearNodeDetails();
+          nodeInstanceOpt.get().clearNodeDetails();
           log.info("Marked node instance {} as available", taskParams().nodeName);
-        }
-      } catch (Exception e) {
-        if (!taskParams().isForceDelete) {
-          throw e;
         }
       }
     }

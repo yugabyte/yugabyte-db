@@ -609,6 +609,11 @@ public enum TaskType {
       CustomerTask.TaskType.SyncMasterAddresses,
       CustomerTask.TargetType.Universe),
 
+  CreateContinuousBackup(
+      com.yugabyte.yw.commissioner.tasks.CreateContinuousBackup.class,
+      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TargetType.Yba),
+
   CreateYbaBackup(
       com.yugabyte.yw.commissioner.tasks.CreateYbaBackup.class,
       CustomerTask.TaskType.CreateYbaBackup,
@@ -616,12 +621,12 @@ public enum TaskType {
 
   RestoreYbaBackup(
       com.yugabyte.yw.commissioner.tasks.RestoreYbaBackup.class,
-      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TaskType.RestoreYbaBackup,
       CustomerTask.TargetType.Yba),
 
   RestoreContinuousBackup(
       com.yugabyte.yw.commissioner.tasks.RestoreContinuousBackup.class,
-      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TaskType.RestoreYbaBackup,
       CustomerTask.TargetType.Yba),
 
   EnableNodeAgentInUniverse(
@@ -681,8 +686,6 @@ public enum TaskType {
   AnsibleSetupServer(com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer.class),
 
   AnsibleCreateServer(com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer.class),
-
-  PrecheckNode(com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode.class),
 
   PrecheckNodeDetached(com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNodeDetached.class),
 

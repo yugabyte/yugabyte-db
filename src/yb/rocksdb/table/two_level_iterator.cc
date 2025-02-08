@@ -76,9 +76,6 @@ class TwoLevelIterator final : public InternalIterator {
   bool IsKeyPinned() const override {
     return second_level_iter_.iter() ? second_level_iter_.IsKeyPinned() : false;
   }
-  ScanForwardResult ScanForward(
-      const Comparator* user_key_comparator, const Slice& upperbound,
-      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override;
 
   bool MatchFilter(
       const IteratorFilter* filter, const QueryOptions& options, Slice key,
@@ -161,33 +158,6 @@ const KeyValueEntry& TwoLevelIterator::Prev() {
   second_level_iter_.Prev();
   SkipEmptyDataBlocksBackward();
   return Entry();
-}
-
-ScanForwardResult TwoLevelIterator::ScanForward(
-    const Comparator* user_key_comparator, const Slice& upperbound,
-    KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
-  LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
-
-  ScanForwardResult result;
-  do {
-    if (!upperbound.empty() &&
-        user_key_comparator->Compare(ExtractUserKey(second_level_iter_.key()), upperbound) >= 0) {
-      break;
-    }
-
-    auto current_result = second_level_iter_.ScanForward(
-        user_key_comparator, upperbound, key_filter_callback, scan_callback);
-    result.number_of_keys_visited += current_result.number_of_keys_visited;
-    if (!current_result.reached_upperbound) {
-      result.reached_upperbound = false;
-      return result;
-    }
-
-    SkipEmptyDataBlocksForward(second_level_iter_.Entry());
-  } while (Valid());
-
-  result.reached_upperbound = true;
-  return result;
 }
 
 const KeyValueEntry& TwoLevelIterator::DoSkipEmptyDataBlocksForward(const KeyValueEntry* entry) {

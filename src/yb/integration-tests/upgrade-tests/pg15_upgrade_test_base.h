@@ -37,6 +37,8 @@ class Pg15UpgradeTestBase : public UpgradeTestBase {
 
   // Run pg_upgrade --check
   virtual Status ValidateUpgradeCompatibility(const std::string& user_name = "yugabyte");
+  Status ValidateUpgradeCompatibilityFailure(
+      const std::string& expected_error, const std::string& user_name = "yugabyte");
 
   // Restarts all masters in the current version, runs ysql major version upgrade, and restarts
   // tserver kMixedModeTserverPg15 in the current version. Other tservers are kept in the pg11
