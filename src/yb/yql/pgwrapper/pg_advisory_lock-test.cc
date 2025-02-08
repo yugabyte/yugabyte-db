@@ -258,4 +258,20 @@ TEST_F(PgAdvisoryLockTest, SessionLockDeadlockWithRowLocks) {
   ASSERT_OK(conn1.CommitTransaction());
 }
 
+TEST_F(PgAdvisoryLockTest, YB_DISABLE_TEST_IN_TSAN(PgLocksSanityTest)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo SELECT generate_series(0, 11), 0"));
+
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn.Execute("UPDATE foo SET v=v+1 where k=1"));
+
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(conn.Fetch("select pg_advisory_unlock(10)"));
+}
+
 } // namespace yb::pgwrapper

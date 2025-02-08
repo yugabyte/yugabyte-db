@@ -55,12 +55,15 @@ class YsqlAdvisoryLocksTable {
 
   auto TEST_GetTable() { return GetTable(); }
 
+  Result<std::vector<TabletId>> LookupAllTablets(CoarseTimePoint deadline) EXCLUDES(mutex_);
+
  private:
   Result<client::YBTablePtr> GetTable() EXCLUDES(mutex_);
 
   std::mutex mutex_;
   client::YBTablePtr table_ GUARDED_BY(mutex_);
   std::shared_future<client::YBClient*> client_future_;
+  std::vector<TabletId> tablet_ids_;
 };
 
 } // namespace yb::tserver

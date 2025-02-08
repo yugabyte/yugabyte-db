@@ -133,6 +133,7 @@ TAG_FLAG(ysql_cdc_active_replication_slot_window_ms, advanced);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
+DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 DEFINE_RUNTIME_int32(
     check_pg_object_id_allocators_interval_secs, 3600 * 3,
@@ -1029,6 +1030,7 @@ class PgClientServiceImpl::Impl {
     VLOG(4) << "Request to DoGetLockStatus: " << req->ShortDebugString()
             << ", with existing response state " << resp->ShortDebugString();
     if (req->transactions_by_tablet().empty() && req->transaction_ids().empty()) {
+      StatusToPB(Status::OK(), resp->mutable_status());
       return Status::OK();
     }
 
@@ -1069,17 +1071,26 @@ class PgClientServiceImpl::Impl {
               << node_locks->ShortDebugString();
     }
 
-    auto s = RefineAccumulatedLockStatusResp(req, resp);
-    if (!s.ok()) {
-      s = s.CloneAndPrepend("Error refining accumulated LockStatus responses.");
-    } else if (!req->transactions_by_tablet().empty()) {
+    RETURN_NOT_OK_PREPEND(RefineAccumulatedLockStatusResp(req, resp),
+                          "Error refining accumulated LockStatus responses.");
+    if (!req->transactions_by_tablet().empty()) {
       // We haven't heard back from all involved tablets, retry GetLockStatusRequest on the
       // tablets missing in the response if we haven't maxed out on the retry attempts.
       if (retry_attempt > FLAGS_get_locks_status_max_retry_attempts) {
-        s = STATUS_FORMAT(IllegalState,
-                          "Expected to see involved tablet(s) $0 in PgGetLockStatusResponsePB",
-                          req->ShortDebugString());
-      } else {
+        return STATUS_FORMAT(
+            IllegalState, "Expected to see involved tablet(s) $0 in PgGetLockStatusResponsePB",
+            req->ShortDebugString());
+      }
+      if (FLAGS_ysql_yb_enable_advisory_locks) {
+        // TODO(advisory-locks): Erase the advisory lock tablets to prevent pg_locks from erroring.
+        // Remove this once GHI #24712 is addressed.
+        auto advisory_lock_tablets = VERIFY_RESULT(
+            session_context_.advisory_locks_table.LookupAllTablets(context->GetClientDeadline()));
+        for (const auto& tablet_id : advisory_lock_tablets) {
+          req->mutable_transactions_by_tablet()->erase(tablet_id);
+        }
+      }
+      if (!req->transactions_by_tablet().empty()) {
         PgGetLockStatusResponsePB sub_resp;
         for (const auto& node_txn_pair : resp->transactions_by_node()) {
           sub_resp.mutable_transactions_by_node()->insert(node_txn_pair);
@@ -1087,13 +1098,10 @@ class PgClientServiceImpl::Impl {
         RETURN_NOT_OK(DoGetLockStatus(
             req, &sub_resp, context, VERIFY_RESULT(ReplaceSplitTabletsAndGetLocations(req)),
             ++retry_attempt));
-        s = MergeLockStatusResponse(resp, &sub_resp);
+        RETURN_NOT_OK(MergeLockStatusResponse(resp, &sub_resp));
       }
     }
-    if (!s.ok()) {
-      resp->Clear();
-    }
-    StatusToPB(s, resp->mutable_status());
+    StatusToPB(Status::OK(), resp->mutable_status());
     return Status::OK();
   }
 
