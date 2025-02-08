@@ -23,11 +23,11 @@ YugabyteDB implements a simple rules-based optimizer (RBO) for YCQL. It operates
 
 ## Heuristics based optimizer (YSQL)
 
-YugabyteDB’s YSQL API uses a simple heuristics based optimizer to determine the most efficient execution plan for a query. It relies on basic statistics, like table sizes, and applies heuristics to estimate the cost of different plans. The cost model is based on PostgreSQL’s approach, using data such as row counts and index availability, and assigns some heuristic costs to the number of result rows depending on the type of scan. Although this works well for most queries, because this model was designed for single-node databases like PostgreSQL, it doesn’t account for YugabyteDB’s distributed architecture or take cluster topology into consideration during query planning.
+YugabyteDB's YSQL API uses a simple heuristics-based optimizer to determine the most efficient execution plan for a query. It relies on basic statistics, like table sizes, and applies heuristics to estimate the cost of different plans. The cost model is based on PostgreSQL's approach, using data such as row counts and index availability, and assigns some heuristic costs to the number of result rows depending on the type of scan. Although this works well for most queries, because this model was designed for single-node databases like PostgreSQL, it doesn't account for YugabyteDB's distributed architecture or take cluster topology into consideration during query planning.
 
 ## Cost based optimizer (YSQL)
 
-To account for the distributed nature of the data, YugabyteDB has implemented a Cost based optimizer (CBO) for YSQL that uses an advanced cost model. The model considers accurate table statistics, the cost of network round trips, operations on lower level storage layer, and the cluster toplogy.
+To account for the distributed nature of the data, YugabyteDB has implemented a Cost based optimizer (CBO) for YSQL that uses an advanced cost model. The model considers accurate table statistics, the cost of network round trips, operations on lower level storage layer, and the cluster topology.
 
 {{<tip>}}
 
@@ -48,9 +48,9 @@ To optimize the search for the best plan, the CBO uses a dynamic programming-bas
 
 The optimizer relies on accurate statistics about the tables, including the number of rows, the distribution of data in columns, and the cardinality of results from operations. These statistics are essential for estimating the selectivity of filters and costs of various query plans accurately. These statistics are gathered by the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command and are provided in a display-friendly format by the [pg_stats](../../../architecture/system-catalog/#data-statistics) view.
 
-{{<note title="Run ANALYZE manually" >}}
-Currently, YugabyteDB doesn't run a background job like PostgreSQL autovacuum to analyze the tables. To collect or update statistics, run the ANALYZE command manually. If you have enabled CBO, you must run ANALYZE on user tables after data load for the CBO to create optimal execution plans. Multiple projects are in progress to trigger this automatically.
-{{</note>}}
+Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM), the YugabyteDB [Auto Analyze](../../explore/query-1-performance/auto-analyze/) service automates the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold for the table. This ensures table statistics are always up-to-date.
+
+Even with the Auto Analyze service, for the CBO to create optimal execution plans, you should still run ANALYZE manually on user tables after data load, as well as in other circumstances. Refer to [Best practices](#best-practices).
 
 ### Cost estimation
 
@@ -82,11 +82,21 @@ Some of the factors that the CBO considers in the cost estimation are as follows
 
     The CBO estimates the size and number of tuples that will be transferred, with data sent in pages. The page size is determined by the configuration parameters [yb_fetch_row_limit](../../../reference/configuration/yb-tserver/#yb-fetch-row-limit) and [yb_fetch_size_limit](../../../reference/configuration/yb-tserver/#yb-fetch-size-limit). Because each page requires a network round trip for the request and response, the CBO also estimates the total number of pages that will be transferred. Note that the time spent transferring the data also depends on the network bandwidth.
 
-## Plan selection
+### Plan selection
 
 The CBO evaluates each candidate plan's estimated costs to determine the plan with the lowest cost, which is then selected for execution. This ensures the optimal use of system resources and improved query performance.
 
 After the optimal plan is determined, YugabyteDB generates a detailed execution plan with all the necessary steps, such as scanning tables, joining data, filtering rows, sorting, and computing expressions. This execution plan is then passed to the query executor component, which carries out the plan and returns the final query results.
+
+### Best practices
+
+- If your table already has rows, and you create an additional index `create index i on t (k);`, you must re-run analyze to populate the index's `pg_class.reltuples` with the correct row count. [Issue](https://github.com/yugabyte/yugabyte-db/issues/25394)
+
+    If you need to create a new index to replace a old one while your application is running, create the new one first, run analyze, then drop the old one.
+
+- After you restore a database in YugabyteDB Anywhere or Aeon, you need to run analyze because the statistics that were in the database when it was backed up do not get restored.
+
+    For consistent RTO from restore in a cost model-enabled environment, run analyze manually after restore has finished before you allow end-users into the application. If you allow end-users into the application before analyze is finished user experience may not be correct initially.
 
 ## Learn more
 
