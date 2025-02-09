@@ -103,7 +103,7 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_tcp_keepalive_usr_timeout | TCP user timeout (in milliseconds) in YSQL Connection Manager. Only applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled. | 9 |
 | ysql_conn_mgr_pool_timeout | Server pool wait timeout (in milliseconds) in YSQL Connection Manager. This is the time clients wait for an available server, after which they are disconnected. If set to zero, clients wait for server connections indefinitely. | 0 |
 | ysql_conn_mgr_sequence_support_mode | Sequence support mode when YSQL connection manager is enabled. When set to  'pooled_without_curval_lastval', the currval() and lastval() functions are not supported. When set to 'pooled_with_curval_lastval', the currval() and lastval() functions are supported. For both settings, monotonic sequence order is not guaranteed if `ysql_sequence_cache_method` is set to `connection`. To also support monotonic order, set this flag to `session`. | pooled_without_curval_lastval |
-| ysql_conn_mgr_optimized_extended_query_protocol | Enables optimized extended query protocol in Ysql Connection Manager. If set to false, extended query protocol handling is fully correct but unoptimized. | true |
+| ysql_conn_mgr_optimized_extended_query_protocol | Enables optimized extended query protocol in YSQL Connection Manager. If set to false, extended query protocol handling is fully correct but unoptimized. | true |
 
 ## Limitations
 
