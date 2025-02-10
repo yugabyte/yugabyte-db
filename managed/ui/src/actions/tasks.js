@@ -24,6 +24,12 @@ export const ABORT_TASK_RESPONSE = 'ABORT_TASK_RESPONSE';
 
 export const PATCH_TASKS_FOR_CUSTOMER = 'PATCH_TASKS_FOR_CUSTOMER';
 
+export const SHOW_TASK_IN_DRAWER = 'SHOW_TASK_IN_DRAWER';
+export const HIDE_TASK_IN_DRAWER = 'HIDE_TASK_IN_DRAWER';
+
+export const SHOW_TASK_BANNER = 'SHOW_TASK_BANNER';
+export const HIDE_TASK_BANNER = 'HIDE_TASK_BANNER';
+
 export function fetchTaskProgress(taskUUID) {
   const request = axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
   return {
@@ -145,3 +151,30 @@ export function abortTaskResponse(response) {
     payload: response
   };
 }
+
+export const showTaskInDrawer = (taskUUID) => {
+  return {
+    type: SHOW_TASK_IN_DRAWER,
+    payload: taskUUID
+  };
+};
+
+export const hideTaskInDrawer = () => {
+  return {
+    type: HIDE_TASK_IN_DRAWER
+  };
+};
+
+export const showTaskBanner = (taskUUID, universeUUID) => {
+  return {
+    type: SHOW_TASK_BANNER,
+    payload: { taskUUID, universeUUID }
+  };
+};
+
+export const hideTaskBanner = (taskUUID, universeUUID) => {
+  return {
+    type: HIDE_TASK_BANNER,
+    payload: { taskUUID, universeUUID }
+  };
+};

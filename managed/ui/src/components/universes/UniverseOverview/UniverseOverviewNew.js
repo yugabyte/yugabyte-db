@@ -844,7 +844,8 @@ export default class UniverseOverviewNew extends Component {
       tasks,
       currentCustomer,
       runtimeConfigs,
-      universeLbState
+      universeLbState,
+      featureFlags
     } = this.props;
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
@@ -872,13 +873,15 @@ export default class UniverseOverviewNew extends Component {
       )?.value === 'true';
 
     const isQueryMonitoringEnabled = localStorage.getItem('__yb_query_monitoring__') === 'true';
+    const isNewTaskDetailsUIEnabled = featureFlags?.test?.newTaskDetailsUI || featureFlags?.released?.newTaskDetailsUI;
+
     return (
       <Fragment>
         {isRollBackFeatureEnabled &&
           ybSoftwareUpgradeState === SoftwareUpgradeState.PRE_FINALIZE && (
             <Row className="p-16">{<PreFinalizeBanner universeData={universeInfo} />}</Row>
           )}
-        {isRollBackFeatureEnabled &&
+        {isRollBackFeatureEnabled && !isNewTaskDetailsUIEnabled &&
           [SoftwareUpgradeState.ROLLBACK_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
             ybSoftwareUpgradeState
           ) &&

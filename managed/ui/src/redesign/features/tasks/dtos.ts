@@ -62,6 +62,11 @@ export interface Task {
   correlationId: string;
   userEmail: string;
   subtaskInfos: SubTaskInfo[];
+  taskInfo: {
+    taskParams: {
+      previousTaskUUID?: string;
+    }
+  }
 }
 
 export interface FailedTask {

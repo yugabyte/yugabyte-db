@@ -23,6 +23,7 @@ export default class TasksList extends Component {
         showTaskAbortModal={this.props.showTaskAbortModal}
         visibleModal={this.props.visibleModal}
         featureFlags={this.props.featureFlags}
+        showTaskDrawer={this.props.showTaskDrawer}
       />
     );
   }

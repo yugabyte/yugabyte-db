@@ -2355,7 +2355,10 @@
       "banner": {
         "viewDetails": "View Details",
         "taskProgress": "{{percent}}%",
-        "opNotAvailable": "Some operations are not available while the current operation is in progress"
+        "opNotAvailable": "Some operations are not available while the current operation is in progress",
+        "softwareUpgradeFailed": "Software Upgrade Failed",
+        "softwareUpgradeFailedText": "To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
+        "rollbackUpgrade": "Rollback Upgrade"
       },
       "simple": {
         "viewDetails": "View Details"

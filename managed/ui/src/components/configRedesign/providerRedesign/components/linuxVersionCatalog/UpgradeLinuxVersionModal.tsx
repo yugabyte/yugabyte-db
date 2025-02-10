@@ -26,6 +26,7 @@ import {
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from './LinuxVersionUtils';
 import { upgradeVM } from './VersionCatalogApi';
+import { useInterceptBackupTaskLinks } from '../../../../../redesign/features/tasks/TaskUtils';
 
 interface UpgradeLinuxVersionModalProps {
   visible: boolean;
@@ -77,6 +78,7 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
   const { t } = useTranslation('translation', {
     keyPrefix: 'linuxVersion.upgradeModal'
   });
+  const interceptBackupLink = useInterceptBackupTaskLinks();
 
   const allProviders = useSelector((data: any) => data.cloud.providers) ?? [];
 
@@ -122,9 +124,9 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
             <Trans
               i18nKey="linuxVersion.upgradeModal.successMsg"
               components={[
-                <a href={`/tasks/${taskUUID}`} target="_blank" rel="noopener noreferrer">
+                interceptBackupLink(<a href={`/tasks/${taskUUID}`} target="_blank" rel="noopener noreferrer">
                   here
-                </a>
+                </a>)
               ]}
             ></Trans>
           </span>

@@ -118,8 +118,8 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
           {
             <>
               <div>
-                {failedSubTasks?.failedSubTasks.map((task) => (
-                  <div>{task.errorString}</div>
+                {failedSubTasks?.failedSubTasks.map((task, i) => (
+                  <div key={i}>{task.errorString}</div>
                 ))}
               </div>
               <YBButton
@@ -310,7 +310,7 @@ export const SubTaskCard: FC<SubTaskCardProps> = ({ subTasks, index, category })
   }
 
   return (
-    <div className={classes.card}>
+    <div className={classes.card} key={index}>
       <div className={classes.header} onClick={() => toggleDetails(!showDetails)}>
         <i
           className={clsx(
@@ -327,7 +327,7 @@ export const SubTaskCard: FC<SubTaskCardProps> = ({ subTasks, index, category })
       <Collapse in={showDetails}>
         <div className={classes.subTaskPanel}>
           {subTasks.map((subTask, index) => (
-            <div className={clsx(classes.content, subTask.taskState)}>
+            <div className={clsx(classes.content, subTask.taskState)} key={index}>
               <div className={clsx(classes.indexCircle, subTask.taskState)}>
                 {getTaskIcon(subTask.taskState, index + 1)}
               </div>

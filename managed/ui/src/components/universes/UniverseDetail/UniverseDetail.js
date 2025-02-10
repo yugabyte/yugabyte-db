@@ -218,6 +218,9 @@ class UniverseDetail extends Component {
         this.props.fetchUniverseTables(currentUniverse.data.universeUUID);
       }
     }
+    if (currentUniverse?.data?.universeDetails?.updatingTaskUUID !== undefined && currentUniverse?.data?.universeDetails?.updatingTaskUUID !== prevProps.universe.currentUniverse.data?.universeDetails?.updatingTaskUUID) {
+      this.props.showUniverseTaskBanner(currentUniverse.data.universeDetails.updatingTaskUUID, currentUniverse.data.universeUUID);
+    }
   }
 
   onResize(dimensions) {
