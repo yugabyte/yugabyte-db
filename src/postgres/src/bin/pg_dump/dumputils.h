@@ -49,7 +49,8 @@ extern bool buildDefaultACLCommands(const char *type, const char *nspname,
 extern void buildShSecLabelQuery(PGconn *conn, const char *catalog_name,
 					 Oid objectId, PQExpBuffer sql);
 extern void emitShSecLabels(PGconn *conn, PGresult *res,
-				PQExpBuffer buffer, const char *objtype, const char *objname);
+				PQExpBuffer buffer, const char *objtype,
+				const char *objname, const char *yb_indent);
 
 extern void buildACLQueries(PQExpBuffer acl_subquery, PQExpBuffer racl_subquery,
 				PQExpBuffer init_acl_subquery, PQExpBuffer init_racl_subquery,
