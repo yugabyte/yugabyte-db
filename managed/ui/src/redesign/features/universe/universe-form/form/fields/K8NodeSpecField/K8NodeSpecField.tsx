@@ -19,28 +19,26 @@ import {
 } from '../../../utils/constants';
 
 interface K8NodeSpecFieldProps {
-  isDedicatedMasterField: boolean;
+  isMasterField: boolean;
   isEditMode: boolean;
   disabled: boolean;
 }
 
 export const K8NodeSpecField = ({
-  isDedicatedMasterField,
+  isMasterField,
   isEditMode,
   disabled
 }: K8NodeSpecFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
-  const nodeTypeTag = isDedicatedMasterField ? NodeType.Master : NodeType.TServer;
+  const nodeTypeTag = isMasterField ? NodeType.Master : NodeType.TServer;
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
-  const fieldValue = isDedicatedMasterField
+  const fieldValue = isMasterField
     ? useWatch({ name: MASTER_K8_NODE_SPEC_FIELD })
     : useWatch({ name: TSERVER_K8_NODE_SPEC_FIELD });
-  const UPDATE_FIELD = isDedicatedMasterField
-    ? MASTER_K8_NODE_SPEC_FIELD
-    : TSERVER_K8_NODE_SPEC_FIELD;
+  const UPDATE_FIELD = isMasterField ? MASTER_K8_NODE_SPEC_FIELD : TSERVER_K8_NODE_SPEC_FIELD;
   const convertToString = (str: string) => str?.toString() ?? '';
 
   //fetch run time configs
@@ -103,7 +101,7 @@ export const K8NodeSpecField = ({
           field: t('universeForm.instanceConfig.instanceType')
         }) as string
       }}
-      render={({}) => {
+      render={() => {
         return (
           <Box display="flex" width="100%" flexDirection="column" mt={2}>
             <Grid container spacing={2}>

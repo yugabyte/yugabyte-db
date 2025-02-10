@@ -49,7 +49,7 @@ interface VolumeInfoFieldProps {
   isEditMode: boolean;
   isPrimary: boolean;
   isViewMode: boolean;
-  isDedicatedMasterField?: boolean;
+  isMasterField?: boolean;
   maxVolumeCount: number;
   updateOptions: string[];
   diffInHours: number | null;
@@ -90,7 +90,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   isEditMode,
   isPrimary,
   isViewMode,
-  isDedicatedMasterField,
+  isMasterField,
   maxVolumeCount,
   updateOptions,
   diffInHours,
@@ -100,13 +100,13 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const classes = useStyles();
   const { t } = useTranslation();
   const instanceTypeChanged = useRef(false);
-  const dataTag = isDedicatedMasterField ? 'Master' : 'TServer';
+  const dataTag = isMasterField ? 'Master' : 'TServer';
 
   //watchers
-  const fieldValue = isDedicatedMasterField
+  const fieldValue = isMasterField
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
     : useWatch({ name: DEVICE_INFO_FIELD });
-  const instanceType = isDedicatedMasterField
+  const instanceType = isMasterField
     ? useWatch({ name: MASTER_INSTANCE_TYPE_FIELD })
     : useWatch({ name: INSTANCE_TYPE_FIELD });
   const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
@@ -132,7 +132,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   );
 
   // Update field is based on master or tserver field in dedicated mode
-  const UPDATE_FIELD = isDedicatedMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
+  const UPDATE_FIELD = isMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
