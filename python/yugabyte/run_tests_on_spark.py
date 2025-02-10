@@ -139,6 +139,7 @@ JENKINS_ENV_VARS = [
     "GIT_BRANCH",
     "GIT_COMMIT",
     "GIT_URL",
+    "GITHUB_TOKEN",
     "JAVA_HOME",
     "JENKINS_URL",
     "JOB_NAME",
