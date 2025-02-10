@@ -1472,12 +1472,18 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Status CDCSDKYsqlTest::InitVirtualWAL(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t session_id) {
+      const uint64_t session_id, const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range) {
     InitVirtualWALForCDCRequestPB init_req;
     init_req.set_stream_id(stream_id.ToString());
     init_req.set_session_id(session_id);
     for (const auto& table_id : table_ids) {
       init_req.add_table_id(table_id);
+    }
+
+    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range) {
+      auto slot_hash_range_req = init_req.mutable_slot_hash_range();
+      slot_hash_range_req->set_start_range(slot_hash_range->start_range);
+      slot_hash_range_req->set_end_range(slot_hash_range->end_range);
     }
 
     RETURN_NOT_OK(WaitFor(
@@ -1976,7 +1982,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   Result<CDCSDKYsqlTest::GetAllPendingChangesResponse>
   CDCSDKYsqlTest::GetAllPendingTxnsFromVirtualWAL(
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
-      bool init_virtual_wal, const uint64_t session_id, bool allow_sending_feedback) {
+      bool init_virtual_wal, const uint64_t session_id, bool allow_sending_feedback,
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range) {
     // We will keep on consuming changes until we get the entire txn i.e COMMIT record of the
     // last txn. This indicates that even though we might have received the expecpted DML
     // records, we might still continue calling GetConsistentChanges until we receive the
@@ -1984,7 +1991,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
     GetAllPendingChangesResponse resp;
     if (init_virtual_wal) {
-      Status s = InitVirtualWAL(stream_id, table_ids, session_id);
+      Status s = InitVirtualWAL(stream_id, table_ids, session_id, std::move(slot_hash_range));
       if (!s.ok()) {
         LOG(ERROR) << "Error while trying to initialize virtual WAL: " << s;
         RETURN_NOT_OK(s);

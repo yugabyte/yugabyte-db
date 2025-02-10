@@ -128,6 +128,10 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
     "Enable consumption of changes via replication slots."
     "Requires yb_enable_replication_commands to be true.");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_consistent_replication_from_hash_range, false,
+                       "Enable consumption of consistent changes via replication slots from "
+                       "a hash range of a table.");
+
 DEFINE_NON_RUNTIME_bool(TEST_ysql_hide_catalog_version_increment_log, false,
     "Hide catalog version increment log messages.");
 TAG_FLAG(TEST_ysql_hide_catalog_version_increment_log, hidden);

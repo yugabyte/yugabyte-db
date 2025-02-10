@@ -801,7 +801,8 @@ class PgApiImpl {
       const ReplicationSlotName& slot_name);
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
-      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const YbcReplicationSlotHashRange* slot_hash_range);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids);

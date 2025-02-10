@@ -906,7 +906,7 @@ YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
 
 YBCStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, YBCPgOid *relfilenodes,
-    size_t num_relations);
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range);
 
 YBCStatus YBCPgUpdatePublicationTableList(
     const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, YBCPgOid *relfilenodes,

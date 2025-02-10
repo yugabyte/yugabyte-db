@@ -894,6 +894,11 @@ typedef struct {
   bool read_only;
 } YbcPgTxnSnapshot;
 
+typedef struct {
+  uint32_t start_range;
+  uint32_t end_range;
+} YbcReplicationSlotHashRange;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -245,6 +245,8 @@ DEFINE_RUNTIME_bool(enable_cdcsdk_lag_collection, false,
 
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 
+DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
+
 METRIC_DEFINE_entity(xcluster);
 
 METRIC_DEFINE_entity(cdcsdk);
@@ -4911,6 +4913,28 @@ void CDCServiceImpl::InitVirtualWALForCDC(
   auto lsn_type = stream_metadata_result->get()->GetReplicationSlotLsnType().value_or(
       ReplicationSlotLsnType_SEQUENCE);
 
+  uint64_t consistent_snapshot_time;
+  std::unique_ptr<ReplicationSlotHashRange> slot_hash_range = nullptr;
+  if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) {
+    RPC_CHECK_AND_RETURN_ERROR(
+        stream_metadata_result->get()->GetConsistentSnapshotTime().has_value(),
+        STATUS_FORMAT(NotFound, "Consistent snapshot time not found for stream id $0", stream_id),
+        resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
+    consistent_snapshot_time = stream_metadata_result->get()->GetConsistentSnapshotTime().value();
+
+    if (req->has_slot_hash_range()) {
+      RPC_CHECK_AND_RETURN_ERROR(
+          req->slot_hash_range().has_start_range() && req->slot_hash_range().has_end_range(),
+          STATUS_FORMAT(
+              IllegalState, "Invalid hash ranges for stream: $0, session_id: $1", stream_id,
+              session_id),
+          resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+      slot_hash_range = std::make_unique<ReplicationSlotHashRange>(
+          req->slot_hash_range().start_range(), req->slot_hash_range().end_range());
+    }
+  }
+
   // Get an exclusive lock to prevent multiple threads from creating VirtualWAL instance for the
   // same session_id.
   {
@@ -4933,7 +4957,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
         resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
     virtual_wal = std::make_shared<CDCSDKVirtualWAL>(
-        this, stream_id, session_id, lsn_type);
+        this, stream_id, session_id, lsn_type, consistent_snapshot_time);
     session_virtual_wal_[session_id] = virtual_wal;
   }
 
@@ -4944,7 +4968,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
 
   HostPort hostport(context.local_address());
   Status s = virtual_wal->InitVirtualWALInternal(
-      table_list, hostport, GetDeadline(context, client()));
+      table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range));
   if (!s.ok()) {
     {
       std::lock_guard l(mutex_);

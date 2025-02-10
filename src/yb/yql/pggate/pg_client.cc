@@ -68,6 +68,7 @@ DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
 DECLARE_bool(TEST_export_wait_state_names);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_int32(ysql_yb_ash_sample_size);
+DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -1259,13 +1260,26 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
-      const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const YbcReplicationSlotHashRange* slot_hash_range) {
     cdc::InitVirtualWALForCDCRequestPB req;
 
     req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
     for (const auto& table_id : table_ids) {
       *req.add_table_id() = table_id.GetYbTableId();
+    }
+
+    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) {
+      if (slot_hash_range != NULL) {
+        VLOG(1) << "Setting hash ranges in InitVirtualVWAL request - start_range: "
+                << slot_hash_range->start_range << ", end_range: " << slot_hash_range->end_range;
+        auto req_slot_range = req.mutable_slot_hash_range();
+        req_slot_range->set_start_range(slot_hash_range->start_range);
+        req_slot_range->set_end_range(slot_hash_range->end_range);
+      } else {
+        VLOG(1) << "No hash range constraints to be set in InitVirtualVWAL request";
+      }
     }
 
     cdc::InitVirtualWALForCDCResponsePB resp;
@@ -1721,8 +1735,9 @@ Result<tserver::PgYCQLStatementStatsResponsePB> PgClient::YCQLStatementStats() {
 }
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
-  return impl_->InitVirtualWALForCDC(stream_id, table_ids);
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const YbcReplicationSlotHashRange* slot_hash_range) {
+  return impl_->InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range);
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgClient::UpdatePublicationTableList(

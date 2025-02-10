@@ -2519,7 +2519,7 @@ void YBCStoreTServerAshSamples(
 
 YBCStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, YBCPgOid *relfilenodes,
-    size_t num_relations) {
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range) {
   std::vector<PgObjectId> tables;
   tables.reserve(num_relations);
 
@@ -2528,7 +2528,7 @@ YBCStatus YBCPgInitVirtualWalForCDC(
     tables.push_back(std::move(table_id));
   }
 
-  const auto result = pgapi->InitVirtualWALForCDC(std::string(stream_id), tables);
+  const auto result = pgapi->InitVirtualWALForCDC(std::string(stream_id), tables, slot_hash_range);
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }

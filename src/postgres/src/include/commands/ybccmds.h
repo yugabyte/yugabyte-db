@@ -134,9 +134,10 @@ YBCGetReplicationSlot(const char *slot_name,
 
 extern void YBCDropReplicationSlot(const char *slot_name);
 
-extern void YBCInitVirtualWalForCDC(const char *stream_id,
-									Oid *relations,
-									size_t numrelations);
+extern void
+YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
+						size_t numrelations,
+						const YbcReplicationSlotHashRange *slot_hash_range);
 
 extern void YBCUpdatePublicationTableList(const char *stream_id,
 									Oid *relations,

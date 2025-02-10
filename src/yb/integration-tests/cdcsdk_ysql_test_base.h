@@ -132,6 +132,7 @@ DECLARE_bool(TEST_cdcsdk_skip_processing_unqualified_tables);
 DECLARE_bool(TEST_cdcsdk_skip_table_removal_from_qualified_list);
 DECLARE_bool(cdc_use_byte_threshold_for_vwal_changes);
 DECLARE_bool(ysql_enable_pg_export_snapshot);
+DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 
 namespace yb {
 
@@ -518,7 +519,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status InitVirtualWAL(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t session_id = kVWALSessionId1);
+      const uint64_t session_id = kVWALSessionId1,
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
@@ -532,7 +534,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<GetAllPendingChangesResponse> GetAllPendingTxnsFromVirtualWAL(
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
       bool init_virtual_wal, const uint64_t session_id = kVWALSessionId1,
-      bool allow_sending_feedback = true);
+      bool allow_sending_feedback = true,
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr);
 
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
