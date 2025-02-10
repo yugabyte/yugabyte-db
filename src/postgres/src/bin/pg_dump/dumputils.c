@@ -687,7 +687,7 @@ buildShSecLabelQuery(PGconn *conn, const char *catalog_name, Oid objectId,
  */
 void
 emitShSecLabels(PGconn *conn, PGresult *res, PQExpBuffer buffer,
-				const char *objtype, const char *objname)
+				const char *objtype, const char *objname, const char *yb_indent)
 {
 	int			i;
 
@@ -698,8 +698,8 @@ emitShSecLabels(PGconn *conn, PGresult *res, PQExpBuffer buffer,
 
 		/* must use fmtId result before calling it again */
 		appendPQExpBuffer(buffer,
-						  "SECURITY LABEL FOR %s ON %s",
-						  fmtId(provider), objtype);
+						  "%sSECURITY LABEL FOR %s ON %s",
+						  yb_indent, fmtId(provider), objtype);
 		appendPQExpBuffer(buffer,
 						  " %s IS ",
 						  fmtId(objname));
