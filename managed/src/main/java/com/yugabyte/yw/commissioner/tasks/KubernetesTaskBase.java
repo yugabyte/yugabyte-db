@@ -284,6 +284,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     List<NodeDetails> masterNodeList = universe.getMasters();
     createWaitForServersTasks(tserverNodeList, ServerType.TSERVER);
     createWaitForServersTasks(masterNodeList, ServerType.MASTER);
+    createWaitForYbcServerTask(tserverNodeList);
 
     createUnivManageAlertDefinitionsTask(true).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
 
