@@ -33,10 +33,10 @@
 {{ $data := dict }}
 {{ $url := printf "%s%s/yugabyte-%s-%s_flags.xml" $urlPrefix $version $appversion $process }}
 
-{{ with resources.GetRemote $url }}
+{{ with try (resources.GetRemote $url) }}
   {{ with .Err }}
     {{ warnf "%s - All flags page will not be generated, check url: %s" . $url}}
-  {{ else }}
+  {{ else with .Value }}
     {{ $data = .Content | transform.Unmarshal }}
   {{ end }}
 {{ else }}

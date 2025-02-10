@@ -18,7 +18,7 @@
 		{{ partial "feedback.html" .Site.Params.ui.feedback }}
 		<br />
 	{{ end }}
-	{{ if (.Site.DisqusShortname) }}
+	{{ if (.Site.Config.Services.Disqus.Shortname) }}
 		<br />
 		{{ partial "disqus-comment.html" . }}
 	{{ end }}

@@ -1,4 +1,4 @@
-import algoliasearch from 'algoliasearch';
+import { algoliasearch } from 'algoliasearch';
 
 /* eslint no-underscore-dangle: 0 */
 (function () {
