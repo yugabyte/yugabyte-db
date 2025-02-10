@@ -144,9 +144,8 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 			}
 
 			if enableClientToNodeEncryption == primaryUserIntent.GetEnableClientToNodeEncrypt() {
-				logrus.Fatalf(
-					formatter.Colorize("Enable client-to-node encryption is already set to "+
-						clientToNodeEncryption+"\n", formatter.RedColor))
+				logrus.Debugf("Enable client-to-node encryption is already set to " +
+					clientToNodeEncryption + "\n")
 			}
 			logrus.Debugf("Setting client-to-node encryption to: %t\n", enableClientToNodeEncryption)
 			requestBody.SetEnableClientToNodeEncrypt(enableClientToNodeEncryption)
@@ -168,9 +167,7 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 			}
 
 			if enableNodeToNodeEncryption == primaryUserIntent.GetEnableNodeToNodeEncrypt() {
-				logrus.Fatalf(
-					formatter.Colorize("Enable node-to-node encryption is already set to "+
-						nodeToNodeEncryption+"\n", formatter.RedColor))
+				logrus.Debugf("Enable node-to-node encryption is already set to " + nodeToNodeEncryption + "\n")
 			}
 
 			logrus.Debugf("Setting node-to-node encryption to: %t\n", enableNodeToNodeEncryption)
