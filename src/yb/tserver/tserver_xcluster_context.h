@@ -35,11 +35,16 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const override;
 
   bool IsReadOnlyMode(const NamespaceId& namespace_id) const override;
+  bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const override
+      EXCLUDES(target_namespaces_in_automatic_mode_mutex_);
 
   bool SafeTimeComputationRequired() const override;
   bool SafeTimeComputationRequired(const NamespaceId& namespace_id) const override;
 
   void UpdateSafeTimeMap(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
+  void UpdateTargetNamespacesInAutomaticModeSet(
+      const std::unordered_set<NamespaceId>& target_namespaces_in_automatic_mode) override
+      EXCLUDES(target_namespaces_in_automatic_mode_mutex_);
 
   Status SetSourceTableInfoMappingForCreateTable(
       const YsqlFullTableName& table_name, const PgObjectId& source_table_id,
@@ -52,6 +57,12 @@ class TserverXClusterContext : public TserverXClusterContextIf {
 
  private:
   XClusterSafeTimeMap safe_time_map_;
+
+  mutable std::shared_mutex target_namespaces_in_automatic_mode_mutex_;
+  // The set of namespaces that for this universe are targets of xCluster automatic mode
+  // replication.
+  std::unordered_set<NamespaceId> target_namespaces_in_automatic_mode_
+      GUARDED_BY(target_namespaces_in_automatic_mode_mutex_);
 
   struct CreateTableInfo {
     PgObjectId source_table_id;
