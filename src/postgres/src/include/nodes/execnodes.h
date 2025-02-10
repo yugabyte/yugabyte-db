@@ -3073,6 +3073,7 @@ typedef struct YbInsertOnConflictBatchState
 	TupleTableSlot **slots;		/* input slots for batch insert */
 	TupleTableSlot **planSlots; /* related slots */
 	List	   *pending_relids; /* all (partitioned) relations involved */
+	int			num_slots_initialized;	/* number of slots initialized */
 
 	/* batching mode fields */
 	int			num_slots;		/* index of next slot to add to batch */

@@ -4802,7 +4802,7 @@ static struct config_int ConfigureNamesInt[] =
 			0
 		},
 		&yb_insert_on_conflict_read_batch_size,
-		0, 0, INT_MAX,
+		1024, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
