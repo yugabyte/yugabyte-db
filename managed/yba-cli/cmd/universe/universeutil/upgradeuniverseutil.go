@@ -85,7 +85,12 @@ func Validations(cmd *cobra.Command, operation string) (
 	error,
 ) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
-	universeName, err := cmd.Flags().GetString("name")
+
+	universeNameFlag := "name"
+	if strings.EqualFold(operation, util.PITROperation) {
+		universeNameFlag = "universe-name"
+	}
+	universeName, err := cmd.Flags().GetString(universeNameFlag)
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
