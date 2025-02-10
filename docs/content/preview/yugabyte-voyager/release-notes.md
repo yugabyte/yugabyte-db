@@ -13,6 +13,26 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.11 - February 11, 2025
+
+### ​​Enhancements
+
+- Enhanced Assessment and Schema Analysis reports:
+  - Now detects the following unsupported PostgreSQL features: -
+    - Listen / Notify events
+    - Two-Phase Commit
+    - Setting compression method with COMPRESSION clause in CREATE / ALTER TABLE
+    - Create Database options for locale, collation, strategy, and OID related settings.
+- The JSON assessment report has been enhanced to include only the new assessment issue format, removing the old format that used separate fields for each issue category.
+- The import data status command now reports tables where the import has not yet started, improving visibility for bulk imports ( import data file ).
+- The assess-migration call-home payload now includes sizing and estimation information for better insights.
+- The assess-migration command now checks the source database IOPS and warns the user if it is zero.
+
+### Bug fixes
+
+- Fixed the status reported via import data status in case import is resumed for the table having CSV datafile with the header.
+- Fixed the guardrail checks for live migration in Oracle and MySQL by removing the ora2pg dependency check.
+
 ## v1.8.10 - January 28, 2025
 
 ### Enhancements
