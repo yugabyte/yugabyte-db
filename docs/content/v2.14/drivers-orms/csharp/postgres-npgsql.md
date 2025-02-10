@@ -98,7 +98,7 @@ Refer to [Configure SSL/TLS](../../../reference/drivers/csharp/postgres-npgsql-r
 
 ### Step 3: Query the YugabyteDB cluster from your application
 
-Copy the following code to the `Program.cs` file to set up YugbyteDB tables and query the table contents from the C# client. Replace the connection string `connStringBuilder` with the credentials of your cluster, and SSL certificates if required.
+Copy the following code to the `Program.cs` file to set up YugabyteDB tables and query the table contents from the C# client. Replace the connection string `connStringBuilder` with the credentials of your cluster, and SSL certificates if required.
 
 ```csharp
 using System;
