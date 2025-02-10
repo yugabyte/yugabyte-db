@@ -249,14 +249,15 @@ typedef struct {
 //       index_relfilenode_oid = TableRelfileNodeOid
 //       index_only_scan = true if ROWID is wanted. Otherwise, regular rowset is wanted.
 //
-// Attribute "querying_colocated_table"
-//   - If 'true', SELECT from colocated tables (of any type - database, tablegroup, system).
-//   - Note that the system catalogs are specifically for Postgres API and not Yugabyte
-//     system-tables.
+// embedded_idx: true when secondary index and table are sharded together.  This is the case when
+// they are colocated together (by database, tablegroup, syscatalog) or copartitioned (certain
+// indexes such as pgvector).  Note that this should be false in case of primary key index scan
+// since the pk index and the table are same in DocDB.
+// TODO(#25940): it is currently not always false for primary key index.
 typedef struct {
   YbcPgOid index_relfilenode_oid;
   bool index_only_scan;
-  bool querying_colocated_table;
+  bool embedded_idx;
   bool fetch_ybctids_only;
 } YbcPgPrepareParameters;
 

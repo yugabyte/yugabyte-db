@@ -161,13 +161,13 @@ std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
   if (!index_id.IsValid()) {
     return std::nullopt;
   }
-  return PgSelect::IndexQueryInfo{index_id, params && params->querying_colocated_table};
+  return PgSelect::IndexQueryInfo{index_id, params && params->embedded_idx};
 }
 
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
     const PgObjectId& index_id, const YbcPgPrepareParameters* params, bool is_region_local) {
-  if (params && (params->index_only_scan || YBCIsNonColocatedYbctidsOnlyFetch(params))) {
+  if (params && (params->index_only_scan || YBCIsNonembeddedYbctidsOnlyFetch(params))) {
     return PgSelectIndex::Make(pg_session, index_id, is_region_local);
   }
   return PgSelect::Make(
