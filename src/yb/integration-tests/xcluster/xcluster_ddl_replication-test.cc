@@ -872,6 +872,40 @@ TEST_F(XClusterDDLReplicationTest, AlterExistingColocatedTable) {
   ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
 }
 
+TEST_F(XClusterDDLReplicationTest, ExtraOidAllocationsOnTarget) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  google::SetVLOGLevel("catalog_manager*", 1);
+  google::SetVLOGLevel("pg_client_service*", 1);
+
+  {
+    /*
+     * Do extra OID allocations on the target that do not happen on the source.
+     *
+     * Most obviously, a manual DDL will do this but we are using that here as a stand-in for any
+     * DDL weirdness that causes an extra OID allocation when a replicated DDL is run on the target
+     * vs when it is run on the source.
+     */
+    auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
+    for (int i = 0; i < 100; i++) {
+      ASSERT_OK(conn.ExecuteFormat("CREATE TYPE my_manual_enum_$0 AS ENUM ('label')", i));
+    }
+  }
+
+  {
+    // See if the allocations a replicated DDL does collide with the extra allocations above.
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    for (int i = 0; i < 100; i++) {
+      ASSERT_OK(conn.ExecuteFormat("CREATE TYPE my_enum_$0 AS ENUM ('label')", i));
+    }
+  }
+
+  // Wait to see if applying the DDL on the target runs into problems.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
 class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTest {
  public:
   void SetUp() override {

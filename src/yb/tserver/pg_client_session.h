@@ -82,6 +82,7 @@ namespace tserver {
 YB_STRONGLY_TYPED_BOOL(IsDDL);
 
 struct PgClientSessionContext {
+  // xcluster_context is nullptr on master.
   const TserverXClusterContextIf* xcluster_context;
   YsqlAdvisoryLocksTable& advisory_locks_table;
   PgMutationCounter* pg_node_level_mutation_counter;

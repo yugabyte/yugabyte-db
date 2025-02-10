@@ -314,7 +314,7 @@ message SysNamespaceEntryPB {
   optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
 
   // For Postgres:
-  optional uint32 next_pg_oid = 3; // Next oid to assign.
+  optional uint32 next_normal_pg_oid = 3; // Next normal space oid to assign.
 
   // True if the namespace is colocated.
   optional bool colocated = 4 [ default = false ];
@@ -349,6 +349,8 @@ message SysNamespaceEntryPB {
       [ default = NEXT_VER_RUNNING ];
 
   optional uint32 clone_request_seq_no = 7;
+
+  optional uint32 next_secondary_pg_oid = 9; // Next secondary space oid to assign.
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.

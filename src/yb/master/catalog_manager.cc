@@ -3509,6 +3509,7 @@ Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
                                         ReservePgsqlOidsResponsePB* resp,
                                         rpc::RpcContext* rpc) {
   VLOG(1) << "ReservePgsqlOids request: " << req->ShortDebugString();
+  bool use_secondary_space = req->use_secondary_space();
 
   // Lookup namespace
   scoped_refptr<NamespaceInfo> ns;
@@ -3524,25 +3525,43 @@ Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
   // Reserve oids.
   auto l = ns->LockForWrite();
 
-  uint32_t begin_oid = l->pb.next_pg_oid();
+  uint32_t begin_oid, oid_upper_limit;
+  if (use_secondary_space) {
+    // If the field next_secondary_pg_oid is not present, then we use
+    // kPgFirstSecondarySpaceObjectId.
+    begin_oid = std::max(l->pb.next_secondary_pg_oid(), kPgFirstSecondarySpaceObjectId);
+    oid_upper_limit = kPgUpperBoundSecondarySpaceObjectId;
+  } else {
+    begin_oid = l->pb.next_normal_pg_oid();
+    oid_upper_limit = kPgUpperBoundNormalObjectId;
+  }
+  // Remaining available OIDs in this space are [begin_oid, oid_upper_limit).
+
   if (begin_oid < req->next_oid()) {
     begin_oid = req->next_oid();
   }
-  if (begin_oid == std::numeric_limits<uint32_t>::max()) {
-    LOG(WARNING) << Format("No more object identifier is available for Postgres database $0 ($1)",
-                           l->pb.name(), req->namespace_id());
-    return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR,
-                      STATUS(InvalidArgument, "No more object identifier is available"));
+  if (begin_oid >= oid_upper_limit) {
+    LOG(WARNING) << Format(
+        "No more $0 object identifiers are available for Postgres database $1 ($2)",
+        use_secondary_space ? "secondary" : "normal", l->pb.name(), req->namespace_id());
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR,
+        STATUS(InvalidArgument, "No more object identifiers are available"));
   }
 
   uint32_t end_oid = begin_oid + req->count();
   if (end_oid < begin_oid) {
     end_oid = std::numeric_limits<uint32_t>::max(); // Handle wraparound.
   }
+  end_oid = std::min(end_oid, oid_upper_limit);
 
   resp->set_begin_oid(begin_oid);
   resp->set_end_oid(end_oid);
-  l.mutable_data()->pb.set_next_pg_oid(end_oid);
+  if (use_secondary_space) {
+    l.mutable_data()->pb.set_next_secondary_pg_oid(end_oid);
+  } else {
+    l.mutable_data()->pb.set_next_normal_pg_oid(end_oid);
+  }
 
   // Update the on-disk state.
   const Status s = sys_catalog_->Upsert(leader_ready_term(), ns);
@@ -8554,7 +8573,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // for the database that need to be copied.
     if (db_type == YQL_DATABASE_PGSQL) {
       if (req->source_namespace_id().empty()) {
-        metadata->set_next_pg_oid(req->next_pg_oid());
+        metadata->set_next_normal_pg_oid(req->next_pg_oid());
       } else {
         const auto source_oid = GetPgsqlDatabaseOid(req->source_namespace_id());
         if (!source_oid.ok()) {
@@ -8598,10 +8617,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                    req->source_namespace_id()));
         }
         if (FLAGS_ysql_enable_pg_per_database_oid_allocator) {
-          metadata->set_next_pg_oid(kPgFirstNormalObjectId);
+          metadata->set_next_normal_pg_oid(kPgFirstNormalObjectId);
         } else {
           auto source_ns_lock = source_ns->LockForRead();
-          metadata->set_next_pg_oid(source_ns_lock->pb.next_pg_oid());
+          metadata->set_next_normal_pg_oid(source_ns_lock->pb.next_normal_pg_oid());
         }
       }
     }

@@ -34,9 +34,20 @@ bool TserverXClusterContext::IsReadOnlyMode(const NamespaceId& namespace_id) con
   return safe_time_map_.HasNamespace(namespace_id);
 }
 
+bool TserverXClusterContext::IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const {
+  SharedLock lock(target_namespaces_in_automatic_mode_mutex_);
+  return target_namespaces_in_automatic_mode_.contains(namespace_id);
+}
+
 void TserverXClusterContext::UpdateSafeTimeMap(
     const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
   safe_time_map_.Update(safe_time_map);
+}
+
+void TserverXClusterContext::UpdateTargetNamespacesInAutomaticModeSet(
+    const std::unordered_set<NamespaceId>& target_namespaces_in_automatic_mode) {
+  std::lock_guard lock(target_namespaces_in_automatic_mode_mutex_);
+  target_namespaces_in_automatic_mode_ = target_namespaces_in_automatic_mode;
 }
 
 bool TserverXClusterContext::SafeTimeComputationRequired() const {

@@ -33,10 +33,16 @@ class MockTserverXClusterContext : public TserverXClusterContextIf {
       (const, override));
 
   MOCK_METHOD(bool, IsReadOnlyMode, (const NamespaceId& namespace_id), (const, override));
+  MOCK_METHOD(
+      bool, IsTargetAndInAutomaticMode, (const NamespaceId& namespace_id), (const, override));
 
   MOCK_METHOD(bool, SafeTimeComputationRequired, (), (const, override));
   MOCK_METHOD(
       bool, SafeTimeComputationRequired, (const NamespaceId& namespace_id), (const, override));
+
+  MOCK_METHOD(
+      void, UpdateTargetNamespacesInAutomaticModeSet,
+      (const std::unordered_set<NamespaceId>& target_namespaces_in_automatic_mode), (override));
 
   MOCK_METHOD(
       Status, SetSourceTableInfoMappingForCreateTable,
