@@ -355,10 +355,10 @@ func init() {
 			"The attributes use-tablespaces, selective-restore and table-name-list are optional. "+
 			"Attributes selective-restore and table-name-list are needed only for YCQL. "+
 			"The attribute use-tablespaces is needed only for YSQL. "+
-			"Example: --keyspace-info keyspace-name=cassandra1;storage-location=s3://bucket/location1;"+
-			"backup-type=ycql;selective-restore=true;table-name-list=table1,table2 "+
-			"--keyspace-info keyspace-name=postgres;storage-location=s3://bucket/location2"+
-			"backup-type=ysql;use-tablespaces=true")
+			"Example: --keyspace-info keyspace-name=cassandra1::storage-location=s3://bucket/location1::"+
+			"backup-type=ycql::selective-restore=true::table-name-list=table1,table2 "+
+			"--keyspace-info keyspace-name=postgres::storage-location=s3://bucket/location2"+
+			"backup-type=ysql::use-tablespaces=true")
 	createRestoreCmd.MarkFlagRequired("keyspace-info")
 	createRestoreCmd.Flags().Bool("enable-verbose-logs", false,
 		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")
