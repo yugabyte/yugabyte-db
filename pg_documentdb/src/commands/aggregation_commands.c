@@ -18,10 +18,14 @@
 
 #include <metadata/metadata_cache.h>
 #include <utils/documentdb_errors.h>
+#include "utils/version_utils.h"
 #include <io/bson_core.h>
 #include <commands/cursor_private.h>
+#include "commands/parse_error.h"
 #include <aggregation/bson_aggregation_pipeline.h>
 
+
+extern bool EnableNowSystemVariable;
 
 /* --------------------------------------------------------- */
 /* Data types */
@@ -124,11 +128,15 @@ static void ParseGetMoreSpec(text *databaseName, pgbson *getMoreSpec, pgbson *cu
 
 static pgbson * BuildStreamingContinuationDocument(HTAB *cursorMap, pgbson *querySpec,
 												   int64_t cursorId, QueryKind queryKind,
+												   TimeSystemVariables *
+												   timeSystemVariables,
 												   int numIterations, bool
 												   isTailableCursor);
 
 static pgbson * BuildPersistedContinuationDocument(const char *cursorName, int64_t
 												   cursorId, QueryKind queryKind,
+												   TimeSystemVariables *
+												   timeSystemVariables,
 												   int numIterations);
 
 static Datum HandleFirstPageRequest(PG_FUNCTION_ARGS,
@@ -137,7 +145,6 @@ static Datum HandleFirstPageRequest(PG_FUNCTION_ARGS,
 									QueryKind queryKind, Query *query);
 
 static int64_t GenerateCursorId(int64_t inputValue);
-
 
 /* Generates a base QueryData used for the first page */
 inline static QueryData
@@ -315,6 +322,8 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 							  BuildPersistedContinuationDocument(getMoreInfo.cursorName,
 																 getMoreInfo.cursorId,
 																 getMoreInfo.queryKind,
+																 &getMoreInfo.queryData.
+																 timeSystemVariables,
 																 numIterations);
 			break;
 		}
@@ -330,6 +339,9 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 			{
 				case QueryKind_Find:
 				{
+					queryData.timeSystemVariables =
+						getMoreInfo.queryData.timeSystemVariables;
+
 					bool setStatementTimeout = false;
 					query = GenerateFindQuery(PointerGetDatum(database),
 											  getMoreInfo.querySpec, &queryData,
@@ -340,6 +352,9 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 
 				case QueryKind_Aggregate:
 				{
+					queryData.timeSystemVariables =
+						getMoreInfo.queryData.timeSystemVariables;
+
 					bool setStatementTimeout = false;
 					query = GenerateAggregationQuery(PointerGetDatum(database),
 													 getMoreInfo.querySpec, &queryData,
@@ -369,6 +384,8 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 																 getMoreInfo.querySpec,
 																 getMoreInfo.cursorId,
 																 getMoreInfo.queryKind,
+																 &getMoreInfo.queryData.
+																 timeSystemVariables,
 																 numIterations, false);
 			hash_destroy(cursorMap);
 			break;
@@ -379,6 +396,8 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 			Query *query;
 			bool generateCursorParams = true;
 			QueryData queryData = { 0 };
+			queryData.timeSystemVariables = getMoreInfo.queryData.timeSystemVariables;
+
 			isTailableCursor = true;
 			bool setStatementTimeout = false;
 			query = GenerateAggregationQuery(PointerGetDatum(database),
@@ -395,6 +414,8 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 																 getMoreInfo.querySpec,
 																 getMoreInfo.cursorId,
 																 getMoreInfo.queryKind,
+																 &getMoreInfo.queryData.
+																 timeSystemVariables,
 																 numIterations, true);
 			hash_destroy(cursorMap);
 			break;
@@ -528,6 +549,8 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 			continuationDoc = BuildStreamingContinuationDocument(tailableCursorMap,
 																 querySpec,
 																 cursorId, queryKind,
+																 &queryData->
+																 timeSystemVariables,
 																 numIterations, true);
 			hash_destroy(tailableCursorMap);
 			break;
@@ -548,6 +571,8 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 				cursorId = GenerateCursorId(cursorId);
 				continuationDoc = BuildStreamingContinuationDocument(cursorMap, querySpec,
 																	 cursorId, queryKind,
+																	 &queryData->
+																	 timeSystemVariables,
 																	 numIterations,
 																	 false);
 			}
@@ -578,6 +603,8 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 			continuationDoc = queryFullyDrained ? NULL :
 							  BuildPersistedContinuationDocument(cursorName, cursorId,
 																 queryKind,
+																 &queryData->
+																 timeSystemVariables,
 																 numIterations);
 			break;
 		}
@@ -622,7 +649,9 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
  */
 static pgbson *
 BuildStreamingContinuationDocument(HTAB *cursorMap, pgbson *querySpec, int64_t cursorId,
-								   QueryKind queryKind, int numIterations, bool
+								   QueryKind queryKind,
+								   TimeSystemVariables *timeSystemVariables, int
+								   numIterations, bool
 								   isTailableCursor)
 {
 	pgbson_writer writer;
@@ -656,6 +685,16 @@ BuildStreamingContinuationDocument(HTAB *cursorMap, pgbson *querySpec, int64_t c
 	/* In the response add the number of iterations (used in tests) */
 	PgbsonWriterAppendInt32(&writer, "numIters", 8, numIterations);
 
+	/* Add the time system variables */
+	if (EnableNowSystemVariable && IsClusterVersionAtleast(DocDB_V0, 24, 0))
+	{
+		if (timeSystemVariables != NULL && timeSystemVariables->nowValue.value_type !=
+			BSON_TYPE_EOD)
+		{
+			PgbsonWriterAppendValue(&writer, "sn", 2, &timeSystemVariables->nowValue);
+		}
+	}
+
 	return PgbsonWriterGetPgbson(&writer);
 }
 
@@ -665,7 +704,9 @@ BuildStreamingContinuationDocument(HTAB *cursorMap, pgbson *querySpec, int64_t c
  */
 static pgbson *
 BuildPersistedContinuationDocument(const char *cursorName, int64_t cursorId, QueryKind
-								   queryKind, int numIterations)
+								   queryKind, TimeSystemVariables *timeSystemVariables,
+								   int
+								   numIterations)
 {
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
@@ -678,6 +719,16 @@ BuildPersistedContinuationDocument(const char *cursorName, int64_t cursorId, Que
 
 	/* In the response add the number of iterations (used in tests) */
 	PgbsonWriterAppendInt32(&writer, "numIters", 8, numIterations);
+
+	/* Add the time system variables */
+	if (EnableNowSystemVariable && IsClusterVersionAtleast(DocDB_V0, 24, 0))
+	{
+		if (timeSystemVariables != NULL && timeSystemVariables->nowValue.value_type !=
+			BSON_TYPE_EOD)
+		{
+			PgbsonWriterAppendValue(&writer, "sn", 2, &timeSystemVariables->nowValue);
+		}
+	}
 
 	return PgbsonWriterGetPgbson(&writer);
 }
@@ -757,6 +808,23 @@ ParseCursorInputSpec(pgbson *cursorSpec, QueryGetMoreInfo *getMoreInfo)
 					}
 				}
 
+				continue;
+			}
+
+			case 's':
+			{
+				switch (pathKey[1])
+				{
+					/* $$NOW time system variable (now)*/
+					case 'n':
+					{
+						const bson_value_t *nowDateValue = bson_iter_value(
+							&cursorSpecIter);
+						getMoreInfo->queryData.timeSystemVariables.nowValue =
+							*nowDateValue;
+						continue;
+					}
+				}
 				continue;
 			}
 		}

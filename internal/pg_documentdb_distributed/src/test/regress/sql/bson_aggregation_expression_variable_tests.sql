@@ -98,3 +98,261 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"variable
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"variable": "with space"}, "in": "$$variable."}}}');
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"a.b": "a.b"}, "in": "$$a.b"}}}');
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"foo": "this is my foo variable"}, "in": {"$let": {"vars": {"foo": "$$foo2"}, "in": {"a": "$$foo"}}}}}}');
+
+-- $$NOW
+SELECT documentdb_api.insert_one('db','now_test_1','{"_id":"1", "a": "umbor" }', NULL);
+SELECT documentdb_api.insert_one('db','now_test_1','{"_id":"2", "a": "gabby" }', NULL);
+SELECT documentdb_api.insert_one('db','now_test_1','{"_id":"3", "a": "jo" }', NULL);
+
+-- $$NOW with dotted expression should evaluate to EOD
+SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_1", "projection": { "nowField" : "$$NOW.foo" }, "filter": {} }');
+
+CREATE SCHEMA time_system_variables_test;
+
+-- Function to replace the value of $$NOW with NOW_SYS_VARIABLE
+CREATE OR REPLACE FUNCTION time_system_variables_test.mask_time_value(query text, out result text)
+RETURNS SETOF TEXT AS $$
+BEGIN
+  FOR result IN EXECUTE query LOOP
+    RETURN QUERY 
+    SELECT REGEXP_REPLACE(
+      result, 
+      '\{\s*"\$date"\s*:\s*\{\s*"\$numberLong"\s*:\s*"[0-9]+"\s*\}\s*\}', 
+      'NOW_SYS_VARIABLE', 
+      'g'
+    );
+  END LOOP;
+  RETURN;
+END; $$ LANGUAGE plpgsql;
+
+SELECT time_system_variables_test.mask_time_value($Q$ SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_1", "projection": { "nowField" : "$$NOW" }, "filter": {} }') $Q$);
+
+SELECT time_system_variables_test.mask_time_value($Q$ SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_1", "projection": { "nowField" : "$$varRef" }, "filter": {}, "let": { "varRef": "$$NOW" } }') $Q$);
+SELECT time_system_variables_test.mask_time_value($Q$ EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_1", "projection": { "nowField" : "$$varRef" }, "filter": {}, "let": { "varRef": "$$NOW" } }') $Q$);
+SELECT time_system_variables_test.mask_time_value($Q$ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "now_test_1", "pipeline": [ { "$addFields": { "nowField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": "$$NOW" } }') $Q$);
+SELECT time_system_variables_test.mask_time_value($Q$ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "now_test_1", "pipeline": [ { "$addFields": { "nowField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": "$$NOW" } }') $Q$);
+SELECT time_system_variables_test.mask_time_value($Q$ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "now_test_1", "pipeline": [ { "$addFields": { "nowField" : "$$NOW" }} ] }') $Q$);
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "now_test_1", "pipeline": [ { "$addFields": { "nowField" : "$$NOW" }} ] }');
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_1", "projection": { "other": "$$varRef" }, "filter": { "$expr": { "$lt": [ "$_id", "$$NOW" ]} }, "let": { "varRef": "3" } }');
+
+-- $$NOW in $lookup 
+SELECT documentdb_api.insert_one('db','now_test_pipelinefrom',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
+SELECT documentdb_api.insert_one('db','now_test_pipelinefrom','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
+
+SELECT documentdb_api.insert_one('db','now_test_pipelineto','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House", "qval": 100 }', NULL);
+SELECT documentdb_api.insert_one('db','now_test_pipelineto','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade", "qval": 120 }', NULL);
+SELECT documentdb_api.insert_one('db','now_test_pipelineto','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda", "qval": 140 }', NULL);
+
+SELECT documentdb_api.insert_one('db','now_test_pipelinefrom_second',' {"_id": 1, "country": "America", "qq": 100 }', NULL);
+SELECT documentdb_api.insert_one('db','now_test_pipelinefrom_second','{ "_id": 2, "country": "Canada", "qq": 120 }', NULL);
+
+SELECT time_system_variables_test.mask_time_value($q$ SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "now_test_pipelineto", "pipeline": [ { "$lookup": { "from": "now_test_pipelinefrom", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$quantity", "$$qval" ] } }}, { "$addFields": { "addedQval": "$$qval", "nowField": "$$NOW" }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }') $q$);
+
+-- Add a $lookup with let but add a subquery stage
+SELECT time_system_variables_test.mask_time_value($q$ SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "now_test_pipelineto", "pipeline": [ { "$lookup": { "from": "now_test_pipelinefrom", "pipeline": [ { "$sort": { "_id": 1 } }, { "$match": { "$expr": { "$eq": [ "$quantity", "$$NOW" ] } }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }') $q$);
+
+-- $$NOW in nested lookup
+SELECT time_system_variables_test.mask_time_value($Q$ SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "now_test_pipelineto", "pipeline": [ { "$lookup": { "from": "now_test_pipelinefrom", "pipeline": [{ "$addFields": { "addedVal": "$$NOW" }}, { "$lookup": { "from": "now_test_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name" }} ], "cursor": {} }') $Q$);
+
+SELECT time_system_variables_test.mask_time_value($Q$ SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "now_test_pipelineto", "pipeline": [ { "$lookup": { "from": "now_test_pipelinefrom", "pipeline": [{ "$addFields": { "addedVal": "$$NOW" }}, { "$lookup": { "from": "now_test_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$$NOW" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name" }} ], "cursor": {} }') $Q$);
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "now_test_pipelineto", "pipeline": [ {"$match": {"_id": 3}},  { "$addFields": { "nowField1": "$$NOW" }}, { "$lookup": { "from": "now_test_pipelinefrom", "pipeline": [{ "$addFields": { "nowField2": "$$NOW" }}, { "$lookup": { "from": "now_test_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name" }} ], "cursor": {} }') \gset
+\set result0 :document
+SELECT :'result0'::json->>'nowField1' = :'result0'::json->'myMatch'->0->>'nowField2';
+
+-- $$NOW in transactions. We expect same values.
+SELECT documentdb_api.insert_one('db','now_test_2','{"_id": 0}', NULL);
+
+BEGIN;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_2", "projection": { "nowField" : "$$NOW" }, "filter": {} }') as document \gset
+\set result1 :document
+
+SELECT pg_sleep(2);
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_2", "projection": { "nowField" : "$$NOW" }, "filter": {} }') as document \gset
+\set result2 :document
+
+SELECT pg_sleep(2);
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_2", "projection": { "nowField" : "$$NOW" }, "filter": {} }') as document \gset
+\set result3 :document
+
+SELECT :'result1'::bson->>'nowField' = :'result2'::bson->>'nowField' AND :'result2'::bson->>'nowField' = :'result3'::bson->>'nowField';
+END;
+
+-- $$NOW outside transaction block. We expect different values.
+SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_2", "projection": { "nowField" : "$$NOW" }, "filter": {} }') as document \gset
+\set result4 :document
+
+SELECT pg_sleep(2);
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_2", "projection": { "nowField" : "$$NOW" }, "filter": {} }') as document \gset
+\set result5 :document
+
+SELECT pg_sleep(2);
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "now_test_2", "projection": { "nowField" : "$$NOW" }, "filter": {} }') as document \gset
+\set result6 :document
+
+SELECT :'result4'::bson->>'nowField' <> :'result5'::bson->>'nowField' AND :'result5'::bson->>'nowField' <> :'result6'::bson->>'nowField';
+
+-- Earlier queries should have higher $$NOW values
+SELECT :'result4'::bson->>'nowField' < :'result5'::bson->>'nowField' AND :'result5'::bson->>'nowField' < :'result6'::bson->>'nowField';
+
+-- $$NOW with cursors
+CREATE TYPE time_system_variables_test.drain_result AS (filteredDoc bson, nowCompareResult bool, persistConnection bool);
+
+DO $$
+DECLARE i int;
+BEGIN
+FOR i IN 1..10 LOOP
+PERFORM documentdb_api.insert_one('db', 'now_cursor_tests', FORMAT('{ "_id": %s }',  i)::documentdb_core.bson);
+END LOOP;
+END;
+$$;
+
+-- Drains a find query and compares the value of 'nowField' across all batches returned by the cursor.
+CREATE FUNCTION time_system_variables_test.drain_find_query(
+    loopCount int, pageSize int, project bson DEFAULT NULL, skipVal int4 DEFAULT NULL, limitVal int4 DEFAULT NULL) RETURNS SETOF time_system_variables_test.drain_result AS
+$$
+    DECLARE
+        i int;
+        doc bson;
+        cont bson;
+        contProcessed bson;
+        persistConn bool;
+        findSpec bson;
+        getMoreSpec bson;
+        currentBatch jsonb[];
+        currentDoc jsonb;
+        currentNowValue text;
+        finalResult bool;
+    BEGIN
+
+    WITH r1 AS (SELECT 'now_cursor_tests' AS "find", project AS "projection", skipVal AS "skip", limitVal as "limit", pageSize AS "batchSize")
+    SELECT row_get_bson(r1) INTO findSpec FROM r1;
+
+    WITH r1 AS (SELECT 'now_cursor_tests' AS "collection", 4294967295::int8 AS "getMore", pageSize AS "batchSize")
+    SELECT row_get_bson(r1) INTO getMoreSpec FROM r1;
+
+    SELECT cursorPage, continuation, persistConnection INTO STRICT doc, cont, persistConn FROM
+                    documentdb_api.find_cursor_first_page(database => 'db', commandSpec => findSpec, cursorId => 4294967295);
+
+    finalResult := TRUE;
+    currentNowValue := ((doc->>'cursor')::bson->>'firstBatch')::jsonb->0->>'nowField';
+
+    SELECT documentdb_api_catalog.bson_dollar_project(doc,
+        ('{ "ok": 1, "cursor.id": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }, ' || 
+        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::documentdb_core.bson) INTO STRICT doc;
+
+    RETURN NEXT ROW(doc, finalResult, persistConn)::time_system_variables_test.drain_result;
+
+    FOR i IN 1..loopCount LOOP
+        SELECT cursorPage, continuation INTO STRICT doc, cont FROM documentdb_api.cursor_get_more(database => 'db', getMoreSpec => getMoreSpec, continuationSpec => cont);
+
+        currentBatch := (
+        SELECT ARRAY(
+            SELECT jsonb_array_elements( ((doc->>'cursor')::bson->>'nextBatch')::jsonb)
+            )
+        );
+
+        IF currentBatch IS NOT NULL AND array_length(currentBatch, 1) > 0 THEN
+          FOR i IN 1..array_length(currentBatch, 1) LOOP
+              currentDoc := currentBatch[i];
+              finalResult := finalResult AND (currentNowValue = currentDoc->>'nowField');
+              currentNowValue := currentDoc->>'nowField';
+          END LOOP;
+        END IF;
+
+        SELECT documentdb_api_catalog.bson_dollar_project(doc,
+        ('{ "ok": 1, "cursor.id": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }, ' ||
+        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::documentdb_core.bson) INTO STRICT doc;
+
+        RETURN NEXT ROW(doc, finalResult, FALSE)::time_system_variables_test.drain_result;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Drains an aggregate query and compares the value of 'nowField' across all batches returned by the cursor.
+CREATE FUNCTION time_system_variables_test.drain_aggregation_query(
+    loopCount int, pageSize int, pipeline bson DEFAULT NULL, singleBatch bool DEFAULT NULL) RETURNS SETOF time_system_variables_test.drain_result AS
+$$
+    DECLARE
+        i int;
+        doc bson;
+        cont bson;
+        contProcessed bson;
+        persistConn bool;
+        aggregateSpec bson;
+        getMoreSpec bson;
+        currentBatch jsonb[];
+        currentDoc jsonb;
+        currentNowValue text;
+        finalResult bool;
+    BEGIN
+
+    IF pipeline IS NULL THEN
+        pipeline = '{ "": [] }'::bson;
+    END IF;
+
+    WITH r0 AS (SELECT pageSize AS "batchSize", singleBatch AS "singleBatch" ),
+    r1 AS (SELECT 'now_cursor_tests' AS "aggregate", pipeline AS "pipeline", row_get_bson(r0) AS "cursor" FROM r0)
+    SELECT row_get_bson(r1) INTO aggregateSpec FROM r1;
+
+    WITH r1 AS (SELECT 'now_cursor_tests' AS "collection", 4294967294::int8 AS "getMore", pageSize AS "batchSize" )
+    SELECT row_get_bson(r1) INTO getMoreSpec FROM r1;
+
+    SELECT cursorPage, continuation, persistConnection INTO STRICT doc, cont, persistConn FROM
+                    documentdb_api.aggregate_cursor_first_page(database => 'db', commandSpec => aggregateSpec, cursorId => 4294967294);
+
+    finalResult := TRUE;
+    currentNowValue := ((doc->>'cursor')::bson->>'firstBatch')::jsonb->0->>'nowField';
+
+    SELECT documentdb_api_catalog.bson_dollar_project(doc,
+        ('{ "ok": 1, "cursor.id": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }, ' ||
+        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::documentdb_core.bson) INTO STRICT doc;
+
+    RETURN NEXT ROW(doc, finalResult, FALSE)::time_system_variables_test.drain_result;
+
+    FOR i IN 1..loopCount LOOP
+        SELECT cursorPage, continuation INTO STRICT doc, cont FROM documentdb_api.cursor_get_more(database => 'db', getMoreSpec => getMoreSpec, continuationSpec => cont);
+
+        currentBatch := (
+        SELECT ARRAY(
+            SELECT jsonb_array_elements( ((doc->>'cursor')::bson->>'nextBatch')::jsonb)
+            )
+        );
+
+        IF currentBatch IS NOT NULL AND array_length(currentBatch, 1) > 0 THEN
+          FOR i IN 1..array_length(currentBatch, 1) LOOP
+              currentDoc := currentBatch[i];
+              finalResult := finalResult AND (currentNowValue = currentDoc->>'nowField');
+              currentNowValue := currentDoc->>'nowField';
+          END LOOP;
+        END IF;
+
+        SELECT documentdb_api_catalog.bson_dollar_project(doc,
+        ('{ "ok": 1, "cursor.id": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }, ' ||
+        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::documentdb_core.bson) INTO STRICT doc;
+
+        RETURN NEXT ROW(doc, finalResult, FALSE)::time_system_variables_test.drain_result;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT time_system_variables_test.mask_time_value($Q$ SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "now_cursor_tests", "pipeline": [ { "$addFields": { "nowField" : "$$NOW" }} ], "cursor": { "batchSize": 2 } }', 4294967294); $Q$);
+
+SELECT * FROM time_system_variables_test.drain_find_query(loopCount => 12, pageSize => 1, project => '{ "nowField": "$$NOW" }');
+SELECT * FROM time_system_variables_test.drain_find_query(loopCount => 12, pageSize => 1, project => '{ "a": 1, "nowField": "$$NOW" }');
+
+SELECT * FROM time_system_variables_test.drain_find_query(loopCount => 12, pageSize => 2, project => '{ "a": 1, "nowField": "$$NOW" }');
+SELECT * FROM time_system_variables_test.drain_aggregation_query(loopCount => 12, pageSize => 2, pipeline => '{ "": [{ "$project": { "a": 1, "nowField": "$$NOW" } }]}');
+
+SELECT * FROM time_system_variables_test.drain_aggregation_query(loopCount => 12, pageSize => 1, pipeline => '{ "": [{ "$project": { "a": 1, "nowField": "$$NOW" } }]}');
+SELECT * FROM time_system_variables_test.drain_aggregation_query(loopCount => 4, pageSize => 3, pipeline => '{ "": [{ "$project": { "a": 1, "nowField": "$$NOW" } }]}', singleBatch => TRUE);
+SELECT * FROM time_system_variables_test.drain_aggregation_query(loopCount => 4, pageSize => 100000, pipeline => '{ "": [{ "$project": { "nowField": "$$NOW" } }, { "$limit": 3 }]}');

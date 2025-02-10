@@ -86,6 +86,9 @@ bool EnableMergeAcrossDB = DEFAULT_ENABLE_MERGE_ACROSS_DB;
 #define DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN false
 bool EnableMultiIndexRumJoin = DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN;
 
+#define DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE false
+bool EnableNowSystemVariable = DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE;
+
 /* Whether or not to enforce a per command backend timeout */
 /* TODO: Enable in V0.25 */
 #define DEFAULT_ENABLE_STATEMENT_TIMEOUT false
@@ -255,6 +258,14 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		gettext_noop(
 			"Whether to enable per statement backend timeout override in the backend."),
 		NULL, &EnableBackendStatementTimeout, DEFAULT_ENABLE_STATEMENT_TIMEOUT,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableNowSystemVariable", newGucPrefix),
+		gettext_noop(
+			"Enables support for the $$NOW time system variable."),
+		NULL, &EnableNowSystemVariable,
+		DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(

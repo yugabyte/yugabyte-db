@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_project.c
+ * src/aggregation/bson_project.c
  *
  * Implementation of BSON projection functions.
  *
@@ -281,6 +281,11 @@ bson_dollar_lookup_expression_eval_merge(PG_FUNCTION_ARGS)
 	 * the current lookup spec has variable references to the parent lookup spec. */
 	context.skipParseAggregationExpressions = false;
 
+	/* Add the time system variables to the context. */
+	GetTimeSystemVariablesFromVariableSpec(variableSpec,
+										   &context.parseAggregationContext.
+										   timeSystemVariables);
+
 	bool hasFields;
 	bson_iter_t specIter;
 	PgbsonInitIterator(pathSpec, &specIter);
@@ -310,8 +315,12 @@ bson_dollar_lookup_expression_eval_merge(PG_FUNCTION_ARGS)
 	 * honor the value when we evaluate their values and not treat them as expressions against the right doc.
 	 */
 	PgbsonInitIterator(pathSpec, &specIter);
-	pgbson_writer variableWriter;
-	PgbsonWriterInit(&variableWriter);
+	pgbson_writer variablesWriter;
+	PgbsonWriterInit(&variablesWriter);
+
+	pgbson_writer childWriter;
+	PgbsonWriterStartDocument(&variablesWriter, "let", -1, &childWriter);
+
 	const char *removeVar = "$$REMOVE";
 	const char *literalKey = "$literal";
 	while (bson_iter_next(&specIter))
@@ -321,19 +330,20 @@ bson_dollar_lookup_expression_eval_merge(PG_FUNCTION_ARGS)
 		if (!PgbsonInitIteratorAtPath(evaluatedInputSpec, varKey, &innerIter))
 		{
 			/* variable not found - need to add the original key with $$REMOVE so that it doesn't project */
-			PgbsonWriterAppendUtf8(&variableWriter, varKey, -1, removeVar);
+			PgbsonWriterAppendUtf8(&childWriter, varKey, -1, removeVar);
 		}
 		else
 		{
 			pgbson_writer literalWriter;
-			PgbsonWriterStartDocument(&variableWriter, varKey, -1, &literalWriter);
+			PgbsonWriterStartDocument(&childWriter, varKey, -1, &literalWriter);
 			PgbsonWriterAppendValue(&literalWriter, literalKey, -1, bson_iter_value(
 										&innerIter));
-			PgbsonWriterEndDocument(&variableWriter, &literalWriter);
+			PgbsonWriterEndDocument(&childWriter, &literalWriter);
 		}
 	}
 
-	evaluatedInputSpec = PgbsonWriterGetPgbson(&variableWriter);
+	PgbsonWriterEndDocument(&variablesWriter, &childWriter);
+	evaluatedInputSpec = PgbsonWriterGetPgbson(&variablesWriter);
 
 	pgbson *resultVariables = NULL;
 	if (!IsPgbsonEmptyDocument(variableSpec))
@@ -1018,7 +1028,7 @@ bson_dollar_facet_project(PG_FUNCTION_ARGS)
 
 /*
  * bson_dollar_unset performs a projection of one or more paths to unset
- * in a binary serialized bson. THis is equivalent to the $project but with
+ * in a binary serialized bson. This is equivalent to the $project but with
  * exclude being true.
  */
 Datum
@@ -1147,6 +1157,8 @@ BuildRedactState(BsonReplaceRootRedactState *redactState, const bson_value_t *re
 {
 	ParseAggregationExpressionContext context = { .allowRedactVariables = true };
 	redactState->expressionData = palloc0(sizeof(AggregationExpressionData));
+
+	GetTimeSystemVariablesFromVariableSpec(variableSpec, &context.timeSystemVariables);
 	ParseAggregationExpressionData(redactState->expressionData, redactValue, &context);
 
 	SetVariableSpec(&redactState->variableContext, variableSpec);
@@ -1577,6 +1589,11 @@ BuildBsonPathTreeForDollarProjectCore(BsonProjectionQueryState *state,
 									  BsonProjectionContext *projectionContext,
 									  BuildBsonPathTreeContext *pathTreeContext)
 {
+	/* Set the time system variables in the path tree context. */
+	GetTimeSystemVariablesFromVariableSpec(projectionContext->variableSpec,
+										   &pathTreeContext->parseAggregationContext.
+										   timeSystemVariables);
+
 	bool hasFields = false;
 	bool forceLeafExpression = false;
 	BsonIntermediatePathNode *root = BuildBsonPathTree(projectionContext->pathSpecIter,
@@ -1613,6 +1630,11 @@ BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
 	context.buildPathTreeFuncs = &DefaultPathTreeFuncs;
 	context.skipParseAggregationExpressions = skipParseAggregationExpressions;
 
+	/* Set the time system variables in the path tree context from the variableSpec. */
+	GetTimeSystemVariablesFromVariableSpec(variableSpec,
+										   &context.parseAggregationContext.
+										   timeSystemVariables);
+
 	bool hasFields = false;
 	bool forceLeafExpression = true;
 	BsonIntermediatePathNode *root = BuildBsonPathTree(projectionSpecIter, &context,
@@ -1634,14 +1656,21 @@ static void
 SetVariableSpec(ExpressionVariableContext **state, pgbson *variableSpec)
 {
 	*state = NULL;
-	if (variableSpec != NULL)
+
+	bson_iter_t letVarsIter;
+	if (variableSpec != NULL && PgbsonInitIteratorAtPath(variableSpec, "let",
+														 &letVarsIter))
 	{
-		bson_value_t varsValue = ConvertPgbsonToBsonValue(variableSpec);
+		/* Do not need to set the timeSystemVariables field in the context */
+		/* as variables {"a" : "$$NOW"} would be parsed with "$$NOW" evaluated. */
+		ParseAggregationExpressionContext parseContext = { 0 };
+
 		ExpressionVariableContext *variableContext =
 			palloc0(sizeof(ExpressionVariableContext));
 
-		ParseAggregationExpressionContext parseContext = { 0 };
-		ParseVariableSpec(&varsValue, variableContext, &parseContext);
+		const bson_value_t *letVariables = bson_iter_value(&letVarsIter);
+		ParseVariableSpec(letVariables, variableContext, &parseContext);
+
 		*state = variableContext;
 	}
 }
@@ -2531,6 +2560,11 @@ PopulateReplaceRootExpressionDataFromSpec(BsonReplaceRootRedactState *expression
 
 	expressionData->expressionData = palloc0(sizeof(AggregationExpressionData));
 	ParseAggregationExpressionContext parseContext = { 0 };
+
+	/* Add the $$NOW time system variables field from the variableSpec. */
+	GetTimeSystemVariablesFromVariableSpec(variableSpec,
+										   &parseContext.timeSystemVariables);
+
 	ParseAggregationExpressionData(expressionData->expressionData, &bsonValue,
 								   &parseContext);
 

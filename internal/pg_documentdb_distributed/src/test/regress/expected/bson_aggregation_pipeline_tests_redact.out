@@ -474,34 +474,34 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest
 ERROR:  Use of undefined variable: DESCEND
 /*EXPLAIN*/
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$redact": "$$KEEP" } ] }');
-                                                                                                                             QUERY PLAN                                                                                                                              
+                                                                                                                                                                    QUERY PLAN                                                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_dollar_redact(document, '{ }'::documentdb_core.bson, '$$KEEP'::text, '{ }'::documentdb_core.bson) AS document FROM documentdb_data.documents_51502_5150036 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '51502'::bigint)
+         Query: SELECT documentdb_api_internal.bson_dollar_redact(document, '{ }'::documentdb_core.bson, '$$KEEP'::text, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS document FROM documentdb_data.documents_51502_5150036 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '51502'::bigint)
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documentdb_data.documents_51502_5150036 collection
-               Output: documentdb_api_internal.bson_dollar_redact(document, '{ }'::documentdb_core.bson, '$$KEEP'::text, '{ }'::documentdb_core.bson)
+               Output: documentdb_api_internal.bson_dollar_redact(document, '{ }'::documentdb_core.bson, '$$KEEP'::text, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
                Recheck Cond: (collection.shard_key_value = '51502'::bigint)
                ->  Bitmap Index Scan on _id_
                      Index Cond: (collection.shard_key_value = '51502'::bigint)
 (12 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$redact": { "$cond": {"if": {"$eq": ["$level", 1]}, "then": "$$KEEP", "else": "$$PRUNE"} } } ] }');
-                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                 
+                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                        
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_dollar_redact(document, '{ "$cond" : { "if" : { "$eq" : [ "$level", { "$numberInt" : "1" } ] }, "then" : "$$KEEP", "else" : "$$PRUNE" } }'::documentdb_core.bson, ''::text, '{ }'::documentdb_core.bson) AS document FROM documentdb_data.documents_51502_5150036 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '51502'::bigint)
+         Query: SELECT documentdb_api_internal.bson_dollar_redact(document, '{ "$cond" : { "if" : { "$eq" : [ "$level", { "$numberInt" : "1" } ] }, "then" : "$$KEEP", "else" : "$$PRUNE" } }'::documentdb_core.bson, ''::text, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS document FROM documentdb_data.documents_51502_5150036 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '51502'::bigint)
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documentdb_data.documents_51502_5150036 collection
-               Output: documentdb_api_internal.bson_dollar_redact(document, '{ "$cond" : { "if" : { "$eq" : [ "$level", { "$numberInt" : "1" } ] }, "then" : "$$KEEP", "else" : "$$PRUNE" } }'::documentdb_core.bson, ''::text, '{ }'::documentdb_core.bson)
+               Output: documentdb_api_internal.bson_dollar_redact(document, '{ "$cond" : { "if" : { "$eq" : [ "$level", { "$numberInt" : "1" } ] }, "then" : "$$KEEP", "else" : "$$PRUNE" } }'::documentdb_core.bson, ''::text, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
                Recheck Cond: (collection.shard_key_value = '51502'::bigint)
                ->  Bitmap Index Scan on _id_
                      Index Cond: (collection.shard_key_value = '51502'::bigint)
@@ -566,30 +566,30 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest
 
 /*EXPLAIN*/
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$redact": "$$KEEP" } ] }');
-                                                                                                   QUERY PLAN                                                                                                    
+                                                                                                                                          QUERY PLAN                                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 8
    Tasks Shown: One of 8
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_dollar_redact(document, '{ }'::documentdb_core.bson, '$$KEEP'::text, '{ }'::documentdb_core.bson) AS document FROM documentdb_data.documents_51502_5150160 collection WHERE true
+         Query: SELECT documentdb_api_internal.bson_dollar_redact(document, '{ }'::documentdb_core.bson, '$$KEEP'::text, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS document FROM documentdb_data.documents_51502_5150160 collection WHERE true
          Node: host=localhost port=58070 dbname=regression
          ->  Seq Scan on documentdb_data.documents_51502_5150160 collection
-               Output: documentdb_api_internal.bson_dollar_redact(document, '{ }'::documentdb_core.bson, '$$KEEP'::text, '{ }'::documentdb_core.bson)
+               Output: documentdb_api_internal.bson_dollar_redact(document, '{ }'::documentdb_core.bson, '$$KEEP'::text, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
 (9 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$redact": { "$cond": {"if": {"$eq": ["$level", 1]}, "then": "$$KEEP", "else": "$$PRUNE"} } } ] }');
-                                                                                                                                                       QUERY PLAN                                                                                                                                                       
+                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                              
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 8
    Tasks Shown: One of 8
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_dollar_redact(document, '{ "$cond" : { "if" : { "$eq" : [ "$level", { "$numberInt" : "1" } ] }, "then" : "$$KEEP", "else" : "$$PRUNE" } }'::documentdb_core.bson, ''::text, '{ }'::documentdb_core.bson) AS document FROM documentdb_data.documents_51502_5150160 collection WHERE true
+         Query: SELECT documentdb_api_internal.bson_dollar_redact(document, '{ "$cond" : { "if" : { "$eq" : [ "$level", { "$numberInt" : "1" } ] }, "then" : "$$KEEP", "else" : "$$PRUNE" } }'::documentdb_core.bson, ''::text, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS document FROM documentdb_data.documents_51502_5150160 collection WHERE true
          Node: host=localhost port=58070 dbname=regression
          ->  Seq Scan on documentdb_data.documents_51502_5150160 collection
-               Output: documentdb_api_internal.bson_dollar_redact(document, '{ "$cond" : { "if" : { "$eq" : [ "$level", { "$numberInt" : "1" } ] }, "then" : "$$KEEP", "else" : "$$PRUNE" } }'::documentdb_core.bson, ''::text, '{ }'::documentdb_core.bson)
+               Output: documentdb_api_internal.bson_dollar_redact(document, '{ "$cond" : { "if" : { "$eq" : [ "$level", { "$numberInt" : "1" } ] }, "then" : "$$KEEP", "else" : "$$PRUNE" } }'::documentdb_core.bson, ''::text, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
 (9 rows)
 

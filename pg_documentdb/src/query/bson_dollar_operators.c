@@ -259,6 +259,7 @@ typedef struct TraverseElemMatchValidateState
 
 typedef bool (*IsQueryFilterNullFunc)(const TraverseValidateState *state);
 extern bool EnableCollation;
+extern bool EnableNowSystemVariable;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -3293,21 +3294,29 @@ PopulateExprStateFromQuery(BsonDollarExprQueryState *state,
 	pgbsonelement element;
 	PgbsonToSinglePgbsonElement(filter, &element);
 
-	AggregationExpressionData *exprData = (AggregationExpressionData *) palloc0(
-		sizeof(AggregationExpressionData));
 	ParseAggregationExpressionContext parseContext = { 0 };
-	ParseAggregationExpressionData(exprData, &element.bsonValue, &parseContext);
-	state->expression = exprData;
 
 	if (variableSpec != NULL)
 	{
-		bson_value_t varsValue = ConvertPgbsonToBsonValue(variableSpec);
-		ExpressionVariableContext *variableContext =
-			palloc0(sizeof(ExpressionVariableContext));
+		GetTimeSystemVariablesFromVariableSpec((pgbson *) variableSpec,
+											   &parseContext.timeSystemVariables);
 
-		ParseVariableSpec(&varsValue, variableContext, &parseContext);
-		state->variableContext = variableContext;
+		bson_iter_t letVarsIter;
+		if (PgbsonInitIteratorAtPath(variableSpec, "let", &letVarsIter))
+		{
+			ExpressionVariableContext *variableContext =
+				palloc0(sizeof(ExpressionVariableContext));
+
+			const bson_value_t *letVars = bson_iter_value(&letVarsIter);
+			ParseVariableSpec(letVars, variableContext, &parseContext);
+			state->variableContext = variableContext;
+		}
 	}
+	AggregationExpressionData *exprData = (AggregationExpressionData *) palloc0(
+		sizeof(AggregationExpressionData));
+
+	ParseAggregationExpressionData(exprData, &element.bsonValue, &parseContext);
+	state->expression = exprData;
 }
 
 

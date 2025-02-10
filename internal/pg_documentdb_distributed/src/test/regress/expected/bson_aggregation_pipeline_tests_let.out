@@ -33,17 +33,17 @@ SELECT shard_key_value, object_id, document FROM documentdb_api.collection('db',
 -- add newField
 -- with let enabled
 EXPLAIN (VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": 20 } }');
-                                                                                                                                                                         QUERY PLAN                                                                                                                                                                         
+                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_dollar_project_find(document, '{ "newField" : "$$varRef" }'::documentdb_core.bson, '{ }'::documentdb_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "20" } } }'::documentdb_core.bson) AS document FROM documentdb_data.documents_4130_413001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4130'::bigint)
+         Query: SELECT documentdb_api_internal.bson_dollar_project_find(document, '{ "newField" : "$$varRef" }'::documentdb_core.bson, '{ }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE, "let" : { "varRef" : { "$literal" : { "$numberInt" : "20" } } } }'::documentdb_core.bson) AS document FROM documentdb_data.documents_4130_413001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4130'::bigint)
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documentdb_data.documents_4130_413001 collection  (cost=4.18..12.65 rows=4 width=32)
-               Output: documentdb_api_internal.bson_dollar_project_find(document, '{ "newField" : "$$varRef" }'::documentdb_core.bson, '{ }'::documentdb_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "20" } } }'::documentdb_core.bson)
+               Output: documentdb_api_internal.bson_dollar_project_find(document, '{ "newField" : "$$varRef" }'::documentdb_core.bson, '{ }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE, "let" : { "varRef" : { "$literal" : { "$numberInt" : "20" } } } }'::documentdb_core.bson)
                Recheck Cond: (collection.shard_key_value = '4130'::bigint)
                ->  Bitmap Index Scan on _id_  (cost=0.00..4.18 rows=4 width=0)
                      Index Cond: (collection.shard_key_value = '4130'::bigint)
@@ -202,17 +202,17 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": 1, "xyz": "$_id" } } ], "let": {"varRef": 1}}');
-                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                  
+                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::documentdb_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "1" } } }'::documentdb_core.bson) AS document FROM documentdb_data.documents_4130_413001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4130'::bigint)
+         Query: SELECT documentdb_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE, "let" : { "varRef" : { "$literal" : { "$numberInt" : "1" } } } }'::documentdb_core.bson) AS document FROM documentdb_data.documents_4130_413001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4130'::bigint)
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documentdb_data.documents_4130_413001 collection
-               Output: documentdb_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::documentdb_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+               Output: documentdb_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE, "let" : { "varRef" : { "$literal" : { "$numberInt" : "1" } } } }'::documentdb_core.bson)
                Recheck Cond: (collection.shard_key_value = '4130'::bigint)
                ->  Bitmap Index Scan on _id_
                      Index Cond: (collection.shard_key_value = '4130'::bigint)
@@ -531,7 +531,7 @@ SELECT document from bson_aggregation_pipeline('db', '{ "aggregate": "orderscoll
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT document from bson_aggregation_pipeline('db', '{ "aggregate": "orderscoll", "pipeline": [ { "$lookup": { "from": "products", "let": { "productId": "$productId", "hello" : "parag" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$_id", "$$productId" ] } } }, { "$project": { "name": 1, "price": 1, "_id": 0 , "field" : "$$hello" } } ], "as": "productDetails" } }, { "$unwind": "$productDetails" } ] , "cursor": {} }');
-                                                                                                                                                                QUERY PLAN                                                                                                                                                                 
+                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                          
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -553,7 +553,7 @@ EXPLAIN (COSTS OFF) SELECT document from bson_aggregation_pipeline('db', '{ "agg
                SubPlan 1
                  ->  Aggregate
                        ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_0
-                             Filter: documentdb_api_internal.bson_dollar_expr(lookup_unwind, '{ "" : { "$eq" : [ "$_id", "$$productId" ] } }'::documentdb_core.bson, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "productId" : "$productId", "hello" : "parag" }'::documentdb_core.bson, '{ }'::documentdb_core.bson))
+                             Filter: documentdb_api_internal.bson_dollar_expr(lookup_unwind, '{ "" : { "$eq" : [ "$_id", "$$productId" ] } }'::documentdb_core.bson, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "productId" : "$productId", "hello" : "parag" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
 (21 rows)
 
 -- only part of the pipeline uses let
@@ -566,7 +566,7 @@ SELECT document from bson_aggregation_pipeline('db', '{ "aggregate": "orderscoll
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT document from bson_aggregation_pipeline('db', '{ "aggregate": "orderscoll", "pipeline": [ { "$lookup": { "from": "products", "let": { "productId": "$productId", "hello" : "parag" }, "pipeline": [ { "$match": { "_id": { "$gt": "P001" } } }, { "$project": { "name": 1, "price": 1, "_id": 0 , "field" : "$$hello" } } ], "as": "productDetails" } }, { "$unwind": "$productDetails" } ] , "cursor": {} }');
-                                                                            QUERY PLAN                                                                            
+                                                                                 QUERY PLAN                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -634,20 +634,17 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipelin
 ERROR:  Command let Expression tried to access a field, but this is not allowed because command let expressions run before the query examines any documents.
 SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": { "$sum": [ "$a", "$a" ] } } }');
 ERROR:  Command let Expression tried to access a field, but this is not allowed because command let expressions run before the query examines any documents.
--- TODO $$NOW should pass
-SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": "$$NOW" } }');
-ERROR:  Variable $$NOW not supported yet
 -- internal, lookup expression eval merge should wrap variables into $literal and if the variable evaluates to empty, should transform into $$REMOVE
 SELECT documentdb_api_internal.bson_dollar_lookup_expression_eval_merge('{"_id": 1, "b": "$someField"}', '{ "local_b" : "$b", "local_a": "$a" }'::documentdb_core.bson, '{}'::documentdb_core.bson);
-               bson_dollar_lookup_expression_eval_merge                
+                     bson_dollar_lookup_expression_eval_merge                      
 ---------------------------------------------------------------------
- { "local_b" : { "$literal" : "$someField" }, "local_a" : "$$REMOVE" }
+ { "let" : { "local_b" : { "$literal" : "$someField" }, "local_a" : "$$REMOVE" } }
 (1 row)
 
 SELECT documentdb_api_internal.bson_dollar_lookup_expression_eval_merge('{"_id": 1, "b": "$someField"}', '{ "local_b" : "$b", "local_a": "$a", "local_var1": "$$var1" }'::documentdb_core.bson, '{"var1": {"$literal": "ABC"}}'::documentdb_core.bson);
-                                                   bson_dollar_lookup_expression_eval_merge                                                    
+                                                         bson_dollar_lookup_expression_eval_merge                                                          
 ---------------------------------------------------------------------
- { "var1" : { "$literal" : "ABC" }, "local_b" : { "$literal" : "$someField" }, "local_a" : "$$REMOVE", "local_var1" : { "$literal" : "ABC" } }
+ { "var1" : { "$literal" : "ABC" }, "let" : { "local_b" : { "$literal" : "$someField" }, "local_a" : "$$REMOVE", "local_var1" : { "$literal" : "ABC" } } }
 (1 row)
 
 -- lookup with let when a field is missing the path a variable references and when that field is a string in the form of a field expression

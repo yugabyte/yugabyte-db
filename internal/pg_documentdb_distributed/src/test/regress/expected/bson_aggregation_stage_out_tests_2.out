@@ -402,9 +402,9 @@ SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "target",
       {"$group" :{"_id" :  "$restaurant_name"}},
       {"$project" : {"matched_docs" : 0}}
    ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                                  cursorpage                                                                                  |                                                                       continuation                                                                       | persistconnection |  cursorid  
+                                                                                  cursorpage                                                                                  |                                                                                                    continuation                                                                                                    | persistconnection |  cursorid  
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "newdb.target", "firstBatch" : [ { "_id" : "American Steak House" } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" } } | t                 | 4294967294
+ { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "newdb.target", "firstBatch" : [ { "_id" : "American Steak House" } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" }, "sn" : NOW_SYS_VARIABLE } | t                 | 4294967294
 (1 row)
 
 SELECT document FROM documentdb_api.collection('newdb','target');

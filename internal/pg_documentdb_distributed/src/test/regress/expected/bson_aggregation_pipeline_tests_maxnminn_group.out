@@ -460,7 +460,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_te
 
 /* sharded tests */
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test4", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$maxN": {"input": "$score", "n": 3 } } } } ] }');
-                                                                  QUERY PLAN                                                                   
+                                                                                                                   QUERY PLAN                                                                                                                    
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -469,9 +469,9 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
          Node: host=localhost port=58070 dbname=regression
          ->  Subquery Scan on agg_stage_0
                ->  GroupAggregate
-                     Group Key: (documentdb_api_catalog.bson_expression_get(collection.document, '{ "" : "$gameId" }'::documentdb_core.bson, true))
+                     Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$gameId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
                      ->  Sort
-                           Sort Key: (documentdb_api_catalog.bson_expression_get(collection.document, '{ "" : "$gameId" }'::documentdb_core.bson, true))
+                           Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$gameId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
                            ->  Bitmap Heap Scan on documents_11163_1116049 collection
                                  Recheck Cond: (shard_key_value = '11163'::bigint)
                                  ->  Bitmap Index Scan on _id_
@@ -479,7 +479,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
 (14 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test4", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$minN": {"input": "$score", "n": 3 } } } } ] }');
-                                                                  QUERY PLAN                                                                   
+                                                                                                                   QUERY PLAN                                                                                                                    
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -488,9 +488,9 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
          Node: host=localhost port=58070 dbname=regression
          ->  Subquery Scan on agg_stage_0
                ->  GroupAggregate
-                     Group Key: (documentdb_api_catalog.bson_expression_get(collection.document, '{ "" : "$gameId" }'::documentdb_core.bson, true))
+                     Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$gameId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
                      ->  Sort
-                           Sort Key: (documentdb_api_catalog.bson_expression_get(collection.document, '{ "" : "$gameId" }'::documentdb_core.bson, true))
+                           Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$gameId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
                            ->  Bitmap Heap Scan on documents_11163_1116049 collection
                                  Recheck Cond: (shard_key_value = '11163'::bigint)
                                  ->  Bitmap Index Scan on _id_
@@ -504,10 +504,10 @@ SELECT documentdb_api.shard_collection('db', 'maxminn_test4', '{ "_id": "hashed"
 (1 row)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test4", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$maxN": {"input": "$score", "n": 3 } } } } ] }');
-                                                               QUERY PLAN                                                                
+                                                                                                                QUERY PLAN                                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
-   ->  Distributed Subplan 138_1
+   ->  Distributed Subplan 142_1
          ->  HashAggregate
                Group Key: remote_scan.c2
                ->  Custom Scan (Citus Adaptive)
@@ -516,7 +516,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
                      ->  Task
                            Node: host=localhost port=58070 dbname=regression
                            ->  HashAggregate
-                                 Group Key: documentdb_api_catalog.bson_expression_get(document, '{ "" : "$gameId" }'::documentdb_core.bson, true)
+                                 Group Key: documentdb_api_internal.bson_expression_get(document, '{ "" : "$gameId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
                                  ->  Seq Scan on documents_11163_1116080 collection
    Task Count: 1
    Tasks Shown: All
@@ -526,10 +526,10 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
 (17 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test4", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$minN": {"input": "$score", "n": 3 } } } } ] }');
-                                                               QUERY PLAN                                                                
+                                                                                                                QUERY PLAN                                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
-   ->  Distributed Subplan 140_1
+   ->  Distributed Subplan 144_1
          ->  HashAggregate
                Group Key: remote_scan.c2
                ->  Custom Scan (Citus Adaptive)
@@ -538,7 +538,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
                      ->  Task
                            Node: host=localhost port=58070 dbname=regression
                            ->  HashAggregate
-                                 Group Key: documentdb_api_catalog.bson_expression_get(document, '{ "" : "$gameId" }'::documentdb_core.bson, true)
+                                 Group Key: documentdb_api_internal.bson_expression_get(document, '{ "" : "$gameId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
                                  ->  Seq Scan on documents_11163_1116080 collection
    Task Count: 1
    Tasks Shown: All

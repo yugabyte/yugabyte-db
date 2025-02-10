@@ -344,13 +344,13 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields_sharded", "pipeline":  [{"$setWindowFields": { "partitionBy": "$cost", "output": {"total": { "$sum": 1}}}}]}'); -- different partitionby, not pushed to shards
-                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                     
+                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    ->  Distributed Subplan 78_1
          ->  WindowAgg
-               Output: remote_scan.document, bsonsum(bson_expression_get(remote_scan.total, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true)) OVER (?), remote_scan."?partitionBy?"
+               Output: remote_scan.document, bsonsum(documentdb_api_internal.bson_expression_get(remote_scan.total, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) OVER (?), remote_scan."?partitionBy?"
                ->  Sort
                      Output: remote_scan."?partitionBy?", remote_scan.document, remote_scan.total
                      Sort Key: remote_scan."?partitionBy?"
@@ -359,10 +359,10 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson
                            Task Count: 8
                            Tasks Shown: One of 8
                            ->  Task
-                                 Query: SELECT document, document AS total, documentdb_api_internal.bson_expression_partition_get(document, '{ "" : "$cost" }'::documentdb_core.bson, true) AS "?partitionBy?" FROM documentdb_data.documents_4552_455048 collection WHERE true
+                                 Query: SELECT document, document AS total, documentdb_api_internal.bson_expression_partition_get(document, '{ "" : "$cost" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS "?partitionBy?" FROM documentdb_data.documents_4552_455048 collection WHERE true
                                  Node: host=localhost port=58070 dbname=regression
                                  ->  Seq Scan on documentdb_data.documents_4552_455048 collection
-                                       Output: document, document, documentdb_api_internal.bson_expression_partition_get(document, '{ "" : "$cost" }'::documentdb_core.bson, true)
+                                       Output: document, document, documentdb_api_internal.bson_expression_partition_get(document, '{ "" : "$cost" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
    Task Count: 1
    Tasks Shown: All
    ->  Task
@@ -384,19 +384,19 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields_sharded", "pipeline":  [{"$setWindowFields": { "partitionBy": "$a", "output": {"total": { "$sum": 1}}}}]}'); -- same partitioBy as shardkey, pushed to shards
-                                                                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                                                                    
+                                                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 8
    Tasks Shown: One of 8
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents(worker_column_1, documentdb_core.bson_repath_and_build('total'::text, worker_column_2)) AS document FROM (SELECT agg_stage_0.document AS worker_column_1, agg_stage_0.total AS worker_column_2 FROM (SELECT collection.document, documentdb_api_catalog.bsonsum(documentdb_api_catalog.bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true)) OVER (PARTITION BY collection.shard_key_value ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS total FROM documentdb_data.documents_4552_455048 collection) agg_stage_0) worker_subquery
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents(worker_column_1, documentdb_core.bson_repath_and_build('total'::text, worker_column_2)) AS document FROM (SELECT agg_stage_0.document AS worker_column_1, agg_stage_0.total AS worker_column_2 FROM (SELECT collection.document, documentdb_api_catalog.bsonsum(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) OVER (PARTITION BY collection.shard_key_value ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS total FROM documentdb_data.documents_4552_455048 collection) agg_stage_0) worker_subquery
          Node: host=localhost port=58070 dbname=regression
          ->  Subquery Scan on agg_stage_0
                Output: documentdb_api_internal.bson_dollar_merge_documents(agg_stage_0.document, documentdb_core.bson_repath_and_build('total'::text, agg_stage_0.total))
                ->  WindowAgg
-                     Output: collection.document, documentdb_api_catalog.bsonsum(documentdb_api_catalog.bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true)) OVER (?), collection.shard_key_value
+                     Output: collection.document, documentdb_api_catalog.bsonsum(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) OVER (?), collection.shard_key_value
                      ->  Index Scan using _id_ on documentdb_data.documents_4552_455048 collection
                            Output: collection.shard_key_value, collection.document
 (13 rows)
@@ -410,19 +410,19 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields_sharded", "pipeline":  [{"$match": {"a": "def"}}, {"$setWindowFields": { "output": {"total": { "$sum": 1}}}}]}'); -- target a single shard with $match, pushed to shard
-                                                                                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents(document, documentdb_core.bson_repath_and_build('total'::text, total)) AS document FROM (SELECT collection.document, documentdb_api_catalog.bsonsum(documentdb_api_catalog.bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true)) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS total FROM documentdb_data.documents_4552_455051 collection WHERE ((collection.document OPERATOR(documentdb_api_catalog.#=) '{ "a" : "def" }'::documentdb_core.bsonquery) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '8022442720571987527'::bigint))) agg_stage_1
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents(document, documentdb_core.bson_repath_and_build('total'::text, total)) AS document FROM (SELECT collection.document, documentdb_api_catalog.bsonsum(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS total FROM documentdb_data.documents_4552_455051 collection WHERE ((collection.document OPERATOR(documentdb_api_catalog.#=) '{ "a" : "def" }'::documentdb_core.bsonquery) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '8022442720571987527'::bigint))) agg_stage_1
          Node: host=localhost port=58070 dbname=regression
          ->  Subquery Scan on agg_stage_1
                Output: documentdb_api_internal.bson_dollar_merge_documents(agg_stage_1.document, documentdb_core.bson_repath_and_build('total'::text, agg_stage_1.total))
                ->  WindowAgg
-                     Output: collection.document, documentdb_api_catalog.bsonsum(documentdb_api_catalog.bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true)) OVER (?)
+                     Output: collection.document, documentdb_api_catalog.bsonsum(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) OVER (?)
                      ->  Seq Scan on documentdb_data.documents_4552_455051 collection
                            Output: collection.document
                            Filter: ((collection.document OPERATOR(documentdb_api_catalog.@=) '{ "a" : "def" }'::documentdb_core.bson) AND (collection.shard_key_value = '8022442720571987527'::bigint))
@@ -437,13 +437,13 @@ SELECT documentdb_api.shard_collection('db', 'setWindowFields_sharded', '{"a": "
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields_sharded", "pipeline":  [{"$setWindowFields": { "partitionBy": "$a", "output": {"total": { "$sum": 1}}}}]}'); -- same partitioBy as first key in shardkey, not pushed to shards
-                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                     
+                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                    
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    ->  Distributed Subplan 97_1
          ->  WindowAgg
-               Output: remote_scan.document, bsonsum(bson_expression_get(remote_scan.total, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true)) OVER (?), remote_scan."?partitionBy?"
+               Output: remote_scan.document, bsonsum(documentdb_api_internal.bson_expression_get(remote_scan.total, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) OVER (?), remote_scan."?partitionBy?"
                ->  Sort
                      Output: remote_scan."?partitionBy?", remote_scan.document, remote_scan.total
                      Sort Key: remote_scan."?partitionBy?"
@@ -452,10 +452,10 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson
                            Task Count: 8
                            Tasks Shown: One of 8
                            ->  Task
-                                 Query: SELECT document, document AS total, documentdb_api_internal.bson_expression_partition_get(document, '{ "" : "$a" }'::documentdb_core.bson, true) AS "?partitionBy?" FROM documentdb_data.documents_4552_455056 collection WHERE true
+                                 Query: SELECT document, document AS total, documentdb_api_internal.bson_expression_partition_get(document, '{ "" : "$a" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS "?partitionBy?" FROM documentdb_data.documents_4552_455056 collection WHERE true
                                  Node: host=localhost port=58070 dbname=regression
                                  ->  Seq Scan on documentdb_data.documents_4552_455056 collection
-                                       Output: document, document, documentdb_api_internal.bson_expression_partition_get(document, '{ "" : "$a" }'::documentdb_core.bson, true)
+                                       Output: document, document, documentdb_api_internal.bson_expression_partition_get(document, '{ "" : "$a" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
    Task Count: 1
    Tasks Shown: All
    ->  Task

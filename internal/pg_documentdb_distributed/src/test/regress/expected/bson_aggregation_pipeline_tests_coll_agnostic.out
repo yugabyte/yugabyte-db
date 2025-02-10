@@ -37,10 +37,10 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "a": 1 }, { "b": 2 } ] }, { "$addFields": { "b": 1 } } ], "cursor": {} }');
-                                                                         QUERY PLAN                                                                         
+                                                                                                     QUERY PLAN                                                                                                      
 ---------------------------------------------------------------------
  Function Scan on documentdb_api_catalog.bson_lookup_unwind documents
-   Output: bson_dollar_add_fields(documents.documents, '{ "b" : { "$numberInt" : "1" } }'::bson)
+   Output: bson_dollar_add_fields(documents.documents, '{ "b" : { "$numberInt" : "1" } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
    Function Call: bson_lookup_unwind('{ "$documents" : [ { "a" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }'::bson, '$documents'::text)
 (3 rows)
 

@@ -1283,6 +1283,17 @@ CheckBsonProjectGeonearFunctionExpr(FuncExpr *expr, FuncExpr **geoNearProjectFun
 	foreach(lc, expr->args)
 	{
 		Node *arg = lfirst(lc);
+
+		/* Unwrap implicit cast if present */
+		if (IsA(arg, RelabelType))
+		{
+			RelabelType *relabeled = (RelabelType *) arg;
+			if (relabeled->relabelformat == COERCE_IMPLICIT_CAST)
+			{
+				arg = (Node *) relabeled->arg;
+			}
+		}
+
 		if (IsA(arg, FuncExpr))
 		{
 			if (CheckBsonProjectGeonearFunctionExpr((FuncExpr *) arg,

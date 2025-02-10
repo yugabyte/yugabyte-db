@@ -15,9 +15,9 @@
 #include "metadata/collection.h"
 #include "utils/documentdb_errors.h"
 #include "io/bson_set_returning_functions.h"
+#include "utils/date_utils.h"
 #include "utils/query_utils.h"
 #include "metadata/index.h"
-#include "utils/timestamp.h"
 #include "utils/hashset_utils.h"
 #include "commands/coll_stats.h"
 #include "planner/documentdb_planner.h"
@@ -384,21 +384,11 @@ MergeWorkerResults(MongoCollection *collection, List *workerResults,
 	}
 
 	/* Extract postmaster start time */
-	TimestampTz timestampValue = PgStartTime;
-
-	/* get milliseconds from epoch (Timestamp has TS_PREC_INV units per seconds) */
-
-	Timestamp epoch = SetEpochTimestamp();
-
-	int overFlow = 0;
-	TimestampTz epochTimestampTz = timestamp2timestamptz_opt_overflow(epoch, &overFlow);
-
-	long delta = TimestampDifferenceMilliseconds(epochTimestampTz,
-												 timestampValue);
+	TimestampTz timestamp = PgStartTime;
 
 	bson_value_t startTimeValue = { 0 };
 	startTimeValue.value_type = BSON_TYPE_DATE_TIME;
-	startTimeValue.value.v_datetime = delta;
+	startTimeValue.value.v_datetime = GetDateTimeFromTimestamp(timestamp);
 
 	/* Now write one row per index based on the collection indexes */
 	ListCell *cell;

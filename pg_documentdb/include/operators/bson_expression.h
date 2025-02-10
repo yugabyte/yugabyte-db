@@ -197,6 +197,13 @@ typedef struct AggregationExpressionData
 } AggregationExpressionData;
 
 
+/* Struct for the time system variables ($$NOW and $$CLUSTER_TIME). */
+typedef struct TimeSystemVariables
+{
+	bson_value_t nowValue;
+} TimeSystemVariables;
+
+
 /* Func that is called after every aggregation expression is parsed to check if it is valid on the current context, i.e let in top level commands like find can't have path expressions ($a) nor use $$CURRENT/$$ROOT system variables. */
 typedef void (*ValidateParsedAggregationExpression)(AggregationExpressionData *data);
 
@@ -205,6 +212,9 @@ typedef struct ParseAggregationExpressionContext
 {
 	/* Function that is called after every aggregation expression is parsed. */
 	ValidateParsedAggregationExpression validateParsedExpressionFunc;
+
+	/* The time system variables */
+	TimeSystemVariables timeSystemVariables;
 
 	/* Only $redact is allowed to use the $$KEEP,$$PRUNE, and $$DESCEND system variables. Use this boolean to prevent other operators from using these three variables.*/
 	bool allowRedactVariables;
@@ -227,5 +237,10 @@ void ParseVariableSpec(const bson_value_t *variableSpec,
 void VariableContextSetVariableData(ExpressionVariableContext *variableContext, const
 									VariableData *variableData);
 void ValidateVariableName(StringView name);
+
+void GetTimeSystemVariablesFromVariableSpec(pgbson *variableSpec,
+											TimeSystemVariables *timeSystemVariables);
+pgbson * ParseAndGetTopLevelVariableSpec(const bson_value_t *varSpec,
+										 TimeSystemVariables *timeSystemVariables);
 
 #endif

@@ -106,7 +106,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
  Subquery Scan on agg_stage_0
    Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
    ->  GroupAggregate
-         Output: '_id'::text, '{ "" : { "$numberInt" : "1" } }'::bson, 'c'::text, bsonmax(bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true))
+         Output: '_id'::text, '{ "" : { "$numberInt" : "1" } }'::bson, 'c'::text, bsonmax(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
          ->  Bitmap Heap Scan on documentdb_data.documents_6800 collection
                Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
                Recheck Cond: (collection.shard_key_value = '6800'::bigint)
@@ -120,13 +120,13 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
  Subquery Scan on agg_stage_0
    Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
    ->  GroupAggregate
-         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true)), 'c'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson)
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true))
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'c'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson)
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
          ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true))
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true))
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
                ->  Bitmap Heap Scan on documentdb_data.documents_6800 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true)
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)
                      Recheck Cond: (collection.shard_key_value = '6800'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '6800'::bigint)
@@ -139,13 +139,13 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
  Subquery Scan on agg_stage_0
    Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
    ->  GroupAggregate
-         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true)), 'c'::text, bsonmax(bson_expression_get(collection.document, '{ "" : "$b" }'::bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true))
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'c'::text, bsonmax(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$b" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
          ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true))
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
                ->  Bitmap Heap Scan on documentdb_data.documents_6800 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true), collection.document
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$a" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
                      Recheck Cond: (collection.shard_key_value = '6800'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '6800'::bigint)

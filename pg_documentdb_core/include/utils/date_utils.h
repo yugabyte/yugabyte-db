@@ -10,6 +10,7 @@
  */
 
 #include <postgres.h>
+#include "utils/timestamp.h"
 #include "utils/documentdb_errors.h"
 
 #ifndef DATE_UTILS_H
@@ -167,6 +168,33 @@ GetPgTimestampFromUnixEpoch(int64_t epochInMs)
 	return DirectFunctionCall1(
 		float8_timestamptz,
 		Float8GetDatum(seconds));
+}
+
+
+/*
+ * Gets the current time in milliseconds since epoch
+ */
+static inline long
+GetDateTimeFromTimestamp(TimestampTz timestamp)
+{
+	/* Get milliseconds from epoch (Timestamp has TS_PREC_INV units per seconds) */
+	Timestamp epoch = SetEpochTimestamp();
+	int overFlow = 0;
+	TimestampTz epochTimestampTz = timestamp2timestamptz_opt_overflow(epoch,
+																	  &overFlow);
+
+	/* Get the difference in milliseconds.*/
+	/* We do not use the TimestampDifferenceMilliseconds function provided by PG as its implementation in PG 16 */
+	/* clamps the diff to [0, INT_MAX]. Thus, it truncates all diff > INT_MAX to INT_MAX */
+	TimestampTz diff = timestamp - epochTimestampTz;
+
+	if (diff <= 0)
+	{
+		return 0;
+	}
+
+	/* Round to nearest milliseconds */
+	return ((long) ((diff + 999) / 1000));
 }
 
 

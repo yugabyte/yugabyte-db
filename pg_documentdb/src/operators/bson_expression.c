@@ -23,6 +23,7 @@
 #include <catalog/pg_type.h>
 #include <funcapi.h>
 #include <lib/stringinfo.h>
+#include <access/xact.h>
 
 #include "io/bson_core.h"
 #include "operators/bson_expression.h"
@@ -31,9 +32,11 @@
 #include "aggregation/bson_tree_write.h"
 #include "aggregation/bson_project.h"
 #include "aggregation/bson_projection_tree.h"
+#include "utils/date_utils.h"
 #include "utils/feature_counter.h"
 #include "utils/hashset_utils.h"
 #include "utils/fmgr_utils.h"
+#include "utils/version_utils.h"
 #include "collation/collation.h"
 
 
@@ -80,6 +83,7 @@ typedef struct BsonExpressionPartitionByFieldsGetState
 } BsonExpressionPartitionByFieldsGetState;
 
 extern bool EnableCollation;
+extern bool EnableNowSystemVariable;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -158,6 +162,7 @@ static void ParseBsonExpressionGetState(BsonExpressionGetState *getState,
 										pgbson *variableSpec);
 static void CreateProjectionTreeStateForPartitionByFields(
 	BsonExpressionPartitionByFieldsGetState *state, pgbson *partitionBy);
+
 
 /*
  *  Keep this list lexicographically sorted by the operator name,
@@ -925,14 +930,22 @@ ParseBsonExpressionGetState(BsonExpressionGetState *getState,
 	getState->variableContext = NULL;
 
 	ParseAggregationExpressionContext context = { 0 };
+
+	GetTimeSystemVariablesFromVariableSpec(variableSpec,
+										   &context.timeSystemVariables);
+
 	ParseAggregationExpressionData(getState->expressionData, expressionValue, &context);
-	if (variableSpec != NULL)
+
+	bson_iter_t letVarsIter;
+	if (variableSpec != NULL && PgbsonInitIteratorAtPath(variableSpec, "let",
+														 &letVarsIter))
 	{
-		bson_value_t varsValue = ConvertPgbsonToBsonValue(variableSpec);
 		ExpressionVariableContext *variableContext =
 			palloc0(sizeof(ExpressionVariableContext));
 
-		ParseVariableSpec(&varsValue, variableContext, &context);
+		const bson_value_t *letVariables = bson_iter_value(&letVarsIter);
+		ParseVariableSpec(letVariables, variableContext, &context);
+
 		getState->variableContext = variableContext;
 	}
 }
@@ -1744,10 +1757,26 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 
 				if (StringViewEqualsCString(&expressionView, "$$NOW"))
 				{
-					expressionData->kind = AggregationExpressionKind_SystemVariable;
-					expressionData->systemVariable.kind =
-						AggregationExpressionSystemVariableKind_Now;
-					expressionData->systemVariable.pathSuffix = dottedSuffix;
+					/* currently handling $$NOW for find and aggregation only. */
+					bson_value_t nowValue = context->timeSystemVariables.nowValue;
+					if (nowValue.value_type == BSON_TYPE_EOD)
+					{
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
+										errmsg(
+											"$$NOW is not supported in this context.")));
+					}
+
+					if (dottedSuffix.length == 0)
+					{
+						expressionData->value = nowValue;
+					}
+					else
+					{
+						/* We set the value to EOD for dotted suffixes */
+						expressionData->value.value_type = BSON_TYPE_EOD;
+					}
+
+					expressionData->kind = AggregationExpressionKind_Constant;
 				}
 				else if (StringViewEqualsCString(&expressionView, "$$CLUSTER_TIME"))
 				{
@@ -2886,4 +2915,201 @@ ParseVariableArgumentsForExpression(const bson_value_t *value, bool *isConstant,
 		resultList = lappend(resultList, expressionData);
 	}
 	return resultList;
+}
+
+
+/* Call back function for top level command let parsing to disallow path expressions, CURRENT and ROOT for a top level variable spec. */
+static void
+DisallowExpressionsForTopLevelLet(AggregationExpressionData *parsedExpression)
+{
+	/* Path expressions, CURRENT and ROOT are not allowed in command level let. */
+	if (parsedExpression->kind == AggregationExpressionKind_Path ||
+		(parsedExpression->kind == AggregationExpressionKind_SystemVariable &&
+		 (parsedExpression->systemVariable.kind ==
+		  AggregationExpressionSystemVariableKind_Current ||
+		  parsedExpression->systemVariable.kind ==
+		  AggregationExpressionSystemVariableKind_Root)))
+	{
+		ereport(ERROR, errcode(ERRCODE_DOCUMENTDB_LOCATION4890500), errmsg(
+					"Command let Expression tried to access a field,"
+					" but this is not allowed because command let expressions"
+					" run before the query examines any documents."));
+	}
+}
+
+
+/* Stores the value of $$NOW from the variableSpec in timeSystemVariables. */
+void
+GetTimeSystemVariablesFromVariableSpec(pgbson *variableSpec,
+									   TimeSystemVariables *timeSystemVariables)
+{
+	if (!EnableNowSystemVariable || variableSpec == NULL)
+	{
+		return;
+	}
+
+	bson_iter_t iter;
+	if (PgbsonInitIteratorAtPath(variableSpec, "now", &iter))
+	{
+		const bson_value_t *nowDateValue = bson_iter_value(&iter);
+		timeSystemVariables->nowValue = *nowDateValue;
+	}
+}
+
+
+/*
+ * Get the value of the $$NOW time system variable.
+ * If the value is already generated (i.e. timeSystemVariables != NULL) re-use value.
+ * Else generate it and store in the 'timeSystemVariables' field of the cursor queryData also.
+ * This will allow for use in cursor_get_more queries.
+ */
+static bson_value_t
+GetTimeSystemVariables(TimeSystemVariables *timeVariables)
+{
+	bson_value_t nowValue = { 0 };
+	if (timeVariables != NULL &&
+		timeVariables->nowValue.value_type != BSON_TYPE_EOD)
+	{
+		nowValue = timeVariables->nowValue;
+	}
+	else
+	{
+		nowValue.value_type = BSON_TYPE_DATE_TIME;
+		TimestampTz timestamp = GetCurrentTransactionStartTimestamp();
+		nowValue.value.v_datetime = GetDateTimeFromTimestamp(timestamp);
+
+		if (timeVariables != NULL)
+		{
+			timeVariables->nowValue = nowValue;
+		}
+	}
+
+	return nowValue;
+}
+
+
+/*
+ * Parses a top level command let i.e: find or aggregate let spec, and time system variables.
+ * 1) Path expressions are not valid at this scope because there's no doc to evaluate against.
+ * 2) Variable references are valid only if they reference a variable that is defined previously in the same let spec, i.e: {a: 1, b: "$$a", c: {$add: ["$$a", "$$b"]}}
+ * or a variable that is a system variable, i.e: {a: "$$NOW"}
+ *
+ * Given these 2 rules, we evaluate every variable expression we find against an empty document, using the current variable spec we're building to evaluate it.
+ * As we evaluate expressions we rewrite the variable spec into a constant bson and return it.
+ * The example in item 2, would be rewritten to: {"let": { a: 1, b: 1, c: 2 } }.
+ *
+ * If EnableNowSystemVariable, the example in item 2 would be rewritten to: {"now": <current time>, "let": { a: 1, b: 1, c: 2 } }.
+ */
+pgbson *
+ParseAndGetTopLevelVariableSpec(const bson_value_t *varSpec,
+								TimeSystemVariables *timeSystemVariables)
+{
+	ParseAggregationExpressionContext parseContext = {
+		.validateParsedExpressionFunc = &DisallowExpressionsForTopLevelLet,
+	};
+
+	pgbson_writer resultWriter;
+	PgbsonWriterInit(&resultWriter);
+
+	/* Write the time system variables */
+	if (EnableNowSystemVariable && IsClusterVersionAtleast(DocDB_V0, 24, 0))
+	{
+		bson_value_t nowVariableValue = GetTimeSystemVariables(timeSystemVariables);
+		PgbsonWriterAppendValue(&resultWriter, "now", 3, &nowVariableValue);
+		parseContext.timeSystemVariables.nowValue = nowVariableValue;
+	}
+
+	ExpressionVariableContext varContext = { 0 };
+	pgbson *emptyDoc = NULL;
+	StringView path = { .string = "", .length = 0 };
+	bool isNullOnEmpty = false;
+
+	/* Write the let variables. */
+	if (varSpec != NULL && varSpec->value_type != BSON_TYPE_EOD)
+	{
+		/* Since path expressions are not allowed in this variable spec, we can evaluate them and transform
+		 * the spec to a constant bson. To evaluate them we use an empty document as the document we evaluate the expressions against. */
+		emptyDoc = PgbsonInitEmpty();
+
+		pgbson_writer letVarsWriter;
+		PgbsonWriterStartDocument(&resultWriter, "let", 3, &letVarsWriter);
+
+		bson_iter_t varsIter;
+		BsonValueInitIterator(varSpec, &varsIter);
+		while (bson_iter_next(&varsIter))
+		{
+			StringView varName = bson_iter_key_string_view(&varsIter);
+			ValidateVariableName(varName);
+
+			const bson_value_t *varValue = bson_iter_value(&varsIter);
+
+			AggregationExpressionData expressionData = { 0 };
+			ParseAggregationExpressionData(&expressionData, varValue, &parseContext);
+
+			bson_value_t valueToWrite = { 0 };
+			if (expressionData.kind != AggregationExpressionKind_Constant)
+			{
+				pgbson_writer exprWriter;
+				PgbsonWriterInit(&exprWriter);
+				EvaluateAggregationExpressionDataToWriter(&expressionData, emptyDoc, path,
+														  &exprWriter, &varContext,
+														  isNullOnEmpty);
+
+				pgbson *evaluatedBson = PgbsonWriterGetPgbson(&exprWriter);
+
+				if (!IsPgbsonEmptyDocument(evaluatedBson))
+				{
+					pgbsonelement element = { 0 };
+					PgbsonToSinglePgbsonElement(evaluatedBson, &element);
+					valueToWrite = element.bsonValue;
+				}
+			}
+			else
+			{
+				valueToWrite = expressionData.value;
+			}
+
+			/* if it evaluates to an empty document let's convert to $$REMOVE so that we don't need to evaluate operators again and just treat it as EOD. */
+			if (valueToWrite.value_type == BSON_TYPE_EOD)
+			{
+				valueToWrite.value_type = BSON_TYPE_UTF8;
+				valueToWrite.value.v_utf8.str = "$$REMOVE";
+				valueToWrite.value.v_utf8.len = 8;
+				PgbsonWriterAppendValue(&letVarsWriter, varName.string, varName.length,
+										&valueToWrite);
+			}
+			else
+			{
+				/* To write it to the result we need to wrap all expressions around a $literal, so that when the spec is parsed down level they are treated as constants
+				 * if it encounters something that was a result of the expression that could be interpreted as non-constant. i.e $concat: ["$", "field"] -> "$field"
+				 * We should parse that as a literal $field down level, rather than a field expression.
+				 * However to insert it in the temp context, we should preserve the evaluated value to get correctnes if we have a case where a variable is used in operators within the same let.
+				 * i.e {"a": "2", "b": {"$sum": ["$$a", 2]}} we want sum to get "2" when it evaluates the variable $$a reference instead of getting { "$literal": "2" }. */
+				pgbson_writer literalWriter;
+				PgbsonWriterStartDocument(&letVarsWriter, varName.string, varName.length,
+										  &literalWriter);
+				PgbsonWriterAppendValue(&literalWriter, "$literal", 8, &valueToWrite);
+				PgbsonWriterEndDocument(&letVarsWriter, &literalWriter);
+			}
+
+			VariableData variableData = {
+				.name = varName,
+				.isConstant = true,
+				.bsonValue = valueToWrite,
+			};
+
+			VariableContextSetVariableData(&varContext, &variableData);
+		}
+
+		PgbsonWriterEndDocument(&resultWriter, &letVarsWriter);
+
+		pfree(emptyDoc);
+	}
+
+	if (varContext.context.table != NULL && !varContext.hasSingleVariable)
+	{
+		hash_destroy(varContext.context.table);
+	}
+
+	return PgbsonWriterGetPgbson(&resultWriter);
 }

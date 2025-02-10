@@ -56,54 +56,54 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "
 (2 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$group": { "_id": "$year", "mergedobjColl1": { "$mergeObjects": "$quantity" } } } ] }');
-                                                                                                                                             QUERY PLAN                                                                                                                                              
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                                                                                                          
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
    ->  GroupAggregate
-         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true)), 'mergedobjColl1'::text, documentdb_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : "$quantity" }'::documentdb_core.bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true))
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedobjColl1'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$quantity" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
          ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true))
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
                ->  Bitmap Heap Scan on documentdb_data.documents_14200 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true), collection.document
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
                      Recheck Cond: (collection.shard_key_value = '14200'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '14200'::bigint)
 (13 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$group": { "_id": "$item", "mergedobjColl1": { "$mergeObjects": "$quantity" } } } ] }');
-                                                                                                                                             QUERY PLAN                                                                                                                                              
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                                                                                                          
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
    ->  GroupAggregate
-         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$item" }'::documentdb_core.bson, true)), 'mergedobjColl1'::text, documentdb_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : "$quantity" }'::documentdb_core.bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$item" }'::documentdb_core.bson, true))
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$item" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedobjColl1'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$quantity" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$item" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
          ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$item" }'::documentdb_core.bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$item" }'::documentdb_core.bson, true))
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$item" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$item" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
                ->  Bitmap Heap Scan on documentdb_data.documents_14200 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$item" }'::documentdb_core.bson, true), collection.document
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$item" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
                      Recheck Cond: (collection.shard_key_value = '14200'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '14200'::bigint)
 (13 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$group": { "_id": "$year", "lastItemSold": { "$mergeObjects": { "item": "$item" } } } } ] }');
-                                                                                                                                                 QUERY PLAN                                                                                                                                                 
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                                                                                             
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
    ->  GroupAggregate
-         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true)), 'lastItemSold'::text, documentdb_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : { "item" : "$item" } }'::documentdb_core.bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true))
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'lastItemSold'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "item" : "$item" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
          ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true))
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
                ->  Bitmap Heap Scan on documentdb_data.documents_14200 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true), collection.document
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
                      Recheck Cond: (collection.shard_key_value = '14200'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '14200'::bigint)
@@ -159,72 +159,72 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "
 (2 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": "$obj" } } } ] }');
-                                                                                                                                           QUERY PLAN                                                                                                                                            
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                                                                                                                        
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
    ->  GroupAggregate
-         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true)), 'mergedDocument'::text, documentdb_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : "$obj" }'::documentdb_core.bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true))
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedDocument'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$obj" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
          ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true))
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
                ->  Bitmap Heap Scan on documentdb_data.documents_14201 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true), collection.document
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
                      Recheck Cond: (collection.shard_key_value = '14201'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '14201'::bigint)
 (13 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": "$obj.a" } } } ] }');
-                                                                                                                                            QUERY PLAN                                                                                                                                             
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
    ->  GroupAggregate
-         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true)), 'mergedDocument'::text, documentdb_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : "$obj.a" }'::documentdb_core.bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true))
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedDocument'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$obj.a" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
          ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true))
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
                ->  Bitmap Heap Scan on documentdb_data.documents_14201 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true), collection.document
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
                      Recheck Cond: (collection.shard_key_value = '14201'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '14201'::bigint)
 (13 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": { "result": "$obj.b" } } } } ] }');
-                                                                                                                                                    QUERY PLAN                                                                                                                                                    
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
    ->  GroupAggregate
-         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true)), 'mergedDocument'::text, documentdb_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : { "result" : "$obj.b" } }'::documentdb_core.bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true))
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedDocument'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "result" : "$obj.b" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
          ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true))
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
                ->  Bitmap Heap Scan on documentdb_data.documents_14201 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true), collection.document
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
                      Recheck Cond: (collection.shard_key_value = '14201'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '14201'::bigint)
 (13 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": "$c" } } } ] }');
-                                                                                                                                          QUERY PLAN                                                                                                                                           
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
    ->  GroupAggregate
-         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true)), 'mergedDocument'::text, documentdb_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : "$c" }'::documentdb_core.bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true))
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedDocument'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$c" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
          ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true))
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
                ->  Bitmap Heap Scan on documentdb_data.documents_14201 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true), collection.document
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
                      Recheck Cond: (collection.shard_key_value = '14201'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '14201'::bigint)

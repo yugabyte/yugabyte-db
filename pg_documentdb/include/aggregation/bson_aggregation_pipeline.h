@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/planner/bson_aggregation_pipeline.h
+ * include/aggregation/bson_aggregation_pipeline.h
  *
  * Exports for the bson_aggregation_pipeline definition
  *
@@ -13,6 +13,7 @@
 
 #include <nodes/params.h>
 
+#include "operators/bson_expression.h"
 #include "utils/documentdb_errors.h"
 
 typedef enum QueryCursorType
@@ -73,6 +74,11 @@ typedef struct
 	 * The requested batchSize in the query request.
 	 */
 	int32_t batchSize;
+
+	/*
+	 * The time system variables ($$NOW, $$CLUSTER_TIME).
+	 */
+	TimeSystemVariables timeSystemVariables;
 } QueryData;
 
 
@@ -118,5 +124,4 @@ void ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,
 									 bson_value_t *input,
 									 bson_value_t *elementsToFetch,
 									 const char *opName);
-
 #endif
