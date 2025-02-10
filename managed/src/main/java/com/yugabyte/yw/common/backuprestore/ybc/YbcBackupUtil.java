@@ -1057,9 +1057,7 @@ public class YbcBackupUtil {
       if (tableParams.useTablespaces) {
         extendedArgsBuilder.setUseTablespaces(true);
       }
-      if (tableParams.isPointInTimeRestoreEnabled()) {
-        extendedArgsBuilder.setSaveRetentionWindow(true);
-      }
+      extendedArgsBuilder.setSaveRetentionWindow(true);
       return extendedArgsBuilder.build();
     } catch (Exception e) {
       log.error("Error while fetching extended args for backup: ", e);
