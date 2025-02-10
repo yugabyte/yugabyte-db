@@ -106,7 +106,7 @@ Status TabletVectorIndexes::DoCreateIndex(
     indexes = std::make_shared<std::vector<docdb::VectorIndexPtr>>(1, it->second);
     return Status::OK();
   }
-  if (indexes.unique()) {
+  if (indexes.use_count() == 1) {
     indexes->push_back(it->second);
     return Status::OK();
   }
