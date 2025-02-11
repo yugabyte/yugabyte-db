@@ -21,7 +21,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.pb.h"
-#include "yb/docdb/shared_lock_manager.h"
+#include "yb/docdb/object_lock_manager.h"
 #include "yb/dockv/value_type.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/status.h"

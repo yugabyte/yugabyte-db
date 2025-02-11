@@ -21,7 +21,6 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/dockv/intent.h"
-#include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/wait_queue.h"
 #include "yb/tablet/tablet_fwd.h"
 

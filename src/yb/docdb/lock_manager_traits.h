@@ -20,7 +20,9 @@ class RefCntPrefix;
 namespace docdb {
 
 class SharedLockManager;
+struct SharedLockedBatchEntry;
 class ObjectLockManager;
+struct ObjectLockedBatchEntry;
 struct ObjectLockPrefix;
 
 template<typename LockManager>
@@ -29,11 +31,13 @@ struct LockManagerTraits;
 template<>
 struct LockManagerTraits<SharedLockManager> {
   using KeyType = RefCntPrefix;
+  using LockedBatchEntry = SharedLockedBatchEntry;
 };
 
 template<>
 struct LockManagerTraits<ObjectLockManager> {
   using KeyType = ObjectLockPrefix;
+  using LockedBatchEntry = ObjectLockedBatchEntry;
 };
 
 } // namespace docdb

@@ -229,7 +229,7 @@ TEST_F(TSLocalLockManagerTest, TestFailedLockRpcSemantics) {
   ASSERT_EQ(GrantedLocksSize(), 4);
 
   SyncPoint::GetInstance()->LoadDependency({
-    {"LockedBatchEntry<T>::Lock", "TestFailedLockRpcSemantics"}});
+    {"ObjectLockedBatchEntry::Lock", "TestFailedLockRpcSemantics"}});
   SyncPoint::GetInstance()->ClearTrace();
   SyncPoint::GetInstance()->EnableProcessing();
 

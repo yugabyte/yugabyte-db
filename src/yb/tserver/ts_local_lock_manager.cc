@@ -17,7 +17,7 @@
 
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/shared_lock_manager.h"
+#include "yb/docdb/object_lock_manager.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
@@ -66,7 +66,7 @@ class TSLocalLockManager::Impl {
 
     static auto const key_entry_types =
         {dockv::KeyEntryType::kWeakObjectLock, dockv::KeyEntryType::kStrongObjectLock};
-    std::vector<docdb::TrackedLockEntryKey<docdb::ObjectLockManager>> lock_entry_keys;
+    std::vector<docdb::TrackedLockEntryKey> lock_entry_keys;
     for (auto lock : req.object_locks()) {
       for (const auto& type : key_entry_types) {
         lock_entry_keys.push_back(

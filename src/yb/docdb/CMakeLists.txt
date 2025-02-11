@@ -68,6 +68,7 @@ set(DOCDB_SRCS
         kv_debug.cc
         lock_batch.cc
         lock_util.cc
+        object_lock_manager.cc
         pgsql_operation.cc
         ql_rocksdb_storage.cc
         ql_rowwise_iterator_interface.cc
