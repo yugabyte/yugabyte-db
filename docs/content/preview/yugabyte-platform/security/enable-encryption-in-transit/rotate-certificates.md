@@ -57,7 +57,7 @@ If the certificate has not expired:
 
 **Client-to-node certificates**
 
-If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, then the rotation requires a restart, which can be done in a rolling manner with no downtime, regardless of whether the client-to-node certificates are expired or not expired.
+If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, then the rotation requires a restart. This can be done in a rolling manner with no downtime, regardless of whether the client-to-node certificates are expired or not expired.
 
 If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart and no downtime.
 

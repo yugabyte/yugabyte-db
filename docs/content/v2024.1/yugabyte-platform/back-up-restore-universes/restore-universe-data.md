@@ -70,7 +70,7 @@ To view the details of a restored database, navigate to **Universes > your unive
 
 You can restore only a specific database (YSQL) or keyspace (YCQL).
 
-In addition, if you are restoring a YCQL keyspace, you can restore only selected tables in the keyspace.
+In addition, if you are restoring a YCQL keyspace, you can choose the tables in the keyspace you want to restore.
 
 For instructions on restoring a single table in YSQL, refer to [Restore a single table in YSQL](../restore-ysql-single-table).
 
