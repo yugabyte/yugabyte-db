@@ -119,7 +119,7 @@ To create a single-node local cluster with a replication factor (RF) of 1, run t
 ./bin/yugabyted start
 ```
 
-{{% includeMarkdown "./include-connect.md" %}}
+{{< readfile "/preview/tutorials/quick-start/include-connect.md" >}}
 
 ## Build an application
 
