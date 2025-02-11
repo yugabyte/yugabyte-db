@@ -24,7 +24,6 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
     - Create Database options for locale, collation, strategy, and OID-related settings
 - Enhanced the JSON assessment report to include only the new assessment issue format, removing the old format that used separate fields for each issue category.
 - The import data status command now reports tables where the import has not yet started, improving visibility for bulk imports (import data file).
-- The assess-migration call-home payload now includes sizing and estimation information for better insights.
 - The assess-migration command now checks the source database IOPS and issues a warning if it is zero.
 
 ### Bug fixes
