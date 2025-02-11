@@ -2653,7 +2653,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, CollectFlags flags);
 
   Result<SysRowEntries> CollectEntriesForSnapshot(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override;
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      IncludeHiddenTables includeHiddenTables = IncludeHiddenTables::kFalse) override;
 
   server::Clock* Clock() override;
 
@@ -2917,6 +2918,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableInfo& table_info, const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map)
       EXCLUDES(mutex_);
 
+  void MarkTabletAsHiddenPostReload(TabletId tablet, const LeaderEpoch& epoch);
   void MarkTabletAsHidden(
       SysTabletsEntryPB& tablet_pb, const HybridTime& hide_ht,
       const TabletDeleteRetainerInfo& delete_retainer) const;

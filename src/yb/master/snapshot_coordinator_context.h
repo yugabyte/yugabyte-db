@@ -38,6 +38,7 @@ using TabletSnapshotOperationCallback =
     std::function<void(Result<const tserver::TabletSnapshotOpResponsePB&>)>;
 
 YB_STRONGLY_TYPED_BOOL(SendMetadata);
+YB_STRONGLY_TYPED_BOOL(IncludeHiddenTables);
 
 // Context class for MasterSnapshotCoordinator.
 class SnapshotCoordinatorContext {
@@ -55,7 +56,8 @@ class SnapshotCoordinatorContext {
   virtual void ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& operation) = 0;
 
   virtual Result<SysRowEntries> CollectEntriesForSnapshot(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      IncludeHiddenTables includeHiddenTables = IncludeHiddenTables::kFalse) = 0;
 
   virtual Status RestoreSysCatalog(
       SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, bool leader_mode,

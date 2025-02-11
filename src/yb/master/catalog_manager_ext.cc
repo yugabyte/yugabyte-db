@@ -373,11 +373,14 @@ Result<SysRowEntries> CatalogManager::CollectEntriesForSequencesDataTable() {
 }
 
 Result<SysRowEntries> CatalogManager::CollectEntriesForSnapshot(
-    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) {
-  SysRowEntries entries = VERIFY_RESULT(CollectEntries(
-      tables,
-      CollectFlags{CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
-                   CollectFlag::kSucceedIfCreateInProgress}));
+    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+    IncludeHiddenTables includeHiddenTables) {
+  auto collect_flags = CollectFlags{
+      CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
+      CollectFlag::kSucceedIfCreateInProgress};
+  collect_flags.SetIf(CollectFlag::kIncludeHiddenTables, includeHiddenTables);
+
+  SysRowEntries entries = VERIFY_RESULT(CollectEntries(tables, collect_flags));
   // Include sequences_data table if the filter is on a ysql database.
   // For sequences, we have a special sequences_data (id=0000ffff00003000800000000000ffff)
   // table in the system_postgres database.
