@@ -95,15 +95,22 @@ Create the database and table you will read and write to as follows:
     ```xml
     <dependency>
         <groupId>org.apache.spark</groupId>
-        <artifactId>spark-sql_2.11</artifactId>
-        <version>2.4.2</version>
+        <artifactId>spark-sql_2.12</artifactId>
+        <version>3.5.4</version>
     </dependency>
     <dependency>
         <groupId> com.yugabyte</groupId>
         <artifactId>jdbc-yugabytedb</artifactId>
         <version>42.7.3-yb-1</version>
     </dependency>
+    <dependency>
+        <groupId>com.yugabyte</groupId>
+        <artifactId>spark-yugabytedb-dialect_2.12</artifactId>
+        <version>3.5.4-yb-1</version>
+    </dependency>
     ```
+  
+  To use the JDBC smart driver with spark, `spark-yugabytedb-dialect_2.12` needs to be added as a dependency because of  the `jdbc:yugabytedb:` in the url, the no-op dialect is selected on spark side, limiting the behaviour, for eg. in case of support of array string type data. If the upstream driver is being used, the dialect dependency is not required. More details of the usage are mentioned here: [spark-yugabytedb-dialect](https://github.com/yugabyte/spark-yugabytedb-dialect)  
 
 1. Install the added dependencies.
 
@@ -122,6 +129,9 @@ Create the database and table you will read and write to as follows:
     public class sparkSQLJavaExample {
 
        public static void main(String[] args) {
+          //Register the yugabytedb dialect if using the jdbc smart driver
+          YugabyteDBDialect.register();
+
            //Create the spark session to work with spark
            SparkSession spark = SparkSession
                    .builder()
