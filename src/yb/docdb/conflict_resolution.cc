@@ -33,7 +33,7 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/iter_util.h"
-#include "yb/docdb/shared_lock_manager.h"
+#include "yb/docdb/lock_util.h"
 #include "yb/docdb/transaction_dump.h"
 
 #include "yb/dockv/doc_key.h"

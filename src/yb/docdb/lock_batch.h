@@ -32,18 +32,13 @@ namespace yb {
 
 namespace docdb {
 
-// We don't care about actual content of this struct here, since it is an implementation detail
-// of LockManagerImpl.
-template <typename LockManager>
-struct LockedBatchEntry;
-
 template <typename LockManager>
 struct LockBatchEntry {
   LockManagerTraits<LockManager>::KeyType key;
   dockv::IntentTypeSet intent_types;
 
-  // Memory is owned by LockManagerImpl.
-  LockedBatchEntry<LockManager>* locked = nullptr;
+  // For private use by LockManager.
+  LockManagerTraits<LockManager>::LockedBatchEntry* locked = nullptr;
 
   // In context of object locking, we need to ignore conflicts with self when obtaining another
   // mode of lock on an object. The field is set to the transaction's current lock state on the
