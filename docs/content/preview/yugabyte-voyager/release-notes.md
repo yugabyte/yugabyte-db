@@ -29,7 +29,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ### Bug fixes
 
-- Fixed the status reporting via import data status when resuming the import for tables with a CSV data file that includes a header row.
+- Fixed the status reporting via import data status when resuming the import for tables from a CSV data file that includes a header row.
 - Fixed the guardrail checks for live migration in Oracle and MySQL by removing the ora2pg dependency check.
 
 ## v1.8.10 - January 28, 2025
