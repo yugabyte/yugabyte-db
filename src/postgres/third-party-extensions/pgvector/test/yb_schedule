@@ -6,8 +6,11 @@
 #
 ####################################################################################################
 test: yb.orig.setup
+test: bit
 test: cast
-test: functions
-test: input
+test: yb.port.copy
+test: halfvec
+test: sparsevec
+test: vector_type
 test: yb.orig.order_by
 test: yb.orig.index
