@@ -1,5 +1,6 @@
 CREATE SCHEMA collate_tests;
 SET search_path = collate_tests;
+SET yb_test_collation = false;
 CREATE TABLE collate_test1 (
     a int,
     b text COLLATE "en-x-icu" NOT NULL
@@ -193,7 +194,7 @@ END;
 $$;
 create event trigger event_rewrite on table_rewrite
   execute procedure trig_rewrite();
-ALTER TABLE tab1 ALTER COLUMN id SET DATA TYPE varchar(5) collate "en-US-x-icu"; -- rewrite
+ALTER TABLE tab1 ALTER COLUMN id SET DATA TYPE varchar(5) COLLATE "en-US-x-icu"; -- rewrite
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
@@ -204,8 +205,8 @@ NOTICE:  rewriting table
 --------+----------------------+-------------+----------+---------
  id     | character varying(5) | en-US-x-icu |          |
 
-CREATE TABLE tab2(id varchar(10) collate "en-US-x-icu");
-CREATE INDEX tab2_id_idx on tab2(id collate "C" desc);
+CREATE TABLE tab2(id varchar(10) COLLATE "en-US-x-icu");
+CREATE INDEX tab2_id_idx on tab2(id COLLATE "C" desc);
 INSERT INTO tab2 VALUES ('aaaa');
 \d tab2
                     Table "collate_tests.tab2"
@@ -215,7 +216,7 @@ INSERT INTO tab2 VALUES ('aaaa');
 Indexes:
     "tab2_id_idx" lsm (id COLLATE "C" DESC)
 
-ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) collate "en-US-x-icu"; -- no rewrite
+ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) COLLATE "en-US-x-icu"; -- no rewrite
 \d tab2
                     Table "collate_tests.tab2"
  Column |         Type          |  Collation  | Nullable | Default
@@ -278,7 +279,7 @@ TEMPLATE template0;
 ERROR:  invalid locale name: "ucs_basic"
 -- test YB "ucs_basic" table
 \c yugabyte
-CREATE TABLE tab2(id text collate "ucs_basic");
+CREATE TABLE tab2(id text COLLATE "ucs_basic");
 INSERT INTO tab2 VALUES ('aaa'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab2 ORDER BY id) as id \gset
 SELECT :'id' = :'ucs_basic_result';
@@ -365,42 +366,42 @@ LOCALE :zh_cn_collname
 TEMPLATE template0;
 ERROR:  unsupprted locale name: "zh_CN.utf8"
 -- test YB blar collation, unsupported locale name
-CREATE COLLATION blar1 (locale = 'blar');
+CREATE COLLATION blar1 (LOCALE = 'blar');
 ERROR:  could not create locale "blar": No such file or directory
 DETAIL:  The operating system could not find any locale data for the locale name "blar".
-CREATE COLLATION blar2 (lc_collate = 'blar');
+CREATE COLLATION blar2 (LC_COLLATE = 'blar');
 ERROR:  parameter "lc_ctype" must be specified
-CREATE COLLATION blar3 (lc_ctype = 'blar');
+CREATE COLLATION blar3 (LC_CTYPE = 'blar');
 ERROR:  parameter "lc_collate" must be specified
-CREATE COLLATION blar4 (lc_collate = 'blar', lc_ctype = 'blar');
+CREATE COLLATION blar4 (LC_COLLATE = 'blar', LC_CTYPE = 'blar');
 ERROR:  could not create locale "blar": No such file or directory
 DETAIL:  The operating system could not find any locale data for the locale name "blar".
 -- test YB fr_FR.utf8 collation, unsupported locale name
-CREATE COLLATION french1 (locale = :fr_fr_collname);
+CREATE COLLATION french1 (LOCALE = :fr_fr_collname);
 ERROR:  unsupprted locale name: "fr_FR.utf8"
-CREATE COLLATION french2 (lc_collate = :fr_fr_collname, lc_ctype = 'blar');
+CREATE COLLATION french2 (LC_COLLATE = :fr_fr_collname, LC_CTYPE = 'blar');
 ERROR:  unsupprted locale name: "fr_FR.utf8"
-CREATE COLLATION french3 (lc_collate = 'blar', lc_ctype = :fr_fr_collname);
+CREATE COLLATION french3 (LC_COLLATE = 'blar', LC_CTYPE = :fr_fr_collname);
 ERROR:  could not create locale "blar": No such file or directory
 DETAIL:  The operating system could not find any locale data for the locale name "blar".
-CREATE COLLATION french4 (lc_collate = :fr_fr_collname, lc_ctype = :fr_fr_collname);
+CREATE COLLATION french4 (LC_COLLATE = :fr_fr_collname, LC_CTYPE = :fr_fr_collname);
 ERROR:  unsupprted locale name: "fr_FR.utf8"
 -- test YB en_US.utf8 collation, supported locale name
-CREATE COLLATION english1 (locale = :en_us_collname);
-CREATE COLLATION english2 (lc_collate = :en_us_collname, lc_ctype = :en_us_collname);
-CREATE COLLATION english3 (lc_collate = 'POSIX', lc_ctype = :en_us_collname);
-CREATE COLLATION english4 (lc_collate = :en_us_collname, lc_ctype = 'POSIX');
+CREATE COLLATION english1 (LOCALE = :en_us_collname);
+CREATE COLLATION english2 (LC_COLLATE = :en_us_collname, LC_CTYPE = :en_us_collname);
+CREATE COLLATION english3 (LC_COLLATE = 'POSIX', LC_CTYPE = :en_us_collname);
+CREATE COLLATION english4 (LC_COLLATE = :en_us_collname, LC_CTYPE = 'POSIX');
 -- test YB en_US.utf8 collation, unsupported locale name
-CREATE COLLATION english5 (lc_collate = :fr_fr_collname, lc_ctype = :en_us_collname);
+CREATE COLLATION english5 (LC_COLLATE = :fr_fr_collname, LC_CTYPE = :en_us_collname);
 ERROR:  unsupprted locale name: "fr_FR.utf8"
-CREATE COLLATION english6 (lc_collate = :en_us_collname, lc_ctype = :fr_fr_collname);
+CREATE COLLATION english6 (LC_COLLATE = :en_us_collname, LC_CTYPE = :fr_fr_collname);
 ERROR:  unsupprted locale name: "fr_FR.utf8"
 -- test YB restrictions
 \c yugabyte
 SET search_path = collate_tests;
 CREATE DATABASE test_db LC_COLLATE = "en-US-x-icu" TEMPLATE template0; -- fail;
 ERROR:  invalid locale name: "en-US-x-icu"
-CREATE TABLE tab3(id char(10) collate "en-US-x-icu");
+CREATE TABLE tab3(id char(10) COLLATE "en-US-x-icu");
 CREATE INDEX tab3_id_idx ON tab3(id bpchar_pattern_ops asc); -- fail;
 ERROR:  could not use operator class "bpchar_pattern_ops" with column collation "en-US-x-icu"
 HINT:  Use the COLLATE clause to set "C" collation explicitly.
@@ -410,7 +411,7 @@ HINT:  Use the COLLATE clause to set "C" collation explicitly.
 --------+---------------+-------------+----------+---------
  id     | character(10) | en-US-x-icu |          |
 
-CREATE INDEX tab3_id_idx ON tab3(id collate "C" asc); -- ok;
+CREATE INDEX tab3_id_idx ON tab3(id COLLATE "C" asc); -- ok;
 \d tab3
                 Table "collate_tests.tab3"
  Column |     Type      |  Collation  | Nullable | Default
@@ -419,7 +420,7 @@ CREATE INDEX tab3_id_idx ON tab3(id collate "C" asc); -- ok;
 Indexes:
     "tab3_id_idx" lsm (id COLLATE "C" ASC)
 
-CREATE TABLE tab4(id varchar(10) collate "en-US-x-icu");
+CREATE TABLE tab4(id varchar(10) COLLATE "en-US-x-icu");
 CREATE INDEX tab4_id_idx ON tab4(id varchar_pattern_ops asc); -- fail;
 ERROR:  could not use operator class "varchar_pattern_ops" with column collation "en-US-x-icu"
 HINT:  Use the COLLATE clause to set "C" collation explicitly.
@@ -429,7 +430,7 @@ HINT:  Use the COLLATE clause to set "C" collation explicitly.
 --------+-----------------------+-------------+----------+---------
  id     | character varying(10) | en-US-x-icu |          |
 
-CREATE INDEX tab4_id_idx ON tab4(id collate "C" asc); -- ok;
+CREATE INDEX tab4_id_idx ON tab4(id COLLATE "C" asc); -- ok;
 \d tab4
                     Table "collate_tests.tab4"
  Column |         Type          |  Collation  | Nullable | Default
@@ -438,7 +439,7 @@ CREATE INDEX tab4_id_idx ON tab4(id collate "C" asc); -- ok;
 Indexes:
     "tab4_id_idx" lsm (id COLLATE "C" ASC)
 
-CREATE TABLE tab5(id text collate "en-US-x-icu");
+CREATE TABLE tab5(id text COLLATE "en-US-x-icu");
 CREATE INDEX tab5_id_idx ON tab5(id text_pattern_ops asc); -- fail;
 ERROR:  could not use operator class "text_pattern_ops" with column collation "en-US-x-icu"
 HINT:  Use the COLLATE clause to set "C" collation explicitly.
@@ -448,7 +449,7 @@ HINT:  Use the COLLATE clause to set "C" collation explicitly.
 --------+------+-------------+----------+---------
  id     | text | en-US-x-icu |          |
 
-CREATE INDEX tab5_id_idx ON tab5(id collate "C" asc); -- ok;
+CREATE INDEX tab5_id_idx ON tab5(id COLLATE "C" asc); -- ok;
 \d tab5
             Table "collate_tests.tab5"
  Column | Type |  Collation  | Nullable | Default
@@ -458,18 +459,157 @@ Indexes:
     "tab5_id_idx" lsm (id COLLATE "C" ASC)
 
 -- No index scan when collation does not match
-CREATE TABLE collate_filter_pushdown (k text collate "C", v text, PRIMARY KEY(k hash));
+CREATE TABLE collate_filter_pushdown (k text COLLATE "C", v text, PRIMARY KEY(k hash));
 INSERT INTO collate_filter_pushdown (SELECT s, s FROM generate_series(1,1000) s);
-EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' collate "C"; -- should push down filter and result in Index scan.
+EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' COLLATE "C"; -- should push down filter and result in Index scan.
                                                  QUERY PLAN
 -------------------------------------------------------------------------------------------------------------
  Index Scan using collate_filter_pushdown_pkey on collate_filter_pushdown  (cost=0.00..4.11 rows=1 width=64)
    Index Cond: (k = 'A'::text COLLATE "C")
 (2 rows)
 
-EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' collate "en_US"; -- should NOT push down filter and result in Seq scan.
+EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' COLLATE "en_US"; -- should NOT push down filter and result in Seq scan.
                                  QUERY PLAN
 -----------------------------------------------------------------------------
  Seq Scan on collate_filter_pushdown  (cost=0.00..102.50 rows=1000 width=64)
    Filter: (k = 'A'::text COLLATE "en_US")
+(2 rows)
+
+-- test collation versions (to ensure that YB behaves as PG, update the logs
+-- when merging with future PG release because it makes error case changes).
+-- Create database without LOCALE/LC_COLLATE does not set datcollversion.
+\c yugabyte
+CREATE DATABASE test_db1;
+CREATE DATABASE test_db2 TEMPLATE template0;
+SELECT datcollversion IS NULL FROM pg_database WHERE datname = 'test_db1';
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT datcollversion IS NULL FROM pg_database WHERE datname = 'test_db2';
+ ?column?
+----------
+ t
+(1 row)
+
+-- Create database LOCALE/LC_COLLATE will set datcollversion.
+CREATE DATABASE test_db3 LOCALE 'en_US.UTF-8' TEMPLATE template0;
+CREATE DATABASE test_db4 LC_COLLATE 'en_US.UTF-8' TEMPLATE template0;
+SELECT datcollversion FROM pg_database WHERE datname = 'test_db3';
+ datcollversion
+----------------
+ yb-test-2.28
+(1 row)
+
+SELECT datcollversion FROM pg_database WHERE datname = 'test_db4';
+ datcollversion
+----------------
+ yb-test-2.28
+(1 row)
+
+-- By default collation version is auto-computed by PG from the libc or libicu libraries
+-- provided by the underlining operating system.
+-- Create database with a fake datcollversion 'blar' to test PG's collation version mismatch
+-- warning mechanism. This simulate a situation where the DB was created using one version
+-- of OS and after OS upgrade PG computes a new collation version.
+CREATE DATABASE test_db5 LOCALE 'en_US.UTF-8' COLLATION_VERSION = 'blar' TEMPLATE template0;
+SELECT datcollversion FROM pg_database WHERE datname = 'test_db5';
+ datcollversion
+----------------
+ blar
+(1 row)
+
+-- Should see a collation version mismatch warning.
+\c test_db5
+WARNING:  database "test_db5" has a collation version mismatch
+DETAIL:  The database was created using collation version blar, but the operating system provides version yb-test-2.28.
+HINT:  Rebuild all objects in this database that use the default collation and run ALTER DATABASE test_db5 REFRESH COLLATION VERSION, or build PostgreSQL with the right library version.
+-- On seeing the collation version mismatch warning message, the user should rebuild all
+-- the affected objects. After that we can refresh the database collation to get rid of
+-- the collation version mismatch warning message.
+ALTER DATABASE test_db5 REFRESH COLLATION VERSION;
+NOTICE:  changing version from blar to yb-test-2.28
+SELECT datcollversion FROM pg_database WHERE datname = 'test_db5';
+ datcollversion
+----------------
+ yb-test-2.28
+(1 row)
+
+-- Should no longer see a collation version mismatch warning.
+\c test_db5
+\c yugabyte
+-- Test collation version has no effect for C collation.
+-- Should not see a collation version mismatch warning.
+CREATE COLLATION test_coll1 (LOCALE = "C", VERSION = 'blar');
+SELECT collversion FROM pg_collation WHERE collname = 'test_coll1';
+ collversion
+-------------
+ blar
+(1 row)
+
+CREATE TABLE test_tab1(id text COLLATE test_coll1);
+-- PG 15 gives an error of "invalid collation version change", so does YB.
+ALTER COLLATION test_coll1 REFRESH VERSION;
+ERROR:  invalid collation version change
+SELECT collversion FROM pg_collation WHERE collname = 'test_coll1';
+ collversion
+-------------
+ blar
+(1 row)
+
+-- Create a new collation with a fake version 'blar' to test PG's collation version mismatch
+-- warning mechanism.
+CREATE COLLATION test_coll2 (LOCALE = :en_us_collname, VERSION = 'blar');
+WARNING:  collation "test_coll2" has version mismatch
+DETAIL:  The collation in the database was created using version blar, but the operating system provides version yb-test-2.28.
+HINT:  Rebuild all objects affected by this collation and run ALTER COLLATION public.test_coll2 REFRESH VERSION, or build PostgreSQL with the right library version.
+SELECT collversion FROM pg_collation WHERE collname = 'test_coll2';
+ collversion
+-------------
+ blar
+(1 row)
+
+CREATE TABLE test_tab2(id text COLLATE test_coll2);
+ALTER COLLATION test_coll2 REFRESH VERSION;
+NOTICE:  changing version from blar to yb-test-2.28
+SELECT collversion FROM pg_collation WHERE collname = 'test_coll2';
+ collversion
+--------------
+ yb-test-2.28
+(1 row)
+
+-- Simulate OS upgrade that changed builtin collation version.
+SET yb_test_collation = TRUE;
+CREATE TABLE test_tab3(id text COLLATE "en-x-icu");
+SELECT collversion FROM pg_collation WHERE collname = 'en-x-icu';
+ collversion
+-------------
+ 153.112
+(1 row)
+
+INSERT INTO test_tab3 VALUES ('aaa'), ('ZZZ');
+SELECT id FROM test_tab3 ORDER BY id;
+WARNING:  collation "en-x-icu" has version mismatch
+DETAIL:  The collation in the database was created using version 153.112, but the operating system provides version yb-test-2.28.
+HINT:  Rebuild all objects affected by this collation and run ALTER COLLATION pg_catalog."en-x-icu" REFRESH VERSION, or build PostgreSQL with the right library version.
+ id
+-----
+ aaa
+ ZZZ
+(2 rows)
+
+ALTER COLLATION "en-x-icu" REFRESH VERSION;
+NOTICE:  changing version from 153.112 to yb-test-2.28
+SELECT collversion FROM pg_collation WHERE collname = 'en-x-icu';
+ collversion
+--------------
+ yb-test-2.28
+(1 row)
+
+SELECT id FROM test_tab3 ORDER BY id;
+ id
+-----
+ aaa
+ ZZZ
 (2 rows)

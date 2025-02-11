@@ -1782,6 +1782,23 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 #endif
 	}
 
+	/* MacOS specific YB change to make unit test results stable. */
+	if (IsYugaByteEnabled())
+	{
+#ifdef __APPLE__
+		if (!collversion &&
+			yb_test_collation &&
+			collprovider == COLLPROVIDER_LIBC &&
+			pg_strcasecmp("C", collcollate) != 0 &&
+			pg_strncasecmp("C.", collcollate, 2) != 0 &&
+			pg_strcasecmp("POSIX", collcollate) != 0)
+			collversion = "2.28";
+#endif
+	}
+
+	if (yb_test_collation)
+		/* Make unit test output stable across different OS types and versions. */
+		return collversion ? "yb-test-2.28" : NULL;
 	return collversion;
 }
 

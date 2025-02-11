@@ -2748,6 +2748,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 
 			/* All T_Alter... tags from nodes.h: */
 		case T_AlterCollationStmt:
+		case T_AlterDatabaseRefreshCollStmt:
 		case T_AlterDatabaseSetStmt:
 		case T_AlterDatabaseStmt:
 		case T_AlterDefaultPrivilegesStmt:
