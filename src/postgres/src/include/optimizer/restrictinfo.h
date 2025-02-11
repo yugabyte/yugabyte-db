@@ -30,6 +30,9 @@ extern RestrictInfo *make_restrictinfo(Expr *clause,
 				  Relids outer_relids,
 				  Relids nullable_relids);
 
+extern bool yb_can_hash_batched_rinfo(RestrictInfo *batched_rinfo,
+									  Relids outer_relids,
+									  Relids inner_relids);
 extern bool yb_can_batch_rinfo(RestrictInfo *rinfo,
 					 		Relids outer_batched_relids,
 					 		Relids inner_relids);

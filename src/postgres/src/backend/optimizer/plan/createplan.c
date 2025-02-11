@@ -4950,6 +4950,10 @@ create_nestloop_plan(PlannerInfo *root,
 											 	inner_relids);
 
 				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
+				/* Can't use this clause for hashing during the BNL. */
+				if (!yb_can_hash_batched_rinfo(batched_rinfo, batched_outerrelids, inner_relids))
+					continue;
+
 			}
 
 			current_hinfo->hashOp = hashOpno;
