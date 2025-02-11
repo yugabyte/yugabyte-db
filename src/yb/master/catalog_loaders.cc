@@ -259,8 +259,9 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
     }
 
-    // Assume we need to delete this tablet until we find an active table using this tablet.
+    // Assume we need to delete/hide this tablet until we find an active table using this tablet.
     bool should_delete_tablet = !tablet_deleted;
+    bool should_hide_tablet = !tablet_deleted && !l.mutable_data()->is_hidden();
 
     std::shared_ptr<std::atomic<size_t>> add_table_to_tablet_counter;
     std::vector<std::shared_ptr<AsyncAddTableToTablet>> add_table_to_tablet_tasks;
@@ -303,10 +304,10 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       }
 
       auto tl = table->LockForRead();
-      if (!tl->started_deleting()) {
-        // Found an active table.
-        should_delete_tablet = false;
-      }
+
+      // Found an active table for this tablet
+      should_delete_tablet = should_delete_tablet && tl->started_deleting();
+      should_hide_tablet = should_hide_tablet && tl->started_hiding();
 
       auto schema = tl->schema();
       ColocationId colocation_id = kColocationIdNotSet;
@@ -359,6 +360,14 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
       needs_async_write_to_sys_catalog = true;
       catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
+    } else if (should_hide_tablet) {
+      LOG(INFO) << "Will mark tablet " << tablet->id() << " for table " << first_table->ToString()
+                << " as HIDDEN post loading sys.catalog";
+      state_->AddPostLoadTask(
+          std::bind(
+              &CatalogManager::MarkTabletAsHiddenPostReload, catalog_manager_, tablet->id(),
+              state_->epoch),
+          Format("Marking tablet:$0 as HIDDEN post sys.catalog reload", tablet->id()));
     }
 
     l.Commit();
