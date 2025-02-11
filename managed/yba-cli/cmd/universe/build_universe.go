@@ -34,19 +34,21 @@ func buildCommunicationPorts() *ybaclient.CommunicationPorts {
 	yqlServerRPCPort := v1.GetInt("yql-server-rpc-port")
 	ysqlServerHTTPPort := v1.GetInt("ysql-server-http-port")
 	ysqlServerRPCPort := v1.GetInt("ysql-server-rpc-port")
+	internalYsqlServerRPCPort := v1.GetInt("internal-ysql-server-rpc-port")
 
 	return &ybaclient.CommunicationPorts{
-		MasterHttpPort:      util.GetInt32Pointer(int32(masterHTTPPort)),
-		MasterRpcPort:       util.GetInt32Pointer(int32(masterRPCPort)),
-		NodeExporterPort:    util.GetInt32Pointer(int32(nodeExporterPort)),
-		RedisServerHttpPort: util.GetInt32Pointer(int32(redisServerHTTPPort)),
-		RedisServerRpcPort:  util.GetInt32Pointer(int32(redisServerRPCPort)),
-		TserverHttpPort:     util.GetInt32Pointer(int32(tserverHTTPPort)),
-		TserverRpcPort:      util.GetInt32Pointer(int32(tserverRPCPort)),
-		YqlServerHttpPort:   util.GetInt32Pointer(int32(yqlServerHTTPPort)),
-		YqlServerRpcPort:    util.GetInt32Pointer(int32(yqlServerRPCPort)),
-		YsqlServerHttpPort:  util.GetInt32Pointer(int32(ysqlServerHTTPPort)),
-		YsqlServerRpcPort:   util.GetInt32Pointer(int32(ysqlServerRPCPort)),
+		MasterHttpPort:            util.GetInt32Pointer(int32(masterHTTPPort)),
+		MasterRpcPort:             util.GetInt32Pointer(int32(masterRPCPort)),
+		NodeExporterPort:          util.GetInt32Pointer(int32(nodeExporterPort)),
+		RedisServerHttpPort:       util.GetInt32Pointer(int32(redisServerHTTPPort)),
+		RedisServerRpcPort:        util.GetInt32Pointer(int32(redisServerRPCPort)),
+		TserverHttpPort:           util.GetInt32Pointer(int32(tserverHTTPPort)),
+		TserverRpcPort:            util.GetInt32Pointer(int32(tserverRPCPort)),
+		YqlServerHttpPort:         util.GetInt32Pointer(int32(yqlServerHTTPPort)),
+		YqlServerRpcPort:          util.GetInt32Pointer(int32(yqlServerRPCPort)),
+		YsqlServerHttpPort:        util.GetInt32Pointer(int32(ysqlServerHTTPPort)),
+		YsqlServerRpcPort:         util.GetInt32Pointer(int32(ysqlServerRPCPort)),
+		InternalYsqlServerRpcPort: util.GetInt32Pointer(int32(internalYsqlServerRPCPort)),
 	}
 }
 
@@ -395,6 +397,13 @@ func buildClusters(
 
 	enableYSQL := v1.GetBool("enable-ysql")
 
+	connectionPooling := v1.GetString("connection-pooling")
+	enableConnectionPooling := false
+	if len(connectionPooling) != 0 &&
+		strings.Compare(strings.ToUpper(connectionPooling), util.EnableOpType) == 0 {
+		enableConnectionPooling = true
+	}
+
 	ysqlPassword := v1.GetString("ysql-password")
 	enableYSQLAuth := false
 	if len(ysqlPassword) != 0 {
@@ -530,10 +539,10 @@ func buildClusters(
 	var masterGFlags map[string]string
 	if len(strings.TrimSpace(masterGFlagsString)) > 0 {
 		if strings.HasPrefix(strings.TrimSpace(masterGFlagsString), "{") {
-			masterGFlags = universeutil.ProcessMasterGflagsJSONString(masterGFlagsString)
+			masterGFlags = universeutil.ProcessGFlagsJSONString(masterGFlagsString, "Master")
 		} else {
 			// Assume YAML format
-			masterGFlags = universeutil.ProcessMasterGflagsYAMLString(masterGFlagsString)
+			masterGFlags = universeutil.ProcessGFlagsYAMLString(masterGFlagsString, "Master")
 		}
 	} else {
 		masterGflagsMap := v1.GetStringMapString("master-gflags")
@@ -627,15 +636,16 @@ func buildClusters(
 				MasterInstanceType: util.GetStringPointer(masterInstanceType),
 				MasterDeviceInfo:   masterDeviceInfo,
 
-				AssignPublicIP:       util.GetBoolPointer(assignPublicIP),
-				AssignStaticPublicIP: util.GetBoolPointer(assignStaticPublicIP),
-				EnableYSQL:           util.GetBoolPointer(enableYSQL),
-				YsqlPassword:         util.GetStringPointer(ysqlPassword),
-				EnableYSQLAuth:       util.GetBoolPointer(enableYSQLAuth),
-				EnableYCQL:           util.GetBoolPointer(enableYCQL),
-				YcqlPassword:         util.GetStringPointer(ycqlPassword),
-				EnableYCQLAuth:       util.GetBoolPointer(enableYCQLAuth),
-				EnableYEDIS:          util.GetBoolPointer(enableYEDIS),
+				AssignPublicIP:          util.GetBoolPointer(assignPublicIP),
+				AssignStaticPublicIP:    util.GetBoolPointer(assignStaticPublicIP),
+				EnableYSQL:              util.GetBoolPointer(enableYSQL),
+				YsqlPassword:            util.GetStringPointer(ysqlPassword),
+				EnableConnectionPooling: util.GetBoolPointer(enableConnectionPooling),
+				EnableYSQLAuth:          util.GetBoolPointer(enableYSQLAuth),
+				EnableYCQL:              util.GetBoolPointer(enableYCQL),
+				YcqlPassword:            util.GetStringPointer(ycqlPassword),
+				EnableYCQLAuth:          util.GetBoolPointer(enableYCQLAuth),
+				EnableYEDIS:             util.GetBoolPointer(enableYEDIS),
 
 				EnableClientToNodeEncrypt: util.GetBoolPointer(enableCtoN),
 				EnableNodeToNodeEncrypt:   util.GetBoolPointer(enableNtoN),

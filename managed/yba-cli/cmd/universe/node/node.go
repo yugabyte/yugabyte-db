@@ -25,6 +25,7 @@ var NodeCmd = &cobra.Command{
 
 func init() {
 	NodeCmd.Flags().SortFlags = false
+	NodeCmd.PersistentFlags().SortFlags = false
 	// stop -> remove -> release
 	NodeCmd.AddCommand(addNodeCmd)
 	NodeCmd.AddCommand(startNodeCmd)

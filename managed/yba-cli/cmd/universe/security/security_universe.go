@@ -21,6 +21,7 @@ var SecurityUniverseCmd = &cobra.Command{
 
 func init() {
 	SecurityUniverseCmd.Flags().SortFlags = false
+	SecurityUniverseCmd.PersistentFlags().SortFlags = false
 
 	SecurityUniverseCmd.AddCommand(encryptionAtRestCmd)
 	SecurityUniverseCmd.AddCommand(eit.EncryptionInTransitCmd)

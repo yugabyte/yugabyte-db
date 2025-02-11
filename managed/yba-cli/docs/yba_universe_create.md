@@ -108,6 +108,8 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --yql-server-rpc-port int                          [Optional] YQL Server RPC Port. (default 9042)
       --ysql-server-http-port int                        [Optional] YSQL Server HTTP Port. (default 13000)
       --ysql-server-rpc-port int                         [Optional] YSQL Server RPC Port. (default 5433)
+      --connection-pooling string                        This is a preview flag (may change in future). [Optional] Connection Pooling setting for the universe. Enable "yb.universe.allow_connection_pooling" runtime configuration to allow enabling connection pooling in universes. Allowed values: enable, disable. (default "disable")
+      --internal-ysql-server-rpc-port int                This is a preview flag (may change in future). [Optional] Internal YSQL Server RPC Port used when connection pooling is enabled. (default 6433)
   -h, --help                                             help for create
 ```
 
