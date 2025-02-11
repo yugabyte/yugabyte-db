@@ -616,4 +616,35 @@ TEST_F(PgBgWorkersTest, ValidateIdleWaitEventsNotPresent) {
   }
 }
 
+TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
+  constexpr auto kDefaultQueryId = 5;
+  constexpr auto kBgWorkerQueryId = 7;
+
+  ASSERT_OK(conn_->Execute("CREATE EXTENSION pg_cron"));
+  ASSERT_OK(conn_->FetchFormat("SELECT cron.schedule('job', '1 second', '$0')",
+      "SELECT pg_sleep(1000)"));
+
+  // wait for the cron bg worker to start
+  SleepFor(5s * kTimeMultiplier);
+
+  // get the pg_cron bg worker pid
+  const auto pid = ASSERT_RESULT(conn_->FetchRow<int32_t>(
+      "SELECT pid FROM pg_stat_activity WHERE backend_type = "
+      "'pg_cron'"));
+
+  constexpr auto kQueryString =
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE "
+      "pid = $0 AND query_id = $1";
+
+  const auto default_query_id_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(kQueryString, pid, kDefaultQueryId)));
+
+  ASSERT_EQ(default_query_id_cnt, 0);
+
+  const auto bgworker_query_id_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(kQueryString, pid, kBgWorkerQueryId)));
+
+  ASSERT_GE(bgworker_query_id_cnt, 1);
+}
+
 }  // namespace yb::pgwrapper
