@@ -23,7 +23,8 @@ const (
 		"\t{{.NumMasters}}\t{{.NumTservers}}\t{{.LiveNodes}}"
 	universeDetails1 = "table  {{.ProviderUUID}}\t{{.AccessKey}}\t{{.PricePerDay}}" +
 		"\t{{.CPUArchitecture}}"
-	universeDetails2 = "table {{.EnableYSQL}}\t{{.YSQLAuthEnabled}}\t{{.EnableYCQL}}" +
+	universeDetails2 = "table {{.EnableYSQL}}\t{{.YSQLAuthEnabled}}\t{{.EnableConnectionPooling}}"
+	universeDetails3 = "table {{.EnableYCQL}}" +
 		"\t{{.YCQLAuthEnabled}}\t{{.UseSystemd}}"
 	encryptionRestDetails     = "table {{.KMSEnabled}}\t{{.KMSConfig}}\t{{.EncryptionRestType}}"
 	encryptionTransitDetails1 = "table {{.NtoNTLS}}\t{{.NtoNCert}}"
@@ -119,6 +120,18 @@ func (fu *FullUniverseContext) Write() error {
 	fu.Output.Write([]byte("\n"))
 
 	tmpl, err = fu.startSubsection(universeDetails2)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	if err := fu.ContextFormat(tmpl, fuc.Universe); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	fu.PostFormat(tmpl, NewUniverseContext())
+	fu.Output.Write([]byte("\n"))
+
+	tmpl, err = fu.startSubsection(universeDetails3)
 	if err != nil {
 		logrus.Errorf("%s", err.Error())
 		return err

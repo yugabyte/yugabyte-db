@@ -1,22 +1,22 @@
-## yba universe security
+## yba universe edit
 
-Manage security settings for a universe
+Edit a YugabyteDB Anywhere universe
 
 ### Synopsis
 
-Manage security settings for a universe
+Edit a universe in YugabyteDB Anywhere
 
 ```
-yba universe security [flags]
+yba universe edit [flags]
 ```
 
 ### Options
 
 ```
-  -n, --name string        [Required] The name of the universe for the operation.
+  -n, --name string        [Required] The name of the universe to be edited.
   -f, --force              [Optional] Bypass the prompt for non-interactive usage.
   -s, --skip-validations   [Optional] Skip validations before running the CLI command.
-  -h, --help               help for security
+  -h, --help               help for edit
 ```
 
 ### Options inherited from parent commands
@@ -36,6 +36,5 @@ yba universe security [flags]
 ### SEE ALSO
 
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
-* [yba universe security ear](yba_universe_security_ear.md)	 - Encryption-at-rest settings for a universe
-* [yba universe security eit](yba_universe_security_eit.md)	 - Encryption-in-transit settings for a universe
+* [yba universe edit ysql](yba_universe_edit_ysql.md)	 - Edit YSQL settings for a YugabyteDB Anywhere Universe
 
