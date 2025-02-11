@@ -693,4 +693,41 @@ TEST_F(PgBgWorkersTest, ValidateIdleWaitEventsNotPresent) {
   }
 }
 
+TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
+  constexpr auto kSleepTime = 5;
+  constexpr auto kDefaultQueryId = 5;
+  constexpr auto kBgWorkerQueryId = 7;
+
+  // start the query diagnostics worker for a random query id
+  ASSERT_OK(conn_->FetchFormat(
+      "SELECT yb_query_diagnostics(query_id => 100, "
+      "diagnostics_interval_sec => $0)",
+      2 * kSleepTime));
+
+  // let ASH collect some samples
+  SleepFor(kSleepTime * 1s);
+
+  // get the query diagnostics bg worker pid
+  const auto pid = ASSERT_RESULT(conn_->FetchRow<int32_t>(
+      "SELECT pid FROM pg_stat_activity WHERE backend_type = "
+      "'yb_query_diagnostics bgworker'"));
+
+  // let ASH collect some more samples
+  SleepFor((kSleepTime + 1) * 1s);
+
+  constexpr auto kQueryString =
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE "
+      "pid = $0 AND query_id = $1";
+
+  const auto default_query_id_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(kQueryString, pid, kDefaultQueryId)));
+
+  ASSERT_EQ(default_query_id_cnt, 0);
+
+  const auto bgworker_query_id_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(kQueryString, pid, kBgWorkerQueryId)));
+
+  ASSERT_GE(bgworker_query_id_cnt, 1);
+}
+
 }  // namespace yb::pgwrapper
