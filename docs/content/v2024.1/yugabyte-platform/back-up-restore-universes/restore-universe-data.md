@@ -82,6 +82,8 @@ To restore, do the following:
 
 1. In the **Restore Backup** dialog, select the universe (target) to which you want to restore the backup.
 
+    Note that the Creation time shown in the dialog indicates the backup job start time, _not_ the time that the particular database was actually snapshotted and backed up. When multiple databases are included in a backup job, each databases is snapshotted and backed up in serial order; thus, each individual database's actual snapshot and backup time is not the same as the backup job start time. To restore a database to a specific point in time, use [Point-in-time recovery](../pitr/).
+
 1. If you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the master keys referenced in the metadata file can be retrieved.
 
     If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the universe key registry on the restored universe with the required master keys. The universe data files are restored normally afterwards.
