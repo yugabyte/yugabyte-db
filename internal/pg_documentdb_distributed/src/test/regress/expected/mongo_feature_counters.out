@@ -314,15 +314,15 @@ SELECT documentdb_api.insert_one('db', 'vectorIndexCollFC', '{ "_id": 2, "elem":
 
 ANALYZE;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexCollFC", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "vector_ivf", "nProbes": 10}  } } ], "cursor": {} }');
-                                                                                  document                                                                                  
+                                                                                                                          document                                                                                                                           
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "elem" : "some sentence ivf", "vector_ivf" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "9.0" } ] }
+ { "_id" : { "$numberInt" : "1" }, "elem" : "some sentence ivf", "vector_ivf" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "9.0" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "10.208329887130052072" } } }
 (1 row)
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexCollFC", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0, 1.0 ], "k": 2, "path": "vector_hnsw", "efSearch": 5 }  } } ], "cursor": {} }');
-                                                                                               document                                                                                               
+                                                                                                                                        document                                                                                                                                        
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2" }, "elem" : "some sentence hnsw", "vector_hnsw" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "8.0" }, { "$numberInt" : "8" } ] }
+ { "_id" : { "$numberInt" : "2" }, "elem" : "some sentence hnsw", "vector_hnsw" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "8.0" }, { "$numberInt" : "8" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "0.54622507455841007307" } } }
 (1 row)
 
 BEGIN;

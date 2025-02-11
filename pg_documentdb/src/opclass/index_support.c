@@ -974,33 +974,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 
 		if (vectorDefinition != NULL)
 		{
-			/*
-			 *  indexPath->indexorderbys contains a list of order by expressions. For vector search, it is of the following form.
-			 *  Order By: (vector(ApiCatalogSchemaName.bson_extract_vector(collection.document, 'vectorPath'::text), 3, true) <#> '[3,4.9,1]'::vector)
-			 *
-			 *  OpExpr (FuncExpr (FuncExpr(document, CosntVectorPath), CosntDimension, ConstTrue), OpId, ConstVector)
-			 *
-			 *  Here we extarct:
-			 *      1. The path name 'vectorPath' on which the index is defined.
-			 *      2. Vector serch operator (<#> stands for COSINE)
-			 *      3. The query vector [3, 4, 9, 1]
-			 *
-			 *  And store that for future usage by the $meta which would use this information to compute score for the resulting vectors.
-			 */
-			OpExpr *sortExpr = (OpExpr *) linitial(indexPath->indexorderbys);
-
-
-			FuncExpr *vectorCastFunc = (FuncExpr *) linitial(sortExpr->args);
-			FuncExpr *bsonExtractFunc = (FuncExpr *) linitial(vectorCastFunc->args);
-			Const *vectorPathConst = (Const *) lsecond(bsonExtractFunc->args);
-
-			Const *vectorConst = (Const *) lsecond(sortExpr->args);
-
 			context->hasVectorSearchQuery = true;
-			context->queryDataForVectorSearch.VectorPathName =
-				vectorPathConst->constvalue;
-			context->queryDataForVectorSearch.QueryVector = vectorConst->constvalue;
-			context->queryDataForVectorSearch.SimilaritySearchOpOid = sortExpr->opno;
 			context->queryDataForVectorSearch.VectorAccessMethodOid =
 				indexPath->indexinfo->relam;
 

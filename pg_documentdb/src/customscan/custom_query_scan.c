@@ -53,14 +53,6 @@
 QueryTextIndexData *QueryTextData = NULL;
 
 /*
- * Global that tracks a given query's
- * vector index state. This is only Not null
- * during the duration of a query that has vector
- * search.
- */
-SearchQueryEvalDataWorker *VectorEvaluationData = NULL;
-
-/*
  * This is the input state that is per query.
  * Any pertinent information that is associated with
  * this query goes here.
@@ -100,11 +92,6 @@ typedef struct ExtensionQueryScanState
 
 	/* The immutable state for this query */
 	InputQueryState *inputState;
-
-	/* The evaluation data to be set to the global state
-	 * on a per tuple evaluation basis.
-	 */
-	SearchQueryEvalDataWorker *vectorEvaluationDataPrivate;
 } ExtensionQueryScanState;
 
 /* Name needed for Postgres to register a custom scan */
@@ -530,16 +517,6 @@ ExtensionQueryScanBeginCustomScan(CustomScanState *node, EState *estate,
 
 	if (queryScanState->inputState->hasVectorSearchData)
 	{
-		SearchQueryEvalDataWorker *evalData = palloc0(sizeof(SearchQueryEvalDataWorker));
-		evalData->SimilaritySearchOpOid =
-			queryScanState->inputState->querySearchData.SimilaritySearchOpOid;
-		evalData->SimilarityFuncInfo = CreateFCInfoForScoreCalculation(
-			&queryScanState->inputState->querySearchData);
-		evalData->VectorPathName = TextDatumGetCString(
-			queryScanState->inputState->querySearchData.VectorPathName);
-
-		queryScanState->vectorEvaluationDataPrivate = evalData;
-
 		pgbson *searchParamBson = (pgbson *) DatumGetPointer(
 			queryScanState->inputState->querySearchData.SearchParamBson);
 
@@ -565,9 +542,6 @@ ExtensionQueryScanExecCustomScan(CustomScanState *pstate)
 {
 	ExtensionQueryScanState *node = (ExtensionQueryScanState *) pstate;
 
-	/* Set the vector evaluation data */
-	VectorEvaluationData = node->vectorEvaluationDataPrivate;
-
 	/*
 	 * Call ExecScan with the next/recheck methods. This handles
 	 * Post-processing for projections, custom filters etc.
@@ -576,9 +550,6 @@ ExtensionQueryScanExecCustomScan(CustomScanState *pstate)
 										  (ExecScanAccessMtd) ExtensionQueryScanNext,
 										  (ExecScanRecheckMtd)
 										  ExtensionQueryScanNextRecheck);
-
-	/* Clean up the vector evaluation data */
-	VectorEvaluationData = NULL;
 
 	return returnSlot;
 }
@@ -619,14 +590,6 @@ ExtensionQueryScanEndCustomScan(CustomScanState *node)
 
 	/* reset any scanstate state here */
 	QueryTextData = NULL;
-
-	if (queryScanState->vectorEvaluationDataPrivate != NULL)
-	{
-		pfree(queryScanState->vectorEvaluationDataPrivate->SimilarityFuncInfo);
-		pfree(queryScanState->vectorEvaluationDataPrivate->VectorPathName);
-		pfree(queryScanState->vectorEvaluationDataPrivate);
-	}
-
 	ExecEndNode((PlanState *) queryScanState->innerScanState);
 }
 
@@ -694,15 +657,6 @@ CopyNodeInputQueryState(struct ExtensibleNode *target_node, const struct
 
 	if (from->hasVectorSearchData)
 	{
-		newNode->querySearchData.SimilaritySearchOpOid =
-			from->querySearchData.SimilaritySearchOpOid;
-		newNode->querySearchData.QueryVector = PointerGetDatum(PG_DETOAST_DATUM_COPY(
-																   from->querySearchData.
-																   QueryVector));
-		newNode->querySearchData.VectorPathName = PointerGetDatum(PG_DETOAST_DATUM_COPY(
-																	  from->
-																	  querySearchData.
-																	  VectorPathName));
 		newNode->querySearchData.VectorAccessMethodOid =
 			from->querySearchData.VectorAccessMethodOid;
 

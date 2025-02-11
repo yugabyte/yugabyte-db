@@ -822,21 +822,21 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 (1 row)
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
-                                                                                   document                                                                                   
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ] }
+                                                                                                                            document                                                                                                                            
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "0.99986126308999445644" } } }
 (1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
-                                                                                 QUERY PLAN                                                                                 
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit
-   Output: document, ((public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+   Output: (documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)))), ((public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
    ->  Sort
-         Output: document, ((public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+         Output: (documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)))), ((public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
          Sort Key: ((public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
          ->  Seq Scan on documentdb_data.documents_3500 collection
-               Output: document, (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
+               Output: documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))), (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
                Filter: (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)
 (8 rows)
 
@@ -852,30 +852,30 @@ ANALYZE;
 BEGIN;
 SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "nProbes": 2 }  } } ], "cursor": {} }');
-                                                                                      document                                                                                       
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ] }
- { "_id" : { "$numberInt" : "7" }, "a" : "some other sentence", "v" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "0.10000000000000000555" } ] }
+                                                                                                                               document                                                                                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "0.99986126308999445644" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "some other sentence", "v" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "0.10000000000000000555" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "0.88331075895982669177" } } }
 (2 rows)
 
 COMMIT;
 BEGIN;
 SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "nProbes": 1 }  } } ], "cursor": {} }');
-                                                                                      document                                                                                       
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ] }
- { "_id" : { "$numberInt" : "7" }, "a" : "some other sentence", "v" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "0.10000000000000000555" } ] }
+                                                                                                                               document                                                                                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "0.99986126308999445644" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "some other sentence", "v" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "0.10000000000000000555" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "0.88331075895982669177" } } }
 (2 rows)
 
 COMMIT;
 BEGIN;
 SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v" }  } } ], "cursor": {} }');
-                                                                                      document                                                                                       
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ] }
- { "_id" : { "$numberInt" : "7" }, "a" : "some other sentence", "v" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "0.10000000000000000555" } ] }
+                                                                                                                               document                                                                                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "0.99986126308999445644" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "some other sentence", "v" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "0.10000000000000000555" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "0.88331075895982669177" } } }
 (2 rows)
 
 COMMIT;
@@ -1466,17 +1466,49 @@ SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "
 BEGIN;
 SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_empty_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v", "nProbes": 5 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
-ERROR:  query requires search score metadata, but it is not available
+                                   document                                   
+------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "rank" : { "$numberDouble" : "90740.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "72409.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "72409.0" } }
+(3 rows)
+
 EXPLAIN (COSTS OFF)SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_empty_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v", "nProbes": 5 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+                                                                                                   QUERY PLAN                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: ((public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+         ->  Bitmap Heap Scan on documents_3504 collection
+               Recheck Cond: (shard_key_value = '3504'::bigint)
+               Filter: (documentdb_api_internal.bson_search_param(document, '{ "nProbes" : { "$numberInt" : "5" } }'::bson) AND (documentdb_api_internal.bson_extract_vector(document, 'v'::text) IS NOT NULL))
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '3504'::bigint)
+(8 rows)
+
 COMMIT;
 ANALYZE;
 BEGIN;
 SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_empty_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v", "nProbes": 5 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
-ERROR:  query requires search score metadata, but it is not available
+                                   document                                   
+------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "rank" : { "$numberDouble" : "90740.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "72409.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "72409.0" } }
+(3 rows)
+
 EXPLAIN (COSTS OFF)SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_empty_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v", "nProbes": 5 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+                                                                                                   QUERY PLAN                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: ((public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+         ->  Index Scan using _id_ on documents_3504 collection
+               Index Cond: (shard_key_value = '3504'::bigint)
+               Filter: (documentdb_api_internal.bson_search_param(document, '{ "nProbes" : { "$numberInt" : "5" } }'::bson) AND (documentdb_api_internal.bson_extract_vector(document, 'v'::text) IS NOT NULL))
+(6 rows)
+
 COMMIT;
 SELECT drop_collection('db','aggregation_pipeline_empty_vector');
  drop_collection 

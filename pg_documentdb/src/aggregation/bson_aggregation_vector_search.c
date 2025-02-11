@@ -1221,6 +1221,17 @@ HandleVectorSearchCore(Query *query, VectorSearchOptions *vectorSearchOptions,
 	{
 		/* Add the limit to the query from k in the search spec */
 		query->limitCount = limitCount;
+
+		/* Add the score field */
+		TargetEntry *documentEntry = linitial(query->targetList);
+		OpExpr *orderVar = (OpExpr *) sortEntry->expr;
+		Expr *scoreExpr = GenerateScoreExpr((Expr *) orderVar, orderVar->opno);
+
+		List *args = list_make2(documentEntry->expr, scoreExpr);
+		FuncExpr *resultExpr = makeFuncExpr(
+			ApiBsonDocumentAddScoreFieldFunctionId(), BsonTypeId(), args, InvalidOid,
+			InvalidOid, COERCE_EXPLICIT_CALL);
+		documentEntry->expr = (Expr *) resultExpr;
 	}
 
 	/* Push next stage to a new subquery (since we did a sort) */

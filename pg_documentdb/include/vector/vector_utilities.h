@@ -25,19 +25,6 @@
  */
 typedef struct SearchQueryEvalData
 {
-	/* Oid of the similarity search
-	 * operation COS/IP/L2 */
-	Oid SimilaritySearchOpOid;
-
-	/* Query Vector Datum which will
-	 * be used to calculate score against
-	 * the returned vectors */
-	Datum QueryVector;
-
-	/* The path containing the vectors in
-	 * the documents */
-	Datum VectorPathName;
-
 	/* This contains the bson value of the search parameter,
 	 * like { "nProbes": 4 } */
 	Datum SearchParamBson;
@@ -48,31 +35,6 @@ typedef struct SearchQueryEvalData
 } SearchQueryEvalData;
 
 
-/*
- * Type that holds data needed for
- * computing scores vector returned from
- * a vector search query. This is used to
- * move required data across nodes via
- * CustomScan.
- */
-typedef struct SearchQueryEvalDataWorker
-{
-	/* Oid of the similarity search
-	 * operation COS/IP/L2 */
-	Oid SimilaritySearchOpOid;
-
-	/* The path containing the vectors in
-	 * the documents */
-	char *VectorPathName;
-
-	/* This is the cached functioncall info
-	 * data that can be used on the incoming
-	 * documents for computing scores */
-	FunctionCallInfoBaseData *SimilarityFuncInfo;
-} SearchQueryEvalDataWorker;
-
-FunctionCallInfoBaseData * CreateFCInfoForScoreCalculation(const SearchQueryEvalData
-														   *queryEvalData);
 double EvaluateMetaSearchScore(pgbson *document);
 
 char * GenerateVectorIndexExprStr(const char *keyPath,
