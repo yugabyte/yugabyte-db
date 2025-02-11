@@ -5,8 +5,8 @@ INSERT INTO t (val) VALUES ('[0,0,0]'), ('[1,2,3]'), ('[1,1,1]'), (NULL);
 
 CREATE TABLE t2 (val vector(3));
 
-\copy t TO 'results/vector.bin' WITH (FORMAT binary)
-\copy t2 FROM 'results/vector.bin' WITH (FORMAT binary)
+\copy t TO '/tmp/vector.bin' WITH (FORMAT binary)
+\copy t2 FROM '/tmp/vector.bin' WITH (FORMAT binary)
 
 SELECT * FROM t2 ORDER BY val;
 
@@ -20,8 +20,8 @@ INSERT INTO t (val) VALUES ('[0,0,0]'), ('[1,2,3]'), ('[1,1,1]'), (NULL);
 
 CREATE TABLE t2 (val halfvec(3));
 
-\copy t TO 'results/halfvec.bin' WITH (FORMAT binary)
-\copy t2 FROM 'results/halfvec.bin' WITH (FORMAT binary)
+\copy t TO '/tmp/halfvec.bin' WITH (FORMAT binary)
+\copy t2 FROM '/tmp/halfvec.bin' WITH (FORMAT binary)
 
 SELECT * FROM t2 ORDER BY val;
 
@@ -35,8 +35,8 @@ INSERT INTO t (val) VALUES ('{}/3'), ('{1:1,2:2,3:3}/3'), ('{1:1,2:1,3:1}/3'), (
 
 CREATE TABLE t2 (val sparsevec(3));
 
-\copy t TO 'results/sparsevec.bin' WITH (FORMAT binary)
-\copy t2 FROM 'results/sparsevec.bin' WITH (FORMAT binary)
+\copy t TO '/tmp/sparsevec.bin' WITH (FORMAT binary)
+\copy t2 FROM '/tmp/sparsevec.bin' WITH (FORMAT binary)
 
 SELECT * FROM t2 ORDER BY val;
 

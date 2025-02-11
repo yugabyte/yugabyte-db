@@ -1,17 +1,20 @@
 EXTENSION = vector
-EXTVERSION = 0.4.4-yb-1.2
+EXTVERSION = 0.8.0-yb-1.0
 
 MODULE_big = vector
-DATA = $(wildcard sql/*--*.sql)
-OBJS = src/ivfbuild.o src/ivfflat.o src/ivfinsert.o src/ivfkmeans.o src/ivfscan.o src/ivfutils.o src/ivfvacuum.o src/vector.o src/ybvector/ybvector.o src/ybvector/ybvectorwrite.o src/ybvector/ybvectorread.o src/ybvector/ybvectorutil.o src/ybvector/ybdummyann.o src/ybvector/ybhnsw.o
+DATA = $(wildcard sql/*--*--*.sql)
+DATA_built = sql/$(EXTENSION)--$(EXTVERSION).sql
+OBJS = src/bitutils.o src/bitvec.o src/halfutils.o src/halfvec.o src/sparsevec.o src/vector.o src/ybvector/ybvector.o src/ybvector/ybvectorwrite.o src/ybvector/ybvectorread.o src/ybvector/ybvectorutil.o src/ybvector/ybdummyann.o src/ybvector/ybhnsw.o
+HEADERS = src/halfvec.h src/sparsevec.h src/vector.h src/ybvector/ybvector.h
 
 TESTS = $(wildcard test/sql/*.sql)
 REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
-REGRESS_OPTS = --inputdir=test --load-extension=vector
+REGRESS_OPTS = --inputdir=test --load-extension=$(EXTENSION)
 
+# To compile for portability, run: make OPTFLAGS=""
 OPTFLAGS = -march=native
 
-# Mac ARM doesn't support -march=native
+# Mac ARM doesn't always support -march=native
 ifeq ($(shell uname -s), Darwin)
 	ifeq ($(shell uname -p), arm)
 		# no difference with -march=armv8.5-a
@@ -40,8 +43,6 @@ all: sql/$(EXTENSION)--$(EXTVERSION).sql
 sql/$(EXTENSION)--$(EXTVERSION).sql: sql/$(EXTENSION).sql
 	cp $< $@
 
-EXTRA_CLEAN = sql/$(EXTENSION)--$(EXTVERSION).sql
-
 PG_CONFIG ?= pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
@@ -55,7 +56,7 @@ LDFLAGS += -lyb_pggate
 LDFLAGS += -lyb_pggate_util
 LDFLAGS += -L${BUILD_ROOT}/lib
 
-# for Postgres 15
+# for Postgres < 15
 PROVE_FLAGS += -I ./test/perl
 
 prove_installcheck:
@@ -68,13 +69,15 @@ dist:
 	mkdir -p dist
 	git archive --format zip --prefix=$(EXTENSION)-$(EXTVERSION)/ --output dist/$(EXTENSION)-$(EXTVERSION).zip master
 
+# for Docker
+PG_MAJOR ?= 17
+
 .PHONY: docker
 
 docker:
-	docker build --pull --no-cache --platform linux/amd64 -t ankane/pgvector:latest .
+	docker build --pull --no-cache --build-arg PG_MAJOR=$(PG_MAJOR) -t pgvector/pgvector:pg$(PG_MAJOR) -t pgvector/pgvector:$(EXTVERSION)-pg$(PG_MAJOR) .
 
 .PHONY: docker-release
 
 docker-release:
-	docker buildx build --push --pull --no-cache --platform linux/amd64,linux/arm64 -t ankane/pgvector:latest .
-	docker buildx build --push --platform linux/amd64,linux/arm64 -t ankane/pgvector:v$(EXTVERSION) .
+	docker buildx build --push --pull --no-cache --platform linux/amd64,linux/arm64 --build-arg PG_MAJOR=$(PG_MAJOR) -t pgvector/pgvector:pg$(PG_MAJOR) -t pgvector/pgvector:$(EXTVERSION)-pg$(PG_MAJOR) .
