@@ -476,8 +476,9 @@ type GCPRegionCloudInfoMutation = GCPRegionCloudInfoBase;
 type GCPRegionCloudInfo = GCPRegionCloudInfoBase;
 
 interface K8sRegionCloudInfoBase {
-  certManagerClusterIssuer?: string;
-  certManagerIssuer?: string;
+  certManagerIssuerKind?: string;
+  certManagerIssuerName?: string;
+  certManagerIssuerGroup?: string;
   kubeDomain?: string;
   kubeNamespace?: string;
   kubePodAddressTemplate?: string;

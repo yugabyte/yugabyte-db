@@ -29,7 +29,7 @@ import { FieldLabel } from '../components/FieldLabel';
 import { SubmitInProgress } from '../components/SubmitInProgress';
 import { FormContainer } from '../components/FormContainer';
 import { FormField } from '../components/FormField';
-import { K8sCertIssuerType, RegionOperation } from '../configureRegion/constants';
+import { RegionOperation } from '../configureRegion/constants';
 import {
   K8sRegionField,
   ConfigureK8sRegionModal
@@ -59,7 +59,6 @@ import { EditProvider } from '../ProviderEditView';
 import {
   findExistingRegion,
   findExistingZone,
-  getCertIssuerType,
   getDeletedRegions,
   getDeletedZones,
   getInUseAzs,
@@ -632,13 +631,10 @@ const constructDefaultFormValues = (
       },
       zones: region.zones.map((zone) => ({
         code: zone.code,
-        certIssuerType: zone.details?.cloudInfo.kubernetes
-          ? getCertIssuerType(zone.details?.cloudInfo.kubernetes)
-          : K8sCertIssuerType.NONE,
         ...(zone.details?.cloudInfo.kubernetes && {
-          certIssuerName:
-            zone.details?.cloudInfo.kubernetes.certManagerClusterIssuer ??
-            zone.details?.cloudInfo.kubernetes.certManagerIssuer,
+          certIssuerName: zone.details.cloudInfo.kubernetes.certManagerIssuerName,
+          certIssuerKind: zone.details.cloudInfo.kubernetes.certManagerIssuerKind,
+          certIssuerGroup: zone.details.cloudInfo.kubernetes.certManagerIssuerGroup,
           kubeConfigFilepath: zone.details.cloudInfo.kubernetes.kubeConfig,
           kubeDomain: zone.details.cloudInfo.kubernetes.kubeDomain,
           kubeNamespace: zone.details.cloudInfo.kubernetes.kubeNamespace,
@@ -744,12 +740,13 @@ const constructProviderPayload = async (
                     }),
                     ...(azFormValues.overrides && { overrides: azFormValues.overrides }),
                     ...(azFormValues.certIssuerName && {
-                      ...(azFormValues.certIssuerType === K8sCertIssuerType.CLUSTER_ISSUER && {
-                        certManagerClusterIssuer: azFormValues.certIssuerName
-                      }),
-                      ...(azFormValues.certIssuerType === K8sCertIssuerType.ISSUER && {
-                        certManagerIssuer: azFormValues.certIssuerName
-                      })
+                      certManagerIssuerName: azFormValues.certIssuerName
+                    }),
+                    ...(azFormValues.certIssuerKind && {
+                      certManagerIssuerKind: azFormValues.certIssuerKind
+                    }),
+                    ...(azFormValues.certIssuerGroup && {
+                      certManagerIssuerGroup: azFormValues.certIssuerGroup
                     })
                   }
                 }

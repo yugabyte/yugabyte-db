@@ -17,8 +17,9 @@ export const RegionOperation = {
 export type RegionOperation = typeof RegionOperation[keyof typeof RegionOperation];
 
 export const K8sRegionFieldLabel = {
-  CERT_ISSUER_TYPE: 'Cert-Manager Issuer Type',
   CERT_ISSUER_NAME: 'Cert-Manager Issuer Name',
+  CERT_ISSUER_GROUP: 'Cert-Manager Issuer Group (Optional)',
+  CERT_ISSUER_KIND: 'Cert-Manager Issuer Kind',
   KUBE_CONFIG_CONTENT: 'Kube Config (Optional)',
   KUBE_DOMAIN: 'Kube Domain (Optional)',
   STORAGE_CLASSES: 'Storage Classes (Optional)',
@@ -30,20 +31,6 @@ export const K8sRegionFieldLabel = {
   CURRENT_KUBE_CONFIG_FILEPATH: 'Current Kube Config Filepath',
   EDIT_KUBE_CONFIG: 'Edit Kube Config'
 } as const;
-
-export const K8sCertIssuerType = {
-  CLUSTER_ISSUER: 'clusterIssuer',
-  ISSUER: 'issuer',
-  NONE: 'none'
-} as const;
-export type K8sCertIssuerType = typeof K8sCertIssuerType[keyof typeof K8sCertIssuerType];
-
-// User Facing Label
-export const K8sCertIssuerTypeLabel = {
-  [K8sCertIssuerType.CLUSTER_ISSUER]: 'Cluster Issuer',
-  [K8sCertIssuerType.ISSUER]: 'Issuer',
-  [K8sCertIssuerType.NONE]: 'None'
-};
 
 export const OnPremRegionFieldLabel = {
   CODE: 'Region Name',

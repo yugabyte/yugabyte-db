@@ -1,7 +1,6 @@
 import { SuggestedKubernetesConfig } from '../../../../../redesign/helpers/dtos';
 import { KubernetesProvider, KubernetesProviderLabel } from '../../constants';
 import { K8sRegionField } from '../configureRegion/ConfigureK8sRegionModal';
-import { K8sCertIssuerType } from '../configureRegion/constants';
 import { generateLowerCaseAlphanumericId } from '../utils';
 
 export const adaptSuggestedKubernetesConfig = (
@@ -38,7 +37,6 @@ export const adaptSuggestedKubernetesConfig = (
     zones: region.zoneList.map((zone) => ({
       code: zone.name,
       kubernetesStorageClass: zone.config.STORAGE_CLASS,
-      certIssuerType: K8sCertIssuerType.NONE
     }))
   }));
 
