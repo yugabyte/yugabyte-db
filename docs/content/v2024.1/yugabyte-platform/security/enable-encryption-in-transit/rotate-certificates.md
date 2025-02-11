@@ -61,7 +61,7 @@ If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, then 
 
 If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart and no downtime.
 
-If you change your client-to-node root certificate, be sure to update your clients and applications to use the new certificate.
+If you change your client-to-node root certificate, be sure to update your clients and applications to use the new certificate. Refer to [Download the universe certificate](../../../create-deployments/connect-to-universe/#download-the-universe-certificate).
 
 ### Rotate server certificates
 
