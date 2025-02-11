@@ -499,6 +499,16 @@ DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
 
+-- GHI #25917
+/*+NestLoop(con pka) SeqScan(con) IndexScan(pka) Leading((pos (con pka))) Set(yb_bnl_batch_size 1024)*/
+explain (analyze, costs off, timing off, summary off)
+SELECT 1
+FROM
+pg_catalog.pg_attribute pka,
+pg_catalog.pg_constraint con,
+pg_catalog.generate_series(1, 32) pos(n)
+WHERE pka.attnum = con.confkey[pos.n] and con.connamespace = pka.attnum;
+
 create table ss1(a int, primary key(a asc));
 insert into ss1 select generate_series(1,5);
 create table ss2(a int, b int, primary key(a asc, b asc));

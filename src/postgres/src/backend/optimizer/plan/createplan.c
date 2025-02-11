@@ -5257,6 +5257,11 @@ create_nestloop_plan(PlannerInfo *root,
 				RestrictInfo *batched_rinfo =
 					yb_get_batched_restrictinfo(rinfo, batched_outerrelids,
 											 	inner_relids);
+
+				/* Can't use this clause for hashing during the BNL. */
+				if (!yb_can_hash_batched_rinfo(batched_rinfo, batched_outerrelids, inner_relids))
+					continue;
+
 				hashOpno = ((OpExpr *) rinfo->clause)->opno;
 				if (!bms_equal(batched_rinfo->left_relids, rinfo->left_relids))
 					hashOpno = get_commutator(hashOpno);
