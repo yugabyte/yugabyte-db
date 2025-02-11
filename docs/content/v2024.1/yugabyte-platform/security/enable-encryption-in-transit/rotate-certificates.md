@@ -32,7 +32,7 @@ To enable or disable encryption in transit:
 
 1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
 
-    ![Rotate certificates](/images/yp/encryption-in-transit/rotate-cert.png)
+    ![Enable encryption in transit](/images/yp/encryption-in-transit/enable-eit.png)
 
 1. Set the **Enable encryption in transit for this Universe** option.
 
