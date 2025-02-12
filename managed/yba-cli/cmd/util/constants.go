@@ -453,6 +453,44 @@ const (
 	NoneServiceState = "NONE"
 )
 
+// AlertState type
+const (
+	// ActiveAlertState type
+	ActiveAlertState = "ACTIVE"
+	// AcknowledgedAlertState type
+	AcknowledgedAlertState = "ACKNOWLEDGED"
+	// SuspendedAlertState type
+	SuspendedAlertState = "SUSPENDED"
+	// ResolvedAlertState type
+	ResolvedAlertState = "RESOLVED"
+)
+
+// AlertSeverity type
+const (
+	// SevereAlertSeverity type
+	SevereAlertSeverity = "SEVERE"
+	// WarningAlertSeverity type
+	WarningAlertSeverity = "WARNING"
+)
+
+// AlertConfigurationTargetType
+const (
+	// UniverseAlertConfigurationTargetType type
+	UniverseAlertConfigurationTargetType = "UNIVERSE"
+	// PlatformAlertConfigurationTargetType type
+	PlatformAlertConfigurationTargetType = "PLATFORM"
+)
+
+// AlertConfigurationDestinationType
+const (
+	// NoDestinationAlertConfigurationDestinationType type
+	NoDestinationAlertConfigurationDestinationType = "NO_DESTINATION"
+	// DefaultDestinationAlertConfigurationDestinationType type
+	DefaultDestinationAlertConfigurationDestinationType = "DEFAULT_DESTINATION"
+	// SelectedDestinationAlertConfigurationDestinationType type
+	SelectedDestinationAlertConfigurationDestinationType = "SELECTED_DESTINATION"
+)
+
 // XClusterConfigType
 const (
 	// BasicXClusterConfigType type
@@ -461,6 +499,14 @@ const (
 	TxnXClusterConfigType = "Txn"
 	// DBXClusterConfigType type
 	DBXClusterConfigType = "Db"
+)
+
+// SortDirection
+const (
+	// DescSortDirection
+	DescSortDirection = "DESC"
+	// AscSortDirection
+	AscSortDirection = "ASC"
 )
 
 // CompletedTaskStates returns set of states that mark the task as completed

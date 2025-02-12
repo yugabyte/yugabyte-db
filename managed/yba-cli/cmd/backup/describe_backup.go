@@ -57,7 +57,7 @@ var describeBackupCmd = &cobra.Command{
 			BackupUUIDList: backupUUIDList,
 		}
 
-		backupAPIDirection := "DESC"
+		backupAPIDirection := util.DescSortDirection
 		backupAPISort := "createTime"
 
 		backupAPIQuery := ybaclient.BackupPagedApiQuery{

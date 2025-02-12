@@ -32,7 +32,7 @@ var describeRestoreCmd = &cobra.Command{
 
 		var limit int32 = 10
 		var offset int32 = 0
-		restoreAPIDirection := "DESC"
+		restoreAPIDirection := util.DescSortDirection
 		restoreAPISort := "createTime"
 
 		restoreUUIDList := make([]string, 0)

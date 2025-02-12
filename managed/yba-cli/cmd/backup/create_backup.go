@@ -304,7 +304,7 @@ var createBackupCmd = &cobra.Command{
 
 			var limit int32 = 10
 			var offset int32 = 0
-			backupAPIDirection := "DESC"
+			backupAPIDirection := util.DescSortDirection
 			backupAPISort := "createTime"
 
 			backupAPIFilter := ybaclient.BackupApiFilter{

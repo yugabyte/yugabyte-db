@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
@@ -116,6 +117,8 @@ func init() {
 
 	// Example for adding preview commands to the list of available commands
 	// util.AddCommandIfFeatureFlag(rootCmd, exampleCmd, util.PREVIEW)
+
+	util.PreviewCommand(rootCmd, []*cobra.Command{alert.AlertCmd})
 
 }
 

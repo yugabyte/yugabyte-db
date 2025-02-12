@@ -318,7 +318,7 @@ var createBackupScheduleCmd = &cobra.Command{
 			backupScheduleAPIFilter := ybaclient.ScheduleApiFilter{}
 
 			backupScheduleAPIFilter.SetUniverseUUIDList([]string{universeUUID})
-			backupScheduleAPIDirection := "DESC"
+			backupScheduleAPIDirection := util.DescSortDirection
 			backupScheduleAPISort := "scheduleUUID"
 
 			var limit int32 = 10

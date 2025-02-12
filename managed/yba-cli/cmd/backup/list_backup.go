@@ -89,7 +89,7 @@ var listBackupCmd = &cobra.Command{
 			backupAPIFilter.SetUniverseUUIDList(strings.Split(universeUUIDs, ","))
 		}
 
-		backupAPIDirection := "DESC"
+		backupAPIDirection := util.DescSortDirection
 		backupAPISort := "createTime"
 
 		backupAPIQuery := ybaclient.BackupPagedApiQuery{
