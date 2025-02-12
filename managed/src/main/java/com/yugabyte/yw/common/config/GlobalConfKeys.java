@@ -1610,4 +1610,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable node agent on provider creation by setting the internal flag in the provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  // look for path in reference.conf
+  public static final ConfKeyInfo<Boolean> enablePathStyleAccess =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_path_style_access",
+          ScopeType.GLOBAL,
+          "Enable Path Access Style for Amazon S3",
+          "Enable Path Access Style for Amazon S3, mainly used when configuring S3 compatible"
+              + " storage.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  // Need to remove this toggle from UI part, since implemented here
 }

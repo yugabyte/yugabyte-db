@@ -210,18 +210,11 @@ class AwsStorageConfiguration extends Component {
                 <div className="form-item-custom-label">S3 Path Style Access</div>
               </Col>
               <Col lg={9}>
-                {['true', 'false'].map((target) => (
-                  <span className="btn-group btn-group-radio form-radio-values" key={target}>
-                    <Field
-                      name="PATH_STYLE_ACCESS"
-                      type="radio"
-                      component="input"
-                      value={target}
-                      isReadOnly={this.disableInputFields(isEdited, 'PATH_STYLE_ACCESS')}
-                    />
-                    &nbsp;{target}
-                  </span>
-                ))}
+                <Field
+                  name="PATH_STYLE_ACCESS"
+                  component={YBToggle}
+                  isReadOnly={this.disableInputFields(isEdited, 'PATH_STYLE_ACCESS')}
+                />
               </Col>
             </Row>
           )}
