@@ -121,13 +121,13 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     if (!instance) return;
     const getProviderRuntimeConfigs = async () => {
       const providerRuntimeConfigsRefetch = await providerConfigsRefetch();
-      let deviceInfo = getDeviceInfoFromInstance(
+      const deviceInfo = getDeviceInfoFromInstance(
         instance,
         providerRuntimeConfigsRefetch.isError
           ? providerRuntimeConfigs
           : providerRuntimeConfigsRefetch.data,
         isEditMode,
-        fieldValue?.storageType
+        fieldValue
       );
 
       //retain old volume size if its edit mode or not ephemeral storage
