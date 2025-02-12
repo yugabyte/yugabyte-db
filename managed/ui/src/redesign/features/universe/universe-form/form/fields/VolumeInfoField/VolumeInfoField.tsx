@@ -45,7 +45,7 @@ interface VolumeInfoFieldProps {
   disableStorageType: boolean;
   disableVolumeSize: boolean;
   disableNumVolumes: boolean;
-  isDedicatedMasterField?: boolean;
+  isMaster?: boolean;
   maxVolumeCount: number;
   updateOptions: string[];
   diffInHours: number | null;
@@ -86,7 +86,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   disableStorageType,
   disableVolumeSize,
   disableNumVolumes,
-  isDedicatedMasterField,
+  isMaster,
   maxVolumeCount,
   updateOptions,
   diffInHours,
@@ -96,7 +96,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const classes = useStyles();
   const { t } = useTranslation();
   const instanceTypeChanged = useRef(false);
-  const dataTag = isDedicatedMasterField ? 'Master' : 'TServer';
+  const dataTag = isMaster ? 'Master' : 'TServer';
   const { numVolumesDisable, volumeSizeDisable, minVolumeSize } = useVolumeControls(
     isEditMode,
     updateOptions
@@ -104,10 +104,10 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const isAwsNodeCoolingDown = diffInHours !== null && diffInHours < AwsCoolDownPeriod;
 
   //watchers
-  const fieldValue = isDedicatedMasterField
+  const fieldValue = isMaster
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
     : useWatch({ name: DEVICE_INFO_FIELD });
-  const instanceType = isDedicatedMasterField
+  const instanceType = isMaster
     ? useWatch({ name: MASTER_INSTANCE_TYPE_FIELD })
     : useWatch({ name: INSTANCE_TYPE_FIELD });
   const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
@@ -123,7 +123,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   );
 
   // Update field is based on master or tserver field in dedicated mode
-  const UPDATE_FIELD = isDedicatedMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
+  const UPDATE_FIELD = isMaster ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
@@ -142,7 +142,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     if (!instance) return;
     const getProviderRuntimeConfigs = async () => {
       const providerRuntimeConfigsRefetch = await providerConfigsRefetch();
-      let deviceInfo = getDeviceInfoFromInstance(
+      const deviceInfo = getDeviceInfoFromInstance(
         instance,
         providerRuntimeConfigsRefetch.isError
           ? providerRuntimeConfigs
