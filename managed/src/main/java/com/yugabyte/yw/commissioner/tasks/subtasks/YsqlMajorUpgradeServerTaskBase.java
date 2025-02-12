@@ -72,16 +72,15 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
   }
 
   protected void waitForCatalogUpgradeToFinish() throws Exception {
-    try (YBClient client = getClient()) {
-      int attempts = 0;
-      while (attempts < MAX_ATTEMPTS) {
-        attempts++;
-        log.debug(
-            "Waiting for YSQL major version catalog upgrade to finish. Attempt {} of {}",
-            attempts,
-            MAX_ATTEMPTS);
-        waitFor(Duration.ofSeconds(DELAY_BETWEEN_ATTEMPTS_SEC));
-
+    int attempts = 0;
+    while (attempts < MAX_ATTEMPTS) {
+      attempts++;
+      log.debug(
+          "Waiting for YSQL major version catalog upgrade to finish. Attempt {} of {}",
+          attempts,
+          MAX_ATTEMPTS);
+      waitFor(Duration.ofSeconds(DELAY_BETWEEN_ATTEMPTS_SEC));
+      try (YBClient client = getClient()) {
         IsYsqlMajorCatalogUpgradeDoneResponse resp = client.isYsqlMajorCatalogUpgradeDone();
         if (resp.hasError()) {
           MasterErrorPB errorPB = resp.getServerError();
@@ -96,6 +95,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
         }
       }
     }
+    throw new RuntimeException("YSQL major version catalog upgrade did not finish in time");
   }
 
   protected YsqlMajorCatalogUpgradeState getYsqlMajorCatalogUpgradeState() throws Exception {
