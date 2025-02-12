@@ -50,7 +50,7 @@ This tutorial assumes that you have:
 
 - YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
-- [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
+- [Apache Spark 3.5.4](https://spark.apache.org/downloads.html).
 - [Apache Maven 3.3](https://maven.apache.org/index.html) or later.
 
 ## Set up the database
@@ -109,8 +109,8 @@ Create the database and table you will read and write to as follows:
         <version>3.5.4-yb-1</version>
     </dependency>
     ```
-  
-  The dependency `spark-yugabytedb-dialect_2.12`  must be added to use the YugabyteDB JDBC Smart driver in your Spark application. This dialect is based on the PostgreSQL dialect and differs only in the url-prefix it handles: `jdbc:yugabytedb:` instead of `jdbc:postgresql:`. This dialect dependency is not required for using the PostgreSQL driver in your Spark application. More details of the usage are mentioned here: [spark-yugabytedb-dialect](https://github.com/yugabyte/spark-yugabytedb-dialect)  
+
+    You must add the `spark-yugabytedb-dialect_2.12` dependency to use the YugabyteDB JDBC Smart driver in your Spark application. This dialect is based on the PostgreSQL dialect and differs only in the URL prefix it handles: `jdbc:yugabytedb:` instead of `jdbc:postgresql:`. (You don't need this dialect dependency to use the PostgreSQL driver in your Spark application.) For more information, refer to the [YugabyteDB Dialect for Apache Spark](https://github.com/yugabyte/spark-yugabytedb-dialect) project.
 
 1. Install the added dependencies.
 
