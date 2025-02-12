@@ -126,10 +126,10 @@ Deprecated 2024-11-30 and will be supported until 2025-2-28. Use [integration](.
 
 Update an export configuration.
 
-| Flag | Description |
+| <div style="width:150px">Flag</div> | Description |
 | :--- | :--- |
 | --config-name | Required. Name of the export configuration. |
-| &#8209;&#8209;new&#8209;config&#8209;name | New name for the export configuration. |
+| --new-config-name | New name for the export configuration. |
 | --type | Required. The third party tool to exported metrics to. Options: DATADOG, GRAFANA, SUMOLOGIC. |
 | --datadog-spec | Required for type DATADOG. The Datadog export details, provided as key-value pairs.<br>Arguments:<ul><li>api-key - your Datadog API key.</li><li>site - your Datadog site parameters.</li></ul> |
 | --grafana-spec | Required for type GRAFANA. The Grafana Cloud export details, provided as key-value pairs.<br>Arguments:<ul><li>access-policy-token - your Grafana Cloud token.</li><li>org-slug - your organization name.</li><li>instance-id - your Grafana Cloud instance ID.</li><li>zone - your Grafana Cloud instance zone.</li></ul> |
