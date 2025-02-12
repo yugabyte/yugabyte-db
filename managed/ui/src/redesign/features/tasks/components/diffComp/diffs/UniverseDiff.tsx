@@ -12,23 +12,26 @@ import clsx from 'clsx';
 import { differenceWith, intersectionWith, isEqual, keys } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, Typography } from '@material-ui/core';
-import { ClusterType, DeviceInfo } from '../../../../../helpers/dtos';
-import {
-  Cluster,
-  MasterPlacementMode,
-  PlacementAZ,
-  PlacementRegion,
-  UniverseDetails
-} from '../../../../universe/universe-form/utils/dto';
+
 import { getPrimaryCluster } from '../../../../universe/universe-form/utils/helpers';
-import { Task } from '../../../dtos';
 import { DiffActions } from '../DiffActions';
 import { DiffTitleBanner, TaskDiffBanner } from '../DiffBanners';
 import DiffCard, { DiffCardRef } from '../DiffCard';
 import { DiffCardWrapper } from '../DiffCardWrapper';
 import { FieldOperations, getFieldOpertions, isAZEqual } from '../DiffUtils';
-import { DiffComponentProps, DiffOperation, DiffProps } from '../dtos';
 import { BaseDiff } from './BaseDiff';
+
+import { Task } from '../../../dtos';
+import { DiffComponentProps, DiffOperation, DiffProps } from '../dtos';
+import {
+  Cluster,
+  ClusterType,
+  MasterPlacementMode,
+  PlacementAZ,
+  PlacementRegion,
+  UniverseDetails,
+  DeviceInfo
+} from '../../../../universe/universe-form/utils/dto';
 
 const DeviceInfoFields: Record<keyof Omit<DeviceInfo, 'mountPoints'>, string> = {
   volumeSize: 'Volume Size',
