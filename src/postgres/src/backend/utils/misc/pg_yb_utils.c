@@ -2433,8 +2433,13 @@ CheckAlterDatabaseDdl(PlannedStmt *pstmt)
 		{
 			const RenameStmt *const stmt = castNode(RenameStmt, parsetree);
 			if (stmt->renameType == OBJECT_DATABASE)
-				/* ALTER DATABASE RENAME needs to have global impact. */
-				Assert(ddl_transaction_state.is_global_ddl);
+				/*
+				 * ALTER DATABASE RENAME needs to have global impact. In global
+				 * catalog version mode is_global_ddl does not apply so it is
+				 * not turned on.
+				 */
+				Assert(ddl_transaction_state.is_global_ddl ||
+					   !YBIsDBCatalogVersionMode());
 			break;
 		}
 		case T_AlterOwnerStmt:
@@ -2445,11 +2450,13 @@ CheckAlterDatabaseDdl(PlannedStmt *pstmt)
 			 * ALTER DATABASE OWNER needs to have global impact, however we
 			 * may have a no-op ALTER DATABASE OWNER when the new owner is the
 			 * same as the old owner and there is no write made to pg_database
-			 * to turn on is_global_ddl is not set.
+			 * to turn on is_global_ddl. Also in global catalog version mode
+			 * is_global_ddl does not apply so it is not turned on either.
 			 */
 			if (stmt->objectType == OBJECT_DATABASE)
 				Assert(ddl_transaction_state.is_global_ddl ||
-					   !YBCPgHasWriteOperationsInDdlTxnMode());
+					   !YBCPgHasWriteOperationsInDdlTxnMode() ||
+					   !YBIsDBCatalogVersionMode());
 			break;
 		}
 		default:
