@@ -3000,6 +3000,8 @@ quickdie(SIGNAL_ARGS)
 	if (ClientAuthInProgress && whereToSendOutput == DestRemote)
 		whereToSendOutput = DestNone;
 
+#ifndef THREAD_SANITIZER		/* YB: ereport is not async-signal safe, as
+								 * mentioned below */
 	/*
 	 * Notify the client before exiting, to give a clue on what happened.
 	 *
@@ -3049,12 +3051,6 @@ quickdie(SIGNAL_ARGS)
 			}
 			break;
 		case PMQUIT_FOR_CRASH:
-
-			/*
-			 * YB_TODO(Deepthi) Commit
-			 * c5f22319c2b77de0f2ebeeb797791d925dfd070d
-			 */
-#ifndef THREAD_SANITIZER
 			/* A crash-and-restart cycle is in progress */
 			ereport(WARNING_CLIENT_ONLY,
 					(errcode(ERRCODE_CRASH_SHUTDOWN),
@@ -3065,7 +3061,6 @@ quickdie(SIGNAL_ARGS)
 							   " shared memory."),
 					 errhint("In a moment you should be able to reconnect to the"
 							 " database and repeat your command.")));
-#endif
 			break;
 		case PMQUIT_FOR_STOP:
 			/* Immediate-mode stop */
@@ -3074,6 +3069,7 @@ quickdie(SIGNAL_ARGS)
 					 errmsg("terminating connection due to immediate shutdown command")));
 			break;
 	}
+#endif							/* YB: THREAD_SANITIZER */
 
 	/*
 	 * We DO NOT want to run proc_exit() or atexit() callbacks -- we're here
