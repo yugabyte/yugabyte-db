@@ -23,7 +23,7 @@ yba backup pitr create --universe-name <universe-name> --keyspace <keyspace-name
   -k, --keyspace string                 [Required] The name of the keyspace for which PITR config needs to be created.
   -t, --table-type string               [Required] The table type for which PITR config needs to be created. Supported values: ycql, ysql
   -r, --retention-in-secs int           [Required] The retention period in seconds for the PITR config.
-  -s, --schedule-interval-in-secs int   [Optional]The schedule interval in seconds for the PITR config. (default 86400)
+  -s, --schedule-interval-in-secs int   [Optional] The schedule interval in seconds for the PITR config. (default 86400)
   -h, --help                            help for create
 ```
 
