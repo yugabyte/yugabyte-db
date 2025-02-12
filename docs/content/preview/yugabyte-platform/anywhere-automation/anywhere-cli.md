@@ -24,7 +24,13 @@ The CLI is in [Tech Preview](/preview/releases/versioning/#feature-maturity). Co
 
 ## Install CLI
 
-Your YugabyteDB Anywhere installation includes the CLI binary, located in `/opt/yugabyte/yugaware/yba-cli`. The CLI is available for following architectures:
+Your YugabyteDB Anywhere installation includes the CLI binary, in the following location:
+
+```sh
+/opt/ybanywhere/software/active/yb-platform/yugaware/yba-cli
+```
+
+The CLI is available for following architectures:
 
 - Linux AMD64 and ARM64
 - Darwin AMD64 and ARM64
