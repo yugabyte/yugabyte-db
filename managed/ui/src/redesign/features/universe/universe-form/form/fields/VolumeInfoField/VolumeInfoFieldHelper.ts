@@ -190,7 +190,7 @@ export const getDeviceInfoFromInstance = (
   instance: InstanceType,
   providerRuntimeConfigs: any,
   isEditMode: boolean,
-  selectedStorageType: StorageType
+  deviceInfo: DeviceInfo
 ): DeviceInfo | null => {
   if (!instance.instanceTypeDetails.volumeDetailsList.length) return null;
 
@@ -199,7 +199,17 @@ export const getDeviceInfoFromInstance = (
   const defaultInstanceVolumeSize = isEphemeralAwsStorageInstance(instance)
     ? volumeSize
     : getVolumeSize(instance, providerRuntimeConfigs);
-  const storageType = isEditMode ? selectedStorageType : getStorageType(instance, providerRuntimeConfigs);
+  const storageType = isEditMode
+    ? deviceInfo?.storageType
+    : getStorageType(instance, providerRuntimeConfigs);
+  // Disk IOPS does not exist for all storage types
+  const diskIops =
+    isEditMode && deviceInfo?.diskIops ? deviceInfo?.diskIops : getIopsByStorageType(storageType);
+  // Throughput does not exist for all storage types
+  const throughput =
+    isEditMode && deviceInfo?.throughput
+      ? deviceInfo?.throughput
+      : getThroughputByStorageType(storageType);
 
   return {
     numVolumes: volumeDetailsList.length,
@@ -210,8 +220,8 @@ export const getDeviceInfoFromInstance = (
       instance.providerCode === CloudType.onprem
         ? volumeDetailsList.flatMap((item) => item.mountPath).join(',')
         : null,
-    diskIops: getIopsByStorageType(storageType),
-    throughput: getThroughputByStorageType(storageType)
+    diskIops: diskIops,
+    throughput: throughput
   };
 };
 
@@ -239,11 +249,11 @@ export const useVolumeControls = (isEditMode: boolean, updateOptions: string[]) 
   useUpdateEffect(() => {
     if (isEditMode && provider.code !== CloudType.kubernetes) {
       if (isNonEmptyArray(updateOptions) && updateOptions.includes(UpdateActions.UPDATE)) {
-      setNumVolumesDisable(true);
-      setVolumeSizeDisable(true);
-      setUserTagsDisable(true);
-      setValue(DEVICE_INFO_FIELD, initialCombination.current.deviceInfo);
-      //  Volume Size Increase,  Other device Info changes (Count, Storage type, provisioned IOPS) , Instance Type Change
+        setNumVolumesDisable(true);
+        setVolumeSizeDisable(true);
+        setUserTagsDisable(true);
+        setValue(DEVICE_INFO_FIELD, initialCombination.current.deviceInfo);
+        //  Volume Size Increase,  Other device Info changes (Count, Storage type, provisioned IOPS) , Instance Type Change
       } else {
         setNumVolumesDisable(false);
         setVolumeSizeDisable(false);
