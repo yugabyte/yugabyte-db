@@ -5072,8 +5072,8 @@ std::string IncrementedCopy(Slice key) {
 
 } // namespace
 
-Status Tablet::AbortSQLTransactions(CoarseTimePoint deadline) const {
-  if (table_type() != TableType::PGSQL_TABLE_TYPE || transaction_participant() == nullptr) {
+Status Tablet::AbortActiveTransactions(CoarseTimePoint deadline) const {
+  if (transaction_participant() == nullptr) {
     return Status::OK();
   }
   HybridTime max_cutoff = HybridTime::kMax;

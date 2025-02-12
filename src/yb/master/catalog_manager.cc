@@ -9164,16 +9164,13 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     if (metadata.state() == SysNamespaceEntryPB::DELETED) {
       Status s = sys_catalog_->Delete(leader_ready_term(), database);
       WARN_NOT_OK(s, "SysCatalog DeleteItem for Namespace");
-      if (!s.ok()) {
-        return;
-      }
+      return;
     }
 
     if (is_ysql_major_upgrade) {
       if (metadata.state() != SysNamespaceEntryPB::RUNNING) {
-        // YB_TODO: Switch this to DFATAL once #25594 is fixed.
-        LOG(WARNING) << "Namespace (" << database->name() << ") has invalid state "
-                     << SysNamespaceEntryPB::State_Name(metadata.state());
+        LOG(DFATAL) << "Namespace (" << database->name() << ") has invalid state "
+                    << SysNamespaceEntryPB::State_Name(metadata.state());
         return;
       }
       if (metadata.ysql_next_major_version_state() != SysNamespaceEntryPB::NEXT_VER_DELETING) {

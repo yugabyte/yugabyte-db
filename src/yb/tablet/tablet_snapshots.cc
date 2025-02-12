@@ -351,7 +351,7 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
       CoarseMonoClock::Now() +
       MonoDelta::FromMilliseconds(FLAGS_max_wait_for_aborting_transactions_during_restore_ms);
   WARN_NOT_OK(
-      tablet().AbortSQLTransactions(deadline),
+      tablet().AbortActiveTransactions(deadline),
       Format("Cannot abort transactions for tablet $0 during restore", tablet().tablet_id()));
 
   if (!snapshot_dir.empty()) {

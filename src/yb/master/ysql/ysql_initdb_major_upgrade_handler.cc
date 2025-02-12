@@ -303,6 +303,9 @@ void YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgrade(const LeaderEpoch&
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgradeImpl(const LeaderEpoch& epoch) {
+  LOG(INFO) << "Killing any in-flight transactions before starting the YSQL major catalog upgrade";
+  sys_catalog_.tablet_peer()->AbortActiveTransactions();
+
   RETURN_NOT_OK(RunMajorVersionCatalogUpgrade(epoch));
   RETURN_NOT_OK_PREPEND(UpdateCatalogVersions(epoch), "Failed to update catalog versions");
 
