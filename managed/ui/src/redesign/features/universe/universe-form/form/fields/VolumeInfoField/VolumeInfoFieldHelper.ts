@@ -94,13 +94,19 @@ export const getMaxDiskIops = (storageType: StorageType, volumeSize: number) => 
   }
 };
 
-export const getStorageTypeOptions = (providerCode?: CloudType, providerRuntimeConfigs?: any): StorageTypeOption[] => {
-  const showPremiumV2Option = providerRuntimeConfigs?.configEntries?.find(
-    (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AZURE_PREMIUM_V2_STORAGE_TYPE
-  )?.value === 'true';
-  const filteredAzureStorageTypes = showPremiumV2Option ? AZURE_STORAGE_TYPE_OPTIONS :  AZURE_STORAGE_TYPE_OPTIONS.filter((storageType) => {
-    return storageType.value !== StorageType.PremiumV2_LRS;
-  });
+export const getStorageTypeOptions = (
+  providerCode?: CloudType,
+  providerRuntimeConfigs?: any
+): StorageTypeOption[] => {
+  const showPremiumV2Option =
+    providerRuntimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AZURE_PREMIUM_V2_STORAGE_TYPE
+    )?.value === 'true';
+  const filteredAzureStorageTypes = showPremiumV2Option
+    ? AZURE_STORAGE_TYPE_OPTIONS
+    : AZURE_STORAGE_TYPE_OPTIONS.filter((storageType) => {
+        return storageType.value !== StorageType.PremiumV2_LRS;
+      });
 
   switch (providerCode) {
     case CloudType.aws:
@@ -219,7 +225,7 @@ export const getDeviceInfoFromInstance = (
   instance: InstanceType,
   providerRuntimeConfigs: any,
   isEditMode: boolean,
-  selectedStorageType: StorageType
+  deviceInfo: DeviceInfo
 ): DeviceInfo | null => {
   if (!instance.instanceTypeDetails.volumeDetailsList.length) return null;
 
@@ -228,7 +234,17 @@ export const getDeviceInfoFromInstance = (
   const defaultInstanceVolumeSize = isEphemeralAwsStorageInstance(instance)
     ? volumeSize
     : getVolumeSize(instance, providerRuntimeConfigs);
-  const storageType = isEditMode ? selectedStorageType : getStorageType(instance, providerRuntimeConfigs);
+  const storageType = isEditMode
+    ? deviceInfo?.storageType
+    : getStorageType(instance, providerRuntimeConfigs);
+  // Disk IOPS does not exist for all storage types
+  const diskIops =
+    isEditMode && deviceInfo?.diskIops ? deviceInfo?.diskIops : getIopsByStorageType(storageType);
+  // Throughput does not exist for all storage types
+  const throughput =
+    isEditMode && deviceInfo?.throughput
+      ? deviceInfo?.throughput
+      : getThroughputByStorageType(storageType);
 
   return {
     numVolumes: volumeDetailsList.length,
@@ -239,8 +255,8 @@ export const getDeviceInfoFromInstance = (
       instance.providerCode === CloudType.onprem
         ? volumeDetailsList.flatMap((item) => item.mountPath).join(',')
         : null,
-    diskIops: getIopsByStorageType(storageType),
-    throughput: getThroughputByStorageType(storageType)
+    diskIops: diskIops,
+    throughput: throughput
   };
 };
 
@@ -271,5 +287,13 @@ export const useVolumeControls = (isEditMode: boolean, updateOptions: string[]) 
     }
   }, [totalNodes, placements, instanceType, deviceInfo?.volumeSize]);
 
-  return { numVolumesDisable, volumeSizeDisable, userTagsDisable, minVolumeSize, disableIops, disableThroughput, disableStorageType };
+  return {
+    numVolumesDisable,
+    volumeSizeDisable,
+    userTagsDisable,
+    minVolumeSize,
+    disableIops,
+    disableThroughput,
+    disableStorageType
+  };
 };

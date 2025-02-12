@@ -157,7 +157,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
           ? providerRuntimeConfigs
           : providerRuntimeConfigsRefetch.data,
         isEditMode,
-        fieldValue?.storageType
+        fieldValue
       );
 
       //retain old volume size if its edit mode or not ephemeral storage
