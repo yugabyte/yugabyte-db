@@ -27,6 +27,9 @@ bool EnableVectorHNSWIndex = DEFAULT_ENABLE_VECTOR_HNSW_INDEX;
 #define DEFAULT_ENABLE_VECTOR_PRE_FILTER false
 bool EnableVectorPreFilter = DEFAULT_ENABLE_VECTOR_PRE_FILTER;
 
+#define DEFAULT_ENABLE_VECTOR_FORCE_INDEX_PUSHDOWN false
+bool EnableVectorForceIndexPushdown = DEFAULT_ENABLE_VECTOR_FORCE_INDEX_PUSHDOWN;
+
 #define DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS false
 bool DefaultEnableLargeUniqueIndexKeys = DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS;
 
@@ -112,6 +115,13 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		gettext_noop(
 			"Enables support for vector pre-filtering feature for vector search in bson documents index."),
 		NULL, &EnableVectorPreFilter, DEFAULT_ENABLE_VECTOR_PRE_FILTER,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enable_force_push_vector_index", prefix),
+		gettext_noop(
+			"Enables ensuring that vector index queries are always pushed to the vector index."),
+		NULL, &EnableVectorForceIndexPushdown, DEFAULT_ENABLE_VECTOR_FORCE_INDEX_PUSHDOWN,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(

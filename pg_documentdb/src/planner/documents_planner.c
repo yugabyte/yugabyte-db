@@ -637,7 +637,7 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 			.isShardQuery = isShardQuery
 		},
 		.forceIndexQueryOpData = {
-			.type = QUERY_OPERATOR_UNKNOWN,
+			.type = ForceIndexOpType_None,
 			.path = NULL,
 			.opExtraState = NULL
 		}
@@ -690,7 +690,12 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	/* For vector, text search inject custom scan path to track lifetime of
 	 * $meta/ivfprobes.
 	 */
-	if (indexContext.forceIndexQueryOpData.type == QUERY_OPERATOR_TEXT)
+	if (indexContext.hasVectorSearchQuery)
+	{
+		AddExtensionQueryScanForVectorQuery(root, rel, rte,
+											&indexContext.queryDataForVectorSearch);
+	}
+	else if (indexContext.forceIndexQueryOpData.type == ForceIndexOpType_Text)
 	{
 		QueryTextIndexData *textIndexData =
 			(QueryTextIndexData *) indexContext.forceIndexQueryOpData.opExtraState;
@@ -699,11 +704,6 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 		{
 			AddExtensionQueryScanForTextQuery(root, rel, rte, textIndexData);
 		}
-	}
-	else if (indexContext.hasVectorSearchQuery)
-	{
-		AddExtensionQueryScanForVectorQuery(root, rel, rte,
-											&indexContext.queryDataForVectorSearch);
 	}
 }
 

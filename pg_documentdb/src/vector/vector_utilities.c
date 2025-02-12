@@ -16,6 +16,7 @@
 #include <utils/rel.h>
 #include <utils/syscache.h>
 #include <commands/defrem.h>
+#include <catalog/pg_collation.h>
 
 #include "api_hooks.h"
 #include "io/bson_core.h"
@@ -253,14 +254,14 @@ GenerateVectorSortExpr(const char *queryVectorPath,
 {
 	Datum queryVectorPathDatum = CStringGetTextDatum(queryVectorPath);
 	Const *vectorSimilarityIndexPathConst = makeConst(
-		TEXTOID, -1, InvalidOid, -1, queryVectorPathDatum,
+		TEXTOID, -1, DEFAULT_COLLATION_OID, -1, queryVectorPathDatum,
 		false, false);
 
 	/* ApiCatalogSchemaName.bson_extract_vector(document, 'elem') */
 	List *args = list_make2(documentExpr, vectorSimilarityIndexPathConst);
 	Expr *vectorExractionFromDocFunc = (Expr *) makeFuncExpr(
 		ApiCatalogBsonExtractVectorFunctionId(), VectorTypeId(),
-		args, InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+		args, InvalidOid, DEFAULT_COLLATION_OID, COERCE_EXPLICIT_CALL);
 
 	List *castArgsLeft = list_make3(vectorExractionFromDocFunc,
 									lsecond(vectorCastFunc->args),
@@ -347,7 +348,7 @@ GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
 	/* we extract the vector from the query */
 	Datum const_value = CStringGetTextDatum("vector");
 
-	Const *queryText = makeConst(TEXTOID, -1, /*typemod value*/ InvalidOid,
+	Const *queryText = makeConst(TEXTOID, -1, /*typemod value*/ DEFAULT_COLLATION_OID,
 								 -1,     /* length of the pointer type*/
 								 const_value, false /*constisnull*/,
 								 false /* constbyval*/);
@@ -357,7 +358,7 @@ GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
 			ApiCatalogBsonExtractVectorFunctionId(),
 			VectorTypeId(),
 			queryArgs,
-			InvalidOid, InvalidOid,
+			InvalidOid, DEFAULT_COLLATION_OID,
 			COERCE_EXPLICIT_CALL);
 
 	List *castArgs = list_make3(
@@ -367,7 +368,7 @@ GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
 	Expr *vectorExractionFromQueryFuncWithCast =
 		(Expr *) makeFuncExpr(vectorCastFunc->funcid, vectorCastFunc->funcresulttype,
 							  castArgs, InvalidOid,
-							  InvalidOid,
+							  DEFAULT_COLLATION_OID,
 							  COERCE_EXPLICIT_CALL);
 
 	return vectorExractionFromQueryFuncWithCast;

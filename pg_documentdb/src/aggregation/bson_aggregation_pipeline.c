@@ -773,9 +773,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
-
-		/* vector $search is needed to be executed withing custom scan boundaries see EvaluateMetaSearchScore in vector/vector_utilities.c */
-		.allowBaseShardTablePushdown = false,
+		.allowBaseShardTablePushdown = true,
 		.stageEnum = Stage_Search,
 	},
 	{

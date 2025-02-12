@@ -33,13 +33,30 @@ typedef struct ReplaceFunctionContextInput
 	uint64 collectionId;
 } ReplaceFunctionContextInput;
 
+
+/* The operation type for forcing index pushdown */
+typedef enum ForceIndexOpType
+{
+	/* No index pushdown required */
+	ForceIndexOpType_None,
+
+	/* Index pushdown required due to $text */
+	ForceIndexOpType_Text,
+
+	/* Index pushdown required due to $geoNear */
+	ForceIndexOpType_GeoNear,
+
+	/* Index pushdown required for a vectorSearch */
+	ForceIndexOpType_VectorSearch
+} ForceIndexOpType;
+
 /*
  * Data used to enforce index to special query operators like $geoNear, $text etc
  */
 typedef struct ForceIndexQueryOperatorData
 {
 	/* Type of the mongo query operator used */
-	MongoQueryOperatorType type;
+	ForceIndexOpType type;
 
 	/*
 	 * If pushed to index by default by Postgres, then the it points to the index path otherwise NULL
