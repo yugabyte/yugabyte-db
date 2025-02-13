@@ -27,10 +27,10 @@ var createBackupCmd = &cobra.Command{
 	Short: "Create a YugabyteDB Anywhere universe backup",
 	Long:  "Create an universe backup in YugabyteDB Anywhere",
 	Example: `yba backup create --universe-name <universe-name> \
-	--storage-config-name <storage-config-name> \
-	--table-type <table-type> \
-	--time-before-delete-in-ms 3600000 \
-	--keyspace-info keyspace-name=<keyspace-name>`,
+	  --storage-config-name <storage-config-name> \
+	  --table-type <table-type> \
+	  --time-before-delete-in-ms 3600000 \
+	  --keyspace-info keyspace-name=<keyspace-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeNameFlag, err := cmd.Flags().GetString("universe-name")
 		if err != nil {
@@ -388,7 +388,7 @@ func init() {
 	createBackupCmd.Flags().Int64("time-before-delete-in-ms", 0,
 		"[Optional] Retention time of the backup in milliseconds")
 	createBackupCmd.Flags().StringArray("keyspace-info", []string{},
-		"[Optional] Keyspace info to perform backup operation."+
+		"[Optional] Keyspace info to perform backup operation. "+
 			"If no keyspace info is provided, then all the keyspaces of the table type "+
 			"specified are backed up. If the user wants to take backup of a subset of keyspaces, "+
 			"then the user has to specify the keyspace info. Provide the following double colon (::) "+
@@ -397,7 +397,7 @@ func init() {
 			"table-ids=<table-id1>,<table-id2>,<table-id3>\". The table-names and table-ids "+
 			"attributes have to be specified as comma separated values. "+
 			formatter.Colorize("Keyspace name is required value. ", formatter.GreenColor)+
-			"Table names and Table ids are optional values and are needed only for YCQL."+
+			"Table names and Table IDs/UUIDs are optional values and are needed only for YCQL."+
 			"Example: --keyspace-info keyspace-name=cassandra::table-names=table1,table2::"+
 			"table-ids=1e683b86-7858-44d1-a1f6-406f50a4e56e,19a34a5e-3a19-4070-9d79-805ed713ce7d "+
 			"--keyspace-info keyspace-name=cassandra2::table-names=table3,table4::"+

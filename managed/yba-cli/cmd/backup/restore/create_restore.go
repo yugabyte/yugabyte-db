@@ -312,6 +312,15 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 			}
 		}
 
+		useTablespaces, err := strconv.ParseBool(backupDetails["use-tablespaces"])
+		if err != nil {
+			errMessage := err.Error() + " Using Tablespaces as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			useTablespaces = false
+		}
+
 		isSelectiveTableRestore, err := strconv.ParseBool(backupDetails["selective-restore"])
 		if err != nil {
 			errMessage := err.Error() + " Using Selective Table Restore as false\n"
@@ -331,6 +340,7 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 			StorageLocation:       util.GetStringPointer(backupDetails["storage-location"]),
 			Sse:                   util.GetBoolPointer(true),
 			SelectiveTableRestore: util.GetBoolPointer(isSelectiveTableRestore),
+			UseTablespaces:        util.GetBoolPointer(useTablespaces),
 			TableNameList:         &tableNameList,
 		}
 		res = append(res, r)
