@@ -1,4 +1,3 @@
-set enable_bitmapscan = on; -- YB_TODO: remove this once enable_bitmapscan default becomes on.
 CREATE EXTENSION pg_trgm;
 
 -- Check whether any of our opclasses fail amvalidate
@@ -149,8 +148,6 @@ create index test2_idx_gist on test2 using gist (t gist_trgm_ops);
 
 -- Check similarity threshold (bug #14202)
 
-SET enable_bitmapscan = on;
-
 CREATE TEMP TABLE restaurants (city text);
 INSERT INTO restaurants SELECT 'Warsaw' FROM generate_series(1, 10000);
 INSERT INTO restaurants SELECT 'Szczecin' FROM generate_series(1, 10000);
@@ -169,5 +166,3 @@ SELECT DISTINCT city, similarity(city, 'Warsaw'), show_limit()
 SELECT set_limit(0.5);
 SELECT DISTINCT city, similarity(city, 'Warsaw'), show_limit()
   FROM restaurants WHERE city % 'Warsaw';
-
-RESET enable_bitmapscan;
