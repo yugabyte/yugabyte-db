@@ -152,6 +152,15 @@ class XClusterManager : public XClusterManagerIf,
       InsertPackedSchemaForXClusterTargetResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
+  // If the colocated table has not yet been created, store the new schema in the replication group.
+  // When the table is created, these schemas will be injected into the old_schema_packings of the
+  // TableInfo and the table will start at a greater schema version. This ensures that xCluster DDL
+  // Replication can map packing versions before the colocated table is actually created.
+  Status InsertHistoricalColocatedSchemaPacking(
+      const InsertHistoricalColocatedSchemaPackingRequestPB* req,
+      InsertHistoricalColocatedSchemaPackingResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
   // OutboundReplicationGroup RPCs.
   Status XClusterCreateOutboundReplicationGroup(
       const XClusterCreateOutboundReplicationGroupRequestPB* req,
@@ -233,7 +242,8 @@ class XClusterManager : public XClusterManagerIf,
   std::unordered_set<xcluster::ReplicationGroupId> GetInboundTransactionalReplicationGroups()
       const override;
 
-  Status ClearXClusterSourceTableId(TableInfoPtr table_info, const LeaderEpoch& epoch) override;
+  Status ClearXClusterFieldsAfterYsqlDDL(
+      TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) override;
 
   void NotifyAutoFlagsConfigChanged() override;
 
@@ -281,6 +291,10 @@ class XClusterManager : public XClusterManagerIf,
 
   Status RegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
   void UnRegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
+
+  Status ProcessCreateTableReq(
+      const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
+      const NamespaceId& namespace_id) const;
 
  private:
   CatalogManager& catalog_manager_;

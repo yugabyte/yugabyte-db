@@ -32,6 +32,7 @@ class IsOperationDoneResult;
 
 namespace master {
 class CDCStreamOptionsPB;
+class InsertHistoricalColocatedSchemaPackingResponsePB;
 class MasterReplicationProxy;
 class GetXClusterStreamsResponsePB;
 }  // namespace master
@@ -244,6 +245,20 @@ class XClusterClient {
       const xrepl::StreamId& stream_id, MicrosecondsInt64 target_time, CoarseTimePoint deadline);
 
   Result<std::vector<xrepl::StreamId>> GetXClusterStreams(const TableId& table_id);
+
+  // If the colocated table is not yet created and this is a new schema, adds this schema to the
+  // list of pending schemas for this table and returns the corresponding target schema version.
+  // When the table is created, these schemas will be prepopulated in the old_schema_versions of the
+  // TableInfo and the table will start with a greater schema version. This ensures that the schema
+  // versions returned here will remain valid.
+  //
+  // This function is idempotent, if the schema packing already exists, or if an existing packing is
+  // equivalent, then that will just be returned.
+  Result<master::InsertHistoricalColocatedSchemaPackingResponsePB>
+  InsertHistoricalColocatedSchemaPacking(
+      const xcluster::ProducerTabletInfo& producer_tablet_info,
+      const xcluster::ConsumerTabletInfo& consumer_tablet_info, uint32_t colocation_id,
+      uint32_t source_schema_version, const SchemaPB& source_schema);
 
   // Updates the schema version of the table by 2, and then inserts the packed schema into the
   // historical set of schemas for all tablets.

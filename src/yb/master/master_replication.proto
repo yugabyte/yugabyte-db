@@ -497,6 +497,19 @@ message UpdateConsumerOnProducerMetadataResponsePB {
   optional cdc.SchemaVersionsPB schema_versions = 4;
 }
 
+message InsertHistoricalColocatedSchemaPackingRequestPB {
+  optional string replication_group_id = 1;
+  optional string target_parent_table_id = 2;
+  optional uint32 colocation_id = 3;
+  optional uint32 source_schema_version = 4;
+  optional SchemaPB schema = 5;
+}
+
+message InsertHistoricalColocatedSchemaPackingResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint32 last_compatible_consumer_schema_version = 2;
+}
+
 message InsertPackedSchemaForXClusterTargetRequestPB {
   // If this is an alter on a colocated table, then this is the colocated parent table id,
   // and we also need to specify the colocation_id.
@@ -885,6 +898,8 @@ service MasterReplication {
       returns (UpdateConsumerOnProducerSplitResponsePB);
   rpc UpdateConsumerOnProducerMetadata(UpdateConsumerOnProducerMetadataRequestPB)
       returns (UpdateConsumerOnProducerMetadataResponsePB);
+  rpc InsertHistoricalColocatedSchemaPacking(InsertHistoricalColocatedSchemaPackingRequestPB)
+      returns (InsertHistoricalColocatedSchemaPackingResponsePB);
   rpc InsertPackedSchemaForXClusterTarget(InsertPackedSchemaForXClusterTargetRequestPB)
       returns (InsertPackedSchemaForXClusterTargetResponsePB);
 

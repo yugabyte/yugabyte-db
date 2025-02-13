@@ -18,6 +18,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/constants.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 
@@ -44,6 +45,8 @@ class PgCreateTable {
 
   void SetXClusterSourceTableId(const PgObjectId& xcluster_source_table_id);
 
+  void OverwriteColocationId(const ColocationId& colocation_id);
+
  private:
   Status AddColumn(const PgCreateColumnPB& req);
   void EnsureYBbasectidColumnCreated();
@@ -59,6 +62,8 @@ class PgCreateTable {
   PgObjectId indexed_table_id_;
   bool ybbasectid_added_ = false;
   PgObjectId xcluster_source_table_id_;
+  // If set, will overwrite the colocation id of the table being created.
+  ColocationId overwrite_colocation_id_ = kColocationIdNotSet;
 };
 
 Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline);

@@ -59,14 +59,17 @@ std::string WriteRequestPBToString(const WriteRequestPB &req) {
 class GetCompatibleSchemaVersionRpc : public rpc::Rpc, public client::internal::TabletRpc {
  public:
   GetCompatibleSchemaVersionRpc(
-      CoarseTimePoint deadline, client::internal::RemoteTablet *tablet, client::YBClient *client,
-      tserver::GetCompatibleSchemaVersionRequestPB *req,
+      CoarseTimePoint deadline, client::internal::RemoteTablet* tablet, client::YBClient* client,
+      tserver::GetCompatibleSchemaVersionRequestPB* req,
       GetCompatibleSchemaVersionCallback callback, bool use_local_tserver)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
         trace_(new Trace),
         invoker_(
             use_local_tserver /* local_tserver_only */, false /* consistent_prefix */, client, this,
-            this, tablet, nullptr /* table */, mutable_retrier(), trace_.get()),
+            this, tablet, nullptr /* table */, mutable_retrier(), trace_.get(),
+            master::IncludeHidden::kFalse, master::IncludeDeleted::kFalse,
+            // Fail the request if we can't find a specific colocated table.
+            req->schema().has_colocated_table_id() /* fail_on_not_found */),
         callback_(std::move(callback)) {
     req_.Swap(req);
   }

@@ -163,7 +163,10 @@ Status PgCreateTable::Exec(
     table_creator->tablegroup_id(tablegroup_oid.GetYbTablegroupId());
   }
 
-  if (req_.optional_colocation_id_case() !=
+  if (overwrite_colocation_id_ != kColocationIdNotSet) {
+    table_creator->colocation_id(overwrite_colocation_id_);
+  } else if (
+      req_.optional_colocation_id_case() !=
       PgCreateTableRequestPB::OptionalColocationIdCase::OPTIONAL_COLOCATION_ID_NOT_SET) {
     table_creator->colocation_id(req_.colocation_id());
   }
@@ -358,6 +361,10 @@ size_t PgCreateTable::PrimaryKeyRangeColumnCount() const {
 
 void PgCreateTable::SetXClusterSourceTableId(const PgObjectId& xcluster_source_table_id) {
   xcluster_source_table_id_ = xcluster_source_table_id;
+}
+
+void PgCreateTable::OverwriteColocationId(const ColocationId& colocation_id) {
+  overwrite_colocation_id_ = colocation_id;
 }
 
 Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline) {

@@ -548,7 +548,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const OpId& op_id,
       HybridTime ht,
       const TableId& pg_table_id,
-      const SkipTableTombstoneCheck skip_table_tombstone_check) EXCLUDES(data_mutex_);
+      const SkipTableTombstoneCheck skip_table_tombstone_check,
+      const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings)
+      EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
 

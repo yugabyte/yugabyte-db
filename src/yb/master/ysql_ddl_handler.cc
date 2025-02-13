@@ -15,6 +15,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql_ddl_verification_task.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -467,6 +468,9 @@ Status CatalogManager::ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data)
           << txn_data.table->id() << ", txn_id: " << txn_data.ddl_txn_id;
   pb.clear_ysql_ddl_txn_verifier_state();
   pb.clear_transaction();
+
+  RETURN_NOT_OK(
+      GetXClusterManager()->ClearXClusterFieldsAfterYsqlDDL(txn_data.table, pb, txn_data.epoch));
 
   RETURN_NOT_OK(sys_catalog_->Upsert(txn_data.epoch, txn_data.table));
   if (RandomActWithProbability(
