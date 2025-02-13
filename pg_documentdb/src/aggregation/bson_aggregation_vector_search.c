@@ -62,6 +62,15 @@ typedef enum VectorSearchSpecType
 	VectorSearchSpecType_MongoNative = 3
 } VectorSearchSpecType;
 
+/* Context used in replacing the expressions on filtered vector search */
+typedef struct
+{
+	/* The source orderby var to replace */
+	Var *sourceExpr;
+
+	/* The target expression to replace it with */
+	Expr *targetExpr;
+} ReplaceDocumentVarOnSortContext;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -1039,7 +1048,7 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 		}
 		else if (strcmp(key, "filter") == 0)
 		{
-			if (!EnableVectorPreFilter)
+			if (!EnableVectorPreFilter && !EnableVectorPreFilterV2)
 			{
 				/* Safe guard against the enableVectorPreFilter GUC */
 				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1149,6 +1158,30 @@ ParseAndValidateIndexSpecificOptions(VectorSearchOptions *vectorSearchOptions)
 }
 
 
+/*
+ * Given a node, if it matches the source expression, then
+ * it's replaced with the targetExpression.
+ */
+static Node *
+ReplaceDocumentVarOnSort(Node *input, ReplaceDocumentVarOnSortContext *context)
+{
+	if (input == NULL)
+	{
+		return NULL;
+	}
+
+	if (IsA(input, Var))
+	{
+		if (equal(input, context->sourceExpr))
+		{
+			return (Node *) context->targetExpr;
+		}
+	}
+
+	return expression_tree_mutator(input, ReplaceDocumentVarOnSort, context);
+}
+
+
 /* core logic for vector search*/
 static Query *
 HandleVectorSearchCore(Query *query, VectorSearchOptions *vectorSearchOptions,
@@ -1181,9 +1214,64 @@ HandleVectorSearchCore(Query *query, VectorSearchOptions *vectorSearchOptions,
 										  true);
 
 	/* If there's a filter, add it to the query */
-	if (EnableVectorPreFilter &&
+	if (EnableVectorPreFilterV2 &&
 		vectorSearchOptions->filterBson.value_type != BSON_TYPE_EOD &&
 		!IsBsonValueEmptyDocument(&vectorSearchOptions->filterBson))
+	{
+		ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_PRE_FILTER);
+
+		/* check if the collection is unsharded */
+		if (context->mongoCollection != NULL &&
+			context->mongoCollection->shardKey != NULL)
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+							errmsg(
+								"Filter is not supported for vector search on sharded collection.")));
+		}
+
+		/* Just add the match directly to the query */
+		query = HandleMatch(&vectorSearchOptions->filterBson, query, context);
+
+		/* Add the limit to the query before reordering */
+		query->limitCount = limitCount;
+
+		/* After the limit is applied, push to a subquery */
+		query = MigrateQueryToSubQuery(query, context);
+
+		/* Now we have the first arg as the document. Add a second projector for
+		 * the score. We do this so we only add the score for the subset of docs
+		 * matching the filter.
+		 */
+		TargetEntry *documentEntry = linitial(query->targetList);
+		OpExpr *orderVar = (OpExpr *) sortEntry->expr;
+
+		ReplaceDocumentVarOnSortContext sortContext =
+		{
+			.sourceExpr = MakeSimpleDocumentVar(),
+			.targetExpr = documentEntry->expr,
+		};
+
+		/* Use expression_tree_mutator so we copy the orderby Expr before changing it */
+		Expr *scoreExprInput = (Expr *) expression_tree_mutator((Node *) orderVar,
+																ReplaceDocumentVarOnSort,
+																&sortContext);
+		Expr *scoreExpr = GenerateScoreExpr((Expr *) scoreExprInput, orderVar->opno);
+
+		List *args = list_make2(documentEntry->expr, scoreExpr);
+		FuncExpr *resultExpr = makeFuncExpr(
+			ApiBsonDocumentAddScoreFieldFunctionId(), BsonTypeId(), args, InvalidOid,
+			InvalidOid, COERCE_EXPLICIT_CALL);
+		documentEntry->expr = (Expr *) resultExpr;
+
+		TargetEntry *scoreEntry = makeTargetEntry(scoreExprInput, 2, "sortVal", false);
+		query->targetList = lappend(query->targetList, scoreEntry);
+
+		/* now reorder to ensure it matches the score order by */
+		query = ReorderQueryResults(query, context);
+	}
+	else if (EnableVectorPreFilter &&
+			 vectorSearchOptions->filterBson.value_type != BSON_TYPE_EOD &&
+			 !IsBsonValueEmptyDocument(&vectorSearchOptions->filterBson))
 	{
 		ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_PRE_FILTER);
 
@@ -1321,7 +1409,7 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 		}
 		else if (strcmp(key, "filter") == 0)
 		{
-			if (!EnableVectorPreFilter)
+			if (!EnableVectorPreFilter && !EnableVectorPreFilterV2)
 			{
 				/* Safe guard against the enableVectorPreFilter GUC */
 				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

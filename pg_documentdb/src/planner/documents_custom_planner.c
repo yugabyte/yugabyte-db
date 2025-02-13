@@ -156,7 +156,7 @@ FormatProjections(List *targetEntries)
 		if (currEntry->resjunk)
 		{
 			/* unused - remove */
-			foreach_delete_current(targetEntries, cell);
+			targetEntries = foreach_delete_current(targetEntries, cell);
 		}
 	}
 

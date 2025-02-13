@@ -64,6 +64,7 @@ extern bool EnableVectorHNSWIndex;
  * This is disabled by default.
  */
 extern bool EnableVectorPreFilter;
+extern bool EnableVectorPreFilterV2;
 
 
 #endif
