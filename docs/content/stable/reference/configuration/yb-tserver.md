@@ -1856,6 +1856,18 @@ Default: 1024
 
 Default: true
 
+##### yb_insert_on_conflict_read_batch_size
+
+{{<tags/feature/ea idea="1455">}} Set the level of batching for InsertOnConflict. Set to 0 to disable batching. Batching is always disabled for the following:
+
+- non-YugabyteDB relations
+- system relations
+- relations that have row triggers
+
+The higher the number, the more batching is done. 1024 is recommended.
+
+Default: 0 (disabled)
+
 ##### yb_read_from_followers
 
 Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
