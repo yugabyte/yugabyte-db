@@ -311,16 +311,18 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   current_version_tserver_bin_path_ = cluster_->GetTServerBinaryPath();
   cluster_->SetDaemonBinPath(old_version_bin_path_);
 
-  server::GetStatusRequestPB req;
-  server::GetStatusResponsePB resp;
-  rpc::RpcController rpc;
-  rpc.set_timeout(kRpcTimeout);
-  RETURN_NOT_OK(
-      cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
-  LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
+  if (cluster_->opts_.enable_ysql) {
+    server::GetStatusRequestPB req;
+    server::GetStatusResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(kRpcTimeout);
+    RETURN_NOT_OK(
+        cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
+    LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
 
-  is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
-                                   current_version_info_.ysql_major_version();
+    is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
+                                     current_version_info_.ysql_major_version();
+  }
 
   if (IsYsqlMajorVersionUpgrade()) {
     RETURN_NOT_OK(
@@ -521,6 +523,10 @@ Status UpgradeTestBase::FinalizeYsqlMajorCatalogUpgrade() {
 }
 
 Status UpgradeTestBase::PerformYsqlUpgrade() {
+  if (!cluster_->opts_.enable_ysql) {
+    return Status::OK();
+  }
+
   LOG(INFO) << "Running ysql upgrade";
 
   tserver::UpgradeYsqlRequestPB req;
