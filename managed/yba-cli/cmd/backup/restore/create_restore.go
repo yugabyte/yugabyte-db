@@ -312,9 +312,16 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 			}
 		}
 
-		isSelectiveTableRestore, _ := strconv.ParseBool(backupDetails["selective-restore"])
+		isSelectiveTableRestore, err := strconv.ParseBool(backupDetails["selective-restore"])
+		if err != nil {
+			errMessage := err.Error() + " Using Selective Table Restore as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			isSelectiveTableRestore = false
+		}
 		tableNameList := []string{}
-		if backupDetails["table-names"] != "" {
+		if backupDetails["table-name-list"] != "" {
 			tableNameList = strings.Split(backupDetails["table-name-list"], ",")
 		}
 
