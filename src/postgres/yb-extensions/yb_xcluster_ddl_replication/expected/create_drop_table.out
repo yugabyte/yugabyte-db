@@ -3,7 +3,7 @@ CALL TEST_reset();
 SET yb_xcluster_ddl_replication.replication_role = SOURCE;
 CREATE TEMP TABLE temp_foo(i int PRIMARY KEY);
 DROP TABLE temp_foo;
-SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY ddl_end_time;
  yb_data
 ---------
 (0 rows)
@@ -19,7 +19,7 @@ SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = 0;
 CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;
 -- Verify that info for unique constraint indexes are also captured.
 CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);
-SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY ddl_end_time;
                                                                                                                                          yb_data
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": 16414}]}
@@ -28,12 +28,12 @@ SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
  {"user": "yugabyte", "query": "CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "unique_foo", "relfile_oid": 16429}, {"rel_name": "unique_foo_u_key", "relfile_oid": 16434}]}
 (4 rows)
 
-SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY start_time;
- start_time | query_id |                                                yb_data
-------------+----------+--------------------------------------------------------------------------------------------------------
-          1 |        1 | {"query": "CREATE TABLE foo(i int PRIMARY KEY);"}
-          2 |        1 | {"query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;"}
-          3 |        1 | {"query": "CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);"}
+SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY ddl_end_time;
+ ddl_end_time | query_id |                                                yb_data
+--------------+----------+--------------------------------------------------------------------------------------------------------
+            1 |        1 | {"query": "CREATE TABLE foo(i int PRIMARY KEY);"}
+            2 |        1 | {"query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;"}
+            3 |        1 | {"query": "CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);"}
 (3 rows)
 
 -- Test tables partitioned by their primary key or a column.
@@ -49,7 +49,7 @@ DROP TABLE extra_foo;
 DROP TABLE unique_foo;
 DROP TABLE foo_partitioned_by_pkey;
 DROP TABLE foo_partitioned_by_col;
-SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY ddl_end_time;
                                                                                                                                          yb_data
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": 16414}]}
@@ -66,19 +66,19 @@ SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
  {"user": "yugabyte", "query": "DROP TABLE foo_partitioned_by_col;", "schema": "public", "version": 1, "command_tag": "DROP TABLE"}
 (12 rows)
 
-SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY start_time;
- start_time | query_id |                                                yb_data
-------------+----------+--------------------------------------------------------------------------------------------------------
-          1 |        1 | {"query": "CREATE TABLE foo(i int PRIMARY KEY);"}
-          2 |        1 | {"query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;"}
-          3 |        1 | {"query": "CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);"}
-          4 |        1 | {"query": "CREATE TABLE foo_partitioned_by_pkey(id int, PRIMARY KEY (id)) PARTITION BY RANGE (id);"}
-          5 |        1 | {"query": "CREATE TABLE foo_partitioned_by_col(id int) PARTITION BY RANGE (id);"}
-          6 |        1 | {"query": "DROP TABLE foo;"}
-          7 |        1 | {"query": "DROP TABLE extra_foo;"}
-          8 |        1 | {"query": "DROP TABLE unique_foo;"}
-          9 |        1 | {"query": "DROP TABLE foo_partitioned_by_pkey;"}
-         10 |        1 | {"query": "DROP TABLE foo_partitioned_by_col;"}
+SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY ddl_end_time;
+ ddl_end_time | query_id |                                                yb_data
+--------------+----------+--------------------------------------------------------------------------------------------------------
+            1 |        1 | {"query": "CREATE TABLE foo(i int PRIMARY KEY);"}
+            2 |        1 | {"query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;"}
+            3 |        1 | {"query": "CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);"}
+            4 |        1 | {"query": "CREATE TABLE foo_partitioned_by_pkey(id int, PRIMARY KEY (id)) PARTITION BY RANGE (id);"}
+            5 |        1 | {"query": "CREATE TABLE foo_partitioned_by_col(id int) PARTITION BY RANGE (id);"}
+            6 |        1 | {"query": "DROP TABLE foo;"}
+            7 |        1 | {"query": "DROP TABLE extra_foo;"}
+            8 |        1 | {"query": "DROP TABLE unique_foo;"}
+            9 |        1 | {"query": "DROP TABLE foo_partitioned_by_pkey;"}
+           10 |        1 | {"query": "DROP TABLE foo_partitioned_by_col;"}
 (10 rows)
 
 -- Test mix of temp and regular tables.

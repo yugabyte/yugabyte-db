@@ -5,7 +5,7 @@ SET yb_xcluster_ddl_replication.replication_role = SOURCE;
 CREATE TEMP TABLE temp_foo(i int PRIMARY KEY);
 DROP TABLE temp_foo;
 
-SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY ddl_end_time;
 SET yb_xcluster_ddl_replication.replication_role = BIDIRECTIONAL;
 
 -- Verify that regular tables are captured.
@@ -22,8 +22,8 @@ CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1
 -- Verify that info for unique constraint indexes are also captured.
 CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);
 
-SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
-SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY start_time;
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY ddl_end_time;
+SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY ddl_end_time;
 
 -- Test tables partitioned by their primary key or a column.
 CREATE TABLE foo_partitioned_by_pkey(id int, PRIMARY KEY (id)) PARTITION BY RANGE (id);
@@ -42,8 +42,8 @@ DROP TABLE unique_foo;
 DROP TABLE foo_partitioned_by_pkey;
 DROP TABLE foo_partitioned_by_col;
 
-SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
-SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY start_time;
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY ddl_end_time;
+SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY ddl_end_time;
 
 -- Test mix of temp and regular tables.
 SET yb_xcluster_ddl_replication.replication_role = SOURCE;
