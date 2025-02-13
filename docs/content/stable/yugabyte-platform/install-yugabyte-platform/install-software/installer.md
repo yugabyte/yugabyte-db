@@ -260,10 +260,10 @@ The disk is now ready to be reused with a new installation.
 
 To use the data disk with a new installation, do the following:
 
-1. Install YugabyteDB Anywhere using the `-without-data` option:
+1. Install YugabyteDB Anywhere using the `--without-data` option:
 
     ```sh
-    sudo ./yba-ctl install -without-data
+    sudo ./yba-ctl install --without-data
     ```
 
 1. Mount the data disk to `/opt/yugabyte/data`. For example:
