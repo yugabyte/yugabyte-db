@@ -207,7 +207,7 @@ The `install` command runs all [preflight checks](#run-preflight-checks) first, 
 
 ### Use a stand-alone data disk
 
-By default, YugabyteDB Anywhere stores its data in `/opt/yugabyte/data`. You can also use a stand-alone data disk for YugabyteDB Anywhere data.
+{{<tags/feature/ea idea="1829">}}By default, YugabyteDB Anywhere stores its data in `/opt/yugabyte/data`. You can also use a stand-alone data disk for YugabyteDB Anywhere data.
 
 Using a stand-alone data disk allows you to swap your YugabyteDB Anywhere data between installations for tasks such as boot disk replacement.
 
