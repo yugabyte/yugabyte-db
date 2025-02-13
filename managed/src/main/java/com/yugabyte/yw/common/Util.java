@@ -175,6 +175,10 @@ public class Util {
   public static final List<String> SPECIAL_CHARACTERS_STRING_LIST =
       ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
+  public static final String PATTERN_FOR_UUID =
+      "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+  public static final String PATTERN_FOR_HOST = ".+:[0-9]{4,5}";
+
   private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
       ImmutableMap.<String, Long>builder()
           .put("s", TimeUnit.SECONDS.toNanos(1))
