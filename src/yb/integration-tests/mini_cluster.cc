@@ -1449,11 +1449,7 @@ void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t byte
       continue;
     }
     auto tablet = *tablet_result;
-    for (auto* db : { tablet->regular_db(), tablet->intents_db() }) {
-      if (db) {
-        db->GetDBOptions().rate_limiter->SetBytesPerSecond(bytes_per_sec);
-      }
-    }
+    tablet->SetCompactFlushRateLimitBytesPerSec(bytes_per_sec);
   }
 }
 

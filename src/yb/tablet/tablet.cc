@@ -273,17 +273,6 @@ DEFINE_test_flag(bool, disable_adding_last_compaction_to_tablet_metadata, false,
                  "Prevents adding the last full compaction time to tablet metadata upon "
                  "full compaction completion.");
 
-DECLARE_int32(client_read_write_timeout_ms);
-DECLARE_bool(consistent_restore);
-DECLARE_int64(db_block_size_bytes);
-DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
-DECLARE_int32(rocksdb_level0_stop_writes_trigger);
-DECLARE_uint64(rocksdb_max_file_size_for_compaction);
-DECLARE_int64(apply_intents_task_injected_delay_ms);
-DECLARE_string(regular_tablets_data_block_key_value_encoding);
-DECLARE_bool(cdc_immediate_transaction_cleanup);
-DECLARE_uint64(cdc_intent_retention_ms);
-
 DEFINE_test_flag(uint64, inject_sleep_before_applying_write_batch_ms, 0,
                  "Sleep before applying write batches");
 DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
@@ -292,7 +281,18 @@ DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
 DEFINE_test_flag(bool, skip_remove_intent, false,
                  "If true, remove intent will be skipped");
 
+DECLARE_bool(cdc_immediate_transaction_cleanup);
+DECLARE_bool(consistent_restore);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
+DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(rocksdb_level0_stop_writes_trigger);
+DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
+DECLARE_int64(apply_intents_task_injected_delay_ms);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
+DECLARE_uint64(cdc_intent_retention_ms);
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
+DECLARE_string(regular_tablets_data_block_key_value_encoding);
 
 using namespace std::placeholders;
 
@@ -1332,6 +1332,13 @@ bool Tablet::StartShutdown() {
   }
 
   return true;
+}
+
+Status Tablet::CompleteStartup() {
+  // Rate limit bytes per sec could have been changed during a tablet bootstrapping.
+  SetCompactFlushRateLimitBytesPerSec(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec);
+
+  return EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
 }
 
 void Tablet::CompleteShutdown(
@@ -5301,6 +5308,24 @@ Status Tablet::GetTabletKeyRanges(
           *use_empty_as_last_key);
   }
   FATAL_INVALID_ENUM_VALUE(Direction, direction);
+}
+
+void Tablet::SetCompactFlushRateLimitBytesPerSec(int64_t bytes_per_sec) {
+  for (auto* db : { regular_db_.get(), intents_db_.get() }) {
+    if (!db || !db->GetDBOptions().rate_limiter) {
+      continue;
+    }
+
+    std::string log_prefix = Format(
+        "Rate limiter ($0): set bytes_per_second ",
+        db == regular_db_.get() ? "regular db" : "intents db");
+    auto ret = db->GetDBOptions().rate_limiter->SetBytesPerSecond(bytes_per_sec);
+    if (ret.ok()) {
+      LOG_WITH_PREFIX(INFO) << log_prefix << "to " << bytes_per_sec;
+    } else {
+      LOG_WITH_PREFIX(WARNING) << log_prefix << "failed: " << ret.status();
+    }
+  }
 }
 
 // ------------------------------------------------------------------------------------------------

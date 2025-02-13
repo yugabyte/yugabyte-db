@@ -3373,8 +3373,9 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
           "Failed to remove an expired table entry from stream");
     }
 
-    rate_limiter_->SetBytesPerSecond(
-        GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB);
+    WARN_NOT_OK(ResultToStatus(rate_limiter_->SetBytesPerSecond(
+        FLAGS_xcluster_get_changes_max_send_rate_mbps * 1_MB)),
+        "Rate limiter set bytes per second failed");
 
   } while (sleep_while_not_stopped());
 }

@@ -475,7 +475,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   // Because we changed the tablet state, we need to re-report the tablet to the master.
   mark_dirty_clbk_.Run(context);
 
-  return tablet_->EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause */ nullptr);
+  return tablet_->CompleteStartup();
 }
 
 bool TabletPeer::StartShutdown() {
