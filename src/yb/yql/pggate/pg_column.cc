@@ -34,7 +34,7 @@ namespace {
 
 ColumnSchema kColumnYBctid(
     "ybctid", QLType::Create(DataType::BINARY), ColumnKind::RANGE_ASC_NULL_FIRST, Nullable::kFalse,
-    false, false, to_underlying(PgSystemAttrNum::kYBTupleId));
+    false, false, std::to_underlying(PgSystemAttrNum::kYBTupleId));
 
 LWPgsqlExpressionPB* AllocNonVirtualBindPB(
     const PgColumn& column, LWPgsqlWriteRequestPB* write_req) {
@@ -187,7 +187,7 @@ LWPgsqlExpressionPB *PgColumn::AllocBindConditionExprPB(LWPgsqlReadRequestPB *re
 }
 
 int PgColumn::id() const {
-  return is_virtual_column() ? to_underlying(PgSystemAttrNum::kYBTupleId)
+  return is_virtual_column() ? std::to_underlying(PgSystemAttrNum::kYBTupleId)
                              : schema_.column_id(index_);
 }
 

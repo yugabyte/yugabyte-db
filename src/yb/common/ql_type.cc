@@ -39,7 +39,7 @@ struct Traits<DataType::USER_DEFINED_TYPE> {
   using UDTInfo = UDTypeInfo;
 };
 
-constexpr int kMaxValidYCQLTypeIndex = to_underlying(DataType::JSONB) + 1;
+constexpr int kMaxValidYCQLTypeIndex = std::to_underlying(DataType::JSONB) + 1;
 
 // Set of keywords in CQL.
 // Derived from .../cassandra/src/java/org/apache/cassandra/cql3/Cql.g
@@ -492,8 +492,8 @@ bool QLType::IsImplicitlyConvertible(const SharedPtr& lhs_type, const SharedPtr&
 }
 
 QLType::ConversionMode QLType::GetConversionMode(DataType left, DataType right) {
-  const size_t left_index = to_underlying(left);
-  const size_t right_index = to_underlying(right);
+  const size_t left_index = std::to_underlying(left);
+  const size_t right_index = std::to_underlying(right);
   DCHECK_LT(left_index, kMaxValidYCQLTypeIndex);
   DCHECK_LT(right_index, kMaxValidYCQLTypeIndex);
 
@@ -538,8 +538,8 @@ QLType::ConversionMode QLType::GetConversionMode(DataType left, DataType right) 
 }
 
 bool QLType::IsComparable(DataType left, DataType right) {
-  const size_t left_index = to_underlying(left);
-  const size_t right_index = to_underlying(right);
+  const size_t left_index = std::to_underlying(left);
+  const size_t right_index = std::to_underlying(right);
   DCHECK_LT(left_index, kMaxValidYCQLTypeIndex);
   DCHECK_LT(right_index, kMaxValidYCQLTypeIndex);
 

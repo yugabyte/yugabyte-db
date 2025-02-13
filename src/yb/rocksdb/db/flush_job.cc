@@ -122,7 +122,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
   if (wait_state_) {
     wait_state_->UpdateMetadata(
         {.root_request_id = yb::Uuid::Generate(),
-         .query_id = yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForFlush),
+         .query_id = std::to_underlying(yb::ash::FixedQueryId::kQueryIdForFlush),
          .rpc_request_id = job_context_->job_id});
     wait_state_->UpdateAuxInfo({.tablet_id = db_options_.tablet_id, .method = "Flush"});
     SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);

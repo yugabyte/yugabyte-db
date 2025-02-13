@@ -573,7 +573,7 @@ int PgExpr::get_pg_collid() const {
 }
 
 std::string PgExpr::ToString() const {
-  return Format("{ opcode: $0 }", to_underlying(opcode_));
+  return Format("{ opcode: $0 }", std::to_underlying(opcode_));
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -30,7 +30,7 @@
 # under the License.
 #
 
-cmake_minimum_required(VERSION 3.17.3)
+cmake_minimum_required(VERSION 3.31.0)
 
 project(YugabyteDB)
 
@@ -56,6 +56,9 @@ include(YugabyteFunctions)
 ENFORCE_OUT_OF_SOURCE_BUILD()
 yb_initialize_constants()
 include(YugabyteTesting)
+
+# We don't use modules, so no need to scan.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 ADD_CXX_FLAGS("-Werror")
 ADD_CXX_FLAGS("-fno-strict-aliasing -Wall")
@@ -841,7 +844,7 @@ string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 yb_deduplicate_arguments(CMAKE_C_FLAGS)
 # -------------------------------------------------------------------------------------------------
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 yb_deduplicate_arguments(CMAKE_CXX_FLAGS)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

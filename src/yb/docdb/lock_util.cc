@@ -13,13 +13,15 @@
 
 #include "yb/docdb/lock_util.h"
 
+#include <type_traits>
+
 namespace yb::docdb {
 
 using dockv::IntentTypeSet;
 
 bool IntentTypesConflict(dockv::IntentType lhs, dockv::IntentType rhs) {
-  auto lhs_value = to_underlying(lhs);
-  auto rhs_value = to_underlying(rhs);
+  auto lhs_value = std::to_underlying(lhs);
+  auto rhs_value = std::to_underlying(rhs);
   // The rules are the following:
   // 1) At least one intent should be strong for conflict.
   // 2) Read and write conflict only with opposite type.
@@ -28,7 +30,7 @@ bool IntentTypesConflict(dockv::IntentType lhs, dockv::IntentType rhs) {
 }
 
 LockState IntentTypeMask(dockv::IntentType intent_type, LockState single_intent_mask) {
-  return single_intent_mask << (to_underlying(intent_type) * kIntentTypeBits);
+  return single_intent_mask << (std::to_underlying(intent_type) * kIntentTypeBits);
 }
 
 namespace {
@@ -67,7 +69,7 @@ std::array<LockState, dockv::kIntentTypeSetMapSize> GenerateLockStatesWithCount(
 }
 
 uint16_t LockStateIntentCount(LockState num_waiting, dockv::IntentType intent_type) {
-  return (num_waiting >> (to_underlying(intent_type) * kIntentTypeBits))
+  return (num_waiting >> (std::to_underlying(intent_type) * kIntentTypeBits))
       & kFirstIntentTypeMask;
 }
 

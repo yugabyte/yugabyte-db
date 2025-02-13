@@ -412,7 +412,7 @@ void AshCopyAuxInfo(
   snprintf(
       cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
       FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
-                               : (component == to_underlying(ash::Component::kYCQL)
+                               : (component == std::to_underlying(ash::Component::kYCQL)
                                       ? tserver_aux_info.table_id().c_str()
                                       : tserver_aux_info.tablet_id().c_str()));
 }

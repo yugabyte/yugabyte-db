@@ -291,7 +291,7 @@ constexpr std::pair<size_t, bool> UniqTagsCount(
     std::tie(count, has_duplicates) = UniqTagsCount(found_items, std::forward<Args>(args)...);
   }
   for (auto t : tags) {
-    const auto idx = to_underlying(t.stmt_op);
+    const auto idx = std::to_underlying(t.stmt_op);
     if (idx < found_items.size() && !found_items.data()[idx]) {
       ++count;
       found_items.data()[idx] = true;
@@ -542,7 +542,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
       values->emplace_back(dockv::KeyEntryType::kNullLow);
       continue;
     }
-    if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
+    if (attr->attr_num == std::to_underlying(PgSystemAttrNum::kYBRowId)) {
       SCHECK(new_row_id_holder.empty(), Corruption, "Multiple kYBRowId attribute detected");
       new_row_id_holder = session->GenerateNewYbrowid();
       expr_pb->mutable_value()->ref_binary_value(new_row_id_holder);
@@ -1215,7 +1215,7 @@ Status PgApiImpl::ExecPostponedDdlStmt(PgStatement* handle) {
 
 #undef YB_EXECUTE_PG_STMT
 
-  RSTATUS_DCHECK(false, IllegalState, "Unexpected stmt_op $0", to_underlying(stmt_op));
+  RSTATUS_DCHECK(false, IllegalState, "Unexpected stmt_op $0", std::to_underlying(stmt_op));
   return Status::OK();
 }
 

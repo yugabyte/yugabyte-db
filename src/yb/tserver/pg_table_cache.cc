@@ -116,7 +116,7 @@ class PgTableCache::Impl {
       const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
       const std::unordered_set<uint32_t>& db_oids_deleted) {
     std::lock_guard lock(mutex_);
-    for (const auto [db_oid, db_version] : db_oids_updated) {
+    for (auto [db_oid, db_version] : db_oids_updated) {
       auto iter = caches_.find(db_oid);
       if (iter == caches_.end()) {
         // No need to create an empty per-database cache for db_oid just to
@@ -136,7 +136,7 @@ class PgTableCache::Impl {
       iter->second.first.clear();
       iter->second.second = db_version;
     }
-    for (const auto db_oid : db_oids_deleted) {
+    for (auto db_oid : db_oids_deleted) {
       // The database db_oid is dropped.
       VLOG(2) << "Remove table cache of dropped database " << db_oid;
       caches_.erase(db_oid);

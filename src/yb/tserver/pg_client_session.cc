@@ -2869,7 +2869,7 @@ class PgClientSession::Impl {
 
   template <class T>
   static auto& DoSessionData(T* that, PgClientSessionKind kind) {
-    return that->sessions_[to_underlying(kind)];
+    return that->sessions_[std::to_underlying(kind)];
   }
 
   SessionData& GetSessionData(PgClientSessionKind kind) {

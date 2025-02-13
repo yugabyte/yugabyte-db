@@ -1513,7 +1513,7 @@ Status RaftConsensus::Update(
     LWConsensusResponsePB* response, CoarseTimePoint deadline) {
   if (const auto& wait_state = yb::ash::WaitStateInfo::CurrentWaitState()) {
     wait_state->set_query_id(
-        yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForRaftUpdateConsensus));
+        std::to_underlying(yb::ash::FixedQueryId::kQueryIdForRaftUpdateConsensus));
   }
   follower_last_update_received_time_ms_.store(
       clock_->Now().GetPhysicalValueMillis(), std::memory_order_release);

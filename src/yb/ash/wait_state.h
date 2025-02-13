@@ -83,7 +83,7 @@ namespace yb::ash {
 #define YB_ASH_COMPONENT_BITS      4U
 
 #define YB_ASH_MAKE_EVENT(class) \
-    (static_cast<uint32_t>(yb::to_underlying(BOOST_PP_CAT(yb::ash::Class::k, class))) << \
+    (static_cast<uint32_t>(std::to_underlying(BOOST_PP_CAT(yb::ash::Class::k, class))) << \
      YB_ASH_CLASS_POSITION)
 
 // YB ASH Wait Components (4 bits)
@@ -466,7 +466,7 @@ class WaitStateInfo {
     std::lock_guard lock(mutex_);
     metadata_.ToPB(pb->mutable_metadata());
     WaitStateCode code = this->code();
-    pb->set_wait_state_code(yb::to_underlying(code));
+    pb->set_wait_state_code(std::to_underlying(code));
     if (export_wait_state_names) {
       pb->set_wait_state_code_as_string(yb::ToString(code));
     }

@@ -223,7 +223,7 @@ Status PgCreateTableBase::AddColumnImpl(
   column.set_attr_ybtype(attr_ybtype);
   column.set_is_hash(is_hash);
   column.set_is_range(is_range);
-  column.set_sorting_type(to_underlying(sorting_type));
+  column.set_sorting_type(std::to_underlying(sorting_type));
   column.set_attr_pgoid(pg_type_oid);
   return Status::OK();
 }

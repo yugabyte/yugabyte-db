@@ -64,7 +64,7 @@ thread_local WaitStateInfoPtr threadlocal_wait_state_;
 std::atomic_bool TEST_entered_wait_state_code_for_sleep{false};
 
 void MaybeSleepForTests(WaitStateInfo* state, WaitStateCode c) {
-  if (FLAGS_TEST_yb_ash_wait_code_to_sleep_at != to_underlying(c)) {
+  if (FLAGS_TEST_yb_ash_wait_code_to_sleep_at != std::to_underlying(c)) {
     return;
   }
 

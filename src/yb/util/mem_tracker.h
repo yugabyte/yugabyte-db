@@ -543,6 +543,14 @@ class MemTrackerAllocator : public Alloc {
     return Alloc::allocate(n);
   }
 
+#ifdef __cpp_lib_allocate_at_least
+  std::allocation_result<T*> allocate_at_least(size_type n) {
+    auto result = Alloc::allocate_at_least(n);
+    mem_tracker_->Consume(result.count * sizeof(T));
+    return result;
+  }
+#endif
+
   void deallocate(T* p, size_type n) {
     Alloc::deallocate(p, n);
     mem_tracker_->Release(n * sizeof(T));
