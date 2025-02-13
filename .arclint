@@ -161,6 +161,15 @@
       "script-and-regex.regex":
         "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
     },
+    "regress_schedule": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/.+/yb_[^/]*schedule$)"
+      ],
+      "script-and-regex.script": "src/lint/regress_schedule.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
     "typedefs_list": {
       "type": "script-and-regex",
       "include": [
