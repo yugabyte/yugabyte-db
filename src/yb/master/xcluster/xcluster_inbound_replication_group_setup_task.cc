@@ -63,8 +63,6 @@ DEFINE_test_flag(bool, exit_unfinished_merging, false,
 
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
-
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 
 using namespace std::placeholders;
@@ -259,14 +257,13 @@ Status XClusterInboundReplicationGroupSetupTask::FirstStep() {
     RETURN_NOT_OK(GetAutoFlagConfigVersionIfCompatible());
   }
 
-  if (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication &&
-      !is_alter_replication_) {
+  if (data_.automatic_ddl_mode && !is_alter_replication_) {
     // Ensure sequences_data table has been created.
     // Skip for alter replication as the table should already have been created on initial setup.
     auto local_client = master_.client_future();
     RETURN_NOT_OK(tserver::CreateSequencesDataTable(
         local_client.get(), CoarseMonoClock::now() +
-        MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
+                                MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
   }
 
   ScheduleNextStep(
@@ -294,8 +291,7 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
     }
   }
 
-  if (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication &&
-      !is_alter_replication_) {
+  if (data_.automatic_ddl_mode && !is_alter_replication_) {
     ScheduleNextStep(
         std::bind(
             &XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData, shared_from(this)),
@@ -607,7 +603,7 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateTableListForDbScoped() 
     auto table_designators = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(
         catalog_manager_, namespace_id,
         /*include_sequences_data=*/
-        (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication)));
+        data_.automatic_ddl_mode));
 
     std::vector<TableId> missing_tables;
 

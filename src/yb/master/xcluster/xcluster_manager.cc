@@ -52,10 +52,6 @@ DEFINE_RUNTIME_uint32(xcluster_ysql_statement_timeout_sec, 120,
 DEFINE_test_flag(bool, xcluster_enable_ddl_replication, false,
     "Enables xCluster automatic DDL replication.");
 
-DEFINE_test_flag(bool, xcluster_enable_sequence_replication, false,
-    "Enable xCluster automatic replication of sequences (requires automatic DB-scoped "
-    "replication).");
-
 DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
     "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
     "xCluster replication mode.");
