@@ -224,6 +224,8 @@ TEST_F(SamplingProfilerTest, OnlyOneHeapProfile) {
 TEST_F(SamplingProfilerTest, EstimatedBytesAndCount) {
   const auto kSampleFreqBytes = 10_KB;
   const auto kAllocSize = 10_KB;
+  // TCMalloc rounds up allocations to a size class, so use that instead of the requested size.
+  const auto kActualAllocSize = tcmalloc::MallocExtension::GetEstimatedAllocatedSize(kAllocSize);
   const auto kNumAllocations = 1000;
 
   SetProfileSamplingRate(kSampleFreqBytes);
@@ -244,7 +246,7 @@ TEST_F(SamplingProfilerTest, EstimatedBytesAndCount) {
   ASSERT_NEAR(kNumAllocations, estimated_count, margin);
 
   auto estimated_bytes = *samples[0].second.estimated_bytes;
-  auto actual_bytes = kAllocSize * kNumAllocations;
+  auto actual_bytes = kActualAllocSize * kNumAllocations;
   margin = actual_bytes * 0.2;
   ASSERT_NEAR(actual_bytes, estimated_bytes, margin);
 }
