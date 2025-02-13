@@ -57,27 +57,20 @@ static TupleTableSlot *YbSeqNext(YbSeqScanState *node);
 static TupleTableSlot *
 YbSeqNext(YbSeqScanState *node)
 {
-	TableScanDesc tsdesc;
 	EState	   *estate;
 	TupleTableSlot *slot;
 	ExprContext *econtext;
 	MemoryContext oldcontext;
 	YbScanDesc	ybScan;
 
-	/*
-	 * get information from the estate and scan state
-	 */
-	tsdesc = node->ss.ss_currentScanDesc;
 	estate = node->ss.ps.state;
 	econtext = node->ss.ps.ps_ExprContext;
 	slot = node->ss.ss_ScanTupleSlot;
 
 	/*
 	 * Initialize the scandesc upon the first invocation.
-	 * The scan only needs its ybscan field, so eventually we may use it
-	 * directly and ignore the ss_currentScanDesc.
 	 */
-	if (tsdesc == NULL)
+	if (node->ss.ss_currentScanDesc == NULL)
 	{
 		if (node->aggrefs)
 		{
@@ -98,28 +91,27 @@ YbSeqNext(YbSeqScanState *node)
 		YbSeqScan  *plan = (YbSeqScan *) node->ss.ps.plan;
 		YbPushdownExprs *yb_pushdown =
 		YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
-		YbScanDesc	ybScan = ybcBeginScan(node->ss.ss_currentRelation,
-										  NULL /* index */ ,
-										  false /* xs_want_itup */ ,
-										  0 /* nkeys */ ,
-										  NULL /* key */ ,
-										  (Scan *) plan,
-										  yb_pushdown /* rel_pushdown */ ,
-										  NULL /* idx_pushdown */ ,
-										  node->aggrefs,
-										  0 /* distinct_prefixlen */ ,
-										  &estate->yb_exec_params,
-										  false /* is_internal_scan */ ,
-										  false /* fetch_ybctids_only */ );
 
+		ybScan = ybcBeginScan(node->ss.ss_currentRelation,
+							  NULL, /* index */
+							  false,	/* xs_want_itup */
+							  0,	/* nkeys */
+							  NULL, /* key */
+							  (Scan *) plan,
+							  yb_pushdown,	/* rel_pushdown */
+							  NULL, /* idx_pushdown */
+							  node->aggrefs,
+							  0,	/* distinct_prefixlen */
+							  &estate->yb_exec_params,
+							  false,	/* is_internal_scan */
+							  false);	/* fetch_ybctids_only */
 		ybScan->pscan = node->pscan;
-
-		tsdesc = (TableScanDesc) ybScan;
-		tsdesc->rs_snapshot = estate->es_snapshot;
-		tsdesc->rs_flags = SO_TYPE_SEQSCAN;
-
-		node->ss.ss_currentScanDesc = tsdesc;
+		ybScan->rs_base.rs_snapshot = estate->es_snapshot;
+		ybScan->rs_base.rs_flags = SO_TYPE_SEQSCAN;
+		node->ss.ss_currentScanDesc = (TableScanDesc) ybScan;
 	}
+	else
+		ybScan = (YbScanDesc) node->ss.ss_currentScanDesc;
 
 	/*
 	 * Set up any locking that happens at the time of the scan.
@@ -151,9 +143,6 @@ YbSeqNext(YbSeqScanState *node)
 			if (erm->markType != ROW_MARK_REFERENCE &&
 				erm->markType != ROW_MARK_COPY)
 			{
-				/* YB_TODO(jason): move ybScan = (YbScanDesc)tsdesc; higher. */
-				YbScanDesc	ybScan = (YbScanDesc) tsdesc;
-
 				ybScan->exec_params->rowmark = erm->markType;
 				ybScan->exec_params->pg_wait_policy = erm->waitPolicy;
 				ybScan->exec_params->docdb_wait_policy =
@@ -162,7 +151,6 @@ YbSeqNext(YbSeqScanState *node)
 		}
 	}
 
-	ybScan = (YbScanDesc) tsdesc;
 	/*
 	 * In the case of parallel scan we need to obtain boundaries from the pscan
 	 * before the scan is executed. Also empty row from parallel range scan does
