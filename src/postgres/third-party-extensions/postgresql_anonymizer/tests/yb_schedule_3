@@ -1,0 +1,12 @@
+# third-party-extensions/postgresql_anonymizer/tests/yb_schedule_3
+#
+####################################################################################################
+# postgresql_anonymizer Extension Testsuite
+####################################################################################################
+test: yb_pg_generalization
+test: yb_pg_k_anonymity
+test: yb_pg_permissions_owner
+test: yb_pg_permissions_masked_role
+test: yb_pg_injection
+test: syntax_checks
+test: yb_pg_views

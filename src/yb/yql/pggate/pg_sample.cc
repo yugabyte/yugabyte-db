@@ -43,10 +43,8 @@ TAG_FLAG(ysql_docdb_blocks_sampling_method, hidden);
 
 namespace yb::pggate {
 
-// Internal class to work as the secondary index to select sample tuples.
-// Like index, it produces ybctids of random records and outer PgSample fetches them.
-// Unlike index, it does not use a secondary index, but scans main table instead.
-class PgSamplePicker : public PgSelectIndex {
+// Internal class to select sample rows ybctids.
+class PgSample::SamplePicker : public PgSelect {
  public:
   Result<bool> ProcessNextBlock() {
     // Process previous responses
@@ -74,17 +72,33 @@ class PgSamplePicker : public PgSelectIndex {
     return down_cast<const PgDocReadOp*>(doc_op_.get())->GetEstimatedRowCount();
   }
 
-  static Result<std::unique_ptr<PgSamplePicker>> Make(
+  static Result<std::unique_ptr<SamplePicker>> Make(
       const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
       int targrows, const SampleRandomState& rand_state, HybridTime read_time) {
-    std::unique_ptr<PgSamplePicker> result{new PgSamplePicker{pg_session}};
+    std::unique_ptr<SamplePicker> result{new SamplePicker{pg_session}};
     RETURN_NOT_OK(result->Prepare(table_id, is_region_local, targrows, rand_state, read_time));
     return result;
   }
 
+  const std::vector<Slice>& FetchYbctids() {
+    ybctids_.clear();
+    if (!reservoir_ready_) {
+      return ybctids_;
+    }
+    for (const auto& ybctid : reservoir_) {
+      if (ybctid.empty()) {
+        // Algorithm fills up the reservoir first. Empty row means there are no more data
+        break;
+      }
+      ybctids_.push_back(ybctid);
+    }
+    reservoir_ready_ = false;
+    return ybctids_;
+  }
+
  private:
-  explicit PgSamplePicker(const PgSession::ScopedRefPtr& pg_session)
-      : PgSelectIndex(pg_session) {
+  explicit SamplePicker(const PgSession::ScopedRefPtr& pg_session)
+      : PgSelect(pg_session) {
   }
 
   Status Prepare(
@@ -121,25 +135,6 @@ class PgSamplePicker : public PgSelectIndex {
     return Status::OK();
   }
 
-  Result<const std::vector<Slice>*> DoFetchYbctidBatch() override {
-    // Check if all ybctids are already returned
-    if (!reservoir_ready_) {
-      return nullptr;
-    }
-    // Prepare target vector
-    ybctids_.clear();
-    // Create pointers to the items in the reservoir
-    for (const auto& ybctid : reservoir_) {
-      if (ybctid.empty()) {
-        // Algorithm fills up the reservoir first. Empty row means there are no more data
-        break;
-      }
-      ybctids_.push_back(ybctid);
-    }
-    reservoir_ready_ = false;
-    return &ybctids_;
-  }
-
   // The reservoir to keep ybctids of selected sample rows
   std::vector<std::string> reservoir_;
   // If true sampling is completed and ybctids can be collected from the reservoir
@@ -151,6 +146,8 @@ class PgSamplePicker : public PgSelectIndex {
 PgSample::PgSample(const PgSession::ScopedRefPtr& pg_session)
     : BaseType(pg_session) {}
 
+PgSample::~PgSample() {}
+
 Status PgSample::Prepare(
     const PgObjectId& table_id, bool is_region_local, int targrows,
     const SampleRandomState& rand_state, HybridTime read_time) {
@@ -158,8 +155,8 @@ Status PgSample::Prepare(
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
   bind_ = PgTable(nullptr);
 
-  SetSecondaryIndex(VERIFY_RESULT(PgSamplePicker::Make(
-      pg_session_, table_id, is_region_local, targrows, rand_state, read_time)));
+  sample_picker_ = VERIFY_RESULT(SamplePicker::Make(
+      pg_session_, table_id, is_region_local, targrows, rand_state, read_time));
 
   // Prepare read op to fetch rows
   auto read_op = ArenaMakeShared<PgsqlReadOp>(
@@ -175,20 +172,24 @@ Status PgSample::Prepare(
     << " for " << targrows << " rows"
     << " using read time: " << read_time;
 
+  RETURN_NOT_OK(sample_picker_->Exec(pg_exec_params_));
+
   return Status::OK();
 }
 
 Result<bool> PgSample::SampleNextBlock() {
-  RETURN_NOT_OK(DCHECK_NOTNULL(SecondaryIndex())->Execute());
-  return SamplePicker().ProcessNextBlock();
+  const auto continue_sampling = VERIFY_RESULT(sample_picker_->ProcessNextBlock());
+  if (!continue_sampling) {
+    const auto& ybctids = sample_picker_->FetchYbctids();
+    if (!ybctids.empty()) {
+      SetRequestedYbctids(ybctids);
+    }
+  }
+  return continue_sampling;
 }
 
 EstimatedRowCount PgSample::GetEstimatedRowCount() {
-  return SamplePicker().GetEstimatedRowCount();
-}
-
-PgSamplePicker& PgSample::SamplePicker() {
-  return *down_cast<PgSamplePicker*>(DCHECK_NOTNULL(SecondaryIndexQuery()));
+  return sample_picker_->GetEstimatedRowCount();
 }
 
 Result<std::unique_ptr<PgSample>> PgSample::Make(

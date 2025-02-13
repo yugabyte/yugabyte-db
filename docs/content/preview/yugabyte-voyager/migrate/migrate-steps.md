@@ -179,14 +179,14 @@ Refer to [export schema](../../reference/schema-migration/export-schema/) for de
 
 The schema exported in the previous step may not yet be suitable for importing into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need to make minor manual changes to the schema.
 
-The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) step, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command An example invocation of the command with required arguments is as follows:
+The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) step, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command with required arguments is as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
 yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 ```
 
-The above command generates a report file under the `EXPORT_DIR/reports/` directory.
+The command generates a report file under the `EXPORT_DIR/reports/` directory.
 
 Refer to [analyze schema](../../reference/schema-migration/analyze-schema/) for details about the arguments.
 
@@ -236,7 +236,7 @@ Sequence migration consists of two steps: sequence creation and setting resume v
 
 Note that there are some special cases involving sequences such as the following:
 
-- In MySQL, auto-increment column is migrated to YugbayteDB as a normal column with a sequence attached to it.
+- In MySQL, auto-increment column is migrated to YugabyteDB as a normal column with a sequence attached to it.
 - For PostgreSQL, `SERIAL` datatype and `GENERATED AS IDENTITY` columns use sequence object internally, so resume values for them are also generated during data export.
 
 {{< /note >}}

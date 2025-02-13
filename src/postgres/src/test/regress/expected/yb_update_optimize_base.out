@@ -70,8 +70,21 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = v - 1, v = v +
  Storage Flush Requests: 1
 (10 rows)
 
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h, v = v + 1 WHERE h = 1; -- Needs further optimization
-ERROR:  missing column ybctid in DELETE request
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h, v = v + 1 WHERE h = 1;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Update on pkey_only_table (actual rows=0 loops=1)
+   ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
+         Index Cond: (h = 1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(10 rows)
+
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = 1, v = v + 1 WHERE h = 1;
                                        QUERY PLAN
 ----------------------------------------------------------------------------------------
@@ -1557,10 +1570,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
    Conflict Arbiter Indexes: ioc_table_name_id_uidx
    Tuples Inserted: 1
    Conflicting Tuples: 0
+   Storage Index Read Requests: 1
+   Storage Table Write Requests: 1
+   Storage Index Write Requests: 3
    ->  Result (actual rows=1 loops=1)
-         Storage Index Read Requests: 1
-         Storage Table Write Requests: 1
-         Storage Index Write Requests: 3
  Storage Read Requests: 1
  Storage Rows Scanned: 0
  Storage Write Requests: 4
@@ -1577,13 +1590,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
    Conflict Arbiter Indexes: ioc_table_name_id_uidx
    Tuples Inserted: 0
    Conflicting Tuples: 1
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 1
+   Storage Index Read Requests: 1
+   Storage Index Rows Scanned: 1
+   Storage Table Write Requests: 2
+   Storage Index Write Requests: 4
    ->  Result (actual rows=1 loops=1)
-         Storage Table Read Requests: 1
-         Storage Table Rows Scanned: 1
-         Storage Index Read Requests: 1
-         Storage Index Rows Scanned: 1
-         Storage Table Write Requests: 2
-         Storage Index Write Requests: 4
  Storage Read Requests: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 6
@@ -1600,13 +1613,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
    Conflict Arbiter Indexes: ioc_table_name_id_uidx
    Tuples Inserted: 0
    Conflicting Tuples: 1
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 1
+   Storage Index Read Requests: 1
+   Storage Index Rows Scanned: 1
+   Storage Table Write Requests: 2
+   Storage Index Write Requests: 4
    ->  Result (actual rows=1 loops=1)
-         Storage Table Read Requests: 1
-         Storage Table Rows Scanned: 1
-         Storage Index Read Requests: 1
-         Storage Index Rows Scanned: 1
-         Storage Table Write Requests: 2
-         Storage Index Write Requests: 4
  Storage Read Requests: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 6

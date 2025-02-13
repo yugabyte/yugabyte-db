@@ -13,15 +13,22 @@ import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import java.io.File;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.commons.collections4.CollectionUtils;
 import org.yb.ybc.CloudStoreSpec;
 
 public interface StorageUtil {
+
+  public static final String YBDB_RELEASES = "ybdb_releases";
 
   /**
    * Create YBC CloudStoreSpec for backup/incremental backups.
@@ -231,4 +238,49 @@ public interface StorageUtil {
   // Generate RestorePreflightResponse for yb_backup.py backup locations.
   public RestorePreflightResponse generateYBBackupRestorePreflightResponseWithoutBackupObject(
       AdvancedRestorePreflightParams preflightParams, CustomerConfigData configData);
+
+  public default boolean uploadYbaBackup(
+      CustomerConfigData configData, File backup, String backupDir) {
+    return false;
+  }
+
+  public default boolean cleanupUploadedBackups(CustomerConfigData configData, String backupDir) {
+    return false;
+  }
+
+  public default File downloadYbaBackup(
+      CustomerConfigData configData, String backupDir, Path localDir) {
+    return null;
+  }
+
+  public default boolean uploadYBDBRelease(
+      CustomerConfigData configData, File release, String backupDir, String version) {
+    return false;
+  }
+
+  public default Set<String> getRemoteReleaseVersions(
+      CustomerConfigData configData, String backupDir) {
+    return new HashSet<>();
+  }
+
+  public default boolean downloadRemoteReleases(
+      CustomerConfigData configData,
+      Set<String> releaseVersions,
+      String releasesPath,
+      String backupDir) {
+    return false;
+  }
+
+  public default String extractReleaseVersion(String key, String backupDir) {
+    String regex =
+        String.format(
+            "%s/%s/((\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)(-.+)?|(\\w+)))?).*",
+            backupDir, YBDB_RELEASES);
+    Pattern pattern = Pattern.compile(regex);
+    Matcher matcher = pattern.matcher(key);
+    if (matcher.matches()) {
+      return matcher.group(1);
+    }
+    return null;
+  }
 }

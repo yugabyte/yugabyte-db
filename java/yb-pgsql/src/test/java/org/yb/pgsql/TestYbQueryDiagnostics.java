@@ -120,6 +120,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         /* Required for some of the fields within schema details */
         flagMap.put("ysql_beta_features", "true");
+        flagMap.put("ysql_yb_ash_sampling_interval_ms", "100");
 
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
@@ -137,6 +138,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         /* Required for some of the fields within schema details */
         flagMap.put("ysql_beta_features", "true");
+        flagMap.put("ysql_yb_ash_sampling_interval_ms", "50");
 
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
@@ -1186,7 +1188,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
-    @Test
+    /**
+     * Disable until #25865 is done.
+     */
     public void checkAshData() throws Exception {
         int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
@@ -1663,8 +1667,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     /*
      * Test that yb_query_diagnostics works fine when diagnosing a query that has
      * large number of joins, subqueries, and constants.
+     * Disable until #25865 is done
      */
-    @Test
     public void testComplexQuery() throws Exception {
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
@@ -1719,8 +1723,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     /*
      * Tests a Long query(around 100000 chars).
+    * Disable until #25865 is done
      */
-    @Test
     public void testLongQueryWith5000Constants() throws Exception {
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(

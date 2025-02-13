@@ -20,7 +20,8 @@ import {
   abortTaskResponse,
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
-  fetchCustomerTasksFailure
+  fetchCustomerTasksFailure,
+  showTaskBanner
 } from '../../../actions/tasks';
 import {
   fetchRunTimeConfigs,
@@ -219,6 +220,9 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(fetchProviderRunTimeConfigs(providerUUID, true)).then((response) =>
         dispatch(fetchProviderRunTimeConfigsResponse(response.payload))
       );
+    },
+    showUniverseTaskBanner: (taskUUID, universeUUID) => {
+      dispatch(showTaskBanner(taskUUID, universeUUID));
     }
   };
 };

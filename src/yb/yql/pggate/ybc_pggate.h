@@ -424,6 +424,8 @@ YbcStatus YBCPgCreateIndexSetNumTablets(YbcPgStatement handle, int32_t num_table
 
 YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdxOptions *options);
 
+YbcStatus YBCPgCreateIndexSetHnswOptions(YbcPgStatement handle, int ef_construction, int m);
+
 YbcStatus YBCPgExecCreateIndex(YbcPgStatement handle);
 
 YbcStatus YBCPgNewDropIndex(YbcPgOid database_oid,
@@ -445,6 +447,10 @@ YbcStatus YBCPgWaitForBackendsCatalogVersion(
     int* num_lagging_backends);
 
 YbcStatus YBCPgBackfillIndex(
+    const YbcPgOid database_oid,
+    const YbcPgOid index_relfilenode_oid);
+
+YbcStatus YBCPgWaitVectorIndexReady(
     const YbcPgOid database_oid,
     const YbcPgOid index_relfilenode_oid);
 
@@ -907,7 +913,7 @@ YbcStatus YBCPgExecDropReplicationSlot(YbcPgStatement handle);
 
 YbcStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
-    size_t num_relations);
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range);
 
 YbcStatus YBCPgUpdatePublicationTableList(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
@@ -950,6 +956,14 @@ YbcStatus YBCAcquireAdvisoryLock(
     YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);
 YbcStatus YBCReleaseAdvisoryLock(YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode mode);
 YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid);
+
+YbcStatus YBCPgExportSnapshot(
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const uint64_t* explicit_read_time);
+YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot);
+YbcStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time);
+
+bool YBCPgHasExportedSnapshots();
+void YBCPgClearExportedTxnSnapshots();
 
 #ifdef __cplusplus
 }  // extern "C"

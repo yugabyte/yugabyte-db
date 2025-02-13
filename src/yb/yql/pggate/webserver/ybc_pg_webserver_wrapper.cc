@@ -240,6 +240,10 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
         {"ysql_conn_mgr_avg_wait_time_ns", stats.avg_wait_time_ns, "gauge",
          "Avg wait time (in nanoseconds) for a logical connection to be attached to a physical "
          "connection"});
+    ysql_conn_mgr_metrics.push_back(
+        {"ysql_conn_mgr_sticky_connections", stats.sticky_connections, "gauge",
+         "Number of logical connections attached to a physical connection for the lifetime of the "
+         "logical connection"});
     ysql_conn_mgr_prometheus_attr[DATABASE] = stats.database_name;
     ysql_conn_mgr_prometheus_attr[USER] = stats.user_name;
 

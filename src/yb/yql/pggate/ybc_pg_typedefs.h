@@ -249,14 +249,15 @@ typedef struct {
 //       index_relfilenode_oid = TableRelfileNodeOid
 //       index_only_scan = true if ROWID is wanted. Otherwise, regular rowset is wanted.
 //
-// Attribute "querying_colocated_table"
-//   - If 'true', SELECT from colocated tables (of any type - database, tablegroup, system).
-//   - Note that the system catalogs are specifically for Postgres API and not Yugabyte
-//     system-tables.
+// embedded_idx: true when secondary index and table are sharded together.  This is the case when
+// they are colocated together (by database, tablegroup, syscatalog) or copartitioned (certain
+// indexes such as pgvector).  Note that this should be false in case of primary key index scan
+// since the pk index and the table are same in DocDB.
+// TODO(#25940): it is currently not always false for primary key index.
 typedef struct {
   YbcPgOid index_relfilenode_oid;
   bool index_only_scan;
-  bool querying_colocated_table;
+  bool embedded_idx;
   bool fetch_ybctids_only;
 } YbcPgPrepareParameters;
 
@@ -416,6 +417,7 @@ typedef struct {
   const char*     ysql_conn_mgr_sequence_support_mode;
   const int32_t*  ysql_conn_mgr_max_query_size;
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
+  const bool*     ysql_enable_pg_export_snapshot;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -486,7 +488,8 @@ typedef struct {
   YbcPgVectorIdxType idx_type;
   uint32_t dimensions;
   uint32_t attnum;
-  // TODO(tanuj): Add vector index type-specific options
+  uint32_t hnsw_ef;
+  uint32_t hnsw_m;
 } YbcPgVectorIdxOptions;
 
 typedef struct {
@@ -789,7 +792,8 @@ typedef struct {
 // It does not include EXPORT_SNAPSHOT since it isn't supported yet.
 typedef enum {
   YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT,
-  YB_REPLICATION_SLOT_USE_SNAPSHOT
+  YB_REPLICATION_SLOT_USE_SNAPSHOT,
+  YB_REPLICATION_SLOT_EXPORT_SNAPSHOT
 } YbcPgReplicationSlotSnapshotAction;
 
 typedef enum {
@@ -901,6 +905,17 @@ typedef enum {
   YB_ADVISORY_LOCK_SHARED,
   YB_ADVISORY_LOCK_EXCLUSIVE
 } YbcAdvisoryLockMode;
+
+typedef struct {
+  YbcPgOid db_id;
+  int iso_level;
+  bool read_only;
+} YbcPgTxnSnapshot;
+
+typedef struct {
+  uint32_t start_range;
+  uint32_t end_range;
+} YbcReplicationSlotHashRange;
 
 #ifdef __cplusplus
 }  // extern "C"

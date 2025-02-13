@@ -440,11 +440,11 @@ Datum
 record_out(PG_FUNCTION_ARGS)
 {
 	HeapTupleHeader rec = PG_GETARG_HEAPTUPLEHEADER(0);
-	Oid				tupType;
-	int32			tupTypmod;
-	TupleDesc		tupdesc;
+	Oid			tupType;
+	int32		tupTypmod;
+	TupleDesc	tupdesc;
 
-	check_stack_depth(); /* recurses for record-type columns */
+	check_stack_depth();		/* recurses for record-type columns */
 
 	/* Extract type info from the tuple itself */
 	tupType = HeapTupleHeaderGetTypeId(rec);

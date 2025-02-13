@@ -104,6 +104,7 @@ static char *ExecBuildSlotValueDescription(Relation rel,
 										   Bitmapset *modifiedCols,
 										   int maxfieldlen);
 static void EvalPlanQualStart(EPQState *epqstate, Plan *planTree);
+
 /* end of local decls */
 
 
@@ -443,7 +444,7 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 	if (!(estate->es_top_eflags & EXEC_FLAG_SKIP_TRIGGERS))
 		AfterTriggerEndQuery(estate);
 
-	// Flush buffered operations straight before elapsed time calculation.
+	/* Flush buffered operations straight before elapsed time calculation. */
 	if (IsYugaByteEnabled())
 		YBEndOperationsBuffering();
 
@@ -686,7 +687,7 @@ ExecCheckRTEPerms(RangeTblEntry *rte)
 			while ((col = bms_next_member(rte->selectedCols, col)) >= 0)
 			{
 				/* Add appropriate offset to get attribute # from column # */
-				AttrNumber attno = col + YBGetFirstLowInvalidAttributeNumberFromOid(relOid);
+				AttrNumber	attno = col + YBGetFirstLowInvalidAttributeNumberFromOid(relOid);
 
 				if (attno == InvalidAttrNumber)
 				{
@@ -749,7 +750,7 @@ ExecCheckRTEPermsModified(Oid relOid, Oid userid, Bitmapset *modifiedCols,
 	while ((col = bms_next_member(modifiedCols, col)) >= 0)
 	{
 		/* Add appropriate offset to get attribute # from column # */
-		AttrNumber attno = col + YBGetFirstLowInvalidAttributeNumberFromOid(relOid);
+		AttrNumber	attno = col + YBGetFirstLowInvalidAttributeNumberFromOid(relOid);
 
 		if (attno == InvalidAttrNumber)
 		{
@@ -1942,6 +1943,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	TupleConstr *constr = tupdesc->constr;
 	Bitmapset  *modifiedCols;
+
 	Assert(constr);				/* we should not be called otherwise */
 
 	if (constr->has_not_null)
@@ -1961,6 +1963,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 			if (resultRelInfo->ri_RootResultRelInfo)
 			{
 				ResultRelInfo *rootrel = resultRelInfo->ri_RootResultRelInfo;
+
 				modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
 										 ExecGetUpdatedCols(rootrel, estate));
 			}
@@ -1970,8 +1973,8 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 										 ExecGetUpdatedCols(resultRelInfo, estate));
 			}
 
-			bool att_in_modified_cols = bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
-													  modifiedCols);
+			bool		att_in_modified_cols = bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
+															 modifiedCols);
 
 			if (mtstate && !mtstate->yb_fetch_target_tuple && !att_in_modified_cols)
 			{
@@ -2276,7 +2279,7 @@ ExecBuildSlotValueDescription(Relation rel,
 	AclResult	aclresult;
 	bool		table_perm = false;
 	bool		any_perm = false;
-	Oid     reloid = RelationGetRelid(rel);
+	Oid			reloid = RelationGetRelid(rel);
 
 	/*
 	 * Check if RLS is enabled and should be active for the relation; if so,
@@ -2469,7 +2472,7 @@ ExecBuildAuxRowMark(ExecRowMark *erm, List *targetlist)
 			snprintf(resname, sizeof(resname), "ctid%u", erm->rowmarkId);
 		}
 		aerm->ctidAttNo = ExecFindJunkAttributeInTlist(targetlist,
-													resname);
+													   resname);
 		if (!AttributeNumberIsValid(aerm->ctidAttNo))
 			elog(ERROR, "could not find junk %s column", resname);
 	}

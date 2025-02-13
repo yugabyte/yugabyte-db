@@ -88,6 +88,21 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
   ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
   ASSERT_STR_NOT_CONTAINS(ysql_catalog_config, "catalog_version");
 
+  // We should not be allowed to finalize before upgrading all tservers.
+  ASSERT_NOK_STR_CONTAINS(
+      FinalizeYsqlMajorCatalogUpgrade(),
+      "Cannot finalize YSQL major catalog upgrade before all yb-tservers have been upgraded to the "
+      "current version: yb-tserver(s) not on the correct version");
+  // We should not be allowed to rollback before rolling back all tservers.
+  ASSERT_NOK_STR_CONTAINS(
+      RollbackYsqlMajorCatalogVersion(),
+      "Cannot rollback YSQL major catalog while yb-tservers are running on a newer YSQL major "
+      "version: yb-tserver(s) not on the correct version");
+
+  ASSERT_NOK_STR_CONTAINS(
+      PromoteAutoFlags(),
+      "Cannot promote non-volatile AutoFlags before YSQL major catalog upgrade is complete");
+
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
 
   {
@@ -98,11 +113,25 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
 
   ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
   ASSERT_STR_CONTAINS(ysql_catalog_config, "catalog_version: 15");
+
+  // Running validation on the upgraded cluster should fail since its already on the higher version.
+  ASSERT_OK(ValidateUpgradeCompatibilityFailure(
+      "This version of the utility can only be used for checking YSQL version 11. The cluster is "
+      "currently on YSQL version 15"));
 }
 
 TEST_F(Pg15UpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
 
-TEST_F(Pg15UpgradeTest, SimpleTableRollback) { ASSERT_OK(TestRollbackWithSimpleTable()); }
+TEST_F(Pg15UpgradeTest, SimpleTableRollback) {
+  ASSERT_OK(TestRollbackWithSimpleTable());
+
+// Disabled the re-upgrade step on debug builds because it times out.
+#if defined(NDEBUG)
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  ASSERT_OK(InsertRowInSimpleTableAndValidate());
+#endif
+}
 
 TEST_F(Pg15UpgradeTest, BackslashD) {
   ASSERT_OK(ExecuteStatement("CREATE TABLE t (a INT)"));
@@ -1054,8 +1083,8 @@ TEST_F(Pg15UpgradeTest, NoTserverOnMasterNode) {
 // If there is no tserver on the master node make sure the upgrade fails unless the yugabyte_upgrade
 // user is created.
 TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
-// Disabled the rollback step on debug builds and MacOS because it times out.
-#if !defined(__APPLE__) && defined(NDEBUG)
+// Disabled the rollback step on debug builds because it times out.
+#if defined(NDEBUG)
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
   {
@@ -1270,7 +1299,7 @@ class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
 
   void SetUp() override {
     Pg15UpgradeTest::SetUp();
-    if (IsTestSkipped()) {
+    if (Test::IsSkipped()) {
       return;
     }
 
@@ -1413,16 +1442,21 @@ TEST_F(Pg15UpgradeTest, YbGinIndex) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, CheckPushdownIsDisabled) {
-  // Whether or not pushdown is enabled, pg_upgrade --check will not error.
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
+TEST_F(Pg15UpgradeTest, CheckUpgradeCompatibilityGuc) {
+  // Whether or not yb_major_version_upgrade_compatibility is enabled, pg_upgrade --check will not
+  // error.
+  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "11"));
   ASSERT_OK(ValidateUpgradeCompatibility());
 
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "true"));
+  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "0"));
   ASSERT_OK(ValidateUpgradeCompatibility());
 
-  // However, when we actually run the YSQL upgrade, pg_upgrade will error if pushdown is enabled.
+  // However, when we actually run the YSQL upgrade, pg_upgrade will error since now
+  // ysql_yb_major_version_upgrade_compatibility is not set.
+  auto log_waiter =
+      cluster_->GetMasterLogWaiter("yb_major_version_upgrade_compatibility must be set to 11");
   ASSERT_NOK_STR_CONTAINS(UpgradeClusterToMixedMode(), kPgUpgradeFailedError);
+  ASSERT_TRUE(log_waiter.IsEventOccurred());
 }
 
 TEST_F(Pg15UpgradeSequenceTest, Sequences) {
@@ -1512,10 +1546,12 @@ TEST_F(Pg15UpgradeTest, UsersAndRoles) {
 
     auto pg_conn = ASSERT_RESULT(pgwrapper::PGConnBuilder(pg_conn_settings).Connect());
     ASSERT_OK(pg_conn.Execute("DROP USER yugabyte"));
-    ASSERT_NOK_STR_CONTAINS(ValidateUpgradeCompatibility(postgres_user), kPgUpgradeFailedError);
+    ASSERT_OK(ValidateUpgradeCompatibilityFailure("The 'yugabyte' user is missing", postgres_user));
 
     ASSERT_OK(pg_conn.Execute("CREATE USER yugabyte"));
-    ASSERT_NOK_STR_CONTAINS(ValidateUpgradeCompatibility(postgres_user), kPgUpgradeFailedError);
+
+    ASSERT_OK(ValidateUpgradeCompatibilityFailure(
+        "The 'yugabyte' user is missing the 'rolsuper' attribute", postgres_user));
 
     ASSERT_OK(pg_conn.Execute("DROP USER yugabyte"));
     ASSERT_OK(pg_conn.Execute(

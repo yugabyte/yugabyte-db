@@ -140,6 +140,12 @@ extern bool yb_allow_replication_slot_lsn_types;
 extern char* yb_default_replica_identity;
 
 /*
+ * GUC variable that enable replication slot consumption of consistent changes from a hash range
+ * of table.
+ */
+extern bool yb_enable_consistent_replication_from_hash_range;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -231,6 +237,10 @@ typedef enum {
 extern int yb_read_after_commit_visibility;
 
 extern bool yb_allow_block_based_sampling_algorithm;
+
+extern bool yb_refresh_matview_in_place;
+
+extern int yb_major_version_upgrade_compatibility;
 
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {

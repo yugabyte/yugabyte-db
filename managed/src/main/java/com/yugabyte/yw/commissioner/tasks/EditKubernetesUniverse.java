@@ -345,12 +345,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createResizeDiskTask(
           universe.getName(),
           curPlacement,
+          newCluster.uuid,
           existingMasterAddresses,
           newIntent,
           isReadOnlyCluster,
           newNamingStyle,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          ybcManager.getStableYbcVersion(),
           tserverDiskSizeChanged,
           masterDiskSizeChanged,
           supportsNonRestartGflagsUpgrade /* usePreviousGflagsChecksum */);
@@ -563,7 +564,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT);
 
       upgradePodsTask(
@@ -581,7 +582,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT);
     } else if (instanceTypeChanged) {
       upgradePodsTask(
@@ -599,7 +600,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT);
     } else if (masterAddressesChanged) {
       // Update master_addresses flag on Master
@@ -760,7 +761,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           taskParams().useNewHelmNamingStyle,
           isReadOnlyCluster,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion());
+          ybcManager.getStableYbcVersion());
 
       Set<NodeDetails> mastersToModify =
           Stream.concat(
@@ -799,7 +800,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           taskParams().useNewHelmNamingStyle,
           isReadOnlyCluster,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion());
+          ybcManager.getStableYbcVersion());
 
       // Set flag in memory for tserver
       createSetFlagInMemoryTasks(
@@ -857,6 +858,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   protected void createResizeDiskTask(
       String universeName,
       KubernetesPlacement placement,
+      UUID clusterUUID,
       String masterAddresses,
       UserIntent userIntent,
       boolean isReadOnlyCluster,
@@ -898,6 +900,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           usePreviousGflagsChecksum,
           ServerType.TSERVER);
     }
+    // persist the disk size changes to the universe
+    createPersistResizeNodeTask(userIntent, clusterUUID, true /* onlyPersistDeviceInfo */);
   }
 
   /**

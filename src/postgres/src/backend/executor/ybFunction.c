@@ -54,8 +54,9 @@ YbSetFunctionParam(YbcPgFunction handle, const char *name, int attr_typid,
 {
 	const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber,
 															  attr_typid);
+
 	HandleYBStatus(YBCAddFunctionParam(handle, name, type_entity, datum,
-				   is_null));
+									   is_null));
 }
 
 void
@@ -69,8 +70,8 @@ YbSetSRFTargets(YbFuncCallContext context, TupleDesc desc)
 			continue;
 
 		const char *attr_name = NameStr(attr->attname);
-		const YbcPgTypeEntity *type_entity =
-			YbDataTypeFromOidMod(attr->attnum, attr->atttypid);
+		const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(attr->attnum,
+																  attr->atttypid);
 		const YbcPgTypeAttrs type_attrs = {.typmod = attr->atttypmod};
 
 		HandleYBStatus(YBCAddFunctionTarget(context->handle, attr_name,
@@ -83,11 +84,13 @@ bool
 YbSRFGetNext(YbFuncCallContext context, uint64_t *values, bool *is_nulls)
 {
 	MemoryContext oldcontext;
+
 	oldcontext = MemoryContextSwitchTo(context->per_call_ctx);
 
 	MemoryContextReset(context->per_call_ctx);
 
-	bool has_data = false;
+	bool		has_data = false;
+
 	HandleYBStatus(YBCSRFGetNext(context->handle, values, is_nulls, &has_data));
 
 	MemoryContextSwitchTo(oldcontext);

@@ -300,7 +300,7 @@ For this case, you can connect to any node in the cluster; `127.0.0.1` has been 
     Time: 2.499 ms
     ```
 
-    The transaction failed with an error code `57P01`, which is a [standard PostgreSQL error code](https://www.postgresql.org/docs/11/errcodes-appendix.html) to indicate that the database server was restarted or your connection killed by the administrator. In such cases, the application should be programmed so that it automatically reconnects to the database when the connection fails.
+    The transaction failed with an error code `57P01`, which is a [standard PostgreSQL error code](https://www.postgresql.org/docs/15/errcodes-appendix.html) to indicate that the database server was restarted or your connection killed by the administrator. In such cases, the application should be programmed so that it automatically reconnects to the database when the connection fails.
 
 1. From another terminal of your YugabyteDB home directory, connect to a different node and check the value as follows:
 

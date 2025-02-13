@@ -1,29 +1,23 @@
-import { FC, useEffect, useRef } from 'react';
-import { useQuery } from 'react-query';
+import {FC, useEffect, useRef} from 'react';
+import {useQuery} from 'react-query';
 import clsx from 'clsx';
-import { useUpdateEffect } from 'react-use';
-import { useTranslation } from 'react-i18next';
-import { Controller, useFormContext, useWatch } from 'react-hook-form';
-import { Box, Grid, MenuItem, Tooltip, makeStyles } from '@material-ui/core';
+import {useUpdateEffect} from 'react-use';
+import {useTranslation} from 'react-i18next';
+import {Controller, useFormContext, useWatch} from 'react-hook-form';
+import {Box, Grid, makeStyles, MenuItem, Tooltip} from '@material-ui/core';
+import {YBHelper, YBHelperVariants, YBInput, YBLabel, YBSelect} from '../../../../../../components';
+import {api, QUERY_KEY} from '../../../utils/api';
 import {
-  YBHelper,
-  YBHelperVariants,
-  YBInput,
-  YBLabel,
-  YBSelect
-} from '../../../../../../components';
-import { api, QUERY_KEY } from '../../../utils/api';
-import {
-  getStorageTypeOptions,
   getDeviceInfoFromInstance,
-  getMinDiskIops,
-  getMaxDiskIops,
   getIopsByStorageType,
-  getThroughputByStorageType,
+  getMaxDiskIops,
+  getMinDiskIops,
+  getStorageTypeOptions,
   getThroughputByIops,
+  getThroughputByStorageType,
   useVolumeControls
 } from './VolumeInfoFieldHelper';
-import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
+import {isEphemeralAwsStorageInstance} from '../InstanceTypeField/InstanceTypeFieldHelper';
 import {
   CloudType,
   MasterPlacementMode,
@@ -32,16 +26,18 @@ import {
   UpdateActions,
   VolumeType
 } from '../../../utils/dto';
-import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
-import { isNonEmptyArray } from '../../../../../../../utils/ObjectUtils';
 import {
-  PROVIDER_FIELD,
+  IsOsPatchingEnabled
+} from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import {isNonEmptyArray} from '../../../../../../../utils/ObjectUtils';
+import {
+  CPU_ARCHITECTURE_FIELD,
   DEVICE_INFO_FIELD,
-  MASTER_DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
+  MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD,
   MASTER_PLACEMENT_FIELD,
-  CPU_ARCHITECTURE_FIELD
+  PROVIDER_FIELD
 } from '../../../utils/constants';
 import WarningIcon from '../../../../../../assets/info-message.svg';
 
@@ -49,7 +45,7 @@ interface VolumeInfoFieldProps {
   isEditMode: boolean;
   isPrimary: boolean;
   isViewMode: boolean;
-  isDedicatedMasterField?: boolean;
+  isMasterField?: boolean;
   maxVolumeCount: number;
   updateOptions: string[];
   diffInHours: number | null;
@@ -80,7 +76,7 @@ const useStyles = makeStyles((theme) => ({
     marginLeft: theme.spacing(1),
     alignSelf: 'center'
   },
-  premiumV2StorageLabelField: {
+  warningStorageLabelField: {
     marginTop: theme.spacing(2),
     alignItems: 'flex-start'
   }
@@ -90,7 +86,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   isEditMode,
   isPrimary,
   isViewMode,
-  isDedicatedMasterField,
+  isMasterField,
   maxVolumeCount,
   updateOptions,
   diffInHours,
@@ -100,13 +96,13 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const classes = useStyles();
   const { t } = useTranslation();
   const instanceTypeChanged = useRef(false);
-  const dataTag = isDedicatedMasterField ? 'Master' : 'TServer';
+  const dataTag = isMasterField ? 'Master' : 'TServer';
 
   //watchers
-  const fieldValue = isDedicatedMasterField
+  const fieldValue = isMasterField
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
     : useWatch({ name: DEVICE_INFO_FIELD });
-  const instanceType = isDedicatedMasterField
+  const instanceType = isMasterField
     ? useWatch({ name: MASTER_INSTANCE_TYPE_FIELD })
     : useWatch({ name: INSTANCE_TYPE_FIELD });
   const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
@@ -132,7 +128,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   );
 
   // Update field is based on master or tserver field in dedicated mode
-  const UPDATE_FIELD = isDedicatedMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
+  const UPDATE_FIELD = isMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
@@ -368,7 +364,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderStorageType = () => {
     const isPremiumV2Storage = fieldValue.storageType === StorageType.PremiumV2_LRS;
-
+    const isHyperdisk = fieldValue.storageType === StorageType.Hyperdisk_Balanced ||
+        fieldValue.storageType === StorageType.Hyperdisk_Extreme;
     if (
       [CloudType.gcp, CloudType.azu].includes(provider?.code) ||
       (volumeType === VolumeType.EBS && provider?.code === CloudType.aws)
@@ -382,7 +379,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                   dataTestId="VolumeInfoField-StorageTypeLabel"
                   className={clsx(
                     classes.storageTypeLabelField,
-                    isPremiumV2Storage && classes.premiumV2StorageLabelField
+                    (isPremiumV2Storage || isHyperdisk) && classes.warningStorageLabelField
                   )}
                 >
                   {provider?.code === CloudType.aws
@@ -399,11 +396,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                       'data-testid': `VolumeInfoField-${dataTag}-StorageTypeSelect`
                     }}
                     helperText={
-                      isPremiumV2Storage && (
-                        <YBHelper variant={YBHelperVariants.warning}>
-                          {t('universeForm.instanceConfig.premiumv2Storage')}
-                        </YBHelper>
-                      )
+                      renderStorageHelperText(isPremiumV2Storage, isHyperdisk)
                     }
                     onChange={(event) =>
                       onStorageTypeChanged((event?.target.value as unknown) as StorageType)
@@ -425,13 +418,29 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     return null;
   };
 
+  const renderStorageHelperText = (isPremiumV2Storage: boolean, isHyperdisk: boolean) => {
+    if (isHyperdisk) return (
+        <YBHelper variant={YBHelperVariants.warning}>
+          {t('universeForm.instanceConfig.hyperdiskStorage')}
+        </YBHelper>
+    )
+    if (isPremiumV2Storage) return (
+        <YBHelper variant={YBHelperVariants.warning}>
+          {t('universeForm.instanceConfig.premiumv2Storage')}
+        </YBHelper>
+    )
+    return null;
+  }
+
   const renderDiskIops = () => {
     if (
       ![
         StorageType.IO1,
         StorageType.GP3,
         StorageType.UltraSSD_LRS,
-        StorageType.PremiumV2_LRS
+        StorageType.PremiumV2_LRS,
+        StorageType.Hyperdisk_Balanced,
+        StorageType.Hyperdisk_Extreme
       ].includes(fieldValue.storageType)
     )
       return null;
@@ -463,7 +472,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderThroughput = () => {
     if (
-      ![StorageType.GP3, StorageType.UltraSSD_LRS, StorageType.PremiumV2_LRS].includes(
+      ![StorageType.GP3, StorageType.UltraSSD_LRS, StorageType.PremiumV2_LRS,
+        StorageType.Hyperdisk_Balanced].includes(
         fieldValue.storageType
       )
     )

@@ -118,14 +118,6 @@ class WriteOperation;
 
 using AddTableListener = std::function<Status(const TableInfo&)>;
 
-class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
- public:
-  virtual std::string Key() const = 0;
- protected:
-  friend class RefCountedThreadSafe<TabletScopedIf>;
-  virtual ~TabletScopedIf() { }
-};
-
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
@@ -434,9 +426,6 @@ class Tablet : public AbstractTablet,
       CoarseTimePoint deadline = CoarseTimePoint::max(),
       docdb::SkipSeek skip_seek = docdb::SkipSeek::kFalse) const;
 
-  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
-      const TableId& table_id) const;
-
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> CreateCDCSnapshotIterator(
       const dockv::ReaderProjection& projection,
       const ReadHybridTime& time,
@@ -476,10 +465,10 @@ class Tablet : public AbstractTablet,
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
 
   // Apply replicated add table operation.
-  Status AddTable(const TableInfoPB& table_info, const OpId& op_id);
+  Status AddTable(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
 
   Status AddMultipleTables(
-      const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos, const OpId& op_id);
+      const ArenaList<LWTableInfoPB>& table_infos, const OpId& op_id, HybridTime ht);
 
   // Apply replicated remove table operation.
   Status RemoveTable(const std::string& table_id, const OpId& op_id);
@@ -740,6 +729,10 @@ class Tablet : public AbstractTablet,
     return *snapshots_;
   }
 
+  TabletVectorIndexes& vector_indexes() {
+    return *vector_indexes_;
+  }
+
   SnapshotCoordinator* snapshot_coordinator() {
     return snapshot_coordinator_;
   }
@@ -974,17 +967,13 @@ class Tablet : public AbstractTablet,
         max_key_length, std::move(callback), colocated_table_id);
   }
 
-  Status AbortSQLTransactions(CoarseTimePoint deadline) const;
+  Status AbortActiveTransactions(CoarseTimePoint deadline) const;
 
   // TODO: Move mutex to private section.
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
 
   void CleanupIntentFiles();
-
-  bool TEST_HasVectorIndexes() const {
-    return has_vector_indexes_.load();
-  }
 
   void TEST_SleepBeforeApplyIntents(MonoDelta value) {
     TEST_sleep_before_apply_intents_ = value;
@@ -1059,7 +1048,7 @@ class Tablet : public AbstractTablet,
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
-  Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id);
+  Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
 
   // Returns true if the tablet was created after a split but it has not yet had data from it's
   // parent which are now outside of its key range removed.
@@ -1240,14 +1229,6 @@ class Tablet : public AbstractTablet,
   Result<rocksdb::Options> CommonRocksDBOptions();
   Status OpenRegularDB(const rocksdb::Options& common_options);
   Status OpenIntentsDB(const rocksdb::Options& common_options);
-  Status OpenVectorIndexes();
-  // Creates vector index for specified index and indexed tables.
-  // allow_inplace_insert is set to true only during initial tablet bootstrap, so nobody should
-  // hold external pointer to vector index list at this moment.
-  Status CreateVectorIndex(
-      const TableInfo& index_table, const TableInfo& indexed_table, bool allow_inplace_insert)
-      REQUIRES(vector_indexes_mutex_);
-  docdb::VectorIndexesPtr VectorIndexesList() const EXCLUDES(vector_indexes_mutex_);
 
   docdb::HistoryCutoff AllowedHistoryCutoff();
 
@@ -1266,6 +1247,8 @@ class Tablet : public AbstractTablet,
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
 
   std::unique_ptr<TabletSnapshots> snapshots_;
+
+  std::unique_ptr<TabletVectorIndexes> vector_indexes_;
 
   SnapshotCoordinator* snapshot_coordinator_ = nullptr;
 
@@ -1308,8 +1291,6 @@ class Tablet : public AbstractTablet,
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
 
-  VectorIndexThreadPoolProvider vector_index_thread_pool_provider_;
-
   simple_spinlock operation_filters_mutex_;
 
   boost::intrusive::list<OperationFilter> operation_filters_ GUARDED_BY(operation_filters_mutex_);
@@ -1319,12 +1300,6 @@ class Tablet : public AbstractTablet,
   std::unique_ptr<log::LogAnchor> completed_split_log_anchor_ GUARDED_BY(operation_filters_mutex_);
 
   std::unique_ptr<OperationFilter> restoring_operation_filter_ GUARDED_BY(operation_filters_mutex_);
-
-  std::atomic<bool> has_vector_indexes_{false};
-  mutable std::shared_mutex vector_indexes_mutex_;
-  std::unordered_map<TableId, docdb::VectorIndexPtr> vector_indexes_map_
-      GUARDED_BY(vector_indexes_mutex_);
-  docdb::VectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
 
   // Serializes access to setting/revising/releasing CDCSDK retention barriers
   mutable simple_spinlock cdcsdk_retention_barrier_lock_;

@@ -331,8 +331,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         if (newDeviceInfo.diskIops == null) {
           newDeviceInfo.diskIops = currentDeviceInfo.diskIops;
         }
-        if (providerType != Common.CloudType.aws) {
-          errorConsumer.accept("Disk IOPS provisioning is only supported for AWS");
+        if (providerType != Common.CloudType.aws && providerType != Common.CloudType.gcp) {
+          errorConsumer.accept("Disk IOPS provisioning is only supported for AWS and GCP");
           return true;
         }
         if (currentDeviceInfo.storageType == null
@@ -361,8 +361,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         if (newDeviceInfo.throughput == null) {
           newDeviceInfo.throughput = currentDeviceInfo.throughput;
         }
-        if (providerType != Common.CloudType.aws) {
-          errorConsumer.accept("Disk Throughput provisioning is only supported for AWS");
+        if (providerType != Common.CloudType.aws && providerType != Common.CloudType.gcp) {
+          errorConsumer.accept("Disk Throughput provisioning is only supported for AWS and GCP");
           return true;
         }
         if (currentDeviceInfo.storageType == null

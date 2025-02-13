@@ -115,8 +115,6 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
         .thenCallRealMethod();
     when(mockSupportBundleUtil.filterList(any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.checkDateBetweenDates(any(), any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.unGzip(any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
     doCallRealMethod()
         .when(mockSupportBundleUtil)
         .batchWiseDownload(

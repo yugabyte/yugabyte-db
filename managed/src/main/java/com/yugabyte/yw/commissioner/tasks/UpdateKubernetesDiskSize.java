@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -98,18 +99,16 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
         createResizeDiskTask(
             universe.getName(),
             placement,
+            cluster.uuid,
             masterAddresses,
             newIntent,
             isReadOnlyCluster,
             taskParams().useNewHelmNamingStyle,
             universe.isYbcEnabled(),
-            universe.getUniverseDetails().getYbcSoftwareVersion(),
+            confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion),
             tserverDiskSizeChanged,
             masterDiskSizeChanged,
             usePreviousGflagsChecksum);
-
-        // persist the changes to the universe
-        createPersistResizeNodeTask(cluster.userIntent, cluster.uuid);
       }
 
       // Marks update of this universe as a success only if all the tasks before it

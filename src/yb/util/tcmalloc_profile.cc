@@ -183,9 +183,7 @@ std::vector<Sample> AggregateAndSortProfile(
             << ", requested_size: " << sample.requested_size
             << ", allocated_size: " << sample.allocated_size
             << ", is_censored: " << sample.is_censored
-            << ", avg_lifetime: " << sample.avg_lifetime
-            << ", allocator_deallocator_cpu_matched: "
-            << sample.allocator_deallocator_cpu_matched.value_or("N/A");
+            << ", avg_lifetime: " << sample.avg_lifetime;
   });
   if (failed_symbolizations > 0) {
     LOG(WARNING) << Format("Failed to symbolize $0 symbols", failed_symbolizations);

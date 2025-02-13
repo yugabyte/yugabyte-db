@@ -126,7 +126,7 @@ typedef struct LogicalDecodingContext
 	 *
 	 * The entry (value) remains unused i.e. this is used like a set.
 	 */
-	HTAB		*yb_needs_relcache_invalidation;
+	HTAB	   *yb_needs_relcache_invalidation;
 } LogicalDecodingContext;
 
 

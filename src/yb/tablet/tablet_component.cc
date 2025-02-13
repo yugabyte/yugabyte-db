@@ -17,6 +17,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 
 namespace yb::tablet {
 
@@ -50,6 +51,10 @@ RWOperationCounter& TabletComponent::pending_op_counter_blocking_rocksdb_shutdow
   return tablet_.pending_op_counter_blocking_rocksdb_shutdown_start_;
 }
 
+const TabletId& TabletComponent::tablet_id() const {
+  return tablet_.tablet_id();
+}
+
 rocksdb::DB& TabletComponent::regular_db() const {
   return *tablet_.regular_db_;
 }
@@ -64,6 +69,10 @@ rocksdb::DB& TabletComponent::intents_db() const {
 
 bool TabletComponent::has_intents_db() const {
   return tablet_.intents_db_ != nullptr;
+}
+
+docdb::DocDB TabletComponent::doc_db(TabletMetrics* metrics) const {
+  return tablet_.doc_db(metrics);
 }
 
 std::mutex& TabletComponent::create_checkpoint_lock() const {
@@ -81,7 +90,11 @@ void TabletComponent::RefreshYBMetaDataCache() {
 }
 
 docdb::VectorIndexesPtr TabletComponent::VectorIndexesList() const {
-  return tablet_.VectorIndexesList();
+  return tablet_.vector_indexes().List();
+}
+
+Status TabletComponent::Flush(FlushMode mode, FlushFlags flags) {
+  return tablet_.Flush(mode, flags);
 }
 
 } // namespace yb::tablet

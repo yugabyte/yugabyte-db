@@ -278,11 +278,12 @@ SELECT atthasmissing, attmissingval FROM pg_attribute
  f             | 
  f             | 
  f             | 
+ f             |
  t             | {6}
  t             | {"(127.0.0.1,010)"}
  t             | {"Sun Jan 01 00:00:00 2023"}
  t             | {hi}
-(11 rows)
+(12 rows)
 
 -- Verify that ALTER TABLE ... SET DEFAULT doesn't change missing values.
 ALTER TABLE foo ALTER COLUMN b SET DEFAULT 7;

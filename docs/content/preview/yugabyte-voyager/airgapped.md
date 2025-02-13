@@ -108,7 +108,6 @@ psql: Minimum version: 14
 
 #### Yum packages
 
-- gcc (no version dependency)
 - make (no version dependency)
 - sqlite (no version dependency)
 - perl (no version dependency)
@@ -214,8 +213,8 @@ psql: Minimum version: 14
 
 #### APT packages
 
-- gcc (no version dependency)
 - sqlite3 (no version dependency)
+- make (no version dependency)
 - perl (no version dependency)
 - libdbi-perl (no version dependency)
 - libaio1 (no version dependency)

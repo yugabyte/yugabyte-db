@@ -147,7 +147,7 @@ For range-sharded indexes, you can use the `SPLIT AT VALUES` clause to set split
 CREATE TABLE tbl(
   a INT,
   b INT,
-  PRIMARY KEY(a ASC, b DESC);
+  PRIMARY KEY(a ASC, b DESC)
 );
 
 CREATE INDEX idx1 ON tbl(b ASC, a DESC) SPLIT AT VALUES((100), (200), (200, 5));

@@ -24,9 +24,9 @@ namespace yb {
 namespace master {
 
 class CatalogManager;
+class Master;
 
-YB_DEFINE_ENUM(
-    PromoteAutoFlagsOutcome, (kNoFlagsPromoted)(kNewFlagsPromoted)(kNonRuntimeFlagsPromoted));
+YB_DEFINE_ENUM(PromoteAutoFlagsOutcome, (kNoFlagsPromoted)(kNewFlagsPromoted));
 
 // There are four ways in which a new config is loaded on the yb-masters.
 //
@@ -46,9 +46,7 @@ YB_DEFINE_ENUM(
 // ProcessAutoFlagsConfigOperation on all master (including leader).
 class MasterAutoFlagsManager : public AutoFlagsManagerBase {
  public:
-  explicit MasterAutoFlagsManager(
-      const scoped_refptr<ClockBase>& clock, FsManager* fs_manager,
-      CatalogManager* catalog_manager);
+  explicit MasterAutoFlagsManager(Master& master);
 
   virtual ~MasterAutoFlagsManager() {}
 
@@ -97,8 +95,7 @@ class MasterAutoFlagsManager : public AutoFlagsManagerBase {
   // flags are eligible. Returns the new config version and whether any non-runtime flags were
   // promoted.
   Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> PromoteAutoFlags(
-      const AutoFlagClass max_flag_class,
-      const PromoteNonRuntimeAutoFlags promote_non_runtime_flags, const bool force_version_change);
+      const AutoFlagClass max_flag_class, const bool force_version_change);
 
   Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> PromoteSingleAutoFlag(
       const ProcessName& process_name, const std::string& flag_name);
@@ -113,6 +110,7 @@ class MasterAutoFlagsManager : public AutoFlagsManagerBase {
   Result<std::pair<uint32_t, bool>> DemoteSingleAutoFlag(
       const ProcessName& process_name, const std::string& flag_name);
 
+  Master& master_;
   CatalogManager* catalog_manager_;
   UniqueLock<std::shared_mutex> update_lock_;
 };

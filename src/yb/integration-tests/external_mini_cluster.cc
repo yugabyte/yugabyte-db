@@ -2233,11 +2233,6 @@ void ExternalMiniCluster::SetMaxGracefulShutdownWaitSec(int max_graceful_shutdow
   }
 }
 
-LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
-    daemon_(daemon), string_to_wait_(string_to_wait) {
-  daemon_->SetLogListener(this);
-}
-
 Status ExternalMiniCluster::CallYbAdmin(
     const std::vector<std::string>& args, MonoDelta timeout, std::string* output) {
   auto command = ToStringVector(
@@ -2258,6 +2253,28 @@ Status ExternalMiniCluster::CallYbAdmin(
   return status;
 }
 
+LogWaiter ExternalMiniCluster::GetMasterLogWaiter(const std::string& log_message) const {
+  std::vector<ExternalDaemon*> masters;
+  for (const scoped_refptr<ExternalMaster>& master : masters_) {
+    masters.push_back(master.get());
+  }
+  return LogWaiter(masters, log_message);
+}
+
+//------------------------------------------------------------
+// LogWaiter
+//------------------------------------------------------------
+
+LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait)
+    : LogWaiter(std::vector<ExternalDaemon*>({daemon}), string_to_wait) {}
+
+LogWaiter::LogWaiter(std::vector<ExternalDaemon*> daemons, const std::string& string_to_wait)
+    : daemons_(std::move(daemons)), string_to_wait_(string_to_wait) {
+  for (auto daemon : daemons_) {
+    daemon->SetLogListener(this);
+  }
+}
+
 void LogWaiter::Handle(const GStringPiece& s) {
   if (s.contains(string_to_wait_)) {
     event_occurred_ = true;
@@ -2266,14 +2283,22 @@ void LogWaiter::Handle(const GStringPiece& s) {
 
 Status LogWaiter::WaitFor(const MonoDelta timeout) {
   constexpr auto kInitialWaitPeriod = 100ms;
-  return ::yb::WaitFor(
-      [this]{ return event_occurred_.load(); }, timeout,
-      Format("Waiting for log record '$0' on $1...", string_to_wait_, daemon_->id()),
+
+  std::vector<std::string> daemons_ids;
+  std::transform(
+      daemons_.begin(), daemons_.end(), std::back_inserter(daemons_ids),
+      [](const auto* daemon) { return daemon->id(); });
+
+  return ::yb::LoggedWaitFor(
+      [this] { return event_occurred_.load(); }, timeout,
+      Format("Waiting for log record '$0' on $1...", string_to_wait_, ToString(daemons_ids)),
       kInitialWaitPeriod);
 }
 
 LogWaiter::~LogWaiter() {
-  daemon_->RemoveLogListener(this);
+  for (auto daemon : daemons_) {
+    daemon->RemoveLogListener(this);
+  }
 }
 
 //------------------------------------------------------------

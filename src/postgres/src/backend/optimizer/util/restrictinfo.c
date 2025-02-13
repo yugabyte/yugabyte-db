@@ -229,18 +229,36 @@ make_restrictinfo_internal(PlannerInfo *root,
 }
 
 /*
+ * Returns whether the given rinfo can be used as a hashed clause during a
+ * hashed BNL join. This operates similar to the check hash joins do to
+ * determine if a clause can be hashed as in hash_inner_and_outer in
+ * joinpath.c.
+ */
+bool
+yb_can_hash_batched_rinfo(RestrictInfo *batched_rinfo,
+						 Relids outer_relids,
+						 Relids inner_relids)
+{
+	if (bms_is_subset(batched_rinfo->right_relids, outer_relids) &&
+		bms_is_subset(batched_rinfo->left_relids, inner_relids))
+		return true;
+	return false;
+}
+
+/*
  *	Returns whether the given rinfo has a batched representation with
  *	an inner variable from inner_relids and its outer batched variables from
  *	outer_batched_relids.
  */
-bool yb_can_batch_rinfo(RestrictInfo *rinfo,
-							Relids outer_batched_relids,
-							Relids inner_relids)
+bool
+yb_can_batch_rinfo(RestrictInfo *rinfo,
+				   Relids outer_batched_relids,
+				   Relids inner_relids)
 {
-	RestrictInfo *batched_rinfo =
-		yb_get_batched_restrictinfo(rinfo,
-											 outer_batched_relids,
-											 inner_relids);
+	RestrictInfo *batched_rinfo = yb_get_batched_restrictinfo(rinfo,
+															  outer_batched_relids,
+															  inner_relids);
+
 	return batched_rinfo != NULL;
 }
 
@@ -251,13 +269,14 @@ bool yb_can_batch_rinfo(RestrictInfo *rinfo,
  */
 RestrictInfo *
 yb_get_batched_restrictinfo(RestrictInfo *rinfo,
-									 Relids outer_batched_relids,
-									 Relids inner_relids)
+							Relids outer_batched_relids,
+							Relids inner_relids)
 {
 	if (list_length(rinfo->yb_batched_rinfo) == 0)
 		return NULL;
 
 	RestrictInfo *ret = linitial(rinfo->yb_batched_rinfo);
+
 	if (!bms_is_subset(ret->left_relids, inner_relids))
 	{
 		/* Try the other batched rinfo if it exists. */
@@ -472,13 +491,16 @@ restriction_is_securely_promotable(RestrictInfo *restrictinfo,
 /*
  * Add a given batched RestrictInfo to rinfo if it hasn't already been added.
  */
-void add_batched_rinfo(RestrictInfo *rinfo, RestrictInfo *batched)
+void
+add_batched_rinfo(RestrictInfo *rinfo, RestrictInfo *batched)
 {
-	ListCell *lc;
+	ListCell   *lc;
+
 	foreach(lc, rinfo->yb_batched_rinfo)
 	{
 		RestrictInfo *current = lfirst(lc);
-		/* If we already have a batched clause with this LHS we don't bother.*/
+
+		/* If we already have a batched clause with this LHS we don't bother. */
 		if (equal(get_leftop(current->clause), get_leftop(batched->clause)))
 			return;
 	}

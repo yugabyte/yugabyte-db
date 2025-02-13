@@ -58,32 +58,25 @@ Views are realized during this phase. Whenever a query against a view (that is, 
 
 ### Planner
 
-YugabyteDB needs to determine the most efficient way to execute a query and return the results. This process is handled by the query planner/optimizer component.
+The YugabyteDB query planner plays a crucial role in efficiently executing SQL queries across multiple nodes. It extends the capabilities of the traditional single node query planner to handle distributed data and execution.
 
 The planner first analyzes different ways a query can be executed based on the available data and indexes. It considers various strategies like scanning tables sequentially or using indexes to quickly locate specific data.
 
-If the query involves joining multiple tables, the planner evaluates different techniques to combine the data:
+After determining the optimal plan, the planner generates a detailed execution plan with all the necessary steps, such as scanning tables, joining data, filtering rows, sorting, and computing expressions.
 
-- Nested loop join: Scanning one table for each row in the other table. This can be efficient if one table is small or has a good index.
-- Merge join: Sorting both tables by the join columns and then merging them in parallel. This works well when the tables are already sorted or can be efficiently sorted.
-- Hash join: Building a hash table from one table and then scanning the other table to find matches in the hash table.
-For queries involving more than two tables, the planner considers different sequences of joining the tables to find the most efficient approach.
+The execution plan is then passed to the query executor component, which carries out the plan and returns the final query results.
 
-The planner estimates the cost of each possible execution plan and chooses the one expected to be the fastest, taking into account factors like table sizes, indexes, sorting requirements, and so on.
-
-After the optimal plan is determined, YugabyteDB generates a detailed execution plan with all the necessary steps, such as scanning tables, joining data, filtering rows, sorting, and computing expressions. This execution plan is then passed to the query executor component, which carries out the plan and returns the final query results.
-
-{{<note>}}
-The execution plans are cached for prepared statements to avoid overheads associated with repeated parsing of statements.
-{{</note>}}
+{{<lead link="./planner-optimizer/">}}
+To learn how the query planner decides the optimal path for query execution, see [Query Planner](./planner-optimizer/)
+{{</lead>}}
 
 ### Executor
 
-After the query planner determines the optimal execution plan, the query executor component runs the plan and retrieves the required data. The executor sends appropriate requests to the other YB-TServers that hold the needed data to performs sorts, joins, aggregations, and then evaluates qualifications and finally returns the derived rows.
+After the query planner determines the optimal execution plan, the executor runs the plan and retrieves the required data. The executor sends requests to the other YB-TServers that hold the data needed to perform sorts, joins, and aggregations, then evaluates qualifications, and finally returns the derived rows.
 
 The executor works in a step-by-step fashion, recursively processing the plan from top to bottom. Each node in the plan tree is responsible for fetching or computing rows of data as requested by its parent node.
 
-For example, if the top node is a "Merge Join" node, it first requests rows from its two child nodes (the left and right inputs to be joined). The executor recursively calls the child nodes to get rows from them.
+For example, if the top node is a "Merge Join" node, it first requests rows from its two child nodes (the left and right inputs to be joined). The executor recursively calls the child nodes to retrieve rows.
 
 A child node may be a "Sort" node, which requests rows from its child, sorts them, and returns the sorted rows. The bottom-most child could be a "Sequential Scan" node that reads rows directly from a table.
 

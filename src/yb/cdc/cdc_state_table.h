@@ -95,6 +95,8 @@ struct CDCStateTableEntry {
   std::optional<uint64_t> last_pub_refresh_time;
   std::optional<std::string> pub_refresh_times;
   std::optional<std::string> last_decided_pub_refresh_time;
+  std::optional<uint32_t> start_hash_range;
+  std::optional<uint32_t> end_hash_range;
 
   std::string ToString() const;
 };
@@ -115,6 +117,8 @@ struct CDCStateTableEntrySelector {
   CDCStateTableEntrySelector&& IncludeLastPubRefreshTime();
   CDCStateTableEntrySelector&& IncludePubRefreshTimes();
   CDCStateTableEntrySelector&& IncludeLastDecidedPubRefreshTime();
+  CDCStateTableEntrySelector&& IncludeStartHashRange();
+  CDCStateTableEntrySelector&& IncludeEndHashRange();
   std::unordered_set<std::string> columns_;
 };
 

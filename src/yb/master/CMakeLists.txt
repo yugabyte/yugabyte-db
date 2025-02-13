@@ -199,7 +199,6 @@ set(MASTER_DEPS
   ${MASTER_PROTO_LIBS}
   rpc_header_proto
   master_util
-  version_info_proto
   yb_pggate_flags
   yb_pggate
   cdc_util

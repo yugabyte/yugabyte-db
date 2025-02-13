@@ -325,6 +325,28 @@ TEST_F(PgAshTest, NoMemoryLeaks) {
   }
 }
 
+TEST_F(PgAshTest, UniqueRpcRequestId) {
+  const int NumKeys = 100;
+  ASSERT_OK(conn_->Execute("CREATE TABLE bankaccounts (id INT PRIMARY KEY, balance INT)"));
+  ASSERT_OK(conn_->Execute("CREATE INDEX bankaccountsidx ON bankaccounts (id, balance)"));
+  for (size_t i = 0; i < NumKeys; ++i) {
+    ASSERT_OK(conn_->Execute(Format(
+        "INSERT INTO bankaccounts VALUES ($0, $1)", i, i)));
+  }
+  for (size_t i = 0; i < NumKeys; ++i) {
+    ASSERT_OK(conn_->Execute(Format("DELETE FROM bankaccounts WHERE id = $0", i)));
+  }
+  const std::string query =
+      "SELECT count(*) "
+      "FROM yb_active_session_history "
+      "WHERE rpc_request_id IS NOT NULL "
+      "GROUP BY sample_time, rpc_request_id "
+      "ORDER BY count DESC "
+      "LIMIT 1";
+  auto count = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGUint64>(query));
+  ASSERT_EQ(count, 1);
+}
+
 TEST_F_EX(PgWaitEventAuxTest, NewDatabaseRPCs, PgNewDatabaseWaitEventAux) {
   ASSERT_OK(conn_->Execute("CREATE DATABASE db1"));
   ASSERT_OK(conn_->Execute("ALTER DATABASE db1 RENAME TO db2"));
@@ -583,7 +605,7 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
   static constexpr auto kColocatedDB = "cdb";
   static constexpr auto kTableName = "test";
   static const auto kInsertQuery =
-      Format("INSERT INTO $0 VALUES (generate_series(1, 100))", kTableName);
+      Format("INSERT INTO $0 VALUES (generate_series(1, 10))", kTableName);
   std::unordered_set<std::string> bg_workers = {
       "pg_cron",
       "pg_cron launcher",
@@ -614,6 +636,21 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
   ASSERT_OK(conn_->FetchFormat("SELECT cron.schedule('job', '1 second', '$0')",
       "SELECT pg_sleep(1000)"));
 
+  // start query diagnostics
+  ASSERT_OK(conn_->Execute(kInsertQuery));
+  const auto cur_dbid = ASSERT_RESULT(conn_->FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  const auto insert_query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO $0%' "
+      "AND dbid = $1", kTableName, cur_dbid)));
+  ASSERT_OK(conn_->FetchFormat(
+      "SELECT yb_query_diagnostics(query_id => $0, diagnostics_interval_sec => 10)",
+      insert_query_id));
+
+  for (int iterations = 0; iterations < 100; ++iterations) {
+    ASSERT_OK(conn_->Execute(kInsertQuery));
+  }
+
   std::set<std::pair<int32_t, std::string>> pid_with_backend_type;
 
   ASSERT_OK(WaitFor([this, &pid_with_backend_type, &bg_workers]() -> Result<bool> {
@@ -635,6 +672,62 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
         "SELECT COUNT(*) FROM yb_active_session_history WHERE pid = $0", pid)));
     ASSERT_GE(pid_count, 1);
   }
+}
+
+TEST_F(PgBgWorkersTest, ValidateIdleWaitEventsNotPresent) {
+  std::unordered_set<std::string> pg_idle_wait_events = {
+      "Extension",
+      "QueryDiagnosticsMain"};
+
+  // start pg cron launcher process
+  ASSERT_OK(conn_->Execute("CREATE EXTENSION pg_cron"));
+
+  // Let the ASH collector collect some wait events
+  SleepFor(1min);
+
+  const auto wait_events = ASSERT_RESULT(conn_->FetchRows<std::string>(
+      "SELECT DISTINCT(wait_event) FROM yb_active_session_history"));
+
+  for (const auto& wait_event : wait_events) {
+    ASSERT_EQ(pg_idle_wait_events.contains(wait_event), false);
+  }
+}
+
+TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
+  constexpr auto kSleepTime = 5;
+  constexpr auto kDefaultQueryId = 5;
+  constexpr auto kBgWorkerQueryId = 7;
+
+  // start the query diagnostics worker for a random query id
+  ASSERT_OK(conn_->FetchFormat(
+      "SELECT yb_query_diagnostics(query_id => 100, "
+      "diagnostics_interval_sec => $0)",
+      2 * kSleepTime));
+
+  // let ASH collect some samples
+  SleepFor(kSleepTime * 1s);
+
+  // get the query diagnostics bg worker pid
+  const auto pid = ASSERT_RESULT(conn_->FetchRow<int32_t>(
+      "SELECT pid FROM pg_stat_activity WHERE backend_type = "
+      "'yb_query_diagnostics bgworker'"));
+
+  // let ASH collect some more samples
+  SleepFor((kSleepTime + 1) * 1s);
+
+  constexpr auto kQueryString =
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE "
+      "pid = $0 AND query_id = $1";
+
+  const auto default_query_id_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(kQueryString, pid, kDefaultQueryId)));
+
+  ASSERT_EQ(default_query_id_cnt, 0);
+
+  const auto bgworker_query_id_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(kQueryString, pid, kBgWorkerQueryId)));
+
+  ASSERT_GE(bgworker_query_id_cnt, 1);
 }
 
 }  // namespace yb::pgwrapper

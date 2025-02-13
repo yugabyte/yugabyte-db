@@ -148,20 +148,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
       }
     }
 
-    if (universe.getUniverseDetails().isSoftwareRollbackAllowed
-        && universe.getUniverseDetails().prevYBSoftwareConfig != null) {
-      String currentVersion =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-      String oldVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
-      if (gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, currentVersion)
-          && taskParams().ysqlMajorVersionUpgradeState == null) {
-        log.debug(
-            "Setting ysqlMajorVersionUpgradeState to Pre_finalize for universe {}",
-            universe.getUniverseUUID());
-        taskParams().ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
-      }
-    }
-
     log.debug(
         "Reset master state is now {} for universe {}. It was {}",
         resetMasterState,

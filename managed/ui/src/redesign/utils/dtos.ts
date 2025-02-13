@@ -204,7 +204,40 @@ export interface LastRunData {
   uuid: string;
 }
 
-export interface NodeAgentEntities {
+/**
+ * Any change to the object values must also be made the respective i18n key in
+ * src/translations/en.json.
+ *
+ * Source: managed/src/main/java/com/yugabyte/yw/models/helpers/YBAError.java
+ */
+export const NodeAgentErrorCode = {
+  UNKNOWN_ERROR: 'UNKNOWN_ERROR',
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  PLATFORM_SHUTDOWN: 'PLATFORM_SHUTDOWN',
+  PLATFORM_RESTARTED: 'PLATFORM_RESTARTED',
+  INSTALLATION_ERROR: 'INSTALLATION_ERROR',
+  SERVICE_START_ERROR: 'SERVICE_START_ERROR',
+  CONNECTION_ERROR: 'CONNECTION_ERROR',
+  TIMED_OUT: 'TIMED_OUT'
+} as const;
+export type NodeAgentErrorCode = typeof NodeAgentErrorCode[keyof typeof NodeAgentErrorCode];
+
+/**
+ * Any change to the object values must also be made the respective i18n key in
+ * src/translations/en.json.
+ *
+ * Source: managed/src/main/java/com/yugabyte/yw/models/NodeAgent.java
+ */
+export const NodeAgentState = {
+  READY: 'READY',
+  REGISTERING: 'REGISTERING',
+  REGISTERED: 'REGISTERED',
+  UPGRADE: 'UPGRADE',
+  UPGRADED: 'UPGRADED'
+} as const;
+export type NodeAgentState = typeof NodeAgentState[keyof typeof NodeAgentState];
+
+export interface NodeAgent {
   archType: string;
   config: any;
   customerUuid: string;
@@ -215,7 +248,7 @@ export interface NodeAgentEntities {
   port: number;
   providerUuid: string;
   reachable: boolean;
-  state: string;
+  state: NodeAgentState;
   updatedAt: string;
   uuid: string;
   universeUuid: string;
@@ -223,17 +256,9 @@ export interface NodeAgentEntities {
   versionMatched: boolean;
 
   lastError?: {
-    code: string;
+    code: NodeAgentErrorCode;
     message: string;
   };
-}
-
-export enum NodeAgentStatusList {
-  READY = 'READY',
-  REGISTERING = 'REGISTERING',
-  REGISTERED = 'REGISTERED',
-  UPGRADE = 'UPGRADE',
-  UPGRADED = 'UPGRADED'
 }
 
 export interface NodeListDetails {

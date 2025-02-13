@@ -51,6 +51,8 @@ bool yb_enable_alter_table_rewrite = true;
 
 bool yb_enable_replica_identity = true;
 
+bool yb_enable_consistent_replication_from_hash_range = false;
+
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
 int ysql_session_max_batch_size = 0;
@@ -87,3 +89,7 @@ bool yb_allow_block_based_sampling_algorithm = true;
 // TODO(#24089): Once code duplication between yb_guc and ybc_util is removed, we should be able
 // to use YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING instead of 1 and do it in one place.
 int32_t yb_sampling_algorithm = 1 /* YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING */;
+
+bool yb_refresh_matview_in_place = false;
+
+int yb_major_version_upgrade_compatibility = 0;

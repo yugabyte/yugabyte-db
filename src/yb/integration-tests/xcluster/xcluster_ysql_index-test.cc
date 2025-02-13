@@ -44,7 +44,6 @@ namespace yb {
 const string kTableName = "test_table";
 const string kIndexName = "test_index";
 const auto kInsertStmtFormat = Format("INSERT INTO $0 VALUES($1, $1)", kTableName, "$0");
-const auto kDropIndexStmt = Format("DROP INDEX $0", kIndexName);
 const auto kId1CountStmt = Format("SELECT COUNT(*) FROM $0 WHERE id1 >= 0", kTableName);
 const auto kId2CountStmt = Format("SELECT COUNT(*) FROM $0 WHERE id2 >= 0", kTableName);
 const auto kSelectAllId12Stmt = Format("SELECT id1, id2 FROM $0 ORDER BY id1, id2", kTableName);
@@ -155,6 +154,10 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     }
 
     return conn.Execute(Format("CREATE INDEX $0 ON $1 (id2 ASC)", kIndexName, kTableName));
+  }
+
+  virtual Status DropIndex(pgwrapper::PGConn& conn) {
+    return conn.Execute(Format("DROP INDEX $0", kIndexName));
   }
 
   auto GetAllRows(pgwrapper::PGConn* conn) {
@@ -539,6 +542,30 @@ TEST_F(XClusterDbScopedYsqlIndexTest, CreateIndex) {
 
 TEST_F(XClusterDbScopedYsqlIndexTest, CreateIndexWithWorkload) {
   ASSERT_OK(TestCreateIndexConcurrentWorkload());
+}
+
+// Create and drop indexes in a loop with PITR which will keep the dropped tables in
+// hidden state.
+TEST_F(XClusterDbScopedYsqlIndexTest, CreateDropIndexWithPITR) {
+  ASSERT_OK(EnablePITROnClusters());
+
+  for (int run_count = 0; run_count < 2; run_count++) {
+    LOG(INFO) << "Run count: " << run_count;
+
+    ASSERT_OK(CreateIndex(*producer_conn_));
+    ASSERT_OK(CreateIndex(*consumer_conn_));
+
+    // Insert more rows and validate.
+    for (int i = 0; i < 10; i++, row_count_++) {
+      ASSERT_OK(producer_conn_->ExecuteFormat(kInsertStmtFormat, row_count_));
+    }
+
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    ASSERT_OK(ValidateRows());
+
+    ASSERT_OK(DropIndex(*producer_conn_));
+    ASSERT_OK(DropIndex(*consumer_conn_));
+  }
 }
 
 class XClusterYsqlIndexProducerOnlyTest : public XClusterYsqlIndexTest {

@@ -161,13 +161,13 @@ std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
   if (!index_id.IsValid()) {
     return std::nullopt;
   }
-  return PgSelect::IndexQueryInfo{index_id, params && params->querying_colocated_table};
+  return PgSelect::IndexQueryInfo{index_id, params && params->embedded_idx};
 }
 
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
     const PgObjectId& index_id, const YbcPgPrepareParameters* params, bool is_region_local) {
-  if (params && (params->index_only_scan || YBCIsNonColocatedYbctidsOnlyFetch(params))) {
+  if (params && (params->index_only_scan || YBCIsNonembeddedYbctidsOnlyFetch(params))) {
     return PgSelectIndex::Make(pg_session, index_id, is_region_local);
   }
   return PgSelect::Make(
@@ -1160,6 +1160,11 @@ Status PgApiImpl::CreateIndexSetVectorOptions(PgStatement* handle, YbcPgVectorId
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle)).SetVectorOptions(options);
 }
 
+Status PgApiImpl::CreateIndexSetHnswOptions(PgStatement* handle, int ef_construction, int m) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle))
+      .SetHnswOptions(ef_construction, m);
+}
+
 Status PgApiImpl::ExecCreateIndex(PgStatement* handle) {
   return ExecDdlWithSyscatalogChanges<PgCreateIndex>(handle, *pg_session_);
 }
@@ -1231,6 +1236,11 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
   table_id.ToPB(req.mutable_table_id());
   return pg_session_->pg_client().BackfillIndex(
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
+}
+
+Status PgApiImpl::WaitVectorIndexReady(const PgObjectId& table_id) {
+  while (!VERIFY_RESULT(pg_session_->pg_client().PollVectorIndexReady(table_id))) {}
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2145,8 +2155,9 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgApiImpl::GetReplicationSlot(
 }
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
-  return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids);
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const YbcReplicationSlotHashRange* slot_hash_range) {
+  return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range);
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgApiImpl::UpdatePublicationTableList(
@@ -2255,5 +2266,23 @@ Status PgApiImpl::ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvis
 Status PgApiImpl::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
   return pg_session_->ReleaseAllAdvisoryLocks(db_oid);
 }
+
+//------------------------------------------------------------------------------------------------
+// Export/Import Pg Txn Snapshot.
+//------------------------------------------------------------------------------------------------
+
+Result<std::string> PgApiImpl::ExportSnapshot(
+    const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time) {
+  return pg_txn_manager_->ExportSnapshot(snapshot, explicit_read_time);
+}
+
+Result<std::optional<YbcPgTxnSnapshot>> PgApiImpl::SetTxnSnapshot(
+    PgTxnSnapshotDescriptor snapshot_descriptor) {
+  return pg_txn_manager_->SetTxnSnapshot(snapshot_descriptor);
+}
+
+bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->HasExportedSnapshots(); }
+
+void PgApiImpl::ClearExportedTxnSnapshots() { pg_txn_manager_->ClearExportedTxnSnapshots(); }
 
 } // namespace yb::pggate

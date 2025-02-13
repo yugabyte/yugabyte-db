@@ -52,7 +52,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v = v + 1 WHERE h 
 -- Point updates that include the primary key in the targetlist
 -- These queries do not go through the distributed transaction path either
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = v - 1, v = v + 1 WHERE h = 1;
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h, v = v + 1 WHERE h = 1; -- Needs further optimization
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h, v = v + 1 WHERE h = 1;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = 1, v = v + 1 WHERE h = 1;
 
 -- Queries affecting a range of rows

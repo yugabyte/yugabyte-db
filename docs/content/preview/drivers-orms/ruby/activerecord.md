@@ -124,7 +124,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -247,5 +247,5 @@ $ curl http://localhost:8080/orders
 
 ## Learn more
 
-- Build Ruby applications using [Pg Gem Driver](../ysql-pg/)
+- Build Ruby applications using [YugabyteDB ruby-pg Driver](../yb-ruby-pg/)
 - Build Ruby applications using [YugabyteDB Ruby Driver for YCQL](../ycql/)

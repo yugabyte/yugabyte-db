@@ -70,7 +70,9 @@ od_retcode_t od_err_logger_free(od_error_logger_t *err_logger)
 
 od_retcode_t od_error_logger_store_err(od_error_logger_t *l, size_t err_t)
 {
+	pthread_mutex_lock(&l->lock);
 	od_counter_inc(l->interval_counters[l->current_interval_num], err_t);
+	pthread_mutex_unlock(&l->lock);
 	return OK_RESPONSE;
 }
 

@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.inject.Provider;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DrainableMap;
@@ -238,6 +239,17 @@ public class TaskExecutor {
     checkNotNull(taskClass, "Task class must be non-null");
     Optional<Retryable> optional = CommonUtils.isAnnotatedWith(taskClass, Retryable.class);
     return optional.map(Retryable::enabled).orElse(false);
+  }
+
+  /**
+   * It returns a boolean showing whether the task can be rolled back or not.
+   *
+   * <p>See {@link TaskExecutor#isTaskRetryable(Class)}
+   */
+  static boolean canTaskRollback(Class<? extends ITask> taskClass) {
+    checkNotNull(taskClass, "Task class must be non-null");
+    Optional<CanRollback> optional = CommonUtils.isAnnotatedWith(taskClass, CanRollback.class);
+    return optional.map(CanRollback::enabled).orElse(false);
   }
 
   /**

@@ -97,9 +97,10 @@ int2recv(PG_FUNCTION_ARGS)
 Datum
 int2send(PG_FUNCTION_ARGS)
 {
-	uint16 arg1 = pg_hton16(PG_GETARG_INT16(0));
+	uint16		arg1 = pg_hton16(PG_GETARG_INT16(0));
 
-	bytea* data = (bytea *) palloc(VARHDRSZ + sizeof(arg1));
+	bytea	   *data = (bytea *) palloc(VARHDRSZ + sizeof(arg1));
+
 	memcpy(data->vl_dat, &arg1, sizeof(arg1));
 	SET_VARSIZE(data, VARHDRSZ + sizeof(arg1));
 
@@ -321,9 +322,10 @@ int4recv(PG_FUNCTION_ARGS)
 Datum
 int4send(PG_FUNCTION_ARGS)
 {
-	uint32 arg1 = pg_hton32(PG_GETARG_INT32(0));
+	uint32		arg1 = pg_hton32(PG_GETARG_INT32(0));
 
-	bytea* data = (bytea *) palloc(VARHDRSZ + sizeof(arg1));
+	bytea	   *data = (bytea *) palloc(VARHDRSZ + sizeof(arg1));
+
 	memcpy(data->vl_dat, &arg1, sizeof(arg1));
 	SET_VARSIZE(data, VARHDRSZ + sizeof(arg1));
 
@@ -342,8 +344,9 @@ int4send(PG_FUNCTION_ARGS)
 void
 int2send_direct(StringInfo buf, Datum value)
 {
-	uint64 encoded = ((uint64)pg_hton16(value) << 32) | (2ULL << 24);
-	pq_sendbytes(buf, (const char*) &encoded, 6);
+	uint64		encoded = ((uint64) pg_hton16(value) << 32) | (2ULL << 24);
+
+	pq_sendbytes(buf, (const char *) &encoded, 6);
 }
 
 /*
@@ -352,8 +355,9 @@ int2send_direct(StringInfo buf, Datum value)
 void
 int4send_direct(StringInfo buf, Datum value)
 {
-	uint64 encoded = ((uint64)pg_hton32(value) << 32) | (4ULL << 24);
-	pq_sendbytes(buf, (const char*) &encoded, sizeof(encoded));
+	uint64		encoded = ((uint64) pg_hton32(value) << 32) | (4ULL << 24);
+
+	pq_sendbytes(buf, (const char *) &encoded, sizeof(encoded));
 }
 
 #endif
@@ -366,14 +370,17 @@ int8send_direct(StringInfo buf, Datum value)
 {
 	enlargeStringInfo(buf, 12);
 
-	char* out = buf->data + buf->len;
+	char	   *out = buf->data + buf->len;
+
 	buf->len += 12;
 
-	uint32 size = pg_hton32(8);
+	uint32		size = pg_hton32(8);
+
 	memcpy(out, &size, sizeof(size));
 	out += sizeof(size);
 
-	uint64 be_value = pg_hton64(value);
+	uint64		be_value = pg_hton64(value);
+
 	memcpy(out, &be_value, sizeof(be_value));
 }
 

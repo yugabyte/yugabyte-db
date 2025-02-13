@@ -113,7 +113,7 @@ MultiExecBitmapAnd(BitmapAndState *node)
 	PlanState **bitmapplans;
 	int			nplans;
 	int			i;
-	YbTupleBitmap	result = {NULL};
+	YbTupleBitmap result = {NULL};
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
@@ -131,7 +131,7 @@ MultiExecBitmapAnd(BitmapAndState *node)
 	for (i = 0; i < nplans; i++)
 	{
 		PlanState  *subnode = bitmapplans[i];
-		YbTupleBitmap	subresult;
+		YbTupleBitmap subresult;
 
 		subresult.tbm = (TIDBitmap *) MultiExecProcNode(subnode);
 		if (!subresult.tbm)
@@ -170,8 +170,9 @@ MultiExecBitmapAnd(BitmapAndState *node)
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
 		InstrStopNode(node->ps.instrument,
-					  IsA(result.ybtbm, YbTIDBitmap)
-						? yb_tbm_get_size(result.ybtbm) : 0);
+					  (IsA(result.ybtbm, YbTIDBitmap) ?
+					   yb_tbm_get_size(result.ybtbm) :
+					   0));
 
 	return (Node *) result.tbm;
 }

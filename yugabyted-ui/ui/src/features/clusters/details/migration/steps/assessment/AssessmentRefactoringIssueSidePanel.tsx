@@ -46,6 +46,9 @@ const useStyles = makeStyles((theme) => ({
   divider: {
     margin: theme.spacing(1, 0, 1, 0),
   },
+  borderForNameAndSQL: {
+    border: "1px solid #ddd"
+  }
 }));
 
 type IssueDetails = UnsupportedSqlInfo & { issue_type?: string, sql_statement?: string };
@@ -66,7 +69,6 @@ export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSid
 
   const [page, setPage] = React.useState<number>(0);
   const [perPage, setPerPage] = React.useState<number>(10);
-
   const paginatedObjects = useMemo(() => {
     return issue?.objects?.slice(page * perPage, page * perPage + perPage);
   }, [issue, page, perPage]);
@@ -122,8 +124,24 @@ export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSid
           </Box>
         </Paper>
       </Box>
-      {paginatedObjects?.map(({ sql_statement }) => (
-        sql_statement ? <YBCodeBlock text={sql_statement}/> : null
+      {paginatedObjects?.map(({ object_name, sql_statement }) => (
+        (object_name || sql_statement) && (
+          <Box key={object_name} className={classes.borderForNameAndSQL}
+            sx={{ mb: 2, p: 2, borderRadius: 2 }}>
+            {object_name && (
+              <Typography variant="body1">
+                {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+                      "objectName")} <span>{object_name}</span>
+              </Typography>
+            )}
+            {sql_statement && (
+              <Box sx={{ mt: 2 }}>
+                <YBCodeBlock text={sql_statement} />
+              </Box>
+            )}
+
+          </Box>
+        )
       ))}
       <Box ml="auto">
         <TablePagination

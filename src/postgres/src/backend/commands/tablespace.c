@@ -415,7 +415,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 
 			XLogBeginInsert();
 			XLogRegisterData((char *) &xlrec,
-					 offsetof(xl_tblspc_create_rec, ts_path));
+							 offsetof(xl_tblspc_create_rec, ts_path));
 			XLogRegisterData((char *) location, strlen(location) + 1);
 
 			(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_CREATE);
@@ -429,7 +429,9 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		ForceSyncCommit();
 
 		pfree(location);
-	} else {
+	}
+	else
+	{
 		ForceSyncCommit();
 	}
 
@@ -528,7 +530,8 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	/* Check if there are snapshot schedules, disallow dropping in such cases */
 	if (IsYugaByteEnabled())
 	{
-		bool is_active;
+		bool		is_active;
+
 		HandleYBStatus(YBCPgCheckIfPitrActive(&is_active));
 		if (is_active)
 			ereport(ERROR,
@@ -1641,8 +1644,8 @@ get_tablespace_name(Oid spc_oid)
 void
 yb_get_tablespace_options(Datum **options, int *num_options, Oid spc_oid)
 {
-	bool isnull;
-	Datum datum;
+	bool		isnull;
+	Datum		datum;
 	HeapTuple	tuple;
 
 	/*
@@ -1658,6 +1661,7 @@ yb_get_tablespace_options(Datum **options, int *num_options, Oid spc_oid)
 		{
 			Assert(PointerIsValid(DatumGetPointer(datum)));
 			ArrayType  *array = DatumGetArrayTypeP(datum);
+
 			deconstruct_array(array, TEXTOID, -1, false, 'i',
 							  options, NULL, num_options);
 		}

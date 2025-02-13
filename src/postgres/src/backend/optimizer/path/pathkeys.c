@@ -193,10 +193,16 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 	List	   *opfamilies;
 	EquivalenceClass *eclass;
 
-	if (is_hash_index) {
-		/* We are picking a hash index. The strategy can only be BTEqualStrategyNumber */
+	if (is_hash_index)
+	{
+		/*
+		 * We are picking a hash index. The strategy can only be
+		 * BTEqualStrategyNumber
+		 */
 		strategy = BTEqualStrategyNumber;
-	} else {
+	}
+	else
+	{
 		strategy = reverse_sort ? BTGreaterStrategyNumber : BTLessStrategyNumber;
 	}
 
@@ -227,10 +233,12 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 	if (!eclass)
 		return NULL;
 
-	/* This "eclass" is either a "=" or "sort" operator, and for hash_columns, we allow equality
-	 * condition but not ASC or DESC sorting.
+	/*
+	 * This "eclass" is either a "=" or "sort" operator, and for hash_columns,
+	 * we allow equality condition but not ASC or DESC sorting.
 	 */
-	if (is_hash_index && eclass->ec_sortref != 0) {
+	if (is_hash_index && eclass->ec_sortref != 0)
+	{
 		return NULL;
 	}
 
@@ -669,8 +677,13 @@ build_index_pathkeys(PlannerInfo *root,
 	 * be some duplicate values of h1 in the result.
 	 */
 	if (i < index->nhashcolumns)
-		/* All hash columns must have EQ pathkeys. Otherwise, we cannot use the index */
+	{
+		/*
+		 * All hash columns must have EQ pathkeys. Otherwise, we cannot use
+		 * the index
+		 */
 		return NULL;
+	}
 	return retval;
 }
 
@@ -2014,8 +2027,8 @@ has_useful_pathkeys(PlannerInfo *root, RelOptInfo *rel)
 List *
 yb_get_ecs_for_query_uniqkeys(PlannerInfo *root)
 {
-	ListCell *lc;
-	List	 *ecs = NIL;
+	ListCell   *lc;
+	List	   *ecs = NIL;
 
 	foreach(lc, root->parse->distinctClause)
 	{

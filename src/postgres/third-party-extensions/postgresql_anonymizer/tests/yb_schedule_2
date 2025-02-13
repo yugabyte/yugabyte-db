@@ -1,0 +1,13 @@
+# third-party-extensions/postgresql_anonymizer/tests/yb_schedule_2
+#
+####################################################################################################
+# postgresql_anonymizer Extension Testsuite
+####################################################################################################
+test: yb_pg_dynamic_masking
+test: yb_pg_anonymize
+test: yb_pg_restore
+test: yb_pg_hasmask
+test: yb_pg_masked_roles
+test: yb_pg_masking
+test: yb_pg_masking_foreign_tables
+test: yb_pg_masking_search_path

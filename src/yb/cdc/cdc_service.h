@@ -97,9 +97,20 @@ struct TabletCDCCheckpointInfo {
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
 };
 
+struct ReplicationSlotHashRange {
+  ReplicationSlotHashRange() = delete;
+  explicit ReplicationSlotHashRange(uint32_t start, uint32_t end)
+      : start_range(start), end_range(end) {}
+
+  // Hash range can be between [0,65536).
+  uint32_t start_range;
+  uint32_t end_range;
+};
+
 using TabletIdCDCCheckpointMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
 using TabletIdStreamIdSet = std::set<std::pair<TabletId, xrepl::StreamId>>;
 using StreamIdSet = std::set<xrepl::StreamId>;
+using StreamIdHybridTimeMap = std::unordered_map<xrepl::StreamId, HybridTime>;
 using TableIdToStreamIdMap =
     std::unordered_map<TableId, std::pair<TabletId, std::unordered_set<xrepl::StreamId>>>;
 using RollBackTabletIdCheckpointMap =
@@ -147,6 +158,9 @@ class CDCServiceImpl : public CDCServiceIf {
   void DestroyVirtualWALForCDC(
       const DestroyVirtualWALForCDCRequestPB* req, DestroyVirtualWALForCDCResponsePB* resp,
       rpc::RpcContext context) override;
+
+  // Get a filtered list of all the sessions that belong to virtual WAL
+  std::vector<uint64_t> FilterVirtualWalSessions(const std::vector<uint64_t>& session_ids);
 
   // Destroy a batch of Virtual WAL instances managed by this CDC service.
   // Intended to be called from background jobs and hence only logs warnings in case of errors.
@@ -268,7 +282,8 @@ class CDCServiceImpl : public CDCServiceIf {
   void UpdateTabletMetrics(
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
-      const StreamMetadata& stream_metadata, int64_t last_readable_index);
+      const StreamMetadata& stream_metadata, int64_t last_readable_index,
+      const CDCThroughputMetrics& throughput_metrics);
 
   void UpdateTabletXClusterMetrics(
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
@@ -278,6 +293,7 @@ class CDCServiceImpl : public CDCServiceIf {
   void UpdateTabletCDCSDKMetrics(
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+      const CDCThroughputMetrics& throughput_metrics,
       const std::optional<std::string>& slot_name = std::nullopt);
 
   // Retrieves the cdc_min_replicated_index for a given tablet.
@@ -541,6 +557,10 @@ class CDCServiceImpl : public CDCServiceIf {
   void UpdateXClusterReplicationMaps(
     std::unordered_map<TabletId, OpId> new_map,
     const MonoTime& last_refresh_time) EXCLUDES(xcluster_replication_maps_mutex_);
+
+  // Returns a map containing stream-ids and their restart time for all the replication slots.
+  Result<StreamIdHybridTimeMap> GetStreamIdToRestartTimeMap(
+      const CDCStateTableRange& table_range, Status* iteration_status);
 
   rpc::Rpcs rpcs_;
 

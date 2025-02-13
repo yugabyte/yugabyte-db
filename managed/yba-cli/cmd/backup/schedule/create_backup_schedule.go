@@ -27,9 +27,9 @@ var createBackupScheduleCmd = &cobra.Command{
 	Short: "Create a YugabyteDB Anywhere universe backup schedule",
 	Long:  "Create an universe backup schedule in YugabyteDB Anywhere",
 	Example: `yba backup schedule create -n <schedule-name> \
-	--schedule-frequency-in-secs <schedule-frequency-in-secs> \
-	--universe-name <universe-name> --storage-config-name <storage-config-name> \
-	--table-type <table-type>`,
+	  --schedule-frequency-in-secs <schedule-frequency-in-secs> \
+	  --universe-name <universe-name> --storage-config-name <storage-config-name> \
+	  --table-type <table-type>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		scheduleName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -443,7 +443,7 @@ func init() {
 	createBackupScheduleCmd.Flags().Int64("time-before-delete-in-ms", 0,
 		"[Optional] Retention time of the backup in milliseconds")
 	createBackupScheduleCmd.Flags().StringArray("keyspace-info", []string{},
-		"[Optional] Keyspace info to perform backup operation."+
+		"[Optional] Keyspace info to perform backup operation. "+
 			"If no keyspace info is provided, then all the keyspaces of the table type "+
 			"specified are backed up. If the user wants to take backup of a subset of keyspaces, "+
 			"then the user has to specify the keyspace info. Provide the following double colon (::) "+
@@ -452,7 +452,7 @@ func init() {
 			"table-ids=<table-id1>,<table-id2>,<table-id3>\". The table-names and table-ids "+
 			"attributes have to be specified as comma separated values."+
 			formatter.Colorize("Keyspace name is required value. ", formatter.GreenColor)+
-			"Table names and Table ids are optional values and are needed only for YCQL."+
+			"Table names and Table IDs/UUIDs are optional values and are needed only for YCQL."+
 			"Example: --keyspace-info keyspace-name=cassandra::table-names=table1,table2::"+
 			"table-ids=1e683b86-7858-44d1-a1f6-406f50a4e56e,19a34a5e-3a19-4070-9d79-805ed713ce7d "+
 			"--keyspace-info keyspace-name=cassandra2::table-names=table3,table4::"+

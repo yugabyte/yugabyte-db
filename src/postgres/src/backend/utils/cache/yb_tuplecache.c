@@ -31,23 +31,27 @@ YbLoadTupleCache(YbTupleCache *cache, Oid relid,
 {
 	Assert(!(cache->rel || cache->data));
 	cache->rel = table_open(relid, AccessShareLock);
-	HASHCTL ctl = {0};
+	HASHCTL		ctl = {0};
+
 	ctl.keysize = sizeof(Oid);
 	ctl.entrysize = sizeof(YbTupleCacheEntry);
 	cache->data = hash_create(cache_name, 32, &ctl, HASH_ELEM | HASH_BLOBS);
 
 	SysScanDesc scandesc = systable_beginscan(cache->rel, InvalidOid,
-											  false /* indexOk */, NULL, 0,
+											  false /* indexOk */ , NULL, 0,
 											  NULL);
 
 	YbTupleCacheEntry *entry = NULL;
-	HeapTuple htup;
+	HeapTuple	htup;
+
 	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
 	{
-		Oid key = key_extractor(htup);
+		Oid			key = key_extractor(htup);
+
 		if (!entry || entry->key != key)
 		{
-			bool found = false;
+			bool		found = false;
+
 			entry = hash_search(cache->data, &key, HASH_ENTER, &found);
 
 			if (!found)
@@ -79,22 +83,26 @@ YbTupleCacheIteratorBegin(const YbTupleCache *cache, const void *key_ptr)
 {
 	YbTupleCacheIterator iter = palloc(sizeof(struct YbTupleCacheIteratorData));
 	const YbTupleCacheEntry *entry = hash_search(cache->data, key_ptr, HASH_FIND, NULL);
+
 	iter->list = entry != NULL ? entry->tuples : NIL;
 	iter->current = list_head(iter->list);
 	return iter;
 }
 
-HeapTuple YbTupleCacheIteratorGetNext(YbTupleCacheIterator iter)
+HeapTuple
+YbTupleCacheIteratorGetNext(YbTupleCacheIterator iter)
 {
 	if (iter->current == NULL)
 		return NULL;
 
-	HeapTuple tuple = lfirst(iter->current);
+	HeapTuple	tuple = lfirst(iter->current);
+
 	iter->current = lnext(iter->list, iter->current);
 	return tuple;
 }
 
-void YbTupleCacheIteratorEnd(YbTupleCacheIterator iter)
+void
+YbTupleCacheIteratorEnd(YbTupleCacheIterator iter)
 {
 	pfree(iter);
 }

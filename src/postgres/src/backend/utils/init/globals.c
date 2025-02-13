@@ -103,7 +103,7 @@ Oid			YbDatabaseIdForNewObjectId = InvalidOid;
  * variable to tell whether a colocated database is a legacy colocated
  * database or a colocated database based on new Colocation GA implementation.
  */
-bool        MyColocatedDatabaseLegacy = true;
+bool		MyColocatedDatabaseLegacy = true;
 
 bool		YbTablegroupCatalogExists = false;
 

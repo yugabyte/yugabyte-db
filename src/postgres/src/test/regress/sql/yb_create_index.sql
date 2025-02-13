@@ -498,3 +498,17 @@ CREATE INDEX CONCURRENTLY temp_index ON temp_table(a);
 
 -- Cleanup.
 DISCARD TEMP;
+
+-- Test complex index names.
+CREATE TABLE "Test Table" (col1 INT PRIMARY KEY, col2 INT);
+CREATE INDEX "Test Index '" ON "Test Table"(col2);
+CREATE INDEX "Test 'Index'" ON "Test Table"(col2);
+CREATE INDEX "Test Index """ ON "Test Table"(col2);
+CREATE INDEX "Test ""Index""" ON "Test Table"(col2);
+CREATE INDEX "Test_""_index_WITH_""""_different'_'quotes' and spaces" ON "Test Table"(col2);
+\d "Test Table"
+\d "Test Index '"
+\d "Test 'Index'"
+\d "Test Index """
+\d "Test ""Index"""
+\d "Test_""_index_WITH_""""_different'_'quotes' and spaces"

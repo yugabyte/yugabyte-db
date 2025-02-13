@@ -10,11 +10,15 @@ import api.v2.models.ContinuousRestoreSpec;
 import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
 import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.tasks.CreateYbaBackup;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.CreateContinuousBackup;
 import com.yugabyte.yw.commissioner.tasks.RestoreContinuousBackup;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.ContinuousBackupConfig;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
@@ -24,7 +28,8 @@ import play.mvc.Http;
 
 public class ContinuousBackupHandler extends ApiControllerUtils {
 
-  @Inject private YbaBackupHandler ybaBackupHandler;
+  @Inject private Commissioner commissioner;
+  @Inject private ConfigHelper configHelper;
 
   public ContinuousBackup createContinuousBackup(
       Http.Request request, UUID cUUID, ContinuousBackupSpec continuousBackupCreateSpec)
@@ -41,7 +46,7 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
             TimeUnit.valueOf(continuousBackupCreateSpec.getFrequencyTimeUnit().name()),
             continuousBackupCreateSpec.getNumBackups(),
             continuousBackupCreateSpec.getBackupDir());
-    CreateYbaBackup.Params taskParams = new CreateYbaBackup.Params();
+    CreateContinuousBackup.Params taskParams = new CreateContinuousBackup.Params();
     taskParams.storageConfigUUID = cbConfig.getStorageConfigUUID();
     taskParams.dirName = cbConfig.getBackupDir();
     // TODO: list of components?
@@ -50,12 +55,12 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
             cUUID,
             cbConfig.getUuid(),
             taskParams,
-            TaskType.CreateYbaBackup,
+            TaskType.CreateContinuousBackup,
             cbConfig.getFrequency(),
             null,
             false /* useLocalTimezone */,
             cbConfig.getFrequencyTimeUnit(),
-            null);
+            "ContinuousBackupSchedule");
     return ContinuousBackupMapper.INSTANCE.toContinuousBackup(cbConfig);
   }
 
@@ -66,7 +71,8 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
       throw new PlatformServiceException(BAD_REQUEST, "no continous backup config found with UUID");
     }
     // Delete the active continuous backup schedules
-    Schedule.getAllActiveSchedulesByOwnerUUIDAndType(bUUID, TaskType.CreateYbaBackup).stream()
+    Schedule.getAllActiveSchedulesByOwnerUUIDAndType(bUUID, TaskType.CreateContinuousBackup)
+        .stream()
         .forEach(
             schedule -> {
               schedule.delete();
@@ -103,7 +109,14 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
     RestoreContinuousBackup.Params taskParams = new RestoreContinuousBackup.Params();
     taskParams.storageConfigUUID = spec.getStorageConfigUuid();
     taskParams.backupDir = spec.getBackupDir();
-    UUID taskUUID = ybaBackupHandler.restoreContinuousBackup(customer, taskParams);
+    UUID taskUUID = commissioner.submit(TaskType.RestoreContinuousBackup, taskParams);
+    CustomerTask.create(
+        customer,
+        configHelper.getYugawareUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Yba,
+        CustomerTask.TaskType.RestoreContinuousBackup,
+        Util.getYwHostnameOrIP());
     return new YBATask().taskUuid(taskUUID);
   }
 }

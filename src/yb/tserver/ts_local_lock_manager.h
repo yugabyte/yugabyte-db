@@ -26,7 +26,7 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/status.h"
 
-namespace yb::tablet {
+namespace yb::tserver {
 
 YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
 
@@ -53,10 +53,10 @@ class TSLocalLockManager {
   ~TSLocalLockManager();
 
   // Tries acquiring object locks with the specified modes and registers them against the given
-  // transaction <<txn, reuse_version>, subtxn>. When locking a batch of keys, if the lock mananger
-  // errors while acquiring the lock on the k'th key/record, all acquired locks i.e (1 to k-1) are
-  // released and the error is returned back to the client. Note that previous successful locks
-  // corresponding to the same txn remain unchanged until an explicit unlock request comes in.
+  // transaction <txn, subtxn>. When locking a batch of keys, if the lock mananger errors while
+  // acquiring the lock on the k'th key/record, all acquired locks i.e (1 to k-1) are released
+  // and the error is returned back to the client. Note that previous successful locks corresponding
+  // to the same txn remain unchanged until an explicit unlock request comes in.
   //
   // Note that the lock manager ignores the transaction's conflict with itself. So a txn can acquire
   // conflicting lock types on a key given that there aren't other txns with active conflciting
@@ -73,8 +73,8 @@ class TSLocalLockManager {
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
       WaitForBootstrap wait = WaitForBootstrap::kTrue);
 
-  // When subtxn id is set, releases all locks tagged against <<txn, reuse_version>, subtxn>.
-  // Else releases all object locks owned by <txn, reuse_version>.
+  // When subtxn id is set, releases all locks tagged against <txn, subtxn>. Else releases all
+  // object locks owned by <txn>.
   //
   // There is no 1:1 mapping that exists among lock and unlock requests. A txn can acquire different
   // lock modes on a key multiple times, and will unlock them all with a single unlock rpc.
@@ -92,4 +92,4 @@ class TSLocalLockManager {
   std::unique_ptr<Impl> impl_;
 };
 
-} // namespace yb::tablet
+} // namespace yb::tserver

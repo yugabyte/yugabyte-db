@@ -91,7 +91,8 @@ public class CommonUtils {
           "POLICY",
           "HC_VAULT_TOKEN",
           "VAULTTOKEN",
-          "SAS_TOKEN");
+          "SAS_TOKEN",
+          "REFRESH_TOKEN");
   // Exclude following strings from being sensitive fields
   private static final List<String> excludedFieldNames =
       Arrays.asList(
@@ -107,7 +108,11 @@ public class CommonUtils {
           "KEYSPACETABLELIST",
           // General API field
           "KEYSPACE",
-          "APITOKENVERSION");
+          "APITOKENVERSION",
+          // CipherTrust KMS fields
+          "KEY_ALGORITHM",
+          "KEY_SIZE",
+          "KEY_NAME");
 
   public static final Map<Character, Character> CHAR_MAP =
       Map.ofEntries(

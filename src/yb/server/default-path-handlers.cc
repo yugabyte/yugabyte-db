@@ -86,8 +86,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stack_trace_tracker.h"
 #include "yb/util/url-coding.h"
-#include "yb/util/version_info.h"
-#include "yb/util/version_info.pb.h"
+#include "yb/common/version_info.h"
 
 DEFINE_RUNTIME_uint64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");

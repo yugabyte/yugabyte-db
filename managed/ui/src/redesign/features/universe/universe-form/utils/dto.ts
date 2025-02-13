@@ -50,6 +50,7 @@ export interface CommunicationPorts {
   ysqlServerHttpPort: number;
   ysqlServerRpcPort: number;
   nodeExporterPort: number;
+  ybControllerrRpcPort: number;
 }
 
 export enum StorageType {
@@ -61,7 +62,9 @@ export enum StorageType {
   StandardSSD_LRS = 'StandardSSD_LRS',
   Premium_LRS = 'Premium_LRS',
   PremiumV2_LRS = 'PremiumV2_LRS',
-  UltraSSD_LRS = 'UltraSSD_LRS'
+  UltraSSD_LRS = 'UltraSSD_LRS',
+  Hyperdisk_Balanced = 'Hyperdisk_Balanced',
+  Hyperdisk_Extreme = 'Hyperdisk_Extreme'
 }
 export interface DeviceInfo {
   volumeSize: number;
@@ -313,6 +316,7 @@ export interface CommunicationPorts {
   ysqlServerRpcPort: number;
   nodeExporterPort: number;
   internalYsqlServerRpcPort?: number;
+  ybControllerrRpcPort: number;
 }
 
 export interface DeviceInfo {
@@ -593,7 +597,8 @@ export const DEFAULT_COMMUNICATION_PORTS: CommunicationPorts = {
   ysqlServerHttpPort: 13000,
   ysqlServerRpcPort: 5433,
   internalYsqlServerRpcPort: 6433,
-  nodeExporterPort: 9300
+  nodeExporterPort: 9300,
+  ybControllerrRpcPort: 18018
 };
 
 export const DEFAULT_CLOUD_CONFIG: CloudConfigFormValue = {

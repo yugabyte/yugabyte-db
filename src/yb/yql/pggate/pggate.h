@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -390,6 +391,8 @@ class PgApiImpl {
 
   Status CreateIndexSetVectorOptions(PgStatement *handle, YbcPgVectorIdxOptions *options);
 
+  Status CreateIndexSetHnswOptions(PgStatement *handle, int ef_construction, int m);
+
   Status CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
                                 YbcPgTypeEntity **types, uint64_t *data);
 
@@ -409,6 +412,7 @@ class PgApiImpl {
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid);
 
   Status BackfillIndex(const PgObjectId& table_id);
+  Status WaitVectorIndexReady(const PgObjectId& table_id);
 
   Status NewDropSequence(const YbcPgOid database_oid,
                          const YbcPgOid sequence_oid,
@@ -780,7 +784,8 @@ class PgApiImpl {
       const ReplicationSlotName& slot_name);
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
-      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const YbcReplicationSlotHashRange* slot_hash_range);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
@@ -797,6 +802,14 @@ class PgApiImpl {
   Status NewDropReplicationSlot(const char *slot_name,
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
+
+  Result<std::string> ExportSnapshot(
+      const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time);
+  Result<std::optional<YbcPgTxnSnapshot>> SetTxnSnapshot(
+      PgTxnSnapshotDescriptor snapshot_descriptor);
+
+  bool HasExportedSnapshots() const;
+  void ClearExportedTxnSnapshots();
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();

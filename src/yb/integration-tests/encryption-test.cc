@@ -334,8 +334,7 @@ TEST_F(EncryptionTest, AutoFlags) {
   // 2. Promote auto flags with class kExternal to trigger an overwrite of the flagfile.
   // 3. Restart a tserver to ensure its able to properly Init and read the auto flagfile.
   WriteWorkload(0, kNumKeys);
-  ASSERT_OK(yb_admin_client_->PromoteAutoFlags(
-      ToString(AutoFlagClass::kExternal), true, true));
+  ASSERT_OK(yb_admin_client_->PromoteAutoFlags(ToString(AutoFlagClass::kExternal), true));
 
   SleepFor(MonoDelta::FromSeconds(5));
 

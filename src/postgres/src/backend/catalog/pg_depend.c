@@ -144,7 +144,7 @@ recordMultipleDependencies(const ObjectAddress *depender,
 				indstate = CatalogOpenIndexes(dependDesc);
 
 			CatalogTuplesMultiInsertWithInfo(dependDesc, slot, slot_stored_count,
-											 indstate, false /* yb_shared_insert */);
+											 indstate, false /* yb_shared_insert */ );
 			slot_stored_count = 0;
 		}
 	}
@@ -157,7 +157,7 @@ recordMultipleDependencies(const ObjectAddress *depender,
 			indstate = CatalogOpenIndexes(dependDesc);
 
 		CatalogTuplesMultiInsertWithInfo(dependDesc, slot, slot_stored_count,
-										 indstate, false /* yb_shared_insert */);
+										 indstate, false /* yb_shared_insert */ );
 	}
 
 	if (indstate != NULL)

@@ -70,7 +70,7 @@ PGPROC	   *MyProc = NULL;
 int			RetryMaxBackoffMsecs;
 int			RetryMinBackoffMsecs;
 double		RetryBackoffMultiplier;
-int yb_max_query_layer_retries;
+int			yb_max_query_layer_retries;
 
 /*
  * This spinlock protects the freelist of recycled PGPROC structures.
@@ -86,7 +86,7 @@ PROC_HDR   *ProcGlobal = NULL;
 NON_EXEC_STATIC PGPROC *AuxiliaryProcs = NULL;
 PGPROC	   *PreparedXactProcs = NULL;
 PGPROC	   *KilledProcToClean = NULL;
-int *yb_too_many_conn = NULL;
+int		   *yb_too_many_conn = NULL;
 
 /* If we are waiting for a lock, this points to the associated LOCALLOCK */
 static LOCALLOCK *lockAwaited = NULL;
@@ -473,8 +473,9 @@ InitProcess(void)
 	 * TODO(asaha): Update the query_id for catalog calls in circular buffer
 	 * once it's calculated
 	 */
-	MyProc->yb_ash_metadata.query_id =
-		YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
+	MyProc->yb_ash_metadata.query_id = IsBackgroundWorker
+		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
+		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
 	MemSet(MyProc->yb_ash_metadata.client_addr, 0,
 		   sizeof(MyProc->yb_ash_metadata.client_addr));
 	MyProc->yb_ash_metadata.client_port = 0;
@@ -958,6 +959,7 @@ void
 ReleaseProcToFreeList(PGPROC *proc)
 {
 	PGPROC	   *volatile *procgloballist = proc->procgloballist;
+
 	SpinLockAcquire(ProcStructLock);
 
 	/*

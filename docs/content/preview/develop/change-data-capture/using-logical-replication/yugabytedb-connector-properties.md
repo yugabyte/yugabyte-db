@@ -222,37 +222,37 @@ Whether to use an encrypted connection to the YugabyteDB server. Options include
 * `verify-ca` behaves like require but also verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, or fails if no valid matching CA certificates are found.
 * `verify-full` behaves like verify-ca but also verifies that the server certificate matches the host to which the connector is trying to connect.
 
-For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/static/libpq-connect.html).
+For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/15/static/libpq-connect.html).
 
 Default: prefer
 
 ##### database.sslcert
 
-The path to the file that contains the SSL certificate for the client. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/static/libpq-connect.html).
+The path to the file that contains the SSL certificate for the client. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/15/static/libpq-connect.html).
 
 No default.
 
 ##### database.sslkey
 
-The path to the file that contains the SSL private key of the client. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/static/libpq-connect.html).
+The path to the file that contains the SSL private key of the client. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/15/static/libpq-connect.html).
 
 No default.
 
 ##### database.sslpassword
 
-The password to access the client private key from the file specified by `database.sslkey`. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/static/libpq-connect.html).
+The password to access the client private key from the file specified by `database.sslkey`. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/15/static/libpq-connect.html).
 
 No default.
 
 ##### database.sslrootcert
 
-The path to the file that contains the root certificate(s) against which the server is validated. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/static/libpq-connect.html).
+The path to the file that contains the root certificate(s) against which the server is validated. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/15/static/libpq-connect.html).
 
 No default.
 
 ##### database.tcpKeepAlive
 
-Enable TCP keep-alive probe to verify that the database connection is still alive. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/static/libpq-connect.html).
+Enable TCP keep-alive probe to verify that the database connection is still alive. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/15/static/libpq-connect.html).
 
 Default: true
 
@@ -376,7 +376,7 @@ Default: _empty string_
 
 ##### publication.autocreate.mode
 
-Applies only when streaming changes by using the [pgoutput plugin](https://www.postgresql.org/docs/11/sql-createpublication.html). The setting determines how creation of a [publication](https://www.postgresql.org/docs/11/logical-replication-publication.html) should work. Specify one of the following values:
+Applies only when streaming changes by using the [pgoutput plugin](https://www.postgresql.org/docs/15/sql-createpublication.html). The setting determines how creation of a [publication](https://www.postgresql.org/docs/15/logical-replication-publication.html) should work. Specify one of the following values:
 
 * `all_tables` - If a publication exists, the connector uses it. If a publication does not exist, the connector creates a publication for all tables in the database for which the connector is capturing changes. For the connector to create a publication it must access the database through a database user account that has permission to create publications and perform replications. You grant the required permission by using the following SQL command `CREATE PUBLICATION <publication_name> FOR ALL TABLES;`.
 * `disabled` - The connector does not attempt to create a publication. A database administrator or the user configured to perform replications must have created the publication before running the connector. If the connector cannot find the publication, the connector throws an exception and stops.

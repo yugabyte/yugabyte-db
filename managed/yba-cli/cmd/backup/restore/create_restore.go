@@ -312,9 +312,25 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 			}
 		}
 
-		isSelectiveTableRestore, _ := strconv.ParseBool(backupDetails["selective-restore"])
+		useTablespaces, err := strconv.ParseBool(backupDetails["use-tablespaces"])
+		if err != nil {
+			errMessage := err.Error() + " Using Tablespaces as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			useTablespaces = false
+		}
+
+		isSelectiveTableRestore, err := strconv.ParseBool(backupDetails["selective-restore"])
+		if err != nil {
+			errMessage := err.Error() + " Using Selective Table Restore as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			isSelectiveTableRestore = false
+		}
 		tableNameList := []string{}
-		if backupDetails["table-names"] != "" {
+		if backupDetails["table-name-list"] != "" {
 			tableNameList = strings.Split(backupDetails["table-name-list"], ",")
 		}
 
@@ -324,6 +340,7 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 			StorageLocation:       util.GetStringPointer(backupDetails["storage-location"]),
 			Sse:                   util.GetBoolPointer(true),
 			SelectiveTableRestore: util.GetBoolPointer(isSelectiveTableRestore),
+			UseTablespaces:        util.GetBoolPointer(useTablespaces),
 			TableNameList:         &tableNameList,
 		}
 		res = append(res, r)
@@ -355,10 +372,10 @@ func init() {
 			"The attributes use-tablespaces, selective-restore and table-name-list are optional. "+
 			"Attributes selective-restore and table-name-list are needed only for YCQL. "+
 			"The attribute use-tablespaces is needed only for YSQL. "+
-			"Example: --keyspace-info keyspace-name=cassandra1;storage-location=s3://bucket/location1;"+
-			"backup-type=ycql;selective-restore=true;table-name-list=table1,table2 "+
-			"--keyspace-info keyspace-name=postgres;storage-location=s3://bucket/location2"+
-			"backup-type=ysql;use-tablespaces=true")
+			"Example: --keyspace-info keyspace-name=cassandra1::storage-location=s3://bucket/location1::"+
+			"backup-type=ycql::selective-restore=true::table-name-list=table1,table2 "+
+			"--keyspace-info keyspace-name=postgres::storage-location=s3://bucket/location2"+
+			"backup-type=ysql::use-tablespaces=true")
 	createRestoreCmd.MarkFlagRequired("keyspace-info")
 	createRestoreCmd.Flags().Bool("enable-verbose-logs", false,
 		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")

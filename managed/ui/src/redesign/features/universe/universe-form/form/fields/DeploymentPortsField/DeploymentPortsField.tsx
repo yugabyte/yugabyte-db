@@ -117,7 +117,8 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
   const OTHER_PORTS = [
     { id: 'redisServerHttpPort', visible: yedisEnabled, disabled: isEditMode },
     { id: 'redisServerRpcPort', visible: yedisEnabled, disabled: isEditMode },
-    { id: 'nodeExporterPort', visible: provider?.code !== CloudType.onprem, disabled: disabled }
+    { id: 'nodeExporterPort', visible: provider?.code !== CloudType.onprem, disabled: disabled },
+    { id: 'ybControllerrRpcPort', visible: true, disabled: isEditMode },
   ];
 
   const PORT_GROUPS = [

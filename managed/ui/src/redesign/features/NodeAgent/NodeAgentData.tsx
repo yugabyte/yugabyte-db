@@ -3,7 +3,8 @@ import { DropdownButton, MenuItem, Tooltip } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { Box, makeStyles } from '@material-ui/core';
+import { Box, makeStyles, Typography } from '@material-ui/core';
+import { useQuery } from 'react-query';
 
 import { DeleteNodeAgent } from './DeleteNodeAgent';
 import { NodeAgentStatus } from './NodeAgentStatus';
@@ -13,8 +14,12 @@ import { ProviderCode } from '../../../components/configRedesign/providerRedesig
 import { InstallNodeAgentModal } from '../universe/universe-actions/install-node-agent/InstallNodeAgentModal';
 
 import { YBProvider } from '../../../components/configRedesign/providerRedesign/types';
-import { NodeAgentEntities } from '../../utils/dtos';
+import { NodeAgent } from '../../utils/dtos';
 import VersionMisatch from '../../assets/version-mismatch.svg';
+import { api, universeQueryKey } from '../../helpers/api';
+import { AugmentedNodeAgent } from './types';
+import { SortOrder } from '../../helpers/constants';
+import { YBTooltip } from '../../components';
 
 const useStyles = makeStyles((theme) => ({
   selectBox: {
@@ -76,22 +81,24 @@ const useStyles = makeStyles((theme) => ({
 
 interface NodeAgentDataProps {
   isAssignedNodes: boolean;
-  nodeAgentData: NodeAgentEntities[];
+  nodeAgents: NodeAgent[];
   isErrorFilterChecked: boolean;
 
   isNodeAgentDebugPage?: boolean;
   onNodeAgentDeleted?: () => void;
 }
 
+const TRANSLATION_KEY_PREFIX = 'nodeAgent';
+
 export const NodeAgentData: FC<NodeAgentDataProps> = ({
   isAssignedNodes,
-  nodeAgentData,
+  nodeAgents,
   isErrorFilterChecked,
   isNodeAgentDebugPage = true,
   onNodeAgentDeleted
 }) => {
   const helperClasses = useStyles();
-  const { t } = useTranslation();
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const providers = useSelector((state: any) => state.cloud.providers.data);
   const [isDeleteNodeAgentModalOpen, setIsDeleteNodeAgentModalOpen] = useState<boolean>(false);
   const [isInstallNodeAgentModalOpen, setIsInstallNodeAgentModalOpen] = useState<boolean>(false);
@@ -99,9 +106,11 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
   const ybaVersionResponse = useSelector((state: any) => state.customer.yugawareVersion);
   const ybaVersion = ybaVersionResponse.data.version;
 
-  const formatState = (cell: any, row: any) => {
-    return <NodeAgentStatus status={row?.state} isReachable={row?.reachable} />;
-  };
+  const universeListQuery = useQuery(universeQueryKey.ALL, () => api.fetchUniverseList());
+
+  const formatState = (_: any, nodeAgent: AugmentedNodeAgent) => (
+    <NodeAgentStatus nodeAgent={nodeAgent} />
+  );
 
   const formatVersion = (cell: any, row: any) => {
     const tooltipMessage = `The node agent version ${row.version} is not synchronized with the
@@ -140,6 +149,7 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
     ) as YBProvider;
     const skipProvisioning = !!provider?.details.skipProvisioning;
 
+    const isInstallNodeAgentDisabled = skipProvisioning && provider?.code === ProviderCode.ON_PREM;
     return (
       <DropdownButton
         className={helperClasses.actionsDropdown}
@@ -152,17 +162,26 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
             onSelect={() => {
               openInstallNodeAgentModal(row);
             }}
+            disabled={isInstallNodeAgentDisabled}
           >
-            {t('nodeAgent.install')}
+            <YBTooltip
+              title={
+                isInstallNodeAgentDisabled
+                  ? t('action.install.onPremManuallyProvisionedTooltip')
+                  : ''
+              }
+              placement="top"
+            >
+              <Typography variant="body2">{t('action.install.label')}</Typography>
+            </YBTooltip>
           </MenuItem>
         )}
         <MenuItem
           onSelect={() => {
             openDeleteDialog(row);
           }}
-          disabled={!skipProvisioning && provider?.code === ProviderCode.ON_PREM}
         >
-          {t('nodeAgent.delete')}
+          <Typography variant="body2">{t('action.delete.label')}</Typography>
         </MenuItem>
       </DropdownButton>
     );
@@ -181,14 +200,32 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
     setIsDeleteNodeAgentModalOpen(true);
   };
 
-  const formatError = (cell: any, row: any) => {
-    const rowError = row.lastError;
-    const rowErrorCode = rowError?.code;
-    return <span>{rowErrorCode}</span>;
-  };
+  const getNodeAgentStatusLabel = (nodeAgent: NodeAgent) =>
+    nodeAgent.reachable
+      ? t(`statusLabel.${nodeAgent.state}`, 'statusLabel.unknownStatus')
+      : t('statusLabel.unreachable');
+
+  const getNodeAgentErrorLabel = (nodeAgent: NodeAgent) =>
+    universeListQuery.data?.find((universe) => universe.universeUUID === nodeAgent.universeUuid)
+      ?.universeDetails.universePaused && nodeAgent.lastError
+      ? t('errorLabel.universePaused')
+      : nodeAgent.lastError
+      ? t(`errorLabel.${nodeAgent.lastError.code}`)
+      : '';
+
+  /**
+   * Node agent objects with additional fields added on the client side.
+   */
+  const augmentedNodeAgents = nodeAgents.map(
+    (nodeAgent): AugmentedNodeAgent => ({
+      ...nodeAgent,
+      statusLabel: getNodeAgentStatusLabel(nodeAgent),
+      errorLabel: getNodeAgentErrorLabel(nodeAgent)
+    })
+  );
   const filteredNodeAgents = isErrorFilterChecked
-    ? nodeAgentData.filter((nodeAgent) => nodeAgent.lastError?.code)
-    : nodeAgentData;
+    ? augmentedNodeAgents.filter((nodeAgent) => nodeAgent.lastError?.code)
+    : augmentedNodeAgents;
 
   return (
     <Box>
@@ -196,7 +233,7 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
         body={
           <BootstrapTable
             data={filteredNodeAgents}
-            pagination={nodeAgentData.length > 10}
+            pagination={filteredNodeAgents.length > 10}
             containerClass={helperClasses.nodeAgentStatusTable}
           >
             <TableHeaderColumn dataField="nodeAgentID" isKey={true} hidden={true} />
@@ -243,6 +280,14 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
               <span className={helperClasses.columnName}>{'Node Address'}</span>
             </TableHeaderColumn>
             <TableHeaderColumn
+              dataField="updatedAt"
+              sortFunc={(a: AugmentedNodeAgent, b: AugmentedNodeAgent, order: string) =>
+                // Sort in reverse order since the data is processed and displayed as duration (time since heartbeat).
+                order === SortOrder.ASCENDING
+                  ? b.updatedAt.localeCompare(a.updatedAt)
+                  : a.updatedAt.localeCompare(b.updatedAt)
+              }
+              dataSort
               width="15%"
               dataFormat={formatUpdatedAt}
               columnClassName={'yb-table-cell yb-table-cell-align'}
@@ -250,6 +295,8 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
               <span className={helperClasses.columnName}>{'Time since heartbeat'}</span>
             </TableHeaderColumn>
             <TableHeaderColumn
+              dataField="statusLabel"
+              dataSort
               dataFormat={formatState}
               width="10%"
               columnClassName={'yb-table-cell yb-table-cell-align'}
@@ -257,7 +304,8 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
               <span className={helperClasses.columnName}>{'Agent Status'}</span>
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataFormat={formatError}
+              dataField="errorLabel"
+              dataSort
               width="15%"
               columnClassName={'yb-table-cell yb-table-cell-align'}
             >
@@ -267,6 +315,8 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
               width="15%"
               dataFormat={formatVersion}
               columnClassName={'yb-table-cell yb-table-cell-align'}
+              dataField="version"
+              dataSort
             >
               <span className={helperClasses.columnName}>{'Version'}</span>
             </TableHeaderColumn>
@@ -285,7 +335,7 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
       {isDeleteNodeAgentModalOpen && (
         <DeleteNodeAgent
           openNodeAgentDialog={isDeleteNodeAgentModalOpen}
-          providerName={selectedNodeAgent.providerName}
+          nodeName={selectedNodeAgent.name}
           nodeAgentUUID={selectedNodeAgent.uuid}
           onNodeAgentDeleted={onNodeAgentDeleted}
           onClose={() => setIsDeleteNodeAgentModalOpen(false)}

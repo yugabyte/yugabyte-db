@@ -37,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
@@ -184,6 +185,56 @@ public class NodeUniverseManager extends DevopsBase {
   public void copyFileFromNode(
       NodeDetails node, Universe universe, String remoteFile, String localFile) {
     copyFileFromNode(node, universe, remoteFile, localFile, DEFAULT_CONTEXT);
+  }
+
+  /**
+   * Download the given set of root files in a compress archive called root_files.tar.gz to the
+   * target local path.
+   *
+   * @param paths Absolute paths to the root files.
+   */
+  public void downloadRootFiles(
+      UUID customerUUID,
+      NodeDetails node,
+      Universe universe,
+      Set<String> paths,
+      String targetLocalPath) {
+    String nodeTmpDir = getRemoteTmpDir(node, universe);
+    Provider provider =
+        Provider.get(
+            customerUUID,
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    ShellProcessContext context =
+        ShellProcessContext.builder().sshUser(provider.getDetails().sshUser).build();
+
+    // Check if we have sudo access.
+    List<String> cmds = new ArrayList<>(Arrays.asList("sudo", "-v"));
+    if (!runCommand(node, universe, cmds, context).processErrors().isSuccess()) {
+      log.warn(
+          "SSH user {} doesn't have sudo access on node {}. Unable to download root files.",
+          provider.getDetails().sshUser,
+          node.getNodeName());
+      return;
+    }
+
+    log.info(
+        "Downloading the following root files: {} from node {}.",
+        paths.toString(),
+        node.getNodeName());
+
+    // Collect all files in a compressed archive in the tmp dir.
+    cmds = new ArrayList<>(Arrays.asList("sudo", "tar", "-czhf"));
+    String pathToTar = nodeTmpDir + "/root_files.tar.gz";
+    cmds.add(pathToTar);
+    cmds.addAll(paths);
+    runCommand(node, universe, cmds, context).processErrors();
+
+    downloadNodeFile(node, universe, "/", List.of(pathToTar), targetLocalPath);
+
+    // Delete tar from tmp dir on node.
+    cmds = new ArrayList<>(Arrays.asList("sudo", "rm"));
+    cmds.add(pathToTar);
+    runCommand(node, universe, cmds, context).processErrors();
   }
 
   public void copyFileFromNode(

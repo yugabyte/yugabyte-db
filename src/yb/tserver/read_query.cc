@@ -256,9 +256,7 @@ Status ReadQuery::DoPerform() {
   // Get the most restrictive row mark present in the batch of PostgreSQL requests.
   // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
   auto batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
-  CatalogVersionChecker catalog_version_checker(server_);
   for (const auto& pg_req : req_->pgsql_batch()) {
-    RETURN_NOT_OK(catalog_version_checker(pg_req));
     auto current_row_mark = GetRowMarkTypeFromPB(pg_req);
     if (IsValidRowMarkType(current_row_mark)) {
       if (!req_->has_transaction()) {
@@ -288,6 +286,11 @@ Status ReadQuery::DoPerform() {
         req_->tablet_id(), std::move(peer_tablet.tablet_peer),
         req_->consistency_level(), AllowSplitTablet::kFalse, resp_));
     leader_peer.leader_term = OpId::kUnknownTerm;
+  }
+
+  CatalogVersionChecker catalog_version_checker(server_);
+  for (const auto& pg_req : req_->pgsql_batch()) {
+    RETURN_NOT_OK(catalog_version_checker(pg_req));
   }
 
   if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX) {

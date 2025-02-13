@@ -107,3 +107,9 @@ footer {
     }
   }
 }
+
+// Enlarge Intercom icons.
+.intercom-launcher,
+iframe.intercom-launcher-frame {
+  transform: scale(1.4)!important;
+}

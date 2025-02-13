@@ -148,7 +148,7 @@ This is the result:
 
 ### Unbounded ranges
 
-Either, or both of, the lower bound and the upper bound of a range value can be set to express the semantics "unbounded". The [PostgreSQL documentation](https://www.postgresql.org/docs/11/rangetypes.html#RANGETYPES-INFINITE) uses "unbounded" and "infinite" interchangeably to denote such a range. Yugabyte recommends always using the term "unbounded" and avoiding the term "infinite". The reason for this is explained later in this section.
+Either, or both of, the lower bound and the upper bound of a range value can be set to express the semantics "unbounded". The [PostgreSQL documentation](https://www.postgresql.org/docs/15/rangetypes.html#RANGETYPES-INFINITE) uses "unbounded" and "infinite" interchangeably to denote such a range. Yugabyte recommends always using the term "unbounded" and avoiding the term "infinite". The reason for this is explained later in this section.
 
 - When a range value is defined using a literal, an unbounded lower or upper bound is specified as unbounded simply by omitting the value, like this:
 

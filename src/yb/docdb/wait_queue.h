@@ -42,6 +42,7 @@ class ScopedWaitingTxnRegistration {
       const TabletId& tablet_id,
       uint64_t wait_start_us) = 0;
   virtual int64 GetDataUseCount() const = 0;
+  virtual Status PruneInactiveBlockerData(const TabletId& status_tablet) = 0;
   virtual ~ScopedWaitingTxnRegistration() = default;
 };
 
@@ -84,7 +85,8 @@ class WaitQueue {
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us, int64_t request_id,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version, CoarseTimePoint deadline,
+      boost::optional<PgSessionRequestVersion> pg_session_req_version,
+      bool prune_waiter_edges_post_resumption, CoarseTimePoint deadline,
       IntentProviderFunc intent_provider, WaitDoneCallback callback);
 
   // Check the wait queue for any active blockers which would conflict with locks. This method
@@ -98,7 +100,8 @@ class WaitQueue {
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       const TabletId& status_tablet_id, uint64_t serial_no,
       int64_t txn_start_us, uint64_t req_start_us, int64_t request_id,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version, CoarseTimePoint deadline,
+      boost::optional<PgSessionRequestVersion> pg_session_req_version,
+      bool prune_waiter_edges_post_resumption, CoarseTimePoint deadline,
       IntentProviderFunc intent_provider, WaitDoneCallback callback);
 
   void Poll(HybridTime now);

@@ -21,8 +21,6 @@
 
 namespace yb {
 
-YB_STRONGLY_TYPED_BOOL(ApplyNonRuntimeAutoFlags);
-
 class ClockBase;
 class FsManager;
 
@@ -66,9 +64,8 @@ class AutoFlagsManagerBase {
   // Returns Status::OK without doing any work if AutoFlags management is disabled.
   Status LoadFromMasterLeader(const server::MasterAddresses& master_addresses) EXCLUDES(mutex_);
 
-  Status LoadFromConfigUnlocked(
-      const AutoFlagsConfigPB new_config, ApplyNonRuntimeAutoFlags apply_non_runtime,
-      bool apply_sync = false) REQUIRES(mutex_);
+  Status LoadFromConfigUnlocked(const AutoFlagsConfigPB new_config, bool apply_sync = false)
+      REQUIRES(mutex_);
 
   // FsManager is owned by the parent service, and is expected to outlive this object.
   FsManager* fs_manager_;
@@ -88,10 +85,9 @@ class AutoFlagsManagerBase {
 
   Status WriteConfigToDisk() REQUIRES_SHARED(mutex_);
 
-  Status ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime) const REQUIRES_SHARED(mutex_);
+  Status ApplyConfig() const REQUIRES_SHARED(mutex_);
 
-  void AsyncApplyConfig(uint32 config_version, ApplyNonRuntimeAutoFlags apply_non_runtime)
-      EXCLUDES(mutex_);
+  void AsyncApplyConfig(uint32 config_version) EXCLUDES(mutex_);
 
   // Get the AutoFlagConfig from master. Returns std::nullopt if master is runnning on an older
   // version that does not support AutoFlags.

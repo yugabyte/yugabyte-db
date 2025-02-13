@@ -15,7 +15,7 @@
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/version_info.pb.h"
+#include "yb/common/version_info.pb.h"
 
 namespace yb {
 
@@ -24,6 +24,7 @@ struct BuildInfo {
   std::string build_number;
   std::string linux_debug_x86_url;
   std::string linux_release_x86_url;
+  std::string linux_release_aarch64_url;
   std::string darwin_debug_arm64_url;
   std::string darwin_release_arm64_url;
 };
@@ -61,11 +62,11 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   Status StartYsqlMajorCatalogUpgrade();
   Status WaitForYsqlMajorCatalogUpgradeToFinish();
 
-  Status FinalizeUpgrade();
+  virtual Status FinalizeUpgrade();
 
   Status PromoteAutoFlags(AutoFlagClass flag_class = AutoFlagClass::kExternal);
 
-  Status FinalizeYsqlMajorCatalogUpgrade();
+  virtual Status FinalizeYsqlMajorCatalogUpgrade();
 
   Status PerformYsqlUpgrade();
 
@@ -95,12 +96,9 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
 
   bool IsYsqlMajorVersionUpgrade() const { return is_ysql_major_version_upgrade_; }
 
-  bool IsTestSkipped() const { return test_skipped_; }
-
  private:
   const BuildInfo old_version_info_;
   VersionInfoPB current_version_info_;
-  bool test_skipped_ = false;
 
   std::string old_version_bin_path_, current_version_bin_path_;
   std::string old_version_master_bin_path_, current_version_master_bin_path_;
@@ -112,10 +110,7 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
 };
 
 // From build versions.
-static constexpr auto kBuild_2_20_2_4 = "2.20.2.4";
-static constexpr auto kBuild_2024_1_0_1 = "2024.1.0.1";
-static constexpr auto kBuild_2024_2_0_0 = "2024.2.0.0";
-static constexpr auto kBuild_2024_2_1_0 = "2024.2.1.0";
+static constexpr auto kBuild_2024_2_2_0 = "2024.2.2.0";
 static constexpr auto kBuild_2_25_0_0 = "2.25.0.0";
 
 }  // namespace yb

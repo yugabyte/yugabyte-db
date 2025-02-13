@@ -16,7 +16,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -108,6 +110,10 @@ class PerformExchangeFuture {
 using PerformResultFuture = std::variant<std::future<PerformResult>, PerformExchangeFuture>;
 using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC)>;
 
+using PgTxnSnapshotId = std::string;
+using PgTxnSnapshotReadTime = uint64_t;
+using PgTxnSnapshotDescriptor = std::variant<PgTxnSnapshotId, PgTxnSnapshotReadTime>;
+
 void Wait(const PerformResultFuture& future);
 bool Ready(const std::future<PerformResult>& future);
 bool Ready(const PerformExchangeFuture& future);
@@ -144,6 +150,8 @@ class PgClient {
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
+  Result<bool> PollVectorIndexReady(const PgObjectId& table_id);
+
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
 
   Result<PgOid> GetNewObjectId(PgOid db_oid);
@@ -171,8 +179,6 @@ class PgClient {
 
   Result<client::TabletServersInfo> ListLiveTabletServers(bool primary_only);
 
-  Status SetActiveSubTransaction(
-      SubTransactionId id, tserver::PgPerformOptionsPB* options);
   Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options);
 
   Status ValidatePlacement(tserver::PgValidatePlacementRequestPB* req);
@@ -237,7 +243,8 @@ class PgClient {
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
-      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const YbcReplicationSlotHashRange* slot_hash_range);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
@@ -256,6 +263,11 @@ class PgClient {
 
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
+
+  Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req);
+  Result<tserver::PgSetTxnSnapshotResponsePB> SetTxnSnapshot(
+      PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options);
+  Status ClearExportedTxnSnapshots();
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

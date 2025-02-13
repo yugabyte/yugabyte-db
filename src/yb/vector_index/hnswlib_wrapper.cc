@@ -59,7 +59,7 @@ class HnswlibIndex :
  public:
   using Scalar = typename Vector::value_type;
 
-  using HNSWImpl = typename hnswlib::HierarchicalNSW<DistanceResult>;
+  using HNSWImpl = hnswlib::HierarchicalNSW<DistanceResult, VectorId>;
 
   explicit HnswlibIndex(const HNSWOptions& options)
       : options_(options) {
@@ -95,15 +95,8 @@ class HnswlibIndex :
     return Status::OK();
   }
 
-  Status DoInsert(VectorId vertex_id, const Vector& v) {
-    // TODO(vector-index) temp solution for hnsw lib which accepts only integers as vector id.
-    auto it = vector_id_label_map_.find(vertex_id);
-    if (it == vector_id_label_map_.end()) {
-      static std::atomic<hnswlib::labeltype> counter {1};
-      auto label = counter.fetch_add(1, std::memory_order_relaxed);
-      std::tie(it, std::ignore) = vector_id_label_map_.insert({vertex_id, label});
-    }
-    hnsw_->addPoint(v.data(), it->second);
+  Status DoInsert(VectorId vector_id, const Vector& v) {
+    hnsw_->addPoint(v.data(), vector_id);
 
     return Status::OK();
   }
@@ -111,7 +104,6 @@ class HnswlibIndex :
   size_t MaxVectors() const override {
     return hnsw_->getInternalParameters().max_elements;
   }
-
 
   Status DoSaveToFile(const std::string& path) {
     try {
@@ -143,17 +135,17 @@ class HnswlibIndex :
     return space_->get_dist_func()(lhs.data(), rhs.data(), space_->get_dist_func_param());
   }
 
-  std::vector<VertexWithDistance<DistanceResult>> DoSearch(
+  std::vector<VectorWithDistance<DistanceResult>> DoSearch(
       const Vector& query_vector, const SearchOptions& options) const {
-    std::vector<VertexWithDistance<DistanceResult>> result;
+    std::vector<VectorWithDistance<DistanceResult>> result;
     auto tmp_result = hnsw_->searchKnnCloserFirst(query_vector.data(), options.max_num_results);
     result.reserve(tmp_result.size());
     for (const auto& entry : tmp_result) {
-      // Being careful to avoid switching the order of distance and vertex id..
+      // Being careful to avoid switching the order of distance and vertex id.
       const auto distance = entry.first;
       static_assert(std::is_same_v<std::remove_const_t<decltype(distance)>, DistanceResult>);
 
-      result.push_back({ GetVectorIdByLabel(entry.second), distance });
+      result.push_back({ entry.second, distance });
     }
     return result;
   }
@@ -229,29 +221,6 @@ class HnswlibIndex :
   HNSWOptions options_;
   std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
-
-  // TODO(vector-index) refer to https://github.com/yugabyte/yugabyte-db/issues/25041.
-  struct VectorLabelTag;
-  using  VectorLabel = hnswlib::labeltype;
-  using  VectorIdLabelPair = std::pair<VectorId, VectorLabel>;
-  using  VectorIdLabelMap = boost::multi_index::multi_index_container<
-      VectorIdLabelPair,
-      boost::multi_index::indexed_by<
-          boost::multi_index::hashed_unique<
-              BOOST_MULTI_INDEX_MEMBER(VectorIdLabelPair, VectorId, first)>,
-          boost::multi_index::hashed_unique<
-              boost::multi_index::tag<VectorLabelTag>,
-              BOOST_MULTI_INDEX_MEMBER(VectorIdLabelPair, VectorLabel, second)>>>;
-
-  const VectorId& GetVectorIdByLabel(VectorLabel label) const {
-    const auto& label_to_id_map = vector_id_label_map_.template get<VectorLabelTag>();
-    auto it = label_to_id_map.find(label);
-    CHECK(it != label_to_id_map.end());
-    CHECK_NE(0, it->second);
-    return it->first;
-  }
-  VectorIdLabelMap vector_id_label_map_;
-  friend class HnswlibVectorIterator<Vector, DistanceResult>;
 };
 
 
@@ -259,9 +228,9 @@ template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
  public:
   using VectorIndex = HnswlibIndex<Vector, DistanceResult>;
+  using HNSWIterator = hnswlib::VectorIterator<DistanceResult, VectorId>;
 
-  HnswlibVectorIterator(const VectorIndex& index,
-                        typename hnswlib::VectorIterator<DistanceResult> position, int dimensions)
+  HnswlibVectorIterator(const VectorIndex& index, HNSWIterator position, int dimensions)
       : internal_iterator_(position), dimensions_(dimensions), index_(index) {}
 
  protected:
@@ -270,7 +239,7 @@ class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
     Vector result_vector(dimensions_);
     std::memcpy(result_vector.data(), pair_data.first,
                 dimensions_ * sizeof(typename Vector::value_type));
-    return std::make_pair(index_.GetVectorIdByLabel(pair_data.second), result_vector);
+    return { pair_data.second, result_vector};
   }
 
   void Next() override { ++internal_iterator_; }
@@ -281,7 +250,7 @@ class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
   }
 
  private:
-  hnswlib::VectorIterator<DistanceResult> internal_iterator_;
+  HNSWIterator internal_iterator_;
   int dimensions_;
 
   // TODO(vector-index) refer to https://github.com/yugabyte/yugabyte-db/issues/25041.

@@ -382,6 +382,7 @@ void
 CleanupInvalidationState(int status, Datum arg)
 {
 	SISeg	   *segP = (SISeg *) DatumGetPointer(arg);
+
 	CleanupInvalidationStateInternal(segP, MyProc);
 }
 
@@ -511,6 +512,7 @@ SIInsertDataEntries(const SharedInvalidationMessage *data, int n)
 		while (nthistime-- > 0)
 		{
 			SharedInvalidationMessage *dest = &segP->buffer[max % MAXNUMMESSAGES];
+
 			*dest = *data++;
 			dest->yb_header.sender_pid = getpid();
 			max++;
@@ -714,7 +716,7 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 	 * backend B's pid.
 	 */
 	ProcState **yb_reset_candidates = NULL;
-	int yb_num_reset_candidates = 0;
+	int			yb_num_reset_candidates = 0;
 
 	for (i = 0; i < segP->lastBackend; i++)
 	{
@@ -741,7 +743,8 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 			{
 				if (!yb_reset_candidates)
 				{
-					Size sz = sizeof(ProcState *) * segP->lastBackend;
+					Size		sz = sizeof(ProcState *) * segP->lastBackend;
+
 					yb_reset_candidates = (ProcState **) palloc(sz);
 				}
 				yb_reset_candidates[yb_num_reset_candidates++] = stateP;
@@ -766,12 +769,14 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 	}
 	if (YBIsDBCatalogVersionMode())
 	{
-		int cand;
-		int next;
+		int			cand;
+		int			next;
+
 		for (cand = 0; cand < yb_num_reset_candidates; cand++)
 		{
 			ProcState  *stateP = yb_reset_candidates[cand];
-			pid_t procPid = stateP->procPid;
+			pid_t		procPid = stateP->procPid;
+
 			/*
 			 * In YSQL, the backend of stateP only applies messages sent
 			 * by itself. Therefore we do not need to set stateP->resetState
@@ -780,8 +785,9 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 			 */
 			for (next = stateP->nextMsgNum; next < min; next++)
 			{
-				SharedInvalidationMessage *msg =
-					&segP->buffer[next % MAXNUMMESSAGES];
+				SharedInvalidationMessage *msg = &segP->buffer[next %
+															   MAXNUMMESSAGES];
+
 				if (msg->yb_header.sender_pid == procPid)
 				{
 					stateP->resetState = true;

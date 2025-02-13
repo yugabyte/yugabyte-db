@@ -346,7 +346,8 @@ typedef struct _tableInfo
 	bool	   *inhNotNull;		/* true if NOT NULL is inherited */
 	struct _attrDefInfo **attrdefs; /* DEFAULT expressions */
 	struct _constraintInfo *checkexprs; /* CHECK constraints */
-	struct _indxInfo *primaryKeyIndex; /* Associated index of a PRIMARY KEY constraint */
+	struct _indxInfo *primaryKeyIndex;	/* Associated index of a PRIMARY KEY
+										 * constraint */
 	bool		needs_override; /* has GENERATED ALWAYS AS IDENTITY */
 	char	   *amname;			/* relation access method */
 
@@ -368,7 +369,7 @@ typedef struct _ybTablegroupInfo
 	 * These fields are collected for every tablegroup in the database.
 	 */
 	DumpableObject dobj;
-	DumpableAcl	   dacl;
+	DumpableAcl dacl;
 	const char *rolname;
 	char	   *grptablespace;
 	char	   *grpoptions;		/* options specified by WITH (...) */

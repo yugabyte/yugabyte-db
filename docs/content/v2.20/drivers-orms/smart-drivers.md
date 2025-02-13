@@ -28,6 +28,7 @@ Yugabyte has developed the following smart drivers for YSQL, available as open s
 | [YugabyteDB node-postgres Driver for Node.js](https://github.com/yugabyte/node-postgres) | node-postgres | [Documentation](../nodejs/yugabyte-node-driver/) |
 | [YugabyteDB Npgsql Driver for C#](https://github.com/yugabyte/npgsql) | PostgreSQL Npgsql Driver | [Documentation](../csharp/ysql/) |
 | [YugabyteDB Rust-postgres Driver](https://github.com/yugabyte/rust-postgres) | Rust-Postgres Driver | [Documentation](../rust/yb-rust-postgres) |
+| [YugabyteDB Ruby Driver](https://github.com/yugabyte/ruby-pg) | ged/ruby-pg | [Documentation](../ruby/yb-ruby-pg) |
 
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 
@@ -41,7 +42,7 @@ YugabyteDB smart drivers have the following key features.
 | [Cluster aware](#cluster-aware-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
 | [Node type aware](#node-type-aware-load-balancing) | If your cluster has read replicas, distribute connections based on the node type (primary or read replica). (Not supported by all smart drivers.) |
 | [Topology aware](#topology-aware-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
-| [Configurable&nbsp;refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
+| [Configurable&nbsp;refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable. |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
 ## Overview
@@ -98,11 +99,13 @@ A connection works as follows:
 
 To enable cluster-aware load balancing, you set the load balance connection parameter to `true` or `any` (the default is false) in the connection URL or the connection string (DSN style).
 
-For example, using the Go smart driver, you would enable load balancing as follows:
+For example, using the _Go_ smart driver, you would enable load balancing as follows:
 
 ```go
 "postgres://username:password@host:5433/database_name?load_balance=true"
 ```
+
+(Note that the parameter names may be different depending on the driver you're using.)
 
 With this parameter specified in the URL, the driver fetches and maintains a list of nodes from the given endpoint available in the YugabyteDB universe and distributes the connections equally across these nodes.
 
@@ -118,12 +121,12 @@ If your cluster has read replicas, smart drivers can distribute (or exclude) con
 
 To support this, the load balance property accepts the following additional values.
 
-| Value | Description |
+| Load&nbsp;balance&nbsp;setting | Description |
 | :--- | :--- |
 | any | Distribute connections equally across all nodes in the cluster, irrespective of type (primary or read replica). This is an alias for value _true_. |
 | only-primary | Create connections equally across only primary nodes. If none are available, fail. |
 | only-rr | Create connections equally across only read replica nodes. If none are available, fail. |
-| prefer&#8209;primary | Create connections equally across primary nodes. If none are available, create them equally across the available read replica nodes. |
+| prefer-primary | Create connections equally across primary nodes. If none are available, create them equally across the available read replica nodes. |
 | prefer-rr | Create connections equally across read replica nodes. If none are available, create them equally across the available primary nodes. |
 
 To see how nodes would be selected for connections using these values, see [Order of node selection for new connections](#order-of-node-selection-for-new-connections).
@@ -132,13 +135,13 @@ To see how nodes would be selected for connections using these values, see [Orde
 
 To change the frequency with which the driver fetches an updated list of servers, specify the server refresh interval parameter.
 
-For example, using the Go smart driver, you can change the interval to four minutes (specified in seconds) as follows:
+For example, using the _Go_ smart driver, you can change the interval to four minutes (specified in seconds) as follows:
 
 ```go
 "postgres://username:password@host:5433/database_name?load_balance=true&yb_servers_refresh_interval=240"
 ```
 
-(Note that currently this feature is not available in the YugabyteDB Python Smart Driver.)
+(Note that the parameter names may be different depending on the driver you're using.)
 
 ### Topology-aware load balancing
 
@@ -156,7 +159,7 @@ If you don't provide fallback locations, when no nodes are available in the prim
 
 You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style). You still need to specify load balance as `true` to enable the topology-aware connection load balancing.
 
-For example, using the Go driver, you would set the parameters as follows:
+For example, using the _Go_ driver, you would set the parameters as follows:
 
 ```go
 "postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1,cloud1.region1.zone2"
@@ -170,7 +173,7 @@ Use an asterisk (*) to specify all zones in a region. (You can't do this for reg
 
 #### Fallback topology keys
 
-To specify fallback locations if a location is unavailable, add `:n` to the topology key, where `n` is an integer indicating priority. The following example sets `zone1` as the topology key, and zones 2 and 3 as fallbacks (in that order) if `zone1` can't be reached:
+To specify fallback locations if a location is unavailable, add `:n` to the topology key, where `n` is an integer indicating priority. The following example using the _Go_ driver sets `zone1` as the topology key, and zones 2 and 3 as fallbacks (in that order) if `zone1` can't be reached:
 
 ```go
 "postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1:1,cloud1.region1.zone2:2,cloud1.region1.zone3:3"
@@ -275,7 +278,7 @@ For information on VPC peering in YugabyteDB Aeon, refer to [VPC network](/previ
 
 YugabyteDB Aeon requires TLS/SSL. Depending on the smart driver, using load balancing with a cluster in YugabyteDB Aeon and SSL mode verify-full may require additional configuration. The following table describes support for verify-full for YugabyteDB smart drivers.
 
-| Smart Driver | Support | Notes |
+| Smart&nbsp;Driver | Support | Notes |
 | :--- | :--- | :--- |
 | Java | Yes | Set the `sslhostnameverifier` connection parameter to `com.yugabyte.ysql.YBManagedHostnameVerifier`. |
 | Python | No | Use verify-ca or the upstream psycopg2 driver. |

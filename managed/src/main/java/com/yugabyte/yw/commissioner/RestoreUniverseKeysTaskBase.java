@@ -1,7 +1,9 @@
 package com.yugabyte.yw.commissioner;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.KmsHistory;
 import java.util.Base64;
@@ -27,7 +29,7 @@ public abstract class RestoreUniverseKeysTaskBase extends AbstractTaskBase {
   }
 
   // Should we use RPC to get the activeKeyId and then try and see if it matches this key?
-  protected byte[] getActiveUniverseKey() {
+  protected EncryptionKey getActiveUniverseKey() {
     KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(taskParams().getUniverseUUID());
     if (activeKey == null
         || activeKey.getUuid().keyRef == null
@@ -41,10 +43,12 @@ public abstract class RestoreUniverseKeysTaskBase extends AbstractTaskBase {
       }
       return null;
     }
-    return Base64.getDecoder().decode(activeKey.getUuid().keyRef);
+    return new EncryptionKey(
+        Base64.getDecoder().decode(activeKey.getUuid().keyRef), activeKey.getEncryptionContext());
   }
 
-  protected void sendKeyToMasters(UUID kmsConfigUUID, byte[] keyRef) {
-    keyManager.sendKeyToMasters(ybService, taskParams().getUniverseUUID(), kmsConfigUUID, keyRef);
+  protected void sendKeyToMasters(UUID kmsConfigUUID, byte[] keyRef, ObjectNode encryptionContext) {
+    keyManager.sendKeyToMasters(
+        ybService, taskParams().getUniverseUUID(), kmsConfigUUID, keyRef, encryptionContext);
   }
 }

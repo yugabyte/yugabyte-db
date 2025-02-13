@@ -62,28 +62,28 @@ const renderOption = (option: Record<string, string>) => {
 
 interface InstanceTypeFieldProps {
   isEditMode?: boolean;
-  isDedicatedMasterField?: boolean;
+  isMasterField?: boolean;
   disabled: boolean;
 }
 
 export const InstanceTypeField = ({
   isEditMode,
-  isDedicatedMasterField,
+  isMasterField,
   disabled
 }: InstanceTypeFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const classes = useFormFieldStyles();
   const { t } = useTranslation();
-  const nodeTypeTag = isDedicatedMasterField ? NodeType.Master : NodeType.TServer;
+  const nodeTypeTag = isMasterField ? NodeType.Master : NodeType.TServer;
 
   // To set value based on master or tserver field in dedicated mode
-  const UPDATE_FIELD = isDedicatedMasterField ? MASTER_INSTANCE_TYPE_FIELD : INSTANCE_TYPE_FIELD;
+  const UPDATE_FIELD = isMasterField ? MASTER_INSTANCE_TYPE_FIELD : INSTANCE_TYPE_FIELD;
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
   const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
 
-  const deviceInfo = isDedicatedMasterField
+  const deviceInfo = isMasterField
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
     : useWatch({ name: DEVICE_INFO_FIELD });
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });

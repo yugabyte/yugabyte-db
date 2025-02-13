@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The [pgcrypto](https://www.postgresql.org/docs/11/pgcrypto.html) module provides cryptographic functions for PostgreSQL.
+The [pgcrypto](https://www.postgresql.org/docs/15/pgcrypto.html) module provides cryptographic functions for PostgreSQL.
 
 ```sql
 CREATE EXTENSION pgcrypto;

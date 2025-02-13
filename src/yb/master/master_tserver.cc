@@ -30,6 +30,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/pg_client_session.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/metric_entity.h"
@@ -223,6 +224,12 @@ Result<pgwrapper::PGConn> MasterTabletServer::CreateInternalPGConn(
     const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) {
   LOG(DFATAL) << "Unexpected call of CreateInternalPGConn()";
   return STATUS_FORMAT(InternalError, "Unexpected call of CreateInternalPGConn()");
+}
+
+Result<tserver::PgTxnSnapshot> MasterTabletServer::GetLocalPgTxnSnapshot(
+  const tserver::PgTxnSnapshotLocalId& snapshot_id) {
+  LOG(WARNING) << "Unexpected call of " << __PRETTY_FUNCTION__;
+  return STATUS_FORMAT(InternalError, "Unexpected call of $0", __PRETTY_FUNCTION__);
 }
 
 bool MasterTabletServer::SkipCatalogVersionChecks() {

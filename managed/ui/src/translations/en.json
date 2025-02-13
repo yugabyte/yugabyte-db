@@ -95,8 +95,8 @@
     "dashboard": {
       "nodeAgentReminderBanner": {
         "primaryText": "Automatic installation of node agent failed on some nodes.",
-        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>To proceed, verify the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph>",
-        "reinstallNodeAgentButton": "Reinstall Node Agents"
+        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>Click View Node Agents to find the problem nodes, verify they fulfill the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph><paragraph><nodeAgentFaqDocsLink>Learn more about Node Agent.</nodeAgentFaqDocsLink></paragraph>",
+        "viewNodeAgentsButton": "View Node Agents"
       }
     },
     "universeActions": {
@@ -348,6 +348,7 @@
         "tserverHttpPort": "T-Server HTTP Port",
         "tserverRpcPort": "T-Server RPC Port",
         "ybcPackagePath": "YBC Package Path",
+        "ybControllerrRpcPort": "YB Controller RPC Port",
         "yqlServerHttpPort": "YCQL HTTP Port",
         "yqlServerRpcPort": "YCQL Port",
         "ysqlServerHttpPort": "YSQL HTTP Port",
@@ -509,6 +510,7 @@
         "ebs": "EBS Type",
         "ephemeralStorage": "! Selected instance type is with ephemeral storage, If you will pause this universe your data will get lost.",
         "premiumv2Storage": "! Selected storage type is only available in select regions. Your creation will fail if you choose incorrect region.",
+        "hyperdiskStorage": "! Please refer to the official documentation for information about supported instance types. Your creation will fail if you choose incorrect instance type.",
         "instanceType": "Instance Type",
         "k8NumCores": "Number of Cores",
         "k8Memory": "Memory (Gib)",
@@ -1663,13 +1665,40 @@
       "viewDetailsButton": "View Details",
       "unreachableInstanceAgents": "Instance agents are unreachable",
       "contactSupport": "Contact Support",
-      "install": "Reinstall node agent",
-      "delete": "Delete",
-      "deleteNodeAgent": "Delete Node Agent",
-      "confirmDeletionMessage": "Are you sure you want to delete the Node Agent associated with the provider {{provider_name}} ?",
+      "deleteNodeAgent": "Unregister Node Agent",
+      "confirmDeletionMessage": "Are you sure you want to unregister the node agent associated with the node {{nodeName}}?",
       "errorStatusFilterCheckbox": "Show only agents with error status",
       "runtimeConfig": {
         "nodeAgentClientEnabledWarning": "Disabling this runtime configuration will prevent you from upgrading YugabyteDB Anywhere to future major versions."
+      },
+      "action": {
+        "install": {
+          "label": "Reinstall node agent",
+          "onPremManuallyProvisionedTooltip": "Reinstalling via YugabyteDB Anywhere is not available for manually provisioned on-prem nodes. Please reinstall the node agent manually."
+        },
+        "delete": {
+          "label": "Unregister node agent"
+        }
+      },
+      "statusLabel": {
+        "READY": "Ready",
+        "REGISTERING": "Registering",
+        "REGISTERED": "Registered",
+        "UPGRADE": "Upgrading",
+        "UPGRADED": "Upgrading",
+        "unreachable": "Unreachable",
+        "unknownStatus": "N/A"
+      },
+      "errorLabel": {
+        "UNKNOWN_ERROR": "Unknown Error",
+        "INTERNAL_ERROR": "Internal Error",
+        "PLATFORM_SHUTDOWN": "Platform Shutdown",
+        "PLATFORM_RESTARTED": "Platform Restarted",
+        "INSTALLATION_ERROR": "Installation Error",
+        "SERVICE_START_ERROR": "Service Start Error",
+        "CONNECTION_ERROR": "Connection Error",
+        "TIMED_OUT": "Timed Out",
+        "universePaused": "Universe Paused"
       },
       "installNodeAgentModal": {
         "title": {
@@ -2327,7 +2356,10 @@
       "banner": {
         "viewDetails": "View Details",
         "taskProgress": "{{percent}}%",
-        "opNotAvailable": "Some operations are not available while the current operation is in progress"
+        "opNotAvailable": "Some operations are not available while the current operation is in progress",
+        "softwareUpgradeFailed": "Software Upgrade Failed",
+        "softwareUpgradeFailedText": "To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
+        "rollbackUpgrade": "Rollback Upgrade"
       },
       "simple": {
         "viewDetails": "View Details"

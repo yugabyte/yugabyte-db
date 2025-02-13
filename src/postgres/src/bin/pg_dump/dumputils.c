@@ -491,7 +491,7 @@ do { \
 		CONVERT_PRIV('T', "TEMPORARY");
 	}
 	else if (strcmp(type, "TABLESPACE") == 0 ||
-			 strcmp(type, "TABLEGROUP") == 0)  /* Yugabyte */
+			 strcmp(type, "TABLEGROUP") == 0)	/* Yugabyte */
 		CONVERT_PRIV('C', "CREATE");
 	else if (strcmp(type, "TYPE") == 0 ||
 			 strcmp(type, "TYPES") == 0)
@@ -654,7 +654,7 @@ buildShSecLabelQuery(const char *catalog_name, Oid objectId,
  */
 void
 emitShSecLabels(PGconn *conn, PGresult *res, PQExpBuffer buffer,
-				const char *objtype, const char *objname)
+				const char *objtype, const char *objname, const char *yb_indent)
 {
 	int			i;
 
@@ -665,8 +665,8 @@ emitShSecLabels(PGconn *conn, PGresult *res, PQExpBuffer buffer,
 
 		/* must use fmtId result before calling it again */
 		appendPQExpBuffer(buffer,
-						  "SECURITY LABEL FOR %s ON %s",
-						  fmtId(provider), objtype);
+						  "%sSECURITY LABEL FOR %s ON %s",
+						  yb_indent, fmtId(provider), objtype);
 		appendPQExpBuffer(buffer,
 						  " %s IS ",
 						  fmtId(objname));

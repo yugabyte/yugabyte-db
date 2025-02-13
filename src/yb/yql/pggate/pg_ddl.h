@@ -112,6 +112,8 @@ class PgCreateTableBase : public PgDdl {
 
   Status SetNumTablets(int32_t num_tablets);
 
+  Status SetHnswOptions(int ef_construction, int m);
+
   Status SetVectorOptions(YbcPgVectorIdxOptions* options);
 
   Status AddSplitBoundary(PgExpr** exprs, int expr_count);

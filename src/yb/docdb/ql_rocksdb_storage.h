@@ -83,7 +83,8 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      SkipSeek skip_seek = SkipSeek::kFalse) const override;
+      SkipSeek skip_seek,
+      UseVariableBloomFilter use_variable_bloom_filter) const override;
 
   Result<SampleBlocksData> GetSampleBlocks(
       std::reference_wrapper<const DocReadContext> doc_read_context,

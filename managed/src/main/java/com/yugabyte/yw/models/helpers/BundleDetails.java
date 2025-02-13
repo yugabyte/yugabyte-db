@@ -45,11 +45,14 @@ public class BundleDetails {
     @EnumValue("YbcLogs")
     YbcLogs(ComponentLevel.NodeLevel),
 
-    @EnumValue("K8sInfo")
-    K8sInfo(ComponentLevel.GlobalLevel),
-
     @EnumValue("NodeAgent")
     NodeAgent(ComponentLevel.NodeLevel),
+
+    @EnumValue("SystemLogs")
+    SystemLogs(ComponentLevel.NodeLevel),
+
+    @EnumValue("K8sInfo")
+    K8sInfo(ComponentLevel.GlobalLevel),
 
     @EnumValue("YbaMetadata")
     YbaMetadata(ComponentLevel.GlobalLevel),
@@ -57,8 +60,6 @@ public class BundleDetails {
     @EnumValue("PrometheusMetrics")
     PrometheusMetrics(ComponentLevel.GlobalLevel),
 
-    // Add any new components above this component, as we want this to be the last collected
-    // component to debug any issues with support bundle itself.
     @EnumValue("ApplicationLogs")
     ApplicationLogs(ComponentLevel.GlobalLevel);
 

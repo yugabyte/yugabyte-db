@@ -11,7 +11,7 @@ menu:
 type: indexpage
 ---
 
-After YugabytDB Anywhere (YBA) has been installed, the next step is to create provider configurations. A provider configuration comprises all the parameters needed to deploy a YugabyteDB universe on the corresponding provider. This includes cloud credentials, regions and zones, networking details, and more.
+After YugabyteDB Anywhere (YBA) has been installed, the next step is to create provider configurations. A provider configuration comprises all the parameters needed to deploy a YugabyteDB universe on the corresponding provider. This includes cloud credentials, regions and zones, networking details, and more.
 
 When deploying a universe, YBA uses the provider configuration settings to create and provision the nodes that will make up the universe.
 

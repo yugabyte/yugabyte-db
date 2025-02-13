@@ -1,14 +1,14 @@
 ---
-title: Deploy to two universes with xCluster replication
-headerTitle: xCluster deployment
-linkTitle: xCluster
-description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
-headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
+title: Deploy non-transactional xCluster replication
+headerTitle: Non-transactional xCluster
+linkTitle: Non-transactional
+description: Deploy using non-transactional unidirectional (master-follower) or bidirectional (multi-master) replication between universes
+headContent: Deploy non-transactional uni- (master-follower) and bi- (multi-master) directional replication
 menu:
   v2024.1:
     parent: async-replication
     identifier: async-deployment
-    weight: 10
+    weight: 20
 type: docs
 ---
 
@@ -496,15 +496,15 @@ When new tables (or partitions) are created, to ensure that all changes from the
     Replication altered successfully
    ```
 
-#### Adding indexes
+#### Adding indexes in unidirectional replication
 
 To add a new index to an empty table, follow the same steps as described in [Adding Tables (or Partitions)](#adding-tables-or-partitions).
 
 However, to add a new index to a table that already has data, the following additional steps are required to ensure that the index has all the updates:
 
-1. Create an [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) - for example, `my_new index` on the source.
+1. Create the [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) - for example, `my_new_index` on the source.
 1. Wait for index backfill to finish. For more details, refer to YugabyteDB tips on [monitor backfill progress](https://yugabytedb.tips/?p=2215).
-1. Determine the table ID for `my_new index`.
+1. Determine the table ID for `my_new_index`.
 
    ```sql
    yb-admin
@@ -534,8 +534,8 @@ However, to add a new index to a table that already has data, the following addi
    table id: 000033e8000030008000000000004028, CDC bootstrap id: c8cba563e39c43feb66689514488591c
    ```
 
-1. Wait for replication to be 0 on the main table using the replication lag metrics described in [Replication lag](#replication-lag).
-1. Create an [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) on the target.
+1. Wait for replication lag to be 0 on the main table using the replication lag metrics described in [Replication lag](#replication-lag).
+1. Create the same [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) on the target.
 1. Wait for index backfill to finish. For more details, refer to YugabyteDB tips on [monitor backfill progress](https://yugabytedb.tips/?p=2215).
 1. Add the index to replication with the bootstrap ID from Step 4.
 
@@ -552,6 +552,12 @@ However, to add a new index to a table that already has data, the following addi
     ```output
     Replication altered successfully
     ```
+
+#### Adding indexes in bidirectional replication
+
+Stop all write traffic when adding a new index to a table that is bidirectionally replicated.
+
+Follow the same steps as described in [Adding indexes in unidirectional replication](#adding-indexes-in-unidirectional-replication), followed by bootstrapping the index on the target universe and adding it to the source universe (steps 4 and 8 in the opposite direction).
 
 ### Removing objects
 

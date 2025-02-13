@@ -119,11 +119,11 @@ endif()
 # part of the client itself (ie we don't want to ship it to customers,
 # and therefore don't need to worry about export strictness)
 ADD_YB_LIBRARY(yb_client_test_util
-               SRCS client-test-util.cc
+               SRCS client-test-util.cc snapshot_test_util.cc
                DEPS gmock gtest yb_client yb_test_util)
 
 ADD_YB_LIBRARY(ql-dml-test-base
-               SRCS ql-dml-test-base.cc txn-test-base.cc snapshot_test_util.cc
+               SRCS ql-dml-test-base.cc txn-test-base.cc
                DEPS integration-tests)
 
 # Tests

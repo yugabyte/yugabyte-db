@@ -220,7 +220,7 @@ Result<DocHybridTime> GetTableTombstoneTime(
   table_id = table_id_buf.AsSlice();
 
   auto iter = CreateIntentAwareIterator(
-      doc_db, BloomFilterMode::USE_BLOOM_FILTER, table_id, rocksdb::kDefaultQueryId, txn_op_context,
+      doc_db, BloomFilterOptions::Fixed(table_id), rocksdb::kDefaultQueryId, txn_op_context,
       read_operation_data.WithStatistics(nullptr));
   iter->Seek(table_id, SeekFilter::kAll);
   const auto& entry_data = VERIFY_RESULT_REF(iter->Fetch());
@@ -250,7 +250,7 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
     const ReadOperationData& read_operation_data,
     const dockv::ReaderProjection* projection) {
   auto iter = CreateIntentAwareIterator(
-      doc_db, BloomFilterMode::USE_BLOOM_FILTER, sub_doc_key, query_id,
+      doc_db, BloomFilterOptions::Fixed(sub_doc_key), query_id,
       txn_op_context, read_operation_data);
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());

@@ -68,6 +68,7 @@ DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
 DECLARE_bool(TEST_export_wait_state_names);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_int32(ysql_yb_ash_sample_size);
+DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -563,19 +564,15 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.info();
   }
 
-  Status SetActiveSubTransaction(
-      SubTransactionId id, tserver::PgPerformOptionsPB* options) {
-    tserver::PgSetActiveSubTransactionRequestPB req;
-    req.set_session_id(session_id_);
-    if (options) {
-      options->Swap(req.mutable_options());
-    }
-    req.set_sub_transaction_id(id);
+  Result<bool> PollVectorIndexReady(const PgObjectId& table_id) {
+    tserver::PgPollVectorIndexReadyRequestPB req;
+    req.set_table_id(table_id.GetYbTableId());
 
-    tserver::PgSetActiveSubTransactionResponsePB resp;
+    tserver::PgPollVectorIndexReadyResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->SetActiveSubTransaction(req, &resp, PrepareController()));
-    return ResponseStatus(resp);
+    RETURN_NOT_OK(proxy_->PollVectorIndexReady(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.ready();
   }
 
   Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options) {
@@ -1192,6 +1189,47 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req) {
+    tserver::PgExportTxnSnapshotResponsePB resp;
+    req->set_session_id(session_id_);
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::ExportTxnSnapshot, *req, resp,
+        ash::PggateRPC::kExportTxnSnapshot));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.snapshot_id();
+  }
+
+  Result<tserver::PgSetTxnSnapshotResponsePB> SetTxnSnapshot(
+      PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options) {
+    tserver::PgSetTxnSnapshotRequestPB req;
+    req.set_session_id(session_id_);
+    *req.mutable_options() = std::move(options);
+
+    if (std::holds_alternative<PgTxnSnapshotReadTime>(snapshot_descriptor)) {
+      ReadHybridTime::FromUint64(std::get<uint64_t>(snapshot_descriptor))
+          .ToPB(req.mutable_explicit_read_time());
+    } else {
+      req.set_snapshot_id(std::get<PgTxnSnapshotId>(snapshot_descriptor));
+    }
+
+    tserver::PgSetTxnSnapshotResponsePB resp;
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::SetTxnSnapshot, req, resp,
+        ash::PggateRPC::kSetTxnSnapshot));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Status ClearExportedTxnSnapshots() {
+    tserver::PgClearExportedTxnSnapshotsRequestPB req;
+    tserver::PgClearExportedTxnSnapshotsResponsePB resp;
+    req.set_session_id(session_id_);
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::ClearExportedTxnSnapshots, req, resp,
+        ash::PggateRPC::kClearExportedTxnSnapshots));
+    return ResponseStatus(resp);
+  }
+
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory() {
     tserver::PgActiveSessionHistoryRequestPB req;
     req.set_fetch_tserver_states(true);
@@ -1218,13 +1256,26 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
-      const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const YbcReplicationSlotHashRange* slot_hash_range) {
     cdc::InitVirtualWALForCDCRequestPB req;
 
     req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
     for (const auto& table_id : table_ids) {
       *req.add_table_id() = table_id.GetYbTableId();
+    }
+
+    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) {
+      if (slot_hash_range != NULL) {
+        VLOG(1) << "Setting hash ranges in InitVirtualVWAL request - start_range: "
+                << slot_hash_range->start_range << ", end_range: " << slot_hash_range->end_range;
+        auto req_slot_range = req.mutable_slot_hash_range();
+        req_slot_range->set_start_range(slot_hash_range->start_range);
+        req_slot_range->set_end_range(slot_hash_range->end_range);
+      } else {
+        VLOG(1) << "No hash range constraints to be set in InitVirtualVWAL request";
+      }
     }
 
     cdc::InitVirtualWALForCDCResponsePB resp;
@@ -1476,6 +1527,10 @@ Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oi
   return impl_->GetDatabaseInfo(oid);
 }
 
+Result<bool> PgClient::PollVectorIndexReady(const PgObjectId& table_id) {
+  return impl_->PollVectorIndexReady(table_id);
+}
+
 Result<std::pair<PgOid, PgOid>> PgClient::ReserveOids(
     PgOid database_oid, PgOid next_oid, uint32_t count) {
   return impl_->ReserveOids(database_oid, next_oid, count);
@@ -1529,11 +1584,6 @@ Result<int32> PgClient::TabletServerCount(bool primary_only) {
 
 Result<client::TabletServersInfo> PgClient::ListLiveTabletServers(bool primary_only) {
   return impl_->ListLiveTabletServers(primary_only);
-}
-
-Status PgClient::SetActiveSubTransaction(
-    SubTransactionId id, tserver::PgPerformOptionsPB* options) {
-  return impl_->SetActiveSubTransaction(id, options);
 }
 
 Status PgClient::RollbackToSubTransaction(
@@ -1660,6 +1710,17 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgClient::GetReplicationSlot(
   return impl_->GetReplicationSlot(slot_name);
 }
 
+Result<std::string> PgClient::ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req) {
+  return impl_->ExportTxnSnapshot(req);
+}
+
+Result<tserver::PgSetTxnSnapshotResponsePB> PgClient::SetTxnSnapshot(
+    PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options) {
+  return impl_->SetTxnSnapshot(snapshot_descriptor, std::move(options));
+}
+
+Status PgClient::ClearExportedTxnSnapshots() { return impl_->ClearExportedTxnSnapshots(); }
+
 Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory() {
   return impl_->ActiveSessionHistory();
 }
@@ -1669,8 +1730,9 @@ Result<tserver::PgYCQLStatementStatsResponsePB> PgClient::YCQLStatementStats() {
 }
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
-  return impl_->InitVirtualWALForCDC(stream_id, table_ids);
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const YbcReplicationSlotHashRange* slot_hash_range) {
+  return impl_->InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range);
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgClient::UpdatePublicationTableList(

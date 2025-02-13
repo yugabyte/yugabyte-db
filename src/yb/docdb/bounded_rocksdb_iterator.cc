@@ -17,8 +17,7 @@
 
 #include "yb/rocksdb/db.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 BoundedRocksDbIterator::BoundedRocksDbIterator(
     rocksdb::DB* rocksdb, const rocksdb::ReadOptions& read_opts,
@@ -97,5 +96,8 @@ void BoundedRocksDbIterator::UseFastNext(bool value) {
   iterator_->UseFastNext(value);
 }
 
-}  // namespace docdb
-}  // namespace yb
+void BoundedRocksDbIterator::UpdateFilterKey(Slice user_key_for_filter) {
+  iterator_->UpdateFilterKey(user_key_for_filter);
+}
+
+}  // namespace yb::docdb

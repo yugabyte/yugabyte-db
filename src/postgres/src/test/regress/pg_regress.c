@@ -2614,8 +2614,8 @@ yb_postprocess_output(const char *filename)
 	int			r;
 
 	Assert(filename);
-	const char *postprocess_cmd =
-			getenv("YB_PG_REGRESS_RESULTSFILE_POSTPROCESS_CMD");
+	const char *postprocess_cmd = getenv("YB_PG_REGRESS_RESULTSFILE_POSTPROCESS_CMD");
+
 	if (postprocess_cmd == NULL)
 		return;
 

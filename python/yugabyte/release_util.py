@@ -199,13 +199,18 @@ class ReleaseUtil:
                 for i in range(len(values)):
                     values[i] = self.expand_value(values[i])
 
-    def repo_expand_path(self, path: str) -> str:
+    def repo_expand_path(self, path: str) -> List[str]:
         """
         If path is relative treat it as a path within repo and make it absolute.
         """
-        if not path.startswith('/'):
-            path = os.path.join(YB_SRC_ROOT, path)
-        return path
+        return_path = []
+        if path.startswith('http'):
+            return_path = [path]
+        else:
+            if not path.startswith('/'):
+                path = os.path.join(YB_SRC_ROOT, path)
+            return_path = glob.glob(path)
+        return return_path
 
     def create_distribution(self, distribution_dir: str) -> None:
         """This method would read the release_manifest and traverse through the
@@ -227,8 +232,7 @@ class ReleaseUtil:
             for elem in self.release_manifest[dir_from_manifest]:
                 if not elem:
                     continue
-                elem = self.repo_expand_path(elem)
-                files = glob.glob(elem)
+                files = self.repo_expand_path(elem)
                 for file_path in files:
                     copy_deep(file_path,
                               os.path.join(current_dest_dir, os.path.basename(file_path)))

@@ -78,6 +78,9 @@
 #include <shlwapi.h>
 #endif
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 #define		MAX_L10N_DATA		80
 
 
@@ -1343,6 +1346,14 @@ lc_collate_is_c(Oid collation)
 		return false;
 
 	/*
+	 * At tserver side (for YB expression pushdown) YBCPgIsYugaByteEnabled()
+	 * is false. We assert at PG side before default collation is resolved,
+	 * only C collation is possible (PG 15 has made all catalog tables with
+	 * collation aware columns to all have C collation.
+	 */
+	Assert(!YBCPgIsYugaByteEnabled() || yb_default_collation_resolved || collation == C_COLLATION_OID);
+
+	/*
 	 * If we're asked about the default collation, we have to inquire of the C
 	 * library.  Cache the result so we only have to compute it once.
 	 */
@@ -1578,6 +1589,8 @@ pg_newlocale_from_collation(Oid collid)
 #endif
 				if (!loc)
 					report_newlocale_failure(collcollate);
+				else
+					YbCheckUnsupportedLibcLocale(collcollate);
 			}
 			else
 			{
@@ -1589,10 +1602,14 @@ pg_newlocale_from_collation(Oid collid)
 				loc1 = newlocale(LC_COLLATE_MASK, collcollate, NULL);
 				if (!loc1)
 					report_newlocale_failure(collcollate);
+				else
+					YbCheckUnsupportedLibcLocale(collcollate);
 				errno = 0;
 				loc = newlocale(LC_CTYPE_MASK, collctype, loc1);
 				if (!loc)
 					report_newlocale_failure(collctype);
+				else
+					YbCheckUnsupportedLibcLocale(collctype);
 #else
 
 				/*
@@ -1765,6 +1782,23 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 #endif
 	}
 
+	/* MacOS specific YB change to make unit test results stable. */
+	if (IsYugaByteEnabled())
+	{
+#ifdef __APPLE__
+		if (!collversion &&
+			yb_test_collation &&
+			collprovider == COLLPROVIDER_LIBC &&
+			pg_strcasecmp("C", collcollate) != 0 &&
+			pg_strncasecmp("C.", collcollate, 2) != 0 &&
+			pg_strcasecmp("POSIX", collcollate) != 0)
+			collversion = "2.28";
+#endif
+	}
+
+	if (yb_test_collation)
+		/* Make unit test output stable across different OS types and versions. */
+		return collversion ? "yb-test-2.28" : NULL;
 	return collversion;
 }
 

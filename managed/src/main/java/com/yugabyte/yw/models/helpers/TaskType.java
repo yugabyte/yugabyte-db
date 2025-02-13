@@ -421,6 +421,11 @@ public enum TaskType {
       CustomerTask.TaskType.Switchover,
       CustomerTask.TargetType.DrConfig),
 
+  SwitchoverDrConfigRollback(
+      com.yugabyte.yw.commissioner.tasks.SwitchoverDrConfigRollback.class,
+      CustomerTask.TaskType.Switchover,
+      CustomerTask.TargetType.DrConfig),
+
   EditDrConfig(
       com.yugabyte.yw.commissioner.tasks.EditDrConfig.class,
       CustomerTask.TaskType.Edit,
@@ -604,6 +609,11 @@ public enum TaskType {
       CustomerTask.TaskType.SyncMasterAddresses,
       CustomerTask.TargetType.Universe),
 
+  CreateContinuousBackup(
+      com.yugabyte.yw.commissioner.tasks.CreateContinuousBackup.class,
+      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TargetType.Yba),
+
   CreateYbaBackup(
       com.yugabyte.yw.commissioner.tasks.CreateYbaBackup.class,
       CustomerTask.TaskType.CreateYbaBackup,
@@ -611,12 +621,12 @@ public enum TaskType {
 
   RestoreYbaBackup(
       com.yugabyte.yw.commissioner.tasks.RestoreYbaBackup.class,
-      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TaskType.RestoreYbaBackup,
       CustomerTask.TargetType.Yba),
 
   RestoreContinuousBackup(
       com.yugabyte.yw.commissioner.tasks.RestoreContinuousBackup.class,
-      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TaskType.RestoreYbaBackup,
       CustomerTask.TargetType.Yba),
 
   EnableNodeAgentInUniverse(
@@ -676,8 +686,6 @@ public enum TaskType {
   AnsibleSetupServer(com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer.class),
 
   AnsibleCreateServer(com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer.class),
-
-  PrecheckNode(com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode.class),
 
   PrecheckNodeDetached(com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNodeDetached.class),
 
@@ -804,6 +812,9 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired.class),
 
   DeleteBootstrapIds(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds.class),
+
+  XClusterNetworkConnectivityCheck(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterNetworkConnectivityCheck.class),
 
   DeleteReplication(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication.class),
 
@@ -984,6 +995,9 @@ public enum TaskType {
 
   ManageAlertDefinitions(com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions.class),
 
+  ManageCatalogUpgradeSuperUser(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.class),
+
   MarkSourceMetric(com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric.class),
 
   UniverseSetTlsParams(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams.class),
@@ -1037,6 +1051,9 @@ public enum TaskType {
 
   RollbackYsqlMajorVersionCatalogUpgrade(
       com.yugabyte.yw.commissioner.tasks.subtasks.RollbackYsqlMajorVersionCatalogUpgrade.class),
+
+  FinalizeYsqlMajorCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.FinalizeYsqlMajorCatalogUpgrade.class),
 
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),

@@ -113,8 +113,9 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		!IsBootstrapProcessingMode() &&
 		YbIsCatalogNamespaceByName(relation->schemaname))
 	{
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("system views cannot be created outside of YSQL upgrade")));
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("system views cannot be created outside of YSQL upgrade")));
 	}
 
 	if (OidIsValid(viewOid) && replace)

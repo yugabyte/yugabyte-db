@@ -166,6 +166,10 @@ class BaseDeltaIterator final : public Iterator {
     return delta_iterator_->status();
   }
 
+  void UpdateFilterKey(Slice user_key_for_filter) override {
+    base_iterator_->UpdateFilterKey(user_key_for_filter);
+  }
+
  private:
   void AssertInvariants() {
 #ifndef NDEBUG

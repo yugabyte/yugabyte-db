@@ -14,7 +14,7 @@ showRightNav: true
 
 ## Supported projects
 
-The following projects are recommended for implementing Rust applications using the YugabyteDB YSQL/YCQL API.
+The following projects are recommended for implementing C++ applications using the YugabyteDB YSQL/YCQL API.
 
 | Project | Example apps |
 | :------ | :----------- |
@@ -33,7 +33,7 @@ To develop C applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
   - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/tutorials/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/).
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/macos/).
 
 ## Next step
 

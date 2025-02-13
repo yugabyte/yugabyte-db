@@ -314,6 +314,9 @@ public class CustomerTask extends Model {
     @EnumValue("Switchover")
     Switchover,
 
+    @EnumValue("SwitchoverRollback")
+    SwitchoverRollback,
+
     @EnumValue("PrecheckNode")
     PrecheckNode,
 
@@ -516,6 +519,10 @@ public class CustomerTask extends Model {
           return completed ? "Failed over dr config" : "Failing over dr config";
         case Switchover:
           return completed ? "Switched over dr config" : "Switching over dr config";
+        case SwitchoverRollback:
+          return completed
+              ? "Rolled back the latest switchover dr config task"
+              : "Rolling back the latest switchover dr config task";
         case PrecheckNode:
           return completed ? "Performed preflight check on" : "Performing preflight check on";
         case Abort:

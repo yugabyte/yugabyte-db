@@ -2123,6 +2123,122 @@ public class YBClient implements AutoCloseable {
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  /**
+   * Initiates the YSQL major catalog upgrade process.
+   *
+   * @return An {@link StartYsqlMajorCatalogUpgradeResponse} object containing the response.
+   */
+  public StartYsqlMajorCatalogUpgradeResponse startYsqlMajorCatalogUpgrade() throws Exception {
+    Deferred<StartYsqlMajorCatalogUpgradeResponse> d = asyncClient.startYsqlMajorCatalogUpgrade();
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+        startYsqlMajorCatalogUpgradeResponse -> {
+          return startYsqlMajorCatalogUpgradeResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Checks if the YSQL major catalog upgrade is done.
+   *
+   * @return An {@link IsYsqlMajorCatalogUpgradeDoneResponse} indicating the status of the upgrade.
+   */
+  public IsYsqlMajorCatalogUpgradeDoneResponse isYsqlMajorCatalogUpgradeDone() throws Exception {
+    Deferred<IsYsqlMajorCatalogUpgradeDoneResponse> d = asyncClient.isYsqlMajorCatalogUpgradeDone();
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+        isYsqlMajorCatalogUpgradeDoneResponse -> {
+          return isYsqlMajorCatalogUpgradeDoneResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Finalizes the YSQL major catalog upgrade.
+   *
+   * @return An {@link FinalizeYsqlMajorCatalogUpgradeResponse} object containing the response.
+   */
+  public FinalizeYsqlMajorCatalogUpgradeResponse finalizeYsqlMajorCatalogUpgrade()
+      throws Exception {
+    Deferred<FinalizeYsqlMajorCatalogUpgradeResponse> d =
+        asyncClient.finalizeYsqlMajorCatalogUpgrade();
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+        finalizeYsqlMajorCatalogUpgradeResponse -> {
+          return finalizeYsqlMajorCatalogUpgradeResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Rolls back the YSQL major catalog version.
+   *
+   * @return An {@link RollbackYsqlMajorCatalogVersionResponse} object containing the response.
+   */
+  public RollbackYsqlMajorCatalogVersionResponse rollbackYsqlMajorCatalogVersion()
+      throws Exception {
+    Deferred<RollbackYsqlMajorCatalogVersionResponse> d =
+        asyncClient.rollbackYsqlMajorCatalogVersion();
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+        rollbackYsqlMajorCatalogVersionResponse -> {
+          return rollbackYsqlMajorCatalogVersionResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Retrieves the YSQL major catalog upgrade state response.
+   *
+   * @return An {@link GetYsqlMajorCatalogUpgradeStateResponse} object containing the response.
+   */
+  public GetYsqlMajorCatalogUpgradeStateResponse getYsqlMajorCatalogUpgradeState()
+      throws Exception {
+    Deferred<GetYsqlMajorCatalogUpgradeStateResponse> d =
+        asyncClient.getYsqlMajorCatalogUpgradeState();
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+        getYsqlMajorCatalogUpgradeStateResponse -> {
+          return getYsqlMajorCatalogUpgradeStateResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
   public SetCheckpointResponse bootstrapTablet(
       YBTable table,
       String streamId,

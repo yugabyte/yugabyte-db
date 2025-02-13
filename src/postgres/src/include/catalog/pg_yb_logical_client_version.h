@@ -43,4 +43,4 @@ typedef FormData_yb_pg_logical_client_version *Form_yb_pg_logical_client_version
 
 DECLARE_UNIQUE_INDEX_PKEY(pg_yb_logical_client_version_db_oid_index, 8075, YBLogicalClientVersionDbOidIndexId, on pg_yb_logical_client_version using btree(db_oid oid_ops));
 
-#endif                          /* PG_YB_LOGICAL_CLIENT_VERSION_H */
+#endif							/* PG_YB_LOGICAL_CLIENT_VERSION_H */

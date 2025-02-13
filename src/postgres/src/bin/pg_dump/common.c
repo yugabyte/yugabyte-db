@@ -919,7 +919,7 @@ findExtensionByOid(Oid oid)
 YbTablegroupInfo *
 findTablegroupByOid(Oid oid)
 {
-	CatalogId		catId;
+	CatalogId	catId;
 	DumpableObject *dobj;
 
 	catId.tableoid = YbTablegroupRelationId;

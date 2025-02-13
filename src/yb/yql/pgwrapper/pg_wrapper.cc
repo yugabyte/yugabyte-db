@@ -298,7 +298,7 @@ DEFINE_RUNTIME_PG_FLAG(
     "Maximum number of changes kept in memory per transaction in reorder buffer, which is used in "
     "streaming changes via logical replication . After that, changes are spooled to disk.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, 2048, // 2 KB
     "Size threshold in bytes for a catcache tuple to be compressed.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
@@ -330,6 +330,11 @@ DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
 DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
     "Enables the collection of query diagnostics data for YSQL queries, "
     "facilitating the creation of diagnostic bundles.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
+    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and "
+    "11.");
+DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11));
 
 DECLARE_bool(enable_pg_cron);
 
@@ -899,15 +904,7 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
     }
   }
 
-  int status = 0;
-  RETURN_NOT_OK(initdb_subprocess.Start());
-  RETURN_NOT_OK(initdb_subprocess.Wait(&status));
-  if (status != 0) {
-    SCHECK(
-        WIFEXITED(status), InternalError, Format("$0 did not exit normally", initdb_program_path));
-    return STATUS_FORMAT(
-        RuntimeError, "$0 failed with exit code $1", initdb_program_path, WEXITSTATUS(status));
-  }
+  RETURN_NOT_OK(initdb_subprocess.Run());
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
   return Status::OK();
@@ -937,13 +934,9 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   }
 
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
-  Subprocess subprocess(program_path, args);
-
-  auto status = Subprocess::Call(args);
-  if (!status.ok()) {
-    return status.CloneAndAppend(
-        "pg_upgrade failed. Check the standard output and standard error for more details.");
-  }
+  RETURN_NOT_OK_PREPEND(
+      Subprocess::Call(args, /*log_stdout_and_stderr=*/true),
+      "pg_upgrade failed. Check previous errors for more details.");
 
   LOG(INFO) << "pg_upgrade completed successfully";
   return Status::OK();

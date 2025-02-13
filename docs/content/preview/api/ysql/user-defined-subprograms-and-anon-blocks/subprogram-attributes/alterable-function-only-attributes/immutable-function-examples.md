@@ -240,7 +240,7 @@ set x.a = '19';
 execute q;
 ```
 
-The result is unchanged—and so it's now _wrong_ with respect the function's intended behavior. The reason is that the results for the actual arguments _"2"_ and _"3"_ have been cached in the execution plan that hangs off the prepared statement _"q"_. You can demonstrate this by using _[discard plans](https://www.postgresql.org/docs/11/sql-discard.html)_, thus:
+The result is unchanged—and so it's now _wrong_ with respect the function's intended behavior. The reason is that the results for the actual arguments _"2"_ and _"3"_ have been cached in the execution plan that hangs off the prepared statement _"q"_. You can demonstrate this by using _[discard plans](https://www.postgresql.org/docs/15/sql-discard.html)_, thus:
 
 ```plpgsql
 discard plans;

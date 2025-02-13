@@ -119,7 +119,7 @@ class DummyANN final : public VectorANN<Vector> {
         continue;
       }
 
-      auto it = vectors_.find(vd.vertex_id);
+      auto it = vectors_.find(vd.vector_id);
       CHECK(it != vectors_.end()); // Sanity check, it is expected the vector exists.
 
       out.push_back(DocKeyWithDistance(std::get<Slice>(it->second), vd.distance));

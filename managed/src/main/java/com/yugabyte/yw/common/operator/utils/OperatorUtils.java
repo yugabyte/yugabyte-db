@@ -8,8 +8,10 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -20,6 +22,8 @@ import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -28,6 +32,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -35,6 +40,8 @@ import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -52,13 +59,16 @@ public class OperatorUtils {
   private final RuntimeConfGetter confGetter;
   private final String namespace;
   private final Config k8sClientConfig;
+  private final YbcManager ybcManager;
 
   private ReleaseManager releaseManager;
 
   @Inject
-  public OperatorUtils(RuntimeConfGetter confGetter, ReleaseManager releaseManager) {
+  public OperatorUtils(
+      RuntimeConfGetter confGetter, ReleaseManager releaseManager, YbcManager ybcManager) {
     this.releaseManager = releaseManager;
     this.confGetter = confGetter;
+    this.ybcManager = ybcManager;
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     ConfigBuilder confBuilder = new ConfigBuilder();
     if (namespace == null || namespace.trim().isEmpty()) {
@@ -126,9 +136,13 @@ public class OperatorUtils {
   /*--- YBUniverse related help methods ---*/
 
   public boolean shouldUpdateYbUniverse(
-      UserIntent currentUserIntent, int newNumNodes, DeviceInfo newDeviceInfo) {
+      UserIntent currentUserIntent,
+      int newNumNodes,
+      DeviceInfo newDeviceInfo,
+      DeviceInfo newMasterDeviceInfo) {
     return !(currentUserIntent.numNodes == newNumNodes)
-        || !currentUserIntent.deviceInfo.volumeSize.equals(newDeviceInfo.volumeSize);
+        || !currentUserIntent.deviceInfo.volumeSize.equals(newDeviceInfo.volumeSize)
+        || !currentUserIntent.masterDeviceInfo.volumeSize.equals(newMasterDeviceInfo.volumeSize);
   }
 
   public String getKubernetesOverridesString(
@@ -229,6 +243,36 @@ public class OperatorUtils {
     return di;
   }
 
+  public DeviceInfo mapMasterDeviceInfo(
+      io.yugabyte.operator.v1alpha1.ybuniversespec.MasterDeviceInfo spec) {
+    DeviceInfo di = new DeviceInfo();
+
+    if (spec == null) {
+      return defaultMasterDeviceInfo();
+    }
+
+    Long numVols = spec.getNumVolumes();
+    if (numVols != null) {
+      di.numVolumes = numVols.intValue();
+    }
+
+    Long volSize = spec.getVolumeSize();
+    if (volSize != null) {
+      di.volumeSize = volSize.intValue();
+    }
+
+    di.storageClass = spec.getStorageClass();
+
+    return di;
+  }
+
+  public DeviceInfo defaultMasterDeviceInfo() {
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 50;
+    masterDeviceInfo.numVolumes = 1;
+    return masterDeviceInfo;
+  }
+
   public boolean universeAndSpecMismatch(Customer cust, Universe u, YBUniverse ybUniverse) {
     return universeAndSpecMismatch(cust, u, ybUniverse, null);
   }
@@ -243,6 +287,11 @@ public class OperatorUtils {
 
     UserIntent currentUserIntent = universeDetails.getPrimaryCluster().userIntent;
 
+    // Handle previously unset masterDeviceInfo
+    if (currentUserIntent.masterDeviceInfo == null) {
+      currentUserIntent.masterDeviceInfo = defaultMasterDeviceInfo();
+    }
+
     Provider provider =
         Provider.getOrBadRequest(cust.getUuid(), UUID.fromString(currentUserIntent.provider));
     // Get all required params
@@ -251,7 +300,11 @@ public class OperatorUtils {
         getKubernetesOverridesString(ybUniverse.getSpec().getKubernetesOverrides());
     String incomingYbSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
     DeviceInfo incomingDeviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
+    DeviceInfo incomingMasterDeviceInfo =
+        mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
     int incomingNumNodes = (int) ybUniverse.getSpec().getNumNodes().longValue();
+    Boolean pauseChangeRequired =
+        ybUniverse.getSpec().getPaused() != u.getUniverseDetails().universePaused;
 
     if (prevTaskToRerun != null) {
       TaskType specificTaskTypeToRerun = prevTaskToRerun.getTaskType();
@@ -260,7 +313,10 @@ public class OperatorUtils {
           UniverseDefinitionTaskParams prevTaskParams =
               Json.fromJson(prevTaskToRerun.getTaskParams(), UniverseDefinitionTaskParams.class);
           return shouldUpdateYbUniverse(
-              prevTaskParams.getPrimaryCluster().userIntent, incomingNumNodes, incomingDeviceInfo);
+              prevTaskParams.getPrimaryCluster().userIntent,
+              incomingNumNodes,
+              incomingDeviceInfo,
+              incomingMasterDeviceInfo);
         case KubernetesOverridesUpgrade:
           KubernetesOverridesUpgradeParams overridesUpgradeTaskParams =
               Json.fromJson(
@@ -277,17 +333,34 @@ public class OperatorUtils {
           return false;
       }
     }
-
-    return (!StringUtils.equals(incomingOverrides, currentUserIntent.universeOverrides))
-        || checkIfGFlagsChanged(
-            u,
-            u.getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .specificGFlags /*Current gflags */,
-            specGFlags)
-        || shouldUpdateYbUniverse(currentUserIntent, incomingNumNodes, incomingDeviceInfo)
-        || !StringUtils.equals(currentUserIntent.ybSoftwareVersion, incomingYbSoftwareVersion);
+    Boolean mismatch = false;
+    mismatch =
+        mismatch || !StringUtils.equals(incomingOverrides, currentUserIntent.universeOverrides);
+    log.trace("overrides mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || checkIfGFlagsChanged(
+                u,
+                u.getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .specificGFlags /*Current gflags */,
+                specGFlags);
+    log.trace("gflags mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || shouldUpdateYbUniverse(
+                currentUserIntent, incomingNumNodes, incomingDeviceInfo, incomingMasterDeviceInfo);
+    log.trace("nodes mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || !StringUtils.equals(currentUserIntent.ybSoftwareVersion, incomingYbSoftwareVersion);
+    log.trace("version mismatch: {}", mismatch);
+    mismatch = mismatch || pauseChangeRequired;
+    log.trace("pause mismatch: {}", mismatch);
+    mismatch = mismatch || isThrottleParamUpdate(u, ybUniverse);
+    log.trace("throttle mismatch: {}", mismatch);
+    return mismatch;
   }
 
   /*--- Release related help methods ---*/
@@ -359,5 +432,89 @@ public class OperatorUtils {
       log.error("Error in deleting release", re);
     }
     log.info("Removed release {}", release.getMetadata().getName());
+  }
+
+  public String getAndParseSecretForKey(String name, @Nullable String namespace, String key) {
+    Secret secret = getSecret(name, namespace);
+    if (secret == null) {
+      log.warn("Secret {} not found", name);
+      return null;
+    }
+    return parseSecretForKey(secret, key);
+  }
+
+  public Secret getSecret(String name, @Nullable String namespace) {
+    try (final KubernetesClient kubernetesClient =
+        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+      if (StringUtils.isBlank(namespace)) {
+        log.info("Getting secret '{}' from default namespace", name);
+        namespace = "default";
+      }
+      return kubernetesClient.secrets().inNamespace(namespace).withName(name).get();
+    }
+  }
+
+  // parseSecretForKey checks secret data for the key. If not found, it will then check stringData.
+  // Returns null if the key is not found at all.
+  // Also handles null secret.
+  public String parseSecretForKey(Secret secret, String key) {
+    if (secret == null) {
+      return null;
+    }
+    if (secret.getData().get(key) != null) {
+      return new String(Base64.getDecoder().decode(secret.getData().get(key)));
+    }
+    return secret.getStringData().get(key);
+  }
+
+  /*
+   * Determines if there is a need to update throttle parameters for a given universe.
+   *
+   * This method compares the current throttle parameters of the universe with the specified
+   * parameters in the YBUniverse specification. If the specification parameters are not defined,
+   * it checks if the current parameters are set to their default values as obtained from the YBC
+   * API. If there is any mismatch between the current and specified parameters, or if the current
+   * parameters are not set to their default values when no specification is provided, the method
+   * returns true, indicating an update is required.
+   *
+   * @param universe the Universe object representing the current state of the universe.
+   * @param ybUniverse the YBUniverse object containing the specification for throttle parameters.
+   * @return true if an update to throttle parameters is needed; false otherwise.
+   * @throws RuntimeException if an unknown throttle parameter is encountered.
+   */
+  public boolean isThrottleParamUpdate(Universe universe, YBUniverse ybUniverse) {
+    YbcThrottleParameters specParams = ybUniverse.getSpec().getYbcThrottleParameters();
+    YbcThrottleParametersResponse currentParams =
+        ybcManager.getThrottleParams(universe.getUniverseUUID());
+    for (String key : currentParams.getThrottleParamsMap().keySet()) {
+      ThrottleParamValue currentParam = currentParams.getThrottleParamsMap().get(key);
+      // when spec params is not defined, we need to ensure all current throttle params are set to
+      // their default values
+      // according to the YBC Api to get them.
+      if (specParams == null) {
+        if (currentParam.getPresetValues().getDefaultValue() != currentParam.getCurrentValue())
+          return true;
+      } else {
+        Long value = (long) currentParam.getCurrentValue();
+        switch (key) {
+          case GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS:
+            if (value != specParams.getMaxConcurrentDownloads()) return true;
+            break;
+          case GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS:
+            if (value != specParams.getMaxConcurrentUploads()) return true;
+            break;
+          case GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS:
+            if (value != specParams.getPerDownloadNumObjects()) return true;
+            break;
+          case GFlagsUtil.YBC_PER_UPLOAD_OBJECTS:
+            if (value != specParams.getPerUploadNumObjects()) return true;
+            break;
+          default:
+            // This shoud only happen if a new throttle parameter is introduced and not added here.
+            throw new RuntimeException("Unknown throttle parameter: " + key);
+        }
+      }
+    }
+    return false;
   }
 }

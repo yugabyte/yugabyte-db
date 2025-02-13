@@ -1493,7 +1493,8 @@ public class TestYbBackup extends BasePgSQLTest {
     // session would latch onto a new physical connection. Instead, two logical
     // connections use the same physical connection, leading to unexpected
     // results as per the expectations of the test.
-    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
+        isTestRunningWithConnectionManager());
 
     if (disableGeoPartitionedTests()) {
       return;
@@ -1531,7 +1532,8 @@ public class TestYbBackup extends BasePgSQLTest {
     // session would latch onto a new physical connection. Instead, two logical
     // connections use the same physical connection, leading to unexpected
     // results as per the expectations of the test.
-    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
+        isTestRunningWithConnectionManager());
 
     if (disableGeoPartitionedTests()) {
       return;
@@ -1613,17 +1615,26 @@ public class TestYbBackup extends BasePgSQLTest {
   public void doTestBackupRestoreRoles(boolean restoreRoles, boolean useRoles)
       throws Exception {
     // ybc doesn't support --ignore_existing_roles currently
-    if(TestUtils.useYbController()){
+    if (TestUtils.useYbController()){
       return;
     }
+
+    String[] roles = {"admin", "CaseSensitiveRole", "role_with_a space", "Role with spaces",
+                      "Role with a quote '", "Role with 'quotes'",
+                      "Role with a double quote \"", "Role with double \"quotes\"",
+                      "Role_\"_with_\"\"_different' quotes''"};
     String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE test_table(id INT PRIMARY KEY)");
       stmt.execute("INSERT INTO test_table (id) VALUES (1)");
 
-      stmt.execute("CREATE ROLE admin LOGIN NOINHERIT");
-      stmt.execute("REVOKE ALL ON TABLE test_table FROM admin");
-      stmt.execute("GRANT SELECT ON TABLE test_table TO admin");
+      for (final String role : roles) {
+        LOG.info("Create role: {}", role);
+        final String role_str = formatPGId(role);
+        stmt.execute("CREATE ROLE " + role_str + " LOGIN NOINHERIT");
+        stmt.execute("REVOKE ALL ON TABLE test_table FROM " + role_str);
+        stmt.execute("GRANT SELECT ON TABLE test_table TO " + role_str);
+      }
 
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -1641,6 +1652,7 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("REVOKE ALL ON TABLE test_table FROM admin");
       stmt.execute("DROP ROLE admin");
+      // Do not drop other roles.
     }
 
     List<String> args = new ArrayList<>(Arrays.asList(
@@ -1669,19 +1681,22 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
     }
 
-    try (Connection connection4 =
-             getConnectionBuilder().withDatabase("yb2").withUser("admin").connect();
-         Statement stmt = connection4.createStatement()) {
-      assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
+    for (final String role : roles) {
+      LOG.info("Test role: {}", role);
+      try (Connection connection4 =
+               getConnectionBuilder().withDatabase("yb2").withUser(role).connect();
+           Statement stmt = connection4.createStatement()) {
+        assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
 
-      runInvalidQuery(stmt, "INSERT INTO test_table (id) VALUES (9)", PERMISSION_DENIED);
-    } catch (PSQLException ex) {
-      if (restoreRoles) {
-        throw ex;
-      } else {
-        LOG.info("Expected exception", ex);
-        assertTrue(ex.getMessage().contains("FATAL: role \"admin\" does not exist"));
-     }
+        runInvalidQuery(stmt, "INSERT INTO test_table (id) VALUES (9)", PERMISSION_DENIED);
+      } catch (PSQLException ex) {
+        if (restoreRoles) {
+          throw ex;
+        } else {
+          LOG.info("Expected exception", ex);
+          assertTrue(ex.getMessage().contains("FATAL: role \"admin\" does not exist"));
+       }
+      }
     }
 
     // Cleanup.
@@ -2149,7 +2164,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(1,100)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(50.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(78));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(79));
 
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -2183,7 +2198,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(101,200)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(100.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(78));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(79));
 
       // Test whether extension membership is set correctly after restoration.
       stmt.execute("DROP EXTENSION orafce CASCADE");

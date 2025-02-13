@@ -9,7 +9,7 @@ menu:
     name: Join strategies
     identifier: joins-strategies-ysql
     parent: architecture-query-layer
-    weight: 100
+    weight: 200
 type: docs
 ---
 

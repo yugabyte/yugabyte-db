@@ -1,10 +1,10 @@
 ---
 title: How to Develop LLM Apps with LangChain, OpenAI and YugabyteDB
-headerTitle: Build LLM applications with LangChain, OpenAI, and YugaybteDB
+headerTitle: Build LLM applications with LangChain, OpenAI, and YugabyteDB
 linkTitle: LangChain and OpenAI
 description: Learn to build context-aware LLM applications using LangChain and OpenAI.
 image: /images/tutorials/ai/icons/langchain-icon.svg
-headcontent: Use YugaybteDB as the database backend for LLM applications
+headcontent: Use YugabyteDB as the database backend for LLM applications
 menu:
   preview_tutorials:
     identifier: tutorials-ai-langchain-openai

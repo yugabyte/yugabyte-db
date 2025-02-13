@@ -731,21 +731,19 @@ public class UpgradeUniverseHandler {
         universe.getName(),
         taskUUID);
 
-    if (!upgradeTaskParams.isRunOnlyPrechecks()) {
-      CustomerTask.create(
-          customer,
-          universe.getUniverseUUID(),
-          taskUUID,
-          CustomerTask.TargetType.Universe,
-          customerTaskType,
-          universe.getName(),
-          customTaskName);
-      log.info(
-          "Saved task uuid {} in customer tasks table for universe {} : {}.",
-          taskUUID,
-          universe.getUniverseUUID(),
-          universe.getName());
-    }
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        customerTaskType,
+        universe.getName(),
+        customTaskName);
+    log.info(
+        "Saved task uuid {} in customer tasks table for universe {} : {}.",
+        taskUUID,
+        universe.getUniverseUUID(),
+        universe.getName());
     return taskUUID;
   }
 

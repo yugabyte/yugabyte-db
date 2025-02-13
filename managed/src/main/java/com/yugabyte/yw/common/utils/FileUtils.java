@@ -8,9 +8,12 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -21,15 +24,23 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+import java.util.zip.GZIPInputStream;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.compress.archivers.ArchiveException;
+import org.apache.commons.compress.archivers.ArchiveStreamFactory;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Environment;
 import play.libs.Json;
 
+@Slf4j
 public class FileUtils {
 
   public static final Logger LOG = LoggerFactory.getLogger(FileUtils.class);
@@ -232,5 +243,90 @@ public class FileUtils {
       return hash;
     }
     return hexString.substring(0, rSize);
+  }
+
+  /**
+   * Untar an input file into an output file.
+   *
+   * <p>The output file is created in the output folder, having the same name as the input file,
+   * minus the '.tar' extension.
+   *
+   * @param inputFile the input .tar file
+   * @param outputDir the output directory file.
+   * @throws IOException
+   * @throws FileNotFoundException
+   * @return The {@link List} of {@link File}s with the untared content.
+   * @throws ArchiveException
+   */
+  public static List<File> unTar(final File inputFile, final File outputDir)
+      throws FileNotFoundException, IOException, ArchiveException {
+
+    log.info(
+        String.format(
+            "Untaring %s to dir %s.", inputFile.getAbsolutePath(), outputDir.getAbsolutePath()));
+
+    final List<File> untaredFiles = new LinkedList<File>();
+    try (InputStream is = new FileInputStream(inputFile);
+        TarArchiveInputStream debInputStream =
+            (TarArchiveInputStream)
+                new ArchiveStreamFactory().createArchiveInputStream("tar", is)) {
+      TarArchiveEntry entry = null;
+      while ((entry = (TarArchiveEntry) debInputStream.getNextEntry()) != null) {
+        final File outputFile = new File(outputDir, entry.getName());
+        if (entry.isDirectory()) {
+          log.info(
+              String.format(
+                  "Attempting to write output directory %s.", outputFile.getAbsolutePath()));
+          if (!outputFile.exists()) {
+            log.info(
+                String.format(
+                    "Attempting to create output directory %s.", outputFile.getAbsolutePath()));
+            if (!outputFile.mkdirs()) {
+              throw new IllegalStateException(
+                  String.format("Couldn't create directory %s.", outputFile.getAbsolutePath()));
+            }
+          }
+        } else {
+          // Don't log the output file here because platform logs get polluted.
+          File parent = outputFile.getParentFile();
+          if (!parent.exists()) parent.mkdirs();
+          try (OutputStream outputFileStream = new FileOutputStream(outputFile)) {
+            IOUtils.copy(debInputStream, outputFileStream);
+          }
+        }
+        untaredFiles.add(outputFile);
+      }
+    }
+
+    return untaredFiles;
+  }
+
+  /**
+   * Ungzip an input file into an output file.
+   *
+   * <p>The output file is created in the output folder, having the same name as the input file,
+   * minus the '.gz' extension.
+   *
+   * @param inputFile the input .gz file
+   * @param outputDir the output directory file.
+   * @throws IOException
+   * @throws FileNotFoundException
+   * @return The {@File} with the ungzipped content.
+   */
+  public static File unGzip(final File inputFile, final File outputDir)
+      throws FileNotFoundException, IOException {
+
+    log.info(
+        String.format(
+            "Ungzipping %s to dir %s.", inputFile.getAbsolutePath(), outputDir.getAbsolutePath()));
+
+    final File outputFile =
+        new File(outputDir, inputFile.getName().substring(0, inputFile.getName().length() - 3));
+
+    try (GZIPInputStream in = new GZIPInputStream(new FileInputStream(inputFile));
+        FileOutputStream out = new FileOutputStream(outputFile)) {
+      IOUtils.copy(in, out);
+      return outputFile;
+    }
   }
 }

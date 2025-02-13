@@ -21,7 +21,6 @@ import org.yb.master.MasterTypes.MasterErrorPB;
 @InterfaceAudience.Public
 public class PromoteAutoFlagsResponse extends YRpcResponse {
   private int newConfigVersion;
-  private boolean nonRuntimeFlagsPromoted;
   private MasterErrorPB masterErrorPB;
 
   public PromoteAutoFlagsResponse(long elapsedMillis,
@@ -29,7 +28,6 @@ public class PromoteAutoFlagsResponse extends YRpcResponse {
                                   MasterClusterOuterClass.PromoteAutoFlagsResponsePB response) {
     super(elapsedMillis, uuid);
     this.newConfigVersion = response.getNewConfigVersion();
-    this.nonRuntimeFlagsPromoted = response.getNonRuntimeFlagsPromoted();
     this.masterErrorPB = response.hasError() ? response.getError() : null;
   }
 
@@ -47,9 +45,5 @@ public class PromoteAutoFlagsResponse extends YRpcResponse {
 
   public MasterErrorPB getError() {
     return this.masterErrorPB;
-  }
-
-  public boolean getNonRuntimeFlagsPromoted() {
-    return this.nonRuntimeFlagsPromoted;
   }
 }

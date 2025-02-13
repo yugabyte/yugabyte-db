@@ -76,7 +76,8 @@ class GcpCloud(AbstractCloud):
             args.assign_static_public_ip, ssh_keys, boot_script=args.boot_script,
             auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags,
             cloud_subnet_secondary=args.cloud_subnet_secondary,
-            gcp_instance_template=args.instance_template)
+            gcp_instance_template=args.instance_template, disk_iops=args.disk_iops,
+            disk_throughput=args.disk_throughput)
 
     def create_disk(self, args, body):
         self.get_admin().create_disk(args.zone, args.instance_tags, body)
@@ -110,10 +111,11 @@ class GcpCloud(AbstractCloud):
                      name, args['search_pattern'], args['zone']))
         self.get_admin().unmount_disk(args['zone'], args['search_pattern'], name)
 
-    def stop_instance(self, args):
-        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'])
+    def stop_instance(self, host_info):
+        instance = self.get_admin().get_instances(host_info['zone'], host_info['search_pattern'],
+                                                  node_uuid=host_info.get('node_uuid', None))
         if not instance:
-            logging.error("Host {} does not exist".format(args['search_pattern']))
+            logging.error("Host {} does not exist".format(host_info['search_pattern']))
             return
         instance_state = instance['instance_state']
         if instance_state == 'TERMINATED':
@@ -128,10 +130,11 @@ class GcpCloud(AbstractCloud):
             raise YBOpsRuntimeError("Host {} cannot be stopped while in '{}' state".format(
                 instance['name'], instance_state))
 
-    def start_instance(self, args, server_ports):
-        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'])
+    def start_instance(self, host_info, server_ports):
+        instance = self.get_admin().get_instances(host_info['zone'], host_info['search_pattern'],
+                                                  node_uuid=host_info.get('node_uuid', None))
         if not instance:
-            logging.error("Host {} does not exist".format(args['search_pattern']))
+            logging.error("Host {} does not exist".format(host_info['search_pattern']))
             return
         instance_state = instance['instance_state']
         if instance_state == 'RUNNING':
@@ -335,7 +338,9 @@ class GcpCloud(AbstractCloud):
         """
         zone = args.zone
         search_pattern = args.search_pattern
-        return self.get_admin().get_instances(zone, search_pattern, get_all, filters=filters)
+        node_uuid = args.node_uuid
+        return self.get_admin().get_instances(zone, search_pattern, get_all, filters=filters,
+                                              node_uuid=node_uuid)
 
     def get_device_names(self, args):
         # Boot disk is also a persistent disk, so add persistent disks starting at index 1

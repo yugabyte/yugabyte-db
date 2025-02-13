@@ -160,7 +160,7 @@ do { \
 	CritSectionCount--; \
 } while(0)
 
-#else /* !FRONTEND */
+#else							/* !FRONTEND */
 
 #define START_CRIT_SECTION()  \
 do { \
@@ -176,7 +176,7 @@ do { \
 	if (MyProc && CritSectionCount == 0) \
 		MyProc->ybEnteredCriticalSection = false; \
 } while(0)
-#endif /* FRONTEND */
+#endif							/* FRONTEND */
 
 
 /*****************************************************************************

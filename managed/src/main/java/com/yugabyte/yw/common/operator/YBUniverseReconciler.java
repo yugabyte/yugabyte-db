@@ -13,7 +13,9 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
@@ -21,6 +23,7 @@ import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
@@ -36,6 +39,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
@@ -54,8 +58,11 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
@@ -98,6 +105,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final TaskExecutor taskExecutor;
   private final RuntimeConfGetter confGetter;
   private final CustomerTaskManager customerTaskManager;
+  private final UniverseActionsHandler universeActionsHandler;
+  private final YbcManager ybcManager;
   private final Set<UUID> universeReadySet;
   private final Map<String, String> universeDeletionReferenceMap;
   private final Map<String, UUID> universeTaskMap;
@@ -118,7 +127,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       KubernetesOperatorStatusUpdater kubernetesStatusUpdater,
       RuntimeConfGetter confGetter,
       CustomerTaskManager customerTaskManager,
-      OperatorUtils operatorUtils) {
+      OperatorUtils operatorUtils,
+      UniverseActionsHandler universeActionsHandler,
+      YbcManager ybcManager) {
     this(
         client,
         informerFactory,
@@ -131,7 +142,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         kubernetesStatusUpdater,
         confGetter,
         customerTaskManager,
-        operatorUtils);
+        operatorUtils,
+        universeActionsHandler,
+        ybcManager);
   }
 
   @VisibleForTesting
@@ -147,7 +160,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       KubernetesOperatorStatusUpdater kubernetesStatusUpdater,
       RuntimeConfGetter confGetter,
       CustomerTaskManager customerTaskManager,
-      OperatorUtils operatorUtils) {
+      OperatorUtils operatorUtils,
+      UniverseActionsHandler universeActionsHandler,
+      YbcManager ybcManager) {
 
     super(client, informerFactory);
     this.ybUniverseClient = client.resources(YBUniverse.class);
@@ -168,6 +183,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     this.universeDeletionReferenceMap = new HashMap<>();
     this.universeTaskMap = new HashMap<>();
     this.operatorUtils = operatorUtils;
+    this.universeActionsHandler = universeActionsHandler;
+    this.ybcManager = ybcManager;
   }
 
   private static String getWorkQueueKey(YBUniverse ybUniverse) {
@@ -698,14 +715,25 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     UserIntent currentUserIntent = universeDetails.getPrimaryCluster().userIntent;
     UserIntent incomingIntent = createUserIntent(ybUniverse, cust.getUuid(), false);
 
+    // Handle previously unset masterDeviceInfo
+    if (currentUserIntent.masterDeviceInfo == null) {
+      currentUserIntent.masterDeviceInfo = operatorUtils.defaultMasterDeviceInfo();
+    }
+
     // Fix non-changeable values to current.
     incomingIntent.accessKeyCode = currentUserIntent.accessKeyCode;
     incomingIntent.enableExposingService = currentUserIntent.enableExposingService;
 
     KubernetesResourceDetails k8ResourceDetails =
         KubernetesResourceDetails.fromResource(ybUniverse);
-    UUID taskUUID = null;
 
+    // If the universe is paused, and we aren't unpausing, requeue the task.
+    if (ybUniverse.getSpec().getPaused() && universeDetails.universePaused) {
+      log.debug("Universe {} is paused, requeuing", ybUniverse.getMetadata().getName());
+      workqueue.requeue(getWorkQueueKey(ybUniverse), OperatorWorkQueue.ResourceAction.NO_OP, false);
+    }
+
+    UUID taskUUID = null;
     try {
       if (specificTaskTypeToRerun != null) {
         // For cases when we want to do a re-run of same task type
@@ -721,6 +749,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                 universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
             currentUserIntent.numNodes = incomingIntent.numNodes;
             currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
+            currentUserIntent.masterDeviceInfo.volumeSize =
+                incomingIntent.masterDeviceInfo.volumeSize;
             taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
             break;
           case KubernetesOverridesUpgrade:
@@ -752,8 +782,50 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             throw new RuntimeException("Unexpected task tried for re-run");
         }
       } else {
-        // Case with new edits
-        if (!StringUtils.equals(
+        // Handle Pause
+        if (!universeDetails.universePaused && ybUniverse.getSpec().getPaused()) {
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.PauseUniverse.name());
+          taskUUID =
+              universeActionsHandler.pause(
+                  cust, universe, KubernetesResourceDetails.fromResource(ybUniverse));
+          // Handle Resume
+        } else if (universeDetails.universePaused && !ybUniverse.getSpec().getPaused()) {
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.ResumeUniverse.name());
+          taskUUID = resumeYbUniverse(cust, universe, ybUniverse);
+          // Rare case where creating the Resume task will raise IOException and return null.
+          // Handle and requeue.
+          if (taskUUID == null) {
+            log.error("failed to create universe resume task");
+            kubernetesStatusUpdater.updateUniverseState(
+                KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.ERROR_UPDATING);
+            workqueue.requeue(
+                getWorkQueueKey(ybUniverse), OperatorWorkQueue.ResourceAction.NO_OP, false);
+            return;
+          }
+          // Handle updating throttle params.
+        } else if (operatorUtils.isThrottleParamUpdate(universe, ybUniverse)) {
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          // TODO: We should probably update the universe status better here, but the
+          // KubernetesOperatorStatusUpdater currently doesn't have a good way to do this - all
+          // action updates are task based right now
+          updateThrottleParams(universe, ybUniverse);
+          kubernetesStatusUpdater.updateUniverseState(
+              KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.READY);
+          // Case with new edits
+        } else if (!StringUtils.equals(
             incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
           log.info("Updating Kubernetes Overrides");
           kubernetesStatusUpdater.createYBUniverseEventStatus(
@@ -792,10 +864,15 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
               upgradeYBUniverse(
                   universeDetails, cust, ybUniverse, incomingIntent.ybSoftwareVersion);
         } else if (operatorUtils.shouldUpdateYbUniverse(
-            currentUserIntent, incomingIntent.numNodes, incomingIntent.deviceInfo)) {
+            currentUserIntent,
+            incomingIntent.numNodes,
+            incomingIntent.deviceInfo,
+            incomingIntent.masterDeviceInfo)) {
           log.info("Calling Edit Universe");
           currentUserIntent.numNodes = incomingIntent.numNodes;
           currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
+          currentUserIntent.masterDeviceInfo.volumeSize =
+              incomingIntent.masterDeviceInfo.volumeSize;
           kubernetesStatusUpdater.createYBUniverseEventStatus(
               universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
           if (checkAndHandleUniverseLock(
@@ -930,6 +1007,16 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     return universeCRUDHandler.update(cust, oldUniverse, taskConfigParams);
   }
 
+  private UUID resumeYbUniverse(Customer cust, Universe universe, YBUniverse ybUniverse) {
+    try {
+      return universeActionsHandler.resume(
+          cust, universe, KubernetesResourceDetails.fromResource(ybUniverse));
+    } catch (IOException e) {
+      log.error("Failed to resume universe", e);
+      return null;
+    }
+  }
+
   @VisibleForTesting
   protected UniverseConfigureTaskParams createTaskParams(YBUniverse ybUniverse, UUID customerUUID)
       throws Exception {
@@ -988,8 +1075,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       userIntent.accessKeyCode = "";
 
       userIntent.deviceInfo = operatorUtils.mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
-      log.debug("ui.deviceInfo : {}", userIntent.deviceInfo);
-      log.debug("given deviceInfo: {} ", ybUniverse.getSpec().getDeviceInfo());
+      userIntent.masterDeviceInfo =
+          operatorUtils.mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
 
       userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
       userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
@@ -1037,6 +1124,174 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
+  private void updateThrottleParams(Universe universe, YBUniverse ybUniverse) {
+    YbcThrottleParameters specParams = ybUniverse.getSpec().getYbcThrottleParameters();
+    Map<String, ThrottleParamValue> currentParamsMap =
+        ybcManager.getThrottleParams(universe.getUniverseUUID()).getThrottleParamsMap();
+    if (specParams == null) {
+      // create default spec params
+      specParams = new YbcThrottleParameters();
+    }
+    if (specParams.getMaxConcurrentDownloads() == null)
+      specParams.setMaxConcurrentDownloads(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    if (specParams.getMaxConcurrentUploads() == null)
+      specParams.setMaxConcurrentUploads(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    if (specParams.getPerDownloadNumObjects() == null)
+      specParams.setPerDownloadNumObjects(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    if (specParams.getPerUploadNumObjects() == null)
+      specParams.setPerUploadNumObjects(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    validateThrottleParams(specParams, currentParamsMap);
+    com.yugabyte.yw.forms.YbcThrottleParameters newParams =
+        new com.yugabyte.yw.forms.YbcThrottleParameters();
+    // We are casting a Long to an int, but this is only because the java code generated from the
+    // CRD uses Longs.
+    newParams.maxConcurrentDownloads = specParams.getMaxConcurrentDownloads().intValue();
+    newParams.maxConcurrentUploads = specParams.getMaxConcurrentUploads().intValue();
+    newParams.perDownloadNumObjects = specParams.getPerDownloadNumObjects().intValue();
+    newParams.perUploadNumObjects = specParams.getPerUploadNumObjects().intValue();
+    ybcManager.setThrottleParams(universe.getUniverseUUID(), newParams);
+  }
+
+  /**
+   * Validate the throttle parameters.
+   *
+   * <p>This method will validate the throttle parameters with the preset values from YBC. If any of
+   * the throttle parameters are out of the preset range, an error message will be added to the
+   * errors list.
+   *
+   * @param specParams the throttle parameters to validate
+   * @param currentParamsMap the map of current throttle parameters and their preset values
+   * @return a list of error messages
+   */
+  private void validateThrottleParams(
+      YbcThrottleParameters specParams, Map<String, ThrottleParamValue> currentParamsMap) {
+    List<String> errors = new ArrayList<>();
+    if (specParams.getMaxConcurrentDownloads() != null
+        && specParams.getMaxConcurrentDownloads()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Max concurrent downloads cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getMaxConcurrentDownloads() != null
+        && specParams.getMaxConcurrentDownloads()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Max concurrent downloads cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (specParams.getMaxConcurrentUploads() != null
+        && specParams.getMaxConcurrentUploads()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Max concurrent uploads cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getMaxConcurrentUploads() != null
+        && specParams.getMaxConcurrentUploads()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Max concurrent uploads cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (specParams.getPerDownloadNumObjects() != null
+        && specParams.getPerDownloadNumObjects()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Per download objects cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getPerDownloadNumObjects() != null
+        && specParams.getPerDownloadNumObjects()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Per download objects cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (specParams.getPerUploadNumObjects() != null
+        && specParams.getPerUploadNumObjects()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Per upload objects cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getPerUploadNumObjects() != null
+        && specParams.getPerUploadNumObjects()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Per upload objects cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (!errors.isEmpty()) {
+      log.error("found errors: {}", errors);
+      throw new IllegalArgumentException(String.join("\n", errors));
+    }
+  }
+
   // getSecret find a secret in the namespace an operator is listening on.
   private Secret getSecret(String name) {
     if (StringUtils.isNotBlank(namespace)) {
@@ -1081,7 +1336,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                           .map(
                               z -> {
                                 HashMap<String, String> tempMap = new HashMap<>(z.config);
-                                tempMap.put("STORAGE_CLASS", storageClass);
+                                if (StringUtils.isNotBlank(storageClass)) {
+                                  tempMap.put("STORAGE_CLASS", storageClass);
+                                }
                                 tempMap.put("KUBENAMESPACE", kubeNamespace);
                                 z.config = tempMap;
                                 return z;

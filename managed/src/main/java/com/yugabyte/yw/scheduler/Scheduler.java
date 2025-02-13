@@ -21,7 +21,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.BackupUniverse;
 import com.yugabyte.yw.commissioner.tasks.CreateBackup;
-import com.yugabyte.yw.commissioner.tasks.CreateYbaBackup;
+import com.yugabyte.yw.commissioner.tasks.CreateContinuousBackup;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
@@ -272,8 +272,8 @@ public class Scheduler {
                 break;
               case CreateAndRotateAccessKey:
                 this.runAccessKeyRotation(schedule, alreadyRunning);
-              case CreateYbaBackup:
-                this.runCreateYbaBackupTask(schedule, alreadyRunning);
+              case CreateContinuousBackup:
+                this.runCreateContinuousBackupTask(schedule, alreadyRunning);
               default:
                 log.error(
                     "Cannot schedule task {} for scheduler {}",
@@ -335,9 +335,10 @@ public class Scheduler {
     createBackup.runScheduledBackup(schedule, commissioner, alreadyRunning, baseBackupUUID);
   }
 
-  private void runCreateYbaBackupTask(Schedule schedule, boolean alreadyRunning) {
-    CreateYbaBackup createYbaBackup = AbstractTaskBase.createTask(CreateYbaBackup.class);
-    createYbaBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
+  private void runCreateContinuousBackupTask(Schedule schedule, boolean alreadyRunning) {
+    CreateContinuousBackup createContinuousBackup =
+        AbstractTaskBase.createTask(CreateContinuousBackup.class);
+    createContinuousBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
   }
 
   private void runExternalScriptTask(Schedule schedule, boolean alreadyRunning) {

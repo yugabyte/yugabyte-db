@@ -115,8 +115,9 @@ static void InitPostgresImpl(const char *in_dbname, Oid dboid,
 							 bool override_allow_connections,
 							 char *out_dbname,
 							 uint64_t *yb_session_id,
-							 bool* yb_sys_table_prefetching_started);
+							 bool *yb_sys_table_prefetching_started);
 static void YbEnsureSysTablePrefetchingStopped();
+static void YbPresetDatabaseCollation(HeapTuple tuple);
 
 /*** InitPostgres support ***/
 
@@ -453,6 +454,16 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 						   " which is not recognized by setlocale().", ctype),
 				 errhint("Recreate the database with another locale or install the missing locale.")));
 
+	/* YbPresetDatabaseCollation may have already populated default_locale */
+	if (IsYugaByteEnabled())
+	{
+		if (default_locale.info.icu.locale)
+			pfree((void *) default_locale.info.icu.locale);
+		if (default_locale.info.icu.ucol)
+			ucol_close(default_locale.info.icu.ucol);
+		default_locale = (struct pg_locale_struct){0};
+	}
+
 	if (dbform->datlocprovider == COLLPROVIDER_ICU)
 	{
 		datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_daticulocale, &isnull);
@@ -706,7 +717,8 @@ InitPostgres(const char *in_dbname, Oid dboid,
 			 char *out_dbname,
 			 uint64_t *yb_session_id)
 {
-	bool sys_table_prefetching_started = false;
+	bool		sys_table_prefetching_started = false;
+
 	PG_TRY();
 	{
 		InitPostgresImpl(in_dbname, dboid, username, useroid,
@@ -730,7 +742,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 				 bool override_allow_connections,
 				 char *out_dbname,
 				 uint64_t *yb_session_id,
-				 bool* yb_sys_table_prefetching_started)
+				 bool *yb_sys_table_prefetching_started)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
 	bool		am_superuser;
@@ -849,20 +861,21 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 										YbRoleProfileRelationId,
 										&YbLoginProfileCatalogsExist));
 
-		/* TODO (dmitry): Next call of the YBIsDBCatalogVersionMode function is
-		 * kind of a hack and must be removed. This function is called before
-		 * starting prefetching because for now switching into DB catalog
-		 * version mode is impossible in case prefething is started.
+		/*
+		 * TODO (dmitry): Next call of the YBIsDBCatalogVersionMode function
+		 * is kind of a hack and must be removed. This function is called
+		 * before starting prefetching because for now switching into DB
+		 * catalog version mode is impossible in case prefething is started.
 		 */
 		YBIsDBCatalogVersionMode();
 		YBCStartSysTablePrefetchingNoCache();
-		YbRegisterSysTableForPrefetching(AuthIdRelationId);   // pg_authid
-		YbRegisterSysTableForPrefetching(DatabaseRelationId); // pg_database
+		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
+		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
-			YbRegisterSysTableForPrefetching(YbProfileRelationId);	// pg_yb_profile
-			YbRegisterSysTableForPrefetching(YbRoleProfileRelationId);	// pg_yb_role_profile
+			YbRegisterSysTableForPrefetching(YbProfileRelationId);	/* pg_yb_profile */
+			YbRegisterSysTableForPrefetching(YbRoleProfileRelationId);	/* pg_yb_role_profile */
 		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 
@@ -981,8 +994,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 * databases with disabled connections (normally it's just template0).
 		 */
 		if (IsYugaByteEnabled())
-			override_allow_connections = override_allow_connections ||
-										 MyProcPort->yb_is_tserver_auth_method;
+			override_allow_connections = (override_allow_connections ||
+										  MyProcPort->yb_is_tserver_auth_method);
 	}
 
 	/*
@@ -1074,7 +1087,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		/* take database name from the caller, just for paranoia */
 		strlcpy(dbname, in_dbname, sizeof(dbname));
 		if (IsYugaByteEnabled())
+		{
 			SetDatabaseEncoding(dbform->encoding);
+			YbPresetDatabaseCollation(tuple);
+		}
 	}
 	else if (OidIsValid(dboid))
 	{
@@ -1096,7 +1112,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		if (out_dbname)
 			strcpy(out_dbname, dbname);
 		if (IsYugaByteEnabled())
+		{
 			SetDatabaseEncoding(dbform->encoding);
+			YbPresetDatabaseCollation(tuple);
+		}
 	}
 	else
 	{
@@ -1122,7 +1141,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 * returns the prefetched catalog version of MyDatabaseId which is
 		 * consistent with all the other tables that are prefetched.
 		 */
-		uint64_t master_catalog_version = YbGetMasterCatalogVersion();
+		uint64_t	master_catalog_version = YbGetMasterCatalogVersion();
+
 		Assert(master_catalog_version > YB_CATCACHE_VERSION_UNINITIALIZED);
 		YbUpdateCatalogCacheVersion(master_catalog_version);
 	}
@@ -1182,7 +1202,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 	if (YBIsDBLogicalClientVersionMode())
 	{
-		int32_t logical_client_version = YbGetMasterLogicalClientVersion();
+		int32_t		logical_client_version = YbGetMasterLogicalClientVersion();
+
 		elog(DEBUG1, "logical_client_version = %d", logical_client_version);
 		YbSetLogicalClientCacheVersion(logical_client_version);
 	}
@@ -1247,7 +1268,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 * Load relcache entries for the system catalogs.  This must create at
 	 * least the minimum set of "nailed-in" cache entries.
 	 */
-	// See if tablegroup catalog exists - needs to happen before cache fully initialized.
+
+	/*
+	 * See if tablegroup catalog exists - needs to happen before cache fully
+	 * initialized.
+	 */
 	if (IsYugaByteEnabled() && !bootstrap)
 		HandleYBStatus(YBCPgTableExists(MyDatabaseId, YbTablegroupRelationId,
 										&YbTablegroupCatalogExists));
@@ -1365,6 +1390,49 @@ YbEnsureSysTablePrefetchingStopped()
 {
 	if (IsYugaByteEnabled() && YBCIsSysTablePrefetchingStarted())
 		YBCStopSysTablePrefetching();
+}
+
+/*
+ * Check and set database collation once MyDatabaseId is resolved. In YB we
+ * need to do this earlier because of prefetching where we may need to
+ * compare text values with DEFAULT_COLLATION_OID. For example,
+ * CREATE TABLE t1 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region))
+ * PARTITION BY LIST (region), the column region has default collation,
+ * which is the collation of the database of t1. During prefetching
+ * partition_bounds_create is invoked on t1 to build a list of sorted
+ * regions which does text comparisons.
+ * This function is adapted from CheckMyDatabase and should be kept in sync.
+ */
+static void
+YbPresetDatabaseCollation(HeapTuple tuple)
+{
+	Form_pg_database dbform = (Form_pg_database) GETSTRUCT(tuple);
+	Datum		datum;
+	bool		isnull;
+	char	   *collate;
+
+	/* There is no dbform->datcollate, must get it from tuple */
+	datum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_datcollate, &isnull);
+	Assert(!isnull);
+	collate = TextDatumGetCString(datum);
+	if (pg_perm_setlocale(LC_COLLATE, collate) == NULL)
+		ereport(FATAL,
+				(errmsg("database locale is incompatible with operating system"),
+				 errdetail("The database was initialized with LC_COLLATE \"%s\", "
+						   " which is not recognized by setlocale().", collate),
+				 errhint("Recreate the database with another locale or install the missing locale.")));
+	elog(DEBUG1, "LC_COLLATE of %u is set to %s", MyDatabaseId, collate);
+	if (dbform->datlocprovider == COLLPROVIDER_ICU)
+	{
+		datum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_daticulocale, &isnull);
+		Assert(!isnull);
+		char	   *iculocale = TextDatumGetCString(datum);
+		make_icu_collator(iculocale, &default_locale);
+		elog(DEBUG1, "iculocale of %u is set to %s", MyDatabaseId, iculocale);
+	}
+	default_locale.provider = dbform->datlocprovider;
+	default_locale.deterministic = true;
+	yb_default_collation_resolved = true;
 }
 
 /*

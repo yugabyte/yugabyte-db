@@ -4,10 +4,12 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.forms.DrConfigSafetimeResp.NamespaceSafetime;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
@@ -15,12 +17,16 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.MapUtils;
+import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 
 @Slf4j
@@ -62,6 +68,8 @@ public class FailoverDrConfig extends EditDrConfig {
         Universe.getOrBadRequest(failoverXClusterConfig.getTargetUniverseUUID());
     Universe targetUniverse =
         Universe.getOrBadRequest(failoverXClusterConfig.getSourceUniverseUUID());
+    Map<String, Long> namespaceIdSafetimeEpochUsMap =
+        taskParams().getNamespaceIdSafetimeEpochUsMap();
     try {
       // Lock the source universe.
       lockAndFreezeUniverseForUpdate(
@@ -71,15 +79,15 @@ public class FailoverDrConfig extends EditDrConfig {
         lockAndFreezeUniverseForUpdate(
             targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
 
-        if (!failoverXClusterConfig.getDrConfig().getState().equals(State.Halted)) {
-          if (Objects.nonNull(currentXClusterConfig)) {
+        if (Objects.nonNull(currentXClusterConfig)) {
+          if (!currentXClusterConfig.isPaused()) {
             createSetDrStatesTask(
                     currentXClusterConfig,
                     State.FailoverInProgress,
                     SourceUniverseState.DrFailed,
                     TargetUniverseState.SwitchingToDrPrimary,
                     null /* keyspacePending */)
-                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PauseReplication);
 
             // The source and target universes are swapped in `failoverXClusterConfig`, so set the
             // target universe state of that config which the source universe of the main config to
@@ -90,21 +98,33 @@ public class FailoverDrConfig extends EditDrConfig {
                     null /* sourceUniverseState */,
                     TargetUniverseState.DrFailed,
                     null /* keyspacePending */)
-                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PauseReplication);
 
-            // Delete the main replication config.
-            // MUST skip deleting pitr configs here, otherwise we will not be able to restore to
-            // safetime.
-            createDeleteXClusterConfigSubtasks(
-                currentXClusterConfig,
-                false /* keepEntry */,
-                true /* forceDelete */,
-                false /* deleteSourcePitrConfigs */,
-                false /* deleteTargetPitrConfigs */);
+            // Pause the replication.
+            createSetReplicationPausedTask(currentXClusterConfig, true /* pause */)
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PauseReplication);
           }
 
-          // Todo: remove the following subtask from all the tasks.
-          createPromoteSecondaryConfigToMainConfigTask(failoverXClusterConfig);
+          // Get the latest safe time for each namespace.
+          if (MapUtils.isEmpty(namespaceIdSafetimeEpochUsMap)) {
+            List<NamespaceSafeTimePB> namespaceSafeTimeList =
+                xClusterUniverseService.getNamespaceSafeTimeList(targetUniverse);
+            namespaceIdSafetimeEpochUsMap =
+                namespaceSafeTimeList.stream()
+                    .collect(
+                        java.util.stream.Collectors.toMap(
+                            NamespaceSafeTimePB::getNamespaceId,
+                            namespaceSafeTime ->
+                                NamespaceSafetime.computeSafetimeEpochUsFromSafeTimeHt(
+                                    namespaceSafeTime.getSafeTimeHt())));
+            log.debug(
+                "Fetched the safetime for each namespace from the target universe: {}",
+                namespaceIdSafetimeEpochUsMap);
+          } else {
+            log.warn(
+                "Using the safetime from the task params; this behavior is deprecated and you"
+                    + " should not pass in namespaceIdSafetimeEpochUsMap in the api call");
+          }
 
           Set<NamespaceIdentifierPB> namespaces;
           if (failoverXClusterConfig.getType().equals(ConfigType.Db)) {
@@ -114,41 +134,46 @@ public class FailoverDrConfig extends EditDrConfig {
           }
 
           // Use pitr to restore to the safetime for all DBs.
-          namespaces.forEach(
-              namespace -> {
-                Optional<PitrConfig> pitrConfigOptional =
-                    PitrConfig.maybeGet(
-                        targetUniverse.getUniverseUUID(),
-                        failoverXClusterConfig.getTableTypeAsCommonType(),
-                        namespace.getName());
-                if (pitrConfigOptional.isEmpty()) {
-                  throw new IllegalStateException(
-                      String.format(
-                          "No PITR config for database %s.%s found on universe %s",
-                          failoverXClusterConfig.getTableTypeAsCommonType(),
-                          namespace.getName(),
-                          targetUniverse.getUniverseUUID()));
-                }
+          for (NamespaceIdentifierPB namespace : namespaces) {
+            Optional<PitrConfig> pitrConfigOptional =
+                PitrConfig.maybeGet(
+                    targetUniverse.getUniverseUUID(),
+                    failoverXClusterConfig.getTableTypeAsCommonType(),
+                    namespace.getName());
+            if (pitrConfigOptional.isEmpty()) {
+              throw new IllegalStateException(
+                  String.format(
+                      "No PITR config for database %s.%s found on universe %s",
+                      failoverXClusterConfig.getTableTypeAsCommonType(),
+                      namespace.getName(),
+                      targetUniverse.getUniverseUUID()));
+            }
 
-                // Todo: Ensure the PITR config exists on YBDB.
+            Long namespaceSafetimeEpochUs =
+                namespaceIdSafetimeEpochUsMap.get(namespace.getId().toStringUtf8());
+            if (Objects.isNull(namespaceSafetimeEpochUs)) {
+              throw new IllegalArgumentException(
+                  String.format(
+                      "No safetime for namespace %s is specified in the taskparams",
+                      namespace.getName()));
+            }
 
-                Long namespaceSafetimeEpochUs =
-                    taskParams()
-                        .getNamespaceIdSafetimeEpochUsMap()
-                        .get(namespace.getId().toStringUtf8());
-                if (Objects.isNull(namespaceSafetimeEpochUs)) {
-                  throw new IllegalArgumentException(
-                      String.format(
-                          "No safetime for namespace %s is specified in the taskparams",
-                          namespace.getName()));
-                }
-
-                // Todo: Add a subtask group for the following.
-                createRestoreSnapshotScheduleTask(
+            createRestoreSnapshotScheduleTask(
                     targetUniverse,
                     pitrConfigOptional.get(),
-                    TimeUnit.MICROSECONDS.toMillis(namespaceSafetimeEpochUs));
-              });
+                    TimeUnit.MICROSECONDS.toMillis(namespaceSafetimeEpochUs))
+                .setSubTaskGroupType(SubTaskGroupType.PITRRestore);
+          }
+
+          // Delete the main replication config.
+          // MUST skip deleting pitr configs here, otherwise we will not be able to restore to
+          // safetime.
+          createDeleteXClusterConfigSubtasks(
+              currentXClusterConfig,
+              false /* keepEntry */,
+              true /* forceDelete */,
+              false /* deleteSourcePitrConfigs */,
+              false /* deleteTargetPitrConfigs */);
         }
 
         createSetDrStatesTask(

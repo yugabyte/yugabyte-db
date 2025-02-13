@@ -287,7 +287,13 @@ public class UserTaskDetails {
     RemovingPodDisruptionBudgetPolicy,
 
     // Validate after upgrade
-    PostUpdateValidations
+    PostUpdateValidations,
+
+    // PITR Restore step during failover
+    PITRRestore,
+
+    // Pause replication
+    PauseReplication
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -670,6 +676,14 @@ public class UserTaskDetails {
       case PostUpdateValidations:
         title = "Validating after updates";
         description = "Validating updates applied correctly";
+        break;
+      case PITRRestore:
+        title = "PITR Restore";
+        description = "Restoring namespaces using PITR to a consistent cut";
+        break;
+      case PauseReplication:
+        title = "Pause Replication";
+        description = "Pause replication from source to target universe";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

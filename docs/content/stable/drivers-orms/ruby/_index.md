@@ -16,16 +16,17 @@ showRightNav: true
 
 The following projects are recommended for implementing Ruby applications using the YugabyteDB YSQL/YCQL API.
 
-| Driver | Documentation and Guides |
-| :----- | :----------------------- |
-| Pg Gem Driver | [Documentation](ysql-pg/) |
+| Driver                          | Documentation and Guides |
+|:--------------------------------| :----------------------- |
+| YugabyteDB ruby-pg Driver       | [Documentation](yb-ruby-pg/) |
+| Ruby-pg Driver                  | [Documentation](ruby-pg/) |
 | YugabyteDB Ruby Driver for YCQL | [Documentation](ycql/) </br> [Sample apps](https://github.com/yugabyte/cassandra-ruby-driver) |
 
 | Projects | Documentation and Guides |
 | :------- | :----------------------- |
 | Active Record ORM | [Documentation](activerecord/) </br> [Sample apps](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/ruby/ror)|
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](ysql-pg/) or [Use an ORM](activerecord/).
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](yb-ruby-pg/) or [Use an ORM](activerecord/).
 
 ## Prerequisites
 
@@ -36,8 +37,8 @@ To develop Ruby applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
   - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/tutorials/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/).
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/macos/).
 
 ## Next step
 
-[Connect an app](ysql-pg)
+[Connect an app](yb-ruby-pg)

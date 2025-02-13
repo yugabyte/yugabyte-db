@@ -26,7 +26,7 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 Review the following information before starting an upgrade.
 {{< /warning >}}
 {{< warning title="Upgrading to v2.25" >}}
-Upgrading to v2.25 from previous preview versions is not yet available.
+Upgrading to v2.25 from earlier versions is not yet available.
 {{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
@@ -41,7 +41,7 @@ Upgrading to v2.25 from previous preview versions is not yet available.
 
 - Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector in the upper right corner of the page.
 
-- Roll back is {{<tags/feature/ea>}} and supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
+- Roll back is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
 
 - You can upgrade from any version of 2.14.x to any stable version in one go.
 

@@ -27,7 +27,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/source_location.h"
 #include "yb/util/thread_restrictions.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 DEFINE_NON_RUNTIME_bool(disable_auto_flags_management, false,
     "Disables AutoFlags management. A safety switch to turn off automatic promotion of AutoFlags. "
@@ -41,8 +41,8 @@ DEFINE_RUNTIME_AUTO_bool(TEST_auto_flags_initialized, kLocalPersisted, false, tr
     "AutoFlag that indicates initialization of AutoFlags. Not meant to be overridden.");
 TAG_FLAG(TEST_auto_flags_initialized, hidden);
 
-DEFINE_RUNTIME_AUTO_bool(TEST_auto_flags_new_install, kNewInstallsOnly, false, true,
-    "AutoFlag that indicates initialization of AutoFlags for new installs only.");
+DEFINE_RUNTIME_AUTO_bool(TEST_auto_flags_new_install, kExternal, false, true,
+    "DEPRECATED AutoFlag.");
 TAG_FLAG(TEST_auto_flags_new_install, hidden);
 
 DEFINE_NON_RUNTIME_int32(auto_flags_load_from_master_backoff_increment_ms, 100,
@@ -123,7 +123,7 @@ Result<bool> AutoFlagsManagerBase::LoadFromFile() {
   auto valid = VERIFY_RESULT(ValidateAndSetConfig(std::move(pb_config)));
   RSTATUS_DCHECK(valid, IllegalState, "AutoFlags config loaded from disk failed to get set");
 
-  RETURN_NOT_OK(ApplyConfig(ApplyNonRuntimeAutoFlags::kTrue));
+  RETURN_NOT_OK(ApplyConfig());
 
   return true;
 }
@@ -202,8 +202,7 @@ Status AutoFlagsManagerBase::LoadFromMasterLeader(const server::MasterAddresses&
   }
 
   // Synchronously load the config.
-  return LoadFromConfigUnlocked(
-      std::move(new_config), ApplyNonRuntimeAutoFlags::kTrue, /* apply_sync */ true);
+  return LoadFromConfigUnlocked(std::move(new_config), /* apply_sync */ true);
 }
 
 Result<MonoDelta> AutoFlagsManagerBase::GetTimeLeftToApplyConfig() const {
@@ -224,8 +223,7 @@ Result<MonoDelta> AutoFlagsManagerBase::GetTimeLeftToApplyConfig() const {
 }
 
 Status AutoFlagsManagerBase::LoadFromConfigUnlocked(
-    const AutoFlagsConfigPB new_config, ApplyNonRuntimeAutoFlags apply_non_runtime,
-    bool apply_sync) {
+    const AutoFlagsConfigPB new_config, bool apply_sync) {
   if (!VERIFY_RESULT(ValidateAndSetConfig(std::move(new_config)))) {
     // No-op if the config is the same or lower version.
     return Status::OK();
@@ -240,14 +238,13 @@ Status AutoFlagsManagerBase::LoadFromConfigUnlocked(
       SCHECK_NOTNULL(server_messenger_);
       RETURN_NOT_OK(server_messenger_->ScheduleOnReactor(
           std::bind(
-              &AutoFlagsManagerBase::AsyncApplyConfig, this, current_config_.config_version(),
-              apply_non_runtime),
+              &AutoFlagsManagerBase::AsyncApplyConfig, this, current_config_.config_version()),
           delay, SOURCE_LOCATION()));
       return Status::OK();
     }
   }
 
-  return ApplyConfig(apply_non_runtime);
+  return ApplyConfig();
 }
 
 uint32_t AutoFlagsManagerBase::GetConfigVersion() const {
@@ -301,8 +298,7 @@ Status AutoFlagsManagerBase::WriteConfigToDisk() {
   return Status::OK();
 }
 
-void AutoFlagsManagerBase::AsyncApplyConfig(
-    uint32 apply_version, ApplyNonRuntimeAutoFlags apply_non_runtime) {
+void AutoFlagsManagerBase::AsyncApplyConfig(uint32 apply_version) {
   SharedLock lock(mutex_);
   if (current_config_.config_version() != apply_version) {
     LOG(INFO) << "Skipping AutoFlags apply as the config version has changed. Expected: "
@@ -310,12 +306,12 @@ void AutoFlagsManagerBase::AsyncApplyConfig(
     return;
   }
 
-  CHECK_OK_PREPEND(ApplyConfig(apply_non_runtime), "Failed to Apply AutoFlags");
+  CHECK_OK_PREPEND(ApplyConfig(), "Failed to Apply AutoFlags");
 }
 
 // This is a blocking function that can block process startup. We relax ThreadRestrictions since it
 // gets invoked from a reactor thread.
-Status AutoFlagsManagerBase::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime) const {
+Status AutoFlagsManagerBase::ApplyConfig() const {
   const auto delay = VERIFY_RESULT(GetTimeLeftToApplyConfig());
   if (delay) {
     LOG(INFO) << "Sleeping for " << delay << "us before applying AutoFlags.";
@@ -326,7 +322,6 @@ Status AutoFlagsManagerBase::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runt
   const auto required_promoted_flags = GetPerProcessFlags(process_name_, current_config_);
   std::vector<std::string> flags_promoted;
   std::vector<std::string> flags_demoted;
-  std::vector<std::string> non_runtime_flags_skipped;
 
   std::unordered_set<std::string> server_auto_flags;
   {
@@ -342,12 +337,8 @@ Status AutoFlagsManagerBase::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runt
 
     if (required_promoted_flags.contains(flag_desc->name)) {
       if (!is_flag_promoted) {
-        if (apply_non_runtime || flag_desc->is_runtime) {
-          PromoteAutoFlag(*flag_desc);
-          flags_promoted.push_back(flag_desc->name);
-        } else {
-          non_runtime_flags_skipped.push_back(flag_desc->name);
-        }
+        PromoteAutoFlag(*flag_desc);
+        flags_promoted.push_back(flag_desc->name);
       }
       // else - Flag is already promoted. No-op.
     } else if (is_flag_promoted) {
@@ -362,11 +353,6 @@ Status AutoFlagsManagerBase::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runt
   }
   if (!flags_demoted.empty()) {
     LOG(INFO) << "AutoFlags demoted: " << JoinStrings(flags_demoted, ",");
-  }
-  if (!non_runtime_flags_skipped.empty()) {
-    LOG(WARNING) << "Non-runtime AutoFlags skipped apply: "
-                 << JoinStrings(non_runtime_flags_skipped, ",")
-                 << ". Restart the process to apply these flags.";
   }
 
   return Status::OK();

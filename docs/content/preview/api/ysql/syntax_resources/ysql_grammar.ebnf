@@ -222,8 +222,7 @@ alter_table_action =
   ( 'ADD' [ 'COLUMN' ] [ 'IF' 'NOT' 'EXISTS' ] column_name data_type [ alter_column_constraint { alter_column_constraint } ]
     | 'RENAME' 'TO' table_name
     | 'DROP' [ 'COLUMN' ] [ 'IF' 'EXISTS' ] column_name [ 'RESTRICT' | 'CASCADE' ]
-    | 'ALTER' [ 'COLUMN' ] column_name [ 'SET DATA' ]
-      'TYPE' data_type [ 'COLLATE' collation ] [ 'USING' expression ]
+    | 'ALTER' [ 'COLUMN' ] column_name [ alter_column_action ]
     | 'ADD' alter_table_constraint
     | 'DROP' 'CONSTRAINT' constraint_name [ 'RESTRICT' | 'CASCADE' ]
     | 'RENAME' [ 'COLUMN' ] column_name 'TO' column_name
@@ -242,6 +241,16 @@ alter_table_constraint = [ 'CONSTRAINT' constraint_name ] \
                            'FOREIGN' 'KEY' '(' column_names ')' references_clause |
                            'PRIMARY' 'KEY' '(' key_columns ')' ) \
                          [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
+
+alter_column_action = (
+                    [ 'SET DATA' ] 'TYPE' data_type [ 'COLLATE' collation ] [ 'USING' expression ]
+                    | 'SET' 'DEFAULT' expression
+                    | 'DROP' 'DEFAULT'
+                    | 'DROP' 'IDENTITY' [ 'IF EXISTS' ]
+                    | { 'SET' | 'DROP' } 'NOT' 'NULL'
+                    | 'ADD' 'GENERATED' { 'ALWAYS' | 'BY' 'DEFAULT' } 'AS' 'IDENTITY' [ ( sequence_options ) ]
+                    | 'SET' 'GENERATED' { 'ALWAYS' | 'BY' 'DEFAULT' }
+);
 
 alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                           (  'NOT' 'NULL' |
@@ -1252,7 +1261,7 @@ trailing_select_clauses = [ 'FROM' ( from_item { ','  from_item } ) ] \
                           [ 'FETCH' ( 'FIRST' | 'NEXT' ) int_expression ( 'ROW' | 'ROWS' ) 'ONLY' ] \
                           { 'FOR' ( 'UPDATE' | 'NO KEY UPDATE' | 'SHARE' | 'KEY SHARE' ) [ 'OF' table_name { ',' table_name} ] [ 'NOWAIT' | 'SKIP LOCKED' ] };
 
-from_item = '<See https://www.postgresql.org/docs/11/sql-select.html>' ;
+from_item = '<See https://www.postgresql.org/docs/15/sql-select.html>' ;
 
 common_table_expression = cte_name [ '(' column_name { ',' column_name } ')' ] 'AS' '(' ( select | values | insert | update | delete ) ')' ;
 

@@ -34,7 +34,19 @@ extern PGDLLIMPORT int extra_float_digits;
 #define STATE_DIMS(x) (ARR_DIMS(x)[0] - 1)
 #define CreateStateDatums(dim) palloc(sizeof(Datum) * (dim + 1))
 
+extern void YbVectorInit();
+
 PG_MODULE_MAGIC;
+
+/*
+ * Initialize index options and variables
+ */
+PGDLLEXPORT void _PG_init(void);
+void
+_PG_init(void)
+{
+	YbVectorInit();
+}
 
 /*
  * Ensure same dimensions
