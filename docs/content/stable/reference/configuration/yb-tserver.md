@@ -1860,9 +1860,9 @@ Default: true
 
 {{<tags/feature/ea idea="1455">}} Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
 
-- non-YugabyteDB relations
-- system relations
-- relations that have row triggers
+- temporary relations
+- foreign relations
+- relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
 
 The higher the number, the more batching is done. 1024 is recommended.
 
