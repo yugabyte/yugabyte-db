@@ -4273,10 +4273,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  if (!req.xcluster_source_table_id().empty()) {
-    table->mutable_metadata()->mutable_dirty()->pb.set_xcluster_source_table_id(
-        req.xcluster_source_table_id());
-  }
+  RETURN_NOT_OK(xcluster_manager_->ProcessCreateTableReq(
+      req, table->mutable_metadata()->mutable_dirty()->pb, table->id(), namespace_id));
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_table_create_secs > 0) &&
       req.table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
@@ -5625,6 +5623,11 @@ Result<scoped_refptr<TableInfo>> CatalogManager::FindTableByIdUnlocked(
 Result<TableId> CatalogManager::GetColocatedTableId(
     const TablegroupId& tablegroup_id, ColocationId colocation_id) const {
   SharedLock lock(mutex_);
+  return GetColocatedTableIdUnlocked(tablegroup_id, colocation_id);
+}
+
+Result<TableId> CatalogManager::GetColocatedTableIdUnlocked(
+    const TablegroupId& tablegroup_id, ColocationId colocation_id) const {
   const auto* tablegroup = tablegroup_manager_->Find(tablegroup_id);
   SCHECK(tablegroup, NotFound, Substitute("Tablegroup with ID $0 not found", tablegroup_id));
   return tablegroup->GetChildTableId(colocation_id);

@@ -33,6 +33,7 @@
 #include "yb/master/tablet_health_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -1617,6 +1618,8 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
     if (l->pb.has_index_info()) {
       *add_table.mutable_index_info() = l->pb.index_info();
     }
+    add_table.mutable_old_schema_packings()->CopyFrom(
+        l->pb.xcluster_table_info().xcluster_colocated_old_schema_packings());
   }
   add_table.set_pg_table_id(table_->pg_table_id());
   add_table.set_skip_table_tombstone_check(FLAGS_ysql_yb_enable_alter_table_rewrite);

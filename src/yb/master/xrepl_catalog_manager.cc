@@ -3908,6 +3908,26 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   return Status::OK();
 }
 
+Status CatalogManager::InsertHistoricalColocatedSchemaPacking(
+    const xcluster::ReplicationGroupId& replication_group_id, const TablegroupId& tablegroup_id,
+    const ColocationId colocation_id,
+    const std::function<Status(UniverseReplicationInfo&)>& add_historical_schema_fn) {
+  LockGuard lock(mutex_);
+  // First check if this table has been created yet. If so, then we don't need to add historical
+  // schemas and can just add schemas in the regular way (via InsertPackedSchemaForXClusterTarget).
+  auto table_res = GetColocatedTableIdUnlocked(tablegroup_id, colocation_id);
+  SCHECK(!table_res.ok(), AlreadyPresent, "Table is already created, not adding historical schema");
+  SCHECK(
+      table_res.status().IsNotFound(), IllegalState,
+      "Unexpected error finding colocated table: ", table_res.status());
+
+  // Get the replication group.
+  auto universe = FindPtrOrNull(universe_replication_map_, replication_group_id);
+  SCHECK(universe, NotFound, "Universe not found: ", replication_group_id);
+
+  return add_historical_schema_fn(*universe);
+}
+
 Status CatalogManager::WaitForReplicationDrain(
     const WaitForReplicationDrainRequestPB* req,
     WaitForReplicationDrainResponsePB* resp,

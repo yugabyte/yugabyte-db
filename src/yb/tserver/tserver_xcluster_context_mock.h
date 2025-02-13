@@ -39,14 +39,16 @@ class MockTserverXClusterContext : public TserverXClusterContextIf {
       bool, SafeTimeComputationRequired, (const NamespaceId& namespace_id), (const, override));
 
   MOCK_METHOD(
-      Status, SetSourceTableMappingForCreateTable,
-      (const YsqlFullTableName& table_name, const PgObjectId& producer_table_id), (override));
-
-  MOCK_METHOD(
-      void, ClearSourceTableMappingForCreateTable, (const YsqlFullTableName& table_name),
+      Status, SetSourceTableInfoMappingForCreateTable,
+      (const YsqlFullTableName& table_name, const PgObjectId& producer_table_id,
+       ColocationId colocation_id),
       (override));
   MOCK_METHOD(
-      PgObjectId, GetXClusterSourceTableId, (const YsqlFullTableName& table_name),
+      void, ClearSourceTableInfoMappingForCreateTable, (const YsqlFullTableName& table_name),
+      (override));
+
+  MOCK_METHOD(
+      void, PrepareCreateTableHelper, (const PgCreateTableRequestPB& req, PgCreateTable& helper),
       (const, override));
 };
 

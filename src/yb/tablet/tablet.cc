@@ -589,6 +589,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       return;
     }
 
+    // TODO(jhe) - Also handle historical packing schemas (#25926).
     auto colocated_tables = tablet_.metadata()->GetAllColocatedTablesWithColocationId();
     for(auto& [table_id, schema_version] : min_schema_versions) {
       ColocationId colocation_id = colocated_tables[table_id.ToHexString()];
@@ -2673,7 +2674,8 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
       table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, index_info,
       table_info.schema_version(), op_id, ht, table_info.pg_table_id(),
-      SkipTableTombstoneCheck(table_info.skip_table_tombstone_check())));
+      SkipTableTombstoneCheck(table_info.skip_table_tombstone_check()),
+      table_info.old_schema_packings()));
 
   if (table_info_ptr->NeedVectorIndex()) {
     auto indexed_table_info = VERIFY_RESULT(metadata_->GetTableInfo(

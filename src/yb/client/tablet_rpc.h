@@ -128,7 +128,8 @@ class TabletInvoker {
                          rpc::RpcRetrier* retrier,
                          Trace* trace,
                          master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
-                         master::IncludeDeleted include_deleted = master::IncludeDeleted::kFalse);
+                         master::IncludeDeleted include_deleted = master::IncludeDeleted::kFalse,
+                         const bool fail_on_not_found = false);
 
   virtual ~TabletInvoker();
 
@@ -243,6 +244,8 @@ class TabletInvoker {
   const bool local_tserver_only_;
 
   const bool consistent_prefix_;
+
+  const bool fail_on_not_found_;
 
   // The TS receiving the write. May change if the write is retried.
   // RemoteTabletServer is taken from YBClient cache, so it is guaranteed that those objects are

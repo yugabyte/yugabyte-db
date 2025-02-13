@@ -798,6 +798,25 @@ Result<std::vector<xrepl::StreamId>> XClusterClient::GetXClusterStreams(const Ta
   return stream_ids;
 }
 
+Result<master::InsertHistoricalColocatedSchemaPackingResponsePB>
+XClusterClient::InsertHistoricalColocatedSchemaPacking(
+    const xcluster::ProducerTabletInfo& producer_tablet_info,
+    const xcluster::ConsumerTabletInfo& consumer_tablet_info, uint32_t colocation_id,
+    uint32_t source_schema_version, const SchemaPB& source_schema) {
+  master::InsertHistoricalColocatedSchemaPackingRequestPB req;
+  req.set_replication_group_id(producer_tablet_info.replication_group_id.ToString());
+  req.set_target_parent_table_id(consumer_tablet_info.table_id);
+  req.set_colocation_id(colocation_id);
+  req.set_source_schema_version(source_schema_version);
+  req.mutable_schema()->CopyFrom(source_schema);
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(InsertHistoricalColocatedSchemaPacking, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp;
+}
+
 Status XClusterClient::InsertPackedSchemaForXClusterTarget(
     const TableId& table_id, const SchemaPB& packed_schema_to_insert,
     uint32_t current_schema_version, const std::optional<ColocationId>& colocation_id) {

@@ -1050,6 +1050,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<TableId> GetColocatedTableId(
       const TablegroupId& tablegroup_id, ColocationId colocation_id) const EXCLUDES(mutex_);
 
+  Result<TableId> GetColocatedTableIdUnlocked(
+      const TablegroupId& tablegroup_id, ColocationId colocation_id) const REQUIRES_SHARED(mutex_);
+
   Result<bool> TableExists(
       const std::string& namespace_name, const std::string& table_name) const EXCLUDES(mutex_);
 
@@ -1435,8 +1438,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // On a producer side metadata change, halts replication until Consumer applies the Meta change.
   Status UpdateConsumerOnProducerMetadata(
       const UpdateConsumerOnProducerMetadataRequestPB* req,
-      UpdateConsumerOnProducerMetadataResponsePB* resp,
-      rpc::RpcContext* rpc);
+      UpdateConsumerOnProducerMetadataResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status InsertHistoricalColocatedSchemaPacking(
+      const xcluster::ReplicationGroupId& replication_group_id, const TablegroupId& tablegroup_id,
+      const ColocationId colocation_id,
+      const std::function<Status(UniverseReplicationInfo&)>& add_historical_schema_fn);
 
   // Wait for replication to drain on CDC streams.
   typedef std::pair<xrepl::StreamId, TabletId> StreamTabletIdPair;

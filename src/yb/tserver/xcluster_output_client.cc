@@ -15,6 +15,7 @@
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xcluster_rpc.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 
@@ -365,6 +366,10 @@ bool XClusterOutputClient::UseLocalTserver() {
   return use_local_tserver_ && !FLAGS_TEST_xcluster_force_remote_tserver;
 }
 
+bool XClusterOutputClient::IsColocatedTableStream() {
+  return IsColocationParentTableId(consumer_tablet_info_.table_id);
+}
+
 bool XClusterOutputClient::IsSequencesDataTablet() {
   return db_oid_write_sequences_to_.has_value();
 }
@@ -634,41 +639,15 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
         "XCluster schema mismatch. No matching schema for producer schema $0 with version $1",
         req.schema().DebugString(), producer_schema_version);
     LOG_WITH_PREFIX(WARNING) << msg << ": " << status;
-    if (resp.error().code() == TabletServerErrorPB::MISMATCHED_SCHEMA) {
-      // For automatic DDL replication, we need to insert this packing schema into the historical
-      // set of schemas - this will allow us to correctly map packing schema versions until the
-      // replicated DDL is run via ddl_queue.
-      if (is_automatic_mode_) {
-        // Also pass the latest schema version so that we don't repeatedly insert the same schema.
-        if (!resp.has_latest_schema_version()) {
-          STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(
-              ReplicationErrorPb::REPLICATION_SYSTEM_ERROR,
-              STATUS(IllegalState, "Missing latest schema version in response"));
-          return;
-        }
-        std::optional<ColocationId> colocation_id_opt = std::nullopt;
-        if (req.schema().has_colocated_table_id() &&
-            req.schema().colocated_table_id().colocation_id() != kColocationIdNotSet) {
-          colocation_id_opt = std::make_optional(req.schema().colocated_table_id().colocation_id());
-        }
-        auto s = client::XClusterClient(local_client_)
-                     .InsertPackedSchemaForXClusterTarget(
-                         consumer_tablet_info_.table_id, req.schema(), resp.latest_schema_version(),
-                         colocation_id_opt);
 
-        if (s.ok()) {
-          VLOG_WITH_PREFIX(2) << "Inserted schema for automatic DDL replication: "
-                              << req.schema().ShortDebugString();
-          // Can now retry creating the schema version mapping.
-          tserver::GetCompatibleSchemaVersionRequestPB new_req(req);
-          UpdateSchemaVersionMapping(&new_req);
-          return;
-        }
-
-        LOG_WITH_PREFIX(WARNING) << "Failed to insert schema for automatic DDL replication: " << s;
-        STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(ReplicationErrorPb::REPLICATION_SYSTEM_ERROR, s);
-        return;
-      }
+    if (replication_error == ReplicationErrorPb::REPLICATION_MISSING_TABLE && is_automatic_mode_ &&
+        IsColocatedTableStream()) {
+      HandleNewHistoricalColocatedSchema(req, colocation_id, producer_schema_version);
+      return;
+    }
+    if (resp.error().code() == TabletServerErrorPB::MISMATCHED_SCHEMA && is_automatic_mode_) {
+      HandleNewSchemaPacking(req, resp, colocation_id);
+      return;
     }
     STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(replication_error, status);
     return;
@@ -679,6 +658,13 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
     return;
   }
 
+  HandleNewCompatibleSchemaVersion(
+      resp.compatible_schema_version(), producer_schema_version, req.schema(), colocation_id);
+}
+
+void XClusterOutputClient::HandleNewCompatibleSchemaVersion(
+    uint32 compatible_schema_version, SchemaVersion producer_schema_version,
+    const SchemaPB new_schema, ColocationId colocation_id) {
   // Compatible schema version found, update master with the mapping and update local cache also
   // as there could be some delay in propagation from master to all the
   // XClusterConsumer/XClusterPollers.
@@ -687,7 +673,7 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
   master::UpdateConsumerOnProducerMetadataResponsePB response;
   Status s = local_client_.UpdateConsumerOnProducerMetadata(
       producer_tablet_info_.replication_group_id, producer_tablet_info_.stream_id, meta,
-      colocation_id, producer_schema_version, resp.compatible_schema_version(), &response);
+      colocation_id, producer_schema_version, compatible_schema_version, &response);
   if (!s.ok()) {
     HandleError(s);
     return;
@@ -706,8 +692,8 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
     }
     // Log the response from master.
     LOG_WITH_FUNC(INFO) << Format(
-        "Received response: $0 for schema: $1 on producer tablet $2",
-        response.DebugString(), req.schema().DebugString(), producer_tablet_info_.tablet_id);
+        "Received response: $0 for schema: $1 on producer tablet $2", response.DebugString(),
+        new_schema.DebugString(), producer_tablet_info_.tablet_id);
     DCHECK(schema_version_map);
     auto resp_schema_versions = response.schema_versions();
     (*schema_version_map)[resp_schema_versions.current_producer_schema_version()] =
@@ -729,6 +715,75 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
 
   // MetaOps should be the last ones in a batch, so we should be done at this point.
   HandleResponse();
+}
+
+void XClusterOutputClient::HandleNewHistoricalColocatedSchema(
+    const GetCompatibleSchemaVersionRequestPB& req, ColocationId colocation_id,
+    SchemaVersion producer_schema_version) {
+  DCHECK(is_automatic_mode_);
+  // For automatic DDL replication, we need to process colocated tables that haven't yet been
+  // created. We can't pause and wait for the table to get created as this causes a deadlock
+  // (this stream would be waiting for the table to get created, and ddl_queue stream would be
+  // waiting for this stream to catch up to its safe time).
+  // Instead, we store any new schemas we get prior to the table's creation in the replication
+  // group via InsertHistoricalColocatedSchemaPacking.
+  // Then when we create the table, we insert those historical schemas and bump up the table's
+  // schema to be past that.
+  auto resp_res = client::XClusterClient(local_client_)
+                      .InsertHistoricalColocatedSchemaPacking(
+                          producer_tablet_info_, consumer_tablet_info_, colocation_id,
+                          producer_schema_version, req.schema());
+  if (resp_res.ok()) {
+    VLOG_WITH_PREFIX(2) << "Inserted historical schema for automatic DDL replication: "
+                        << req.schema().ShortDebugString()
+                        << " resp: " << resp_res->ShortDebugString();
+
+    HandleNewCompatibleSchemaVersion(
+        resp_res->last_compatible_consumer_schema_version(), producer_schema_version, req.schema(),
+        colocation_id);
+    return;
+  }
+
+  LOG_WITH_PREFIX(WARNING) << "Failed to insert historical schema for automatic DDL replication: "
+                           << resp_res.status();
+  STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(
+      ReplicationErrorPb::REPLICATION_SYSTEM_ERROR, resp_res.status());
+}
+
+void XClusterOutputClient::HandleNewSchemaPacking(
+    const GetCompatibleSchemaVersionRequestPB& req,
+    const GetCompatibleSchemaVersionResponsePB& resp, ColocationId colocation_id) {
+  DCHECK(is_automatic_mode_);
+  // For automatic DDL replication, we need to insert this packing schema into the historical
+  // set of schemas - this will allow us to correctly map packing schema versions until the
+  // replicated DDL is run via ddl_queue.
+
+  // Also pass the latest schema version so that we don't repeatedly insert the same schema.
+  if (!resp.has_latest_schema_version()) {
+    STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(
+        ReplicationErrorPb::REPLICATION_SYSTEM_ERROR,
+        STATUS(IllegalState, "Missing latest schema version in response"));
+    return;
+  }
+  std::optional<ColocationId> colocation_id_opt =
+      colocation_id == kColocationIdNotSet ? std::nullopt : std::make_optional(colocation_id);
+  auto s = client::XClusterClient(local_client_)
+               .InsertPackedSchemaForXClusterTarget(
+                   consumer_tablet_info_.table_id, req.schema(), resp.latest_schema_version(),
+                   colocation_id_opt);
+
+  if (s.ok()) {
+    VLOG_WITH_PREFIX(2) << "Inserted schema for automatic DDL replication: "
+                        << req.schema().ShortDebugString();
+    // Can now retry creating the schema version mapping.
+    tserver::GetCompatibleSchemaVersionRequestPB new_req(req);
+    UpdateSchemaVersionMapping(&new_req);
+    return;
+  }
+
+  LOG_WITH_PREFIX(WARNING) << "Failed to insert schema for automatic DDL replication: " << s;
+  STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(ReplicationErrorPb::REPLICATION_SYSTEM_ERROR, s);
+  return;
 }
 
 void XClusterOutputClient::DoWriteCDCRecordDone(

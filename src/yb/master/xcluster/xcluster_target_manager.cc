@@ -14,6 +14,8 @@
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
 #include "yb/client/xcluster_client.h"
+#include "yb/common/colocated_util.h"
+#include "yb/common/constants.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/strings/util.h"
@@ -40,6 +42,8 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+
+using namespace std::placeholders;
 
 DEPRECATE_FLAG(bool, xcluster_wait_on_ddl_alter, "11_2024");
 
@@ -588,13 +592,32 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
   return GetUniverseReplicationInfo(pb, cluster_config);
 }
 
-Status XClusterTargetManager::ClearXClusterSourceTableId(
-    TableInfoPtr table_info, const LeaderEpoch& epoch) {
-  auto table_l = table_info->LockForWrite();
-  table_l.mutable_data()->pb.clear_xcluster_source_table_id();
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_.Upsert(epoch, table_info), "clearing xCluster source table id from table");
-  table_l.Commit();
+Status XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(
+    TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) {
+  if (!table_pb.has_xcluster_table_info()) {
+    return Status::OK();
+  }
+
+  // We check for xcluster_table_info to determine if we need to do this cleanup, so clean up other
+  // fields first.
+  if (table_info->IsColocatedUserTable()) {
+    bool found = false;
+    for (const auto& universe : catalog_manager_.GetAllUniverseReplications()) {
+      if (HasNamespace(*universe, table_info->namespace_id())) {
+        RETURN_NOT_OK(CleanupColocatedTableHistoricalSchemaPackings(
+            *universe, table_info->namespace_id(), table_info->GetColocationId(), catalog_manager_,
+            epoch));
+        found = true;
+        break;  // Should only be one automatic mode universe with the namespace.
+      }
+    }
+    LOG_IF(INFO, !found) << "No XCluster replication info found for colocated table "
+                         << table_info->id() << " (colocation id " << table_info->GetColocationId()
+                         << ") in namespace " << table_info->namespace_id();
+  }
+
+  table_pb.clear_xcluster_table_info();
+
   return Status::OK();
 }
 
@@ -1379,6 +1402,7 @@ Status XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
   {
     auto l = table->LockForWrite();
     auto& table_pb = l.mutable_data()->pb;
+    SCHECK(l->is_running(), IllegalState, "Table $0 is not running", table->ToStringWithState());
 
     // Compare the current schema version with the one in the request to avoid repeated updates.
     if (table_pb.version() != current_schema_version) {
@@ -1407,6 +1431,67 @@ Status XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
             << "(pending tablet schema updates) for " << table->ToString();
 
   return Status::OK();
+}
+
+Status XClusterTargetManager::InsertHistoricalColocatedSchemaPacking(
+    const InsertHistoricalColocatedSchemaPackingRequestPB* req,
+    InsertHistoricalColocatedSchemaPackingResponsePB* resp, const LeaderEpoch& epoch) {
+  auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
+  auto colocation_id = req->colocation_id();
+  TableId parent_table_id = req->target_parent_table_id();
+  SCHECK(
+      IsColocationParentTableId(parent_table_id), InvalidArgument,
+      "Parent table id is not a colocation parent id: ", parent_table_id);
+  auto tablegroup_id = GetTablegroupIdFromParentTableId(parent_table_id);
+  auto namespace_id = VERIFY_RESULT(catalog_manager_.GetTableNamespaceId(parent_table_id));
+
+  auto add_historical_schema_fn = [&](UniverseReplicationInfo& universe) -> Status {
+    auto compatible_schema_version = VERIFY_RESULT(AddHistoricalPackedSchemaForColocatedTable(
+        universe, namespace_id, parent_table_id, colocation_id, req->source_schema_version(),
+        req->schema(), catalog_manager_, epoch));
+    resp->set_last_compatible_consumer_schema_version(compatible_schema_version);
+    return Status::OK();
+  };
+
+  return catalog_manager_.InsertHistoricalColocatedSchemaPacking(
+      replication_group_id, tablegroup_id, colocation_id, add_historical_schema_fn);
+}
+
+Status XClusterTargetManager::ProcessCreateTableReq(
+    const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
+    const NamespaceId& namespace_id) const {
+  // Only need to process if this is the target of Automatic Mode xCluster replication.
+  if (req.xcluster_source_table_id().empty()) {
+    return Status::OK();
+  }
+
+  // xcluster_source_table_id will be used to find the correct source table to replicate from.
+  table_pb.mutable_xcluster_table_info()->set_xcluster_source_table_id(
+      req.xcluster_source_table_id());
+
+  // For colocated tables, we also need to fetch and update any historical packing schemas.
+  // This may also bump up the initial schema version.
+  const auto colocation_id = table_pb.schema().colocated_table_id().colocation_id();
+  if (colocation_id == kColocationIdNotSet) {
+    return Status::OK();
+  }
+  SCHECK(
+      !IsColocationParentTableId(req.table_id()), InvalidArgument,
+      "Received unexpected parent colocation table id: $0", req.table_id());
+
+  // Find the universe replication info for the parent table.
+  for (const auto& universe : catalog_manager_.GetAllUniverseReplications()) {
+    if (!HasNamespace(*universe, namespace_id)) {
+      continue;
+    }
+    return UpdateColocatedTableWithHistoricalSchemaPackings(
+        *universe, table_pb, table_id, namespace_id, colocation_id);
+  }
+
+  return STATUS_FORMAT(
+      NotFound,
+      "XCluster replication group not found for table $0, colocation_id #1, namespace_id $2",
+      table_id, colocation_id, namespace_id);
 }
 
 Status XClusterTargetManager::SetReplicationGroupEnabled(

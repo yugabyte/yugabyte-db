@@ -1076,13 +1076,9 @@ class PgClientSession::Impl {
     PgCreateTable helper(req);
     RETURN_NOT_OK(helper.Prepare());
 
-    if (xcluster_context()) {
-      const auto& source_table_id = xcluster_context()->GetXClusterSourceTableId(
-          {req.database_name(), req.schema_name(), req.table_name()});
-      if (source_table_id.IsValid()) {
-        helper.SetXClusterSourceTableId(source_table_id);
-      }
-    }
+  if (xcluster_context()) {
+    xcluster_context()->PrepareCreateTableHelper(req, helper);
+  }
 
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), context->GetClientDeadline()));

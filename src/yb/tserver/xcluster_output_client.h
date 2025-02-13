@@ -112,6 +112,18 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
       const Status& status, const GetCompatibleSchemaVersionRequestPB& req,
       const GetCompatibleSchemaVersionResponsePB& response);
 
+  void HandleNewCompatibleSchemaVersion(
+      uint32 compatible_schema_version, SchemaVersion producer_schema_version,
+      const SchemaPB new_schema, ColocationId colocation_id);
+
+  void HandleNewHistoricalColocatedSchema(
+      const GetCompatibleSchemaVersionRequestPB& req, ColocationId colocation_id,
+      SchemaVersion producer_schema_version);
+
+  void HandleNewSchemaPacking(
+      const GetCompatibleSchemaVersionRequestPB& req,
+      const GetCompatibleSchemaVersionResponsePB& resp, ColocationId colocation_id);
+
   // Increment processed record count.
   // Returns true if all records are processed, false if there are still some pending records.
   bool IncProcessedRecordCount() REQUIRES(lock_);
@@ -120,6 +132,8 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   void HandleError(const Status& s) EXCLUDES(lock_);
 
   bool UseLocalTserver();
+
+  bool IsColocatedTableStream();
 
   bool IsSequencesDataTablet();
 

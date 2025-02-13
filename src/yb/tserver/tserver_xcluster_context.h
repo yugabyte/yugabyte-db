@@ -41,21 +41,28 @@ class TserverXClusterContext : public TserverXClusterContextIf {
 
   void UpdateSafeTimeMap(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
-  Status SetSourceTableMappingForCreateTable(
-      const YsqlFullTableName& table_name, const PgObjectId& source_table_id) override
-      EXCLUDES(source_table_id_for_create_table_map_mutex_);
-  void ClearSourceTableMappingForCreateTable(const YsqlFullTableName& table_name) override
-      EXCLUDES(source_table_id_for_create_table_map_mutex_);
-  // Returns an invalid PgObjectId if the table is not found.
-  PgObjectId GetXClusterSourceTableId(const YsqlFullTableName& table_name) const override
-      EXCLUDES(source_table_id_for_create_table_map_mutex_);
+  Status SetSourceTableInfoMappingForCreateTable(
+      const YsqlFullTableName& table_name, const PgObjectId& source_table_id,
+      ColocationId colocation_id) override EXCLUDES(table_map_mutex_);
+  void ClearSourceTableInfoMappingForCreateTable(const YsqlFullTableName& table_name) override
+      EXCLUDES(table_map_mutex_);
+
+  void PrepareCreateTableHelper(
+      const PgCreateTableRequestPB& req, PgCreateTable& helper) const override;
 
  private:
   XClusterSafeTimeMap safe_time_map_;
 
-  mutable rw_spinlock source_table_id_for_create_table_map_mutex_;
-  std::unordered_map<YsqlFullTableName, PgObjectId, YsqlFullTableNameHash>
-      source_table_id_for_create_table_map_ GUARDED_BY(source_table_id_for_create_table_map_mutex_);
+  struct CreateTableInfo {
+    PgObjectId source_table_id;
+    ColocationId colocation_id;
+
+    std::string ToString() const { return YB_STRUCT_TO_STRING(source_table_id, colocation_id); }
+  };
+
+  mutable rw_spinlock table_map_mutex_;
+  std::unordered_map<YsqlFullTableName, CreateTableInfo, YsqlFullTableNameHash>
+      create_table_info_map_ GUARDED_BY(table_map_mutex_);
 };
 
 }  // namespace tserver

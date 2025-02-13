@@ -1432,7 +1432,8 @@ Result<TableInfoPtr> RaftGroupMetadata::AddTable(
     const TableType table_type, const Schema& schema, const IndexMap& index_map,
     const dockv::PartitionSchema& partition_schema, const std::optional<IndexInfo>& index_info,
     const SchemaVersion schema_version, const OpId& op_id, HybridTime ht,
-    const TableId& pg_table_id, const SkipTableTombstoneCheck skip_table_tombstone_check) {
+    const TableId& pg_table_id, const SkipTableTombstoneCheck skip_table_tombstone_check,
+    const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings) {
   DCHECK(schema.has_column_ids());
   std::lock_guard lock(data_mutex_);
   Primary primary(table_id == primary_table_id_);
@@ -1457,6 +1458,11 @@ Result<TableInfoPtr> RaftGroupMetadata::AddTable(
       new_table_info->doc_read_context->SetCotableId(new_table_info->cotable_id);
     }
   }
+  if (!old_schema_packings.empty()) {
+    RETURN_NOT_OK(new_table_info->doc_read_context->schema_packing_storage.InsertSchemas(
+        old_schema_packings, /* could_be_present */ false, dockv::OverwriteSchemaPacking::kFalse));
+  }
+
   auto& tables = kv_store_.tables;
   auto[iter, inserted] = tables.emplace(table_id, new_table_info);
   OnChangeMetadataOperationAppliedUnlocked(op_id);

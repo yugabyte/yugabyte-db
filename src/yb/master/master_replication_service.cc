@@ -83,6 +83,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
       (AlterUniverseReplication)
       (DeleteUniverseReplication)
       (InsertPackedSchemaForXClusterTarget)
+      (InsertHistoricalColocatedSchemaPacking)
       (XClusterEnsureSequenceUpdatesAreInWal)
       (SetUniverseReplicationEnabled)
   )

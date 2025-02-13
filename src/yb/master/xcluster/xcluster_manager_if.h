@@ -39,6 +39,7 @@ namespace master {
 class GetXClusterSafeTimeRequestPB;
 class GetXClusterSafeTimeResponsePB;
 struct LeaderEpoch;
+class UniverseReplicationInfo;
 class XClusterConsumerReplicationStatusPB;
 struct XClusterStatus;
 
@@ -65,7 +66,8 @@ class XClusterManagerIf {
   virtual std::unordered_set<xcluster::ReplicationGroupId>
   GetInboundTransactionalReplicationGroups() const = 0;
 
-  virtual Status ClearXClusterSourceTableId(TableInfoPtr table_info, const LeaderEpoch& epoch) = 0;
+  virtual Status ClearXClusterFieldsAfterYsqlDDL(
+      TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) = 0;
 
   virtual void NotifyAutoFlagsConfigChanged() = 0;
 

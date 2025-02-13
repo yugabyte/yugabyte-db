@@ -157,8 +157,9 @@ static List *rewritten_table_oid_list = NIL;
 
 typedef struct YbNewRelMapEntry
 {
+	char *name;
 	Oid			relfile_oid;
-	char	   *rel_name;
+	Oid			colocation_id;
 } YbNewRelMapEntry;
 
 typedef struct YbEnumLabelMapEntry
@@ -265,25 +266,33 @@ ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
 		return true;
 	}
 
-	/* Also need to disallow colocated objects until that is supported. */
+	/* Check for colocation. */
 	YbcTableProperties table_props = YbGetTableProperties(rel);
 	bool		is_colocated = table_props->is_colocated;
+	Oid			colocation_id = 0;
 
-	RelationClose(rel);
 	if (is_colocated)
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("colocated objects are not yet supported by "
-							   "yb_xcluster_ddl_replication"),
-						errdetail("%s", kManualReplicationErrorMsg)));
+  {
+	  if (!TEST_AllowColocatedObjects)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("colocated objects are not yet supported by "
+								"yb_xcluster_ddl_replication"),
+							errdetail("%s", kManualReplicationErrorMsg)));
+
+		colocation_id = table_props->colocation_id;
+	}
 
 	/* Add the new relation to the list of relations to replicate. */
 	YbNewRelMapEntry *new_rel_entry = palloc(sizeof(struct YbNewRelMapEntry));
 
+	new_rel_entry->name = pstrdup(RelationGetRelationName(rel));
 	new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
-	new_rel_entry->rel_name = pstrdup(RelationGetRelationName(rel));
+	new_rel_entry->colocation_id = colocation_id;
 
 	*new_rel_list = lappend(*new_rel_list, new_rel_entry);
 
+  RelationClose(rel);
 	return true;
 }
 
@@ -327,15 +336,45 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 		Relation	rewritten_index = RelationIdGetRelation(rewritten_index_oid);
 
 		YbNewRelMapEntry *rewritten_index_entry = palloc(sizeof(struct YbNewRelMapEntry));
-
+		rewritten_index_entry->name = pstrdup(RelationGetRelationName(rewritten_index));
 		rewritten_index_entry->relfile_oid = YbGetRelfileNodeId(rewritten_index);
-		rewritten_index_entry->rel_name = pstrdup(RelationGetRelationName(rewritten_index));
+		/* TODO(jhe) handle colocated case when indexes are supported #25888. */
+		rewritten_index_entry->colocation_id = 0;
 		*new_rel_list = lappend(*new_rel_list, rewritten_index_entry);
 		RelationClose(rewritten_index);
 	}
 
 	SPI_processed = saved_processed;
 	SPI_tuptable = saved_tuptable;
+}
+
+void
+ProcessNewRelationsList(JsonbParseState *state, List **rel_list)
+{
+	if (!*rel_list)
+		return;
+
+	/* Add the extra context to the JSON output. */
+	AddJsonKey(state, "new_rel_map");
+	(void) pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
+
+	ListCell *l;
+	foreach (l, *rel_list)
+	{
+		YbNewRelMapEntry *entry = (YbNewRelMapEntry *) lfirst(l);
+
+		(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+		AddStringJsonEntry(state, "rel_name", entry->name);
+		AddNumericJsonEntry(state, "relfile_oid", entry->relfile_oid);
+		if (entry->colocation_id)
+			AddNumericJsonEntry(state, "colocation_id", entry->colocation_id);
+		(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+
+		pfree(entry->name);
+		pfree(entry);
+	}
+
+	(void) pushJsonbValue(&state, WJB_END_ARRAY, NULL);
 }
 
 bool
@@ -576,29 +615,8 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		}
 	}
 
-	if (new_rel_list)
-	{
-		/* Add the new_rel_map to the JSON output. */
-		AddJsonKey(state, "new_rel_map");
-		(void) pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
+	ProcessNewRelationsList(state, &new_rel_list);
 
-		ListCell   *l;
-
-		foreach(l, new_rel_list)
-		{
-			YbNewRelMapEntry *entry = (YbNewRelMapEntry *) lfirst(l);
-
-			(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
-			AddStringJsonEntry(state, "rel_name", entry->rel_name);
-			AddNumericJsonEntry(state, "relfile_oid", entry->relfile_oid);
-			(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
-
-			pfree(entry->rel_name);
-			pfree(entry);
-		}
-
-		(void) pushJsonbValue(&state, WJB_END_ARRAY, NULL);
-	}
 	if (enum_label_list)
 	{
 		/*----------
@@ -744,7 +762,7 @@ ProcessSourceEventTriggerDroppedObjects()
 				 * TODO(#22320) - For now we aggressively block any drops of
 				 * relations in a colocated database, including non-colocated tables.
 				 */
-				if (MyDatabaseColocated)
+				if (MyDatabaseColocated && !TEST_AllowColocatedObjects)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("colocated objects are not yet supported by "

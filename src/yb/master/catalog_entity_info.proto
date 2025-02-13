@@ -25,6 +25,7 @@ import "yb/common/transaction.proto";
 import "yb/common/version_info.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
+import "yb/dockv/dockv.proto";
 import "yb/master/master_types.proto";
 
 message BackfillJobPB {
@@ -181,9 +182,22 @@ message SysTablesEntryPB {
   // Time when an admin compaction was last requested. Raw representation of a HybridTime.
   optional fixed64 last_full_compaction_request_time = 41;
 
-  // Set by DDL Replication to link the table to the original table in the source cluster.
-  // Cleared after table creation completes.
-  optional bytes xcluster_source_table_id = 42;
+  message XClusterTableInfo {
+    // Set by DDL Replication to link the table to the original table in the source cluster.
+    // Cleared after table creation completes.
+    optional bytes xcluster_source_table_id = 1;
+
+    // Stores a list of old schema packings for automatic mode xCluster target colocated tables.
+    // These tables are processed before being created and require a source->target packed schema
+    // mapping.
+    // To handle this, we store processed schemas and insert them as old_schema_packings when the
+    // table is created. This allows us to have schema versions to use for the mapping that persists
+    // before and after the table is created.
+    // This is cleaned up after the table is created.
+    repeated dockv.SchemaPackingPB xcluster_colocated_old_schema_packings = 2;
+  }
+
+  optional XClusterTableInfo xcluster_table_info = 42;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -764,6 +778,16 @@ message SysUniverseReplicationEntryPB {
       required string producer_namespace_id = 2;
     }
     repeated NamespaceInfo namespace_infos = 13;
+
+    message HistoricalSchemaPackingPB {
+      repeated dockv.SchemaPackingPB old_schema_packings = 1;
+    }
+    message TargetNamespaceInfoPB {
+      // Colocation id to historical schema packings mapping.
+      map<uint32, HistoricalSchemaPackingPB> colocated_historical_schema_packings = 1;
+    }
+    // Target namespace id -> TargetNamespaceInfoPB.
+    map<string, TargetNamespaceInfoPB> target_namespace_infos = 2;
   }
 
   optional DBScopeInfo db_scoped_info = 13;
