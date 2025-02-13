@@ -210,6 +210,72 @@ INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 
 The `install` command runs all [preflight checks](#run-preflight-checks) first, and then proceeds to do a full install, and then waits for YBA to start. After the install succeeds, you can immediately start using YBA.
 
+### Use a stand-alone data disk
+
+By default, YugabyteDB Anywhere stores its data in `opt/yugabyte/data`. You can also use a stand-alone data disk for YugabyteDB Anywhere data.
+
+Using a stand-alone data disk allows you to swap your YugabyteDB Anywhere data between installations for tasks such as boot disk replacement.
+
+#### Prerequisites
+
+- The data disk should have a minimum of 200GB free space. If you use a data disk, the root disk does not need the full size requirement.
+- The data disk should be formatted and have a filesystem. YBA Installer does not format, partition, or run mkfs on the disk.
+- If you are replacing a data disk, the data on the replacement must be from the same or earlier version of YugabyteDB Anywhere. YugabyteDB Anywhere will not start if you attempt to use a data disk from a later version of YugabyteDB Anywhere.
+
+Note that if you run [clean –-all](#clean-uninstall), the data disk will be cleaned, regardless of the installation type.
+
+#### New installation
+
+To have YugabyteDB Anywhere use a new stand-alone data disk, do the following:
+
+1. Mount the data disk to `/opt/yugabyte/data`. For example:
+
+    ```sh
+    mount /dev/sdb1 /opt/yugabyte/data
+    ```
+
+1. Install YugabyteDB Anywhere.
+
+    ```sh
+    sudo ./yba-ctl install
+    ```
+
+1. Add the mount to `/etc/fstab`.
+
+#### Existing installation
+
+To use an existing data disk, first unmount the disk from the existing YugabyteDB Anywhere installation as follows:
+
+1. Run `sudo yba-ctl stop` to stop YugabyteDB Anywhere.
+
+1. Unmount the data disk:
+
+    ```sh
+    unmount /opt/yugabyte/data
+    ```
+
+1. Optionally, clean up the YugabyteDB Anywhere installation by running `sudo yba-ctl clean --all`.
+
+The disk is now ready to be reused with a new installation.
+
+To use the data disk with a new installation, do the following:
+
+1. Install YugabyteDB Anywhere using the `-without-data` option:
+
+    ```sh
+    sudo ./yba-ctl install -without-data
+    ```
+
+1. Mount the data disk to `/opt/yugabyte/data`. For example:
+
+    ```sh
+    mount /dev/sdb1 /opt/yugabyte/data
+    ```
+
+1. Start YugabyteDB Anywhere by running `sudo yba-ctl start`.
+
+1. Add the mount to `/etc/fstab`.
+
 ## Manage a YBA installation
 
 ### Reconfigure
