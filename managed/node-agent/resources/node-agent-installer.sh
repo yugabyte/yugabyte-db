@@ -250,9 +250,6 @@ check_sudo_access() {
   elif sudo -n pwd >/dev/null 2>&1; then
     SUDO_ACCESS="true"
   fi
-  if [ "$OS" = "Linux" ]; then
-    SE_LINUX_STATUS=$(getenforce 2>/dev/null)
-  fi
   set -e
 }
 
@@ -269,7 +266,15 @@ modify_firewall() {
 }
 
 modify_selinux() {
+  if [ "$OS" != "Linux" ]; then
+    echo "OS $OS is not Linux. Skipping SELinux configuration"
+    return
+  fi
   set +e
+  se_linux_status=$(getenforce 2>/dev/null)
+  if [ "$se_linux_status" = "Enforcing" ]; then
+    echo "SELinux is in $se_linux_status mode"
+  fi
   if ! command -v semanage >/dev/null 2>&1; then
     if [ "$AIRGAP_INSTALL" = "true" ]; then
       # The changes made with chcon are temporary in the sense that the context of the file
@@ -340,9 +345,7 @@ install_systemd_service() {
     SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
   fi
   if [ "$USER_SCOPED_UNIT" = "false" ]; then
-    if [ "$SE_LINUX_STATUS" = "Enforcing" ]; then
-      modify_selinux
-    fi
+    modify_selinux
     modify_firewall
   fi
   echo "* Installing Node Agent Systemd Service"
