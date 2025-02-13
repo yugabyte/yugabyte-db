@@ -166,6 +166,7 @@ extern int yb_xcluster_consistency_level;
  */
 extern uint64_t yb_read_time;
 extern bool yb_is_read_time_ht;
+extern bool yb_disable_catalog_version_check;
 
 /*
  * Allows for customizing the number of rows to be prefetched.

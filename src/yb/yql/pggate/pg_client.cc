@@ -684,17 +684,19 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(
-      int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
+      int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
       bool is_db_catalog_version_mode, std::optional<uint64_t> read_time) {
     tserver::PgReadSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
-    if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-      req.set_ysql_db_catalog_version(ysql_catalog_version);
-    } else {
-      req.set_ysql_catalog_version(ysql_catalog_version);
+    if (ysql_catalog_version) {
+      if (is_db_catalog_version_mode) {
+        DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
+        req.set_ysql_db_catalog_version(*ysql_catalog_version);
+      } else {
+        req.set_ysql_catalog_version(*ysql_catalog_version);
+      }
     }
 
     if (read_time) {
@@ -1638,8 +1640,8 @@ Result<std::pair<int64_t, int64_t>> PgClient::FetchSequenceTuple(int64_t db_oid,
 }
 
 Result<std::pair<int64_t, bool>> PgClient::ReadSequenceTuple(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
-    std::optional<uint64_t> read_time) {
+    int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
+    bool is_db_catalog_version_mode, std::optional<uint64_t> read_time) {
   return impl_->ReadSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, read_time);
 }

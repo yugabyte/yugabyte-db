@@ -81,6 +81,7 @@ int yb_explicit_row_locking_batch_size = 1;
 
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
+bool yb_disable_catalog_version_check = false;
 
 int yb_read_after_commit_visibility = 0;
 

@@ -536,12 +536,17 @@ Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
                                                               int64_t seq_oid,
                                                               uint64_t ysql_catalog_version,
                                                               bool is_db_catalog_version_mode) {
+  std::optional<uint64_t> optional_ysql_catalog_version = std::nullopt;
+  std::optional<uint64_t> optional_yb_read_time = std::nullopt;
+  if (!yb_disable_catalog_version_check) {
+    optional_ysql_catalog_version = ysql_catalog_version;
+  }
   if (yb_read_time != 0) {
-    return pg_client_.ReadSequenceTuple(
-        db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, yb_read_time);
+    optional_yb_read_time = yb_read_time;
   }
   return pg_client_.ReadSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode);
+      db_oid, seq_oid, optional_ysql_catalog_version, is_db_catalog_version_mode,
+      optional_yb_read_time);
 }
 
 //--------------------------------------------------------------------------------------------------
