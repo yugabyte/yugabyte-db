@@ -608,7 +608,7 @@ gin_bson_single_path_options(PG_FUNCTION_ARGS)
 							INT32_MAX, /* default value */
 							0, /* min */
 							INT32_MAX, /* max */
-							offsetof(BsonGinWildcardProjectionPathOptions,
+							offsetof(BsonGinSinglePathOptions,
 									 base.wildcardIndexTruncatedPathLimit));
 
 	add_local_int_reloption(relopts, "v",
