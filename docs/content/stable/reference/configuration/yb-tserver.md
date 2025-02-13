@@ -1858,7 +1858,7 @@ Default: true
 
 ##### yb_insert_on_conflict_read_batch_size
 
-{{<tags/feature/ea idea="1455">}} Set the level of batching for InsertOnConflict. Set to 0 to disable batching. Batching is always disabled for the following:
+{{<tags/feature/ea idea="1455">}} Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
 
 - non-YugabyteDB relations
 - system relations
