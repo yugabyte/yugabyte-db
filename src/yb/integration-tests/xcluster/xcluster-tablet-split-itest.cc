@@ -604,8 +604,8 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     for (const auto& [consumer_tablet_id, producer_tablet_list] : tablet_map) {
       auto consumer_tablet = std::find_if(
           consumer_tablet_peers.begin(), consumer_tablet_peers.end(),
-          [consumer_tablet_id](const auto& tablet) {
-            return tablet->tablet_id() == consumer_tablet_id;
+          [tablet_id = std::cref(consumer_tablet_id)](const auto& tablet) {
+            return tablet->tablet_id() == tablet_id.get();
           });
       ASSERT_NE(consumer_tablet, consumer_tablet_peers.end());
 
