@@ -46,7 +46,7 @@ Download YugabyteDB as follows:
     Or:
 
     ```sh
-    wget https://downloads.yugabyte.com/releases/{{< yb-version version="v2024.2">}}/yugabyte-{{< yb-version version="v2024.1" format="build">}}-el8-aarch64.tar.gz
+    wget https://downloads.yugabyte.com/releases/{{< yb-version version="v2024.1">}}/yugabyte-{{< yb-version version="v2024.1" format="build">}}-el8-aarch64.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
