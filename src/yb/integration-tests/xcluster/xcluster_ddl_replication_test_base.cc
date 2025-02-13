@@ -203,14 +203,14 @@ Status XClusterDDLReplicationTestBase::PrintDDLQueue(Cluster& cluster) {
   auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
   const auto rows = VERIFY_RESULT((conn.FetchRows<int64_t, int64_t, std::string>(Format(
       "SELECT $0, $1, $2 FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY $0 ASC",
-      xcluster::kDDLQueueStartTimeColumn, xcluster::kDDLQueueQueryIdColumn,
+      xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn))));
 
   std::stringstream ss;
   ss << "DDL Queue Table:" << std::endl;
-  for (const auto& [start_time, query_id, raw_json_data] : rows) {
+  for (const auto& [ddl_end_time, query_id, raw_json_data] : rows) {
     // Serialized JSON string has an extra character at the front.
-    ss << start_time << "\t" << query_id << "\t" << raw_json_data.substr(1, kMaxJsonStrLen)
+    ss << ddl_end_time << "\t" << query_id << "\t" << raw_json_data.substr(1, kMaxJsonStrLen)
        << std::endl;
   }
   LOG(INFO) << ss.str();

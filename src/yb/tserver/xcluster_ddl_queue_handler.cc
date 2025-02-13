@@ -67,8 +67,8 @@ const std::string kDDLQueueFullTableName =
     Format("$0.$1", xcluster::kDDLQueuePgSchemaName, xcluster::kDDLQueueTableName);
 const std::string kReplicatedDDLsFullTableName =
     Format("$0.$1", xcluster::kDDLQueuePgSchemaName, xcluster::kDDLReplicatedTableName);
-const std::string kLocalVariableStartTime =
-    Format("$0.$1", xcluster::kDDLQueuePgSchemaName, "ddl_queue_primary_key_start_time");
+const std::string kLocalVariableDDLEndTime =
+    Format("$0.$1", xcluster::kDDLQueuePgSchemaName, "ddl_queue_primary_key_ddl_end_time");
 const std::string kLocalVariableQueryId =
     Format("$0.$1", xcluster::kDDLQueuePgSchemaName, "ddl_queue_primary_key_query_id");
 
@@ -248,9 +248,9 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
 
   // TODO(#20928): Make these calls async.
   auto rows = VERIFY_RESULT(GetRowsToProcess(target_safe_ht));
-  for (const auto& [start_time, query_id, raw_json_data] : rows) {
+  for (const auto& [ddl_end_time, query_id, raw_json_data] : rows) {
     rapidjson::Document doc = VERIFY_RESULT(ParseSerializedJson(raw_json_data));
-    const auto query_info = VERIFY_RESULT(GetDDLQueryInfo(doc, start_time, query_id));
+    const auto query_info = VERIFY_RESULT(GetDDLQueryInfo(doc, ddl_end_time, query_id));
 
     // Need to reverify replicated_ddls if this DDL has already been processed.
     if (VERIFY_RESULT(CheckIfAlreadyProcessed(query_info))) {
@@ -292,14 +292,14 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
 }
 
 Result<XClusterDDLQueueHandler::DDLQueryInfo> XClusterDDLQueueHandler::GetDDLQueryInfo(
-    rapidjson::Document& doc, int64 start_time, int64 query_id) {
+    rapidjson::Document& doc, int64 ddl_end_time, int64 query_id) {
   DDLQueryInfo query_info;
 
   VALIDATE_MEMBER(doc, kDDLJsonVersion, Int);
   query_info.version = doc[kDDLJsonVersion].GetInt();
   SCHECK_EQ(query_info.version, kDDLQueueJsonVersion, InvalidArgument, "Invalid JSON version");
 
-  query_info.start_time = start_time;
+  query_info.ddl_end_time = ddl_end_time;
   query_info.query_id = query_id;
 
   VALIDATE_MEMBER(doc, kDDLJsonCommandTag, String);
@@ -364,7 +364,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
   setup_query << "SET ROLE NONE;";
 
   // Set session variables in order to pass the key to the replicated_ddls table.
-  setup_query << Format("SET $0 TO $1;", kLocalVariableStartTime, query_info.start_time);
+  setup_query << Format("SET $0 TO $1;", kLocalVariableDDLEndTime, query_info.ddl_end_time);
   setup_query << Format("SET $0 TO $1;", kLocalVariableQueryId, query_info.query_id);
 
   // Set schema and role after setting the superuser extension variables.
@@ -404,7 +404,7 @@ Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(const DDLQueryInfo& 
   doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
 
   RETURN_NOT_OK(RunAndLogQuery(Format(
-      "EXECUTE $0($1, $2, '$3')", kDDLPrepStmtManualInsert, query_info.start_time,
+      "EXECUTE $0($1, $2, '$3')", kDDLPrepStmtManualInsert, query_info.ddl_end_time,
       query_info.query_id, common::WriteRapidJsonToString(doc))));
   return Status::OK();
 }
@@ -417,7 +417,7 @@ Status XClusterDDLQueueHandler::RunAndLogQuery(const std::string& query) {
 
 Result<bool> XClusterDDLQueueHandler::CheckIfAlreadyProcessed(const DDLQueryInfo& query_info) {
   return pg_conn_->FetchRow<bool>(Format(
-      "EXECUTE $0($1, $2)", kDDLPrepStmtAlreadyProcessed, query_info.start_time,
+      "EXECUTE $0($1, $2)", kDDLPrepStmtAlreadyProcessed, query_info.ddl_end_time,
       query_info.query_id));
 }
 
@@ -443,7 +443,7 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   // Prepare replicated_ddls select query.
   query << "PREPARE " << kDDLPrepStmtAlreadyProcessed << "(bigint, bigint) AS "
         << "SELECT EXISTS(SELECT 1 FROM " << xcluster::kDDLQueuePgSchemaName << "."
-        << xcluster::kDDLReplicatedTableName << " WHERE " << xcluster::kDDLQueueStartTimeColumn
+        << xcluster::kDDLReplicatedTableName << " WHERE " << xcluster::kDDLQueueDDLEndTimeColumn
         << " = $1 AND " << xcluster::kDDLQueueQueryIdColumn << " = $2);";
   RETURN_NOT_OK(pg_conn_->Execute(query.str()));
 
@@ -467,7 +467,7 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
       "SELECT $0, $1, $2 FROM $3 "
       "WHERE ($0, $1) NOT IN (SELECT $0, $1 FROM $4) "
       "ORDER BY $0 ASC",
-      xcluster::kDDLQueueStartTimeColumn, xcluster::kDDLQueueQueryIdColumn,
+      xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn, kDDLQueueFullTableName, kReplicatedDDLsFullTableName))));
   // DDLs are blocked when yb_read_time is non-zero, so reset.
   RETURN_NOT_OK(pg_conn_->Execute("SET yb_read_time = 0"));

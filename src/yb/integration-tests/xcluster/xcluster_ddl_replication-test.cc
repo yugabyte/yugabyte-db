@@ -441,6 +441,31 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
   }
 }
 
+TEST_F(XClusterDDLReplicationTest, DDLsWithinTransaction) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  // Run a bunch of DDLs within a transaction, each of which depend on previous ones so the exact
+  // ordering matters. If the target tries to run in any other order it will get stuck.
+  ASSERT_OK(p_conn.Execute("BEGIN"));
+  ASSERT_OK(p_conn.Execute("CREATE TABLE test_table_1 (key int PRIMARY KEY);"));
+  ASSERT_OK(p_conn.Execute("ALTER TABLE test_table_1 RENAME TO test_table_2;"));
+  ASSERT_OK(p_conn.Execute("ALTER TABLE test_table_2 ADD COLUMN a int;"));
+  ASSERT_OK(p_conn.Execute("ALTER TABLE test_table_2 RENAME COLUMN a TO b;"));
+  ASSERT_OK(p_conn.Execute("ALTER TABLE test_table_2 DROP COLUMN b;"));
+  ASSERT_OK(p_conn.Execute("COMMIT"));
+
+  ASSERT_OK(PrintDDLQueue(producer_cluster_));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", "test_table_2"))));
+
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table->name());
+}
+
 TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
   // Test that when there are multiple tables with the same name, we are able to correctly link the
   // target tables to the correct source tables.

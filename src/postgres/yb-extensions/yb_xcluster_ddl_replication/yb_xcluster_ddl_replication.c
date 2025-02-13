@@ -52,7 +52,7 @@ static const struct config_enum_entry replication_roles[] = {
 
 static int	ReplicationRole = REPLICATION_ROLE_DISABLED;
 static bool EnableManualDDLReplication = false;
-char	   *DDLQueuePrimaryKeyStartTime = NULL;
+char	   *DDLQueuePrimaryKeyDDLEndTime = NULL;
 char	   *DDLQueuePrimaryKeyQueryId = NULL;
 bool		TEST_AllowColocatedObjects = false;
 
@@ -100,10 +100,10 @@ _PG_init(void)
 							 0,
 							 NULL, NULL, NULL);
 
-	DefineCustomStringVariable("yb_xcluster_ddl_replication.ddl_queue_primary_key_start_time",
+	DefineCustomStringVariable("yb_xcluster_ddl_replication.ddl_queue_primary_key_ddl_end_time",
 							   gettext_noop("Internal use only: Used by HandleTargetDDLEnd function."),
 							   NULL,
-							   &DDLQueuePrimaryKeyStartTime,
+							   &DDLQueuePrimaryKeyDDLEndTime,
 							   "",
 							   PGC_SUSET,
 							   0,
@@ -144,7 +144,7 @@ IsReplicationTarget()
 }
 
 void
-InsertIntoTable(const char *table_name, int64 start_time, int64 query_id,
+InsertIntoTable(const char *table_name, int64 ddl_end_time, int64 query_id,
 				Jsonb *yb_data)
 {
 	const int	kNumArgs = 3;
@@ -154,12 +154,12 @@ InsertIntoTable(const char *table_name, int64 start_time, int64 query_id,
 
 	initStringInfo(&query_buf);
 	appendStringInfo(&query_buf,
-					 "INSERT INTO %s.%s (start_time, query_id, yb_data) values "
+					 "INSERT INTO %s.%s (ddl_end_time, query_id, yb_data) values "
 					 "($1,$2,$3)",
 					 EXTENSION_NAME, table_name);
 
 	arg_types[0] = INT8OID;
-	arg_vals[0] = Int64GetDatum(start_time);
+	arg_vals[0] = Int64GetDatum(ddl_end_time);
 
 	arg_types[1] = INT8OID;
 	arg_vals[1] = Int64GetDatum(query_id);
@@ -178,9 +178,20 @@ InsertIntoTable(const char *table_name, int64 start_time, int64 query_id,
 void
 InsertIntoDDLQueue(Jsonb *yb_data)
 {
-	/* Compute the transaction start time in micros since epoch. */
-	TimestampTz epoch_time = (GetCurrentTransactionStartTimestamp() -
-							  SetEpochTimestamp());
+	/*
+   * Compute the current time in micros since epoch.
+   * This is the ddl_end time, which is after all the docdb schema changes for
+   * the DDL have occurred (note that the pg catalog changes are not yet visible
+   * as the txn hasn't committed yet).
+   * Current time also give us a distinct and ordered time for DDLs within a
+   * transaction, as opposed to using now(), which is the same within a txn.
+	 *
+	 * TODO (#25999): We will also use this time as the safe time to run the DDL
+	 * on the target, by waiting for other pollers to catch up to this safe time
+	 * before running the DDL. Since this time is after the docdb schema is
+	 * applied, we are fine at this point to catch up the pg catalog changes.
+   */
+	TimestampTz epoch_time = (GetCurrentTimestamp() - SetEpochTimestamp());
 
 	/* Use random int for the query_id. */
 	InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, random(), yb_data);
@@ -351,8 +362,8 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 	 * We expect ddl_queue_primary_key_* variables to have been set earlier in
 	 * the transaction by the ddl_queue handler.
 	 */
-	int64		pkey_start_time = GetInt64FromVariable(DDLQueuePrimaryKeyStartTime,
-													   "ddl_queue_primary_key_start_time");
+	int64		pkey_ddl_end_time = GetInt64FromVariable(DDLQueuePrimaryKeyDDLEndTime,
+															 "ddl_queue_primary_key_ddl_end_time");
 	int64		pkey_query_id = GetInt64FromVariable(DDLQueuePrimaryKeyQueryId,
 													 "ddl_queue_primary_key_query_id");
 
@@ -371,7 +382,7 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 	Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
 
-	InsertIntoTable(REPLICATED_DDLS_TABLE_NAME, pkey_start_time, pkey_query_id,
+	InsertIntoTable(REPLICATED_DDLS_TABLE_NAME, pkey_ddl_end_time, pkey_query_id,
 					jsonb);
 
 	CLOSE_MEM_CONTEXT_AND_SPI;

@@ -48,7 +48,7 @@ class XClusterDDLQueueHandler {
 
   struct DDLQueryInfo {
     std::string query;
-    int64 start_time;
+    int64 ddl_end_time;
     int64 query_id;
     int version;
     std::string command_tag;
@@ -57,11 +57,12 @@ class XClusterDDLQueueHandler {
     std::string json_for_oid_assignment;
 
     std::string ToString() const {
-      return YB_STRUCT_TO_STRING(query, start_time, query_id, version, command_tag, schema, user);
+      return YB_STRUCT_TO_STRING(query, ddl_end_time, query_id, version, command_tag, schema, user);
     }
   };
 
-  Result<DDLQueryInfo> GetDDLQueryInfo(rapidjson::Document& doc, int64 start_time, int64 query_id);
+  Result<DDLQueryInfo> GetDDLQueryInfo(
+      rapidjson::Document& doc, int64 ddl_end_time, int64 query_id);
 
   virtual Status ProcessDDLQuery(const DDLQueryInfo& query_info);
 
