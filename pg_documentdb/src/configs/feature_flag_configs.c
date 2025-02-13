@@ -103,6 +103,10 @@ bool EnableBackendStatementTimeout = DEFAULT_ENABLE_STATEMENT_TIMEOUT;
 #define DEFAULT_ENABLE_SIMPLIFY_GROUP_ACCUMULATORS true
 bool EnableSimplifyGroupAccumulators = DEFAULT_ENABLE_SIMPLIFY_GROUP_ACCUMULATORS;
 
+#define DEFAULT_ENABLE_SORT_BY_ID_PUSHDOWN_TO_PRIMARYKEY false
+bool EnableSortbyIdPushDownToPrimaryKey =
+	DEFAULT_ENABLE_SORT_BY_ID_PUSHDOWN_TO_PRIMARYKEY;
+
 void
 InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix)
 {
@@ -294,5 +298,13 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 			"Whether to enable parse time simplification of group accumulators."),
 		NULL, &EnableSimplifyGroupAccumulators,
 		DEFAULT_ENABLE_SIMPLIFY_GROUP_ACCUMULATORS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableSortbyIdPushDownToPrimaryKey", newGucPrefix),
+		gettext_noop(
+			"Whether to push down sort by id to primary key"),
+		NULL, &EnableSortbyIdPushDownToPrimaryKey,
+		DEFAULT_ENABLE_SORT_BY_ID_PUSHDOWN_TO_PRIMARYKEY,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

@@ -257,6 +257,63 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
          Rows Removed by Filter: 38
 (5 rows)
 
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$in": [12, 14]}}, "sort": {"_id": 1}, "limit": 20 }');
+                                              QUERY PLAN                                               
+---------------------------------------------------------------------
+ Limit (actual rows=20 loops=1)
+   ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
+         Index Cond: (shard_key_value = '964001'::bigint)
+         Filter: (document @*= '{ "a" : [ { "$numberInt" : "12" }, { "$numberInt" : "14" } ] }'::bson)
+         Rows Removed by Filter: 10
+(5 rows)
+
+BEGIN;
+SET LOCAL documentdb.enableSortbyIdPushDownToPrimaryKey = 'false';
+---- should not use  Index Scan using _id_ 
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
+                                                                      QUERY PLAN                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 420 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 420 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit (actual rows=20 loops=1)
+               ->  Sort (actual rows=20 loops=1)
+                     Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                     Sort Method: top-N heapsort  Memory: 26kB
+                     ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=3334 loops=1)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+                           Heap Blocks: exact=104
+                           ->  Bitmap Index Scan on a_id (actual rows=3334 loops=1)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+(16 rows)
+
+---- should not use  Index Scan using _id_ with $in
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$in": [12, 14]}}, "sort": {"_id": 1}, "limit": 20 }');
+                                                                                     QUERY PLAN                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 420 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 420 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit (actual rows=20 loops=1)
+               ->  Sort (actual rows=20 loops=1)
+                     Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                     Sort Method: top-N heapsort  Memory: 26kB
+                     ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=6667 loops=1)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "12" }, { "$numberInt" : "14" } ] }'::documentdb_core.bson)
+                           Heap Blocks: exact=104
+                           ->  Bitmap Index Scan on a_id (actual rows=6667 loops=1)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "12" }, { "$numberInt" : "14" } ] }'::documentdb_core.bson)
+(16 rows)
+
+END;
 SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 100}}, "sort": {"_id": 1}, "limit": 20 }');
                               document                               
 ---------------------------------------------------------------------

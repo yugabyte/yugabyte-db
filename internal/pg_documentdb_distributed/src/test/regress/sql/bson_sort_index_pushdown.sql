@@ -55,6 +55,18 @@ ANALYZE documentdb_data.documents_964001;
 
 SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$in": [12, 14]}}, "sort": {"_id": 1}, "limit": 20 }');
+
+BEGIN;
+SET LOCAL documentdb.enableSortbyIdPushDownToPrimaryKey = 'false';
+---- should not use  Index Scan using _id_ 
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
+
+---- should not use  Index Scan using _id_ with $in
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$in": [12, 14]}}, "sort": {"_id": 1}, "limit": 20 }');
+END;
+
+
 SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 100}}, "sort": {"_id": 1}, "limit": 20 }');
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 100}}, "sort": {"_id": 1}, "limit": 20 }');
 

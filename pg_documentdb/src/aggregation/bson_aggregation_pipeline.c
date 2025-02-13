@@ -76,6 +76,7 @@ extern bool EnableCollation;
 extern bool EnableFastPathPointLookupPlanner;
 extern bool DefaultInlineWriteOperations;
 extern bool EnableSimplifyGroupAccumulators;
+extern bool EnableSortbyIdPushDownToPrimaryKey;
 
 /* GUC to config tdigest compression */
 extern int TdigestCompressionAccuracy;
@@ -4328,7 +4329,7 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 			SortByNulls sortByNulls = SORTBY_NULLS_DEFAULT;
 
 			/* If the sort is on _id and we can push it down to the primary key index, use ORDER BY object_id instead. */
-			if (strcmp(element.path, "_id") == 0 &&
+			if (EnableSortbyIdPushDownToPrimaryKey && strcmp(element.path, "_id") == 0 &&
 				CanSortByObjectId(query, context))
 			{
 				expr = (Expr *) makeVar(1,
