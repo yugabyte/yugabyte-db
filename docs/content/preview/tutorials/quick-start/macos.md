@@ -222,7 +222,7 @@ Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally
 
 {{< /tabpane >}}
 
-{{% includeMarkdown "./include-connect.md" %}}
+{{< readfile "/preview/tutorials/quick-start/include-connect.md" >}}
 
 ## Build an application
 
