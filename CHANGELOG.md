@@ -1,5 +1,6 @@
 ### documentdb v0.102-0 (Unreleased) ###
 * Support index pushdown for vector search queries *[Bugfix]*
+* Inline $match with let in $lookup pipelines as JOIN Filter *[Perf]*
 
 ### documentdb v0.101-0 (February 12, 2025) ###
 * Push $graphlookup recursive CTE JOIN filters to index *[Perf]*

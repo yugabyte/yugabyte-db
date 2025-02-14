@@ -50,6 +50,7 @@
 const int MaximumLookupPipelineDepth = 20;
 extern bool EnableLookupIdJoinOptimizationOnCollation;
 extern bool EnableNowSystemVariable;
+extern bool EnableMatchWithLetInLookup;
 
 /*
  * Struct having parsed view of the
@@ -112,15 +113,15 @@ typedef struct LookupOptimizationArgs
 	bool isLookupUncorrelated;
 
 	/*
-	 * The segment of the pipeline that can be inlined.
+	 * The segment of the pipeline stages that can be inlined.
 	 */
-	bson_value_t inlinedLookupPipeline;
+	List *inlinedPipelineStages;
 
 	/*
-	 * The segment of the pipeline that cannot be inlined and needs
+	 * The segment of the pipeline stages that cannot be inlined and needs
 	 * to be applied post-join.
 	 */
-	bson_value_t nonInlinedLookupPipeline;
+	List *nonInlinedPipelineStages;
 
 	/*
 	 * Can the join be done on the right query's _id?
@@ -148,6 +149,19 @@ typedef struct LookupOptimizationArgs
 	 * has a let that is non const.
 	 */
 	bool hasLet;
+
+	/*
+	 * Referrence to the first non-inlined $match stage with $expr qualifiers which
+	 * was not inlined due to the presence of a `let`.
+	 * We do a best effort inlining of this stage close to the right query to avoid
+	 * the stage post-JOIN
+	 */
+	AggregationStage *nonInlinedMatchStage;
+
+	/*
+	 * The attrNum for the lookup let in left query
+	 */
+	AttrNumber lookupLetAttrNum;
 } LookupOptimizationArgs;
 
 
@@ -1949,9 +1963,18 @@ OptimizeLookup(LookupArgs *lookupArgs,
 	strncpy((char *) optimizationArgs->rightQueryContext.collationString,
 			leftQueryContext->collationString, MAX_ICU_COLLATION_LENGTH);
 	optimizationArgs->rightQueryContext.parentStageName = ParentStageName_LOOKUP;
+	optimizationArgs->rightQueryContext.optimizePipelineStages =
+		leftQueryContext->optimizePipelineStages;
 
 	optimizationArgs->isLookupAgnostic = lookupArgs->from.length == 0;
 	optimizationArgs->isLookupUncorrelated = !lookupArgs->hasLookupMatch;
+
+	bson_value_t inlinedLookupPipeline = (bson_value_t) {
+		0
+	};
+	bson_value_t nonInlinedLookupPipeline = (bson_value_t) {
+		0
+	};
 
 	if (leftQueryContext->variableSpec != NULL &&
 		!IsA(leftQueryContext->variableSpec, Const))
@@ -2001,6 +2024,44 @@ OptimizeLookup(LookupArgs *lookupArgs,
 			}
 		}
 
+		/* If there is lookup let, we will build the let in the left query and then the let expression
+		 * should be used by the right query / post join stages wherever needed.
+		 */
+		Const *letConstValue = MakeBsonConst(lookupArgs->let);
+
+		List *args;
+		Oid funcOid;
+		Expr *sourceVariableSpec = leftQueryContext->variableSpec;
+		if (sourceVariableSpec == NULL)
+		{
+			sourceVariableSpec = (Expr *) MakeBsonConst(PgbsonInitEmpty());
+		}
+
+		Expr *documentExpr = linitial_node(TargetEntry, leftQuery->targetList)->expr;
+		args = list_make3(documentExpr, letConstValue, sourceVariableSpec);
+		funcOid = BsonDollarLookupExpressionEvalMergeOid();
+
+		Expr *letExpr = (Expr *) makeFuncExpr(funcOid, BsonTypeId(), args, InvalidOid,
+											  InvalidOid, COERCE_EXPLICIT_CALL);
+
+		optimizationArgs->lookupLetAttrNum = list_length(leftQuery->targetList) + 1;
+		TargetEntry *lookupLetEntry = makeTargetEntry(letExpr,
+													  optimizationArgs->lookupLetAttrNum,
+													  "let", false);
+		leftQuery->targetList = lappend(leftQuery->targetList, lookupLetEntry);
+
+		/*
+		 * Make a VAR to access the above let in right query.
+		 * Today the right query is pushed to a CTE for and this Var is
+		 * used to support special case non-inline stages i.e. $match
+		 * so varlevelsup is 1
+		 */
+		Index varLevelsUp = 1;
+		int leftQueryVarNo = 1;
+		Expr *letVarExpr = (Expr *) makeVar(leftQueryVarNo,
+											optimizationArgs->lookupLetAttrNum,
+											BsonTypeId(), -1, InvalidOid, varLevelsUp);
+		optimizationArgs->rightQueryContext.variableSpec = letVarExpr;
 		optimizationArgs->hasLet = true;
 	}
 
@@ -2071,23 +2132,23 @@ OptimizeLookup(LookupArgs *lookupArgs,
 	/* No point in inlining lookup pipeline on agnostic - it Has to be applied */
 	if (lookupArgs->pipeline.value_type == BSON_TYPE_EOD)
 	{
-		optimizationArgs->inlinedLookupPipeline = lookupArgs->pipeline;
-		optimizationArgs->nonInlinedLookupPipeline = (bson_value_t) {
+		inlinedLookupPipeline = lookupArgs->pipeline;
+		nonInlinedLookupPipeline = (bson_value_t) {
 			0
 		};
 	}
 	else if (IsBsonValueEmptyArray(&lookupArgs->pipeline))
 	{
-		optimizationArgs->inlinedLookupPipeline = lookupArgs->pipeline;
-		optimizationArgs->nonInlinedLookupPipeline = (bson_value_t) {
+		inlinedLookupPipeline = lookupArgs->pipeline;
+		nonInlinedLookupPipeline = (bson_value_t) {
 			0
 		};
 	}
 	else if (optimizationArgs->isLookupUncorrelated ||
 			 optimizationArgs->isLookupAgnostic)
 	{
-		optimizationArgs->inlinedLookupPipeline = lookupArgs->pipeline;
-		optimizationArgs->nonInlinedLookupPipeline = (bson_value_t) {
+		inlinedLookupPipeline = lookupArgs->pipeline;
+		nonInlinedLookupPipeline = (bson_value_t) {
 			0
 		};
 	}
@@ -2097,10 +2158,10 @@ OptimizeLookup(LookupArgs *lookupArgs,
 		 * This is because it's better to join on _id (index pushdown) then apply the pipeline on
 		 * the result.
 		 */
-		optimizationArgs->inlinedLookupPipeline = (bson_value_t) {
+		inlinedLookupPipeline = (bson_value_t) {
 			0
 		};
-		optimizationArgs->nonInlinedLookupPipeline = lookupArgs->pipeline;
+		nonInlinedLookupPipeline = lookupArgs->pipeline;
 	}
 	else
 	{
@@ -2123,16 +2184,16 @@ OptimizeLookup(LookupArgs *lookupArgs,
 		if (!isPipelineValid)
 		{
 			/* Invalid pipeline - just make it inlined to trigger the error */
-			optimizationArgs->inlinedLookupPipeline = lookupArgs->pipeline;
-			optimizationArgs->nonInlinedLookupPipeline = (bson_value_t) {
+			inlinedLookupPipeline = lookupArgs->pipeline;
+			nonInlinedLookupPipeline = (bson_value_t) {
 				0
 			};
 		}
 		else if (canInlinePipelineCore)
 		{
 			/* The full pipeline can be inlined */
-			optimizationArgs->inlinedLookupPipeline = lookupArgs->pipeline;
-			optimizationArgs->nonInlinedLookupPipeline = (bson_value_t) {
+			inlinedLookupPipeline = lookupArgs->pipeline;
+			nonInlinedLookupPipeline = (bson_value_t) {
 				0
 			};
 		}
@@ -2144,7 +2205,7 @@ OptimizeLookup(LookupArgs *lookupArgs,
 				PgbsonToSinglePgbsonElement(inlinedPipeline, &pipelineElement);
 				if (!IsBsonValueEmptyArray(&pipelineElement.bsonValue))
 				{
-					optimizationArgs->inlinedLookupPipeline = pipelineElement.bsonValue;
+					inlinedLookupPipeline = pipelineElement.bsonValue;
 				}
 			}
 
@@ -2153,8 +2214,7 @@ OptimizeLookup(LookupArgs *lookupArgs,
 				PgbsonToSinglePgbsonElement(nonInlinedPipeline, &pipelineElement);
 				if (!IsBsonValueEmptyArray(&pipelineElement.bsonValue))
 				{
-					optimizationArgs->nonInlinedLookupPipeline =
-						pipelineElement.bsonValue;
+					nonInlinedLookupPipeline = pipelineElement.bsonValue;
 				}
 			}
 		}
@@ -2192,6 +2252,31 @@ OptimizeLookup(LookupArgs *lookupArgs,
 		lookupArgs->pipeline.value_type != BSON_TYPE_EOD)
 	{
 		ValidatePipelineForShardedLookupWithLet(&lookupArgs->pipeline);
+	}
+
+	/*
+	 * Extract the inline and non inline pipeline stages after everythin is done.
+	 */
+	optimizationArgs->inlinedPipelineStages = ExtractAggregationStages(
+		&inlinedLookupPipeline, &optimizationArgs->rightQueryContext);
+	optimizationArgs->nonInlinedPipelineStages = ExtractAggregationStages(
+		&nonInlinedLookupPipeline, &optimizationArgs->rightQueryContext);
+
+	/*
+	 * If the first non-inline stages is a $match (which contains let and $expr),
+	 * and we don't have a better match plan e.g. join on righ collection _id then
+	 * we need to handle it similar to hasLookupMatch
+	 */
+	Stage firstNonInlineStage = GetAggregationStageAtPosition(
+		optimizationArgs->nonInlinedPipelineStages, 0);
+	if (EnableMatchWithLetInLookup &&
+		!optimizationArgs->isLookupJoinOnRightId &&
+		firstNonInlineStage == Stage_Match)
+	{
+		optimizationArgs->nonInlinedMatchStage = (AggregationStage *) linitial(
+			optimizationArgs->nonInlinedPipelineStages);
+		optimizationArgs->nonInlinedPipelineStages =
+			list_delete_first(optimizationArgs->nonInlinedPipelineStages);
 	}
 }
 
@@ -2240,14 +2325,10 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 	parseState->p_next_resno = 1;
 
 	/* Process the right query where possible */
-	if (optimizationArgs.inlinedLookupPipeline.value_type != BSON_TYPE_EOD)
+	if (list_length(optimizationArgs.inlinedPipelineStages) > 0)
 	{
-		/* If lookup is purely a pipeline (uncorrelated subquery) then
-		 * modify the pipeline. */
-		List *stages = ExtractAggregationStages(&optimizationArgs.inlinedLookupPipeline,
-												&optimizationArgs.rightQueryContext);
 		rightQuery = MutateQueryWithPipeline(rightQuery,
-											 stages,
+											 optimizationArgs.inlinedPipelineStages,
 											 &optimizationArgs.rightQueryContext);
 	}
 
@@ -2262,7 +2343,7 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 	/* Check if the pipeline can be pushed to the inner query (right collection)
 	 * If it can, then it's inlined. If not, we apply the pipeline post-join.
 	 */
-	if (lookupArgs->hasLookupMatch)
+	if (lookupArgs->hasLookupMatch || optimizationArgs.nonInlinedMatchStage != NULL)
 	{
 		/* We can apply the optimization on this based on object_id if and only if
 		 * The right table is pointing directly to an actual table (not a view)
@@ -2297,128 +2378,142 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 		rightQuery = CreateCteSelectQuery(rightTableExpr, "lookup_right_query",
 										  context->nestedPipelineLevel, 0);
 
-		/* It's a join on a field, first add a TargetEntry for left for bson_dollar_lookup_extract_filter_expression */
-		TargetEntry *currentEntry = linitial(leftQuery->targetList);
-
-		/* The extract query right arg is a simple bson of the form { "remoteField": "localField" } */
-		pgbson_writer filterWriter;
-		PgbsonWriterInit(&filterWriter);
-		PgbsonWriterAppendUtf8(&filterWriter, lookupArgs->foreignField.string,
-							   lookupArgs->foreignField.length,
-							   lookupArgs->localField.string);
-
-		if (IsCollationApplicable(context->collationString))
+		if (lookupArgs->hasLookupMatch)
 		{
-			PgbsonWriterAppendUtf8(&filterWriter, "collation", 9,
-								   context->collationString);
+			/* It's a join on a field, first add a TargetEntry for left for bson_dollar_lookup_extract_filter_expression */
+			TargetEntry *currentEntry = linitial(leftQuery->targetList);
+
+			/* The extract query right arg is a simple bson of the form { "remoteField": "localField" } */
+			pgbson_writer filterWriter;
+			PgbsonWriterInit(&filterWriter);
+			PgbsonWriterAppendUtf8(&filterWriter, lookupArgs->foreignField.string,
+								   lookupArgs->foreignField.length,
+								   lookupArgs->localField.string);
+
+			if (IsCollationApplicable(context->collationString))
+			{
+				PgbsonWriterAppendUtf8(&filterWriter, "collation", 9,
+									   context->collationString);
+			}
+
+			pgbson *filterBson = PgbsonWriterGetPgbson(&filterWriter);
+
+			/* Create the bson_dollar_lookup_extract_filter_expression(document, 'filter') */
+			List *extractFilterArgs = list_make2(currentEntry->expr, MakeBsonConst(
+													 filterBson));
+
+			Expr *projectorFunc;
+			if (optimizationArgs.isLookupJoinOnLeftId)
+			{
+				/* If we can join on the left _id, then just use object_id */
+				projectorFunc = (Expr *) makeVar(1,
+												 DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
+												 BsonTypeId(), -1, InvalidOid, 0);
+			}
+			else if (optimizationArgs.isLookupJoinOnRightId)
+			{
+				projectorFunc = (Expr *) makeFuncExpr(
+					BsonLookupExtractFilterArrayFunctionOid(), GetBsonArrayTypeOid(),
+					extractFilterArgs,
+					InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+			}
+			else
+			{
+				Oid extractFunctionOid =
+					DocumentDBApiInternalBsonLookupExtractFilterExpressionFunctionOid();
+
+				projectorFunc = (Expr *) makeFuncExpr(
+					extractFunctionOid, BsonTypeId(),
+					extractFilterArgs,
+					InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+			}
+
+			AttrNumber newProjectorAttrNum = list_length(leftQuery->targetList) + 1;
+			TargetEntry *extractFilterProjector = makeTargetEntry((Expr *) projectorFunc,
+																  newProjectorAttrNum,
+																  "lookup_filter", false);
+			leftQuery->targetList = lappend(leftQuery->targetList,
+											extractFilterProjector);
+
+			/* now on the right query, add a filter referencing this projector */
+			List *rightQuals = NIL;
+			if (rightQuery->jointree->quals != NULL)
+			{
+				rightQuals = make_ands_implicit((Expr *) rightQuery->jointree->quals);
+			}
+
+			/* add the WHERE bson_dollar_in(t2.document, t1.match) */
+			TargetEntry *currentRightEntry = linitial(rightQuery->targetList);
+			Var *rightVar = (Var *) currentRightEntry->expr;
+			int matchLevelsUp = 1;
+			Node *inClause;
+			if (optimizationArgs.isLookupJoinOnLeftId)
+			{
+				/* Do a direct equality against object_id */
+				Assert(list_length(rightQuery->targetList) == 2);
+				TargetEntry *rightObjectIdEntry = (TargetEntry *) lsecond(
+					rightQuery->targetList);
+				rightQuery->targetList = list_make1(currentRightEntry);
+
+				Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum,
+										BsonTypeId(), -1,
+										InvalidOid, matchLevelsUp);
+				inClause = (Node *) make_opclause(BsonEqualOperatorId(), BOOLOID, false,
+												  copyObject(
+													  rightObjectIdEntry->expr),
+												  (Expr *) matchVar, InvalidOid,
+												  InvalidOid);
+			}
+			else if (optimizationArgs.isLookupJoinOnRightId)
+			{
+				Assert(list_length(rightQuery->targetList) == 2);
+				TargetEntry *rightObjectIdEntry = (TargetEntry *) lsecond(
+					rightQuery->targetList);
+				rightQuery->targetList = list_make1(currentRightEntry);
+
+				ScalarArrayOpExpr *inOperator = makeNode(ScalarArrayOpExpr);
+				inOperator->useOr = true;
+				inOperator->opno = BsonEqualOperatorId();
+				Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum,
+										GetBsonArrayTypeOid(), -1,
+										InvalidOid, matchLevelsUp);
+				List *inArgs = list_make2(copyObject(rightObjectIdEntry->expr), matchVar);
+				inOperator->args = inArgs;
+				inClause = (Node *) inOperator;
+			}
+			else
+			{
+				Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum,
+										BsonTypeId(),
+										-1,
+										InvalidOid, matchLevelsUp);
+				Const *textConst = MakeTextConst(lookupArgs->foreignField.string,
+												 lookupArgs->foreignField.length);
+				List *inArgs = list_make3(copyObject(rightVar), matchVar, textConst);
+				inClause = (Node *) makeFuncExpr(BsonDollarLookupJoinFilterFunctionOid(),
+												 BOOLOID, inArgs,
+												 InvalidOid, InvalidOid,
+												 COERCE_EXPLICIT_CALL);
+			}
+
+			if (rightQuals == NIL)
+			{
+				rightQuery->jointree->quals = inClause;
+			}
+			else
+			{
+				rightQuals = lappend(rightQuals, inClause);
+				rightQuery->jointree->quals = (Node *) make_ands_explicit(rightQuals);
+			}
 		}
 
-		pgbson *filterBson = PgbsonWriterGetPgbson(&filterWriter);
-
-		/* Create the bson_dollar_lookup_extract_filter_expression(document, 'filter') */
-		List *extractFilterArgs = list_make2(currentEntry->expr, MakeBsonConst(
-												 filterBson));
-
-		Expr *projectorFunc;
-		if (optimizationArgs.isLookupJoinOnLeftId)
+		/*
+		 * Add the $match with $expr to the right query
+		 */
+		if (optimizationArgs.nonInlinedMatchStage != NULL)
 		{
-			/* If we can join on the left _id, then just use object_id */
-			projectorFunc = (Expr *) makeVar(1,
-											 DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
-											 BsonTypeId(), -1, InvalidOid, 0);
-		}
-		else if (optimizationArgs.isLookupJoinOnRightId)
-		{
-			projectorFunc = (Expr *) makeFuncExpr(
-				BsonLookupExtractFilterArrayFunctionOid(), GetBsonArrayTypeOid(),
-				extractFilterArgs,
-				InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
-		}
-		else
-		{
-			Oid extractFunctionOid =
-				DocumentDBApiInternalBsonLookupExtractFilterExpressionFunctionOid();
-
-			projectorFunc = (Expr *) makeFuncExpr(
-				extractFunctionOid, BsonTypeId(),
-				extractFilterArgs,
-				InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
-		}
-
-		AttrNumber newProjectorAttrNum = list_length(leftQuery->targetList) + 1;
-		TargetEntry *extractFilterProjector = makeTargetEntry((Expr *) projectorFunc,
-															  newProjectorAttrNum,
-															  "lookup_filter", false);
-		leftQuery->targetList = lappend(leftQuery->targetList, extractFilterProjector);
-
-		/* now on the right query, add a filter referencing this projector */
-		List *rightQuals = NIL;
-		if (rightQuery->jointree->quals != NULL)
-		{
-			rightQuals = make_ands_implicit((Expr *) rightQuery->jointree->quals);
-		}
-
-		/* add the WHERE bson_dollar_in(t2.document, t1.match) */
-		TargetEntry *currentRightEntry = linitial(rightQuery->targetList);
-		Var *rightVar = (Var *) currentRightEntry->expr;
-		int matchLevelsUp = 1;
-		Node *inClause;
-		if (optimizationArgs.isLookupJoinOnLeftId)
-		{
-			/* Do a direct equality against object_id */
-			Assert(list_length(rightQuery->targetList) == 2);
-			TargetEntry *rightObjectIdEntry = (TargetEntry *) lsecond(
-				rightQuery->targetList);
-			rightQuery->targetList = list_make1(currentRightEntry);
-
-			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum,
-									BsonTypeId(), -1,
-									InvalidOid, matchLevelsUp);
-			inClause = (Node *) make_opclause(BsonEqualOperatorId(), BOOLOID, false,
-											  copyObject(
-												  rightObjectIdEntry->expr),
-											  (Expr *) matchVar, InvalidOid,
-											  InvalidOid);
-		}
-		else if (optimizationArgs.isLookupJoinOnRightId)
-		{
-			Assert(list_length(rightQuery->targetList) == 2);
-			TargetEntry *rightObjectIdEntry = (TargetEntry *) lsecond(
-				rightQuery->targetList);
-			rightQuery->targetList = list_make1(currentRightEntry);
-
-			ScalarArrayOpExpr *inOperator = makeNode(ScalarArrayOpExpr);
-			inOperator->useOr = true;
-			inOperator->opno = BsonEqualOperatorId();
-			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum,
-									GetBsonArrayTypeOid(), -1,
-									InvalidOid, matchLevelsUp);
-			List *inArgs = list_make2(copyObject(rightObjectIdEntry->expr), matchVar);
-			inOperator->args = inArgs;
-			inClause = (Node *) inOperator;
-		}
-		else
-		{
-			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum, BsonTypeId(),
-									-1,
-									InvalidOid, matchLevelsUp);
-			Const *textConst = MakeTextConst(lookupArgs->foreignField.string,
-											 lookupArgs->foreignField.length);
-			List *inArgs = list_make3(copyObject(rightVar), matchVar, textConst);
-			inClause = (Node *) makeFuncExpr(BsonDollarLookupJoinFilterFunctionOid(),
-											 BOOLOID, inArgs,
-											 InvalidOid, InvalidOid,
-											 COERCE_EXPLICIT_CALL);
-		}
-
-		if (rightQuals == NIL)
-		{
-			rightQuery->jointree->quals = inClause;
-		}
-		else
-		{
-			rightQuals = lappend(rightQuals, inClause);
-			rightQuery->jointree->quals = (Node *) make_ands_explicit(rightQuals);
+			HandleMatch(&optimizationArgs.nonInlinedMatchStage->stageValue, rightQuery,
+						&optimizationArgs.rightQueryContext);
 		}
 
 		/* Add the bson_array_agg function */
@@ -2528,7 +2623,7 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 	 * We do it here since it's easier to deal with the pipeline
 	 * post join (fewer queries to think about and manage).
 	 */
-	if (optimizationArgs.nonInlinedLookupPipeline.value_type != BSON_TYPE_EOD)
+	if (list_length(optimizationArgs.nonInlinedPipelineStages) > 0)
 	{
 		resetStringInfo(cteStr);
 		appendStringInfo(cteStr, "lookup_join_cte_%d", context->nestedPipelineLevel);
@@ -2536,7 +2631,11 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 		lookupCte->ctename = cteStr->data;
 		lookupCte->ctequery = (Node *) lookupQuery;
 
-		/* Before creating the CTE - add the $let */
+		/*
+		 * Before creating the CTE - add the $let from left query to be used by post join pipeline
+		 * It's a deliberate choice to rebuild the let expression here instead of reusing the one that is available
+		 * because the expressions are not CONST and can pose problems if not handled properly.
+		 */
 		if (lookupArgs->let)
 		{
 			/* Evaluate the let against the leftExpr */
@@ -2615,12 +2714,8 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 		strncpy((char *) projectorQueryContext.collationString, context->collationString,
 				MAX_ICU_COLLATION_LENGTH);
 
-
-		List *stages = ExtractAggregationStages(
-			&optimizationArgs.nonInlinedLookupPipeline,
-			&projectorQueryContext);
 		subSelectQuery = MutateQueryWithPipeline(subSelectQuery,
-												 stages,
+												 optimizationArgs.nonInlinedPipelineStages,
 												 &projectorQueryContext);
 
 		if (list_length(subSelectQuery->targetList) > 1)

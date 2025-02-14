@@ -19,6 +19,8 @@
 #ifndef BSON_AGGREGATION_PIPELINE_PRIVATE_H
 #define BSON_AGGREGATION_PIPELINE_PRIVATE_H
 
+typedef struct AggregationStageDefinition AggregationStageDefinition;
+
 /*
  * for nested stage, use this to record its parent stage name
  */
@@ -30,6 +32,63 @@ typedef enum ParentStageName
 	ParentStageName_UNIONWITH,
 	ParentStageName_INVERSEMATCH,
 } ParentStageName;
+
+
+/*
+ * Enums to represent all kind of aggregations stages.
+ * Please keep the list sorted within their groups for easier readability
+ */
+typedef enum
+{
+	Stage_Invalid = 0,
+
+	/* Start internal stages Mongo */
+	Stage_Internal_InhibitOptimization = 1,
+
+	/* Start Mongo Public stages */
+	Stage_AddFields = 10,
+	Stage_Bucket,
+	Stage_BucketAuto,
+	Stage_ChangeStream,
+	Stage_CollStats,
+	Stage_Count,
+	Stage_CurrentOp,
+	Stage_Densify,
+	Stage_Documents,
+	Stage_Facet,
+	Stage_Fill,
+	Stage_GeoNear,
+	Stage_GraphLookup,
+	Stage_Group,
+	Stage_IndexStats,
+	Stage_Limit,
+	Stage_ListLocalSessions,
+	Stage_ListSessions,
+	Stage_Lookup,
+	Stage_Match,
+	Stage_Merge,
+	Stage_Out,
+	Stage_Project,
+	Stage_Redact,
+	Stage_ReplaceRoot,
+	Stage_ReplaceWith,
+	Stage_Sample,
+	Stage_Search,
+	Stage_SearchMeta,
+	Stage_Set,
+	Stage_SetWindowFields,
+	Stage_Skip,
+	Stage_Sort,
+	Stage_SortByCount,
+	Stage_UnionWith,
+	Stage_Unset,
+	Stage_Unwind,
+	Stage_VectorSearch,
+
+	/* Start of pg_documentdb Custom or internal stages */
+	Stage_InverseMatch = 100,
+	Stage_LookupUnwind
+} Stage;
 
 
 /*
@@ -118,6 +177,16 @@ typedef struct
 	/*Parent Stage Name*/
 	ParentStageName parentStageName;
 } AggregationPipelineBuildContext;
+
+
+typedef struct
+{
+	/* The bson value of the pipeline spec */
+	bson_value_t stageValue;
+
+	/* Definition of internal handlers */
+	AggregationStageDefinition *stageDefinition;
+} AggregationStage;
 
 
 /* Core Infra exports */
@@ -219,6 +288,7 @@ bool IsPartitionByFieldsOnShardKey(const pgbson *partitionByFields,
 								   const MongoCollection *collection);
 
 Expr * GenerateMultiExpressionRepathExpression(List *repathArgs);
+Stage GetAggregationStageAtPosition(const List *aggregationStages, int position);
 
 /* Helper methods */
 

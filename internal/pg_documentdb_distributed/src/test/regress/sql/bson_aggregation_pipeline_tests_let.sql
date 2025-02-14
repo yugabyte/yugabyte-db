@@ -286,3 +286,47 @@ SELECT document from bson_aggregation_pipeline('db',
 
 SELECT document from bson_aggregation_pipeline('db', 
   '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [{ "$addFields": { "addedVal": "$$qval" }}, { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+
+
+-- Test for lookup with let and $match with $expr
+
+SELECT documentdb_api.insert_one('db','lookup_left',' { "_id" : 1, "item" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','lookup_left',' { "_id" : 2, "item" : 2 }', NULL);
+
+-- Fill right collection with more than 100 MB of data
+DO $$
+DECLARE i int;
+BEGIN
+FOR i IN 1..50 LOOP
+PERFORM documentdb_api.insert_one('db', 'lookup_right', FORMAT('{ "_id": %s, "name": %s, "c": { "%s": [ %s "d" ] } }',  i, i, i, REPEAT('"' || i || REPEAT('a', 1000) || '", ', 5000))::documentdb_core.bson, NULL);
+END LOOP;
+END;
+$$;
+
+-- This will throw size error because $match in not inlined with right query as it is not the first stage
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$project": { "c": 0 } }, { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$project": { "c": 0 } }, { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+
+-- This should not throw error as $match is inlined with right query
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+
+-- Shard left collection and right collections
+SET citus.explain_all_tasks to on;
+SET citus.max_adaptive_executor_pool_size to 1;
+SELECT documentdb_api.shard_collection('{ "shardCollection": "db.lookup_left", "key": { "_id": "hashed" }, "numInitialChunks": 2 }');
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+SELECT documentdb_api.shard_collection('{ "shardCollection": "db.lookup_right", "key": { "_id": "hashed" }, "numInitialChunks": 2 }');
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+RESET citus.explain_all_tasks;
+RESET citus.max_adaptive_executor_pool_size;

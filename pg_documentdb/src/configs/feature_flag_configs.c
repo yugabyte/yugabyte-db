@@ -107,6 +107,10 @@ bool EnableSimplifyGroupAccumulators = DEFAULT_ENABLE_SIMPLIFY_GROUP_ACCUMULATOR
 bool EnableSortbyIdPushDownToPrimaryKey =
 	DEFAULT_ENABLE_SORT_BY_ID_PUSHDOWN_TO_PRIMARYKEY;
 
+#define DEFAULT_ENABLE_MATCH_WITH_LET_IN_LOOKUP true
+bool EnableMatchWithLetInLookup =
+	DEFAULT_ENABLE_MATCH_WITH_LET_IN_LOOKUP;
+
 void
 InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix)
 {
@@ -306,5 +310,13 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 			"Whether to push down sort by id to primary key"),
 		NULL, &EnableSortbyIdPushDownToPrimaryKey,
 		DEFAULT_ENABLE_SORT_BY_ID_PUSHDOWN_TO_PRIMARYKEY,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableMatchWithLetInLookup", newGucPrefix),
+		gettext_noop(
+			"Whether or not to inline $match with lookup let variables."),
+		NULL, &EnableMatchWithLetInLookup,
+		DEFAULT_ENABLE_MATCH_WITH_LET_IN_LOOKUP,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

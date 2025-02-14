@@ -11,3 +11,4 @@
 s/^-[+-]{2,}$/---------------------------------------------------------------------/g
 # Replace the values of the time system variables ($$NOW) with a constant
 s/\"sn\" : \{ \"\$date\" : \{ \"\$numberLong\" : \"[0-9]*\" \} \}/\"sn\" : NOW_SYS_VARIABLE/g
+s/\"now\" : \{ \"\$date\" : \{ \"\$numberLong\" : \"[0-9]*\" \} \}/\"now\" : NOW_SYS_VARIABLE/g
