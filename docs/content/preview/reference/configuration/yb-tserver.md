@@ -1854,6 +1854,7 @@ Default: true
 
 - temporary relations
 - foreign relations
+- system relations
 - relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
 
 The higher the number, the more batching is done. 1024 is recommended.
