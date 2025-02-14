@@ -70,11 +70,12 @@ To grant the required access, you can do one of the following:
 
 The following permissions are required:
 
-```sh
+```properties
 "s3:DeleteObject",
 "s3:PutObject",
 "s3:GetObject",
 "s3:ListBucket",
+"s3:ListAllMyBuckets",
 "s3:GetBucketLocation"
 ```
 
