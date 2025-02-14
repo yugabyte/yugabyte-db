@@ -540,7 +540,7 @@ _PG_init(void)
 							 "Selects whether planning duration is tracked by pg_stat_statements.",
 							 NULL,
 							 &pgss_track_planning,
-							 false,
+							 true,
 							 PGC_SUSET,
 							 0,
 							 NULL,
@@ -742,9 +742,7 @@ getYsqlStatementStats(void *cb_arg)
 			WriteIntToJson(cb_arg, "dbid", entry->key.dbid);
 			WriteIntToJson(cb_arg, "query_id", entry->key.queryid);
 			WriteStringToJson(cb_arg, "query", qry);
-			WriteIntToJson(cb_arg, "calls",
-						   entry->counters.calls[PGSS_PLAN] +
-						   entry->counters.calls[PGSS_EXEC]);
+			WriteIntToJson(cb_arg, "calls", entry->counters.calls[PGSS_EXEC]);
 
 			WriteDoubleToJson(cb_arg, "total_plan_time", entry->counters.total_time[PGSS_PLAN]);
 			WriteDoubleToJson(cb_arg, "total_exec_time", entry->counters.total_time[PGSS_EXEC]);
