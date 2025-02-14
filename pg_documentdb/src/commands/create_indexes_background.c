@@ -89,7 +89,6 @@ typedef struct
 
 extern int MaxIndexBuildAttempts;
 extern int IndexQueueEvictionIntervalInSec;
-extern bool EnableIndexBuildBackground;
 
 /* Do not retry the index build if error code belongs to following list. */
 static const SkippableError SkippableErrors[] = {
@@ -147,11 +146,6 @@ static void TryDropCollectionIndex(int indexId);
 Datum
 command_build_index_concurrently(PG_FUNCTION_ARGS)
 {
-	if (!EnableIndexBuildBackground)
-	{
-		PG_RETURN_VOID();
-	}
-
 	/* Before starting, ensure that tables are replicated
 	 * If this action did replicate tables, try again in the
 	 * next loop to ensure the transaction is committed.

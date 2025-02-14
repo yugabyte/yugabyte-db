@@ -16,9 +16,6 @@
 #include "metadata/metadata_cache.h"
 
 
-#define DEFAULT_ENABLE_INDEX_BUILD_BACKGROUND true
-bool EnableIndexBuildBackground = DEFAULT_ENABLE_INDEX_BUILD_BACKGROUND;
-
 #define DEFAULT_MAX_INDEX_BUILD_ATTEMPTS 3
 int MaxIndexBuildAttempts = DEFAULT_MAX_INDEX_BUILD_ATTEMPTS;
 
@@ -118,12 +115,6 @@ InitializeBackgroundJobConfigurations(const char *prefix, const char *newGucPref
 		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
-		psprintf("%s.enableIndexBuildBackground", prefix),
-		gettext_noop("Enables support for Index Builds in background."),
-		NULL, &EnableIndexBuildBackground, DEFAULT_ENABLE_INDEX_BUILD_BACKGROUND,
-		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
 		psprintf("%s.maxIndexBuildAttempts", prefix),
