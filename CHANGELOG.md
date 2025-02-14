@@ -1,7 +1,7 @@
 ### documentdb v0.102-0 (Unreleased) ###
 * Support index pushdown for vector search queries *[Bugfix]*
 
-### documentdb v0.101-0 (Unreleased) ###
+### documentdb v0.101-0 (February 12, 2025) ###
 * Push $graphlookup recursive CTE JOIN filters to index *[Perf]*
 * Build pg_documentdb for PostgreSQL 17 *[Infra]* (#13)
 * Enable support of currentOp aggregation stage, along with collstats, dbstats, and indexStats *[Commands]* (#52)
