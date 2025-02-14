@@ -1078,25 +1078,14 @@ class PgClientServiceImpl::Impl {
             IllegalState, "Expected to see involved tablet(s) $0 in PgGetLockStatusResponsePB",
             req->ShortDebugString());
       }
-      if (FLAGS_ysql_yb_enable_advisory_locks) {
-        // TODO(advisory-locks): Erase the advisory lock tablets to prevent pg_locks from erroring.
-        // Remove this once GHI #24712 is addressed.
-        auto advisory_lock_tablets = VERIFY_RESULT(
-            session_context_.advisory_locks_table.LookupAllTablets(context->GetClientDeadline()));
-        for (const auto& tablet_id : advisory_lock_tablets) {
-          req->mutable_transactions_by_tablet()->erase(tablet_id);
-        }
+      PgGetLockStatusResponsePB sub_resp;
+      for (const auto& node_txn_pair : resp->transactions_by_node()) {
+        sub_resp.mutable_transactions_by_node()->insert(node_txn_pair);
       }
-      if (!req->transactions_by_tablet().empty()) {
-        PgGetLockStatusResponsePB sub_resp;
-        for (const auto& node_txn_pair : resp->transactions_by_node()) {
-          sub_resp.mutable_transactions_by_node()->insert(node_txn_pair);
-        }
-        RETURN_NOT_OK(DoGetLockStatus(
-            req, &sub_resp, context, VERIFY_RESULT(ReplaceSplitTabletsAndGetLocations(req)),
-            ++retry_attempt));
-        RETURN_NOT_OK(MergeLockStatusResponse(resp, &sub_resp));
-      }
+      RETURN_NOT_OK(DoGetLockStatus(
+          req, &sub_resp, context, VERIFY_RESULT(ReplaceSplitTabletsAndGetLocations(req)),
+          ++retry_attempt));
+      RETURN_NOT_OK(MergeLockStatusResponse(resp, &sub_resp));
     }
     StatusToPB(Status::OK(), resp->mutable_status());
     return Status::OK();

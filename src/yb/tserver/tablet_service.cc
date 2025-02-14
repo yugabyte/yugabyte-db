@@ -101,6 +101,7 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -3209,9 +3210,12 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
   for (const auto& tablet_peer : tablet_peers) {
     auto leader_term = tablet_peer->LeaderTerm();
     if (leader_term != OpId::kUnknownTerm &&
-        tablet_peer->tablet_metadata()->table_type() == PGSQL_TABLE_TYPE) {
+        (tablet_peer->tablet_metadata()->table_type() == PGSQL_TABLE_TYPE ||
+         tablet_peer->tablet_metadata()->table_name() == std::string(kPgAdvisoryLocksTableName))) {
       const auto& tablet_id = tablet_peer->tablet_id();
       auto* tablet_lock_info = resp->add_tablet_lock_infos();
+      tablet_lock_info->set_is_advisory_lock_tablet(
+          tablet_peer->tablet_metadata()->table_type() != PGSQL_TABLE_TYPE);
       Status s = Status::OK();
       if (req->transactions_by_tablet().count(tablet_id) > 0) {
         std::map<TransactionId, SubtxnSet> transactions;

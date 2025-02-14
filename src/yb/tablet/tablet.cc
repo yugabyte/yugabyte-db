@@ -112,6 +112,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
@@ -4875,9 +4876,12 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
                              TabletLockInfoPB* tablet_lock_info,
                              uint64_t max_single_shard_waiter_start_time_us,
                              uint32_t max_txn_locks_per_tablet) const {
-  if (metadata_->table_type() != PGSQL_TABLE_TYPE) {
+  if (metadata_->table_type() != PGSQL_TABLE_TYPE &&
+      metadata_->table_name() != std::string(tserver::kPgAdvisoryLocksTableName)) {
     return STATUS_FORMAT(
-        InvalidArgument, "Cannot get lock status for non YSQL table $0", metadata_->table_id());
+        InvalidArgument,
+        "Cannot get lock status for non-YSQL table and non-advisory lock table $0",
+        metadata_->table_id());
   }
   if (!metadata_->colocated()) {
     // For colocated table, we don't populate table_id field of TabletLockInfoPB message. Instead,
