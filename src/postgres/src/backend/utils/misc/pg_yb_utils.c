@@ -5411,14 +5411,12 @@ assign_yb_read_time(const char *newval, void *extra)
 	if (needs_syscaches_refresh)
 		YbResetCatalogCacheVersion();
 
-	if (!am_walsender)
+	if (!am_walsender && yb_read_time)
 	{
 		ereport(NOTICE,
-				(errmsg("yb_read_time should be set with caution."),
-				 errdetail("No DDL operations should be performed while it is set and "
-						   "it should not be set to a timestamp before a DDL "
-						   "operation has been performed. It doesn't have well defined semantics"
-						   " for normal transactions and is only to be used after consultation")));
+				(errmsg("yb_read_time should only be set for read-only queries. "
+				"Write-DML or DDL queries are not allowed when yb_read_time is "
+				"set.")));
 	}
 }
 

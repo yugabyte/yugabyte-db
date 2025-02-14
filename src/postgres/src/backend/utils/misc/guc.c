@@ -5927,8 +5927,7 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("User should set this variable with caution. Currently, it can"
 						 " only read old data without schema changes. In other words, it should not be"
 						 " set to a timestamp before a DDL operation has been performed."
-						 " Potential corruption can happen in case (1) the variable is set to a timestamp"
-						 " before most recent DDL. (2) DDL is performed while it is set to nonzero.")
+						 " Write-DML or DDL queries are not allowed while this variable is set.")
 		},
 		&yb_read_time_string,
 		"0",
