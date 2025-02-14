@@ -165,6 +165,45 @@ from pg_replication_slots where slot_name = <slot_name>;
 
 For more information on the `pg_replication_slots` catalog view, refer to [pg_replication_slots](../monitor/#pg-replication-slots).
 
+### Using LSN type HYBRID_TIME
+
+YugabyteDB supports 2 [LSN types](../using-logical-replication/key-concepts#lsn-type) i.e. `SEQUENCE` and `HYBRID_TIME`. In the `HYBRID_TIME` mode, you can specify a hybrid time value `t` in the `pg_lsn` format and the replication stream will begin streaming transactions committed after `t`.
+
+You can obtain the current hybrid time value by using the in-built method:
+
+```sql
+select * from yb_get_current_hybrid_time();
+```
+
+The above will give an output in terms of a long value, it can further be converted to a `pg_lsn` format by definining the following method:
+
+```sql
+CREATE OR REPLACE FUNCTION get_current_lsn_format()
+RETURNS text AS $$
+DECLARE
+    ht_lsn bigint;
+    formatted_lsn text;
+BEGIN
+    SELECT yb_get_current_hybrid_time_lsn() INTO ht_lsn;
+    SELECT UPPER(format('%s/%s', to_hex(ht_lsn >> 32), to_hex(ht_lsn & 4294967295)))
+    INTO formatted_lsn;
+    RETURN formatted_lsn;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+Using the value from the method `get_current_lsn_format()`, you can not start your replication stream using:
+
+```
+START_REPLICATION SLOT rs LOGICAL 62D63025/5462E000;
+```
+
+{{< note title="Important" >}}
+
+The replication slot being used here must be created with LSN type as `HYBRID_TIME`.
+
+{{</note>}}
+
 ### Permissions
 
 Only a superuser can execute the command to set the value of `yb_read_time`.
