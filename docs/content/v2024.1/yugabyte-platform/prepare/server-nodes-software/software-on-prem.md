@@ -142,7 +142,7 @@ The following options are used for logging the provisioning itself.
 1. Run the preflight checks either as a root user, or via sudo as follows:
 
     ```sh
-    sudo ./node-agent-provision.sh preflight_checks
+    sudo ./node-agent-provision.sh --preflight_checks
     ```
 
 1. Address any issues highlighted by the preflight checks.
