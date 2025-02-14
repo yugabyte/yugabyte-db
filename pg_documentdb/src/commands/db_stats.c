@@ -27,12 +27,14 @@
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
 #include "planner/documentdb_planner.h"
+#include "commands/parse_error.h"
 #include "commands/commands_common.h"
 #include "commands/diagnostic_commands_common.h"
 #include "api_hooks.h"
 
 PG_FUNCTION_INFO_V1(command_db_stats);
 PG_FUNCTION_INFO_V1(command_db_stats_worker);
+PG_FUNCTION_INFO_V1(command_list_databases);
 
 
 /*
@@ -131,6 +133,98 @@ command_db_stats_worker(PG_FUNCTION_ARGS)
 
 	pgbson *response = RunWorkerDiagnosticLogic(&DbStatsWorker, fcinfo);
 	PG_RETURN_POINTER(response);
+}
+
+
+Datum
+command_list_databases(PG_FUNCTION_ARGS)
+{
+	pgbson *spec = PG_GETARG_PGBSON(0);
+
+	bool nameOnly = false;
+	pgbson *filter = NULL;
+
+	bson_iter_t specIter;
+	PgbsonInitIterator(spec, &specIter);
+	while (bson_iter_next(&specIter))
+	{
+		const char *key = bson_iter_key(&specIter);
+		if (strcmp(key, "nameOnly") == 0)
+		{
+			EnsureTopLevelFieldIsBooleanLike("nameOnly", &specIter);
+			nameOnly = BsonValueAsBool(bson_iter_value(&specIter));
+		}
+		else if (strcmp(key, "filter") == 0)
+		{
+			EnsureTopLevelFieldType("filter", &specIter, BSON_TYPE_DOCUMENT);
+			filter = PgbsonInitFromDocumentBsonValue(bson_iter_value(&specIter));
+		}
+		else if (strcmp(key, "listDatabases") == 0)
+		{
+			/* ignore */
+		}
+		else if (!IsCommonSpecIgnoredField(key))
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+							errmsg("%s is an unknown field", key)));
+		}
+	}
+
+	const char *sizeOnDiskSelector = "";
+	const char *totalSizeSelector = "";
+	const char *filterString = "";
+
+	if (!nameOnly)
+	{
+		sizeOnDiskSelector = ", 0::int8 AS \"sizeOnDisk\", false AS empty";
+		totalSizeSelector =
+			"pg_catalog.pg_database_size(pg_catalog.current_database())::int4 AS \"totalSize\", ";
+	}
+
+	if (filter != NULL)
+	{
+		filterString = FormatSqlQuery("WHERE document OPERATOR(%s.@@) $1",
+									  ApiCatalogSchemaName);
+	}
+
+	/* We can definitely do better here. TODO: Improve size tracking etc. */
+	const char *cmdStr = FormatSqlQuery(
+		"WITH r1 AS (SELECT DISTINCT database_name AS name %s FROM %s.collections),"
+		"r2 AS (SELECT %s.row_get_bson(r1) AS document FROM r1),"
+		"r3 AS (SELECT document FROM r2 %s),"
+		"r4 AS (SELECT COALESCE(%s.bson_array_agg(r3.document, ''), '{ \"\": [] }') AS "
+		"databases" ",%s 1.0::float8 AS " "ok" " FROM r3)"
+											   "SELECT %s.row_get_bson(r4) AS document FROM r4",
+		sizeOnDiskSelector, ApiCatalogSchemaName, CoreSchemaName, filterString,
+		ApiCatalogSchemaName, totalSizeSelector, CoreSchemaName);
+
+	bool isNull = false;
+	bool readOnly = true;
+	Datum result;
+
+	if (filter != NULL)
+	{
+		Oid argTypes[1] = { BsonTypeId() };
+		Datum argValues[1] = { PointerGetDatum(filter) };
+		char *argNulls = NULL;
+		result = ExtensionExecuteQueryWithArgsViaSPI(cmdStr, 1, argTypes,
+													 argValues, argNulls,
+													 readOnly, SPI_OK_SELECT,
+													 &isNull);
+	}
+	else
+	{
+		result = ExtensionExecuteQueryViaSPI(cmdStr, readOnly, SPI_OK_SELECT,
+											 &isNull);
+	}
+
+	if (isNull)
+	{
+		ereport(ERROR, (errmsg(
+							"list_databases unexpectedly returned NULL")));
+	}
+
+	PG_RETURN_DATUM(result);
 }
 
 
