@@ -1454,8 +1454,11 @@ class MasterSnapshotCoordinator::Impl {
             LOG(DFATAL) << "Cleanup of snapshot " << p->id() << " was already started.";
           }
           cleanup_snapshots.push_back(p->id());
-        } else if (p->HasExpired(context_.Clock()->Now())) {
-          LOG(INFO) << "Snapshot " << p->id() << " has expired";
+        } else if (p->HasExpired(context_.Clock()->Now()) &&
+                   p->initial_state() != SysSnapshotEntryPB::DELETING) {
+          // For expired snapshots that we have not already tried to delete, start the deletion
+          // workflow.
+          LOG(INFO) << "Snapshot " << p->id() << " has expired. Trying to delete it.";
           TryDeleteSnapshot(p.get(), &schedules_data);
         } else {
           p->PrepareOperations(&operations);
@@ -1602,6 +1605,7 @@ class MasterSnapshotCoordinator::Impl {
     (**it).CleanupTracker().Abort();
   }
 
+  // Clean up the sys_catalog information for the given object (after it is deleted).
   template <typename Map, typename Id>
   void CleanupObject(int64_t leader_term, Id id, const Map& map,
                      const Result<dockv::KeyBytes>& encoded_key) {
