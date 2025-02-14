@@ -259,6 +259,7 @@ TEST_F(PgAdvisoryLockTest, SessionLockDeadlockWithRowLocks) {
 }
 
 TEST_F(PgAdvisoryLockTest, YB_DISABLE_TEST_IN_TSAN(PgLocksSanityTest)) {
+  constexpr int kMinTxnAgeMs = 0;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO foo SELECT generate_series(0, 11), 0"));
@@ -267,9 +268,11 @@ TEST_F(PgAdvisoryLockTest, YB_DISABLE_TEST_IN_TSAN(PgLocksSanityTest)) {
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
   ASSERT_OK(conn.Execute("UPDATE foo SET v=v+1 where k=1"));
 
+  // Ensure that the active locks are visible in pg_locks.
+  ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
   SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(
-      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 2);
   ASSERT_OK(conn.CommitTransaction());
   ASSERT_OK(conn.Fetch("select pg_advisory_unlock(10)"));
 }
