@@ -10098,6 +10098,33 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
   return Status::OK();
 }
 
+Result<DbOidVersionToMessageListMap>
+CatalogManager::GetYsqlCatalogInvalationMessagesImpl() {
+  return sys_catalog_->ReadYsqlCatalogInvalationMessages();
+}
+
+Result<DbOidVersionToMessageListMap> CatalogManager::GetYsqlCatalogInvalationMessages(
+    bool use_cache) {
+  if (!FLAGS_TEST_yb_enable_invalidation_messages ||
+      !FLAGS_ysql_enable_db_catalog_version_mode ||
+      !catalog_version_table_in_perdb_mode_) {
+    return DbOidVersionToMessageListMap();
+  }
+  if (use_cache) {
+    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+    // We expect that the only caller uses this cache is the heartbeat service.
+    // Note that if the periodic background refresh task has not populated
+    // heartbeat_pg_inval_messages_cache_ yet after the master leader starts, or
+    // when the last periodic reading of pg_yb_invalidation_messages has failed, it will
+    // be std::nullopt. Returning empty map is fine, as invalidation messages are only
+    // used as an optimization and if not there PG simply falls back to full catalog
+    // refresh.
+    return heartbeat_pg_inval_messages_cache_.has_value() ? *heartbeat_pg_inval_messages_cache_
+                                                          : DbOidVersionToMessageListMap();
+  }
+  return GetYsqlCatalogInvalationMessagesImpl();
+}
+
 // When a cluster is running in per-database catalog version mode, normally
 // catalog_version_table_in_perdb_mode_ is set to true as part of preparing for
 // tserver heartbeat response and once set to true it is never reset back to
@@ -13163,6 +13190,9 @@ void CatalogManager::ResetCachedCatalogVersions() {
   if (heartbeat_pg_catalog_versions_cache_) {
     heartbeat_pg_catalog_versions_cache_->clear();
   }
+  // Reset to empty map to distinguish it from std::nullopt which means last periodic reading
+  // of pg_yb_invalidation_messages has failed.
+  heartbeat_pg_inval_messages_cache_ = DbOidVersionToMessageListMap();
 }
 
 void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
@@ -13184,6 +13214,7 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
   VLOG(2) << "Running " << __func__ << " task";
   DbOidToCatalogVersionMap versions;
   Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
+  bool changed = false;
   if (!s.ok()) {
     LOG(WARNING) << "Catalog versions refresh task failed: " << s.ToString();
     ResetCachedCatalogVersions();
@@ -13197,7 +13228,38 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
     } else {
       heartbeat_pg_catalog_versions_cache_ = std::move(versions);
     }
+    changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
     heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
+  }
+  if (FLAGS_TEST_yb_enable_invalidation_messages) {
+    // Maybe last time invalidation messages refresh failed, read it again.
+    if (!changed) {
+      SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+      // nullopt means the previous refresh has failed.
+      changed = !heartbeat_pg_inval_messages_cache_.has_value();
+    }
+    if (changed) {
+      // Cache invalidation messages are considered as an optimization extension of
+      // the catalog versions. If we cannot read the messages successfully, it means
+      // we will skip the optimization this time but it will not affect correctness
+      // because PG backends will fall back to do catalog cache refreshes.
+      auto messages = GetYsqlCatalogInvalationMessagesImpl();
+      if (!messages.ok()) {
+        LOG(WARNING) << "Catalog invalidation messages refresh failed: " << s;
+        LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+        // Reset to std::nullopt to indicate next time we want to read again.
+        heartbeat_pg_inval_messages_cache_ = std::nullopt;
+      } else {
+        VLOG_WITH_FUNC(2) << "Refreshed " << messages->size()
+                          << " catalog inval messages in memory";
+        LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+        if (heartbeat_pg_inval_messages_cache_) {
+          heartbeat_pg_inval_messages_cache_->swap(*messages);
+        } else {
+          heartbeat_pg_inval_messages_cache_ = std::move(*messages);
+        }
+      }
+    }
   }
   ScheduleRefreshPgCatalogVersionsTask();
 }

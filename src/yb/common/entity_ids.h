@@ -47,6 +47,9 @@ static const uint32_t kPgEnumTableOid = 3501;         // Hardcoded for pg_enum (
 static const uint32_t kPgTypeTableOid = 1247;         // Hardcoded for pg_type (in pg_type.h)
 static const uint32_t kTemplate1Oid = 1;              // Hardcoded for template1. (in initdb.c)
 
+// Hardcoded for pg_yb_invalidation_messages hardcoded (in pg_yb_invalidation_messages.h).
+static const uint32_t kPgYbInvalidationMessagesTableOid = 8080;
+
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
 extern const TableId kPgYbCatalogVersionTableIdPriorVersion;

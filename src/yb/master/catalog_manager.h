@@ -779,6 +779,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetYsqlAllDBCatalogVersions(
       bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) override
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+  Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessages(bool use_cache) override
+      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+
   Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
@@ -2886,6 +2889,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void ResetCachedCatalogVersions()
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions);
+  Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessagesImpl();
 
   // Create the global transaction status table if needed (i.e. if it does not exist already).
   Status CreateGlobalTransactionStatusTableIfNeededForNewTable(
@@ -3100,6 +3104,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // a value.
   uint64_t heartbeat_pg_catalog_versions_cache_fingerprint_
     GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_) = 0;
+  // Set to nullopt when the value is stale.
+  std::optional<DbOidVersionToMessageListMap> heartbeat_pg_inval_messages_cache_
+    GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_);
 
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
 

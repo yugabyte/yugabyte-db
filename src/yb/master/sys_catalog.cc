@@ -1686,6 +1686,58 @@ Result<uint32_t> SysCatalogTable::ReadPgYbTablegroupOid(const uint32_t database_
   return kPgInvalidOid;
 }
 
+Result<DbOidVersionToMessageListMap>
+SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
+  TRACE_EVENT0("master", "ReadYsqlCatalogInvalationMessages");
+
+  auto read_data = VERIFY_RESULT(TableReadData(kTemplate1Oid, kPgYbInvalidationMessagesTableOid,
+                                 ReadHybridTime()));
+  const auto& schema = read_data.schema();
+
+  const auto db_oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kDbOidColumnName)).rep();
+  const auto current_version_col_id = VERIFY_RESULT(
+      schema.ColumnIdByName(kCurrentVersionColumnName)).rep();
+  const auto messages_col_id = VERIFY_RESULT(schema.ColumnIdByName(kMessagesColumnName)).rep();
+
+  dockv::ReaderProjection projection(schema, {db_oid_col_id, current_version_col_id,
+                                              messages_col_id});
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  auto iter = VERIFY_RESULT(read_data.NewIterator(projection));
+
+  qlexpr::QLTableRow source_row;
+
+  // Loop through the pg_yb_invalidation_messages catalog table. Each row in this table represents
+  // a list of invalidation messages associated with a pair of (db_oid, current_version).
+  // Populate 'messages' with (db_oid, current_version, messages).
+
+  DbOidVersionToMessageListMap messages;
+  while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
+    // Fetch the db_oid.
+    const auto db_oid_col = source_row.GetValue(db_oid_col_id);
+    SCHECK(db_oid_col, IllegalState, "Could not read db_oid from pg_yb_invalidation_messages");
+    const uint32_t db_oid = db_oid_col->uint32_value();
+
+    // Fetch the current_version.
+    const auto& current_version_col = source_row.GetValue(current_version_col_id);
+    SCHECK(current_version_col, IllegalState,
+           "Could not read current_version from pg_yb_invalidation_messages");
+    const uint64_t current_version = static_cast<uint64_t>(current_version_col->int64_value());
+
+    // Fetch the messages.
+    const auto& messages_col = source_row.GetValue(messages_col_id);
+    SCHECK(messages_col, IllegalState, "Could not read messages from pg_yb_invalidation_messages");
+    const std::optional<std::string> message_list = messages_col->has_binary_value() ?
+      std::optional<std::string>(static_cast<std::string>(messages_col->binary_value())) :
+      std::nullopt;
+    auto insert_result = messages.insert(
+      std::make_pair(std::make_pair(db_oid, current_version), message_list));
+    // There should not be any duplicate (db_oid, current_version) because it is a primary key.
+    DCHECK(insert_result.second);
+  }
+  return messages;
+}
+
+
 Status SysCatalogTable::WriteBatchIfNeeded(size_t max_batch_bytes,
                                            size_t rows_so_far,
                                            int64_t leader_term,

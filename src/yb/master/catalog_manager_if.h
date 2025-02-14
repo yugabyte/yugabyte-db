@@ -128,6 +128,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
       bool use_cache,
       DbOidToCatalogVersionMap* versions,
       uint64_t* fingerprint) = 0;
+  virtual Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessages(bool use_cache) = 0;
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
 
