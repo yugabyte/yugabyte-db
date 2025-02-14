@@ -69,3 +69,12 @@ func (a *AuthAPIClient) NeedBootstrapTable(universeUUID string) (
 		a.CustomerUUID,
 		universeUUID)
 }
+
+// NeedBootstrapXClusterConfig need bootstrap xCluster
+func (a *AuthAPIClient) NeedBootstrapXClusterConfig(xclusterUUID string) (
+	ybaclient.AsynchronousReplicationApiApiNeedBootstrapXClusterConfigRequest) {
+	return a.APIClient.AsynchronousReplicationApi.NeedBootstrapXClusterConfig(
+		a.ctx,
+		a.CustomerUUID,
+		xclusterUUID)
+}

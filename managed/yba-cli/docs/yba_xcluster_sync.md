@@ -20,6 +20,7 @@ yba xcluster sync --uuid <xcluster-uuid>
 
 ```
   -u, --uuid string   [Required] The uuid of the xcluster to sync.
+  -f, --force         [Optional] Bypass the prompt for non-interactive usage.
   -h, --help          help for sync
 ```
 
