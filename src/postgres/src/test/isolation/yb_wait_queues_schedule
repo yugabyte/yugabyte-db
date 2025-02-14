@@ -4,12 +4,12 @@ test: lock-update-traversal
 test: yb-wait-queues-weak-read-unlocks
 test: yb-wait-queues-serializable-reads
 test: yb-lock-status-waiters
-test: concurrent-inserts-duplicate-key-error
-test: unblock-waiter-after-blocking-subtxn-rollsback
+test: yb-concurrent-inserts-duplicate-key-error
+test: yb-unblock-waiter-after-blocking-subtxn-rollsback
 test: yb-fk-row-locking
 test: yb-user-managed-constraint
 test: yb-fk-relationship
 test: yb-check-constraint-locking
-test: yb-insert-conflict-do-nothing-2
+test: yb_pg_insert-conflict-do-nothing-2
 test: yb-deadlock
-test: modify-transaction-characteristics
+test: yb-modify-transaction-characteristics
