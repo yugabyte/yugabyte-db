@@ -110,8 +110,6 @@ export const ConfigureK8sRegionModal = ({
     zones: array().of(
       object().shape({
         code: string().required('Zone code is required.'),
-        certIssuerName: string().required('Cert-Manager Issuer Name is required.'),
-        certIssuerKind: string().required('Cert-Manager Issuer Kind is required.'),
         editKubeConfigContent: boolean(),
         isNewZone: boolean()
       })
