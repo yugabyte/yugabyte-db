@@ -141,6 +141,7 @@ DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
                     "Whether to skip filter check during vector index search.");
 
 DECLARE_uint64(rpc_max_message_size);
+DECLARE_bool(vector_index_dump_stats);
 
 namespace yb::docdb {
 
@@ -901,6 +902,12 @@ class PgsqlVectorFilter {
       : iter_(table_iter) {
   }
 
+  ~PgsqlVectorFilter() {
+    LOG_IF(INFO, FLAGS_vector_index_dump_stats && row_)
+        << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", found: "
+        << num_found_entries_ << ", accepted: " << num_accepted_entries_;
+  }
+
   Status Init(const PgsqlReadOperationData& data) {
     if (FLAGS_vector_index_skip_filter_check) {
       return Status::OK();
@@ -927,6 +934,7 @@ class PgsqlVectorFilter {
     if (!row_) {
       return true;
     }
+    ++num_checked_entries_;
     auto key = dockv::VectorIdKey(vector_id);
     // TODO(vector_index) handle failure
     auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key.AsSlice()));
@@ -945,12 +953,17 @@ class PgsqlVectorFilter {
     if (fetch_result != FetchResult::Found) {
       return false;
     }
+    ++num_found_entries_;
     auto vector_value = row_->GetValueByIndex(index_column_index_);
     if (!vector_value) {
       return false;
     }
     auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
-    return vector_id.AsSlice() == encoded_value.id;
+    if (vector_id.AsSlice() != encoded_value.id) {
+      return false;
+    }
+    ++num_accepted_entries_;
+    return true;
   }
  private:
   FilteringIterator iter_;
@@ -958,6 +971,9 @@ class PgsqlVectorFilter {
   size_t index_column_index_ = std::numeric_limits<size_t>::max();
   std::optional<dockv::PgTableRow> row_;
   bool need_refresh_ = false;
+  size_t num_checked_entries_ = 0;
+  size_t num_found_entries_ = 0;
+  size_t num_accepted_entries_ = 0;
 };
 
 std::string DebugKeySliceToString(Slice key) {
