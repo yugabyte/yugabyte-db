@@ -50,7 +50,7 @@ This tutorial assumes that you have:
 
 - YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
-- [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
+- [Apache Spark 3.5.4](https://spark.apache.org/downloads.html).
 - [Apache Maven 3.3](https://maven.apache.org/index.html) or later.
 
 ## Set up the database
@@ -95,15 +95,22 @@ Create the database and table you will read and write to as follows:
     ```xml
     <dependency>
         <groupId>org.apache.spark</groupId>
-        <artifactId>spark-sql_2.11</artifactId>
-        <version>2.4.2</version>
+        <artifactId>spark-sql_2.12</artifactId>
+        <version>3.5.4</version>
     </dependency>
     <dependency>
         <groupId> com.yugabyte</groupId>
         <artifactId>jdbc-yugabytedb</artifactId>
         <version>42.7.3-yb-1</version>
     </dependency>
+    <dependency>
+        <groupId>com.yugabyte</groupId>
+        <artifactId>spark-yugabytedb-dialect_2.12</artifactId>
+        <version>3.5.4-yb-1</version>
+    </dependency>
     ```
+
+    You must add the `spark-yugabytedb-dialect_2.12` dependency to use the YugabyteDB JDBC Smart driver in your Spark application. This dialect is based on the PostgreSQL dialect and differs only in the URL prefix it handles: `jdbc:yugabytedb:` instead of `jdbc:postgresql:`. (You don't need this dialect dependency to use the PostgreSQL driver in your Spark application.) For more information, refer to the [YugabyteDB Dialect for Apache Spark](https://github.com/yugabyte/spark-yugabytedb-dialect) project.
 
 1. Install the added dependencies.
 
@@ -111,7 +118,7 @@ Create the database and table you will read and write to as follows:
     $ mvn install
     ```
 
-1. Create a java file `sparkSQLJavaExample.java` under `src/main/java` directory of your `sparkSample` project and add the following code to the file:
+1. Create a java file `SparkSQLJavaExample.java` under `src/main/java` directory of your `sparkSample` project and add the following code to the file:
 
     ```java
     import org.apache.spark.sql.SparkSession;
@@ -119,9 +126,12 @@ Create the database and table you will read and write to as follows:
     import org.apache.spark.sql.Row;
     import java.util.Properties;
 
-    public class sparkSQLJavaExample {
+    public class SparkSQLJavaExample {
 
        public static void main(String[] args) {
+          // Register the YugabyteDB Dialect. Needed for using the YugabyteDB JDBC Smart driver
+          YugabyteDBDialect.register();
+
            //Create the spark session to work with spark
            SparkSession spark = SparkSession
                    .builder()
@@ -255,8 +265,8 @@ Create the database and table you will read and write to as follows:
     $ mvn compile
     ```
 
-1. Run the application using the following command and verify your output as mentioned in the comments of the `sparkSQLJavaExample` file:
+1. Run the application using the following command and verify your output as mentioned in the comments of the `SparkSQLJavaExample` file:
 
     ```sh
-    $  mvn exec:java -Dexec.mainClass="sparkSQLJavaExample"
+    $  mvn exec:java -Dexec.mainClass="SparkSQLJavaExample"
     ```

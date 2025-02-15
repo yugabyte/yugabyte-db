@@ -130,7 +130,7 @@ Version refers to the latest tested version of the integration.
 | :----------- | :------ | :------ | :------- |
 | Apache Atlas | 2.3.0   | Partial | [Apache Atlas](atlas-ycql/) |
 | Apache Hudi  | 0.14.1  | Full    | [Apache Hudi](apache-hudi/) |
-| Apache Spark | 3.3.0   | Full    | [Apache Spark](apache-spark/) |
+| Apache Spark | 3.5.4   | Full    | [Apache Spark](apache-spark/) |
 | Jaeger       | 1.43.0  | Full    | [Jaeger](jaeger/) |
 | JanusGraph   | 0.6.2   | Full    | [JanusGraph](janusgraph/) |
 | KairosDB     | 1.3.0   | Full    | [KairosDB](kairosdb/) |

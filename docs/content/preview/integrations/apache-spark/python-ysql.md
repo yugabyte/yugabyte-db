@@ -50,7 +50,7 @@ This tutorial assumes that you have:
 
 - YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
-- [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
+- [Apache Spark 3.5.4](https://spark.apache.org/downloads.html).
 
 ## Start Python Spark shell with YugabyteDB driver
 
@@ -67,7 +67,7 @@ Welcome to
       ____              __
      / __/__  ___ _____/ /__
     _\ \/ _ \/ _ `/ __/  '_/
-   /__ / .__/\_,_/_/ /_/\_\   version 3.3.0
+   /__ / .__/\_,_/_/ /_/\_\   version 3.5.4
       /_/
 
 Using Python version 3.8.9 (default, Jul 19 2021 09:37:30)
