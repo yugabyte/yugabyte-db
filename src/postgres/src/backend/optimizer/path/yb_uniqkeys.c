@@ -236,13 +236,13 @@ yb_is_const_clause_for_distinct_pushdown(PlannerInfo *root,
 		if (!left_op || !right_op)
 			continue;
 
-		op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno,
-											   index->opfamily[indexcol]);
-		if (op_strategy != BTEqualStrategyNumber)
+		/* Check whether the clause is of the form indexkey = constant. */
+		if (!equal(indexkey, left_op) || !IsA(right_op, Const))
 			continue;
 
-		/* Check whether the clause is of the form indexkey = constant. */
-		if (equal(indexkey, left_op) && IsA(right_op, Const))
+		op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno,
+											   index->opfamily[indexcol]);
+		if (op_strategy == BTEqualStrategyNumber)
 			return true;
 	}
 
