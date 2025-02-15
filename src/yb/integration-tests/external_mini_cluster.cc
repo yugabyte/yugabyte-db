@@ -170,6 +170,7 @@ DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
+DECLARE_string(ysql_hba_conf_csv);
 
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
@@ -540,6 +541,10 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
     flags.push_back("--master_auto_run_initdb");
   } else {
     flags.push_back("--enable_ysql=false");
+  }
+
+  if (opts_.enable_ysql_auth) {
+    flags.push_back("--ysql_enable_auth=true");
   }
 
   ExternalMasterPtr master = new ExternalMaster(
@@ -1433,6 +1438,9 @@ Status ExternalMiniCluster::AddTabletServer(
   } else {
     flags.push_back("--enable_ysql=false");
   }
+  if (opts_.enable_ysql_auth) {
+    flags.push_back("--ysql_enable_auth=true");
+  }
   flags.insert(flags.end(), extra_flags.begin(), extra_flags.end());
 
   if (num_drives < 0) {
@@ -2060,11 +2068,15 @@ Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
     node_index = RandomUniformInt<size_t>(0, num_tablet_servers() - 1);
   }
   LOG(INFO) << "Connecting to PG database " << db_name << " on tserver " << *node_index;
-
   auto* ts = tablet_server(*node_index);
-  return pgwrapper::PGConnBuilder(
-             {.host = ts->bind_host(), .port = ts->pgsql_rpc_port(), .dbname = db_name})
-      .Connect(simple_query_protocol);
+  auto settings = pgwrapper::PGConnSettings{
+    .host = ts->bind_host(), .port = ts->pgsql_rpc_port(), .dbname = db_name};
+
+  if (opts_.enable_ysql_auth) {
+    settings.user = "yugabyte";
+    settings.password = "yugabyte";
+  }
+  return pgwrapper::PGConnBuilder(settings).Connect(simple_query_protocol);
 }
 
 namespace {
@@ -2454,7 +2466,8 @@ const std::string& FlagToString(const std::string& flag) {
 void StartSecure(
     std::unique_ptr<ExternalMiniCluster>* cluster,
     std::unique_ptr<rpc::SecureContext>* secure_context,
-    std::unique_ptr<rpc::Messenger>* messenger) {
+    std::unique_ptr<rpc::Messenger>* messenger,
+    bool enable_ysql) {
   rpc::MessengerBuilder messenger_builder("test_client");
   *secure_context = ASSERT_RESULT(rpc::SetupSecureContext(
       /*root_dir=*/"", "127.0.0.100", rpc::SecureContextType::kInternal, &messenger_builder));
@@ -2468,10 +2481,13 @@ void StartSecure(
       YB_FORWARD_FLAG(node_to_node_encryption_use_client_certificates),
       YB_FORWARD_FLAG(use_client_to_server_encryption),
       YB_FORWARD_FLAG(use_node_to_node_encryption),
+      YB_FORWARD_FLAG(ysql_hba_conf_csv)
   };
   opts.extra_master_flags = opts.extra_tserver_flags;
   opts.num_tablet_servers = 3;
   opts.use_even_ips = true;
+  opts.enable_ysql = enable_ysql;
+  opts.enable_ysql_auth = enable_ysql;
   *cluster = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK((**cluster).Start(messenger->get()));
 }
