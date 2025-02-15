@@ -48,6 +48,9 @@ DEFINE_RUNTIME_uint64(vector_index_task_pool_size, 1000,
                       "Pool is just used to avoid memory allocations and does not limit the total "
                       "number of tasks.");
 
+DEFINE_RUNTIME_bool(vector_index_dump_stats, false,
+                    "Whether to dump stats related to vector index search.");
+
 DEFINE_test_flag(bool, vector_index_skip_update_metadata_during_shutdown, false,
                  "Whether VectorLSM metadata update should be skipped after shutdown has been "
                  "initiated");
@@ -629,16 +632,31 @@ auto VectorLSM<Vector, DistanceResult>::Search(
       }
     }
   }
+  bool dump_stats = FLAGS_vector_index_dump_stats;
 
+  auto start_registry_search = dump_stats ? MonoTime::Now() : MonoTime();
   auto intermediate_results = insert_registry_->Search(query_vector, options);
   VLOG_WITH_PREFIX_AND_FUNC(4)
       << "Results from registry: " << AsString(intermediate_results);
+  size_t num_results_from_insert_registry = intermediate_results.size();
 
+  size_t sum_num_found_entries = 0;
+  auto start_chunks_search = dump_stats ? MonoTime::Now() : MonoTime();
   for (const auto& index : indexes) {
     auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options));
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Chunk results: " << AsString(chunk_results);
+    sum_num_found_entries += chunk_results.size();
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
+  auto stop_search = dump_stats ? MonoTime::Now() : MonoTime();
+
+  LOG_IF_WITH_PREFIX_AND_FUNC(INFO, dump_stats)
+      << "VI_STATS: Number of chunks: " << indexes.size() << ", entries found in all chunks: "
+      << sum_num_found_entries << ", entries found in insert registry: "
+      << num_results_from_insert_registry << ", time to search insert registry: "
+      << (start_chunks_search - start_registry_search).ToMicroseconds()
+      << "us, time to search index chunks: " << (stop_search - start_chunks_search).ToMicroseconds()
+      << "us";
 
   return intermediate_results;
 }
