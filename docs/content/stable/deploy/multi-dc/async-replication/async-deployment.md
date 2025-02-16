@@ -562,7 +562,7 @@ Follow the same steps as described in [Adding indexes in unidirectional replicat
 #### Adding YSQL indexes in bidirectional replication
 
 {{< note title="Note" >}}
-For versions lower than v2024.2.2.0 follow the same steps as described in [Adding YCQL indexes in bidirectional replication](#adding-ycql-indexes-in-bidirectional-replication).
+For v2024.2.1 and earlier, follow the same steps as described in [Adding YCQL indexes in bidirectional replication](#adding-ycql-indexes-in-bidirectional-replication).
 {{< /note >}}
 
 New YSQL indexes are automatically added to xCluster replication if the YSQL table being indexed is bidirectionally replicated.
