@@ -39,9 +39,14 @@ class StreamMetadata {
  public:
   struct StreamTabletMetadata {
     std::mutex mutex_;
+    int64_t term_ GUARDED_BY(mutex_) = 0;
     int64_t apply_safe_time_checkpoint_op_id_ GUARDED_BY(mutex_) = 0;
     HybridTime last_apply_safe_time_ GUARDED_BY(mutex_);
     MonoTime last_apply_safe_time_update_time_ GUARDED_BY(mutex_);
+
+    // Reset the cache if the term changes.
+    void ResetOnTermChange(int64_t term) REQUIRES(mutex_);
+
     // TODO(hari): #16774 Move last_readable_index and last sent opid here, and use them to make
     // UpdateCDCTabletMetrics run asynchronously.
 

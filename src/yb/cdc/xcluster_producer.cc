@@ -288,6 +288,9 @@ Status GetChangesForXCluster(
       "xCluster only supports WAL record format");
 
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
+  auto term = consensus->LeaderTerm();
+  SCHECK_GT(term, 0, NotFound, Format("Leader term for tablet $0 is not valid", tablet_id));
 
   auto leader_safe_time = VERIFY_RESULT(tablet_peer->LeaderSafeTime());
   SCHECK(
@@ -298,6 +301,7 @@ Status GetChangesForXCluster(
   // There should only be one thread at a time calling GetChanges per tablet. But we cannot trust
   // calls we get over the network so we lock here.
   std::lock_guard l(stream_tablet_metadata->mutex_);
+  stream_tablet_metadata->ResetOnTermChange(term);
 
   bool update_apply_safe_time = false;
   auto now = MonoTime::Now();
@@ -329,19 +333,18 @@ Status GetChangesForXCluster(
     }
   }
 
-  consensus::ReadOpsResult read_ops;
-  {
-    auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
-    read_ops = VERIFY_RESULT(
-        consensus->ReadReplicatedMessagesForCDC(from_op_id, last_readable_opid_index, deadline));
-  }
+  auto read_result = VERIFY_RESULT(consensus->ReadReplicatedMessagesForXCluster(
+      from_op_id, deadline, /*fetch_single_entry=*/false));
+  auto& read_ops = read_result.result;
+  *last_readable_opid_index = read_result.majority_replicated_index;
 
   if (update_apply_safe_time) {
     DCHECK(!stream_tablet_metadata->last_apply_safe_time_.is_valid());
     stream_tablet_metadata->last_apply_safe_time_ = leader_safe_time;
 
     DCHECK_EQ(stream_tablet_metadata->apply_safe_time_checkpoint_op_id_, 0);
-    stream_tablet_metadata->apply_safe_time_checkpoint_op_id_ = *last_readable_opid_index;
+    stream_tablet_metadata->apply_safe_time_checkpoint_op_id_ =
+        read_result.majority_replicated_index;
 
     stream_tablet_metadata->last_apply_safe_time_update_time_ = now;
   }
@@ -431,6 +434,12 @@ Status GetChangesForXCluster(
       nullptr, std::move(messages), std::move(consumption));
   (checkpoint.index > 0 ? checkpoint : from_op_id).ToPB(
       resp->mutable_checkpoint()->mutable_op_id());
+
+  // Make sure we are still the leader, and the entire function run while under the same term.
+  SCHECK_EQ(
+      term, consensus->LeaderTerm(), NotFound,
+      Format("Leader term for tablet has changed", tablet_id));
+
   return Status::OK();
 }
 

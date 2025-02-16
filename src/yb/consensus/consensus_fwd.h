@@ -45,6 +45,7 @@ struct ConsensusOptions;
 struct ConsensusBootstrapInfo;
 struct LeaderState;
 struct ReadOpsResult;
+struct XClusterReadOpsResult;
 struct RetryableRequestsCounts;
 struct StateChangeContext;
 

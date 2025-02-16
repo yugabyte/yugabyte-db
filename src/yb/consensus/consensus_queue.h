@@ -395,6 +395,9 @@ class PeerMessageQueue {
     return local_peer_pb_.cloud_info();
   }
 
+  Result<XClusterReadOpsResult> ReadReplicatedMessagesForXCluster(
+      const yb::OpId& last_op_id, const CoarseTimePoint deadline, bool fetch_single_entry);
+
   // Read replicated log records starting from the OpId immediately after last_op_id.
   Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
       const yb::OpId& last_op_id, int64_t* last_replicated_opid_index = nullptr,
@@ -433,6 +436,7 @@ class PeerMessageQueue {
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
   FRIEND_TEST(ConsensusQueueTest, TestReadReplicatedMessagesForCDC);
+  FRIEND_TEST(ConsensusQueueDelayedCommitTest, TestReadReplicatedMessagesForXCluster);
 
   // Mode specifies how the queue currently behaves:
   //
@@ -588,10 +592,8 @@ class PeerMessageQueue {
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       const bool fetch_single_entry = false);
 
-  Result<ReadOpsResult> ReadFromLogCacheForCDC(
-      int64_t last_op_id_index,
-      int64_t to_index,
-      CoarseTimePoint deadline = CoarseTimePoint::max(),
+  Result<ReadOpsResult> ReadFromLogCacheForXRepl(
+      int64_t last_op_id_index, int64_t to_index, CoarseTimePoint deadline = CoarseTimePoint::max(),
       bool fetch_single_entry = false);
 
   std::pair<int64_t, int64_t> GetCommittedAndMajorityReplicatedIndex();

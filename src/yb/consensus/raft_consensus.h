@@ -274,6 +274,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     TEST_delay_update_.store(duration, std::memory_order_release);
   }
 
+  Result<XClusterReadOpsResult> ReadReplicatedMessagesForXCluster(
+      const yb::OpId& from, const CoarseTimePoint deadline, bool fetch_single_entry) override;
+
   Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
       const yb::OpId& from,
       int64_t* last_replicated_opid_index,

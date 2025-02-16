@@ -773,6 +773,7 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
 
     VLOG_WITH_FUNC(2) << "Key: " << key.ToString()
                       << ", Producer TableId: " << producer_info.table_id
+                      << ", Producer TabletId: " << producer_info.tablet_id
                       << ", SafeTime: " << safe_time.ToDebugString();
     session->Apply(std::move(op));
   }
