@@ -75,6 +75,25 @@ public class AuthorizationHandler extends Action<AuthzPath> {
     if (!useNewAuthz) {
       return delegate.call(request);
     }
+
+    String endpoint = request.uri();
+    UUID customerUUID = null;
+    Pattern custPattern = Pattern.compile(String.format(".*/%s/" + UUID_PATTERN, Util.CUSTOMERS));
+    Matcher custMatcher = custPattern.matcher(endpoint);
+    if (custMatcher.find()) {
+      customerUUID = UUID.fromString(custMatcher.group(1));
+    }
+
+    // Allow for disabling authentication on proxy endpoint so that
+    // Prometheus can scrape database nodes.
+    if (Pattern.matches(
+            String.format(
+                "^.*/universes/%s/proxy/%s/(.*)$", Util.PATTERN_FOR_UUID, Util.PATTERN_FOR_HOST),
+            endpoint)
+        && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
+      return delegate.call(request);
+    }
+
     Users user = tokenAuthenticator.getCurrentAuthenticatedUser(request);
     if (user == null) {
       log.debug("User not present in the system");
@@ -84,14 +103,6 @@ public class AuthorizationHandler extends Action<AuthzPath> {
     Customer customer = Customer.get(user.getCustomerUUID());
     RequestContext.put(TokenAuthenticator.CUSTOMER, customer);
     RequestContext.put(TokenAuthenticator.USER, userWithFeatures);
-
-    String endpoint = request.uri();
-    UUID customerUUID = null;
-    Pattern custPattern = Pattern.compile(String.format(".*/%s/" + UUID_PATTERN, Util.CUSTOMERS));
-    Matcher custMatcher = custPattern.matcher(endpoint);
-    if (custMatcher.find()) {
-      customerUUID = UUID.fromString(custMatcher.group(1));
-    }
 
     if (customerUUID != null && !user.getCustomerUUID().equals(customerUUID)) {
       log.debug("User {} does not belong to the customer {}", user.getUuid(), customerUUID);
