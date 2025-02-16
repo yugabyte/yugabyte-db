@@ -84,6 +84,11 @@ struct ReadOpsResult {
   int64_t read_from_disk_size = 0;
 };
 
+struct XClusterReadOpsResult {
+  ReadOpsResult result;
+  int64_t majority_replicated_index;
+};
+
 // Write-through cache for the log.
 //
 // This stores a set of log messages by their index. New operations can be appended to the end as

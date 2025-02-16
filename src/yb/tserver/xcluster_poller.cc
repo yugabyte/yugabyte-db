@@ -278,6 +278,7 @@ void XClusterPoller::SchedulePoll() {
   if (is_paused_) {
     // Run immediately.
     ScheduleFunc(BIND_FUNCTION_AND_ARGS(XClusterPoller::DoPoll));
+    return;
   }
 
   // determine if we should delay our upcoming poll
