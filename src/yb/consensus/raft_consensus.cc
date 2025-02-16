@@ -3637,6 +3637,11 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   return Status::OK();
 }
 
+Result<XClusterReadOpsResult> RaftConsensus::ReadReplicatedMessagesForXCluster(
+    const yb::OpId& from, const CoarseTimePoint deadline, bool fetch_single_entry) {
+  return queue_->ReadReplicatedMessagesForXCluster(from, deadline, fetch_single_entry);
+}
+
 Result<ReadOpsResult> RaftConsensus::ReadReplicatedMessagesForCDC(
     const yb::OpId& from, int64_t* last_replicated_opid_index, const CoarseTimePoint deadline,
     const bool fetch_single_entry) {
