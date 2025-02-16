@@ -736,7 +736,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
   return result;
 }
 
-Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForCDC(
+Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForXRepl(
     OpId last_op_id, int64_t to_index, CoarseTimePoint deadline, bool fetch_single_entry) {
   // If an empty OpID is only sent on the first read request, start at the earliest known entry.
   int64_t after_op_index =
@@ -753,6 +753,38 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForCDC(
     return result.status().CloneAndPrepend(premature_gc_warning);
   }
   return result;
+}
+
+std::pair<int64_t, int64_t> PeerMessageQueue::GetCommittedAndMajorityReplicatedIndex() {
+  LockGuard lock(queue_lock_);
+  return {queue_state_.committed_op_id.index, queue_state_.majority_replicated_op_id.index};
+}
+
+Result<XClusterReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForXCluster(
+    const yb::OpId& last_op_id, const CoarseTimePoint deadline, bool fetch_single_entry) {
+  const auto [committed_index, majority_replicated_index] =
+      GetCommittedAndMajorityReplicatedIndex();
+  bool pending_messages = committed_index != majority_replicated_index;
+
+  XClusterReadOpsResult xcluster_result{
+      .result =
+          {.messages = ReplicateMsgs(),
+           .preceding_op = OpId(),
+           .have_more_messages = HaveMoreMessages(pending_messages)},
+      .majority_replicated_index = majority_replicated_index};
+
+  if (last_op_id.index >= committed_index) {
+    // No committed records left to read.
+    return xcluster_result;
+  }
+
+  xcluster_result.result = VERIFY_RESULT(
+      ReadFromLogCacheForXRepl(last_op_id, committed_index, deadline, fetch_single_entry));
+
+  xcluster_result.result.have_more_messages =
+      HaveMoreMessages(xcluster_result.result.have_more_messages.get() || pending_messages);
+
+  return xcluster_result;
 }
 
 // Read majority replicated messages from cache for CDC.
@@ -785,7 +817,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
   }
 
   auto result =
-      VERIFY_RESULT(ReadFromLogCacheForCDC(last_op_id, to_index, deadline, fetch_single_entry));
+      VERIFY_RESULT(ReadFromLogCacheForXRepl(last_op_id, to_index, deadline, fetch_single_entry));
 
   result.have_more_messages =
       HaveMoreMessages(result.have_more_messages.get() || pending_messages);
@@ -840,7 +872,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
     }
 
     auto result = VERIFY_RESULT(
-        ReadFromLogCacheForCDC(last_op_id, committed_op_id_index, deadline, fetch_single_entry));
+        ReadFromLogCacheForXRepl(last_op_id, committed_op_id_index, deadline, fetch_single_entry));
 
     res.messages.insert(res.messages.end(), result.messages.begin(), result.messages.end());
     res.read_from_disk_size += result.read_from_disk_size;
