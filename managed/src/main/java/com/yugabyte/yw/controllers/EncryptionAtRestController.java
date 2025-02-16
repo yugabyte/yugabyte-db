@@ -448,7 +448,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         AuthType authTypeEnum =
             AuthType.valueOf(
-                authConfig.path(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName).asText());
+                formData.path(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName).asText());
         if (AuthType.REFRESH_TOKEN.equals(authTypeEnum)) {
           if (!formData.has(CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName)
               && authConfig.has(CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName)) {
