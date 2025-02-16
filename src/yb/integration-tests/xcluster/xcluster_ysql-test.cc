@@ -277,7 +277,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
       auto query = Format("SELECT COUNT(*) FROM $0", GetCompleteTableName(consumer_table));
       while (CoarseMonoClock::Now() < now + duration) {
         auto count = ASSERT_RESULT(consumer_conn.FetchRow<pgwrapper::PGUint64>(query));
-        ASSERT_EQ(count % transaction_size, 0);
+        ASSERT_EQ(count % transaction_size, 0) << count;
       }
     });
   }
@@ -935,18 +935,25 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensus
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, ReplicationPause) {
   ASSERT_OK(CreateTableAndSetupReplication());
 
-  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  const auto run_duration = 10s;
+  const auto run_count = 12;  // Run for 2min.
   auto test_thread_holder = TestThreadHolder();
   AsyncTransactionConsistencyTest(
-      producer_table_->name(), consumer_table_->name(), &test_thread_holder, duration);
-  SleepFor(duration / 2);
-  // Pause replication here for half the duration of the workload.
-  ASSERT_OK(
-      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
-  SleepFor(duration / 2);
-  // Resume replication.
-  ASSERT_OK(
-      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
+      producer_table_->name(), consumer_table_->name(), &test_thread_holder,
+      run_duration * (run_count + 1));
+
+  for (int i = 0; i < run_count; i++) {
+    LOG(INFO) << "Run count: " << i;
+    SleepFor(run_duration / 2);
+    // Pause replication here for half the duration of the workload.
+    ASSERT_OK(ToggleUniverseReplication(
+        consumer_cluster(), consumer_client(), kReplicationGroupId, false));
+    SleepFor(run_duration / 2);
+    // Resume replication.
+    ASSERT_OK(ToggleUniverseReplication(
+        consumer_cluster(), consumer_client(), kReplicationGroupId, true));
+  }
+
   test_thread_holder.JoinAll();
   ASSERT_OK(VerifyWrittenRecords());
   ASSERT_OK(DeleteUniverseReplication());

@@ -336,6 +336,15 @@ class Consensus {
   virtual Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const = 0;
 
+  // Read replicated messages for xCluster replication.
+  // Only committed messages (committed_op_id) are returned.
+  // There can be more valid messages that are within the majority_replicated_op_id and
+  // committed_op_id range.
+  // If any message is not returned due to delay in commit, or if the result reaches
+  // FLAGS_consensus_max_batch_size_bytes, have_more_messages is set.
+  virtual Result<XClusterReadOpsResult> ReadReplicatedMessagesForXCluster(
+      const yb::OpId& from, const CoarseTimePoint deadline, bool fetch_single_entry) = 0;
+
   // Read majority replicated messages for CDC producer.
   virtual Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
       const yb::OpId& from, int64_t* repl_index, const CoarseTimePoint deadline,
