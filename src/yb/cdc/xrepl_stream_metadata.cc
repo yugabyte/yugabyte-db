@@ -194,6 +194,17 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   return Status::OK();
 }
 
+void StreamMetadata::StreamTabletMetadata::ResetOnTermChange(int64_t term) {
+  if (term == term_) {
+    return;
+  }
+
+  term_ = term;
+  last_apply_safe_time_ = HybridTime::kInvalid;
+  last_apply_safe_time_update_time_ = MonoTime::kUninitialized;
+  apply_safe_time_checkpoint_op_id_ = 0;
+}
+
 void StreamMetadata::StreamTabletMetadata::UpdateStats(
     const MonoTime& start_time, const Status& status, int num_records, size_t bytes_sent,
     int64_t sent_index, int64_t latest_wal_index) {
