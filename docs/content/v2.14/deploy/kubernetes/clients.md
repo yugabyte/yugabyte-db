@@ -98,7 +98,7 @@ ycqlsh:demo> CREATE TABLE t_demo(id INT PRIMARY KEY);
 
 ## YB-Master Admin UI
 
-The YB-Master Admin UI is available at the IP address exposed by the `yb-master-ui` LoadBalancer service – at `https://98.138.219.231:7000/`.
+The YB-Master Admin UI is available at the IP address exposed by the `yb-master-ui` LoadBalancer service at `https://98.138.219.231:7000/`.
 
 Another option that does not require an external LoadBalancer is to create a tunnel from the local host to the master web server port on the master pod using [kubectl port-forward](https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/), as follows:
 
