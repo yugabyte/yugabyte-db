@@ -229,7 +229,7 @@ spec:
       http:
         paths:
           helmChart: "https://charts.yugabyte.com/yugabyte-2.20.1.tgz"
-          x86_64: "https://downloads.yugabyte.com/releases/2.20.1.3/yugabyte-2.20.1.3-b3-linux-x86_64.tar.gz"
+          x86_64: "https://software.yugabyte.com/releases/2.20.1.3/yugabyte-2.20.1.3-b3-linux-x86_64.tar.gz"
 ```
 
 ### Backup and restore
