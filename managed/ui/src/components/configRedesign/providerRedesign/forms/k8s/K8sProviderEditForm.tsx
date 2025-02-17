@@ -704,15 +704,30 @@ const constructProviderPayload = async (
             const shouldReadKubeConfigOnForm =
               existingZone?.details?.cloudInfo.kubernetes.kubeConfig === undefined ||
               azFormValues.editKubeConfigContent;
+            const { code, name, ...unexposedExistingZoneFields } = existingZone ?? {};
+            const {
+              kubeConfigContent,
+              kubeConfigName,
+              kubeConfig,
+              kubeDomain,
+              kubeNamespace,
+              kubePodAddressTemplate,
+              kubernetesStorageClass,
+              overrides,
+              certManagerIssuerName,
+              certManagerIssuerKind,
+              certManagerIssuerGroup,
+              ...unexposedExistingZoneDetailsFields
+            } = existingZone?.details?.cloudInfo?.kubernetes ?? {};
 
             return {
-              ...existingZone,
+              ...unexposedExistingZoneFields,
               code: azFormValues.code,
               name: azFormValues.code,
               details: {
                 cloudInfo: {
                   [ProviderCode.KUBERNETES]: {
-                    ...existingZone?.details?.cloudInfo?.kubernetes,
+                    ...unexposedExistingZoneDetailsFields,
                     ...(shouldReadKubeConfigOnForm
                       ? {
                           ...(azFormValues.kubeConfigContent && {
@@ -726,7 +741,7 @@ const constructProviderPayload = async (
                       : {
                           // YBA backend has special handling for kubeConfig. It is possibly `''` to indicate
                           // the user wants to use service account configs. This is why we're not dropping `''` strings here.
-                          kubeConfig: existingZone?.details?.cloudInfo.kubernetes.kubeConfig
+                        kubeConfig: kubeConfig
                         }),
                     ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
                     ...(azFormValues.kubeNamespace && {
@@ -755,8 +770,9 @@ const constructProviderPayload = async (
           })
         );
 
+        const { code, name, zones, ...unexposedExistingRegionFields } = existingRegion ?? {};
         const newRegion: K8sRegionMutation = {
-          ...existingRegion,
+          ...unexposedExistingRegionFields,
           code: regionFormValues.regionData.value.code,
           name: regionFormValues.regionData.label,
           zones: [
