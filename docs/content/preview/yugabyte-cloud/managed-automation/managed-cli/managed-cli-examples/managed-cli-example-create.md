@@ -213,6 +213,141 @@ Name              Tier        Version        State     Health    Regions        
 my-multi-region   Dedicated   2.14.7.0-b51   ACTIVE    💚        us-central1,+2   3         6 / 24GB / 600GB
 ```
 
+## Create, update, and describe an EAR-enabled cluster
+
+### Create an EAR-enabled cluster
+
+Use the following commands to create a new cluster with Encryption at Rest (EAR) enabled using a customer-managed key (CMK) in AWS, GCP, or Azure.
+
+AWS:
+
+```sh
+ybm cluster create --encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>
+```
+
+GCP:
+
+```sh
+ybm cluster create --encryption-spec cloud-provider=GCP,gcp-resource-id=projects/<your-project>/locations/<your-location>/keyRings/<your-key-ring-name>/cryptoKeys/<your-key-name>,gcp-service-account-path=creds.json
+```
+
+Azure:
+
+```sh
+ybm cluster create --encryption-spec cloud-provider=AZURE,azu-client-id=<your-client-id>,azu-client-secret=<your-client-secret>,azu-tenant-id=<your-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<your-key-vault-uri>
+```
+
+### Describe an EAR-enabled cluster
+
+Use the following commands to display the CMK configuration details for a specific cluster.
+
+AWS:
+
+```sh
+ybm cluster describe --cluster-name test-cluster-azure
+```
+
+```output
+General
+Name                 ID                                     Version        State     Health
+test-cluster-azure   b1676d3f-8898-4c04-a1d6-bedf5b7867ff   2.18.3.0-b75   ACTIVE    💚
+
+Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
+AWS        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
+
+...
+
+Encryption at Rest
+Provider   Key Alias                              Last Rotated               Security Principals                                                           CMK Status
+AWS        0a80e409-e345-42fc-b456-bafXXXXXXb2c   2023-11-03T07:37:26.351Z   arn:aws:kms:us-east-1:745843456716:key/41c64d5g-c97d-472c-889e-0dXXXXXXXXXX   ACTIVE
+...
+```
+
+Azure:
+
+```sh
+ybm cluster describe --cluster-name test-cluster-azure
+```
+
+```output
+General
+Name                 ID                                     Version        State     Health
+test-cluster-azure   b1676d3f-8898-4c04-a1d6-bedf5b7867ff   2.18.3.0-b75   ACTIVE    💚
+
+Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
+AWS        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
+
+...
+
+Encryption at Rest
+Provider   Key Alias                              Last Rotated               Security Principals                      CMK Status
+AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   https://test-azure-gj.vault.azure.net/   ACTIVE
+...
+```
+
+GCP:
+
+```sh
+ybm cluster describe --cluster-name test-cluster-azure
+```
+
+```output
+General
+Name                 ID                                     Version        State     Health
+test-cluster-azure   b1676d3f-8898-4c04-a1d6-XXXXXXXXXXXX   2.18.3.0-b75   ACTIVE    💚
+
+Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
+AWS        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
+
+...
+
+Encryption at Rest
+Provider   Key Alias      Last Rotated               Security Principals                                                                              CMK Status
+GCP        GCP-test-key   2023-11-03T07:37:26.351Z   projects/<your-project-id>/locations/global/keyRings/GCP-test-key-ring/cryptoKeys/GCP-test-key   ACTIVE
+
+...
+```
+
+### Update CMK configuration
+
+Use the following commands to update the CMK configuration. If no existing configuration is found, the command creates a new one; otherwise, it updates the current configuration.
+
+Note: Only credentials can be modified in the current configuration (for example, AWS access/secret keys or GCP service account credentials).
+
+AWS:
+
+```sh
+ybm cluster encryption update --encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>
+```
+
+GCP:
+
+```sh
+ybm cluster encryption update --encryption-spec resource-id=projects/yugabyte/locations/global/keyRings/test-byok/cryptoKeys/key1,k=<path-to-service-account-file>
+```
+
+Azure:
+
+```sh
+ybm cluster encryption update --encryption-spec cloud-provider=AZURE,azu-client-id=<your-client-id>,azu-client-secret=<your-client-secret>,azu-tenant-id=<your-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<your-key-vault-uri>
+```
+
+### Update CMK state
+
+Use the following commands to enable or disable the CMK state.
+
+#### enable CMK
+
+```sh
+ybm cluster encryption update-state --cluster-name test-cluster-arishta --enable
+```
+
+#### disable CMK
+
+```sh
+ybm cluster encryption update-state --cluster-name test-cluster-arishta --disable
+```
+
 ## Pause, resume, and terminate
 
 To list your clusters, enter the following command:
