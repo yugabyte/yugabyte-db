@@ -1,0 +1,4 @@
+plan:
+Seq Scan on other_db_test_table  (cost=0.00..100.00 rows=1000 width=36) ()
+  Storage Table Read Requests: 3
+  Storage Table Read Execution Time: 0.000 ms
