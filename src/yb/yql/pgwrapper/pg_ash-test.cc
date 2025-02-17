@@ -611,7 +611,7 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
       "pg_cron",
       "pg_cron launcher",
       "parallel worker",
-      "yb_query_diagnostics bgworker"};
+      "yb_query_diagnostics database connection bgworker"};
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = TRUE", kColocatedDB));
 
@@ -651,8 +651,6 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
   for (int iterations = 0; iterations < 100; ++iterations) {
     ASSERT_OK(conn_->Execute(kInsertQuery));
   }
-
-  SleepFor(10s);
 
   std::set<std::pair<int32_t, std::string>> pid_with_backend_type;
 
@@ -730,7 +728,7 @@ TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
   ASSERT_OK(WaitFor([this, &pid]() -> Result<bool> {
     auto rows = VERIFY_RESULT((conn_->FetchRows<int32_t>(
         "SELECT pid FROM pg_stat_activity WHERE backend_type = "
-        "'yb_query_diagnostics bgworker'")));
+        "'yb_query_diagnostics database connection bgworker'")));
     if (!rows.empty()) {
       pid = rows[0];
       return true;

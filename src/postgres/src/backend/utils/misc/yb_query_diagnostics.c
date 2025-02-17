@@ -108,6 +108,18 @@ typedef struct
 	LocationLen locations[YB_QD_MAX_CONSTANTS];
 } YbQueryConstantsMetadata;
 
+typedef struct DatabaseConnectionWorkerInfo
+{
+	/*
+	 * Create a deep copy of the data to prevent race conditions. The original
+	 * entry in the hash table may be deleted by yb_query_diagnostics_bgworker
+	 * while the database connection worker is still processing it. This ensures data
+	 * consistency between background workers.
+	 */
+	YbQueryDiagnosticsEntry entry;  /* Copy of the entry we're processing */
+	bool		initialized;  /* Flag to check if the worker is initialized */
+} DatabaseConnectionWorkerInfo;
+
 /* GUC variables */
 bool		yb_enable_query_diagnostics;
 int			yb_query_diagnostics_bg_worker_interval_ms;
@@ -150,6 +162,7 @@ static YbQueryDiagnosticsBundles *bundles_completed = NULL;
 static const char *status_msg[] = {"Success", "In Progress", "Error", "Cancelled"};
 static bool current_query_sampled = false;
 static BackgroundWorkerHandle *bg_worker_handle = NULL;
+static DatabaseConnectionWorkerInfo *database_connection_worker_info = NULL;
 
 static void YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query,
 												  JumbleState *jstate);
@@ -184,7 +197,7 @@ static void FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata,
 								   int status, const char *description);
 static int	DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name,
 								 const char *folder_path, char *description, slock_t *mutex);
-static void DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description);
+static int DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description);
 static void GetResultsInCsvFormat(StringInfo output_buffer, int num_cols);
 static void GetResultsInTabularFormat(StringInfo output_buffer, int num_cols);
 
@@ -196,8 +209,9 @@ static void PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss 
 						 const char *queryString);
 static void FetchSchemaOids(List *rtable, Oid *schema_oids);
 static bool ExecuteQuery(StringInfo output_buffer, const char *query, int output_format);
-static int	DescribeOneTable(Oid oid, StringInfo schema_details, char *description);
-static void PrintTableName(Oid oid, StringInfo schema_details);
+static int	DescribeOneTable(Oid oid, const char *db_name, StringInfo schema_details, char *description);
+static void PrintTableAndDatabaseName(Oid oid, const char *db_name, StringInfo schema_details);
+static void RegisterDatabaseConnectionBgWorker(const YbQueryDiagnosticsEntry *entry);
 
 void
 YbQueryDiagnosticsInstallHook(void)
@@ -242,6 +256,7 @@ YbQueryDiagnosticsShmemSize(void)
 	size = add_size(size, YbQueryDiagnosticsBundlesShmemSize());
 	size = add_size(size, sizeof(TimestampTz));
 	size = add_size(size, sizeof(BackgroundWorkerHandle)); /* bg_worker_handle */
+	size = add_size(size, sizeof(DatabaseConnectionWorkerInfo)); /* database_connection_worker_info */
 
 	return size;
 }
@@ -305,6 +320,11 @@ YbQueryDiagnosticsShmemInit(void)
 	bg_worker_handle = (BackgroundWorkerHandle *) ShmemAlloc(sizeof(BackgroundWorkerHandle));
 	bg_worker_handle->slot = -1;
 	bg_worker_handle->generation = -1;
+
+	/* Initialize the database connection worker info */
+	database_connection_worker_info = (DatabaseConnectionWorkerInfo *)
+			ShmemAlloc(sizeof(DatabaseConnectionWorkerInfo));
+	database_connection_worker_info->initialized = false;
 }
 
 static inline int
@@ -579,6 +599,49 @@ BgWorkerRegister(void)
 	/* Save the handle for future use */
 	bg_worker_handle->slot = handle->slot;
 	bg_worker_handle->generation = handle->generation;
+}
+
+/*
+ * RegisterDatabaseConnectionBgWorker
+ *		Register the background worker for schema details
+ *
+ * A separate bg worker is required because the database with which we need to initialize the bg worker
+ * can be different for each bundle.
+ */
+static void
+RegisterDatabaseConnectionBgWorker(const YbQueryDiagnosticsEntry *entry)
+{
+	Assert(database_connection_worker_info != NULL && !database_connection_worker_info->initialized);
+
+	ereport(DEBUG1,
+			(errmsg("registering background worker to dump schema details")));
+
+	database_connection_worker_info->initialized = true;
+
+	BackgroundWorker worker;
+	BackgroundWorkerHandle *handle;
+
+	/* Copy data to shared memory */
+	memcpy(&database_connection_worker_info->entry, entry, sizeof(YbQueryDiagnosticsEntry));
+
+	/* Initialize worker struct */
+	memset(&worker, 0, sizeof(worker));
+	sprintf(worker.bgw_type, "yb_query_diagnostics database connection bgworker");
+	sprintf(worker.bgw_name, "yb_query_diagnostics database connection bgworker");
+	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
+					   BGWORKER_BACKEND_DATABASE_CONNECTION;
+	worker.bgw_start_time = BgWorkerStart_ConsistentState;
+	worker.bgw_restart_time = BGW_NEVER_RESTART;
+	sprintf(worker.bgw_library_name, "postgres");
+	sprintf(worker.bgw_function_name, "YbQueryDiagnosticsDatabaseConnectionWorkerMain");
+	worker.bgw_main_arg = (Datum) 0;
+	worker.bgw_notify_pid = MyProcPid;
+
+	/* Register the worker */
+	if (!RegisterDynamicBackgroundWorker(&worker, &handle))
+		ereport(LOG,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				errmsg("could not register query diagnostics database connection worker")));
 }
 
 /*
@@ -1099,6 +1162,7 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 	{
 		entry->metadata = *metadata;
 		entry->metadata.directory_created = false;
+		entry->metadata.flush_only_schema_details = false;
 		MemSet(entry->bind_vars, 0, YB_QD_MAX_BIND_VARS_LEN);
 		MemSet(entry->explain_plan, 0, YB_QD_MAX_EXPLAIN_PLAN_LEN);
 		MemSet(entry->schema_oids, 0, sizeof(Oid) * YB_QD_MAX_SCHEMA_OIDS);
@@ -1162,17 +1226,6 @@ YbQueryDiagnosticsAppendToDescription(char *description, const char *format,...)
 	va_start(args, format);
 	vsnprintf(description + current_len, remaining_len, format, args);
 	va_end(args);
-}
-
-/*
- * RefreshCache
- *		Refreshes the catalog cache to ensure that the latest catalog version is used.
- */
-static void
-RefreshCache()
-{
-	YBCPgResetCatalogReadTime();
-	YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 }
 
 /*
@@ -1324,6 +1377,33 @@ end_of_loop:
 			goto remove_entry;
 		}
 
+		/*
+		 * Wait for dumping schema details for the future iterations,
+		 * if the database connection bgworker is busy.
+		 */
+		if (database_connection_worker_info->initialized)
+		{
+			/*
+			 * If we have already dumped ash, pgss, bind_var and explain plans
+			 * then wait for bgworker to become idle.
+			 */
+			if (entry->metadata.flush_only_schema_details)
+				continue;
+
+			/* If we haven't yet dumped ash, pgss, bind_var and explain plans then do it. */
+			entry->metadata.flush_only_schema_details = true;
+			goto skip_schema_details;
+		}
+
+		/* Gather and dump schema details through a separate bg worker */
+		RegisterDatabaseConnectionBgWorker(entry);
+
+		/* If rest of the data is already dumped then we can remove the entry. */
+		if (entry->metadata.flush_only_schema_details)
+			goto remove_entry;
+
+skip_schema_details:
+
 		/* Dump bind variables */
 		status = DumpToFile(entry->metadata.path, constants_and_bind_variables_file,
 							entry->bind_vars, description);
@@ -1413,64 +1493,9 @@ end_of_loop:
 		if (status == YB_DIAGNOSTICS_ERROR)
 			goto remove_entry;
 
-		/* Collect schema details */
-		StringInfoData schema_details;
-
-		initStringInfo(&schema_details);
-
-		PG_TRY();
-		{
-			/* This prevents `CATALOG MISMATCHED_SCHEMA` error */
-			RefreshCache();
-
-			/* Fetch schema details for each schema oid */
-			for (int i = 0; i < YB_QD_MAX_SCHEMA_OIDS; i++)
-			{
-				if (entry->schema_oids[i] == InvalidOid)
-					break;
-
-				status = DescribeOneTable(entry->schema_oids[i],
-										  &schema_details, description);
-
-				if (status == YB_DIAGNOSTICS_ERROR)
-					goto remove_entry;
-
-				appendStringInfo(&schema_details, "\n%s\n\n",
-								 schema_details_separator);
-			}
-		}
-		PG_CATCH();
-		{
-			/*
-			 * Not setting status = YB_DIAGNOSTICS_ERROR,
-			 * so that rest of the data can be printed
-			 */
-			ErrorData  *edata;
-
-			/* save error info */
-			MemoryContextSwitchTo(curr_context);
-			edata = CopyErrorData();
-			FlushErrorState();
-
-			YbQueryDiagnosticsAppendToDescription(description,
-												  "Fetching schema details errored out "
-												  "with the following message: %s",
-												  edata->message);
-			FreeErrorData(edata);
-		}
-		PG_END_TRY();
-
-		/* Dump schema details */
-		status = DumpToFile(entry->metadata.path, schema_details_file,
-							schema_details.data, description);
-
-		pfree(schema_details.data);
-
-		if (status == YB_DIAGNOSTICS_ERROR)
-			goto remove_entry;
-
-		if (yb_enable_ash)
-			DumpActiveSessionHistory(entry, description);
+		/* Keep bundle in hash table as dumping schema details is pending */
+		if (entry->metadata.flush_only_schema_details)
+			continue;
 
 remove_entry:
 		FinishBundleProcessing(&entry->metadata, status, description);
@@ -1479,17 +1504,84 @@ remove_entry:
 	pfree(expired_entries);
 }
 
+static int
+DumpSchemaDetails(YbQueryDiagnosticsEntry *entry, char *description)
+{
+	StringInfoData schema_details;
+	MemoryContext curr_context = GetCurrentMemoryContext();
+	int			status = YB_DIAGNOSTICS_SUCCESS;
+
+	initStringInfo(&schema_details);
+
+	PG_TRY();
+	{
+		/* Fetch schema details for each schema oid */
+		for (int i = 0; i < YB_QD_MAX_SCHEMA_OIDS; i++)
+		{
+			if (entry->schema_oids[i] == InvalidOid)
+				break;
+
+			status = DescribeOneTable(entry->schema_oids[i],
+									  entry->metadata.db_name, &schema_details,
+									  description);
+
+			if (status == YB_DIAGNOSTICS_ERROR)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+								 errmsg("error while dumping schema details %s", description)));
+			}
+
+			appendStringInfo(&schema_details, "\n%s\n\n",
+							 schema_details_separator);
+		}
+
+		/* Dump schema details */
+		status = DumpToFile(entry->metadata.path, schema_details_file,
+							schema_details.data, description);
+
+		pfree(schema_details.data);
+		pfree(description);
+	}
+	PG_CATCH();
+	{
+		ErrorData *edata;
+
+		/* save error info */
+		MemoryContextSwitchTo(curr_context);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		YbQueryDiagnosticsAppendToDescription(description,
+											  "Fetching schema details errored "
+											  "out "
+											  "with the following message: %s",
+											  edata->message);
+
+		ereport(LOG,
+				(errmsg("error while dumping schema details %s", edata->message)),
+				(errhint("%s", edata->hint)));
+
+		FreeErrorData(edata);
+	}
+	PG_END_TRY();
+
+	database_connection_worker_info->initialized = false;
+
+	return status;
+}
+
 /*
  * DumpActiveSessionHistory
  *		Gathers ASH data using SPI and dumps it to a file.
  */
-static void
+static int
 DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description)
 {
-	/* Fixed buffer sized for max expected timestamp strings (30 chars each) */
 	char		query[256];
 	StringInfoData ash_buffer;
 	TimestampTz end_time = BundleEndTime(entry);
+	int			status = YB_DIAGNOSTICS_SUCCESS;
 
 	Assert(entry->metadata.start_time < end_time);
 
@@ -1511,11 +1603,17 @@ DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description)
 			DumpToFile(entry->metadata.path, ash_file,
 					   ash_buffer.data, description);
 	}
+	PG_CATCH();
+	{
+		status = YB_DIAGNOSTICS_ERROR;
+	}
 	PG_END_TRY();
 
 	pfree(start_time_str);
 	pfree(end_time_str);
 	pfree(ash_buffer.data);
+
+	return status;
 }
 
 /*
@@ -1628,7 +1726,8 @@ MakeDirectory(const char *path, char *description)
  *		In case of an error, the function copies the error message to description.
  */
 static int
-DescribeOneTable(Oid oid, StringInfo schema_details, char *description)
+DescribeOneTable(Oid oid, const char *db_name, StringInfo schema_details,
+				 char *description)
 {
 	const char *queries[] = {
 		/* Table info, tablegroup, and colocated status */
@@ -1865,7 +1964,7 @@ DescribeOneTable(Oid oid, StringInfo schema_details, char *description)
 	int			num_of_queries = sizeof(queries) / sizeof(queries[0]);
 	char		formatted_query[BLCKSZ];
 
-	PrintTableName(oid, schema_details);
+	PrintTableAndDatabaseName(oid, db_name, schema_details);
 
 	for (int i = 0; i < num_of_queries; i++)
 	{
@@ -1895,7 +1994,8 @@ DescribeOneTable(Oid oid, StringInfo schema_details, char *description)
 }
 
 static void
-PrintTableName(Oid oid, StringInfo schema_details)
+PrintTableAndDatabaseName(Oid oid, const char *db_name,
+						  StringInfo schema_details)
 {
 	StartTransactionCommand();
 
@@ -1903,7 +2003,9 @@ PrintTableName(Oid oid, StringInfo schema_details)
 
 	if (table_name)
 	{
-		appendStringInfo(schema_details, "Table name: %s\n", table_name);
+		appendStringInfo(schema_details,
+						 "- Table name: %s\n- Database name: %s\n", table_name,
+						 db_name);
 		pfree(table_name);
 	}
 
@@ -2194,7 +2296,8 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 
 		snprintf(description, YB_QD_DESCRIPTION_LEN, "%s", edata->message);
 
-		ereport(LOG, (errmsg("error while dumping to file %s", edata->message)),
+		ereport(LOG,
+				(errmsg("error while dumping to file %s", edata->message)),
 				(errhint("%s", edata->hint)));
 
 		FreeErrorData(edata);
@@ -2230,9 +2333,6 @@ YbQueryDiagnosticsMain(Datum main_arg)
 
 	/* Initialize the worker process */
 	BackgroundWorkerUnblockSignals();
-
-	/* Connect to the database */
-	BackgroundWorkerInitializeConnection("yugabyte", NULL, 0);
 
 	pgstat_report_appname("yb_query_diagnostics bgworker");
 
@@ -2282,6 +2382,44 @@ YbQueryDiagnosticsMain(Datum main_arg)
 			proc_exit(0);
 		}
 	}
+}
+
+/*
+ * YbQueryDiagnosticsDatabaseConnectionWorkerMain
+ * 		Background worker for dumping schema details, active session history.
+ *		Since these operations require query execution, a separate bgworker is
+ *		required which can initialize connection to database.
+ */
+void
+YbQueryDiagnosticsDatabaseConnectionWorkerMain(Datum main_arg)
+{
+	ereport(LOG,
+			(errmsg("starting a background worker to dump schema details " \
+					"and active session history")));
+
+	YbQueryDiagnosticsEntry *entry = &database_connection_worker_info->entry;
+	const char	   *database_name = entry->metadata.db_name;
+	int			status = YB_DIAGNOSTICS_SUCCESS;
+	char	   *description = palloc0(YB_QD_DESCRIPTION_LEN);
+
+	if (!database_name || !entry)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("invalid worker info passed to " \
+						"YbQueryDiagnosticsDatabaseConnectionWorkerMain")));
+		proc_exit(1);
+	}
+
+	/* Connect to the database */
+	BackgroundWorkerInitializeConnection(database_name, NULL, 0);
+
+	if (yb_enable_ash)
+		DumpActiveSessionHistory(entry, description);
+
+	status = DumpSchemaDetails(entry, description);
+
+	proc_exit(status == YB_DIAGNOSTICS_SUCCESS ? 0 : 1);
 }
 
 /*
@@ -2414,6 +2552,8 @@ yb_query_diagnostics(PG_FUNCTION_ARGS)
 	FetchParams(&metadata.params, fcinfo);
 
 	ConstructDiagnosticsPath(&metadata);
+
+	snprintf(metadata.db_name, NAMEDATALEN, "%s", YBCGetDatabaseName(MyDatabaseId));
 
 	InsertNewBundleInfo(&metadata);
 
