@@ -280,10 +280,12 @@ void IntentAwareIterator::Next() {
 
   if (IsEntryRegular()) {
     SkipFutureRecords<Direction::kForward>(iter_.Next());
+    intent_iter_.Next();
+    FillEntry();
+  } else {
+    SkipFutureRecords<Direction::kForward>(iter_.Next());
     FillEntry();
   }
-
-  // TODO(#22605): Intent iterator should be advance here as well. Refer to Prev() logic.
 }
 
 void IntentAwareIterator::SeekForward(Slice key) {
