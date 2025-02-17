@@ -167,7 +167,7 @@ To build a Java application that connects to YugabyteDB over an SSL connection, 
 1. Convert the client certificate to DER format.
 
     ```sh
-    $ openssl x509 –in yugabytedb.crt -out yugabytedb.crt.der -outform der
+    $ openssl x509 -in yugabytedb.crt -out yugabytedb.crt.der -outform der
     ```
 
 1. Convert the client key to pk8 format.

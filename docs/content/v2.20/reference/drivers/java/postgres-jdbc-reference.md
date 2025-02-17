@@ -255,7 +255,7 @@ Steps for configuring the JDBC client for server authentication are as follows:
 1. Convert the client certificate to DER format.
 
     ```sh
-    $ openssl x509 –in yugabytedb.crt -out yugabytedb.crt.der -outform der
+    $ openssl x509 -in yugabytedb.crt -out yugabytedb.crt.der -outform der
     ```
 
 1. Convert the client key to pk8 format.
