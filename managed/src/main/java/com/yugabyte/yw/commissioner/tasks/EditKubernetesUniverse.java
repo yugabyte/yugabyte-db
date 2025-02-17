@@ -339,7 +339,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           newNamingStyle,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          ybcManager.getStableYbcVersion(),
           supportsNonRestartGflagsUpgrade /* usePreviousGflagsChecksum */);
     }
 
@@ -550,7 +550,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT);
 
       upgradePodsTask(
@@ -568,7 +568,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT);
     } else if (instanceTypeChanged) {
       upgradePodsTask(
@@ -586,7 +586,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT);
     } else if (masterAddressesChanged) {
       // Update master_addresses flag on Master
@@ -747,7 +747,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           taskParams().useNewHelmNamingStyle,
           isReadOnlyCluster,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion());
+          ybcManager.getStableYbcVersion());
 
       Set<NodeDetails> mastersToModify =
           Stream.concat(
@@ -786,7 +786,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           taskParams().useNewHelmNamingStyle,
           isReadOnlyCluster,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion());
+          ybcManager.getStableYbcVersion());
 
       // Set flag in memory for tserver
       createSetFlagInMemoryTasks(

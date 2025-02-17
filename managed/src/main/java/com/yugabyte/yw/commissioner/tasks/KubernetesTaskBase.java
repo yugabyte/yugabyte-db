@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.KubernetesPartitions;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -126,7 +127,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     private boolean enableYbc;
     private String ybcSoftwareVersion;
 
-    public KubernetesGflagsUpgradeCommonParams(Universe universe, Cluster cluster) {
+    public KubernetesGflagsUpgradeCommonParams(
+        Universe universe, Cluster cluster, RuntimeConfGetter confGetter) {
       UniverseDefinitionTaskParams universeParams = universe.getUniverseDetails();
       Cluster primaryCluster = universeParams.getPrimaryCluster();
       KubernetesPlacement primaryClusterPlacement =
@@ -157,7 +159,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               ? new KubernetesPlacement(cluster.placementInfo, true /* isReadOnlyCluster */)
               : primaryClusterPlacement;
       this.enableYbc = universe.isYbcEnabled();
-      this.ybcSoftwareVersion = universe.getUniverseDetails().getYbcSoftwareVersion();
+      this.ybcSoftwareVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
     }
   }
 

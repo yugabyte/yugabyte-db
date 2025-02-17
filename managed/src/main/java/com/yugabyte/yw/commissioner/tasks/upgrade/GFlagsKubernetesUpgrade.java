@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -107,6 +108,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Helm update will finish without any restarts if there are no updates
           boolean updateMaster = true;
           boolean updateTserver = true;
+          String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
 
           switch (taskParams().upgradeOption) {
             case ROLLING_UPGRADE:
@@ -116,7 +118,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                   updateMaster,
                   updateTserver,
                   universe.isYbcEnabled(),
-                  universe.getUniverseDetails().getYbcSoftwareVersion());
+                  stableYbcVersion);
               break;
             case NON_ROLLING_UPGRADE:
               createNonRollingGflagUpgradeTask(
@@ -125,7 +127,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                   updateMaster,
                   updateTserver,
                   universe.isYbcEnabled(),
-                  universe.getUniverseDetails().getYbcSoftwareVersion());
+                  stableYbcVersion);
               break;
             case NON_RESTART_UPGRADE:
               createNonRestartGflagsUpgradeTask(getUniverse());
