@@ -179,7 +179,7 @@ sudo ./yba-ctl preflight
 
 Some checks, such as CPU or memory, can be skipped, though this is not recommended for a production installation. Others, such as having a license and python installed, are hard requirements, and YugabyteDB Anywhere can't work until these checks pass. All checks should pass for a production installation.
 
-If you are installing YBA for testing and evaluation and you want to skip a check that is failing, you can pass `–skip_preflight <name>[,<name2>]`. For example:
+If you are installing YBA for testing and evaluation and you want to skip a check that is failing, you can pass `--skip_preflight <name>[,<name2>]`. For example:
 
 ```sh
 sudo ./yba-ctl preflight --skip_preflight cpu
@@ -372,7 +372,7 @@ INFO[2023-04-24T23:58:14Z] Uninstalling prometheus
 INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 ```
 
-To delete all data, run `clean` with the `–-all` flag as follows:
+To delete all data, run `clean` with the `--all` flag as follows:
 
 ```sh
 sudo yba-ctl clean --all
