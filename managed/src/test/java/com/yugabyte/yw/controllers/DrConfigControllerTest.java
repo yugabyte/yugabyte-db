@@ -16,6 +16,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -573,10 +574,10 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             Json.toJson(form));
 
     assertOk(result);
-    verify(mockYBClient)
+    verify(mockYBClient, times(2))
         .getUniverseReplicationInfo(
             eq(drConfig.getActiveXClusterConfig().getReplicationGroupName()));
-    verify(mockYBClient)
+    verify(mockYBClient, times(2))
         .getXClusterOutboundReplicationGroupInfo(
             eq(drConfig.getActiveXClusterConfig().getReplicationGroupName()));
     ArgumentCaptor<DrConfigTaskParams> paramsArgumentCaptor =
