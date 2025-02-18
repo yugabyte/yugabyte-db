@@ -53,6 +53,7 @@ class VectorIndex {
   virtual Slice indexed_table_key_prefix() const = 0;
   virtual ColumnId column_id() const = 0;
   virtual const std::string& path() const = 0;
+  virtual HybridTime hybrid_time() const = 0;
 
   virtual Status Insert(
       const VectorIndexInsertEntries& entries, const rocksdb::UserFrontiers* frontiers) = 0;
@@ -77,6 +78,7 @@ Result<VectorIndexPtr> CreateVectorIndex(
     const std::string& data_root_dir,
     rpc::ThreadPool& thread_pool,
     Slice indexed_table_key_prefix,
+    HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
     const DocDB& doc_db);
 
