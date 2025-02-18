@@ -217,7 +217,7 @@ my-multi-region   Dedicated   2.14.7.0-b51   ACTIVE    💚        us-central1,+
 
 YugabyteDB Aeon supports [encryption at rest](../../../../cloud-secure-clusters/managed-ear) (EAR). Before you can create a cluster with EAR, you need to create a customer managed key (CMK) in a cloud provider Key Management Service (KMS). See [Prerequisites](../../../../cloud-secure-clusters/managed-ear/#prerequisites).
 
-### Create an EAR-enabled cluster
+### Create a cluster with EAR
 
 Use the following commands to create a new cluster with EAR in AWS, GCP, or Azure.
 
