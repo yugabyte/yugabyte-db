@@ -472,8 +472,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
     }
     if (resp.has_op_lease_update()) {
       WARN_NOT_OK(
-          server_->BootstrapDdlObjectLocks(resp.op_lease_update()),
-          "Error bootstrapping object locks. Not expected.");
+          server_->ProcessLeaseUpdate(resp.op_lease_update(), start_time),
+          "Error processing lease update. Not expected.");
     }
 
     if (resp.has_error()) {

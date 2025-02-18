@@ -111,6 +111,7 @@ set(COMMON_SRCS
   llvm_profile_dumper.cc
   version_info.cc
   xcluster_util.cc
+  ysql_operation_lease.cc
   ysql_utils.cc
   )
 

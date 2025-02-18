@@ -253,13 +253,14 @@ message TSHeartbeatRequestPB {
       xcluster_consumer_replication_status = 23;
 }
 
+// todo(zdrudi): rename this. client operation lease is too general.
+// it's for ysql to support table locking.
 message ClientOperationLeaseUpdatePB {
-  optional fixed64 lease_deadline_ht = 1;
-  optional bool new_lease = 2;
-  optional uint64 lease_epoch = 3;
+  optional bool new_lease = 1;
+  optional uint64 lease_epoch = 2;
   // TODO: If this ends up being too big, consider adding a way to break this up
   // into multiple messages.
-  optional tserver.DdlLockEntriesPB ddl_lock_entries = 4;
+  optional tserver.DdlLockEntriesPB ddl_lock_entries = 3;
 }
 
 message TSHeartbeatResponsePB {
