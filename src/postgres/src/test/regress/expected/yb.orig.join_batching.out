@@ -187,7 +187,7 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
    ->  Seq Scan on p2
    ->  Index Scan using p1_b_idx on p1
          Index Cond: (b = p2.a)
-         Filter: (p2.b = a)
+         Storage Filter: (p2.b = a)
 (5 rows)
 
 /*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p3)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1, p2, p3 where p1.a = p3.a AND p2.a = p3.a and p1.b = p2.b;
@@ -202,7 +202,7 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
                Index Cond: (a = ANY (ARRAY[p2.a, $1, $2]))
    ->  Index Scan using p1_b_idx on p1
          Index Cond: (b = p2.b)
-         Filter: (p2.a = a)
+         Storage Filter: (p2.a = a)
 (10 rows)
 
 /*+ set(enable_seqscan on) Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p1.b < p2.b + 1;
@@ -313,7 +313,7 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
    ->  Seq Scan on p2
    ->  Index Scan using p1_b_idx on p1
          Index Cond: (b = p2.a)
-         Filter: (p2.b = a)
+         Storage Filter: (p2.b = a)
 (5 rows)
 
 CREATE TABLE t10 (r1 int, r2 int, r3 int, r4 int);
@@ -1169,15 +1169,15 @@ select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a 
 -- The problematic join filter is pushdownable to the nullable side.
 -- BNL not allowed here.
 explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a and (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
-                       QUERY PLAN
----------------------------------------------------------
+                           QUERY PLAN
+----------------------------------------------------------------
  Sort
    Sort Key: t1.a
    ->  Nested Loop Left Join
          ->  Seq Scan on outtable t1
          ->  Index Scan using intable_pkey on intable t2
                Index Cond: (a = t1.a)
-               Filter: (((t1.a + 1) > a) OR (t1.a = 1))
+               Storage Filter: (((t1.a + 1) > a) OR (t1.a = 1))
 (7 rows)
 
 select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
@@ -1800,7 +1800,7 @@ pg_catalog.pg_attribute pka,
 pg_catalog.pg_constraint con,
 pg_catalog.generate_series(1, 32) pos(n)
 WHERE pka.attnum = con.confkey[pos.n] and con.connamespace = pka.attnum;
-                                                               QUERY PLAN                                                                
+                                                               QUERY PLAN
 -----------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=0 loops=1)
    Join Filter: (con.confkey[pos.n] = pka.attnum)
@@ -1809,7 +1809,7 @@ WHERE pka.attnum = con.confkey[pos.n] and con.connamespace = pka.attnum;
          ->  Seq Scan on pg_constraint con (actual rows=2 loops=1)
          ->  Index Scan using pg_attribute_relid_attnum_index on pg_attribute pka (actual rows=0 loops=2)
                Index Cond: (attnum = ANY (ARRAY[(con.confkey)[pos.n], (con.confkey)[$1], (con.confkey)[$2], ..., (con.confkey)[$1023]]))
-               Filter: (con.connamespace = (attnum)::oid)
+               Storage Filter: (con.connamespace = (attnum)::oid)
 (8 rows)
 
 create table ss1(a int, primary key(a asc));
@@ -1966,7 +1966,7 @@ create table ss3(a int, b int, primary key(a asc, b asc));
          ->  Seq Scan on ss2
          ->  Index Scan using ss3_pkey on ss3
                Index Cond: ((b = ANY (ARRAY[ss1.a, $1, $2])) AND (a = ss2.a))
-               Filter: (a <> ss2.a)
+               Storage Filter: (a <> ss2.a)
 (8 rows)
 
 /*+Leading((ss1 (ss2 ss3)))*/ select * from ss1, ss2, ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
@@ -2351,7 +2351,7 @@ explain (costs off) select * from ss1 t1, ss2 t2 where t1.a = t2.a and t1.b = t2
    ->  Seq Scan on ss1 t1
    ->  Index Only Scan using ss2_a_idx on ss2 t2
          Index Cond: (a = (t1.a)::text)
-         Filter: (t1.b = (a)::bpchar)
+         Storage Filter: (t1.b = (a)::bpchar)
 (5 rows)
 
 drop table ss1;

@@ -4095,21 +4095,21 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 	/* Sort clauses into best execution order */
 	scan_clauses = order_qual_clauses(root, scan_clauses);
 
-	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
-	if (best_path->parent->is_yb_relation)
-		extract_pushdown_clauses(scan_clauses, NULL,
-								 false /* is_bitmap_index_scan */ ,
-								 &local_quals, &remote_quals, &colrefs,
-								 NULL, NULL);
-	else
-		local_quals = extract_actual_clauses(scan_clauses, false);
-
 	/* Replace any outer-relation variables with nestloop params */
 	if (best_path->param_info)
 	{
-		local_quals = (List *)
-			replace_nestloop_params(root, (Node *) local_quals);
+		scan_clauses = (List *)
+			replace_nestloop_params(root, (Node *) scan_clauses);
 	}
+
+	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
+	if (best_path->parent->is_yb_relation)
+		yb_extract_pushdown_clauses(scan_clauses, NULL,
+									false, /* is_bitmap_index_scan */
+									&local_quals, &remote_quals, &colrefs, NULL,
+									NULL);
+	else
+		local_quals = extract_actual_clauses(scan_clauses, false);
 
 	if (best_path->parent->is_yb_relation)
 		scan_plan = (SeqScan *) make_yb_seqscan(tlist, local_quals,
@@ -4377,6 +4377,24 @@ create_indexscan_plan(PlannerInfo *root,
 	/* Sort clauses into best execution order */
 	qpqual = order_qual_clauses(root, qpqual);
 
+	/*
+	 * We have to replace any outer-relation variables with nestloop params in
+	 * the indexqualorig, qpqual, and indexorderbyorig expressions.  A bit
+	 * annoying to have to do this separately from the processing in
+	 * fix_indexqual_references --- rethink this when generalizing the inner
+	 * indexscan support.  But note we can't really do this earlier because
+	 * it'd break the comparisons to predicates above ... (or would it?  Those
+	 * wouldn't have outer refs)
+	 */
+	if (best_path->path.param_info)
+	{
+		stripped_indexquals = (List *)
+			replace_nestloop_params(root, (Node *) stripped_indexquals);
+		qpqual = (List *) replace_nestloop_params(root, (Node *) qpqual);
+		indexorderbys = (List *)
+			replace_nestloop_params(root, (Node *) indexorderbys);
+	}
+
 	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
 	if (best_path->path.parent->is_yb_relation)
 	{
@@ -4412,42 +4430,25 @@ create_indexscan_plan(PlannerInfo *root,
 		 * pushdowns. See the comment in build_paths_for_OR for more details.
 		 */
 		if (bitmapindex)
-			extract_pushdown_clauses(best_path->yb_bitmap_idx_pushdowns,
-									 best_path->indexinfo,
-									 bitmapindex,
-									 NULL /* local_quals */ ,
-									 NULL /* rel_remote_quals */ ,
-									 NULL /* rel_colrefs */ ,
-									 &idx_remote_quals, &idx_colrefs);
+			yb_extract_pushdown_clauses(best_path->yb_bitmap_idx_pushdowns,
+										best_path->indexinfo, bitmapindex,
+										NULL, /* local_quals */
+										NULL, /* rel_remote_quals */
+										NULL, /* rel_colrefs */
+										&idx_remote_quals, &idx_colrefs);
 
 		/* Then, look at all remaining clauses for pushdown-able filters */
-		extract_pushdown_clauses(qpqual,
-								 need_idx_remote ? best_path->indexinfo : NULL,
-								 bitmapindex,
-								 &local_quals, &rel_remote_quals, &rel_colrefs,
-								 &idx_remote_quals, &idx_colrefs);
+		yb_extract_pushdown_clauses(qpqual,
+									need_idx_remote ? best_path->indexinfo : NULL,
+									bitmapindex,
+									&local_quals,
+									&rel_remote_quals,
+									&rel_colrefs,
+									&idx_remote_quals,
+									&idx_colrefs);
 	}
 	else
 		local_quals = extract_actual_clauses(qpqual, false);
-
-	/*
-	 * We have to replace any outer-relation variables with nestloop params in
-	 * the indexqualorig, qpqual, and indexorderbyorig expressions.  A bit
-	 * annoying to have to do this separately from the processing in
-	 * fix_indexqual_references --- rethink this when generalizing the inner
-	 * indexscan support.  But note we can't really do this earlier because
-	 * it'd break the comparisons to predicates above ... (or would it?  Those
-	 * wouldn't have outer refs)
-	 */
-	if (best_path->path.param_info)
-	{
-		stripped_indexquals = (List *)
-			replace_nestloop_params(root, (Node *) stripped_indexquals);
-		local_quals = (List *)
-			replace_nestloop_params(root, (Node *) local_quals);
-		indexorderbys = (List *)
-			replace_nestloop_params(root, (Node *) indexorderbys);
-	}
 
 	/*
 	 * If there are ORDER BY expressions, look up the sort operators for their
@@ -4771,11 +4772,11 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	List	   *rel_remote_quals = NIL;
 	List	   *rel_colrefs = NIL;
 
-	extract_pushdown_clauses(qpqual, NULL /* index_info */ ,
-							 false /* bitmapindex */ , &local_quals,
-							 &rel_remote_quals, &rel_colrefs,
-							 NULL /* idx_remote_quals */ ,
-							 NULL /* idx_colrefs */ );
+	yb_extract_pushdown_clauses(qpqual, NULL, /* index_info */
+								false, /* bitmapindex */ &local_quals,
+								&rel_remote_quals, &rel_colrefs,
+								NULL, /* idx_remote_quals */
+								NULL); /* idx_colrefs */
 
 	YbPushdownExprs rel_pushdown = {rel_remote_quals, rel_colrefs};
 
@@ -4822,11 +4823,11 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	List	   *fallback_colrefs = NIL;
 	List	   *fallback_local_quals = NIL;
 
-	extract_pushdown_clauses(scan_clauses, NULL /* index_info */ ,
-							 false /* bitmapindex */ , &fallback_local_quals,
-							 &fallback_remote_quals, &fallback_colrefs,
-							 NULL /* idx_remote_quals */ ,
-							 NULL /* idx_colrefs */ );
+	yb_extract_pushdown_clauses(scan_clauses, NULL, /* index_info */
+								false, /* bitmapindex */ &fallback_local_quals,
+								&fallback_remote_quals, &fallback_colrefs,
+								NULL, /* idx_remote_quals */
+								NULL); /* idx_colrefs */
 
 	YbPushdownExprs fallback_pushdown = {fallback_remote_quals, fallback_colrefs};
 
