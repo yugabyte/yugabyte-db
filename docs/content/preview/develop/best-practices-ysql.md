@@ -180,7 +180,7 @@ For more information, see [Load balancing with smart drivers](https://www.yugaby
 
 ## Make sure the application uses new nodes
 
-When a cluster is expanded, newly added nodes do not automatically start to receive client traffic. Regardless of the language of the driver, the application must either explicitly request new connections or, if it is using a pooling solution, it can configure the pooler to recycle connections periodically (for example, by setting maxLifetime and/or idleTimeout).
+When a cluster is expanded, newly added nodes do not automatically start to receive client traffic. Regardless of the language of the driver or whether you are using a smart driver, the application must either explicitly request new connections or, if it is using a pooling solution, it can configure the pooler to recycle connections periodically (for example, by setting maxLifetime and/or idleTimeout).
 
 ## Scale your application with connection pools
 
