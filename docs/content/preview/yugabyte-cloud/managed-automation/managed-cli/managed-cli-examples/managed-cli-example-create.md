@@ -213,11 +213,13 @@ Name              Tier        Version        State     Health    Regions        
 my-multi-region   Dedicated   2.14.7.0-b51   ACTIVE    💚        us-central1,+2   3         6 / 24GB / 600GB
 ```
 
-## Create, update, and describe an EAR-enabled cluster
+## Encryption at rest
+
+YugabyteDB Aeon supports [encryption at rest](../../../../cloud-secure-clusters/managed-ear) (EAR). Before you can create a cluster with EAR, you need to create a customer managed key (CMK) in a cloud provider Key Management Service (KMS). See [Prerequisites](../../../../cloud-secure-clusters/managed-ear/#prerequisites).
 
 ### Create an EAR-enabled cluster
 
-Use the following commands to create a new cluster with Encryption at Rest (EAR) enabled using a customer-managed key (CMK) in AWS, GCP, or Azure.
+Use the following commands to create a new cluster with EAR in AWS, GCP, or Azure.
 
 AWS:
 
@@ -237,9 +239,8 @@ Azure:
 ybm cluster create --encryption-spec cloud-provider=AZURE,azu-client-id=<your-client-id>,azu-client-secret=<your-client-secret>,azu-tenant-id=<your-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<your-key-vault-uri>
 ```
 
-### Describe an EAR-enabled cluster
 
-Use the following commands to display the CMK configuration details for a specific cluster.
+The EAR details are displayed with the cluster details.
 
 AWS:
 
