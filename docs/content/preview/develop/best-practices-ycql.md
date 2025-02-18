@@ -64,10 +64,6 @@ TTL does not apply to transactional tables and so, its unsupported in that conte
 
 Use YugabyteDB-specific [client drivers](../../drivers-orms/) because they are cluster- and partition-aware, and support `jsonb` columns.
 
-## Make sure the application uses new nodes
-
-When a cluster is expanded, newly added nodes do not automatically start to receive client traffic. Regardless of the driver type, the application must either explicitly request new connections or, if it is using a pooling solution, it can configure the pooler to recycle connections periodically (for example, by setting maxLifetime and/or idleTimeout).
-
 ## Leverage connection pooling in the YCQL client
 
 A single client (for example, a multi-threaded application) should ideally use a single cluster object. The single cluster object typically holds underneath the covers a configurable number of connections to YB-TServers. Typically 1 or 2 connections per YB-TServer suffices to serve even 64-128 application threads. The same connection can be used for multiple outstanding requests, also known as multiplexing.
