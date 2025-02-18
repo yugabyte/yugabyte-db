@@ -221,37 +221,48 @@ YugabyteDB Aeon supports [encryption at rest](../../../../cloud-secure-clusters/
 
 Use the following commands to create a new cluster with EAR in AWS, GCP, or Azure.
 
-AWS:
+{{< tabpane text=true >}}
+
+{{% tab header="AWS" %}}
 
 ```sh
 ybm cluster create --encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>
 ```
 
-GCP:
+{{% /tab %}}
+
+{{% tab header="GCP" %}}
 
 ```sh
 ybm cluster create --encryption-spec cloud-provider=GCP,gcp-resource-id=projects/<your-project>/locations/<your-location>/keyRings/<your-key-ring-name>/cryptoKeys/<your-key-name>,gcp-service-account-path=creds.json
 ```
 
-Azure:
+{{% /tab %}}
+
+{{% tab header="Azure" %}}
 
 ```sh
 ybm cluster create --encryption-spec cloud-provider=AZURE,azu-client-id=<your-client-id>,azu-client-secret=<your-client-secret>,azu-tenant-id=<your-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<your-key-vault-uri>
 ```
 
+{{% /tab %}}
+
+{{< /tabpane >}}
 
 The EAR details are displayed with the cluster details.
 
-AWS:
+{{< tabpane text=true >}}
+
+{{% tab header="AWS" %}}
 
 ```sh
-ybm cluster describe --cluster-name test-cluster-azure
+ybm cluster describe --cluster-name my-sandbox
 ```
 
 ```output
 General
 Name                 ID                                     Version        State     Health
-test-cluster-azure   b1676d3f-8898-4c04-a1d6-bedf5b7867ff   2.18.3.0-b75   ACTIVE    💚
+my-sandbox   b1676d3f-8898-4c04-a1d6-bedf5b7867ff   2.18.3.0-b75   ACTIVE    💚
 
 Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
 AWS        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
@@ -264,38 +275,18 @@ AWS        0a80e409-e345-42fc-b456-bafXXXXXXb2c   2023-11-03T07:37:26.351Z   arn
 ...
 ```
 
-Azure:
+{{% /tab %}}
+
+{{% tab header="GCP" %}}
 
 ```sh
-ybm cluster describe --cluster-name test-cluster-azure
+ybm cluster describe --cluster-name my-sandbox
 ```
 
 ```output
 General
 Name                 ID                                     Version        State     Health
-test-cluster-azure   b1676d3f-8898-4c04-a1d6-bedf5b7867ff   2.18.3.0-b75   ACTIVE    💚
-
-Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
-AWS        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
-
-...
-
-Encryption at Rest
-Provider   Key Alias                              Last Rotated               Security Principals                      CMK Status
-AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   https://test-azure-gj.vault.azure.net/   ACTIVE
-...
-```
-
-GCP:
-
-```sh
-ybm cluster describe --cluster-name test-cluster-azure
-```
-
-```output
-General
-Name                 ID                                     Version        State     Health
-test-cluster-azure   b1676d3f-8898-4c04-a1d6-XXXXXXXXXXXX   2.18.3.0-b75   ACTIVE    💚
+my-sandbox   b1676d3f-8898-4c04-a1d6-XXXXXXXXXXXX   2.18.3.0-b75   ACTIVE    💚
 
 Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
 AWS        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
@@ -309,29 +300,71 @@ GCP        GCP-test-key   2023-11-03T07:37:26.351Z   projects/<your-project-id>/
 ...
 ```
 
+{{% /tab %}}
+
+{{% tab header="Azure" %}}
+
+```sh
+
+Azure:
+
+```sh
+ybm cluster describe --cluster-name my-sandbox
+```
+
+```output
+General
+Name                 ID                                     Version        State     Health
+my-sandbox   b1676d3f-8898-4c04-a1d6-bedf5b7867ff   2.18.3.0-b75   ACTIVE    💚
+
+Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
+AWS        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
+
+...
+
+Encryption at Rest
+Provider   Key Alias                              Last Rotated               Security Principals                      CMK Status
+AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   https://test-azure-gj.vault.azure.net/   ACTIVE
+...
+```
+
+{{% /tab %}}
+
+{{< /tabpane >}}
+
 ### Update CMK configuration
 
 Use the following commands to update the CMK configuration. If no existing configuration is found, the command creates a new one; otherwise, it updates the current configuration.
 
 Note: Only credentials can be modified in the current configuration (for example, AWS access/secret keys or GCP service account credentials).
 
-AWS:
+{{< tabpane text=true >}}
+
+{{% tab header="AWS" %}}
 
 ```sh
 ybm cluster encryption update --encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>
 ```
 
-GCP:
+{{% /tab %}}
+
+{{% tab header="GCP" %}}
 
 ```sh
 ybm cluster encryption update --encryption-spec resource-id=projects/yugabyte/locations/global/keyRings/test-byok/cryptoKeys/key1,k=<path-to-service-account-file>
 ```
 
-Azure:
+{{% /tab %}}
+
+{{% tab header="Azure" %}}
 
 ```sh
 ybm cluster encryption update --encryption-spec cloud-provider=AZURE,azu-client-id=<your-client-id>,azu-client-secret=<your-client-secret>,azu-tenant-id=<your-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<your-key-vault-uri>
 ```
+
+{{% /tab %}}
+
+{{< /tabpane >}}
 
 ### Update CMK state
 
