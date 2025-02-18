@@ -57,8 +57,8 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 		}
 		if len(strings.TrimSpace(clientToNodeEncryption)) > 0 {
 			clientToNodeEncryption = strings.ToUpper(clientToNodeEncryption)
-			if strings.Compare(clientToNodeEncryption, util.EnableTLSOpType) != 0 &&
-				strings.Compare(clientToNodeEncryption, util.DisableTLSOpType) != 0 {
+			if strings.Compare(clientToNodeEncryption, util.EnableOpType) != 0 &&
+				strings.Compare(clientToNodeEncryption, util.DisableOpType) != 0 {
 				logrus.Fatalf(
 					formatter.Colorize("Invalid client-to-node-encryption value\n", formatter.RedColor))
 			}
@@ -70,8 +70,8 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 		}
 		if len(strings.TrimSpace(nodeToNodeEncryption)) > 0 {
 			nodeToNodeEncryption = strings.ToUpper(nodeToNodeEncryption)
-			if strings.Compare(nodeToNodeEncryption, util.EnableTLSOpType) != 0 &&
-				strings.Compare(nodeToNodeEncryption, util.DisableTLSOpType) != 0 {
+			if strings.Compare(nodeToNodeEncryption, util.EnableOpType) != 0 &&
+				strings.Compare(nodeToNodeEncryption, util.DisableOpType) != 0 {
 				logrus.Fatalf(
 					formatter.Colorize("Invalid node-to-node-encryption value\n", formatter.RedColor))
 			}
@@ -139,13 +139,13 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 		if len(strings.TrimSpace(clientToNodeEncryption)) > 0 {
 			clientToNodeEncryption = strings.ToUpper(clientToNodeEncryption)
 			enableClientToNodeEncryption := false
-			if strings.Compare(clientToNodeEncryption, util.EnableTLSOpType) == 0 {
+			if strings.Compare(clientToNodeEncryption, util.EnableOpType) == 0 {
 				enableClientToNodeEncryption = true
 			}
 
 			if enableClientToNodeEncryption == primaryUserIntent.GetEnableClientToNodeEncrypt() {
-				logrus.Debugf("Enable client-to-node encryption is already set to " +
-					clientToNodeEncryption + "\n")
+				logrus.Debugf("Enable client-to-node encryption is already set to %t\n",
+					enableClientToNodeEncryption)
 			}
 			logrus.Debugf("Setting client-to-node encryption to: %t\n", enableClientToNodeEncryption)
 			requestBody.SetEnableClientToNodeEncrypt(enableClientToNodeEncryption)
@@ -162,12 +162,13 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 		if len(strings.TrimSpace(nodeToNodeEncryption)) > 0 {
 			nodeToNodeEncryption = strings.ToUpper(nodeToNodeEncryption)
 			enableNodeToNodeEncryption := false
-			if strings.Compare(nodeToNodeEncryption, util.EnableTLSOpType) == 0 {
+			if strings.Compare(nodeToNodeEncryption, util.EnableOpType) == 0 {
 				enableNodeToNodeEncryption = true
 			}
 
 			if enableNodeToNodeEncryption == primaryUserIntent.GetEnableNodeToNodeEncrypt() {
-				logrus.Debugf("Enable node-to-node encryption is already set to " + nodeToNodeEncryption + "\n")
+				logrus.Debugf("Enable node-to-node encryption is already set to %t\n",
+					enableNodeToNodeEncryption)
 			}
 
 			logrus.Debugf("Setting node-to-node encryption to: %t\n", enableNodeToNodeEncryption)

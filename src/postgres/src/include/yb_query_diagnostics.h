@@ -169,7 +169,6 @@ extern YbPgssFillInConstantLengths yb_qd_fill_in_constant_lengths;
 extern void YbQueryDiagnosticsInstallHook(void);
 extern Size YbQueryDiagnosticsShmemSize(void);
 extern void YbQueryDiagnosticsShmemInit(void);
-extern void YbQueryDiagnosticsBgWorkerRegister(void);
 extern void YbQueryDiagnosticsMain(Datum main_arg);
 extern void YbSetPgssNormalizedQueryText(int64 query_id, const Size query_offset, int query_len);
 extern void YbQueryDiagnosticsAppendToDescription(char *description, const char *format,...);

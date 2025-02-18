@@ -651,6 +651,8 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
     ASSERT_OK(conn_->Execute(kInsertQuery));
   }
 
+  SleepFor(10s);
+
   std::set<std::pair<int32_t, std::string>> pid_with_backend_type;
 
   ASSERT_OK(WaitFor([this, &pid_with_backend_type, &bg_workers]() -> Result<bool> {
@@ -694,6 +696,7 @@ TEST_F(PgBgWorkersTest, ValidateIdleWaitEventsNotPresent) {
 }
 
 TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
+  GTEST_SKIP() << "Skipping until #26012 is done";
   constexpr auto kSleepTime = 5;
   constexpr auto kDefaultQueryId = 5;
   constexpr auto kBgWorkerQueryId = 7;

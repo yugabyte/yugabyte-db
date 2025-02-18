@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	defaultCluster = "table {{.UUID}}\t{{.ClusterNodes}}\t{{.ClusterRF}}" +
-		"\t{{.ClusterDedicatedMasters}}\t{{.LinuxVersion}}"
+	defaultCluster = "table {{.UUID}}\t{{.ClusterNodes}}\t{{.ClusterRF}}"
+	cluster1       = "table {{.ClusterDedicatedMasters}}\t{{.LinuxVersion}}"
 	instanceTable1 = "table {{.InstanceType}}\t{{.VolumeSize}}\t{{.NumVolumes}}" +
 		"\t{{.DiskIops}}"
 	instanceTable2       = "table {{.Throughput}}\t{{.StorageClass}}\t{{.StorageType}}"
@@ -98,6 +98,18 @@ func (c *ClusterContext) Write(index int) error {
 		fmt.Sprintf("Cluster %d (%s): Details", index+1, clusterType),
 		formatter.BlueColor)))
 	c.Output.Write([]byte("\n"))
+	if err := c.ContextFormat(tmpl, cc.Cluster); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	c.PostFormat(tmpl, NewClusterContext())
+	c.Output.Write([]byte("\n"))
+
+	tmpl, err = c.startSubsection(cluster1)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
 	if err := c.ContextFormat(tmpl, cc.Cluster); err != nil {
 		logrus.Errorf("%s", err.Error())
 		return err

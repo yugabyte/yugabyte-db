@@ -24,6 +24,7 @@ var DownloadEITCmd = &cobra.Command{
 
 func init() {
 	DownloadEITCmd.Flags().SortFlags = false
+	DownloadEITCmd.PersistentFlags().SortFlags = false
 
 	DownloadEITCmd.AddCommand(downloadRootEITCmd)
 	DownloadEITCmd.AddCommand(downloadClientEITCmd)

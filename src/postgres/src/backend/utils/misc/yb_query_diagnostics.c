@@ -130,6 +130,12 @@ static YbQueryConstantsMetadata query_constants = {
 	.locations = {{0, 0}}
 };
 
+typedef struct BackgroundWorkerHandle
+{
+	int slot;
+	uint64 generation;
+} BackgroundWorkerHandle;
+
 /* shared variables */
 static HTAB *bundles_in_progress = NULL;
 static LWLock *bundles_in_progress_lock;	/* protects bundles_in_progress
@@ -137,6 +143,7 @@ static LWLock *bundles_in_progress_lock;	/* protects bundles_in_progress
 static YbQueryDiagnosticsBundles *bundles_completed = NULL;
 static const char *status_msg[] = {"Success", "In Progress", "Error", "Cancelled"};
 static bool current_query_sampled = false;
+static BackgroundWorkerHandle *bg_worker_handle = NULL;
 
 static void YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query,
 												  JumbleState *jstate);
@@ -229,6 +236,7 @@ YbQueryDiagnosticsShmemSize(void)
 											 sizeof(YbQueryDiagnosticsEntry)));
 	size = add_size(size, YbQueryDiagnosticsBundlesShmemSize());
 	size = add_size(size, sizeof(TimestampTz));
+	size = add_size(size, sizeof(BackgroundWorkerHandle)); /* bg_worker_handle */
 
 	return size;
 }
@@ -287,6 +295,11 @@ YbQueryDiagnosticsShmemInit(void)
 
 	yb_pgss_last_reset_time = (TimestampTz *) ShmemAlloc(sizeof(TimestampTz));
 	(*yb_pgss_last_reset_time) = 0;
+
+	/* Initialize the background worker handle */
+	bg_worker_handle = (BackgroundWorkerHandle *) ShmemAlloc(sizeof(BackgroundWorkerHandle));
+	bg_worker_handle->slot = -1;
+	bg_worker_handle->generation = -1;
 }
 
 static inline int
@@ -509,33 +522,58 @@ ProcessCompletedBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 }
 
 /*
- * YbQueryDiagnosticsBgWorkerRegister
- *		Register the background worker for yb_query_diagnostics
+ * BgWorkerRegister
+ *		Dynamically register the background worker.
  *
  * Background worker is required to periodically check for expired entries
  * within the shared hash table and stop the query diagnostics for them.
  */
-void
-YbQueryDiagnosticsBgWorkerRegister(void)
+static void
+BgWorkerRegister(void)
 {
+	pid_t		pid;
 	BackgroundWorker worker;
+	BackgroundWorkerHandle *handle;
+	BgwHandleStatus status;
 
 	MemSet(&worker, 0, sizeof(worker));
 	sprintf(worker.bgw_name, "yb_query_diagnostics bgworker");
 	sprintf(worker.bgw_type, "yb_query_diagnostics bgworker");
-	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
+	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
+					   BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
-
-	/*
-	 * Value of 1 allows the background worker for yb_query_diagnostics to
-	 * restart
-	 */
-	worker.bgw_restart_time = 1;
+	worker.bgw_restart_time = BGW_DEFAULT_RESTART_INTERVAL;
 	sprintf(worker.bgw_library_name, "postgres");
 	sprintf(worker.bgw_function_name, "YbQueryDiagnosticsMain");
 	worker.bgw_main_arg = (Datum) 0;
-	worker.bgw_notify_pid = 0;
-	RegisterBackgroundWorker(&worker);
+	/* set bgw_notify_pid so that we can use WaitForBackgroundWorkerStartup */
+	worker.bgw_notify_pid = MyProcPid;
+	if (!RegisterDynamicBackgroundWorker(&worker, &handle))
+		ereport(WARNING,
+				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+				 errmsg("due to being out of background worker slots, "
+						"yb_query_diagnostics bgworker cannot be started"),
+				 errhint("You might need to increase max_worker_processes")));
+
+	status = WaitForBackgroundWorkerStartup(handle, &pid);
+
+	if (status == BGWH_STOPPED)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("yb_query_diagnostics bgworker cannot be started"),
+				 errhint("More details may be available in the server log")));
+
+	if (status == BGWH_POSTMASTER_DIED)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("yb_query_diagnostics bgworker cannot be started without postmaster"),
+				 errhint("Kill all remaining database processes and restart the database")));
+
+	Assert(status == BGWH_STARTED);
+
+	/* Save the handle for future use */
+	bg_worker_handle->slot = handle->slot;
+	bg_worker_handle->generation = handle->generation;
 }
 
 /*
@@ -958,6 +996,7 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 {
 	int64		key = metadata->params.query_id;
 	bool		found;
+	pid_t		pid;
 	YbQueryDiagnosticsEntry *entry;
 
 	LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
@@ -981,6 +1020,19 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 				.query_offset = 0,
 				.query_len = 0,
 		};
+
+		/*
+		 * Note that we need not worry about concurrent registration attempts
+		 * from different sessions as we are within an EXCLUSIVE lock.
+		 */
+
+		/* Worker was never initialized (invalid slot and generation) */
+		if (bg_worker_handle->slot == -1 && bg_worker_handle->generation == -1)
+			BgWorkerRegister();
+
+		/* Worker was initialized but not currently running */
+		else if (GetBackgroundWorkerPid(bg_worker_handle, &pid) != BGWH_STARTED)
+			BgWorkerRegister();
 	}
 
 	LWLockRelease(bundles_in_progress_lock);
@@ -1976,10 +2028,6 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 void
 YbQueryDiagnosticsMain(Datum main_arg)
 {
-	/*
-	 * TODO(GH#22612): Add support to switch off and on the bgworker as per the need,
-	 *			       thereby saving resources
-	 */
 	ereport(LOG,
 			(errmsg("starting bgworker for yb_query_diagnostics with time interval of %dms",
 					yb_query_diagnostics_bg_worker_interval_ms)));
@@ -2017,9 +2065,33 @@ YbQueryDiagnosticsMain(Datum main_arg)
 
 		/* Check for expired entries within the shared hash table */
 		FlushAndCleanBundles();
-	}
 
-	proc_exit(0);
+		/* Kill bgworker if there are no active bundles */
+		bool should_terminate = false;
+
+		/*
+		 * Acquire the exclusive lock on the bundles_in_progress hash table.
+		 * This is necessary to prevent other sessions from
+		 * removing entries while we are checking.
+		 */
+		LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
+
+		/* If there are no bundles being diagnosed, switch off the bgworker */
+		if (hash_get_num_entries(bundles_in_progress) == 0)
+			should_terminate = true;
+
+		LWLockRelease(bundles_in_progress_lock);
+
+		/* Do this outside the lock to ensure we release the lock before exiting. */
+		if (should_terminate)
+		{
+			/* Kill the bgworker */
+			ereport(LOG,
+					(errmsg("stopping query diagnostics background worker "
+								 "- no active bundles")));
+			proc_exit(0);
+		}
+	}
 }
 
 /*

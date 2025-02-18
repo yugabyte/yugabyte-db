@@ -36,6 +36,7 @@ yba universe [flags]
 * [yba universe create](yba_universe_create.md)	 - Create YugabyteDB Anywhere universe
 * [yba universe delete](yba_universe_delete.md)	 - Delete a YugabyteDB Anywhere universe
 * [yba universe describe](yba_universe_describe.md)	 - Describe a YugabyteDB Anywhere universe
+* [yba universe edit](yba_universe_edit.md)	 - Edit a YugabyteDB Anywhere universe
 * [yba universe list](yba_universe_list.md)	 - List YugabyteDB Anywhere universes
 * [yba universe node](yba_universe_node.md)	 - Manage YugabyteDB Anywhere universe nodes
 * [yba universe restart](yba_universe_restart.md)	 - Restart a YugabyteDB Anywhere Universe

@@ -62,6 +62,7 @@ const auto kPhase = "phase"s;
 const auto kPhaseBackfilling = "backfilling"s;
 const auto kPhaseInitializing = "initializing"s;
 const client::YBTableName kYBTableName(YQLDatabase::YQL_DATABASE_PGSQL, kDatabaseName, kTableName);
+constexpr auto kBackfillSleepSec = 10 * kTimeMultiplier;
 
 } // namespace
 
@@ -83,6 +84,8 @@ class PgIndexBackfillTest : public LibPqTestBase {
     options->extra_tserver_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_tserver_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_sleep_before_vector_index_backfill_seconds=$0", kBackfillSleepSec));
   }
 
  protected:
@@ -2565,6 +2568,115 @@ TEST_F_EX(PgIndexBackfillTest, ConcurrentDelete, PgIndexBackfill1kRowsPerSec) {
   ASSERT_OK(WaitForIndexScan(query));
   ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<PGUint64>(query)), 0);
   thread_holder_.JoinAll();
+}
+
+TEST_F(PgIndexBackfillTest, VectorIndex) {
+  constexpr int kBig = 100000000;
+
+  ASSERT_OK(conn_->Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE test (id INT PRIMARY KEY, embedding vector(1))"));
+  TestThreadHolder thread_holder;
+  std::atomic<int> counter = 0;
+  std::atomic<int> extra_values_counter = kBig * 2;
+  std::atomic<CoarseTimePoint> last_write;
+  MonoDelta max_time_without_inserts = MonoDelta::FromNanoseconds(0);
+  for (int i = 0; i != 8; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop_flag = thread_holder.stop_flag(), &counter, &last_write, &extra_values_counter,
+         &max_time_without_inserts] {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop_flag.load()) {
+        std::vector<int> values;
+        for (int i = RandomUniformInt(1, 4); i-- > 0;) {
+          values.push_back(++counter);
+        }
+        size_t keep_values = values.size();
+        for (int i = RandomUniformInt(0, 2); i-- > 0;) {
+          values.push_back(++extra_values_counter);
+        }
+        bool use_2_steps = RandomUniformBool();
+
+        int offset = use_2_steps ? kBig : 0;
+        for (;;) {
+          ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+          bool failed = false;
+          for (auto value : values) {
+            auto res = conn.ExecuteFormat(
+                "INSERT INTO test VALUES ($0, '[$1.0]')", value, value + offset);
+            if (!res.ok()) {
+              ASSERT_OK(conn.RollbackTransaction());
+              LOG(INFO) << "Insert " << value << " failed: " << res;
+              ASSERT_STR_CONTAINS(res.message().ToBuffer(), "schema version mismatch");
+              failed = true;
+              break;
+            }
+          }
+          if (!failed) {
+            ASSERT_OK(conn.CommitTransaction());
+            auto now = CoarseMonoClock::Now();
+            auto prev_last_write = last_write.exchange(now);
+            if (prev_last_write != CoarseTimePoint() &&
+                prev_last_write + max_time_without_inserts < now) {
+              max_time_without_inserts = now - prev_last_write;
+              LOG(INFO) << "Update max time without inserts: " << max_time_without_inserts;
+            }
+            std::this_thread::sleep_for(100ms);
+            break;
+          }
+        }
+        if (use_2_steps || keep_values != values.size()) {
+          for (;;) {
+            ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+            bool failed = false;
+            for (size_t i = 0; i != values.size(); ++i) {
+              auto value = values[i];
+              Status res;
+              if (i < keep_values) {
+                res = conn.ExecuteFormat(
+                    "UPDATE test SET embedding = '[$0.0]' WHERE id = $0", value);
+              } else {
+                res = conn.ExecuteFormat("DELETE FROM test WHERE id = $0", value);
+              }
+              if (!res.ok()) {
+                ASSERT_OK(conn.RollbackTransaction());
+                LOG(INFO) <<
+                    (i < keep_values ? "Update " : "Delete " ) << value << " failed: " << res;
+                ASSERT_STR_CONTAINS(res.message().ToBuffer(), "schema version mismatch");
+                failed = true;
+                break;
+              }
+            }
+            if (!failed) {
+              ASSERT_OK(conn.CommitTransaction());
+              std::this_thread::sleep_for(100ms);
+              break;
+            }
+          }
+        }
+      }
+    });
+  }
+  while (counter.load() < 32) {
+    std::this_thread::sleep_for(10ms);
+  }
+  LOG(INFO) << "Started to create index";
+  // TODO(vector_index) Switch to using CONCURRENT index creation when it will be ready.
+  ASSERT_OK(conn_->Execute(
+      "CREATE INDEX NONCONCURRENTLY ON test USING ybhnsw (embedding vector_l2_ops)"));
+  LOG(INFO) << "Finished to create index";
+  auto limit = counter.load() + 32;
+  while (counter.load() < limit) {
+    std::this_thread::sleep_for(10ms);
+  }
+  thread_holder.Stop();
+  LOG(INFO) << "Max time without inserts: " << max_time_without_inserts;
+  ASSERT_LT(max_time_without_inserts, 1s * kBackfillSleepSec);
+  for (int i = 2; i < counter.load(); ++i) {
+    auto rows = ASSERT_RESULT(conn_->FetchAllAsString(Format(
+        "SELECT id FROM test ORDER BY embedding <-> '[$0]' LIMIT 3", i * 1.0 - 0.01)));
+    ASSERT_EQ(rows, Format("$0; $1; $2", i, i - 1, i + 1));
+  }
 }
 
 } // namespace yb::pgwrapper
