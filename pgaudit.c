@@ -1511,8 +1511,8 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
         if (context == PROCESS_UTILITY_TOPLEVEL)
         {
             /*
-             * If the stack is not empty then the only allowed entries are open
-             * select, show, and explain cursors
+             * If the stack is not empty then the only allowed entries are call
+             * statements or open, select, show, and explain cursors
              */
             if (auditEventStack != NULL)
             {
@@ -1522,7 +1522,8 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
                 {
                     if (nextItem->auditEvent.commandTag != T_SelectStmt &&
                         nextItem->auditEvent.commandTag != T_VariableShowStmt &&
-                        nextItem->auditEvent.commandTag != T_ExplainStmt)
+                        nextItem->auditEvent.commandTag != T_ExplainStmt &&
+                        nextItem->auditEvent.commandTag != T_CallStmt)
                     {
                         elog(ERROR, "pgaudit stack is not empty");
                     }
