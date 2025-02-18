@@ -40,6 +40,9 @@
 
 using namespace std::literals;
 
+DEFINE_test_flag(int32, sleep_before_vector_index_backfill_seconds, 0,
+                 "Sleep specified amount of seconds before doing vector index backfill.");
+
 DECLARE_uint64(vector_index_initial_chunk_size);
 
 namespace yb::tablet {
@@ -88,7 +91,8 @@ Status TabletVectorIndexes::DoCreateIndex(
   auto vector_index = VERIFY_RESULT(docdb::CreateVectorIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),
       metadata().rocksdb_dir(), thread_pool,
-      indexed_table->doc_read_context->table_key_prefix(), *index_table.index_info, doc_db()));
+      indexed_table->doc_read_context->table_key_prefix(), index_table.hybrid_time,
+      *index_table.index_info, doc_db()));
   if (!bootstrap) {
     auto read_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
     if (read_op.ok()) {
@@ -190,6 +194,10 @@ Status TabletVectorIndexes::Backfill(
       << "vector_index: " << AsString(*vector_index) << ", indexed_table: "
       << indexed_table.ToString() << ", from_key: " << from_key.ToDebugHexString()
       << ", backfill_ht: " << backfill_ht;
+
+  if (FLAGS_TEST_sleep_before_vector_index_backfill_seconds) {
+    std::this_thread::sleep_for(FLAGS_TEST_sleep_before_vector_index_backfill_seconds * 1s);
+  }
 
   auto read_ht = ReadHybridTime::SingleTime(backfill_ht);
   dockv::ReaderProjection projection(indexed_table.schema(), {vector_index->column_id()});

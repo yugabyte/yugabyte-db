@@ -723,7 +723,8 @@ Status ApplyIntentsContext::ProcessVectorIndexes(
         }
         const auto& vector_index = *(*vector_indexes_)[i];
         auto table_key_prefix = vector_index.indexed_table_key_prefix();
-        if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id) {
+        if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id &&
+            commit_ht_ > vector_index.hybrid_time()) {
           vector_index_batches_[i].push_back(VectorIndexInsertEntry {
             .value = ValueBuffer(value.WithoutPrefix(1)),
           });
