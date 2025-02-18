@@ -151,7 +151,7 @@ var editBackupCmd = &cobra.Command{
 
 func init() {
 	editBackupCmd.Flags().SortFlags = false
-	editBackupCmd.Flags().String("uuid", "",
+	editBackupCmd.Flags().StringP("uuid", "u", "",
 		"[Required] The UUID of the backup to be edited.")
 	editBackupCmd.MarkFlagRequired("uuid")
 	editBackupCmd.Flags().Int64("time-before-delete-in-ms", 0,

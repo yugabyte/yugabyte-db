@@ -314,7 +314,8 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 
 		useTablespaces, err := strconv.ParseBool(backupDetails["use-tablespaces"])
 		if err != nil {
-			errMessage := err.Error() + " Using Tablespaces as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'use-tablespaces'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
@@ -323,7 +324,8 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 
 		isSelectiveTableRestore, err := strconv.ParseBool(backupDetails["selective-restore"])
 		if err != nil {
-			errMessage := err.Error() + " Using Selective Table Restore as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'selective-restore'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

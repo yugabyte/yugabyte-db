@@ -90,7 +90,7 @@ var describeRestoreCmd = &cobra.Command{
 
 func init() {
 	describeRestoreCmd.Flags().SortFlags = false
-	describeRestoreCmd.Flags().String("uuid", "",
+	describeRestoreCmd.Flags().StringP("uuid", "u", "",
 		"[Required] UUID of restore to be described")
 	describeRestoreCmd.MarkFlagRequired("uuid")
 }
