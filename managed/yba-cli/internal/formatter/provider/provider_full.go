@@ -235,14 +235,16 @@ func (fp *FullProviderContext) Write() error {
 	}
 
 	// ImageBundle subSection
-	logrus.Debugf("Number of Linux Versions: %d", len(fp.p.GetImageBundles()))
-	fp.subSection("Linux Version Catalog")
-	for i, v := range fp.p.GetImageBundles() {
-		imageBundleContext := *NewImageBundleContext()
-		imageBundleContext.Output = os.Stdout
-		imageBundleContext.Format = NewFullProviderFormat(viper.GetString("output"))
-		imageBundleContext.SetImageBundle(v)
-		imageBundleContext.Write(code, i)
+	if len(fp.p.GetImageBundles()) > 0 {
+		logrus.Debugf("Number of Linux Versions: %d", len(fp.p.GetImageBundles()))
+		fp.subSection("Linux Version Catalog")
+		for i, v := range fp.p.GetImageBundles() {
+			imageBundleContext := *NewImageBundleContext()
+			imageBundleContext.Output = os.Stdout
+			imageBundleContext.Format = NewFullProviderFormat(viper.GetString("output"))
+			imageBundleContext.SetImageBundle(v)
+			imageBundleContext.Write(code, i)
+		}
 	}
 
 	return nil

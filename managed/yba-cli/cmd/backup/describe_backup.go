@@ -130,7 +130,7 @@ var describeBackupCmd = &cobra.Command{
 
 func init() {
 	describeBackupCmd.Flags().SortFlags = false
-	describeBackupCmd.Flags().String("uuid", "",
+	describeBackupCmd.Flags().StringP("uuid", "u", "",
 		"[Required] The UUID of the backup to be described.")
 	describeBackupCmd.MarkFlagRequired("uuid")
 }
