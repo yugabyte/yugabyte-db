@@ -226,7 +226,21 @@ Use the following commands to create a new cluster with EAR in AWS, GCP, or Azur
 {{% tab header="AWS" %}}
 
 ```sh
-ybm cluster create --encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>
+ybm cluster create \
+  --cluster-name my-sandbox \
+  --cloud-provider AWS \ 
+  --cluster-tier Dedicated \
+  --cluster-type SYNCHRONOUS \
+  ---encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>aws-arn=<your-aws-arn-key> \
+  --credentials username=admin,password=password \
+  --fault-tolerance=ZONE \
+  --region-info region=us-east-2,num-nodes=3,num-cores=4
+```
+
+```output
+The cluster my-sandbox has been created
+Name           Tier        Version           State     Health    Provider   Regions     Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
+my-sandbox   Dedicated   {{< yb-version version="preview" format="build">}}       ACTIVE    💚        AWS        us-east-2   3         4 / 16GB / 200GB / 3000
 ```
 
 {{% /tab %}}
@@ -234,7 +248,21 @@ ybm cluster create --encryption-spec cloud-provider=AWS,aws-secret-key=<your-sec
 {{% tab header="GCP" %}}
 
 ```sh
-ybm cluster create --encryption-spec cloud-provider=GCP,gcp-resource-id=projects/<your-project>/locations/<your-location>/keyRings/<your-key-ring-name>/cryptoKeys/<your-key-name>,gcp-service-account-path=creds.json
+ybm cluster create 
+  --cluster-name my-sandbox \
+  --cloud-provider GCP \
+  --cluster-tier Dedicated \
+  --cluster-type SYNCHRONOUS \
+  --encryption-spec cloud-provider=GCP,gcp-resource-id=projects/<your-project>/locations/<your-location>/keyRings/<your-key-ring-name>/cryptoKeys/<your-key-name>,gcp-service-account-path=creds.json \ 
+  --credentials username=admin,password=password \
+  --fault-tolerance=ZONE \
+  --region-info region=us-central1,num-nodes=3,num-cores=4
+```
+
+```output
+The cluster my-sandbox has been created
+Name           Tier        Version           State     Health    Provider   Regions     Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
+my-sandbox   Dedicated   {{< yb-version version="preview" format="build">}}       ACTIVE    💚        GCP        us-central1   3         4 / 16GB / 200GB / 3000
 ```
 
 {{% /tab %}}
@@ -242,7 +270,20 @@ ybm cluster create --encryption-spec cloud-provider=GCP,gcp-resource-id=projects
 {{% tab header="Azure" %}}
 
 ```sh
-ybm cluster create --encryption-spec cloud-provider=AZURE,azu-client-id=<your-client-id>,azu-client-secret=<your-client-secret>,azu-tenant-id=<your-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<your-key-vault-uri>
+ybm cluster create \
+  --cluster-name my-sandbox \
+  --cloud-provider AZURE \
+  --cluster-tier Dedicated \
+  --cluster-type SYNCHRONOUS \
+  --encryption-spec cloud-provider=AZURE,azu-client-id=<your-client-id>,azu-client-secret=<your-client-secret>,azu-tenant-id=<your-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<your-key-vault-uri> \ 
+  --credentials username=admin,password=password \
+  --fault-tolerance=ZONE --region-info region=eastus,num-nodes=3,num-cores=4 \
+```
+
+```output
+The cluster my-sandbox has been created
+Name           Tier        Version           State     Health    Provider   Regions     Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
+my-sandbox   Dedicated   {{< yb-version version="preview" format="build">}}       ACTIVE    💚        AZURE      eastus   3         4 / 16GB / 200GB / 3000
 ```
 
 {{% /tab %}}
@@ -262,17 +303,32 @@ ybm cluster describe --cluster-name my-sandbox
 ```output
 General
 Name                 ID                                     Version        State     Health
-my-sandbox   b1676d3f-8898-4c04-a1d6-bedf5b7867ff   2.18.3.0-b75   ACTIVE    💚
+my-sandbox   b1676d3f-8898-4c04-a1d6-bedf5bXXXXXX   2.18.3.0-b75   ACTIVE    💚
 
 Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
 AWS        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
 
-...
+
+Regions
+Region      Nodes     vCPU/Node   Mem/Node   Disk/Node   VPC
+us-east-2    3         4           16GB       200GB       
+
+
+Endpoints
+Region      Accessibility   State     Host
+us-east-2    PUBLIC          ACTIVE    us-east-2 .XXXXXXXX-8898-4c04-a1d6-bedf5bXXXXXX.aws.devcloud.yugabyte.com
+
 
 Encryption at Rest
 Provider   Key Alias                              Last Rotated               Security Principals                                                           CMK Status
-AWS        0a80e409-e345-42fc-b456-bafXXXXXXb2c   2023-11-03T07:37:26.351Z   arn:aws:kms:us-east-1:745843456716:key/41c64d5g-c97d-472c-889e-0dXXXXXXXXXX   ACTIVE
-...
+AWS        0a80e409-e690-42fc-b209-XXXXXXXXXXX   2023-11-03T07:37:26.351Z   arn:aws:kms:us-east-1:<your-account-id>:key/<your-key-id>   ACTIVE
+
+
+Nodes
+Name                    Region[zone]            Health    Master    Tserver   ReadReplica   Used Memory(MB)
+my-sandbox-n1   us-east-2 [us-east-2 a]   💚        ✅        ✅        ❌            75MB
+my-sandbox-n2   us-east-2 [us-east-2 b]   💚        ✅        ✅        ❌            96MB
+my-sandbox-n3   us-east-2 [us-east-2 c]   💚        ✅        ✅        ❌            76MB
 ```
 
 {{% /tab %}}
@@ -286,27 +342,37 @@ ybm cluster describe --cluster-name my-sandbox
 ```output
 General
 Name                 ID                                     Version        State     Health
-my-sandbox   b1676d3f-8898-4c04-a1d6-XXXXXXXXXXXX   2.18.3.0-b75   ACTIVE    💚
+my-sandbox   b1676d3f-8898-4c04-a1d6-bedf5bXXXXXX   2.18.3.0-b75   ACTIVE    💚
 
 Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
-AWS        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
+GCP        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
 
-...
+
+Regions
+Region      Nodes     vCPU/Node   Mem/Node   Disk/Node   VPC
+us-central1    3         4           16GB       200GB       
+
+
+Endpoints
+Region      Accessibility   State     Host
+us-central1    PUBLIC          ACTIVE    us-central1 .b1676d3f-8898-4c04-a1d6-bedf5bXXXXXX.gcp.devcloud.yugabyte.com
+
 
 Encryption at Rest
 Provider   Key Alias      Last Rotated               Security Principals                                                                              CMK Status
 GCP        GCP-test-key   2023-11-03T07:37:26.351Z   projects/<your-project-id>/locations/global/keyRings/GCP-test-key-ring/cryptoKeys/GCP-test-key   ACTIVE
 
-...
+
+Nodes
+Name                    Region[zone]            Health    Master    Tserver   ReadReplica   Used Memory(MB)
+my-sandbox-n1   us-central1 [us-central1 a]   💚        ✅        ✅        ❌            75MB
+my-sandbox-n2   us-central1 [us-central1 b]   💚        ✅        ✅        ❌            96MB
+my-sandbox-n3   us-central1 [us-central1 c]   💚        ✅        ✅        ❌            76MB
 ```
 
 {{% /tab %}}
 
 {{% tab header="Azure" %}}
-
-```sh
-
-Azure:
 
 ```sh
 ybm cluster describe --cluster-name my-sandbox
@@ -318,19 +384,40 @@ Name                 ID                                     Version        State
 my-sandbox   b1676d3f-8898-4c04-a1d6-bedf5b7867ff   2.18.3.0-b75   ACTIVE    💚
 
 Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
-AWS        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
+AZURE        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
 
-...
+
+Regions
+Region      Nodes     vCPU/Node   Mem/Node   Disk/Node   VPC
+eastus   3         4           16GB       200GB       
+
+
+Endpoints
+Region      Accessibility   State     Host
+eastus   PUBLIC          ACTIVE    eastus.b1676d3f-8898-4c04-a1d6-bedf5b7867ff.azure.devcloud.yugabyte.com
+
 
 Encryption at Rest
 Provider   Key Alias                              Last Rotated               Security Principals                      CMK Status
-AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   https://test-azure-gj.vault.azure.net/   ACTIVE
-...
+AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   <your-key-vault-uri>   ACTIVE
+
+
+Nodes
+Name                    Region[zone]            Health    Master    Tserver   ReadReplica   Used Memory(MB)
+my-sandbox-n1   eastus[eastusa]   💚        ✅        ✅        ❌            75MB
+my-sandbox-n2   eastus[eastusb]   💚        ✅        ✅        ❌            96MB
+my-sandbox-n3   eastus[eastusc]   💚        ✅        ✅        ❌            76MB
 ```
 
 {{% /tab %}}
 
 {{< /tabpane >}}
+
+There is also an alternate way to list the EAR configuration directly, using the encryption list command.
+
+```sh
+ybm cluster encryption describe --cluster-name my-sandbox
+```
 
 ### Update CMK configuration
 
@@ -343,7 +430,9 @@ Note: Only credentials can be modified in the current configuration (for example
 {{% tab header="AWS" %}}
 
 ```sh
-ybm cluster encryption update --encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>
+ybm cluster encryption update \
+  --cluster-name my-sandbox \
+  --encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>
 ```
 
 {{% /tab %}}
@@ -351,7 +440,9 @@ ybm cluster encryption update --encryption-spec cloud-provider=AWS,aws-secret-ke
 {{% tab header="GCP" %}}
 
 ```sh
-ybm cluster encryption update --encryption-spec resource-id=projects/yugabyte/locations/global/keyRings/test-byok/cryptoKeys/key1,k=<path-to-service-account-file>
+ybm cluster encryption update \
+  --cluster-name my-sandbox \
+  --encryption-spec cloud-provider=GCP,resource-id=projects/yugabyte/locations/global/keyRings/test-byok/cryptoKeys/key1,k=<path-to-service-account-file> 
 ```
 
 {{% /tab %}}
@@ -359,7 +450,9 @@ ybm cluster encryption update --encryption-spec resource-id=projects/yugabyte/lo
 {{% tab header="Azure" %}}
 
 ```sh
-ybm cluster encryption update --encryption-spec cloud-provider=AZURE,azu-client-id=<your-client-id>,azu-client-secret=<your-client-secret>,azu-tenant-id=<your-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<your-key-vault-uri>
+ybm cluster encryption update \
+  --cluster-name my-sandbox \
+  --encryption-spec cloud-provider=AZURE,azu-client-id=<your-client-id>,azu-client-secret=<your-client-secret>,azu-tenant-id=<your-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<your-key-vault-uri>
 ```
 
 {{% /tab %}}
@@ -373,13 +466,17 @@ Use the following commands to enable or disable the CMK state.
 #### enable CMK
 
 ```sh
-ybm cluster encryption update-state --cluster-name test-cluster-arishta --enable
+ybm cluster encryption update-state \
+  --cluster-name my-sandbox
+  --enable
 ```
 
 #### disable CMK
 
 ```sh
-ybm cluster encryption update-state --cluster-name test-cluster-arishta --disable
+ybm cluster encryption update-state \
+  --cluster-name my-sandbox
+  --disable
 ```
 
 ## Pause, resume, and terminate
