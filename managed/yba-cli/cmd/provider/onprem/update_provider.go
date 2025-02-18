@@ -366,7 +366,8 @@ func editOnpremRegions(
 					if len(region["latitude"]) != 0 {
 						latitude, err := strconv.ParseFloat(region["latitude"], 64)
 						if err != nil {
-							errMessage := err.Error() + " Using latitude as 0.0\n"
+							errMessage := err.Error() +
+								" Invalid or missing value provided for 'latitude'. Setting it to '0.0'.\n"
 							logrus.Errorln(
 								formatter.Colorize(errMessage, formatter.YellowColor),
 							)
@@ -377,7 +378,8 @@ func editOnpremRegions(
 					if len(region["longitude"]) != 0 {
 						longitude, err := strconv.ParseFloat(region["longitude"], 64)
 						if err != nil {
-							errMessage := err.Error() + " Using longitude as 0.0\n"
+							errMessage := err.Error() +
+								" Invalid or missing value provided for 'longitude'. Setting it to '0.0'.\n"
 							logrus.Errorln(
 								formatter.Colorize(errMessage, formatter.YellowColor),
 							)
@@ -409,7 +411,8 @@ func addOnpremRegions(
 
 		latitude, err := strconv.ParseFloat(region["latitude"], 64)
 		if err != nil {
-			errMessage := err.Error() + " Using latitude as 0.0\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'latitude'. Setting it to '0.0'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
@@ -417,7 +420,8 @@ func addOnpremRegions(
 		}
 		longitude, err := strconv.ParseFloat(region["longitude"], 64)
 		if err != nil {
-			errMessage := err.Error() + " Using longitude as 0.0\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'longitude'. Setting it to '0.0'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

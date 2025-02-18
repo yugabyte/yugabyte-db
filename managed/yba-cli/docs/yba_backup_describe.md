@@ -19,7 +19,7 @@ yba backup describe --uuid <backup-uuid>
 ### Options
 
 ```
-      --uuid string   [Required] The UUID of the backup to be described.
+  -u, --uuid string   [Required] The UUID of the backup to be described.
   -h, --help          help for describe
 ```
 

@@ -202,7 +202,12 @@ func buildVolumeDetails(volumeStrings []string) *[]ybaclient.VolumeDetails {
 		}
 		volumeSize, err := strconv.ParseInt(volume["size"], 10, 64)
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'size'. Setting it to '100'.\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			volumeSize = 100
 		}
 		r := ybaclient.VolumeDetails{
 			MountPath:    volume["mount-points"],

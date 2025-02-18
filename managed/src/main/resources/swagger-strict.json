@@ -16473,13 +16473,6 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
-        "currentIdx" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "currentYbcTaskId" : {
-          "type" : "string"
-        },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
@@ -16542,6 +16535,7 @@
           "type" : "string"
         },
         "nodeIp" : {
+          "description" : "Node IP",
           "type" : "string"
         },
         "parallelism" : {
@@ -16556,6 +16550,7 @@
           "type" : "string"
         },
         "prefixUUID" : {
+          "description" : "Prefix UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -16618,12 +16613,8 @@
       },
       "required" : [
         "creatingUser",
-        "currentIdx",
-        "currentYbcTaskId",
-        "nodeIp",
         "platformUrl",
         "platformVersion",
-        "prefixUUID",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "universeUUID"

@@ -19,7 +19,7 @@ yba backup restore describe --uuid <restore-uuid>
 ### Options
 
 ```
-      --uuid string   [Required] UUID of restore to be described
+  -u, --uuid string   [Required] UUID of restore to be described
   -h, --help          help for describe
 ```
 
