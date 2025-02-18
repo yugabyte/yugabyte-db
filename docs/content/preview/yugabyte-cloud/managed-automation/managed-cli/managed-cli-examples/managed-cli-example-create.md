@@ -419,6 +419,12 @@ There is also an alternate way to list the EAR configuration directly, using the
 ybm cluster encryption describe --cluster-name my-sandbox
 ```
 
+```output
+A newer version is available. Please upgrade to the latest version v0.1.22
+Provider   Key Alias                              Last Rotated   Security Principals                                                           CMK Status
+AWS        XXXXXXXX-e690-42fc-b209-baf969930b2c   -              arn:aws:kms:us-east-1:712345678912:key/db272c8d-1592-4c73-bfa3-420d05822933   ACTIVE
+```
+
 ### Update CMK configuration
 
 Use the following commands to update the CMK configuration. If no existing configuration is found, the command creates a new one; otherwise, it updates the current configuration.
@@ -471,12 +477,20 @@ ybm cluster encryption update-state \
   --enable
 ```
 
+```output
+Successfully ENABLED encryption spec status for cluster my-sandbox
+```
+
 #### disable CMK
 
 ```sh
 ybm cluster encryption update-state \
   --cluster-name my-sandbox
   --disable
+```
+
+```output
+Successfully DISABLED encryption spec status for cluster my-sandbox
 ```
 
 ## Pause, resume, and terminate
