@@ -2443,7 +2443,7 @@ YBDecrementDdlNestingLevel()
 					SharedInvalidationMessage *msg = &currentInvalMessages[i];
 					msg->yb_header.sender_pid = 0;
 				}
-			if (currentInvalMessages)
+			if (currentInvalMessages && log_min_messages <= DEBUG1)
 				YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 
 			/*
