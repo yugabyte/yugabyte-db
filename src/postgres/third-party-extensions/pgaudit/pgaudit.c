@@ -1234,8 +1234,8 @@ static void pgaudit_ProcessUtility_hook(
     /* Process top level utility statement */
     if (context == PROCESS_UTILITY_TOPLEVEL) {
       /*
-       * If the stack is not empty then the only allowed entries are open
-       * select, show, and explain cursors
+       * If the stack is not empty then the only allowed entries are call
+       * statements or open select, show, and explain cursors
        */
       if (auditEventStack != NULL) {
         AuditEventStackItem *nextItem = auditEventStack;
@@ -1244,6 +1244,7 @@ static void pgaudit_ProcessUtility_hook(
           if (nextItem->auditEvent.commandTag != T_SelectStmt &&
               nextItem->auditEvent.commandTag != T_VariableShowStmt &&
               nextItem->auditEvent.commandTag != T_ExplainStmt &&
+              nextItem->auditEvent.commandTag != T_CallStmt &&
               nextItem->auditEvent.commandTag != T_BackfillIndexStmt) {
             // TODO(Sudheer): Remove the following statements suppressing the
             // 'stack is not empty' error  once we have a proper fix for
