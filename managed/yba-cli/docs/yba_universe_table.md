@@ -13,8 +13,8 @@ yba universe table [flags]
 ### Options
 
 ```
-  -h, --help          help for table
   -n, --name string   [Required] The name of the universe for the corresponding table operations.
+  -h, --help          help for table
 ```
 
 ### Options inherited from parent commands

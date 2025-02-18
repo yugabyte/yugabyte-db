@@ -12,6 +12,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -132,7 +133,7 @@ var createUniverseCmd = &cobra.Command{
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 
 		if enableVolumeEncryption {
-			opType = util.EnableKMSOpType
+			opType = util.EnableOpType
 			kmsConfigName, err := cmd.Flags().GetString("kms-config")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -498,6 +499,7 @@ func init() {
 
 	// Inputs for communication ports
 
+	// communicationPortsFlags := pflag.NewFlagSet("Communication Ports", pflag.ContinueOnError)
 	createUniverseCmd.Flags().Int("master-http-port", 7000,
 		"[Optional] Master HTTP Port.")
 	createUniverseCmd.Flags().Int("master-rpc-port", 7100,
@@ -520,6 +522,18 @@ func init() {
 		"[Optional] YSQL Server HTTP Port.")
 	createUniverseCmd.Flags().Int("ysql-server-rpc-port", 5433,
 		"[Optional] YSQL Server RPC Port.")
+
+	// createUniverseCmd.Flags().AddFlagSet(communicationPortsFlags)
+
+	previewFlags := pflag.FlagSet{}
+	previewFlags.String("connection-pooling", "disable",
+		"[Optional] Connection Pooling setting for the universe. "+
+			"Enable \"yb.universe.allow_connection_pooling\" runtime configuration"+
+			" to allow enabling connection pooling in universes. Allowed values: enable, disable.")
+	previewFlags.Int("internal-ysql-server-rpc-port", 6433,
+		"[Optional] Internal YSQL Server RPC Port used when connection pooling is enabled.")
+	util.PreviewFlag(createUniverseCmd, &previewFlags,
+		[]string{"connection-pooling", "internal-ysql-server-rpc-port"})
 
 	v1.BindPFlag("name", createUniverseCmd.Flags().Lookup("name"))
 	v1.BindPFlag("cpu-architecture", createUniverseCmd.Flags().Lookup("cpu-architecture"))
@@ -588,6 +602,9 @@ func init() {
 	v1.BindPFlag("use-spot-instance", createUniverseCmd.Flags().Lookup("use-spot-instance"))
 	v1.BindPFlag("spot-price", createUniverseCmd.Flags().Lookup("spot-price"))
 	v1.BindPFlag("exposing-service", createUniverseCmd.Flags().Lookup("exposing-service"))
+
+	util.PreviewFlagViperValue(v1, createUniverseCmd,
+		[]string{"connection-pooling", "internal-ysql-server-rpc-port"})
 
 }
 

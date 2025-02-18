@@ -467,3 +467,15 @@ func FromEpochMilli(millis int64) time.Time {
 	nanos := (millis % 1000) * int64(time.Millisecond)
 	return time.Unix(seconds, nanos)
 }
+
+// // PrintFlagGroup Helper function to print grouped flags
+// func PrintFlagGroup(flagSet *pflag.FlagSet) {
+//     flagSet.VisitAll(func(flag *pflag.Flag) {
+//         shorthand := ""
+//         if flag.Shorthand != "" {
+//             shorthand = fmt.Sprintf("-%s, ", flag.Shorthand) // Format shorthand properly
+//         }
+//         fmt.Printf("  %s--%s    %s (default: %s)\n",
+//             shorthand, flag.Name, flag.Usage, flag.DefValue)
+//     })
+// }

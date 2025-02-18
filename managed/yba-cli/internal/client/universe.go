@@ -77,6 +77,13 @@ func (a *AuthAPIClient) SetUniverseKey(uUUID string) (
 	return a.APIClient.UniverseManagementApi.SetUniverseKey(a.ctx, a.CustomerUUID, uUUID)
 }
 
+// ConfigureYSQL for YSQL configuration
+func (a *AuthAPIClient) ConfigureYSQL(uUUID string) (
+	ybaclient.UniverseDatabaseManagementApiApiConfigureYSQLRequest,
+) {
+	return a.APIClient.UniverseDatabaseManagementApi.ConfigureYSQL(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // UniverseYBAVersionCheck checks if the new API request body can be used for the Create
 // Provider API
 func (a *AuthAPIClient) UniverseYBAVersionCheck() (bool, string, error) {

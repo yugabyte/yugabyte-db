@@ -18,31 +18,32 @@ import (
 const (
 	defaultUniverseListing = "table {{.Name}}\t{{.ProviderCode}}\t{{.UUID}}" +
 		"\t{{.Nodes}}\t{{.RF}}\t{{.Version}}\t{{.State}}"
-	nodeHeader               = "Number of nodes"
-	rfHeader                 = "Replication Factor"
-	versionHeader            = "YugabyteDB Version"
-	providerCodeHeader       = "Provider Code"
-	providerUUIDHeader       = "Provider UUID"
-	dedicatedMastersHeader   = "Masters on Dedicated Nodes"
-	enableYSQLHeader         = "YSQL Enabled"
-	enableYCQLHeader         = "YCQL Enabled"
-	accessKeyHeader          = "Access Key"
-	useSystemdHeader         = "Use SystemD"
-	pricePerDayHeader        = "Price Per Day"
-	ysqlAuthEnabledHeader    = "YSQL Auth Enabled"
-	ycqlAuthEnabledHeader    = "YCQL Auth Enabled"
-	nToNCertHeader           = "Node-to-Node Encryption Certificate"
-	nToNTLSHeader            = "Node-to-Node Encryption Enabled"
-	cToNCertHeader           = "Client-to-Node Encryption Certificate"
-	cToNTLSHeader            = "Client-to-Node Encryption Enabled"
-	kmsEnabledHeader         = "Encryption At Rest Enabled"
-	encryptionRestTypeHeader = "Encryption Type"
-	universeOverridesHeader  = "Universe Overrides"
-	azOverridesHeader        = "AZ Overrides"
-	numMastersHeader         = "Number of Masters"
-	numTserversHeader        = "Number of Tservers"
-	liveNodesHeader          = "Number of Live Nodes"
-	cpuArchitectureHeader    = "CPU Architecture"
+	nodeHeader                    = "Number of nodes"
+	rfHeader                      = "Replication Factor"
+	versionHeader                 = "YugabyteDB Version"
+	providerCodeHeader            = "Provider Code"
+	providerUUIDHeader            = "Provider UUID"
+	dedicatedMastersHeader        = "Masters on Dedicated Nodes"
+	enableYSQLHeader              = "YSQL Enabled"
+	enableYCQLHeader              = "YCQL Enabled"
+	accessKeyHeader               = "Access Key"
+	useSystemdHeader              = "Use SystemD"
+	pricePerDayHeader             = "Price Per Day"
+	ysqlAuthEnabledHeader         = "YSQL Auth Enabled"
+	enableConnectionPoolingHeader = "Connection Pooling Enabled"
+	ycqlAuthEnabledHeader         = "YCQL Auth Enabled"
+	nToNCertHeader                = "Node-to-Node Encryption Certificate"
+	nToNTLSHeader                 = "Node-to-Node Encryption Enabled"
+	cToNCertHeader                = "Client-to-Node Encryption Certificate"
+	cToNTLSHeader                 = "Client-to-Node Encryption Enabled"
+	kmsEnabledHeader              = "Encryption At Rest Enabled"
+	encryptionRestTypeHeader      = "Encryption Type"
+	universeOverridesHeader       = "Universe Overrides"
+	azOverridesHeader             = "AZ Overrides"
+	numMastersHeader              = "Number of Masters"
+	numTserversHeader             = "Number of Tservers"
+	liveNodesHeader               = "Number of Live Nodes"
+	cpuArchitectureHeader         = "CPU Architecture"
 )
 
 // Context for universe outputs
@@ -105,35 +106,36 @@ func Write(ctx formatter.Context, universes []ybaclient.UniverseResp) error {
 func NewUniverseContext() *Context {
 	universeCtx := Context{}
 	universeCtx.Header = formatter.SubHeaderContext{
-		"Name":               formatter.NameHeader,
-		"UUID":               formatter.UUIDHeader,
-		"ProviderCode":       providerCodeHeader,
-		"ProviderUUID":       providerUUIDHeader,
-		"AccessKey":          accessKeyHeader,
-		"Nodes":              nodeHeader,
-		"RF":                 rfHeader,
-		"Version":            versionHeader,
-		"State":              formatter.StateHeader,
-		"DedicatedMasters":   dedicatedMastersHeader,
-		"EnableYSQL":         enableYSQLHeader,
-		"EnableYCQL":         enableYCQLHeader,
-		"UseSystemd":         useSystemdHeader,
-		"PricePerDay":        pricePerDayHeader,
-		"YSQLAuthEnabled":    ysqlAuthEnabledHeader,
-		"YCQLAuthEnabled":    ycqlAuthEnabledHeader,
-		"NtoNTLS":            nToNTLSHeader,
-		"NtoNCert":           nToNCertHeader,
-		"CtoNTLS":            cToNTLSHeader,
-		"CtoNCert":           cToNCertHeader,
-		"KMSEnabled":         kmsEnabledHeader,
-		"KMSConfig":          formatter.KMSConfigHeader,
-		"EncryptionRestType": encryptionRestTypeHeader,
-		"UniverseOverrides":  universeOverridesHeader,
-		"AZOverrides":        azOverridesHeader,
-		"NumMasters":         numMastersHeader,
-		"NumTservers":        numTserversHeader,
-		"LiveNodes":          liveNodesHeader,
-		"CPUArchitecture":    cpuArchitectureHeader,
+		"Name":                    formatter.NameHeader,
+		"UUID":                    formatter.UUIDHeader,
+		"ProviderCode":            providerCodeHeader,
+		"ProviderUUID":            providerUUIDHeader,
+		"AccessKey":               accessKeyHeader,
+		"Nodes":                   nodeHeader,
+		"RF":                      rfHeader,
+		"Version":                 versionHeader,
+		"State":                   formatter.StateHeader,
+		"DedicatedMasters":        dedicatedMastersHeader,
+		"EnableYSQL":              enableYSQLHeader,
+		"EnableYCQL":              enableYCQLHeader,
+		"UseSystemd":              useSystemdHeader,
+		"PricePerDay":             pricePerDayHeader,
+		"YSQLAuthEnabled":         ysqlAuthEnabledHeader,
+		"EnableConnectionPooling": enableConnectionPoolingHeader,
+		"YCQLAuthEnabled":         ycqlAuthEnabledHeader,
+		"NtoNTLS":                 nToNTLSHeader,
+		"NtoNCert":                nToNCertHeader,
+		"CtoNTLS":                 cToNTLSHeader,
+		"CtoNCert":                cToNCertHeader,
+		"KMSEnabled":              kmsEnabledHeader,
+		"KMSConfig":               formatter.KMSConfigHeader,
+		"EncryptionRestType":      encryptionRestTypeHeader,
+		"UniverseOverrides":       universeOverridesHeader,
+		"AZOverrides":             azOverridesHeader,
+		"NumMasters":              numMastersHeader,
+		"NumTservers":             numTserversHeader,
+		"LiveNodes":               liveNodesHeader,
+		"CPUArchitecture":         cpuArchitectureHeader,
 	}
 	return &universeCtx
 }
@@ -274,6 +276,14 @@ func (c *Context) EnableYSQL() string {
 	primaryCluster := details.GetClusters()[0]
 	userIntent := primaryCluster.GetUserIntent()
 	return fmt.Sprintf("%t", userIntent.GetEnableYSQL())
+}
+
+// EnableConnectionPooling fetches if connection pooling is enabled
+func (c *Context) EnableConnectionPooling() string {
+	details := c.u.GetUniverseDetails()
+	primaryCluster := details.GetClusters()[0]
+	userIntent := primaryCluster.GetUserIntent()
+	return fmt.Sprintf("%t", userIntent.GetEnableConnectionPooling())
 }
 
 // EnableYCQL fetches if ycql is enabled

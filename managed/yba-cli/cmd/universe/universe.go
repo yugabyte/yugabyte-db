@@ -6,6 +6,7 @@ package universe
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/edit"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/node"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/security"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/table"
@@ -35,4 +36,5 @@ func init() {
 	UniverseCmd.AddCommand(security.SecurityUniverseCmd)
 	UniverseCmd.AddCommand(runSampleAppsUniverseCmd)
 	UniverseCmd.AddCommand(table.TableCmd)
+	UniverseCmd.AddCommand(edit.EditUniverseCmd)
 }

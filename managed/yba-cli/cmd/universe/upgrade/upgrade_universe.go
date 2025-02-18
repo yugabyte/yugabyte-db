@@ -22,6 +22,8 @@ var UpgradeUniverseCmd = &cobra.Command{
 func init() {
 	UpgradeUniverseCmd.Flags().SortFlags = false
 
+	UpgradeUniverseCmd.PersistentFlags().SortFlags = false
+
 	UpgradeUniverseCmd.AddCommand(upgradeSoftwareCmd)
 	UpgradeUniverseCmd.AddCommand(gflags.UpgradeGflagsCmd)
 	UpgradeUniverseCmd.AddCommand(upgradeVMImageCmd)
