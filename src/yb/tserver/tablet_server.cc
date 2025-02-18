@@ -762,15 +762,21 @@ void TabletServer::Shutdown() {
   LOG(INFO) << "TabletServer shut down complete. Bye!";
 }
 
-Status TabletServer::BootstrapDdlObjectLocks(
-    const master::ClientOperationLeaseUpdatePB& lease_update) {
+Status TabletServer::ProcessLeaseUpdate(
+    const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time) {
   VLOG(2) << __func__;
-  // todo(zdrudi):
-  // Need to track the lease. Process the other fields of ClientOperationLeaseUpdatePB.
-  if (!lease_update.has_ddl_lock_entries() || !ts_local_lock_manager_) {
-    return Status::OK();
+  if (lease_update.has_ddl_lock_entries() && ts_local_lock_manager_) {
+    // todo(amit):
+    // BootstrapDdlObjectLocks must release all locks held and acquire all locks passed in,
+    // regardless of whether it has been called in the past or not. Currently this method does
+    // nothing when called after the first time on the same object.
+    RETURN_NOT_OK(ts_local_lock_manager_->BootstrapDdlObjectLocks(lease_update.ddl_lock_entries()));
   }
-  return ts_local_lock_manager_->BootstrapDdlObjectLocks(lease_update.ddl_lock_entries());
+  auto pg_client_service = pg_client_service_.lock();
+  if (pg_client_service) {
+    pg_client_service->impl.ProcessLeaseUpdate(lease_update, time);
+  }
+  return Status::OK();
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {

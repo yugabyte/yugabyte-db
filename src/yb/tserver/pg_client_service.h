@@ -24,6 +24,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/master/master_heartbeat.fwd.h"
+
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_base_options.h"
@@ -132,6 +134,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
   void InvalidateTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
                             const std::unordered_set<uint32_t>& db_oids_deleted);
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
+
+  void ProcessLeaseUpdate(const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time);
 
   size_t TEST_SessionsCount();
 

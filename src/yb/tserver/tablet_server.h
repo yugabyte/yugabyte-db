@@ -185,15 +185,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   const scoped_refptr<MetricEntity>& MetricEnt() const override { return metric_entity(); }
 
-  tserver::TServerSharedData& SharedObject() override {
-    return shared_object();
-  }
+  tserver::TServerSharedData& SharedObject() override { return shared_object(); }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
-  Status BootstrapDdlObjectLocks(const master::ClientOperationLeaseUpdatePB& lease_update);
+  Status ProcessLeaseUpdate(
+      const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time);
 
-  Status GetLiveTServers(
-      std::vector<master::TSInformationPB> *live_tservers) const EXCLUDES(lock_) override;
+  Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
+      EXCLUDES(lock_) override;
 
   // Returns connection info of all live tservers available at this tserver. The information about
   // live tservers is refreshed by the master heartbeat.

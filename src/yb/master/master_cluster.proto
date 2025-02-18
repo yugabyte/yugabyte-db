@@ -46,6 +46,7 @@ message ListTabletServersResponsePB {
     optional int32 millis_since_heartbeat = 3;
     optional bool alive = 4;
     optional TServerMetricsPB metrics = 5;
+    optional YSQLLeaseInfoPB lease_info = 6;
   }
   repeated Entry servers = 2;
 }
