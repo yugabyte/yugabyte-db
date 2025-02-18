@@ -33,8 +33,11 @@
 /* Default directory to store temporary statistics data in */
 #define PG_STAT_TMP_DIR		"pg_stat_tmp"
 
-/* Caps the number of queries which can be stored in the array. */
-#define TERMINATED_QUERIES_SIZE 1000
+/* Caps the number of YB terminated queries which can be stored in the array. */
+#define YB_TERMINATED_QUERIES_SIZE 1000
+
+#define YB_QUERY_TEXT_SIZE 256
+#define YB_QUERY_TERMINATION_SIZE 256
 
 /* The types of statistics entries */
 typedef enum PgStat_Kind
@@ -48,6 +51,9 @@ typedef enum PgStat_Kind
 	PGSTAT_KIND_FUNCTION,		/* per-function statistics */
 	PGSTAT_KIND_REPLSLOT,		/* per-slot statistics */
 	PGSTAT_KIND_SUBSCRIPTION,	/* per-subscription statistics */
+
+	/* stats for variable-numered Yugabyte objects */
+	PGSTAT_KIND_YB_TERMINATED_QUERIES,
 
 	/* stats for fixed-numbered objects */
 	PGSTAT_KIND_ARCHIVER,
@@ -243,65 +249,6 @@ typedef struct PgStat_TableXactStatus
 } PgStat_TableXactStatus;
 
 
-/* YB_TODO(neil) This feature needs changes to match new implementation */
-#ifdef YB_TODO
-#define QUERY_TEXT_SIZE 		256
-#define QUERY_TERMINATION_SIZE	256
-typedef struct YbPgStat_MsgQueryTermination
-{
-	YbPgStat_MsgHdr m_hdr;
-
-	Oid			m_st_userid;
-	Oid			m_databaseoid;
-	int32		backend_pid;
-	TimestampTz activity_start_timestamp;
-	TimestampTz activity_end_timestamp;
-	char		query_string[QUERY_TEXT_SIZE];
-	char		termination_reason[QUERY_TERMINATION_SIZE];
-} YbPgStat_MsgQueryTermination;
-typedef union YbPgStat_Msg
-{
-	YbPgStat_MsgQueryTermination msg_querytermination;
-} YbPgStat_Msg;
-
-typedef struct PgStat_YBStatQueryEntry
-{
-	/*
-	 * query_oid is not an actual oid. It is an index that
-	 * represents its location in the array that stores the
-	 * terminated queries modulo TERMINATED_QUERIES_SIZE.
-	 */
-	Oid			query_oid;
-
-	/*
-	 * We need to store the owner ID of the database for
-	 * security validation when the queries are fetched by the user.
-	 */
-	Oid			st_userid;
-	Oid			database_oid;
-	int32		backend_pid;
-	TimestampTz activity_start_timestamp;
-	TimestampTz activity_end_timestamp;
-
-	/*
-	 * query_string_size: records the length of the string
-	 * so that when writing this string to file, we only write
-	 * that many characters.
-	 */
-	size_t		query_string_size;
-	char		query_string[QUERY_TEXT_SIZE];
-
-	/*
-	 * termination_reason_size: records the length of the string
-	 * so that when writing this string to file, we only write
-	 * that many characters.
-	 */
-	size_t		termination_reason_size;
-	char		termination_reason[QUERY_TERMINATION_SIZE];
-} PgStat_YBStatQueryEntry;
-
-#endif
-
 /* ------------------------------------------------------------
  * Data structures on disk and in shared memory follow
  *
@@ -453,6 +400,26 @@ typedef struct PgStat_StatTabEntry
 	TimestampTz autovac_analyze_timestamp;	/* autovacuum initiated */
 	PgStat_Counter autovac_analyze_count;
 } PgStat_StatTabEntry;
+
+typedef struct PgStat_YbTerminatedQuery
+{
+	/*
+	 * We need to store the owner ID of the database for
+	 * security validation when the queries are fetched by the user.
+	 */
+	Oid			userid;
+	Oid			databaseoid;
+	int32		backend_pid;
+	TimestampTz activity_start_timestamp;
+	TimestampTz activity_end_timestamp;
+	char		query_string[YB_QUERY_TEXT_SIZE];
+	char		termination_reason[YB_QUERY_TERMINATION_SIZE];
+} PgStat_YbTerminatedQuery;
+
+typedef struct PgStat_YbTerminatedQueriesBuffer {
+	size_t		curr;
+	PgStat_YbTerminatedQuery queries[YB_TERMINATED_QUERIES_SIZE];
+} PgStat_YbTerminatedQueriesBuffer;
 
 #ifdef YB_TODO
 /* Postgres no longer uses the following structures. */
@@ -880,6 +847,12 @@ extern PgStat_WalStats *pgstat_fetch_stat_wal(void);
 
 
 /*
+ * Functions in pgstat_yb_terminated_queries.c
+ */
+extern void pgstat_report_query_termination(char *message, int pid);
+extern PgStat_YbTerminatedQuery *pgstat_fetch_yb_terminated_queries(Oid db_oid, size_t *num_queries);
+
+/*
  * Variables in pgstat.c
  */
 
@@ -948,10 +921,5 @@ extern PGDLLIMPORT PgStat_WalStats PendingWalStats;
 extern void yb_pgstat_report_allocated_mem_bytes(void);
 extern void yb_pgstat_set_catalog_version(uint64_t catalog_version);
 extern void yb_pgstat_set_has_catalog_version(bool has_catalog_version);
-
-#ifdef YB_TODO
-/* These functions need new implementation to match with Postgres 15. */
-extern PgStat_YBStatQueryEntry *pgstat_fetch_ybstat_queries(Oid db_oid, size_t *num_queries);
-#endif
 
 #endif							/* PGSTAT_H */

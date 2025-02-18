@@ -28,6 +28,7 @@ import java.util.concurrent.CountDownLatch;
 
 import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.Ignore;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -149,7 +150,7 @@ public class TestPgYbStat extends BasePgSQLTest {
     return false;
   }
 
-  @Ignore("#24297 - skipping until yb_terminated_queries is enabled")
+  @Ignore("Backends killed by SIGSEGV and SIGKILL not supported yet.")
   @Test
   public void testYbTerminatedQueriesMultipleCauses() throws Exception {
     // (DB-12741) Test is flaky with connection manager irrespective of warmup
@@ -215,7 +216,6 @@ public class TestPgYbStat extends BasePgSQLTest {
     }
   }
 
-  @Ignore("#24297 - skipping until yb_terminated_queries is enabled")
   @Test
   public void testYbTerminatedQueriesOverflow() throws Exception {
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
@@ -258,7 +258,6 @@ public class TestPgYbStat extends BasePgSQLTest {
     }
   }
 
-  @Ignore("#24297 - skipping until yb_terminated_queries is enabled")
   @Test
   public void testYBMultipleConnections() throws Exception {
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
@@ -297,7 +296,6 @@ public class TestPgYbStat extends BasePgSQLTest {
       }));
   }
 
-  @Ignore("#24297 - skipping until yb_terminated_queries is enabled")
   @Test
   public void testYBDBFiltering() throws Exception {
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
@@ -354,5 +352,21 @@ public class TestPgYbStat extends BasePgSQLTest {
           return !result.next();
         }));
     }
+  }
+
+  @Test
+  public void testYbTerminatedQueriesEmpty() throws Exception {
+    // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
+    // that can potentially be leftover from another test in this class. This would let us start
+    // with a clean slate.
+    restartCluster();
+    // We expect the yb_terminated_queries view to be empty.
+    assertTrue(waitUntilConditionSatisfiedOrTimeout(
+      "SELECT query_text FROM yb_terminated_queries", connection,
+      (ResultSet resultSet) -> {
+        assertFalse("yb_terminated_queries view should be empty.",
+            resultSet.next());
+        return true;
+    }));
   }
 }

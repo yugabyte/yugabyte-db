@@ -3794,6 +3794,7 @@ CleanupBackend(int pid,
 	{
 		LogChildExit(EXIT_STATUS_0(exitstatus) ? DEBUG2 : WARNING, _("server process"), pid, exitstatus);
 
+		/* TODO: #26081 - Backends killed by SIGKILL and SIGSEGV are not supported yet */
 #ifdef YB_TODO
 		/* Postgres changed the implemenation for stats. Need new code. */
 		if (WTERMSIG(exitstatus) == SIGKILL)
