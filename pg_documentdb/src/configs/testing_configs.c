@@ -17,8 +17,6 @@
 #include "configs/config_initialization.h"
 #include "commands/commands_common.h"
 
-#define BSON_MAX_ALLOWED_SIZE (16 * 1024 * 1024)
-
 #define DEFAULT_NEXT_COLLECTION_ID NEXT_COLLECTION_ID_UNSET
 int NextCollectionId = DEFAULT_NEXT_COLLECTION_ID;
 

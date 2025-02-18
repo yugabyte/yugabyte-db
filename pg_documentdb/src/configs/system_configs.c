@@ -18,7 +18,6 @@
  * Externally defined GUC constants
  * TODO(OSS): Move these as appropriate.
  */
-#define BSON_MAX_ALLOWED_SIZE (16 * 1024 * 1024)
 
 /*
  * enable_create_collection_on_insert GUC determines whether
