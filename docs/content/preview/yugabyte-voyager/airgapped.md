@@ -57,7 +57,7 @@ You can perform an airgapped installation on RHEL 8 and CentOS 8.
 1. Download the airgapped bundle:
 
     ```sh
-    https://downloads.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
+    wget https://downloads.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
     ```
 
 1. Extract the bundle.
@@ -248,7 +248,7 @@ The options are as follows.
 
 You can download the oracle instant client RPM packages from the following links:
 
-- [oracle-instantclient-tools](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-tools_21.5.0.0.0-1_amd64.debrpm)
+- [oracle-instantclient-tools](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-tools_21.5.0.0.0-1_amd64.deb)
 
 - [oracle-instantclient-basic](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-basic_21.5.0.0.0-1_amd64.deb)
 
