@@ -11,21 +11,21 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 # all api_keys were generated from btoa(orig_key)
 [context.deploy-preview.environment]
-  GO_VERSION = "1.30"
+  GO_VERSION = "1.24"
   HUGO_VERSION = "0.143.1"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
-  GO_VERSION = "1.30"
+  GO_VERSION = "1.24"
   HUGO_VERSION = "0.143.1"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
-  GO_VERSION = "1.30"
+  GO_VERSION = "1.24"
   HUGO_VERSION = "0.143.1"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
