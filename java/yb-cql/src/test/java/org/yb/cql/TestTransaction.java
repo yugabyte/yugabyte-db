@@ -554,26 +554,34 @@ public class TestTransaction extends BaseCQLTest {
       int initialRetries = getRetriesCount();
       LOG.info("Initial restarts = {}, retries = {}", initialRestarts, initialRetries);
 
-      // Keep reading until we have the desired number of restart requests and retries.
+      // Keep reading until we either:
+      // (1) have the desired number of restart requests and retries.
+      // (2) have run for 100 seconds but still don't have the desired number of restart requests.
+      //     We still assert finally for atleast 1 restart and retry to have occurred.
       final int TOTAL_RESTARTS = BuildTypeUtil.nonTsanVsTsan(10, 5);
       final int TOTAL_RETRIES = BuildTypeUtil.nonTsanVsTsan(10, 5);
       int i = 0;
-      while (true) {
+      int currentRestarts = 0;
+      int currentRetries = 0;
+      long start_time = System.currentTimeMillis();
+      while ((System.currentTimeMillis() - start_time) < 100 * 1000) {
         i++;
         List<Row> rows = session.execute(selectStmt.bind()).all();
         assertEquals(2, rows.size());
         assertEquals(TOTAL, rows.get(0).getInt("v") + rows.get(1).getInt("v"));
         assertEquals(rows.get(0).getLong("writetime(v)"), rows.get(1).getLong("writetime(v)"));
 
-        int currentRestarts = getRestartsCount("test_restart");
-        int currentRetries = getRetriesCount();
+        currentRestarts = getRestartsCount("test_restart");
+        currentRetries = getRetriesCount();
         if (currentRestarts - initialRestarts >= TOTAL_RESTARTS &&
             currentRetries - initialRetries >= TOTAL_RETRIES) {
-          LOG.info("Current restarts = {}, retries = {} after {} tries",
-                   currentRestarts, currentRetries, i);
           break;
         }
       }
+      LOG.info("Current restarts = {}, retries = {} after {} tries",
+                   currentRestarts, currentRetries, i);
+      assertTrue(currentRestarts > initialRestarts);
+      assertTrue(currentRetries > initialRetries);
     } finally {
       thread.interrupt();
     }
