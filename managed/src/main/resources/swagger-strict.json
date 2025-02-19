@@ -25690,7 +25690,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -25698,7 +25698,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
