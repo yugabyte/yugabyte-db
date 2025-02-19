@@ -231,7 +231,7 @@ ybm cluster create \
   --cloud-provider AWS \ 
   --cluster-tier Dedicated \
   --cluster-type SYNCHRONOUS \
-  ---encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>aws-arn=<your-aws-arn-key> \
+  --encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>,aws-arn=<your-aws-arn-key> \
   --credentials username=admin,password=password \
   --fault-tolerance=ZONE \
   --region-info region=us-east-2,num-nodes=3,num-cores=4
@@ -473,7 +473,7 @@ Use the following commands to enable or disable the CMK state.
 
 ```sh
 ybm cluster encryption update-state \
-  --cluster-name my-sandbox
+  --cluster-name my-sandbox \
   --enable
 ```
 
@@ -485,7 +485,7 @@ Successfully ENABLED encryption spec status for cluster my-sandbox
 
 ```sh
 ybm cluster encryption update-state \
-  --cluster-name my-sandbox
+  --cluster-name my-sandbox \
   --disable
 ```
 
