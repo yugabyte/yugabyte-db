@@ -1856,6 +1856,18 @@ command_update_worker(PG_FUNCTION_ARGS)
 	DeserializeUpdateWorkerSpec(updateInternalSpec, &params);
 
 	MongoCollection *mongoCollection = GetMongoCollectionByColId(collectionId, NoLock);
+
+	if (mongoCollection == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
+						errmsg(
+							"Collection not found for collectionId %lu on command_update_worker. This could be a metadata sync issue",
+							collectionId),
+						errdetail_log(
+							"Collection not found for collectionId %lu on command_update_worker. This could be a metadata sync issue.",
+							collectionId)));
+	}
+
 	UpdateMongoCollectionUsingIds(mongoCollection, collectionId, shardOid);
 
 	mongoCollection->shardKey = params.shardKeyBson;
