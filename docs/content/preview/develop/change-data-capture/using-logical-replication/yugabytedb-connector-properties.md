@@ -691,10 +691,10 @@ Default: 60
 
 ##### slot.lsn.type
 
-The LSN type which should be used for the specified replication slot.
+The type of LSN to use for the specified replication slot:
 
-* `SEQUENCE` - This is a monotonic increasing number that will determine the record in global order within the context of a slot.
-* `HYBRID_TIME` - This is a hybrid time value and can be used to compare transactions across slots.
+* SEQUENCE - A monotonic increasing number that determines the record in global order within the context of a slot.
+* HYBRID_TIME - A hybrid time value that can be used to compare transactions across slots.
 
 ## Pass-through configuration properties
 
