@@ -11,8 +11,6 @@
 // under the License.
 //
 
-#include <regex>
-
 #include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -113,11 +111,6 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
 
   ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
   ASSERT_STR_CONTAINS(ysql_catalog_config, "catalog_version: 15");
-
-  // Running validation on the upgraded cluster should fail since its already on the higher version.
-  ASSERT_OK(ValidateUpgradeCompatibilityFailure(
-      "This version of the utility can only be used for checking YSQL version 11. The cluster is "
-      "currently on YSQL version 15"));
 }
 
 TEST_F(Pg15UpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
@@ -1297,10 +1290,7 @@ class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
   Pg15UpgradeSequenceTest() = default;
 
   void SetUp() override {
-    Pg15UpgradeTest::SetUp();
-    if (Test::IsSkipped()) {
-      return;
-    }
+    TEST_SETUP_SUPER(Pg15UpgradeTest);
 
     ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_sequence_cache_minval", "1"));
     // As documented in the daemon->AddExtraFlag call, a restart is required to apply the flag.
@@ -1441,23 +1431,6 @@ TEST_F(Pg15UpgradeTest, YbGinIndex) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, CheckUpgradeCompatibilityGuc) {
-  // Whether or not yb_major_version_upgrade_compatibility is enabled, pg_upgrade --check will not
-  // error.
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "11"));
-  ASSERT_OK(ValidateUpgradeCompatibility());
-
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "0"));
-  ASSERT_OK(ValidateUpgradeCompatibility());
-
-  // However, when we actually run the YSQL upgrade, pg_upgrade will error since now
-  // ysql_yb_major_version_upgrade_compatibility is not set.
-  auto log_waiter =
-      cluster_->GetMasterLogWaiter("yb_major_version_upgrade_compatibility must be set to 11");
-  ASSERT_NOK_STR_CONTAINS(UpgradeClusterToMixedMode(), kPgUpgradeFailedError);
-  ASSERT_TRUE(log_waiter.IsEventOccurred());
-}
-
 TEST_F(Pg15UpgradeSequenceTest, Sequences) {
   ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0", kSequencePg11)));
 
@@ -1524,74 +1497,103 @@ TEST_F(Pg15UpgradeSequenceTest, IdentityColumn) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, UsersAndRoles) {
-  auto escape_single_quote = [](const std::string& str) {
-    return std::regex_replace(str, std::regex("'"), "''");
-  };
-  auto escape_double_quote = [](const std::string& str) {
-    return std::regex_replace(str, std::regex("\""), "\"\"");
-  };
-
-  auto ts = cluster_->tablet_server(0);
-
-  // Make sure pg_upgrade --check fails if the yugabyte user is not a superuser.
+TEST_F(Pg15UpgradeTest, BasicTablespace) {
+  const auto tablespace_name = "ts1";
+  const auto table_name = "tbl1";
   {
-    const auto postgres_user = "postgres";
-    const auto pg_conn_settings = pgwrapper::PGConnSettings{
-        .host = ts->bind_host(),
-        .port = ts->ysql_port(),
-        .dbname = "yugabyte",
-        .user = postgres_user};
-
-    auto pg_conn = ASSERT_RESULT(pgwrapper::PGConnBuilder(pg_conn_settings).Connect());
-    ASSERT_OK(pg_conn.Execute("DROP USER yugabyte"));
-    ASSERT_OK(ValidateUpgradeCompatibilityFailure("The 'yugabyte' user is missing", postgres_user));
-
-    ASSERT_OK(pg_conn.Execute("CREATE USER yugabyte"));
-
-    ASSERT_OK(ValidateUpgradeCompatibilityFailure(
-        "The 'yugabyte' user is missing the 'rolsuper' attribute", postgres_user));
-
-    ASSERT_OK(pg_conn.Execute("DROP USER yugabyte"));
-    ASSERT_OK(pg_conn.Execute(
-        "CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS"));
-    ASSERT_OK(ValidateUpgradeCompatibility(postgres_user));
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLESPACE $0 LOCATION '/invalid'", tablespace_name));
+    ASSERT_OK(
+        conn.ExecuteFormat("CREATE TABLE $0 (a int) TABLESPACE $1", table_name, tablespace_name));
   }
+  const auto check_tablespace = [&]() -> Status {
+    auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
+    auto tblspace_name_result = VERIFY_RESULT(conn.FetchRow<std::string>(Format(
+        "SELECT spcname FROM pg_tablespace ts "
+        "INNER JOIN pg_class pg_c ON pg_c.reltablespace = ts.oid "
+        "WHERE pg_c.relname = '$0'",
+        table_name)));
+    SCHECK_EQ(tblspace_name_result, tablespace_name, IllegalState, "Tablespace name mismatch");
 
-  // Change the yugabyte password to make sure if works after the upgrade.
-  // Including quotes in password to make sure it works.
-  const auto new_yb_password = "yb_\"secure\"\"_'pass''";
-  {
-    // Escape single quotes in the sql string.
-    ASSERT_OK(ExecuteStatement(
-        Format("ALTER USER yugabyte PASSWORD '$0'", escape_single_quote(new_yb_password))));
-  }
+    return Status::OK();
+  };
 
-  const auto conn_settings = pgwrapper::PGConnSettings{
-      .host = ts->bind_host(),
-      .port = ts->ysql_port(),
-      .dbname = "yugabyte",
-      .user = "yugabyte",
-      .password = escape_double_quote(new_yb_password)};
-
-  auto conn = ASSERT_RESULT(pgwrapper::PGConnBuilder(conn_settings).Connect());
-
-  // Create users with special characters in their names.
-  auto special_role_names = {"user with space", "user_\"_with_\"\"_different' quotes''"};
-  for (const auto& role_name : special_role_names) {
-    // Escape double quotes in the sql string.
-    ASSERT_OK(conn.ExecuteFormat("CREATE ROLE \"$0\"", escape_double_quote(role_name)));
-  }
+  ASSERT_OK(check_tablespace());
 
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 
-  conn = ASSERT_RESULT(pgwrapper::PGConnBuilder(conn_settings).Connect());
-  for (const auto& role_name : special_role_names) {
-    LOG(INFO) << "Checking role: " << role_name;
-    auto res_role_name = ASSERT_RESULT(conn.FetchRow<std::string>(Format(
-        "SELECT rolname FROM pg_roles WHERE rolname = '$0'", escape_single_quote(role_name))));
-    ASSERT_STR_EQ(role_name, res_role_name);
+  ASSERT_OK(check_tablespace());
+}
+
+TEST_F(Pg15UpgradeTest, DroppedColumnTest) {
+  const auto insert_stmt = "INSERT INTO t VALUES ($0)";
+  const auto kT1SelectStmt = "SELECT * FROM t ORDER BY a";
+  const auto kT2SelectStmt = "SELECT * FROM t2 ORDER BY a2";
+  std::string t1_expected_rows = "1, 3, NULL, foo; 11, 13, NULL, foo; 21, 23, 24, foo";
+  size_t next_row = 30;
+  const auto kT2ExpectedRows = "2, 2000, 1";
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.Execute("CREATE TABLE t (a int, b int, c int)"));
+    ASSERT_OK(conn.ExecuteFormat(insert_stmt, "1, 2, 3"));
+    ASSERT_OK(conn.ExecuteFormat(insert_stmt, "11, 12, 13"));
+    ASSERT_OK(conn.Execute("ALTER TABLE t DROP COLUMN b"));
+    ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN d int"));
+    ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN e text DEFAULT 'foo'"));
+    ASSERT_OK(conn.ExecuteFormat(insert_stmt, "21, 23, 24"));
+
+    auto result = ASSERT_RESULT(conn.FetchAllAsString(kT1SelectStmt));
+    ASSERT_EQ(result, t1_expected_rows);
+
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE t2 (a2 int, b2 int, c2 int, d2 int, PRIMARY KEY(d2 HASH, a2 ASC))"));
+    ASSERT_OK(conn.Execute("ALTER TABLE t2 DROP COLUMN b2"));
+    ASSERT_OK(conn.Execute("INSERT INTO t2 VALUES (2, 2000, 1)"));
   }
+
+  auto run_validations = [&](std::optional<size_t> ts_id = std::nullopt) -> Status {
+    const auto kT1ExpectedCols = "a, 1; ........pg.dropped.2........, 2; c, 3; d, 4; e, 5";
+    const auto kT2ExpectedCols = "a2, 1; ........pg.dropped.2........, 2; c2, 3; d2, 4";
+
+    auto conn = VERIFY_RESULT(CreateConnToTs(ts_id));
+    auto result = VERIFY_RESULT(
+        conn.FetchAllAsString("SELECT attname, attnum FROM pg_attribute WHERE attrelid = "
+                              "'t'::pg_catalog.regclass AND attnum >= 0 ORDER BY attnum"));
+    SCHECK_EQ(result, kT1ExpectedCols, IllegalState, "t1 validation failed");
+
+    result = VERIFY_RESULT(
+        conn.FetchAllAsString("SELECT attname, attnum FROM pg_attribute WHERE attrelid = "
+                              "'t2'::pg_catalog.regclass AND attnum >= 0"));
+    SCHECK_EQ(result, kT2ExpectedCols, IllegalState, "t2 validation failed");
+
+    result = VERIFY_RESULT(conn.FetchAllAsString(kT2SelectStmt));
+    SCHECK_EQ(result, kT2ExpectedRows, IllegalState, "Mismatch in t2 rows");
+
+    result = VERIFY_RESULT(conn.FetchAllAsString(kT1SelectStmt));
+    SCHECK_EQ(result, t1_expected_rows, IllegalState, "Mismatch in t1 rows");
+
+    const auto next_value = Format("$0, $1, $2", next_row + 1, next_row + 3, next_row + 4);
+    next_row += 10;
+    RETURN_NOT_OK(conn.ExecuteFormat(insert_stmt, next_value));
+    t1_expected_rows += Format("; $0, foo", next_value);
+
+    result = VERIFY_RESULT(conn.FetchAllAsString(kT1SelectStmt));
+    SCHECK_EQ(result, t1_expected_rows, IllegalState, "Mismatch in t1 rows after insert");
+
+    return Status::OK();
+  };
+
+  ASSERT_OK(run_validations());
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  ASSERT_OK(run_validations(kMixedModeTserverPg11));
+  ASSERT_OK(run_validations(kMixedModeTserverPg15));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_OK(run_validations());
 }
 
 }  // namespace yb

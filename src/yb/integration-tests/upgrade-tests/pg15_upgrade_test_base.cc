@@ -28,10 +28,8 @@ using namespace std::chrono_literals;
 namespace yb {
 
 void Pg15UpgradeTestBase::SetUp() {
-  UpgradeTestBase::SetUp();
-  if (Test::IsSkipped()) {
-    return;
-  }
+  TEST_SETUP_SUPER(UpgradeTestBase);
+
   CHECK_OK_PREPEND(StartClusterInOldVersion(), "Failed to start cluster in old version");
   CHECK(IsYsqlMajorVersionUpgrade());
   CHECK_GT(cluster_->num_tablet_servers(), 1);
@@ -61,20 +59,31 @@ Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user
 }
 
 Status Pg15UpgradeTestBase::ValidateUpgradeCompatibilityFailure(
-    const std::string& expected_error, const std::string& user_name) {
-  auto log_waiter = StringWaiterLogSink(expected_error);
-  auto status = ValidateUpgradeCompatibility(user_name);
-  if (status.ok()) {
-    return STATUS_FORMAT(
-        IllegalState, "Expected pg_upgrade to fail with error: $0", expected_error);
+    const std::vector<std::string>& expected_errors, const std::string& user_name) {
+  std::vector<std::unique_ptr<StringWaiterLogSink>> log_waiters;
+  for (const auto& expected_error : expected_errors) {
+    log_waiters.emplace_back(std::make_unique<StringWaiterLogSink>(expected_error));
   }
+  auto status = ValidateUpgradeCompatibility(user_name);
+  SCHECK(
+      !status.ok(), IllegalState,
+      Format("Expected pg_upgrade to fail with error(s): $0", ToString(expected_errors)));
   SCHECK(
       status.message().Contains(kPgUpgradeFailedError), IllegalState, "Unexpected status: $0",
       status);
-  SCHECK_FORMAT(
-      log_waiter.IsEventOccurred(), IllegalState, "Expected pg_upgrade to fail with error: $0",
-      expected_error);
+
+  for (size_t i = 0; i < expected_errors.size(); ++i) {
+    SCHECK_FORMAT(
+        log_waiters[i]->IsEventOccurred(), IllegalState,
+        "Expected pg_upgrade to fail with error: $0", expected_errors[i]);
+  }
+
   return Status::OK();
+}
+
+Status Pg15UpgradeTestBase::ValidateUpgradeCompatibilityFailure(
+    const std::string& expected_error, const std::string& user_name) {
+  return ValidateUpgradeCompatibilityFailure(std::vector<std::string>{expected_error}, user_name);
 }
 
 Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {
