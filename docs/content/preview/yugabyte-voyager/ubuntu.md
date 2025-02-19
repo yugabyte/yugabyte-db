@@ -13,7 +13,7 @@ Perform the following steps to install yb-voyager using apt for Ubuntu:
 1. Install the Yugabyte apt repository on your machine using the following command:
 
     ```sh
-    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/reporpms/yb-apt-repo_1.0.0_all.deb
+    wget https://downloads.yugabyte.com/repos/reporpms/yb-apt-repo_1.0.0_all.deb
     sudo apt-get install ./yb-apt-repo_1.0.0_all.deb
     ```
 
