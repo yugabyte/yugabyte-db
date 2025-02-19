@@ -101,8 +101,7 @@ yba:
 
     # List of mount points for data storage.
     # Data directories should be mounted here.
-    mount_points:
-      - /mnt/d1
+    mount_points: []
 
 logging:
   # Logging level for the application.

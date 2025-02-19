@@ -159,7 +159,7 @@
 | "Support bundle prometheus dump range" | "yb.support_bundle.default_prom_dump_range" | "GLOBAL" | "The start-end duration to collect the prometheus dump inside the support bundle (in minutes)" | "Integer" |
 | "Number of cloud YBA backups to retain" | "yb.auto_yba_backups.num_cloud_retention" | "GLOBAL" | "When continuous backups feature is enabled only the most recent n backups will be retained in the storage bucket" | "Integer" |
 | "Standby Prometheus scrape interval" | "yb.metrics.scrape_interval_standby" | "GLOBAL" | "Need to increase it in case federation metrics request takes more time  than main Prometheus scrape period to complete" | "String" |
-| "Use YNP for provisioning" | "yb.node_agent.use_ynp_provisioning" | "GLOBAL" | "If enabled use YNP for provisioning" | "Boolean" |
+| "Use Ansible for provisioning" | "yb.node_agent.use_ansible_provisioning" | "GLOBAL" | "If enabled use Ansible for provisioning" | "Boolean" |
 | "Enable viewing metrics in timezone selected at the metrics page" | "yb.ui.metrics.enable_timezone" | "GLOBAL" | "Enable viewing metrics in timezone selected at the metrics page and will be preserved at session level" | "Boolean" |
 | "Enable Path Access Style for Amazon S3" | "yb.ui.feature_flags.enable_path_style_access" | "GLOBAL" | "Enable Path Access Style for Amazon S3, mainly used when configuring S3 compatible storage." | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |

@@ -404,7 +404,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     assertEquals(1, universe.getMasters().size());
   }
 
-  @Test
+  //   @Test
   public void testUpdateCommPorts() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);

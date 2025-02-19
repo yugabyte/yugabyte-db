@@ -9,6 +9,8 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 set -euo pipefail
 
+PYTHON_VERSION="python3.11"
+
 # Function to display usage information
 show_usage() {
     echo "Usage: $0 [-c|--command COMMAND]"
@@ -19,6 +21,55 @@ show_usage() {
 err_msg() {
     echo "Error: $1" >&2
     exit 1
+}
+
+is_csp=false
+cloud_type=""
+
+# Install Python3.11 on the node.
+install_python3_11() {
+    echo "Detecting OS and installing $PYTHON_VERSION..."
+
+    if grep -q -i "ubuntu" /etc/os-release; then
+        echo "Detected Ubuntu. Installing $PYTHON_VERSION..."
+        apt update && apt install -y \
+            $PYTHON_VERSION \
+            ${PYTHON_VERSION}-venv \
+            ${PYTHON_VERSION}-dev \
+            ${PYTHON_VERSION}-distutils
+
+    elif grep -q -i "almalinux\|rocky\|rhel" /etc/os-release; then
+        echo "Detected AlmaLinux/Rocky/RHEL. Installing $PYTHON_VERSION..."
+        dnf install -y \
+            $PYTHON_VERSION \
+            ${PYTHON_VERSION}-devel
+
+    elif grep -q -i "amazon linux 2023" /etc/os-release; then
+        echo "Detected Amazon Linux 2023. Installing $PYTHON_VERSION..."
+        dnf install -y \
+            $PYTHON_VERSION \
+            ${PYTHON_VERSION}-devel
+
+    else
+        echo "Unsupported OS. Please install $PYTHON_VERSION manually."
+        exit 1
+    fi
+
+    echo "$PYTHON_VERSION installation completed."
+}
+
+# Install Pip on the node
+install_pip() {
+    echo "Installing pip for $PYTHON_VERSION..."
+    curl -sSL https://bootstrap.pypa.io/get-pip.py | $PYTHON_VERSION
+}
+
+# Setup the correct python symlinks
+setup_symlinks() {
+    echo "Setting up symbolic links..."
+    ln -sf /usr/bin/$PYTHON_VERSION /usr/bin/python3
+    ln -sf /usr/bin/$PYTHON_VERSION /usr/bin/python
+    echo "Python symlinks updated."
 }
 
 # Function to install the python wheels
@@ -76,7 +127,7 @@ setup_virtualenv() {
 check_python() {
     echo "Checking for Python and pip..."
     if ! command -v python3 &> /dev/null; then
-        err_msg "Python is not installed or not found in PATH."
+        err_msg "python3 is not installed or not found in PATH."
     fi
 
     if ! python3 -m pip --version &> /dev/null; then
@@ -91,12 +142,51 @@ execute_python() {
     python3 ynp/main.py "$@"
 }
 
+# Function for importing the GPG key if required.
+import_gpg_key_if_required() {
+    if [[ "$cloud_type" == "gcp" ]]; then
+        echo "Importing RPM keys for almalinux"
+        rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux
+        echo "Successfully imported GPG keys"
+    fi
+}
+
 # Main function
 main() {
+    filtered_args=()
+
+    for ((i=1; i<=$#; i++)); do
+        if [[ "${!i}" == "--cloud_type" ]]; then
+            # Skip --cloud_type and its value
+            next_index=$((i + 1))
+            if [[ $next_index -le $# && ! "${!next_index}" =~ ^-- ]]; then
+                cloud_type="${!next_index}"
+                i=$next_index  # Skip next argument as well
+            fi
+        elif [[ "${!i}" == "--extra_vars" ]]; then
+            echo "Extra vars detected. CSP use case..."
+            is_csp=true
+            filtered_args+=("${!i}")  # Keep --extra_vars
+            next_index=$((i + 1))
+            if [[ $next_index -le $# && ! "${!next_index}" =~ ^-- ]]; then
+                filtered_args+=("${!next_index}")  # Keep its value
+                i=$next_index  # Skip next argument
+            fi
+        else
+            filtered_args+=("${!i}")  # Keep all other arguments
+        fi
+    done
+
+    if [[ "$is_csp" == true ]]; then
+        import_gpg_key_if_required
+        install_python3_11
+        install_pip
+        setup_symlinks
+    fi
     check_python
     setup_virtualenv
     install_pywheels
-    execute_python "$@"
+    execute_python "${filtered_args[@]}"
 }
 
 # Call the main function and pass all arguments

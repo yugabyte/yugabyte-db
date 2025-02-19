@@ -254,40 +254,7 @@ class ProvisionCommand(Command):
             for package in cloud_only_packages:
                 self._check_package(package_manager, package)
 
-    def _install_python(self):
-        package_manager = self._get_package_manager()
-        try:
-            # Check if Python 3.11 is already installed
-            subprocess.run(['python3.11', '--version'], check=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            logger.info("Python 3.11 is already installed.")
-        except FileNotFoundError:
-            logger.info("Python 3.11 not found. Installing...")
-            if package_manager == 'rpm':
-                # Install Python 3.11 on RPM-based systems
-                subprocess.run(['sudo', 'dnf', 'install', '-y', 'python3.11'], check=True)
-            elif package_manager == 'deb':
-                # Update repositories and install Python 3.11 on DEB-based systems
-                subprocess.run(['sudo', 'apt-get', 'update'], check=True)
-                subprocess.run(['sudo', 'apt-get', 'install', '-y', 'python3.11'], check=True)
-            else:
-                logger.error("Unsupported package manager. Cannot install Python 3.11.")
-                sys.exit(1)
-
-            # Verify installation
-            try:
-                subprocess.run(['python3.11', '--version'], check=True,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                logger.info("Python 3.11 installed successfully.")
-            except FileNotFoundError:
-                logger.error("Failed to install Python 3.11.")
-                sys.exit(1)
-
     def execute(self):
-        for key in self.config:
-            if self.config[key].get('is_cloud') == 'True':
-                # Install the desired python version in case of CSP's
-                self._install_python()
         run_combined_script, precheck_combined_script = self._generate_template()
         self._run_script(run_combined_script)
         self._run_script(precheck_combined_script)
