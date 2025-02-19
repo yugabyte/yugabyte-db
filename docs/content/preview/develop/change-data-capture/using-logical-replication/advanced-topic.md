@@ -144,7 +144,9 @@ To enable dynamic table addition, perform the following steps:
     ./yb-ts-cli --server_address=<tserverIpAddress:tserverPort> set_flag cdcsdk_publication_list_refresh_interval_secs 900
     ```
 
-> **Note:** In the event that a user ends up reducing the value of `cdcsdk_publication_list_refresh_interval_secs`, it is recommended to increase the value of the flag back to its original value once you start receiving changes from the new table.
+{{< note title="Important" >}}
+In the event that a user ends up reducing the value of `cdcsdk_publication_list_refresh_interval_secs`, it is recommended to increase the value of the flag back to its original value once you start receiving changes from the new table.
+{{< /note >}}
 
 ## Initial snapshot
 
