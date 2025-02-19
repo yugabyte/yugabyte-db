@@ -30,6 +30,13 @@ static const uint32_t kPgNamespaceTableOid = 2615; // Hardcoded for pg_namespace
 static const uint32_t kPgClassTableOid = 1259;  // Hardcoded for pg_class. (in pg_class.h)
 static const uint32_t kPgDatabaseTableOid = 1262;  // Hardcoded for pg_database. (in pg_database.h)
 static const uint32_t kPgFirstNormalObjectId = 16384; // Hardcoded in transam.h
+// We include some OIDs that would be signed with int32_t to allow checking the Postgres logic that
+// handles those.  See PgLibPqLargeOidTest.LargeOid test.
+static const uint32_t kPgUpperBoundNormalObjectId = 2'199'999'999; // upper bound is exclusive
+// Secondary OID space is used by xCluster when a database is a target.  Starting point has been
+// chosen so it starts at a nice human readable number, 2'200'000'000 = 0x83'21'56'00.
+static const uint32_t kPgFirstSecondarySpaceObjectId = kPgUpperBoundNormalObjectId + 1;
+static const uint32_t kPgUpperBoundSecondarySpaceObjectId = 0xff'ff'ff'ff;
 static const uint32_t kPgYbTablegroupTableOid = 8036;  // Hardcoded in pg_yb_tablegroup.h
 static const uint32_t kPgSequencesTableOid = 2224;  // Hardcoded for pg_sequence. (in pg_sequence.h)
 static const uint32_t kPgYbMigrationTableOid = 8027;  // Hardcoded for pg_yb_migration.

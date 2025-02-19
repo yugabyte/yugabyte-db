@@ -521,9 +521,11 @@ class YBClient {
       const std::string& namespace_name, const std::string& namespace_id);
 
   // For Postgres: reserve oids for a Postgres database.
+  // use_secondary_space is used by xCluster when a database is a target.
   Status ReservePgsqlOids(const std::string& namespace_id,
                           uint32_t next_oid, uint32_t count,
-                          uint32_t* begin_oid, uint32_t* end_oid);
+                          uint32_t* begin_oid, uint32_t* end_oid,
+                          bool use_secondary_space);
 
   Status GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
 

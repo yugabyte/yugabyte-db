@@ -70,10 +70,11 @@
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
-#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/debug.h"
@@ -388,7 +389,21 @@ auto MakeSharedOldTxnMetadataVariant(OldTxnMetadataVariant&& txn_meta_variant) {
   return shared_txn_meta;
 }
 
-} // namespace
+bool ShouldUseSecondarySpace(
+    const TserverXClusterContextIf* xcluster_context, const NamespaceId& namespace_id) {
+  // We use the secondary space when allocating on the target universe under xCluster automatic
+  // mode.  We only care at the moment about allocations done by TServers on the behalf of Postgres
+  // because the only allocations done by masters on behalf of Postgres processes are part of the
+  // YSQL major upgrade, which currently does not allocate any OIDs of kinds that can cause
+  // collisions for xCluster preserved OIDs.
+  //
+  // TODO(#26018): Make allocations done by master (that is, when this function is running in a
+  // master process) also use the secondary space when allocating on the target universe under
+  // xCluster automatic mode.
+  return xcluster_context && xcluster_context->IsTargetAndInAutomaticMode(namespace_id);
+}
+
+}  // namespace
 
 template <class Extractor>
 class ApplyToValue {
@@ -664,10 +679,21 @@ class PgClientServiceImpl::Impl {
 
   Status ReserveOids(
       const PgReserveOidsRequestPB& req, PgReserveOidsResponsePB* resp, rpc::RpcContext* context) {
+    // This function is only called in initdb mode or when
+    // --ysql_enable_pg_per_database_oid_allocator is false.
+
+    auto db_oid = req.database_oid();
+    auto namespace_id = GetPgsqlNamespaceId(db_oid);
+    bool need_secondary_space =
+        ShouldUseSecondarySpace(session_context_.xcluster_context, namespace_id);
+    SCHECK(
+        !need_secondary_space, NotSupported,
+        "--ysql_enable_pg_per_database_oid_allocator cannot be false in universes that are the "
+        "target of xCluster automatic-mode replication");
+
     uint32_t begin_oid, end_oid;
     RETURN_NOT_OK(client().ReservePgsqlOids(
-        GetPgsqlNamespaceId(req.database_oid()), req.next_oid(), req.count(), &begin_oid,
-        &end_oid));
+        namespace_id, req.next_oid(), req.count(), &begin_oid, &end_oid, false));
     resp->set_begin_oid(begin_oid);
     resp->set_end_oid(end_oid);
 
@@ -675,22 +701,31 @@ class PgClientServiceImpl::Impl {
   }
 
   Status GetNewObjectId(
-      const PgGetNewObjectIdRequestPB& req,
-      PgGetNewObjectIdResponsePB* resp,
+      const PgGetNewObjectIdRequestPB& req, PgGetNewObjectIdResponsePB* resp,
       rpc::RpcContext* context) {
+    auto db_oid = req.db_oid();
+    auto namespace_id = GetPgsqlNamespaceId(db_oid);
+    bool use_secondary_space =
+        ShouldUseSecondarySpace(session_context_.xcluster_context, namespace_id);
     // Number of OIDs to prefetch (preallocate) in YugabyteDB setup.
     // Given there are multiple Postgres nodes, each node should prefetch
     // in smaller chunks.
     constexpr int32_t kYbOidPrefetch = 256;
-    auto db_oid = req.db_oid();
     std::lock_guard lock(mutex_);
     auto& oid_chunk = reserved_oids_map_[db_oid];
+    if (oid_chunk.allocated_from_secondary_space != use_secondary_space) {
+      // Flush any previous OIDs we have cached when we switch spaces.
+      oid_chunk.oid_count = 0;
+      oid_chunk.next_oid =
+          use_secondary_space ? kPgFirstSecondarySpaceObjectId : kPgFirstNormalObjectId;
+      oid_chunk.allocated_from_secondary_space = use_secondary_space;
+    }
     if (oid_chunk.oid_count == 0) {
-      const uint32_t next_oid = oid_chunk.next_oid +
-          static_cast<uint32_t>(FLAGS_TEST_ysql_oid_prefetch_adjustment);
+      const uint32_t next_oid =
+          oid_chunk.next_oid + static_cast<uint32_t>(FLAGS_TEST_ysql_oid_prefetch_adjustment);
       uint32_t begin_oid, end_oid;
       RETURN_NOT_OK(client().ReservePgsqlOids(
-          GetPgsqlNamespaceId(db_oid), next_oid, kYbOidPrefetch, &begin_oid, &end_oid));
+          namespace_id, next_oid, kYbOidPrefetch, &begin_oid, &end_oid, use_secondary_space));
       oid_chunk.next_oid = begin_oid;
       oid_chunk.oid_count = end_oid - begin_oid;
       VLOG(1) << "Reserved oids in database: " << db_oid << ", next_oid: " << next_oid
@@ -2156,7 +2191,9 @@ class PgClientServiceImpl::Impl {
   struct OidPrefetchChunk {
     uint32_t next_oid = kPgFirstNormalObjectId;
     uint32_t oid_count = 0;
+    bool allocated_from_secondary_space = false;
   };
+  // Domain here is db_oid of namespace we are allocating OIDs for.
   std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);
 
   using ExpirationEntry = std::pair<CoarseTimePoint, uint64_t>;

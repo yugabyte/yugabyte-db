@@ -1123,14 +1123,15 @@ Status YBClient::ListClones(master::ListClonesResponsePB* ret) {
   return Status::OK();
 }
 
-Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
-                                  const uint32_t next_oid, const uint32_t count,
-                                  uint32_t* begin_oid, uint32_t* end_oid) {
+Status YBClient::ReservePgsqlOids(
+    const std::string& namespace_id, uint32_t next_oid, uint32_t count, uint32_t* begin_oid,
+    uint32_t* end_oid, bool use_secondary_space) {
   ReservePgsqlOidsRequestPB req;
   ReservePgsqlOidsResponsePB resp;
   req.set_namespace_id(namespace_id);
   req.set_next_oid(next_oid);
   req.set_count(count);
+  req.set_use_secondary_space(use_secondary_space);
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, ReservePgsqlOids);
   *begin_oid = resp.begin_oid();
   *end_oid = resp.end_oid();
