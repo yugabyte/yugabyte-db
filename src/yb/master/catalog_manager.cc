@@ -6737,12 +6737,20 @@ Status CatalogManager::DeleteTableInMemoryAcquireLocks(
     } else {
       // For regular table, we need to lock all of its indexes.
       TableIdentifierPB index_identifier;
-      for (const auto& index : table->LockForRead()->pb.indexes()) {
-        index_identifier.set_table_id(index.table_id());
+      std::vector<TableId> index_table_ids;
+      {
+        auto lock = table->LockForRead();
+        index_table_ids.reserve(lock->pb.indexes().size());
+        for (const auto& index : lock->pb.indexes()) {
+          index_table_ids.push_back(index.table_id());
+        }
+      }
+      for (const auto& table_id : index_table_ids) {
+        index_identifier.set_table_id(table_id);
         auto index_result = FindTable(index_identifier);
         if (VERIFY_RESULT(DoesTableExist(index_result))) {
           auto index_table = std::move(*index_result);
-          data_map->emplace(index.table_id(), DeletingTableData(index_table));
+          data_map->emplace(table_id, DeletingTableData(index_table));
         }
       }
     }
