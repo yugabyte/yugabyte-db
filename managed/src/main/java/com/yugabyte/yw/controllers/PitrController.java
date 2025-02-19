@@ -13,7 +13,6 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CloneNamespaceParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
@@ -379,7 +378,7 @@ public class PitrController extends AuthenticatedController {
   @ApiOperation(
       value = "Delete pitr config on a universe",
       nickname = "deletePitrConfig",
-      response = YBPSuccess.class)
+      response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
