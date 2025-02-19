@@ -37,36 +37,11 @@ DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
 DEFINE_RUNTIME_PREVIEW_uint32(vector_index_ef, 128,
     "The \"expansion\" parameter for search");
 
-DEFINE_RUNTIME_PREVIEW_uint32(vector_index_ef_construction, 256,
-    "The \"expansion\" parameter during graph construction");
-
-DEFINE_RUNTIME_PREVIEW_uint32(vector_index_num_neighbors_per_vertex, 32,
-    "Number of neighbors per graph node");
-
-DEFINE_RUNTIME_PREVIEW_uint32(vector_index_num_neighbors_per_vertex_base, 128,
-    "Number of neighbors per graph node in base level graph");
-
 namespace yb::docdb {
 
 const std::string kVectorIndexDirPrefix = "vi-";
 
 namespace {
-
-template <template<class, class> class Factory, class LSM>
-auto VectorLSMFactory(vector_index::DistanceKind distance_kind, size_t dimensions) {
-  using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
-  return [distance_kind, dimensions] {
-    vector_index::HNSWOptions hnsw_options = {
-      .dimensions = dimensions,
-      .num_neighbors_per_vertex = FLAGS_vector_index_num_neighbors_per_vertex,
-      .num_neighbors_per_vertex_base = FLAGS_vector_index_num_neighbors_per_vertex_base,
-      .ef_construction = FLAGS_vector_index_ef_construction,
-      .ef = FLAGS_vector_index_ef,
-      .distance_kind = distance_kind,
-    };
-    return FactoryImpl::Create(hnsw_options);
-  };
-}
 
 vector_index::DistanceKind ConvertDistanceKind(PgVectorDistanceType dist_type) {
   switch (dist_type) {
@@ -82,22 +57,41 @@ vector_index::DistanceKind ConvertDistanceKind(PgVectorDistanceType dist_type) {
   FATAL_INVALID_ENUM_VALUE(PgVectorDistanceType, dist_type);
 }
 
+vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& options) {
+  return {
+    .dimensions = options.dimensions(),
+    .num_neighbors_per_vertex = options.hnsw().m(),
+    .num_neighbors_per_vertex_base = options.hnsw().m0(),
+    .ef_construction = options.hnsw().ef_construction(),
+    .ef = FLAGS_vector_index_ef,
+    .distance_kind = ConvertDistanceKind(options.dist_type()),
+  };
+}
+
+template <template<class, class> class Factory, class LSM>
+auto VectorLSMFactory(const PgVectorIdxOptionsPB& options) {
+  using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
+  return [hnsw_options = ConvertToHnswOptions(options)] {
+    return FactoryImpl::Create(hnsw_options);
+  };
+}
+
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
-Result<typename vector_index::VectorLSMTypes<Vector, DistanceResult>::VectorIndexFactory>
-    GetVectorLSMFactory(PgVectorIndexType type, vector_index::DistanceKind distance_kind,
-                        size_t dimensions) {
+auto GetVectorLSMFactory(const PgVectorIdxOptionsPB& options)
+    -> Result<typename vector_index::VectorLSMTypes<Vector, DistanceResult>::VectorIndexFactory>{
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
-  switch (type) {
+  switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
-      return VectorLSMFactory<vector_index::UsearchIndexFactory, LSM>(distance_kind, dimensions);
+      return VectorLSMFactory<vector_index::UsearchIndexFactory, LSM>(options);
     case PgVectorIndexType::DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
       break;
   }
   return STATUS_FORMAT(
-        NotSupported, "Vector index $0 is not supported", PgVectorIndexType_Name(type));
+        NotSupported, "Vector index $0 is not supported",
+        PgVectorIndexType_Name(options.idx_type()));
 }
 
 template<vector_index::IndexableVectorType Vector>
@@ -180,8 +174,7 @@ class VectorIndexImpl : public VectorIndex {
       .log_prefix = log_prefix,
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
-          idx_options.idx_type(), ConvertDistanceKind(idx_options.dist_type()),
-          idx_options.dimensions()))),
+          idx_options))),
       .points_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = &thread_pool,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },

@@ -34,6 +34,10 @@
 #define YBHNSW_MIN_M 5
 #define YBHNSW_MAX_M 64
 
+#define YBHNSW_DEFAULT_M0 0
+#define YBHNSW_MIN_M0 0
+#define YBHNSW_MAX_M0 (YBHNSW_MAX_M * 4)
+
 #define YBHNSW_DEFAULT_EF_CONSTRUCTION 200
 #define YBHNSW_MIN_EF_CONSTRUCTION 50
 #define YBHNSW_MAX_EF_CONSTRUCTION 1000
@@ -47,6 +51,7 @@ typedef struct YbHnswOptions
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int			m;				/* number of connections per node */
+	int			m0;				/* number of connections per node in base level */
 	int			ef_construction;	/* size of dynamic candidate list */
 }			YbHnswOptions;
 
@@ -57,6 +62,9 @@ YbHnswInit(void)
 	/* Copied from HnswInit (as of pgvector 0.8.0). */
 	add_int_reloption(ybhnsw_relopt_kind, "m", "Max number of connections",
 					  YBHNSW_DEFAULT_M, YBHNSW_MIN_M, YBHNSW_MAX_M,
+					  AccessExclusiveLock);
+	add_int_reloption(ybhnsw_relopt_kind, "m0", "Max number of connections in base level",
+					  YBHNSW_DEFAULT_M0, YBHNSW_MIN_M0, YBHNSW_MAX_M0,
 					  AccessExclusiveLock);
 	add_int_reloption(ybhnsw_relopt_kind, "ef_construction",
 					  "Size of the dynamic candidate list for construction",
@@ -76,6 +84,7 @@ ybhnswoptions(Datum reloptions, bool validate)
  	 */
 	static const relopt_parse_elt tab[] = {
 		{"m", RELOPT_TYPE_INT, offsetof(YbHnswOptions, m)},
+		{"m0", RELOPT_TYPE_INT, offsetof(YbHnswOptions, m0)},
 		{"ef_construction", RELOPT_TYPE_INT,
 		offsetof(YbHnswOptions, ef_construction)},
 	};
@@ -90,15 +99,19 @@ static void
 bindYbHnswIndexOptions(YbcPgStatement handle, Datum reloptions)
 {
 	YbHnswOptions *hnsw_options = (YbHnswOptions *) ybhnswoptions(reloptions, false);
-	int			ef_construction = YBHNSW_DEFAULT_EF_CONSTRUCTION;
 	int			m = YBHNSW_DEFAULT_M;
+	int         m0 = YBHNSW_DEFAULT_M;
+	int			ef_construction = YBHNSW_DEFAULT_EF_CONSTRUCTION;
 
 	if (hnsw_options)
 	{
-		ef_construction = hnsw_options->ef_construction;
 		m = hnsw_options->m;
+		m0 = hnsw_options->m0;
+		if (m0 < m)
+			m0 = m;
+		ef_construction = hnsw_options->ef_construction;
 	}
-	YBCPgCreateIndexSetHnswOptions(handle, ef_construction, m);
+	YBCPgCreateIndexSetHnswOptions(handle, m, m0, ef_construction);
 }
 
 static void
