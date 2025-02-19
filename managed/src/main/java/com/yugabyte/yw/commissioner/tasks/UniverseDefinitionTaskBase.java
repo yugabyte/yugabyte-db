@@ -2355,32 +2355,32 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
     Customer customer = Customer.get(universe.getCustomerId());
-    filterNodesForInstallNodeAgent(universe, nodes)
-        .forEach(
-            n -> {
-              SetupYNP.Params params = new SetupYNP.Params();
-              Provider provider =
-                  nodeUuidProviderMap.computeIfAbsent(
-                      n.placementUuid,
-                      k -> {
-                        Cluster cluster = universe.getCluster(n.placementUuid);
-                        System.out.println(cluster.userIntent.provider);
-                        return Provider.getOrBadRequest(
-                            UUID.fromString(cluster.userIntent.provider));
-                      });
-              params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
-              params.nodeName = n.nodeName;
-              params.customerUuid = customer.getUuid();
-              params.setUniverseUUID(universe.getUniverseUUID());
-              params.nodeAgentInstallDir = installPath;
-              params.nodeAgentPort = serverPort;
-              if (StringUtils.isNotEmpty(n.sshUserOverride)) {
-                params.sshUser = n.sshUserOverride;
-              }
-              SetupYNP task = createTask(SetupYNP.class);
-              task.initialize(params);
-              subTaskGroup.addSubTask(task);
-            });
+    nodes.forEach(
+        n -> {
+          SetupYNP.Params params = new SetupYNP.Params();
+          Provider provider =
+              nodeUuidProviderMap.computeIfAbsent(
+                  n.placementUuid,
+                  k -> {
+                    Cluster cluster = universe.getCluster(n.placementUuid);
+                    return Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+                  });
+          if (imageBundleUtil != null) {
+            params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
+          }
+          params.nodeName = n.nodeName;
+          params.customerUuid = customer.getUuid();
+          params.setUniverseUUID(universe.getUniverseUUID());
+          params.nodeAgentInstallDir = installPath;
+          params.nodeAgentPort = serverPort;
+          params.sudoAccess = true;
+          if (StringUtils.isNotEmpty(n.sshUserOverride)) {
+            params.sshUser = n.sshUserOverride;
+          }
+          SetupYNP task = createTask(SetupYNP.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
@@ -2401,36 +2401,35 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.error(errMsg);
       throw new IllegalArgumentException(errMsg);
     }
-    int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
     Customer customer = Customer.get(universe.getCustomerId());
-    filterNodesForInstallNodeAgent(universe, nodes)
-        .forEach(
-            n -> {
-              UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
-              YNPProvisioning.Params params = new YNPProvisioning.Params();
-              params.deviceInfo = userIntent.getDeviceInfoForNode(n);
-              Provider provider =
-                  nodeUuidProviderMap.computeIfAbsent(
-                      n.placementUuid,
-                      k -> {
-                        Cluster cluster = universe.getCluster(n.placementUuid);
-                        return Provider.getOrBadRequest(
-                            UUID.fromString(cluster.userIntent.provider));
-                      });
-              params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
-              params.deviceInfo = userIntent.getDeviceInfoForNode(n);
-              params.nodeName = n.nodeName;
-              params.customerUuid = customer.getUuid();
-              params.setUniverseUUID(universe.getUniverseUUID());
-              params.remotePackagePath = taskParams().remotePackagePath;
-              if (StringUtils.isNotEmpty(n.sshUserOverride)) {
-                params.sshUser = n.sshUserOverride;
-              }
-              YNPProvisioning task = createTask(YNPProvisioning.class);
-              task.initialize(params);
-              subTaskGroup.addSubTask(task);
-            });
+    nodes.forEach(
+        n -> {
+          UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
+          YNPProvisioning.Params params = new YNPProvisioning.Params();
+          params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+          Provider provider =
+              nodeUuidProviderMap.computeIfAbsent(
+                  n.placementUuid,
+                  k -> {
+                    Cluster cluster = universe.getCluster(n.placementUuid);
+                    return Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+                  });
+          if (imageBundleUtil != null) {
+            params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
+          }
+          params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+          params.nodeName = n.nodeName;
+          params.customerUuid = customer.getUuid();
+          params.setUniverseUUID(universe.getUniverseUUID());
+          params.remotePackagePath = taskParams().remotePackagePath;
+          if (StringUtils.isNotEmpty(n.sshUserOverride)) {
+            params.sshUser = n.sshUserOverride;
+          }
+          YNPProvisioning task = createTask(YNPProvisioning.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
@@ -2454,7 +2453,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean ignoreNodeStatus,
       @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
 
-    boolean useYNPProvisioning = confGetter.getGlobalConf(GlobalConfKeys.enableYNPProvisioning);
+    boolean useAnsibleProvisioning =
+        confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning);
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
     boolean isNextFallThrough =
@@ -2502,19 +2504,26 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
             filteredNodes -> {
-              if (useYNPProvisioning) {
+              if (userIntent.providerType != CloudType.local && !isUniverseManuallyProvisioned) {
                 createSetupYNPTask(filteredNodes)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-                createYNPProvisioningTask(filteredNodes)
-                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                if (!useAnsibleProvisioning) {
+                  createYNPProvisioningTask(filteredNodes)
+                      .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                }
               }
               createInstallNodeAgentTasks(filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createWaitForNodeAgentTasks(nodesToBeCreated)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createHookProvisionTask(filteredNodes, TriggerType.PreNodeProvision);
-              if (!useYNPProvisioning) {
+              if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
                 createSetupServerTasks(filteredNodes, setupParamsCustomizer)
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              } else {
+                createSetNodeStatusTasks(
+                        filteredNodes,
+                        NodeStatus.builder().nodeState(NodeState.ServerSetup).build())
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               }
             });

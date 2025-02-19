@@ -10,7 +10,6 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.NodeAgent;
@@ -26,9 +25,7 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -70,6 +67,19 @@ public class InstallNodeAgent extends AbstractTaskBase {
     return (Params) taskParams;
   }
 
+  private SetupYNP.Params getSetupYNPParams(InstallNodeAgent.Params taskParams) {
+    SetupYNP.Params params = new SetupYNP.Params();
+    params.sshUser = taskParams.sshUser;
+    params.nodeName = taskParams.nodeName;
+    params.customerUuid = taskParams.customerUuid;
+    params.setUniverseUUID(taskParams.getUniverseUUID());
+    params.nodeAgentInstallDir = taskParams.nodeAgentInstallDir;
+    params.nodeAgentPort = taskParams.nodeAgentPort;
+    params.sudoAccess = taskParams.sudoAccess;
+
+    return params;
+  }
+
   private NodeAgent createNodeAgent(Universe universe, NodeDetails node) {
     String output =
         nodeUniverseManager
@@ -97,77 +107,67 @@ public class InstallNodeAgent extends AbstractTaskBase {
     return nodeAgentManager.create(nodeAgent, false);
   }
 
+  boolean doesNodeAgentDirectoryExists(
+      NodeDetails node, Universe universe, ShellProcessContext shellContext, String nodeAgentHome) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("test -d ");
+    sb.append(nodeAgentHome);
+    sb.append("/");
+    List<String> command = getCommand("/bin/bash", "-c", sb.toString());
+    log.info("Checking if node-agent directory exists: {}", command);
+    boolean directoryExistence =
+        nodeUniverseManager.runCommand(node, universe, command, shellContext).isSuccess();
+    if (directoryExistence) {
+      return true;
+    }
+    return false;
+  }
+
   public NodeAgent install() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     NodeAgent nodeAgent = null;
     InstallerFiles installerFiles = null;
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
-    if (optional.isPresent()) {
-      nodeAgent = optional.get();
-      if (!taskParams().reinstall && nodeAgent.getState() == State.READY) {
-        return nodeAgent;
-      } else if (!confGetter.getGlobalConf(GlobalConfKeys.enableYNPProvisioning)) {
-        nodeAgentManager.purge(nodeAgent);
-      }
-    }
     if (taskParams().sshUser != null) {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
-    Path stagingDir = Paths.get(customTmpDirectory, "node-agent-" + System.currentTimeMillis());
-    Path nodeAgentSourcePath = stagingDir.resolve(NodeAgent.NODE_AGENT_DIR);
-    List<String> command = getCommand("mkdir", "-m", "777", "-p", stagingDir.toString());
-    log.info("Creating staging directory: {}", command);
-    nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+    Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
 
-    if (!confGetter.getGlobalConf(GlobalConfKeys.enableYNPProvisioning)) {
-      nodeAgent = createNodeAgent(universe, node);
-      final NodeAgent nAgent = nodeAgent;
-      installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, nodeAgentSourcePath);
-      Set<String> dirs =
-          installerFiles.getCreateDirs().stream()
-              .map(dir -> dir.toString())
-              .collect(Collectors.toSet());
-
-      // Create the child folders as the current SSH user so that the files can be uploaded.
-      command = ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
-      log.info("Creating directories {} for node agent {}", dirs, nodeAgent.getUuid());
-      nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
-      installerFiles.getCopyFileInfos().stream()
-          .forEach(
-              f -> {
-                log.info(
-                    "Uploading {} to {} on node agent {}",
-                    f.getSourcePath(),
-                    f.getTargetPath(),
-                    nAgent.getUuid());
-                String filePerm =
-                    StringUtils.isBlank(f.getPermission()) ? "755" : f.getPermission();
-                nodeUniverseManager.uploadFileToNode(
-                    node,
-                    universe,
-                    f.getSourcePath().toString(),
-                    f.getTargetPath().toString(),
-                    filePerm,
-                    shellContext);
-              });
-    } else {
-      Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
-      installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, nodeAgentSourcePath);
-      command = getCommand("mkdir", "-m", "777", "-p", nodeAgentSourcePath.toString());
-      log.info("Creating staging directory: {}", command);
-      nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
-
-      command = getCommand("mv", ynpStagingDir.toString() + "/*", nodeAgentSourcePath.toString());
-      log.info("Moving node-agent files to relevant location: {}", command);
-      nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+    boolean shouldSetUp = !optional.isPresent();
+    if (optional.isPresent()) {
+      nodeAgent = optional.get();
+      if (nodeAgent.getState() == State.READY && !taskParams().reinstall) {
+        // Already ready and it is not a reinstall.
+        return nodeAgent;
+      }
+      if (taskParams().reinstall
+          || doesNodeAgentDirectoryExists(node, universe, shellContext, nodeAgent.getHome())
+              == false) {
+        // If it is a reinstall, we don't care the state. Always go for new setup.
+        // Also if the directory is not present, dangling node agent is found. We need to start new.
+        nodeAgentManager.purge(nodeAgent);
+        shouldSetUp = true;
+      }
     }
+
+    if (shouldSetUp) {
+      SetupYNP task = createTask(SetupYNP.class);
+      task.initialize(getSetupYNPParams(taskParams()));
+      task.run();
+      optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
+      nodeAgent = optional.get();
+    }
+
+    StringBuilder sb = new StringBuilder();
+    Path stagingDir = null, nodeAgentSourcePath = null;
+    List<String> command;
 
     Path nodeAgentHomePath = Paths.get(nodeAgent.getHome());
     Path nodeAgentInstallPath = nodeAgentHomePath.getParent();
     Path nodeAgentInstallerPath = nodeAgentHomePath.resolve("node-agent-installer.sh");
-    String certDirectoryPath = nodeAgentSourcePath.toString() + "/cert/";
+    String certDirectoryPath = nodeAgentHomePath.toString() + "/cert/";
 
     command =
         getCommand(
@@ -190,22 +190,8 @@ public class InstallNodeAgent extends AbstractTaskBase {
             .processErrors()
             .extractRunCommandOutput();
 
-    StringBuilder sb = new StringBuilder();
-    // Remove existing node agent folder.
-    sb.append("rm -rf ").append(nodeAgentHomePath);
-    // Create the node agent home directory.
-    sb.append(" && mkdir -m 755 -p ").append(nodeAgentInstallPath);
-    // Extract only the installer file.
-    sb.append(" && tar -zxf ").append(installerFiles.getPackagePath());
-    sb.append(" --strip-components=3 -C ").append(nodeAgentSourcePath);
-    sb.append(" --wildcards -- */node-agent-installer.sh");
-    // Move the node-agent source folder to the right location.
-    sb.append(" && mv -f ").append(nodeAgentSourcePath);
-    sb.append(" ").append(nodeAgentHomePath);
-    // Remove the staging directory.
-    sb.append(" && rm -rf ").append(stagingDir);
     // Change the owner to the current user.
-    sb.append(" && chown -R $(id -u):$(id -g) ").append(nodeAgentHomePath);
+    sb.append("chown -R $(id -u):$(id -g) ").append(nodeAgentHomePath);
     // Give executable permission to the installer script.
     sb.append(" && chmod +x ").append(nodeAgentInstallerPath);
     // Run the installer script.
@@ -246,7 +232,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
       nodeUniverseManager
           .runCommand(node, universe, command, shellContext)
           .processErrors("Service startup failed");
-    } catch (RuntimeException e) {
+    } catch (Exception e) {
       nodeAgent.updateLastError(new YBAError(Code.SERVICE_START_ERROR, e.getMessage()));
       throw e;
     }

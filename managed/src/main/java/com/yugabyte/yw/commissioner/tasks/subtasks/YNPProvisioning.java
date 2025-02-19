@@ -11,12 +11,10 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.NodeAgentManager;
-import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -40,9 +38,8 @@ public class YNPProvisioning extends AbstractTaskBase {
   private final NodeAgentManager nodeAgentManager;
   private final RuntimeConfGetter confGetter;
   private final CloudQueryHelper queryHelper;
-
   // Create ObjectMapper instance
-  ObjectMapper mapper = new ObjectMapper();
+  private final ObjectMapper mapper = new ObjectMapper();
   private ShellProcessContext shellContext =
       ShellProcessContext.builder().logCmdOutput(true).build();
 
@@ -71,13 +68,13 @@ public class YNPProvisioning extends AbstractTaskBase {
   }
 
   public void getProvisionArguments(
-      Universe universe, NodeDetails node, String outputFilePath, Path ynpStagingDir) {
+      Universe universe, NodeDetails node, String outputFilePath, Path nodeAgentHome) {
     ObjectNode rootNode = mapper.createObjectNode();
     ObjectNode ynpNode = mapper.createObjectNode();
     ynpNode.put("node_ip", node.cloudInfo.private_ip);
     ynpNode.put("is_install_node_agent", false);
     ynpNode.put("yb_user_id", "1994");
-    rootNode.put("ynp", ynpNode);
+    rootNode.set("ynp", ynpNode);
 
     ObjectNode extraNode = mapper.createObjectNode();
     extraNode.put("cloud_type", node.cloudInfo.cloud);
@@ -108,7 +105,7 @@ public class YNPProvisioning extends AbstractTaskBase {
       extraNode.put("disk_lun_indexes", sb.toString());
     }
     String buildRelease = nodeAgentManager.getSoftwareVersion();
-    String localPackagePath = ynpStagingDir.toString() + "/release/" + buildRelease + "/thirdparty";
+    String localPackagePath = nodeAgentHome.toString() + "/thirdparty";
     if (localPackagePath != null) {
       extraNode.put("package_path", localPackagePath);
     }
@@ -127,11 +124,11 @@ public class YNPProvisioning extends AbstractTaskBase {
     String paths = String.join(" ", devicePaths);
 
     extraNode.put("device_paths", paths);
-    rootNode.put("extra", extraNode);
+    rootNode.set("extra", extraNode);
 
     ObjectNode loggingNode = mapper.createObjectNode();
     loggingNode.put("level", "DEBUG");
-    rootNode.put("logging", loggingNode);
+    rootNode.set("logging", loggingNode);
 
     try {
       String jsonString = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(rootNode);
@@ -143,7 +140,7 @@ public class YNPProvisioning extends AbstractTaskBase {
           StandardOpenOption.CREATE,
           StandardOpenOption.TRUNCATE_EXISTING);
     } catch (Exception e) {
-      e.printStackTrace();
+      log.error("Failed parsing JSON file: {}", e.getMessage());
     }
   }
 
@@ -164,45 +161,29 @@ public class YNPProvisioning extends AbstractTaskBase {
     }
 
     StringBuilder sb = new StringBuilder();
-    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
-    Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
-    InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, ynpStagingDir);
-
-    sb.append("tar -zxf ").append(installerFiles.getPackagePath());
-    sb.append(" -C ").append(installerFiles.getPackagePath().getParent());
-    List<String> command = getCommand("/bin/bash", "-c", sb.toString());
-    log.debug("Untaring YNP package: {}", command);
-    try {
-      nodeUniverseManager
-          .runCommand(node, universe, command, shellContext)
-          .processErrors("Installation failed");
-    } catch (RuntimeException e) {
-      nodeAgent.updateLastError(new YBAError(Code.INSTALLATION_ERROR, e.getMessage()));
-      throw e;
-    }
 
     String tmpDirectory =
         confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath) + "/config.json";
-    getProvisionArguments(universe, node, tmpDirectory, ynpStagingDir);
+    getProvisionArguments(universe, node, tmpDirectory, Paths.get(nodeAgent.getHome()));
     nodeUniverseManager.uploadFileToNode(
-        node, universe, tmpDirectory, ynpStagingDir + "/", "755", shellContext);
+        node, universe, tmpDirectory, nodeAgent.getHome() + "/", "755", shellContext);
 
+    String buildRelease = nodeAgentManager.getSoftwareVersion();
     sb = new StringBuilder();
-    sb.append(" cd $(ls -dt ")
-        .append(installerFiles.getPackagePath().getParent())
-        .append("/*/ | head -n 1)");
-    sb.append(" && cd scripts/ && ");
+    sb.append("cd ").append(nodeAgent.getHome()).append(" && ");
 
-    String configFilePath = ynpStagingDir + "/config.json";
-    sb.append("sudo ./node-agent-provision.sh --extra_vars ").append(configFilePath);
-    System.out.println(sb);
-    command = getCommand("/bin/bash", "-c", sb.toString());
+    String configFilePath = nodeAgent.getHome() + "/config.json";
+    sb.append("sudo ./node-agent-provision.sh --extra_vars ")
+        .append(configFilePath)
+        .append(" --cloud_type ")
+        .append(node.cloudInfo.cloud);
+    List<String> command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running YNP installation command: {}", command);
     try {
       nodeUniverseManager
           .runCommand(node, universe, command, shellContext)
           .processErrors("Installation failed");
-    } catch (RuntimeException e) {
+    } catch (Exception e) {
       nodeAgent.updateLastError(new YBAError(Code.INSTALLATION_ERROR, e.getMessage()));
       throw e;
     }

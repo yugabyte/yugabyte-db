@@ -1577,12 +1577,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait for GFlag Sync in K8s universe",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> enableYNPProvisioning =
+  public static final ConfKeyInfo<Boolean> useAnsibleProvisioning =
       new ConfKeyInfo<>(
-          "yb.node_agent.use_ynp_provisioning",
+          "yb.node_agent.use_ansible_provisioning",
           ScopeType.GLOBAL,
-          "Use YNP for provisioning",
-          "If enabled use YNP for provisioning",
+          "Use Ansible for provisioning",
+          "If enabled use Ansible for provisioning",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableMetricsTimezone =

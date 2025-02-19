@@ -53,56 +53,12 @@ public class SetupYNP extends AbstractTaskBase {
     public String nodeAgentInstallDir;
     public String sshUser;
     public UUID customerUuid;
+    public boolean sudoAccess;
   }
 
   @Override
   protected Params taskParams() {
     return (Params) taskParams;
-  }
-
-  private void installPython(Universe universe, NodeDetails node, ShellProcessContext context) {
-    String packageManager = null;
-    List<String> command = null;
-    try {
-      command = getCommand("rpm", "--version");
-      nodeUniverseManager.runCommand(node, universe, command, context).processErrors();
-      packageManager = "rpm";
-    } catch (Exception e) {
-      try {
-        command = getCommand("dpkg", "--version");
-        nodeUniverseManager.runCommand(node, universe, command, context).processErrors();
-        packageManager = "deb";
-      } catch (Exception ex) {
-        log.debug("Unsupported package manager. Cannot determine package status.");
-      }
-    }
-
-    if (packageManager == null) {
-      return;
-    }
-
-    if (packageManager.equals("rpm")) {
-      if (node.cloudInfo.cloud.equals("gcp")) {
-        command =
-            getCommand(
-                "sudo",
-                "rpm",
-                "--import",
-                "https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux");
-        nodeUniverseManager.runCommand(node, universe, command, context).processErrors();
-      }
-      command = getCommand("sudo", "dnf", "install", "-y", "python3.11");
-    } else if (packageManager.equals("deb")) {
-      command = getCommand("sudo", "apt-get", "update");
-      nodeUniverseManager.runCommand(node, universe, command, context).processErrors();
-      command = getCommand("sudo", "apt-get", "install", "-y", "python3.11");
-    }
-
-    if (command != null) {
-      nodeUniverseManager.runCommand(node, universe, command, context).processErrors();
-      command = getCommand("sudo", "ln", "-s", "/usr/bin/python3.11", "/usr/bin/python");
-      nodeUniverseManager.runCommand(node, universe, command, context).processErrors();
-    }
   }
 
   private NodeAgent createNodeAgent(Universe universe, NodeDetails node) {
@@ -140,7 +96,7 @@ public class SetupYNP extends AbstractTaskBase {
     if (optional.isPresent()) {
       NodeAgent nodeAgent = optional.get();
       if (nodeAgent != null) {
-        return;
+        nodeAgentManager.purge(nodeAgent);
       }
     }
 
@@ -149,7 +105,6 @@ public class SetupYNP extends AbstractTaskBase {
     }
     String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
     Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
-    installPython(universe, node, shellContext);
     NodeAgent nodeAgent = createNodeAgent(universe, node);
     InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, ynpStagingDir);
     Set<String> dirs =
@@ -181,10 +136,42 @@ public class SetupYNP extends AbstractTaskBase {
                   filePerm,
                   shellContext);
             });
+
+    Path nodeAgentHomePath = Paths.get(nodeAgent.getHome());
+    Path nodeAgentInstallPath = nodeAgentHomePath.getParent();
+    Path nodeAgentInstallerPath = nodeAgentHomePath.resolve("node-agent-provision.sh");
+
+    StringBuilder sb = new StringBuilder();
+    // Remove existing node agent folder.
+    sb.append("rm -rf ").append(nodeAgentHomePath);
+    // Create the node agent home directory.
+    sb.append(" && mkdir -m 755 -p ").append(nodeAgentInstallPath);
+    // Extract only the installer file.
+    sb.append(" && mkdir -p ").append(ynpStagingDir).append("/thirdparty");
+    sb.append(" && tar -zxf ").append(installerFiles.getPackagePath());
+    sb.append(" --strip-components=2 -C ").append(ynpStagingDir).append("/thirdparty");
+
+    sb.append(" && tar -zxf ").append(installerFiles.getPackagePath());
+    sb.append(" --strip-components=3 -C ").append(ynpStagingDir);
+
+    // Move the node-agent source folder to the right location.
+    sb.append(" && mv -f ").append(ynpStagingDir);
+    sb.append(" ").append(nodeAgentHomePath);
+    command = getCommand("/bin/bash", "-c", sb.toString());
+    try {
+      nodeUniverseManager
+          .runCommand(node, universe, command, shellContext)
+          .processErrors("Extracting node-agent failed");
+    } catch (RuntimeException e) {
+      throw e;
+    }
   }
 
   private List<String> getCommand(String... args) {
     ImmutableList.Builder<String> commandBuilder = ImmutableList.builder();
+    if (taskParams().sudoAccess) {
+      commandBuilder.add("sudo", "-H");
+    }
     return commandBuilder.add(args).build();
   }
 }

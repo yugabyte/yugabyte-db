@@ -36,6 +36,9 @@ no_proxy =
 no_proxy = "{{ ynp_config['ynp'].no_proxy_list| join(', ') }}"
 {% endif %}
 node_exporter_port = {{ ynp_config['ynp'].node_exporter_port|default(9300) }}
+{% if ynp_config['yba'].instance_type.mount_points %}
+mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
+{% endif %}
 
 [Preprovision]
 
@@ -49,7 +52,6 @@ chrony_servers = "{{ ynp_config['ynp'].chrony_servers | join(', ') }}"
 [CreateYugabyteUser]
 yb_user_id = {{ ynp_config['ynp'].yb_user_id }}
 yb_user_password =
-mount_points = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 
 [ConfigureSystemd]
 user_name = yugabyte
@@ -63,7 +65,6 @@ nproc_limit = 12000
 vm_swappiness = 0
 kernel_core_pattern = {{ ynp_config['ynp'].yb_home_dir }}/cores/core_%%p_%%t_%%E
 vm_max_map_count = 262144
-mount_points = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 
 [ConfigureOs.limits]
 core = unlimited
