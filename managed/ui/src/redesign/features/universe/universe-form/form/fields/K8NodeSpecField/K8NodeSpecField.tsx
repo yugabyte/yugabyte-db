@@ -19,26 +19,26 @@ import {
 } from '../../../utils/constants';
 
 interface K8NodeSpecFieldProps {
-  isMasterField: boolean;
+  isMaster: boolean;
   isEditMode: boolean;
   disabled: boolean;
 }
 
 export const K8NodeSpecField = ({
-  isMasterField,
+  isMaster,
   isEditMode,
   disabled
 }: K8NodeSpecFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
-  const nodeTypeTag = isMasterField ? NodeType.Master : NodeType.TServer;
+  const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
-  const fieldValue = isMasterField
+  const fieldValue = isMaster
     ? useWatch({ name: MASTER_K8_NODE_SPEC_FIELD })
     : useWatch({ name: TSERVER_K8_NODE_SPEC_FIELD });
-  const UPDATE_FIELD = isMasterField ? MASTER_K8_NODE_SPEC_FIELD : TSERVER_K8_NODE_SPEC_FIELD;
+  const UPDATE_FIELD = isMaster ? MASTER_K8_NODE_SPEC_FIELD : TSERVER_K8_NODE_SPEC_FIELD;
   const convertToString = (str: string) => str?.toString() ?? '';
 
   //fetch run time configs

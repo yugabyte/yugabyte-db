@@ -1,12 +1,18 @@
-import {FC, useEffect, useRef} from 'react';
-import {useQuery} from 'react-query';
+import { FC, useEffect, useRef } from 'react';
+import { useQuery } from 'react-query';
 import clsx from 'clsx';
-import {useUpdateEffect} from 'react-use';
-import {useTranslation} from 'react-i18next';
-import {Controller, useFormContext, useWatch} from 'react-hook-form';
-import {Box, Grid, makeStyles, MenuItem, Tooltip} from '@material-ui/core';
-import {YBHelper, YBHelperVariants, YBInput, YBLabel, YBSelect} from '../../../../../../components';
-import {api, QUERY_KEY} from '../../../utils/api';
+import { useUpdateEffect } from 'react-use';
+import { useTranslation } from 'react-i18next';
+import { Controller, useFormContext, useWatch } from 'react-hook-form';
+import { Box, Grid, makeStyles, MenuItem, Tooltip } from '@material-ui/core';
+import {
+  YBHelper,
+  YBHelperVariants,
+  YBInput,
+  YBLabel,
+  YBSelect
+} from '../../../../../../components';
+import { api, QUERY_KEY } from '../../../utils/api';
 import {
   getDeviceInfoFromInstance,
   getIopsByStorageType,
@@ -17,7 +23,7 @@ import {
   getThroughputByStorageType,
   useVolumeControls
 } from './VolumeInfoFieldHelper';
-import {isEphemeralAwsStorageInstance} from '../InstanceTypeField/InstanceTypeFieldHelper';
+import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
 import {
   CloudType,
   MasterPlacementMode,
@@ -26,10 +32,8 @@ import {
   UpdateActions,
   VolumeType
 } from '../../../utils/dto';
-import {
-  IsOsPatchingEnabled
-} from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
-import {isNonEmptyArray} from '../../../../../../../utils/ObjectUtils';
+import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import { isNonEmptyArray } from '../../../../../../../utils/ObjectUtils';
 import {
   CPU_ARCHITECTURE_FIELD,
   DEVICE_INFO_FIELD,
@@ -45,7 +49,7 @@ interface VolumeInfoFieldProps {
   isEditMode: boolean;
   isPrimary: boolean;
   isViewMode: boolean;
-  isMasterField?: boolean;
+  isMaster?: boolean;
   maxVolumeCount: number;
   updateOptions: string[];
   diffInHours: number | null;
@@ -86,7 +90,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   isEditMode,
   isPrimary,
   isViewMode,
-  isMasterField,
+  isMaster,
   maxVolumeCount,
   updateOptions,
   diffInHours,
@@ -96,13 +100,13 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const classes = useStyles();
   const { t } = useTranslation();
   const instanceTypeChanged = useRef(false);
-  const dataTag = isMasterField ? 'Master' : 'TServer';
+  const dataTag = isMaster ? 'Master' : 'TServer';
 
   //watchers
-  const fieldValue = isMasterField
+  const fieldValue = isMaster
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
     : useWatch({ name: DEVICE_INFO_FIELD });
-  const instanceType = isMasterField
+  const instanceType = isMaster
     ? useWatch({ name: MASTER_INSTANCE_TYPE_FIELD })
     : useWatch({ name: INSTANCE_TYPE_FIELD });
   const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
@@ -128,7 +132,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   );
 
   // Update field is based on master or tserver field in dedicated mode
-  const UPDATE_FIELD = isMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
+  const UPDATE_FIELD = isMaster ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
@@ -364,8 +368,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderStorageType = () => {
     const isPremiumV2Storage = fieldValue.storageType === StorageType.PremiumV2_LRS;
-    const isHyperdisk = fieldValue.storageType === StorageType.Hyperdisk_Balanced ||
-        fieldValue.storageType === StorageType.Hyperdisk_Extreme;
+    const isHyperdisk =
+      fieldValue.storageType === StorageType.Hyperdisk_Balanced ||
+      fieldValue.storageType === StorageType.Hyperdisk_Extreme;
     if (
       [CloudType.gcp, CloudType.azu].includes(provider?.code) ||
       (volumeType === VolumeType.EBS && provider?.code === CloudType.aws)
@@ -395,9 +400,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                       min: 1,
                       'data-testid': `VolumeInfoField-${dataTag}-StorageTypeSelect`
                     }}
-                    helperText={
-                      renderStorageHelperText(isPremiumV2Storage, isHyperdisk)
-                    }
+                    helperText={renderStorageHelperText(isPremiumV2Storage, isHyperdisk)}
                     onChange={(event) =>
                       onStorageTypeChanged((event?.target.value as unknown) as StorageType)
                     }
@@ -419,18 +422,20 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   };
 
   const renderStorageHelperText = (isPremiumV2Storage: boolean, isHyperdisk: boolean) => {
-    if (isHyperdisk) return (
+    if (isHyperdisk)
+      return (
         <YBHelper variant={YBHelperVariants.warning}>
           {t('universeForm.instanceConfig.hyperdiskStorage')}
         </YBHelper>
-    )
-    if (isPremiumV2Storage) return (
+      );
+    if (isPremiumV2Storage)
+      return (
         <YBHelper variant={YBHelperVariants.warning}>
           {t('universeForm.instanceConfig.premiumv2Storage')}
         </YBHelper>
-    )
+      );
     return null;
-  }
+  };
 
   const renderDiskIops = () => {
     if (
@@ -472,10 +477,12 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderThroughput = () => {
     if (
-      ![StorageType.GP3, StorageType.UltraSSD_LRS, StorageType.PremiumV2_LRS,
-        StorageType.Hyperdisk_Balanced].includes(
-        fieldValue.storageType
-      )
+      ![
+        StorageType.GP3,
+        StorageType.UltraSSD_LRS,
+        StorageType.PremiumV2_LRS,
+        StorageType.Hyperdisk_Balanced
+      ].includes(fieldValue.storageType)
     )
       return null;
     return (
