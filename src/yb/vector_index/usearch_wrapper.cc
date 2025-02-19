@@ -164,7 +164,8 @@ class UsearchIndex :
   Status DoInsert(VectorId vector_id, const Vector& v) {
     auto add_result = index_.add(vector_id, v.data());
     RSTATUS_DCHECK(
-        add_result, RuntimeError, "Failed to add a vector: $0", add_result.error.release());
+        add_result, RuntimeError, "Failed to add a vector $0: $1", vector_id,
+        add_result.error.release());
     return Status::OK();
   }
 

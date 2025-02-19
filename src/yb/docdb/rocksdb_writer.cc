@@ -716,22 +716,21 @@ Status ApplyIntentsContext::ProcessVectorIndexes(
       auto column_id = VERIFY_RESULT(ColumnId::FullyDecode(
           key.WithoutPrefix(sizes.doc_key_size + 1)));
       // We expect small amount of vector indexes, usually 1. So it is faster to iterate over them.
-      bool added_to_vector_index = false;
+      bool need_reverse_entry = apply_to_storages_.TestRegularDB();
       for (size_t i = 0; i != vector_indexes_->size(); ++i) {
-        if (!ApplyToVectorIndex(i)) {
-          continue;
-        }
         const auto& vector_index = *(*vector_indexes_)[i];
         auto table_key_prefix = vector_index.indexed_table_key_prefix();
         if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id &&
             commit_ht_ > vector_index.hybrid_time()) {
-          vector_index_batches_[i].push_back(VectorIndexInsertEntry {
-            .value = ValueBuffer(value.WithoutPrefix(1)),
-          });
-          if (!added_to_vector_index) {
+          if (ApplyToVectorIndex(i)) {
+            vector_index_batches_[i].push_back(VectorIndexInsertEntry {
+              .value = ValueBuffer(value.WithoutPrefix(1)),
+            });
+          }
+          if (need_reverse_entry) {
             auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
             AddVectorIndexReverseEntry(handler, ybctid, value, commit_ht_);
-            added_to_vector_index = true;
+            need_reverse_entry = false;
           }
         }
       }
@@ -783,12 +782,10 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
 
   boost::dynamic_bitset<> columns_added_to_vector_index;
   for (size_t i = 0; i != vector_indexes_->size(); ++i) {
-    if (!ApplyToVectorIndex(i)) {
-      continue;
-    }
     const auto& vector_index = *(*vector_indexes_)[i];
     auto vector_index_table_key_prefix = vector_index.indexed_table_key_prefix();
-    if (table_key_prefix != vector_index_table_key_prefix) {
+    if (table_key_prefix != vector_index_table_key_prefix ||
+        commit_ht_ <= vector_index.hybrid_time()) {
       continue;
     }
     auto column_value = decoder.FetchValue(vector_index.column_id());
@@ -798,15 +795,19 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
     }
 
     auto ybctid = key.WithoutPrefix(table_key_prefix.size());
-    vector_index_batches_[i].push_back(VectorIndexInsertEntry {
-      .value = ValueBuffer(column_value->WithoutPrefix(1)),
-    });
+    if (ApplyToVectorIndex(i)) {
+      vector_index_batches_[i].push_back(VectorIndexInsertEntry {
+        .value = ValueBuffer(column_value->WithoutPrefix(1)),
+      });
+    }
 
-    size_t column_index = schema_packing_->GetIndex(vector_index.column_id());
-    columns_added_to_vector_index.resize(
-        std::max(columns_added_to_vector_index.size(), column_index + 1));
-    if (!columns_added_to_vector_index.test_set(column_index)) {
-      AddVectorIndexReverseEntry(handler, ybctid, *column_value, commit_ht_);
+    if (apply_to_storages_.TestRegularDB()) {
+      size_t column_index = schema_packing_->GetIndex(vector_index.column_id());
+      columns_added_to_vector_index.resize(
+          std::max(columns_added_to_vector_index.size(), column_index + 1));
+      if (!columns_added_to_vector_index.test_set(column_index)) {
+        AddVectorIndexReverseEntry(handler, ybctid, *column_value, commit_ht_);
+      }
     }
   }
   return Status::OK();
