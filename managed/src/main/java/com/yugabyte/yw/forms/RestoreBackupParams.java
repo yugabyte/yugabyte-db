@@ -54,12 +54,16 @@ public class RestoreBackupParams extends UniverseTaskParams {
   private Map<String, YbcBackupResponse> successMarkerMap = new HashMap<>();
 
   // Intermediate states to resume ybc backups
+  @ApiModelProperty(value = "Prefix UUID")
   public UUID prefixUUID;
 
+  @ApiModelProperty(value = "Current index", hidden = true)
   public int currentIdx;
 
+  @ApiModelProperty(value = "Current ybc task id", hidden = true)
   public String currentYbcTaskId;
 
+  @ApiModelProperty(value = "Node IP")
   public String nodeIp;
 
   // Should backup script enable verbose logging.
