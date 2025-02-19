@@ -2,6 +2,19 @@ SET citus.next_shard_id TO 2000000;
 SET documentdb.next_collection_id TO 20000;
 SET documentdb.next_collection_index_id TO 20000;
 SET search_path TO documentdb_api_catalog, documentdb_core, documentdb_data, public;
+-- make sure jobs are scheduled and disable it to avoid flakiness on the test as it could run on its schedule and delete documents before we run our commands in the test
+select schedule, command, active from cron.job where jobname like '%ttl_task%';
+ schedule  |                       command                       | active 
+---------------------------------------------------------------------
+ * * * * * | CALL documentdb_api_internal.delete_expired_rows(); | t
+(1 row)
+
+select cron.unschedule(jobid) from cron.job where jobname like '%ttl_task%';
+ unschedule 
+---------------------------------------------------------------------
+ t
+(1 row)
+
 -- 1. Populate collection with a set of documents with different combination of $date fields --
 SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 0, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
 NOTICE:  creating collection
@@ -92,7 +105,7 @@ SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', '
          20000 |    20001 | { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } | t
 (2 rows)
 
--- 3. Call ttl purge procedure with a batch size of 2
+-- 3. Call ttl purge procedure with a batch size of 10
 CALL documentdb_api_internal.delete_expired_rows(10);
 -- 4.a. Check what documents are left after purging
 SELECT shard_key_value, object_id, document  from documentdb_api.collection('db', 'ttlcoll') order by object_id;
@@ -111,7 +124,7 @@ EXPLAIN(costs off) SELECT object_id FROM documentdb_data.documents_20000
 		WHERE bson_dollar_eq(document, '{ "ttl" : { "$date" : { "$numberLong" : "100" } } }'::bson)
         LIMIT 100;
 $Q$);
-                                                            mask_plan_id_from_distributed_subplan                                                             
+                                                                 mask_plan_id_from_distributed_subplan                                                                  
 ---------------------------------------------------------------------
  Limit
    ->  Custom Scan (Citus Adaptive)
@@ -251,7 +264,7 @@ Set citus.log_remote_commands to on; -- Will print Citus rewrites of the queries
 Set citus.log_local_commands to on; -- Will print the local queries 
 set local documentdb.SingleTTLTaskTimeBudget to 1;
 CALL documentdb_api_internal.delete_expired_rows(0); -- To test the sql query, it won't delete any data
-NOTICE:  executing the command locally: SELECT idx.collection_id, idx.index_id, (idx.index_spec).index_key AS key, (idx.index_spec).index_pfe AS pfe, (trunc((EXTRACT(epoch FROM now()) OPERATOR(pg_catalog.*) (1000)::numeric), 0))::bigint AS currentdatetime, (idx.index_spec).index_expire_after_seconds AS expiry, coll.shard_key, dist.shardid FROM documentdb_api_catalog.collection_indexes_102009 idx, documentdb_api_catalog.collections_102008 coll, pg_dist_shard dist, pg_dist_placement placement, pg_dist_local_group lg WHERE (idx.index_is_valid AND ((idx.index_spec).index_expire_after_seconds OPERATOR(pg_catalog.>=) 0) AND (idx.collection_id OPERATOR(pg_catalog.=) coll.collection_id) AND ((dist.logicalrelid)::oid OPERATOR(pg_catalog.=) ((('documents_'::text OPERATOR(pg_catalog.||) coll.collection_id))::regclass)::oid) AND (placement.shardid OPERATOR(pg_catalog.=) dist.shardid) AND (placement.groupid OPERATOR(pg_catalog.=) lg.groupid) AND ((dist.shardid OPERATOR(pg_catalog.=) get_shard_id_for_distribution_column(dist.logicalrelid, coll.collection_id)) OR (coll.shard_key IS NOT NULL)))
+NOTICE:  executing the command locally: SELECT index_id, collection_id, (index_spec).index_key AS index_key, (index_spec).index_pfe AS index_pfe, (index_spec).index_expire_after_seconds AS index_expire_after_seconds FROM documentdb_api_catalog.collection_indexes_102009 collection_indexes WHERE (index_is_valid AND ((index_spec).index_expire_after_seconds OPERATOR(pg_catalog.>=) 0)) ORDER BY collection_id, index_id
 Set citus.log_remote_commands to off;
 Set citus.log_local_commands to off;
 END;

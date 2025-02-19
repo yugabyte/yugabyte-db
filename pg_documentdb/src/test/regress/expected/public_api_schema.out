@@ -1,4 +1,4 @@
--- show all functions exported in documentdb_api.
+-- show all functions, procedures, aggregates and window aggregates exported in documentdb_api.
 \df documentdb_api.*
                                                                                                                                                             List of functions
      Schema     |                Name                |   Result data type   |                                                                                                                 Argument data types                                                                                                                 | Type 
@@ -327,7 +327,6 @@
  documentdb_api_internal | cursor_state                                 | boolean                    | documentdb_core.bson, documentdb_core.bson                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | func
  documentdb_api_internal | db_stats_worker                              | documentdb_core.bson       | p_collection_ids bigint[]                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | func
  documentdb_api_internal | delete_expired_rows                          |                            | IN p_batch_size integer DEFAULT '-1'::integer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | proc
- documentdb_api_internal | delete_expired_rows_for_index                | bigint                     | collection_id bigint, index_id bigint, index_key documentdb_core.bson, index_pfe documentdb_core.bson, current_datetime bigint, index_expiry integer, ttl_batch_size integer, shard_id bigint                                                                                                                                                                                                                                                                                                                                                   | func
  documentdb_api_internal | delete_one                                   | record                     | p_collection_id bigint, p_shard_key_value bigint, p_query documentdb_core.bson, p_sort documentdb_core.bson, p_return_document boolean, p_return_fields documentdb_core.bson, p_transaction_id text, OUT o_is_row_deleted boolean, OUT o_result_deleted_document documentdb_core.bson                                                                                                                                                                                                                                                           | func
  documentdb_api_internal | delete_worker                                | documentdb_core.bson       | p_collection_id bigint, p_shard_key_value bigint, p_shard_oid regclass, p_update_internal_spec documentdb_core.bson, p_update_internal_docs documentdb_core.bsonsequence, p_transaction_id text                                                                                                                                                                                                                                                                                                                                                 | func
  documentdb_api_internal | documentdb_core_bson_to_bson                 | documentdb_core.bson       | documentdb_core.bson                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | func
@@ -374,75 +373,12 @@
  documentdb_api_internal | update_one                                   | record                     | p_collection_id bigint, p_shard_key_value bigint, p_query documentdb_core.bson, p_update documentdb_core.bson, p_shard_key documentdb_core.bson, p_is_upsert boolean, p_sort documentdb_core.bson, p_return_old_or_new boolean, p_return_fields documentdb_core.bson, p_array_filters documentdb_core.bson, p_transaction_id text, OUT o_is_row_updated boolean, OUT o_update_skipped boolean, OUT o_is_retry boolean, OUT o_reinsert_document documentdb_core.bson, OUT o_upserted_object_id bytea, OUT o_result_document documentdb_core.bson | func
  documentdb_api_internal | update_worker                                | documentdb_core.bson       | p_collection_id bigint, p_shard_key_value bigint, p_shard_oid regclass, p_update_internal_spec documentdb_core.bson, p_update_internal_docs documentdb_core.bsonsequence, p_transaction_id text                                                                                                                                                                                                                                                                                                                                                 | func
  documentdb_api_internal | validate_dbname                              | void                       | dbname text                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | func
-(200 rows)
+(199 rows)
 
 \df documentdb_data.*
                        List of functions
  Schema | Name | Result data type | Argument data types | Type 
 --------+------+------------------+---------------------+------
-(0 rows)
-
--- show all aggregates exported
-\da+ documentdb_api.*
-                     List of aggregate functions
- Schema | Name | Result data type | Argument data types | Description 
---------+------+------------------+---------------------+-------------
-(0 rows)
-
-\da+ documentdb_api_catalog.*
-                                                       List of aggregate functions
-         Schema         |        Name        |   Result data type   |                 Argument data types                  | Description 
-------------------------+--------------------+----------------------+------------------------------------------------------+-------------
- documentdb_api_catalog | bson_array_agg     | documentdb_core.bson | documentdb_core.bson, text                           | 
- documentdb_api_catalog | bson_array_agg     | documentdb_core.bson | documentdb_core.bson, text, boolean                  | 
- documentdb_api_catalog | bson_distinct_agg  | documentdb_core.bson | documentdb_core.bson                                 | 
- documentdb_api_catalog | bson_object_agg    | documentdb_core.bson | documentdb_core.bson                                 | 
- documentdb_api_catalog | bson_out           | documentdb_core.bson | documentdb_core.bson, text, text, text, text         | 
- documentdb_api_catalog | bsonaverage        | documentdb_core.bson | documentdb_core.bson                                 | 
- documentdb_api_catalog | bsonfirst          | documentdb_core.bson | documentdb_core.bson, documentdb_core.bson[]         | 
- documentdb_api_catalog | bsonfirstn         | documentdb_core.bson | documentdb_core.bson, bigint, documentdb_core.bson[] | 
- documentdb_api_catalog | bsonfirstnonsorted | documentdb_core.bson | documentdb_core.bson, bigint                         | 
- documentdb_api_catalog | bsonfirstonsorted  | documentdb_core.bson | documentdb_core.bson                                 | 
- documentdb_api_catalog | bsonlast           | documentdb_core.bson | documentdb_core.bson, documentdb_core.bson[]         | 
- documentdb_api_catalog | bsonlastn          | documentdb_core.bson | documentdb_core.bson, bigint, documentdb_core.bson[] | 
- documentdb_api_catalog | bsonlastnonsorted  | documentdb_core.bson | documentdb_core.bson, bigint                         | 
- documentdb_api_catalog | bsonlastonsorted   | documentdb_core.bson | documentdb_core.bson                                 | 
- documentdb_api_catalog | bsonmax            | documentdb_core.bson | documentdb_core.bson                                 | 
- documentdb_api_catalog | bsonmin            | documentdb_core.bson | documentdb_core.bson                                 | 
- documentdb_api_catalog | bsonsum            | documentdb_core.bson | documentdb_core.bson                                 | 
-(17 rows)
-
-\da+ documentdb_api_internal.*
-                                                                       List of aggregate functions
-         Schema          |             Name             |   Result data type   |                            Argument data types                             | Description 
--------------------------+------------------------------+----------------------+----------------------------------------------------------------------------+-------------
- documentdb_api_internal | bson_add_to_set              | documentdb_core.bson | documentdb_core.bson                                                       | 
- documentdb_api_internal | bson_merge_objects           | documentdb_core.bson | documentdb_core.bson, bigint, documentdb_core.bson[], documentdb_core.bson | 
- documentdb_api_internal | bson_merge_objects_on_sorted | documentdb_core.bson | documentdb_core.bson                                                       | 
- documentdb_api_internal | bsoncovariancepop            | documentdb_core.bson | documentdb_core.bson, documentdb_core.bson                                 | 
- documentdb_api_internal | bsoncovariancesamp           | documentdb_core.bson | documentdb_core.bson, documentdb_core.bson                                 | 
- documentdb_api_internal | bsonderivative               | documentdb_core.bson | documentdb_core.bson, documentdb_core.bson, bigint                         | 
- documentdb_api_internal | bsonfirst                    | documentdb_core.bson | documentdb_core.bson, documentdb_core.bson[], documentdb_core.bson         | 
- documentdb_api_internal | bsonfirstn                   | documentdb_core.bson | documentdb_core.bson, bigint, documentdb_core.bson[], documentdb_core.bson | 
- documentdb_api_internal | bsonfirstnonsorted           | documentdb_core.bson | documentdb_core.bson, bigint, documentdb_core.bson                         | 
- documentdb_api_internal | bsonfirstonsorted            | documentdb_core.bson | documentdb_core.bson, documentdb_core.bson                                 | 
- documentdb_api_internal | bsonintegral                 | documentdb_core.bson | documentdb_core.bson, documentdb_core.bson, bigint                         | 
- documentdb_api_internal | bsonlast                     | documentdb_core.bson | documentdb_core.bson, documentdb_core.bson[], documentdb_core.bson         | 
- documentdb_api_internal | bsonlastn                    | documentdb_core.bson | documentdb_core.bson, bigint, documentdb_core.bson[], documentdb_core.bson | 
- documentdb_api_internal | bsonlastnonsorted            | documentdb_core.bson | documentdb_core.bson, bigint, documentdb_core.bson                         | 
- documentdb_api_internal | bsonlastonsorted             | documentdb_core.bson | documentdb_core.bson, documentdb_core.bson                                 | 
- documentdb_api_internal | bsonmaxn                     | documentdb_core.bson | documentdb_core.bson                                                       | 
- documentdb_api_internal | bsonmedian                   | documentdb_core.bson | documentdb_core.bson, integer, documentdb_core.bson                        | 
- documentdb_api_internal | bsonminn                     | documentdb_core.bson | documentdb_core.bson                                                       | 
- documentdb_api_internal | bsonpercentile               | documentdb_core.bson | documentdb_core.bson, integer, documentdb_core.bson                        | 
- documentdb_api_internal | bsonstddevpop                | documentdb_core.bson | documentdb_core.bson                                                       | 
- documentdb_api_internal | bsonstddevsamp               | documentdb_core.bson | documentdb_core.bson                                                       | 
-(21 rows)
-
-\da+ documentdb_data.*
-                     List of aggregate functions
- Schema | Name | Result data type | Argument data types | Description 
---------+------+------------------+---------------------+-------------
 (0 rows)
 
 -- Access methods + Operator families

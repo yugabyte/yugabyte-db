@@ -25,7 +25,6 @@
 #include "utils/hashset_utils.h"
 #include "utils/version_utils.h"
 #include "commands/parse_error.h"
-#include "commands/coll_stats.h"
 #include "commands/commands_common.h"
 #include "commands/diagnostic_commands_common.h"
 #include "api_hooks.h"
@@ -673,37 +672,6 @@ CollStatsWorker(void *fcinfoPointer)
 	}
 
 	return PgbsonWriterGetPgbson(&writer);
-}
-
-
-/*
- * Given a mongo collection, retrieves the shard OIDs and shard names that are associated with
- * that table on the current node.
- */
-bool
-GetMongoCollectionShardOidsAndNames(MongoCollection *collection, ArrayType **shardIdArray,
-									ArrayType **shardNames)
-{
-	Datum *resultDatums = NULL;
-	Datum *resultNameDatums = NULL;
-	int32_t shardCount = 0;
-	GetShardIdsAndNamesForCollection(collection->relationId, collection->tableName,
-									 &resultDatums, &resultNameDatums, &shardCount);
-
-	if (shardCount == 0)
-	{
-		return false;
-	}
-
-	*shardIdArray = construct_array(resultDatums, shardCount, OIDOID,
-									sizeof(Oid), true,
-									TYPALIGN_INT);
-	*shardNames = construct_array(resultNameDatums, shardCount, TEXTOID, -1,
-								  false,
-								  TYPALIGN_INT);
-	pfree(resultDatums);
-	pfree(resultNameDatums);
-	return true;
 }
 
 

@@ -14,6 +14,7 @@
 #include <storage/lockdefs.h>
 #include <access/attnum.h>
 #include <utils/uuid.h>
+#include <utils/array.h>
 
 #include "io/bson_core.h"
 
@@ -259,4 +260,8 @@ void SetUnshardedColocationData(text *databaseDatum, const char **shardingColumn
 
 void CreateRetryTable(char *retryTableName, char *colocateWith, const
 					  char *distributionColumnUsed, int shardCount);
+
+bool GetMongoCollectionShardOidsAndNames(MongoCollection *collection,
+										 ArrayType **shardIdArray,
+										 ArrayType **shardNames);
 #endif

@@ -500,6 +500,37 @@ GetMongoCollectionByNameDatum(Datum databaseNameDatum, Datum collectionNameDatum
 
 
 /*
+ * Given a collection, retrieves the shard OIDs and shard names that are associated with
+ * that table on the current node.
+ */
+bool
+GetMongoCollectionShardOidsAndNames(MongoCollection *collection, ArrayType **shardIdArray,
+									ArrayType **shardNames)
+{
+	Datum *resultDatums = NULL;
+	Datum *resultNameDatums = NULL;
+	int32_t shardCount = 0;
+	GetShardIdsAndNamesForCollection(collection->relationId, collection->tableName,
+									 &resultDatums, &resultNameDatums, &shardCount);
+
+	if (shardCount == 0)
+	{
+		return false;
+	}
+
+	*shardIdArray = construct_array(resultDatums, shardCount, OIDOID,
+									sizeof(Oid), true,
+									TYPALIGN_INT);
+	*shardNames = construct_array(resultNameDatums, shardCount, TEXTOID, -1,
+								  false,
+								  TYPALIGN_INT);
+	pfree(resultDatums);
+	pfree(resultNameDatums);
+	return true;
+}
+
+
+/*
  * Given a collection, tries to get a shardOID if one is applicable (there is
  * a single shard corresponding to that collection) and if it's available
  * locally. If such a shard is found, locks it with the given lock mode

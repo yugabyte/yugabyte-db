@@ -19,7 +19,6 @@
 #include "utils/query_utils.h"
 #include "metadata/index.h"
 #include "utils/hashset_utils.h"
-#include "commands/coll_stats.h"
 #include "planner/documentdb_planner.h"
 #include "commands/diagnostic_commands_common.h"
 #include "api_hooks.h"

@@ -4,6 +4,11 @@ SET documentdb.next_collection_index_id TO 20000;
 
 SET search_path TO documentdb_api_catalog, documentdb_core, documentdb_data, public;
 
+-- make sure jobs are scheduled and disable it to avoid flakiness on the test as it could run on its schedule and delete documents before we run our commands in the test
+select schedule, command, active from cron.job where jobname like '%ttl_task%';
+
+select cron.unschedule(jobid) from cron.job where jobname like '%ttl_task%';
+
 -- 1. Populate collection with a set of documents with different combination of $date fields --
 SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 0, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
 SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 1, "ttl" : { "$date": { "$numberLong": "0" } } }', NULL);
@@ -29,7 +34,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIn
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll" }') ORDER BY 1;
 SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'ttlcoll') ORDER BY collection_id, index_id;
 
--- 3. Call ttl purge procedure with a batch size of 2
+-- 3. Call ttl purge procedure with a batch size of 10
 CALL documentdb_api_internal.delete_expired_rows(10);
 
 -- 4.a. Check what documents are left after purging

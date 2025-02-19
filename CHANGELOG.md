@@ -2,6 +2,7 @@
 * Support index pushdown for vector search queries *[Bugfix]*
 * Support exact search for vector search queries *[Feature]*
 * Inline $match with let in $lookup pipelines as JOIN Filter *[Perf]*
+* Support TTL indexes *[Bugfix]* (#34)
 
 ### documentdb v0.101-0 (February 12, 2025) ###
 * Push $graphlookup recursive CTE JOIN filters to index *[Perf]*

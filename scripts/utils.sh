@@ -120,7 +120,7 @@ function SetupPostgresConfigurations()
 {
   local installdir=$1;
   local preloadLibraries=$2;
-  requiredLibraries="pg_cron, ${preloadLibraries}";
+  requiredLibraries="citus, pg_cron, ${preloadLibraries}";
   echo shared_preload_libraries = \'$requiredLibraries\' | tee -a $installdir/postgresql.conf
   echo cron.database_name = \'postgres\' | tee -a $installdir/postgresql.conf
   echo ssl = off | tee -a $installdir/postgresql.conf

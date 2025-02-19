@@ -754,8 +754,8 @@ NOTICE:  creating collection
 
 --Reset -- so that other tests do not get impacted
 SELECT change_index_jobs_schema.change_index_jobs_status(false);
-NOTICE:  Processing job_id: 1
 NOTICE:  Processing job_id: 2
+NOTICE:  Processing job_id: 3
  change_index_jobs_status 
 ---------------------------------------------------------------------
  
