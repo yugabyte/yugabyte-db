@@ -465,6 +465,10 @@ TEST_P(PgVectorIndexTest, BootstrapFlushedIntentsDB) {
   TestRestart(tablet::FlushFlags::kIntents);
 }
 
+TEST_P(PgVectorIndexTest, BootstrapFlushedVectorIndexes) {
+  TestRestart(tablet::FlushFlags::kVectorIndexes);
+}
+
 TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
   constexpr size_t kNumRows = 64;
   const std::string kDistantVector = "[100, 500, 9000]";
