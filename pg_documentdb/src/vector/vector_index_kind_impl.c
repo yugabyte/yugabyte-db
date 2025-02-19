@@ -86,10 +86,6 @@ static pgbson * ParseIVFIndexSearchSpec(const VectorSearchOptions *vectorSearchO
 
 static pgbson * ParseHNSWIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions);
 
-static Oid GetIVFSimilarityOpOidByFamilyOid(Oid operatorFamilyOid);
-
-static Oid GetHNSWSimilarityOpOidByFamilyOid(Oid operatorFamilyOid);
-
 static void SetIVFSearchParametersToGUC(const pgbson *searchParamBson);
 
 static void SetHNSWSearchParametersToGUC(const pgbson *searchParamBson);
@@ -115,7 +111,6 @@ static VectorIndexDefinition VectorIndexDefinitionArray[] = {
 		.generateIndexParamStrFunc = &GenerateIVFIndexParamStr,
 		.parseIndexSearchSpecFunc = &ParseIVFIndexSearchSpec,
 		.getIndexAccessMethodOidFunc = &PgVectorIvfFlatIndexAmId,
-		.getSimilarityOpOidByFamilyOidFunc = &GetIVFSimilarityOpOidByFamilyOid,
 		.setSearchParametersToGUCFunc = &SetIVFSearchParametersToGUC,
 		.getDefaultSearchParamBsonFunc = &GetIVFDefaultSearchParamBson,
 		.calculateSearchParamBsonFunc = &CalculateIVFSearchParamBson
@@ -128,7 +123,6 @@ static VectorIndexDefinition VectorIndexDefinitionArray[] = {
 		.generateIndexParamStrFunc = &GenerateHNSWIndexParamStr,
 		.parseIndexSearchSpecFunc = &ParseHNSWIndexSearchSpec,
 		.getIndexAccessMethodOidFunc = &PgVectorHNSWIndexAmId,
-		.getSimilarityOpOidByFamilyOidFunc = &GetHNSWSimilarityOpOidByFamilyOid,
 		.setSearchParametersToGUCFunc = &SetHNSWSearchParametersToGUC,
 		.getDefaultSearchParamBsonFunc = &GetHNSWDefaultSearchParamBson,
 		.calculateSearchParamBsonFunc = &CalculateHNSWSearchParamBson
@@ -213,13 +207,6 @@ RegisterVectorIndexExtension(const VectorIndexDefinition *extensibleDefinition)
 	{
 		ereport(ERROR, (errmsg("No parsing function for search index kind %s",
 							   extensibleDefinition->kindName)));
-	}
-
-	if (extensibleDefinition->getSimilarityOpOidByFamilyOidFunc == NULL)
-	{
-		ereport(ERROR, (errmsg(
-							"Get OpFamily function not specified for search index kind %s",
-							extensibleDefinition->kindName)));
 	}
 
 	if (extensibleDefinition->setSearchParametersToGUCFunc == NULL)
@@ -606,60 +593,6 @@ ParseHNSWIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 	}
 
 	return searchSpec;
-}
-
-
-static Oid
-GetIVFSimilarityOpOidByFamilyOid(Oid operatorFamilyOid)
-{
-	if (operatorFamilyOid == VectorIVFFlatCosineSimilarityOperatorFamilyId())
-	{
-		return VectorCosineSimilaritySearchOperatorId();
-	}
-	else if (operatorFamilyOid == VectorIVFFlatL2SimilarityOperatorFamilyId())
-	{
-		return VectorL2SimilaritySearchOperatorId();
-	}
-	else if (operatorFamilyOid == VectorIVFFlatIPSimilarityOperatorFamilyId())
-	{
-		return VectorIPSimilaritySearchOperatorId();
-	}
-	else
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
-						errmsg(
-							"Unsupported vector search operator for ivf index"),
-						errdetail_log(
-							"Vector search operator for ivf index, operatorFamilyOid: %u",
-							operatorFamilyOid)));
-	}
-}
-
-
-static Oid
-GetHNSWSimilarityOpOidByFamilyOid(Oid operatorFamilyOid)
-{
-	if (operatorFamilyOid == VectorHNSWCosineSimilarityOperatorFamilyId())
-	{
-		return VectorCosineSimilaritySearchOperatorId();
-	}
-	else if (operatorFamilyOid == VectorHNSWL2SimilarityOperatorFamilyId())
-	{
-		return VectorL2SimilaritySearchOperatorId();
-	}
-	else if (operatorFamilyOid == VectorHNSWIPSimilarityOperatorFamilyId())
-	{
-		return VectorIPSimilaritySearchOperatorId();
-	}
-	else
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
-						errmsg(
-							"Unsupported vector search operator for hnsw index"),
-						errdetail_log(
-							"Unsupported vector search operator for hnsw index, operatorFamilyOid: %u",
-							operatorFamilyOid)));
-	}
 }
 
 

@@ -15,6 +15,8 @@
 
 #include "io/bson_core.h"
 
+typedef struct VectorIndexDefinition VectorIndexDefinition;
+
 /*
  * The distance metric for a vector based index.
  */
@@ -95,6 +97,12 @@ typedef struct VectorSearchOptions
 
 	/* The vector access method oid */
 	Oid vectorAccessMethodOid;
+
+	/* whether to use exact search or ann search */
+	bool exactSearch;
+
+	/* The vector index definition */
+	const VectorIndexDefinition *vectorIndexDef;
 } VectorSearchOptions;
 
 /*
@@ -118,8 +126,6 @@ typedef pgbson *(*ParseIndexSearchSpecFunc)(const
  * Function pointers for planner and custom scan
  */
 typedef Oid (*GetIndexAccessMethodOidFunc)(void);
-
-typedef Oid (*GetSimilarityOpOidByFamilyOidFunc)(Oid operatorFamilyOid);
 
 /*
  * Function pointers for setting search parameters to GUC on worker.
@@ -154,7 +160,7 @@ typedef pgbson *(*CalculateSearchParamBsonFunc)(bytea *indexOptions, Cardinality
  *  3.2 Getting the default search parameter bson.
  *  3.3 Calculating search parameter based on the number of rows and index options.
  */
-typedef struct
+typedef struct VectorIndexDefinition
 {
 	const char *kindName;
 
@@ -169,8 +175,6 @@ typedef struct
 	ParseIndexSearchSpecFunc parseIndexSearchSpecFunc;
 
 	GetIndexAccessMethodOidFunc getIndexAccessMethodOidFunc;
-
-	GetSimilarityOpOidByFamilyOidFunc getSimilarityOpOidByFamilyOidFunc;
 
 	SetSearchParametersToGUCFunc setSearchParametersToGUCFunc;
 

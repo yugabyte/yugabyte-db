@@ -289,6 +289,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_STAGE_SEARCH] = "search",
 	[FEATURE_STAGE_SEARCH_VECTOR] = "search_vector",
 	[FEATURE_STAGE_SEARCH_VECTOR_DISKANN] = "search_vector_diskann",
+	[FEATURE_STAGE_SEARCH_VECTOR_EXACT] = "search_vector_exact",
 	[FEATURE_STAGE_SEARCH_VECTOR_GEN_EMBEDDINGS] = "search_vector_gen_embeddings",
 	[FEATURE_STAGE_SEARCH_VECTOR_HNSW] = "search_vector_hnsw",
 	[FEATURE_STAGE_SEARCH_VECTOR_IVFFLAT] = "search_vector_ivfflat",

@@ -828,20 +828,22 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
-                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit
-   Output: (documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)))), ((public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
-   ->  Sort
-         Output: (documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)))), ((public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
-         Sort Key: ((public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
-         ->  Custom Scan (DocumentDBApiQueryScan)
-               Output: documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))), (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
-               CosmosSearch Custom Params: { "nProbes" : 1 }
-               ->  Seq Scan on documentdb_data.documents_3500 collection
-                     Output: document
-                     Filter: (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)
-(11 rows)
+                                                                                                                               QUERY PLAN                                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: documentdb_api_internal.bson_document_add_score_field(agg_stage_0.document, ('1'::double precision - (public.vector(documentdb_api_internal.bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)))
+   ->  Limit
+         Output: collection.document, ((public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+         ->  Sort
+               Output: collection.document, ((public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+               Sort Key: ((public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+               ->  Custom Scan (DocumentDBApiQueryScan)
+                     Output: collection.document, (public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
+                     CosmosSearch Custom Params: { "nProbes" : 1 }
+                     ->  Seq Scan on documentdb_data.documents_3500 collection
+                           Output: collection.document
+                           Filter: (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)
+(13 rows)
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v", "filter": {"a": "some sentence"} }  } } ], "cursor": {} }');
 ERROR:  $filter is not supported for vector search yet.
@@ -1476,19 +1478,20 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 EXPLAIN (COSTS OFF)SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_empty_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v", "nProbes": 5 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
-                                                                                                      QUERY PLAN                                                                                                      
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit
-   ->  Sort
-         Sort Key: ((public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
-         ->  Custom Scan (DocumentDBApiQueryScan)
-               CosmosSearch Custom Params: { "nProbes" : 5 }
-               ->  Bitmap Heap Scan on documents_3504 collection
-                     Recheck Cond: (shard_key_value = '3504'::bigint)
-                     Filter: (documentdb_api_internal.bson_search_param(document, '{ "nProbes" : { "$numberInt" : "5" } }'::bson) AND (documentdb_api_internal.bson_extract_vector(document, 'v'::text) IS NOT NULL))
-                     ->  Bitmap Index Scan on _id_
-                           Index Cond: (shard_key_value = '3504'::bigint)
-(10 rows)
+                                                                                                         QUERY PLAN                                                                                                         
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   ->  Limit
+         ->  Sort
+               Sort Key: ((public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+               ->  Custom Scan (DocumentDBApiQueryScan)
+                     CosmosSearch Custom Params: { "nProbes" : 5 }
+                     ->  Bitmap Heap Scan on documents_3504 collection
+                           Recheck Cond: (shard_key_value = '3504'::bigint)
+                           Filter: (documentdb_api_internal.bson_search_param(document, '{ "nProbes" : { "$numberInt" : "5" } }'::bson) AND (documentdb_api_internal.bson_extract_vector(document, 'v'::text) IS NOT NULL))
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (shard_key_value = '3504'::bigint)
+(11 rows)
 
 COMMIT;
 ANALYZE;
@@ -1503,17 +1506,18 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 EXPLAIN (COSTS OFF)SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_empty_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v", "nProbes": 5 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
-                                                                                                      QUERY PLAN                                                                                                      
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit
-   ->  Sort
-         Sort Key: ((public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
-         ->  Custom Scan (DocumentDBApiQueryScan)
-               CosmosSearch Custom Params: { "nProbes" : 5 }
-               ->  Index Scan using _id_ on documents_3504 collection
-                     Index Cond: (shard_key_value = '3504'::bigint)
-                     Filter: (documentdb_api_internal.bson_search_param(document, '{ "nProbes" : { "$numberInt" : "5" } }'::bson) AND (documentdb_api_internal.bson_extract_vector(document, 'v'::text) IS NOT NULL))
-(8 rows)
+                                                                                                         QUERY PLAN                                                                                                         
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   ->  Limit
+         ->  Sort
+               Sort Key: ((public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+               ->  Custom Scan (DocumentDBApiQueryScan)
+                     CosmosSearch Custom Params: { "nProbes" : 5 }
+                     ->  Index Scan using _id_ on documents_3504 collection
+                           Index Cond: (shard_key_value = '3504'::bigint)
+                           Filter: (documentdb_api_internal.bson_search_param(document, '{ "nProbes" : { "$numberInt" : "5" } }'::bson) AND (documentdb_api_internal.bson_extract_vector(document, 'v'::text) IS NOT NULL))
+(9 rows)
 
 COMMIT;
 SELECT drop_collection('db','aggregation_pipeline_empty_vector');

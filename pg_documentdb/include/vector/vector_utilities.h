@@ -42,7 +42,8 @@ char * GenerateVectorIndexExprStr(const char *keyPath,
 
 Expr * GenerateVectorSortExpr(const char *queryVectorPath,
 							  FuncExpr *vectorCastFunc, Relation indexRelation,
-							  Node *documentExpr, Node *vectorQuerySpecNode);
+							  Node *documentExpr, Node *vectorQuerySpecNode,
+							  bool exactSearch);
 
 bool IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
 						   FuncExpr **vectorExtractorFunc);

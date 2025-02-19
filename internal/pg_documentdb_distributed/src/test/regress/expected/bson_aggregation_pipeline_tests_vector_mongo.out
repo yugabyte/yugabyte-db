@@ -50,24 +50,26 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_mongo_vector", "pipeline": [ { "$vectorSearch": { "queryVector": [ 3.0, 4.9, 1.0 ], "limit": 1, "path": "v" }  } ], "cursor": {} }');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision OPERATOR(pg_catalog.-) (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)))) AS document FROM documentdb_data.documents_8300_8300005 collection WHERE ((shard_key_value OPERATOR(pg_catalog.=) '8300'::bigint) AND (documentdb_api_internal.bson_extract_vector(document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)) LIMIT '1'::bigint
+         Query: SELECT documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision OPERATOR(pg_catalog.-) (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)))) AS document FROM (SELECT collection.document FROM documentdb_data.documents_8300_8300005 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '8300'::bigint) AND (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)) LIMIT '1'::bigint) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
-         ->  Limit
-               Output: (documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)))), ((vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
-               ->  Custom Scan (DocumentDBApiQueryScan)
-                     Output: documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))), (vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
-                     CosmosSearch Custom Params: { "efSearch" : 40 }
-                     ->  Index Scan using foo_1 on documentdb_data.documents_8300_8300005 collection
-                           Output: document
-                           Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
-(15 rows)
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_api_internal.bson_document_add_score_field(agg_stage_0.document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)))
+               ->  Limit
+                     Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
+                     ->  Custom Scan (DocumentDBApiQueryScan)
+                           Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
+                           CosmosSearch Custom Params: { "efSearch" : 40 }
+                           ->  Index Scan using foo_1 on documentdb_data.documents_8300_8300005 collection
+                                 Output: collection.document
+                                 Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
+(17 rows)
 
 ROLLBACK;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_mongo_vector", "pipeline": [ { "$vectorSearch": { "queryVector": [ 3.0, 4.9, 1.0 ], "limit": 1, "path": "v", "filter": {"a": "some sentence"} }  } ], "cursor": {} }');
@@ -92,30 +94,41 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (2 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_mongo_vector", "pipeline": [ { "$vectorSearch": { "queryVector": [ 3.0, 4.0, 1.0 ], "limit": 2, "path": "v", "numCandidates": 100 }  }  ], "cursor": {} }');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+                                                                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                           
 ---------------------------------------------------------------------
- Limit
-   Output: remote_scan.document, remote_scan."?sort?"
-   ->  Sort
-         Output: remote_scan.document, remote_scan."?sort?"
-         Sort Key: remote_scan."?sort?"
-         ->  Custom Scan (Citus Adaptive)
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   ->  Distributed Subplan 188_1
+         ->  Limit
                Output: remote_scan.document, remote_scan."?sort?"
-               Task Count: 8
-               Tasks Shown: One of 8
-               ->  Task
-                     Query: SELECT documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision OPERATOR(pg_catalog.-) (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4,1]'::public.vector))) AS document, (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4,1]'::public.vector) AS "?sort?" FROM documentdb_data.documents_8300_8300016 collection WHERE (documentdb_api_internal.bson_search_param(document, '{ "efSearch" : { "$numberInt" : "100" } }'::documentdb_core.bson) AND (documentdb_api_internal.bson_extract_vector(document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4,1]'::public.vector) LIMIT '2'::bigint
-                     Node: host=localhost port=58070 dbname=regression
-                     ->  Limit
-                           Output: (documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4,1]'::vector)))), ((vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4,1]'::vector))
-                           ->  Custom Scan (DocumentDBApiQueryScan)
-                                 Output: documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4,1]'::vector))), (vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4,1]'::vector)
-                                 CosmosSearch Custom Params: { "efSearch" : 100 }
-                                 ->  Index Scan using foo_1 on documentdb_data.documents_8300_8300016 collection
-                                       Output: document
-                                       Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4,1]'::vector)
-                                       Filter: documentdb_api_internal.bson_search_param(collection.document, '{ "efSearch" : { "$numberInt" : "100" } }'::documentdb_core.bson)
-(21 rows)
+               ->  Sort
+                     Output: remote_scan.document, remote_scan."?sort?"
+                     Sort Key: remote_scan."?sort?"
+                     ->  Custom Scan (Citus Adaptive)
+                           Output: remote_scan.document, remote_scan."?sort?"
+                           Task Count: 8
+                           Tasks Shown: One of 8
+                           ->  Task
+                                 Query: SELECT document, (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4,1]'::public.vector) AS "?sort?" FROM documentdb_data.documents_8300_8300016 collection WHERE (documentdb_api_internal.bson_search_param(document, '{ "efSearch" : { "$numberInt" : "100" } }'::documentdb_core.bson) AND (documentdb_api_internal.bson_extract_vector(document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4,1]'::public.vector) LIMIT '2'::bigint
+                                 Node: host=localhost port=58070 dbname=regression
+                                 ->  Limit
+                                       Output: document, ((vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4,1]'::vector))
+                                       ->  Custom Scan (DocumentDBApiQueryScan)
+                                             Output: document, (vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4,1]'::vector)
+                                             CosmosSearch Custom Params: { "efSearch" : 100 }
+                                             ->  Index Scan using foo_1 on documentdb_data.documents_8300_8300016 collection
+                                                   Output: document
+                                                   Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4,1]'::vector)
+                                                   Filter: documentdb_api_internal.bson_search_param(collection.document, '{ "efSearch" : { "$numberInt" : "100" } }'::documentdb_core.bson)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision OPERATOR(pg_catalog.-) (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.0" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "2" }, "path" : "v", "efSearch" : { "$numberInt" : "100" } }'::documentdb_core.bson, 'vector'::text), 3, true)))) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('188_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson)) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+               Output: documentdb_api_internal.bson_document_add_score_field(intermediate_result.document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(intermediate_result.document, 'v'::text), 3, true) <=> '[3,4,1]'::vector)))
+               Function Call: read_intermediate_result('188_1'::text, 'binary'::citus_copy_format)
+(32 rows)
 
 ROLLBACK;
 ---------------------------------------------------------------------
@@ -356,28 +369,30 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_knnbeta", "pipeline": [ { "$search": { "knnBeta": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision OPERATOR(pg_catalog.-) (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)))) AS document FROM documentdb_data.documents_8302_8300052 collection WHERE ((shard_key_value OPERATOR(pg_catalog.=) '8302'::bigint) AND (documentdb_api_internal.bson_extract_vector(document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)) LIMIT '1'::bigint
+         Query: SELECT documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision OPERATOR(pg_catalog.-) (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)))) AS document FROM (SELECT collection.document FROM documentdb_data.documents_8302_8300052 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '8302'::bigint) AND (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)) LIMIT '1'::bigint) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
-         ->  Limit
-               Output: (documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)))), ((vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
-               ->  Sort
-                     Output: (documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)))), ((vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
-                     Sort Key: ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
-                     ->  Custom Scan (DocumentDBApiQueryScan)
-                           Output: documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))), (vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
-                           CosmosSearch Custom Params: { "nProbes" : 1 }
-                           ->  Index Scan using _id_ on documentdb_data.documents_8302_8300052 collection
-                                 Output: document
-                                 Index Cond: (collection.shard_key_value = '8302'::bigint)
-                                 Filter: (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)
-(19 rows)
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_api_internal.bson_document_add_score_field(agg_stage_0.document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)))
+               ->  Limit
+                     Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
+                     ->  Sort
+                           Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
+                           Sort Key: ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
+                           ->  Custom Scan (DocumentDBApiQueryScan)
+                                 Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
+                                 CosmosSearch Custom Params: { "nProbes" : 1 }
+                                 ->  Index Scan using _id_ on documentdb_data.documents_8302_8300052 collection
+                                       Output: collection.document
+                                       Index Cond: (collection.shard_key_value = '8302'::bigint)
+                                       Filter: (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)
+(21 rows)
 
 ROLLBACK;
 set documentdb.enableVectorPreFilter = on;

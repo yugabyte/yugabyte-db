@@ -209,6 +209,9 @@ Oid VectorOrderByQueryOperatorId(void);
 Oid VectorCosineSimilaritySearchOperatorId(void);
 Oid VectorL2SimilaritySearchOperatorId(void);
 Oid VectorIPSimilaritySearchOperatorId(void);
+Oid VectorCosineSimilaritySearchFunctionId(void);
+Oid VectorL2SimilaritySearchFunctionId(void);
+Oid VectorIPSimilaritySearchFunctionId(void);
 
 /* Geospatial data/type/support functions */
 Oid Box2dfTypeId(void);

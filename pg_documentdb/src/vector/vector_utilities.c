@@ -17,6 +17,7 @@
 #include <utils/syscache.h>
 #include <commands/defrem.h>
 #include <catalog/pg_collation.h>
+#include <utils/lsyscache.h>
 
 #include "api_hooks.h"
 #include "io/bson_core.h"
@@ -39,9 +40,6 @@
 
 static Expr * GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
 														   FuncExpr *vectorCastFunc);
-
-static Oid GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid
-											   accessMethodOid);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -250,7 +248,8 @@ IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
 Expr *
 GenerateVectorSortExpr(const char *queryVectorPath,
 					   FuncExpr *vectorCastFunc, Relation indexRelation,
-					   Node *documentExpr, Node *vectorQuerySpecNode)
+					   Node *documentExpr, Node *vectorQuerySpecNode,
+					   bool exactSearch)
 {
 	Datum queryVectorPathDatum = CStringGetTextDatum(queryVectorPath);
 	Const *vectorSimilarityIndexPathConst = makeConst(
@@ -276,14 +275,44 @@ GenerateVectorSortExpr(const char *queryVectorPath,
 		GenerateVectorExractionExprFromQueryWithCast(
 			vectorQuerySpecNode, vectorCastFunc);
 
-	Oid similaritySearchOpOid = GetSimilarityOperatorOidByFamilyOid(
-		indexRelation->rd_opfamily[0], indexRelation->rd_rel->relam);
+	Oid operatorFamilyOid = indexRelation->rd_opfamily[0];
 
-	OpExpr *opExpr = (OpExpr *) make_opclause(
-		similaritySearchOpOid, FLOAT8OID,
-		false, vectorExractionFromDocFuncWithCast, vectorExractionFromQueryFuncWithCast,
-		InvalidOid, InvalidOid);
-	return (Expr *) opExpr;
+	/* Input type is vector */
+	Oid lefttype = indexRelation->rd_opcintype[0];
+	Oid righttype = indexRelation->rd_opcintype[0];
+
+	/* The first operator in the vector operator class */
+	Oid similaritySearchOpOid = get_opfamily_member(operatorFamilyOid,
+													lefttype,
+													righttype,
+													1);
+
+	if (exactSearch)
+	{
+		/*
+		 * Use the underlying function of the similarity operator
+		 * To avoid vector search using vector index
+		 * e.g.
+		 *      the operator '<=>' with the function 'public.cosine_distance'.
+		 */
+		Oid similarityFuncOid = get_opcode(similaritySearchOpOid);
+
+		FuncExpr *funcExpr = (FuncExpr *) makeFuncExpr(
+			similarityFuncOid, FLOAT8OID,
+			list_make2(vectorExractionFromDocFuncWithCast,
+					   vectorExractionFromQueryFuncWithCast),
+			InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+		return (Expr *) funcExpr;
+	}
+	else
+	{
+		OpExpr *opExpr = (OpExpr *) make_opclause(
+			similaritySearchOpOid, FLOAT8OID,
+			false, vectorExractionFromDocFuncWithCast,
+			vectorExractionFromQueryFuncWithCast,
+			InvalidOid, InvalidOid);
+		return (Expr *) opExpr;
+	}
 }
 
 
@@ -372,30 +401,4 @@ GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
 							  COERCE_EXPLICIT_CALL);
 
 	return vectorExractionFromQueryFuncWithCast;
-}
-
-
-static Oid
-GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid accessMethodOid)
-{
-	Oid operatorOid = InvalidOid;
-
-	const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexAmOid(
-		accessMethodOid);
-
-	if (definition != NULL)
-	{
-		operatorOid = definition->getSimilarityOpOidByFamilyOidFunc(operatorFamilyOid);
-	}
-
-	if (operatorOid == InvalidOid)
-	{
-		const char *accessMethodName = get_am_name(accessMethodOid);
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
-						errmsg("Unsupported vector index type: %s", accessMethodName),
-						errdetail_log(
-							"Unsupported vector index type: %s", accessMethodName)));
-	}
-
-	return operatorOid;
 }

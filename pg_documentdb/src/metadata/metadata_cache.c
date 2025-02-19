@@ -248,6 +248,15 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the pg_vector ip similarity operator */
 	Oid VectorIPSimilaritySearchOperatorId;
 
+	/* OID of the cosine_distance function */
+	Oid VectorCosineSimilaritySearchFunctionId;
+
+	/* OID of the l2_distance function */
+	Oid VectorL2SimilaritySearchFunctionId;
+
+	/* OID of the vector_negative_inner_product function */
+	Oid VectorIPSimilaritySearchFunctionId;
+
 	/* OID of the pg_vector ivfflat cosine similarity operator */
 	Oid VectorIVFFlatCosineSimilarityOperatorFamilyId;
 
@@ -5332,6 +5341,70 @@ VectorIPSimilaritySearchOperatorId(void)
 	}
 
 	return Cache.VectorIPSimilaritySearchOperatorId;
+}
+
+
+/* OID of the cosine_distance(vector, vector) function */
+Oid
+VectorCosineSimilaritySearchFunctionId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.VectorCosineSimilaritySearchFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("public"), makeString(
+												"cosine_distance"));
+		Oid paramOids[2] = { VectorTypeId(), VectorTypeId() };
+		bool missingOK = false;
+
+		Cache.VectorCosineSimilaritySearchFunctionId = LookupFuncName(functionNameList, 2,
+																	  paramOids,
+																	  missingOK);
+	}
+
+	return Cache.VectorCosineSimilaritySearchFunctionId;
+}
+
+
+/* OID of the l2_distance(vector, vector) function */
+Oid
+VectorL2SimilaritySearchFunctionId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.VectorL2SimilaritySearchFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("public"), makeString(
+												"l2_distance"));
+		Oid paramOids[2] = { VectorTypeId(), VectorTypeId() };
+		bool missingOK = false;
+
+		Cache.VectorL2SimilaritySearchFunctionId = LookupFuncName(functionNameList, 2,
+																  paramOids, missingOK);
+	}
+
+	return Cache.VectorL2SimilaritySearchFunctionId;
+}
+
+
+/* OID of the vector_negative_inner_product(vector, vector) function */
+Oid
+VectorIPSimilaritySearchFunctionId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.VectorIPSimilaritySearchFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("public"), makeString(
+												"vector_negative_inner_product"));
+		Oid paramOids[2] = { VectorTypeId(), VectorTypeId() };
+		bool missingOK = false;
+
+		Cache.VectorIPSimilaritySearchFunctionId = LookupFuncName(functionNameList, 2,
+																  paramOids, missingOK);
+	}
+
+	return Cache.VectorIPSimilaritySearchFunctionId;
 }
 
 

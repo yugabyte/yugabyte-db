@@ -28,6 +28,7 @@
 #include <parser/parsetree.h>
 #include <utils/builtins.h>
 #include <utils/rel.h>
+#include <utils/lsyscache.h>
 
 #include "io/bson_core.h"
 #include "metadata/metadata_cache.h"
@@ -78,6 +79,10 @@ typedef struct
 static void AddSearchParamFunctionToQuery(Query *query, Oid accessMethodOid,
 										  pgbson *searchParamPgbson);
 
+static Expr * AddScoreFieldToDocumentEntry(TargetEntry *documentEntry,
+										   Expr *vectorSortExpr,
+										   Expr *orderVar);
+
 static TargetEntry * AddCtidToQueryTargetList(Query *query,
 											  bool replaceTargetList);
 
@@ -92,9 +97,11 @@ static void AddPathStringToHashset(List *indexIdList, HTAB *stringHashSet);
 static Query * GeneratePrefilteringVectorSearchQuery(Query *searchQuery,
 													 AggregationPipelineBuildContext *
 													 context,
-													 const bson_value_t *filterBson,
+													 VectorSearchOptions *
+													 vectorSearchOptions,
 													 TargetEntry *sortEntry,
-													 bool needsReordering);
+													 Expr *processedSortExpr,
+													 Node *limitCount);
 
 static void AddNullVectorCheckToQuery(Query *query, const Expr *vectorSortExpr);
 
@@ -125,10 +132,17 @@ static void ParseAndValidateCosmosSearchQuerySpec(const pgbson *vectorSearchSpec
 static void ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 												VectorSearchOptions *vectorSearchOptions);
 
-static Expr * GenerateScoreExpr(const Expr *orderVar, Oid similaritySearchOpOid);
+static Expr * GenerateScoreExpr(const Expr *orderVar, Oid similarityDistanceOid);
 
 static Query * ReorderQueryResults(Query *joinQuery,
 								   AggregationPipelineBuildContext *context);
+
+static Node * ReplaceDocumentVarOnSort(Node *input,
+									   ReplaceDocumentVarOnSortContext *context);
+
+static Query * AddFilterToQuery(Query *query,
+								AggregationPipelineBuildContext *context,
+								VectorSearchOptions *vectorSearchOptions);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -599,23 +613,60 @@ JoinVectorSearchQueryWithFilterQuery(Query *leftQuery, Query *rightQuery,
 	finalQuery->sortClause = sortlist;
 
 	/* Add the similarity score field to the metadata in the document */
-	/* bson_document_add_score_field(document, similarityScore) */
-	/* Result:  "document": { ... , "$__cosmos_meta__.score": { "score": 0.9 } } */
 	Assert(IsA(sortEntry->expr, OpExpr));
+	AddScoreFieldToDocumentEntry(documentEntry, sortEntry->expr, (Expr *) orderVar);
 
-	OpExpr *vectorSortExpr = (OpExpr *) sortEntry->expr;
-	Oid similaritySearchOpOid = vectorSortExpr->opno;
+	return finalQuery;
+}
 
-	Expr *scoreExpr = GenerateScoreExpr((Expr *) orderVar, similaritySearchOpOid);
 
-	List *args = list_make2(documentVar, scoreExpr);
+/* Add the similarity score field to the metadata in the document
+ * bson_document_add_score_field(document, similarityScore)
+ * Result:  "document": { ... , "$__cosmos_meta__.score": { "score": 0.9 } }
+ */
+static Expr *
+AddScoreFieldToDocumentEntry(TargetEntry *documentEntry, Expr *vectorSortExpr,
+							 Expr *orderVar)
+{
+	Oid similarityDistanceOid = InvalidOid;
+	if (IsA(vectorSortExpr, OpExpr))
+	{
+		OpExpr *orderOpExpr = (OpExpr *) vectorSortExpr;
+		similarityDistanceOid = orderOpExpr->opno;
+	}
+	else if (IsA(vectorSortExpr, FuncExpr))
+	{
+		FuncExpr *orderFuncExpr = (FuncExpr *) vectorSortExpr;
+		similarityDistanceOid = orderFuncExpr->funcid;
+	}
+	else
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+						errmsg(
+							"unsupported vector search operator/function type")));
+	}
+
+	ReplaceDocumentVarOnSortContext sortContext =
+	{
+		.sourceExpr = MakeSimpleDocumentVar(),
+		.targetExpr = documentEntry->expr,
+	};
+
+	/* Use expression_tree_mutator so we copy the orderby Expr before changing it */
+	Expr *scoreExprInput = (Expr *) expression_tree_mutator((Node *) orderVar,
+															ReplaceDocumentVarOnSort,
+															&sortContext);
+
+	Expr *scoreExpr = GenerateScoreExpr((Expr *) scoreExprInput, similarityDistanceOid);
+
+	List *args = list_make2(documentEntry->expr, scoreExpr);
 	FuncExpr *resultExpr = makeFuncExpr(
 		ApiBsonDocumentAddScoreFieldFunctionId(), BsonTypeId(), args, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
 	documentEntry->expr = (Expr *) resultExpr;
 
-	return finalQuery;
+	return scoreExprInput;
 }
 
 
@@ -626,10 +677,11 @@ JoinVectorSearchQueryWithFilterQuery(Query *leftQuery, Query *rightQuery,
  * l2: orderScore
  */
 static Expr *
-GenerateScoreExpr(const Expr *orderVar, Oid similaritySearchOpOid)
+GenerateScoreExpr(const Expr *orderVar, Oid similarityDistanceOid)
 {
 	Expr *scoreExpr = NULL;
-	if (similaritySearchOpOid == VectorCosineSimilaritySearchOperatorId())
+	if (similarityDistanceOid == VectorCosineSimilaritySearchOperatorId() ||
+		similarityDistanceOid == VectorCosineSimilaritySearchFunctionId())
 	{
 		/* Similarity search score is 1.0 - orderVar */
 		Const *oneConst = makeConst(FLOAT8OID, -1, InvalidOid,
@@ -639,7 +691,8 @@ GenerateScoreExpr(const Expr *orderVar, Oid similaritySearchOpOid)
 			Float8MinusOperatorId(), FLOAT8OID, false,
 			(Expr *) oneConst, (Expr *) orderVar, InvalidOid, InvalidOid);
 	}
-	else if (similaritySearchOpOid == VectorIPSimilaritySearchOperatorId())
+	else if (similarityDistanceOid == VectorIPSimilaritySearchOperatorId() ||
+			 similarityDistanceOid == VectorIPSimilaritySearchFunctionId())
 	{
 		/* Similarity search score is -1.0 * orderVar */
 		Const *minusOneConst = makeConst(FLOAT8OID, -1, InvalidOid,
@@ -649,7 +702,8 @@ GenerateScoreExpr(const Expr *orderVar, Oid similaritySearchOpOid)
 			Float8MultiplyOperatorId(), FLOAT8OID, false,
 			(Expr *) minusOneConst, (Expr *) orderVar, InvalidOid, InvalidOid);
 	}
-	else if (similaritySearchOpOid == VectorL2SimilaritySearchOperatorId())
+	else if (similarityDistanceOid == VectorL2SimilaritySearchOperatorId() ||
+			 similarityDistanceOid == VectorL2SimilaritySearchFunctionId())
 	{
 		/* Similarity search score is orderVar */
 		scoreExpr = (Expr *) orderVar;
@@ -771,6 +825,35 @@ AddPathStringToHashset(List *indexIdList, HTAB *stringHashSet)
 }
 
 
+static Query *
+AddFilterToQuery(Query *query, AggregationPipelineBuildContext *context,
+				 VectorSearchOptions *vectorSearchOptions)
+{
+	RangeTblEntry *rte = linitial(query->rtable);
+
+	Relation collectionRelation = RelationIdGetRelation(rte->relid);
+	List *indexIdList = RelationGetIndexList(collectionRelation);
+	RelationClose(collectionRelation);
+
+	/* Before we can do prefiltering we need to make sure that
+	 * the collection has the appropriate index.
+	 * Retrieve the path string of SinglePath index path from the collection */
+	HTAB *indexPathNameHashSet = CreateStringViewHashSet();
+	AddPathStringToHashset(indexIdList, indexPathNameHashSet);
+	context->requiredFilterPathNameHashSet = indexPathNameHashSet;
+
+	/* Add a match expression into where clause
+	 * checking that the collection has the appropriate index keys
+	 * Example: where document @@ '{ "value": {$regex: /^bb/}' */
+	Query *filterQuery = HandleMatch(&vectorSearchOptions->filterBson, query, context);
+
+	context->requiredFilterPathNameHashSet = NULL;
+	hash_destroy(indexPathNameHashSet);
+
+	return filterQuery;
+}
+
+
 /*
  * Generates a query based on the vector search query and user specified filters.
  * The query is generated as follows:
@@ -806,72 +889,110 @@ AddPathStringToHashset(List *indexIdList, HTAB *stringHashSet)
 static Query *
 GeneratePrefilteringVectorSearchQuery(Query *searchQuery,
 									  AggregationPipelineBuildContext *context,
-									  const bson_value_t *filterBson,
+									  VectorSearchOptions *vectorSearchOptions,
 									  TargetEntry *sortEntry,
-									  bool needsReordering)
+									  Expr *processedSortExpr,
+									  Node *limitCount)
 {
-	RangeTblEntry *rte = linitial(searchQuery->rtable);
+	/* choose enn or ann for the filter query */
+	if (vectorSearchOptions->exactSearch)
+	{
+		/*
+		 * Add filters to the search query, use filter index scan + runtime sort
+		 * e.g.
+		 *   SELECT
+		 *		API_CATALOG_SCHEMA_NAME.bson_document_add_score_field(document, {order by expr}) AS document
+		 *   FROM (
+		 *		SELECT document
+		 *		FROM API_DATA_SCHEMA_NAME.documents_2_102046 collection
+		 *		WHERE ((document OPERATOR(API_CATALOG_SCHEMA_NAME.#=) '{ "attr" : { "$numberInt" : "1000002" } }'::API_CATALOG_SCHEMA_NAME.bsonquery)
+		 *			AND (shard_key_value OPERATOR(pg_catalog.=) '2'::bigint)
+		 *			AND (API_CATALOG_SCHEMA_NAME.bson_extract_vector(document, 'vect'::text) IS NOT NULL))
+		 *      ORDER BY (
+		 *          public.cosine_similarity(
+		 *              public.vector(API_CATALOG_SCHEMA_NAME.bson_extract_vector(document, 'vect'::text), 1536, true),
+		 *              public.vector(API_CATALOG_SCHEMA_NAME.bson_extract_vector('{ "vector" : [...], "k" : 1, "path" : "vect", "filter" : { "attr" : { "$eq" : 1000002 } }, "lSearch" : 40 }'::API_CATALOG_SCHEMA_NAME.bson, 'vector'::text), 1536, true))
+		 *      )
+		 *      LIMIT '1'::bigint;
+		 *   )
+		 */
 
-	Relation collectionRelation = RelationIdGetRelation(rte->relid);
-	List *indexIdList = RelationGetIndexList(collectionRelation);
-	RelationClose(collectionRelation);
+		/* Add filters to the search query */
+		searchQuery = AddFilterToQuery(searchQuery, context, vectorSearchOptions);
 
-	/*
-	 * 1. construct searchQuery: add sort entry and ctid to targetList
-	 */
+		/* Add limit before push to subquery */
+		searchQuery->limitCount = limitCount;
 
-	/* add the sort entry with the alias "orderVal" to the targetList */
-	const char *sortAlias = "orderVal";
-	sortEntry->resname = pstrdup(sortAlias);
-	sortEntry->resjunk = false;
+		/* Wrapper query */
+		context->expandTargetList = false;
+		Query *wrapperQuery = MigrateQueryToSubQuery(searchQuery, context);
 
-	/* append ctid to targetList */
-	bool replaceTargetList = false;
-	TargetEntry *leftCtidEntry = AddCtidToQueryTargetList(searchQuery, replaceTargetList);
+		/* Add sort score to the metadata in the document */
+		TargetEntry *documentEntry = linitial(wrapperQuery->targetList);
+		AddScoreFieldToDocumentEntry(documentEntry, sortEntry->expr,
+									 sortEntry->expr);
 
-	/*
-	 * 2. construct filterQuery: add match expression into where clause, replace targetList with ctid
-	 */
-	pg_uuid_t *collectionUuid = NULL;
-	Query *filterQuery = GenerateBaseTableQuery(context->databaseNameDatum,
-												&context->collectionNameView,
-												collectionUuid,
-												context);
+		return wrapperQuery;
+	}
+	else
+	{
+		/*
+		 * 1. construct searchQuery: add sort entry and ctid to targetList
+		 */
 
-	/* Before we can do prefiltering we need to make sure that
-	 * the collection has the appropriate index.
-	 * Retrieve the path string of SinglePath index path from the collection */
-	HTAB *indexPathNameHashSet = CreateStringViewHashSet();
-	AddPathStringToHashset(indexIdList, indexPathNameHashSet);
-	context->requiredFilterPathNameHashSet = indexPathNameHashSet;
+		/* add the sort entry with the alias "orderVal" to the targetList */
+		const char *sortAlias = "orderVal";
+		sortEntry->resname = pstrdup(sortAlias);
+		sortEntry->resjunk = false;
 
-	/* Add a match expression into where clause
-	 * checking that the collection has the appropriate index keys
-	 * Example: where document @@ '{ "value": {$regex: /^bb/}' */
-	filterQuery = HandleMatch(filterBson, filterQuery, context);
+		/* append ctid to targetList */
+		bool replaceTargetList = false;
+		TargetEntry *leftCtidEntry = AddCtidToQueryTargetList(searchQuery,
+															  replaceTargetList);
 
-	context->requiredFilterPathNameHashSet = NULL;
-	hash_destroy(indexPathNameHashSet);
+		/*
+		 * 2. construct filterQuery: add match expression into where clause
+		 */
+		pg_uuid_t *collectionUuid = NULL;
+		Query *filterQuery = GenerateBaseTableQuery(context->databaseNameDatum,
+													&context->collectionNameView,
+													collectionUuid,
+													context);
 
-	/* replace targetList with ctid */
-	replaceTargetList = true;
-	TargetEntry *rightCtidEntry = AddCtidToQueryTargetList(filterQuery,
-														   replaceTargetList);
+		/* Add filters to the filter query */
+		filterQuery = AddFilterToQuery(filterQuery, context, vectorSearchOptions);
 
-	/* 3. JOIN c1 ON c1.ctid = c2.ctid
-	 *  SELECT
-	 *      c1.document
-	 *  FROM c1 JOIN c2 ON c2.ctid = c1.ctid
-	 *  ORDER BY c1.orderVal
-	 */
-	Query *joinedQuery = JoinVectorSearchQueryWithFilterQuery(searchQuery,
-															  filterQuery,
-															  leftCtidEntry,
-															  rightCtidEntry,
-															  sortEntry,
-															  needsReordering);
+		/* replace targetList with ctid */
+		replaceTargetList = true;
+		TargetEntry *rightCtidEntry = AddCtidToQueryTargetList(filterQuery,
+															   replaceTargetList);
 
-	return joinedQuery;
+		/* 3. JOIN c1 ON c1.ctid = c2.ctid
+		 *  SELECT
+		 *      c1.document
+		 *  FROM c1 JOIN c2 ON c2.ctid = c1.ctid
+		 *  ORDER BY c1.orderVal
+		 */
+		Query *joinedQuery = JoinVectorSearchQueryWithFilterQuery(searchQuery,
+																  filterQuery,
+																  leftCtidEntry,
+																  rightCtidEntry,
+																  sortEntry,
+																  vectorSearchOptions->
+																  vectorIndexDef->
+																  needsReorderAfterFilter);
+
+		/* Add the limit to the query before reordering */
+		joinedQuery->limitCount = limitCount;
+
+		if (vectorSearchOptions->vectorIndexDef->needsReorderAfterFilter)
+		{
+			/* Search result by iterative search may be disordered, so we need to reorder the result */
+			joinedQuery = ReorderQueryResults(joinedQuery, context);
+		}
+
+		return joinedQuery;
+	}
 }
 
 
@@ -882,9 +1003,20 @@ GeneratePrefilteringVectorSearchQuery(Query *searchQuery,
 static void
 AddNullVectorCheckToQuery(Query *query, const Expr *vectorSortExpr)
 {
-	Assert(IsA(vectorSortExpr, OpExpr));
-	FuncExpr *castFunctionExpr = (FuncExpr *) linitial(
-		((OpExpr *) vectorSortExpr)->args);
+	Assert(IsA(vectorSortExpr, OpExpr) || IsA(vectorSortExpr, FuncExpr));
+
+	FuncExpr *castFunctionExpr = NULL;
+	if (IsA(vectorSortExpr, OpExpr))
+	{
+		castFunctionExpr = (FuncExpr *) linitial(
+			((OpExpr *) vectorSortExpr)->args);
+	}
+	else
+	{
+		castFunctionExpr = (FuncExpr *) linitial(
+			((FuncExpr *) vectorSortExpr)->args);
+	}
+
 	Expr *extractVectorFunctionExpr = linitial(castFunctionExpr->args);
 	NullTest *vectorNullTest = makeNode(NullTest);
 	vectorNullTest->nulltesttype = IS_NOT_NULL;
@@ -1106,7 +1238,8 @@ CheckVectorIndexAndGenerateSortExpr(Query *query,
 			/* Vector search is on the doc even if there's projectors etc. */
 			processedSortExpr = GenerateVectorSortExpr(
 				vectorSearchOptions->searchPath, vectorExtractFunc, indexRelation,
-				(Node *) MakeSimpleDocumentVar(), queryNode);
+				(Node *) MakeSimpleDocumentVar(), queryNode,
+				vectorSearchOptions->exactSearch);
 
 			vectorSearchOptions->vectorAccessMethodOid = indexRelation->rd_rel->relam;
 		}
@@ -1140,17 +1273,10 @@ ParseAndValidateIndexSpecificOptions(VectorSearchOptions *vectorSearchOptions)
 {
 	Assert(vectorSearchOptions->vectorAccessMethodOid != InvalidOid);
 
-	const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexAmOid(
-		vectorSearchOptions->vectorAccessMethodOid);
-	if (definition == NULL)
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
-						errmsg("Unsupported vector index type")));
-	}
-
 	/* Parse the index specific options */
-	pgbson *searchParamPgbson = definition->parseIndexSearchSpecFunc(
-		vectorSearchOptions);
+	pgbson *searchParamPgbson =
+		vectorSearchOptions->vectorIndexDef->parseIndexSearchSpecFunc(
+			vectorSearchOptions);
 	if (searchParamPgbson != NULL)
 	{
 		vectorSearchOptions->searchParamPgbson = searchParamPgbson;
@@ -1192,20 +1318,36 @@ HandleVectorSearchCore(Query *query, VectorSearchOptions *vectorSearchOptions,
 																  vectorSearchOptions,
 																  context);
 
+	/* Get the vector index definition */
+	const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexAmOid(
+		vectorSearchOptions->vectorAccessMethodOid);
+	if (definition == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
+						errmsg("Unsupported vector index type")));
+	}
+	vectorSearchOptions->vectorIndexDef = definition;
+
 	/* Parse and validate the index specific options */
 	ParseAndValidateIndexSpecificOptions(vectorSearchOptions);
 
 	/* Add the search param wrapper function to the query */
 	/* Create the WHERE bson_search_param(document, searchParamPgbson) and add it to the WHERE */
-	AddSearchParamFunctionToQuery(query, vectorSearchOptions->vectorAccessMethodOid,
-								  vectorSearchOptions->searchParamPgbson);
-
-	/* Add the sort by to the query */
-	TargetEntry *sortEntry = AddSortByToQuery(query, processedSortExpr);
+	if (!vectorSearchOptions->exactSearch)
+	{
+		AddSearchParamFunctionToQuery(query, vectorSearchOptions->vectorAccessMethodOid,
+									  vectorSearchOptions->searchParamPgbson);
+	}
+	else
+	{
+		ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_EXACT);
+	}
 
 	/* Add the null vector check to the query, so that we don't return documents that don't have the vector field */
 	AddNullVectorCheckToQuery(query, processedSortExpr);
 
+	/* Add the sort by to the query */
+	TargetEntry *sortEntry = AddSortByToQuery(query, processedSortExpr);
 
 	Node *limitCount = (Node *) makeConst(INT8OID, -1, InvalidOid, sizeof(int64_t),
 										  Int64GetDatum(
@@ -1243,27 +1385,10 @@ HandleVectorSearchCore(Query *query, VectorSearchOptions *vectorSearchOptions,
 		 * matching the filter.
 		 */
 		TargetEntry *documentEntry = linitial(query->targetList);
-		OpExpr *orderVar = (OpExpr *) sortEntry->expr;
+		Expr *scoreExpr = AddScoreFieldToDocumentEntry(documentEntry, sortEntry->expr,
+													   sortEntry->expr);
 
-		ReplaceDocumentVarOnSortContext sortContext =
-		{
-			.sourceExpr = MakeSimpleDocumentVar(),
-			.targetExpr = documentEntry->expr,
-		};
-
-		/* Use expression_tree_mutator so we copy the orderby Expr before changing it */
-		Expr *scoreExprInput = (Expr *) expression_tree_mutator((Node *) orderVar,
-																ReplaceDocumentVarOnSort,
-																&sortContext);
-		Expr *scoreExpr = GenerateScoreExpr((Expr *) scoreExprInput, orderVar->opno);
-
-		List *args = list_make2(documentEntry->expr, scoreExpr);
-		FuncExpr *resultExpr = makeFuncExpr(
-			ApiBsonDocumentAddScoreFieldFunctionId(), BsonTypeId(), args, InvalidOid,
-			InvalidOid, COERCE_EXPLICIT_CALL);
-		documentEntry->expr = (Expr *) resultExpr;
-
-		TargetEntry *scoreEntry = makeTargetEntry(scoreExprInput, 2, "sortVal", false);
+		TargetEntry *scoreEntry = makeTargetEntry(scoreExpr, 2, "sortVal", false);
 		query->targetList = lappend(query->targetList, scoreEntry);
 
 		/* now reorder to ensure it matches the score order by */
@@ -1284,42 +1409,23 @@ HandleVectorSearchCore(Query *query, VectorSearchOptions *vectorSearchOptions,
 								"Filter is not supported for vector search on sharded collection.")));
 		}
 
-		const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexAmOid(
-			vectorSearchOptions->vectorAccessMethodOid);
-		bool needsReordering = false;
-		if (definition != NULL)
-		{
-			needsReordering = definition->needsReorderAfterFilter;
-		}
-
 		query = GeneratePrefilteringVectorSearchQuery(query, context,
-													  &vectorSearchOptions->filterBson,
-													  sortEntry, needsReordering);
-
-		/* Add the limit to the query before reordering */
-		query->limitCount = limitCount;
-
-		if (needsReordering)
-		{
-			/* Search result by iterative search may be disordered, so we need to reorder the result */
-			query = ReorderQueryResults(query, context);
-		}
+													  vectorSearchOptions,
+													  sortEntry,
+													  processedSortExpr,
+													  limitCount);
 	}
 	else
 	{
 		/* Add the limit to the query from k in the search spec */
 		query->limitCount = limitCount;
 
+		/* After the limit is applied, push to a subquery */
+		query = MigrateQueryToSubQuery(query, context);
+
 		/* Add the score field */
 		TargetEntry *documentEntry = linitial(query->targetList);
-		OpExpr *orderVar = (OpExpr *) sortEntry->expr;
-		Expr *scoreExpr = GenerateScoreExpr((Expr *) orderVar, orderVar->opno);
-
-		List *args = list_make2(documentEntry->expr, scoreExpr);
-		FuncExpr *resultExpr = makeFuncExpr(
-			ApiBsonDocumentAddScoreFieldFunctionId(), BsonTypeId(), args, InvalidOid,
-			InvalidOid, COERCE_EXPLICIT_CALL);
-		documentEntry->expr = (Expr *) resultExpr;
+		AddScoreFieldToDocumentEntry(documentEntry, sortEntry->expr, sortEntry->expr);
 	}
 
 	/* Push next stage to a new subquery (since we did a sort) */
@@ -1427,6 +1533,17 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 
 			vectorSearchOptions->filterBson = *value;
 		}
+		else if (strcmp(key, "exact") == 0)
+		{
+			if (!BSON_ITER_HOLDS_BOOL(&specIter))
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+								errmsg(
+									"$exact must be a boolean value.")));
+			}
+
+			vectorSearchOptions->exactSearch = BsonValueAsBool(value);
+		}
 		else if (strcmp(key, "score") == 0)
 		{
 			if (!BSON_ITER_HOLDS_DOCUMENT(&specIter))
@@ -1478,12 +1595,14 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
  *  4. nProbes: an integer denoting the number of probes to use for the ivfflat search.
  *  5. efSearch: an integer denoting the number of efSearch to use for the hnsw search.
  *  6. filter: match expression that compares an indexed field with a boolean, number (not decimals), or string to use as a prefilter, which can help narrow down the scope of vector search.
+ *  7. exact: a boolean denoting whether to use exact search or ann search.
  *
  *  "cosmosSearch": {
  *    "vector": [<array-of-numbers>],
  *    "path": "<field-to-search>",
  *    "filter": {<filter-specification>},
  *    "k": <number>,
+ *    "exact": <boolean>,
  *  }
  *
  * Example query spec of ivfflat index
