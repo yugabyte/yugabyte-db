@@ -176,9 +176,53 @@ The following results are for a 3-node cluster running YBDB version {{< yb-versi
 
 ### 10 tables each with 100k rows
 
-| Workload          | Throughput(txns/sec) | Latency(ms) |
-|------------------------|---------------------------|------------------|
-| oltp_read_only         | 48980                    | 1.22             |
-| oltp_read_write        | 2380                     | 10               |
-| oltp_multi_insert      | 5850                     | 4.1              |
-| oltp_update_index      | 2550                     | 9.41             |
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2">Workload</th>
+      <th colspan="2">Benchmark Statistics</th>
+      <th colspan="2">Per Query Statistics</th>
+      <th rowspan="2">Queries part of a single transaction</th>
+    </tr>
+    <tr>
+      <th>Throughput (txns/sec)</th>
+      <th>Latency (ms) - avg</th>
+      <th>Throughput (queries/sec)</th>
+      <th>Latency (ms) - avg</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>oltp_read_only</td>
+      <td>4616.32</td>
+      <td>13</td>
+      <td>46163.2</td>
+      <td>1.3</td>
+      <td>10 point selects</td>
+    </tr>
+    <tr>
+      <td>oltp_read_write</td>
+      <td>245.49</td>
+      <td>97.76</td>
+      <td>7855.68</td>
+      <td>3.05</td>
+      <td>10 point selects <br> 10 index updates <br> 10 non-index update <br> 1 Insert <br> 1 Delete</td>
+    </tr>
+    <tr>
+      <td>oltp_multi_insert</td>
+      <td>585.66</td>
+      <td>40.98</td>
+      <td>5856.6</td>
+      <td>4.09</td>
+      <td>10 Insert</td>
+    </tr>
+    <tr>
+      <td>oltp_update_index</td>
+      <td>259.64</td>
+      <td>92.43</td>
+      <td>2596.4</td>
+      <td>9.43</td>
+      <td>10 index updates</td>
+    </tr>
+  </tbody>
+</table>
