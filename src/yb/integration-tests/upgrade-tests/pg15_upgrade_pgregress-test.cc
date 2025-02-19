@@ -21,11 +21,13 @@ class Pg15UpgradePgRegressTest : public Pg15UpgradeTestBase {
 };
 
 // Test yb_profile_schedule
+// TODO(fizaa): programatically read the schedule instead of manually copy-pasting lines from it.
+// This is not going to stay in sync with the schedule.
 TEST_F(Pg15UpgradePgRegressTest, YbProfileSchedule) {
   std::vector<std::string> files = {
-    "yb_profile.sql",
-    "yb_role_profile.sql",
-    "yb_profile_permissions.sql",
+    "yb.orig.profile.sql",
+    "yb.orig.role_profile.sql",
+    "yb.orig.profile_permissions.sql",
   };
   ASSERT_OK(ExecuteStatementsInFiles(files));
   ASSERT_OK(UpgradeClusterToMixedMode());

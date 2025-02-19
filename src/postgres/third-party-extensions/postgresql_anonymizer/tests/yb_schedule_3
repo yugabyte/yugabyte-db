@@ -3,10 +3,10 @@
 ####################################################################################################
 # postgresql_anonymizer Extension Testsuite
 ####################################################################################################
-test: yb_pg_generalization
-test: yb_pg_k_anonymity
-test: yb_pg_permissions_owner
-test: yb_pg_permissions_masked_role
-test: yb_pg_injection
+test: yb.port.generalization
+test: yb.port.k_anonymity
+test: yb.port.permissions_owner
+test: yb.port.permissions_masked_role
+test: yb.port.injection
 test: syntax_checks
-test: yb_pg_views
+test: yb.port.views

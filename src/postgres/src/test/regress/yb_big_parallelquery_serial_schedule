@@ -4,4 +4,4 @@
 # Postgres parallel query feature on big tables.
 ####################################################################################################
 
-test: yb_parallel_big_colocated
+test: yb.orig.parallel_big_colocated

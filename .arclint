@@ -5,7 +5,6 @@
      "(src/yb/common/ql_type[.]cc$)",
      "(src/yb/gutil/valgrind[.]h$)",
      "([.]ipynb$)",
-     "([.]sql$)",
      "([.]txt$)",
      "(^src/odyssey/.*$)",
      "(^src/inline-thirdparty/.*$)",
@@ -77,6 +76,7 @@
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
+        "([.]sql$)",
         "(^pg15_tests/.*[.](sh|tsv)$)",
         "(^managed/.*[.]go$)",
         "(^managed/.*/go[.]mod)",
@@ -167,6 +167,15 @@
         "(^src/postgres/.+/yb_[^/]*schedule$)"
       ],
       "script-and-regex.script": "src/lint/regress_schedule.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "regress_test": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/.+/(specs|sql|expected)/yb[^/]*$)"
+      ],
+      "script-and-regex.script": "src/lint/regress_test.sh",
       "script-and-regex.regex":
         "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
     },

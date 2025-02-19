@@ -3,7 +3,7 @@
 ####################################################################################################
 # Testsuite for tests covering UPDATE query optimizations.
 ####################################################################################################
-test: yb_update_optimize_base
-test: yb_update_optimize_indices
-test: yb_update_optimize_triggers
-test: yb_update_optimize_index_updates
+test: yb.orig.update_optimize_base
+test: yb.orig.update_optimize_indices
+test: yb.orig.update_optimize_triggers
+test: yb.orig.update_optimize_index_updates

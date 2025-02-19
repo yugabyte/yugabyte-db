@@ -3,19 +3,19 @@
 ####################################################################################################
 # postgresql_anonymizer Extension Testsuite
 ####################################################################################################
-test: yb_pg_init
-test: yb_pg_detection
-test: yb_pg_ternary
-test: yb_pg_get_function_schema
-test: yb_pg_trusted_schemas
-test: yb_pg_copy
-test: yb_pg_pg_dump
-test: yb_pg_masking_expressions
-test: yb_pg_destruction
-test: yb_pg_noise
-test: yb_pg_shuffle
-test: yb_pg_random
-test: yb_pg_faking
-test: yb_pg_partial
-test: yb_pg_pseudonymization
-test: yb_pg_hashing
+test: yb.port.init
+test: yb.port.detection
+test: yb.port.ternary
+test: yb.port.get_function_schema
+test: yb.port.trusted_schemas
+test: yb.port.copy
+test: yb.port.pg_dump
+test: yb.port.masking_expressions
+test: yb.port.destruction
+test: yb.port.noise
+test: yb.port.shuffle
+test: yb.port.random
+test: yb.port.faking
+test: yb.port.partial
+test: yb.port.pseudonymization
+test: yb.port.hashing

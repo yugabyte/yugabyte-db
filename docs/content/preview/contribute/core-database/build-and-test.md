@@ -193,9 +193,11 @@ The files in `results` are compared with those in `expected` to determine pass/f
 - To quickly run a specific SQL file, create a dummy Java file and dummy schedule with that one test in it.
 - Use the following naming convention (some older files haven't adopted it yet, but should):
   - `sql/foo.sql`: Unchanged from original PostgreSQL code.
-  - `sql/yb_foo.sql`: Completely new file (for example, with new features).
-  - `sql/yb_pg_foo.sql`: Modified version of original PostgreSQL foo.sql (for example, with compatibility edits).
-    The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
+  - `sql/yb.orig.foo.sql`: YugabyteDB original test.
+     Completely new file (for example, with new features).
+  - `sql/yb.port.foo.sql`: An original PostgreSQL foo.sql modified and ported to YugabyteDB (for example, with compatibility edits).
+    The goal here is to reduce the difference between `foo.sql` and `yb.port.foo.sql`, when possible.
+  - `sql/yb.depd.foo.sql`: A minimal combination of queries from one or more ported tests to build dependencies needed for other ported tests.
 
 {{< /tip >}}
 

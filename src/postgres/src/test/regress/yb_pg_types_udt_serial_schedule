@@ -1,15 +1,15 @@
 # src/test/regress/yb_pg_types_udt_serial_schedule
 # This schedule is for ported tests only.
 
-# Dependency for yb_pg_rangetypes, yb_pg_rowtypes
-test: yb_pg_test_setup
-# Dependency for yb_pg_rowtypes
-test: yb_dep_tenk1
+# Dependency for yb.port.rangetypes, yb.port.rowtypes
+test: yb.port.test_setup
+# Dependency for yb.port.rowtypes
+test: yb.depd.tenk1
 
 # Enum types
-test: yb_pg_enum
+test: yb.port.enum
 # Range types
-test: yb_pg_rangetypes
+test: yb.port.rangetypes
 
 # Composite types
-test: yb_pg_rowtypes
+test: yb.port.rowtypes

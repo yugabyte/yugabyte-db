@@ -4,5 +4,5 @@
 # Postgres Testsuites: Porting from PostgreSQL original tests.
 # This includes tests for foreign key constraints.
 ####################################################################################################
-test: yb_foreign_key
-test: yb_pg_foreign_key
+test: yb.orig.foreign_key
+test: yb.port.foreign_key

@@ -38,16 +38,14 @@ if [ -n "$lines" ]; then
 fi
 
 # Check schedule test ordering:
-# For ported tests (those beginning with "yb_pg_") and original tests (those
-# beginning without "yb_"), they should be ordered the same way as in the
+# For ported tests (those beginning with "yb.port.") and original tests (those
+# beginning without "yb."), they should be ordered the same way as in the
 # upstream schedule.  For now, YB does not allow parallel tests, so when the
 # upstream schedule has a parallel group, then YB schedules should flatten that
 # to multiple lines.  For now, enforce ordering to be the same as the order the
 # tests are listed left-to-right in the same parallel group, even if that is
 # not strictly required.  Ignore some tests:
-# - yb_pg_numeric_big: this is in GNUmakefile instead of parallel_schedule
-# - yb_pg_stat: this is a YB test, not ported: prefix "yb_" + name "pg_stat"
-# - yb_pg_stat_backend: this is a YB test, not ported
+# - yb.port.numeric_big: this is in GNUmakefile instead of parallel_schedule
 if [[ "$1" == src/postgres/src/test/regress/* ]]; then
   upstream_schedule="src/postgres/src/test/regress/parallel_schedule"
 elif [[ "$1" == src/postgres/src/test/isolation/* ]]; then
@@ -58,12 +56,12 @@ fi
 if [ -n "$upstream_schedule" ]; then
   lines=$(diff \
             <(perl -ne 'print if '\
-'/^test: (yb_pg_(?!(numeric_big|stat|stat_backend)$)|(?!yb[_-]))/' "$1" \
-                | sed -e 's/test: yb_pg_//' -e 's/test: //') \
+'/^test: (yb\.port\.(?!numeric_big$)|(?!yb\.))/' "$1" \
+                | sed -e 's/test: yb\.port\.//' -e 's/test: //') \
             <(grep '^test: ' "$upstream_schedule" \
                 | sed 's/test: //' | tr ' ' '\n') \
             | grep '^<' \
-            | sed 's/< /test: \(yb_pg_\)?/')
+            | sed 's/< /test: \(yb\.port\.\)?/')
   if [ -n "$lines" ]; then
     set -e
     while read -r line; do

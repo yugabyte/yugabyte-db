@@ -5,9 +5,9 @@
 # Setup test was added to create the vector extension
 #
 ####################################################################################################
-test: yb_setup
+test: yb.orig.setup
 test: cast
 test: functions
 test: input
-test: yb_order_by
-test: yb_index
+test: yb.orig.order_by
+test: yb.orig.index

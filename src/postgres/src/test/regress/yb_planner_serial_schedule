@@ -3,10 +3,10 @@
 ####################################################################################################
 # Testsuite for tests covering planner/optimizer behavior.
 ####################################################################################################
-test: yb_planner_indexes
-test: yb_planner_joins
-test: yb_planner_join_order
-test: yb_planner_size_estimates
-test: yb_planner_heuristic_selectivity
-test: yb_planner_base_scans_cost_model_colocated
-test: yb_planner_base_scans_cost_model
+test: yb.orig.planner_indexes
+test: yb.orig.planner_joins
+test: yb.orig.planner_join_order
+test: yb.orig.planner_size_estimates
+test: yb.orig.planner_heuristic_selectivity
+test: yb.orig.planner_base_scans_cost_model_colocated
+test: yb.orig.planner_base_scans_cost_model
