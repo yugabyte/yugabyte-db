@@ -218,7 +218,7 @@ func init() {
 			"\"region-name=<region-name>::latitude=<latitude>::longitude=<longitude>\". "+
 			formatter.Colorize("Region name is a required key-value.",
 				formatter.GreenColor)+
-			" Latitude and Longitude (Defaults to 0.0) are optional. "+
+			" Latitude and Longitude (Default values for both are 0.0) are optional. "+
 			"Each region needs to be added using a separate --region flag. "+
 			"Example: --region region-name=us-west-1 --region region-name=us-west-2")
 	createOnpremProviderCmd.Flags().StringArray("zone", []string{},

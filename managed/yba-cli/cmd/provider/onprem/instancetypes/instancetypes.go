@@ -12,7 +12,7 @@ import (
 // in YugabyteDB Anywhere
 var InstanceTypesCmd = &cobra.Command{
 	Use:     "instance-type",
-	Aliases: []string{"instance-types"},
+	Aliases: []string{"instance-types", "instancetypes", "instancetype"},
 	Short:   "Manage YugabyteDB Anywhere onprem instance types",
 	Long:    "Manage YugabyteDB Anywhere on-premises instance types",
 	Run: func(cmd *cobra.Command, args []string) {
