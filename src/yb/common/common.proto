@@ -134,13 +134,20 @@ enum PgVectorIndexType {
   HNSW = 3;
 }
 
+message PgHnswIndexOptionsPB {
+  optional uint32 m = 1;
+  optional uint32 m0 = 2;
+  optional uint32 ef_construction = 3;
+}
+
 message PgVectorIdxOptionsPB {
   optional PgVectorDistanceType dist_type = 1;
   optional PgVectorIndexType idx_type = 2;
   optional uint32 dimensions = 3;
   optional uint32 column_id = 4;
-  optional uint32 hnsw_ef = 5;
-  optional uint32 hnsw_m = 6;
+
+  reserved 5, 6;
+  optional PgHnswIndexOptionsPB hnsw = 7;
 }
 
 message PgVectorReadOptionsPB {

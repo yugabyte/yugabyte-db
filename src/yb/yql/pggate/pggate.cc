@@ -1151,9 +1151,10 @@ Status PgApiImpl::CreateIndexSetVectorOptions(PgStatement* handle, YbcPgVectorId
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle)).SetVectorOptions(options);
 }
 
-Status PgApiImpl::CreateIndexSetHnswOptions(PgStatement* handle, int ef_construction, int m) {
+Status PgApiImpl::CreateIndexSetHnswOptions(
+    PgStatement* handle, int m, int m0, int ef_construction) {
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle))
-      .SetHnswOptions(ef_construction, m);
+      .SetHnswOptions(m, m0, ef_construction);
 }
 
 Status PgApiImpl::ExecCreateIndex(PgStatement* handle) {

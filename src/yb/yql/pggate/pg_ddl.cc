@@ -249,10 +249,11 @@ Status PgCreateTableBase::SetVectorOptions(YbcPgVectorIdxOptions* options) {
   return Status::OK();
 }
 
-Status PgCreateTableBase::SetHnswOptions(int ef_construction, int m) {
-  auto options_pb = req_.mutable_vector_idx_options();
-  options_pb->set_hnsw_ef(ef_construction);
-  options_pb->set_hnsw_m(m);
+Status PgCreateTableBase::SetHnswOptions(int m, int m0, int ef_construction) {
+  auto& options_pb = *req_.mutable_vector_idx_options()->mutable_hnsw();
+  options_pb.set_m(m);
+  options_pb.set_m0(m0);
+  options_pb.set_ef_construction(ef_construction);
   return Status::OK();
 }
 
