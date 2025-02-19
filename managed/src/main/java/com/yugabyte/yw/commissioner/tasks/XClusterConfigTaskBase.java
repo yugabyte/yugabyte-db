@@ -269,6 +269,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected Optional<XClusterConfig> maybeGetXClusterConfig() {
+    if (Objects.isNull(taskParams().getXClusterConfig())) {
+      return Optional.empty();
+    }
     return XClusterConfig.maybeGet(taskParams().getXClusterConfig().getUuid());
   }
 

@@ -140,6 +140,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ResumeKubernetesUniverse,
           TaskType.PauseKubernetesUniverse,
           TaskType.FailoverDrConfig,
+          TaskType.DeleteDrConfig,
+          TaskType.DeleteXClusterConfig,
           TaskType.DecommissionNode);
 
   @Override

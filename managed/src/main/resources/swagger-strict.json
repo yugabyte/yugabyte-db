@@ -26819,6 +26819,7 @@
         },
         "replicationGroupName" : {
           "description" : "Replication group name in the target universe cluster config",
+          "readOnly" : true,
           "type" : "string"
         },
         "secondary" : {
@@ -27112,6 +27113,7 @@
         },
         "replicationGroupName" : {
           "description" : "Replication group name in the target universe cluster config",
+          "readOnly" : true,
           "type" : "string"
         },
         "secondary" : {

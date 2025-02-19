@@ -2,6 +2,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -11,6 +13,7 @@ import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -20,6 +23,8 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class DeleteXClusterConfig extends XClusterConfigTaskBase {
 
   @Inject
@@ -32,15 +37,15 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
+    XClusterConfig xClusterConfig = taskParams().getXClusterConfig();
 
     Universe sourceUniverse = null;
-    Universe targetUniverse = null;
-    if (xClusterConfig.getSourceUniverseUUID() != null) {
-      sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    if (Objects.nonNull(taskParams().getSourceUniverseUuid())) {
+      sourceUniverse = Universe.maybeGet(taskParams().getSourceUniverseUuid()).orElse(null);
     }
-    if (xClusterConfig.getTargetUniverseUUID() != null) {
-      targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    Universe targetUniverse = null;
+    if (Objects.nonNull(taskParams().getTargetUniverseUuid())) {
+      targetUniverse = Universe.maybeGet(taskParams().getTargetUniverseUuid()).orElse(null);
     }
     try {
       if (sourceUniverse != null) {
@@ -57,7 +62,9 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
               null /* Txn callback */);
         }
 
-        createDeleteXClusterConfigSubtasks(xClusterConfig, sourceUniverse, targetUniverse);
+        if (Objects.nonNull(xClusterConfig)) {
+          createDeleteXClusterConfigSubtasks(xClusterConfig, sourceUniverse, targetUniverse);
+        }
 
         if (targetUniverse != null) {
           createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())

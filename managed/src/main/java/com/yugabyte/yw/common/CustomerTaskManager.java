@@ -47,6 +47,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
+import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
@@ -877,12 +878,18 @@ public class CustomerTaskManager {
         break;
       case FailoverDrConfig:
       case SwitchoverDrConfig:
+      case DeleteDrConfig:
         taskParams = Json.fromJson(oldTaskParams, DrConfigTaskParams.class);
         DrConfigTaskParams drConfigTaskParams = (DrConfigTaskParams) taskParams;
         drConfigTaskParams.refreshIfExists();
         // Todo: we need to recompute other task param fields here to handle changes in the database
         //  at the YBDB level, e.g., the user creates a table after the task has filed and before it
         //  is retried.
+        break;
+      case DeleteXClusterConfig:
+        taskParams = Json.fromJson(oldTaskParams, XClusterConfigTaskParams.class);
+        XClusterConfigTaskParams xClusterConfigTaskParams = (XClusterConfigTaskParams) taskParams;
+        xClusterConfigTaskParams.refreshIfExists();
         break;
       default:
         String errMsg =

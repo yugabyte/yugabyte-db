@@ -194,6 +194,7 @@ public class XClusterConfig extends Model {
   private Set<XClusterNamespaceConfig> namespaces = new HashSet<>();
 
   @ApiModelProperty(value = "Replication group name in the target universe cluster config")
+  @JsonProperty
   private String replicationGroupName;
 
   public enum ConfigType {
@@ -839,12 +840,13 @@ public class XClusterConfig extends Model {
     return sourceUniverseUUID + "_" + configName;
   }
 
-  public void setReplicationGroupName(String replicationGroupName) {
+  @JsonIgnore
+  public void setReplicationGroupName(String newReplicationGroupName) {
     if (imported) {
-      this.replicationGroupName = replicationGroupName;
+      this.replicationGroupName = newReplicationGroupName;
       return;
     }
-    setReplicationGroupName(this.getSourceUniverseUUID(), replicationGroupName /* configName */);
+    setReplicationGroupName(this.getSourceUniverseUUID(), newReplicationGroupName /* configName */);
   }
 
   @JsonIgnore
