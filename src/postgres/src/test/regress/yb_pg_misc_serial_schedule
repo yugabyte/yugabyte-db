@@ -5,19 +5,19 @@
 # This includes miscellaneous tests that are not yet characterized to a proper testsuite.  Unlike
 # yb_pg_misc_independent_serial_schedule, the tests in this schedule have dependencies.
 ####################################################################################################
-# Dependency for yb_pg_create_index, yb_pg_errors, yb_pg_random, yb_pg_misc,
-# yb_pg_misc_functions, yb_pg_prepare, yb_pg_with
-test: yb_pg_test_setup
+# Dependency for yb.port.create_index, yb.port.errors, yb.port.random, yb.port.misc,
+# yb.port.misc_functions, yb.port.prepare, yb.port.with
+test: yb.port.test_setup
 
-test: yb_pg_create_function_c
-test: yb_pg_create_operator
-test: yb_pg_create_table
-test: yb_pg_create_type
-test: yb_pg_create_index
-test: yb_pg_create_am
-test: yb_pg_errors
-test: yb_pg_random
-test: yb_pg_misc
-test: yb_pg_misc_functions
-test: yb_pg_prepare
-test: yb_pg_with
+test: yb.port.create_function_c
+test: yb.port.create_operator
+test: yb.port.create_table
+test: yb.port.create_type
+test: yb.port.create_index
+test: yb.port.create_am
+test: yb.port.errors
+test: yb.port.random
+test: yb.port.misc
+test: yb.port.misc_functions
+test: yb.port.prepare
+test: yb.port.with

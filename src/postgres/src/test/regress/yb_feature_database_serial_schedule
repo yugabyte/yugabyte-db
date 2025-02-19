@@ -4,5 +4,5 @@
 # YB Feature Database Testsuite: Used for reporting supported and unsupported features.
 #   This testsuite does some basic check for database features.
 ####################################################################################################
-test: yb_feature_alter_rename
-test: yb_feature_db
+test: yb.orig.feature_alter_rename
+test: yb.orig.feature_db

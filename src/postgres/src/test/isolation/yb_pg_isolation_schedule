@@ -1,18 +1,18 @@
 # Tests related to READ COMMITTED isolation
-test: yb_read_committed_update_and_explicit_locking
-test: yb_read_committed_insert
-test: yb_read_committed_insert_duplicate_key_error
-test: yb_read_committed_test_internal_savepoint
-test: yb_read_committed_test_do_call
+test: yb.orig.read_committed_update_and_explicit_locking
+test: yb.orig.read_committed_insert
+test: yb.orig.read_committed_insert_duplicate_key_error
+test: yb.orig.read_committed_test_internal_savepoint
+test: yb.orig.read_committed_test_do_call
 
 # Skip locked related tests newly added at YB
-test: yb-modification-followed-by-lock
-test: yb-skip-locked-after-update
-test: yb-skip-locked-single-shard-transaction
+test: yb.orig.modification-followed-by-lock
+test: yb.orig.skip-locked-after-update
+test: yb.orig.skip-locked-single-shard-transaction
 
 # TODO: Re-enable after memory leak fixed
 # Refer https://github.com/yugabyte/yugabyte-db/issues/18324 for details.
-# test: yb-lock-status
+# test: yb.orig.lock-status
 
 # TODO:
 # 1. Test to ensure that new sub txns inherit ybDataSentForCurrQuery and parent txns
@@ -26,7 +26,7 @@ test: fk-deadlock2
 # TODO: Test fk-partitioned-1 and fk-partitioned-2  after GH issue #24403 is resolved.
 # test: fk-partitioned-1
 # test: fk-partitioned-2
-test: yb_pg_eval-plan-qual
+test: yb.port.eval-plan-qual
 test: insert-conflict-do-nothing
 test: insert-conflict-do-update
 test: insert-conflict-do-update-2
@@ -46,9 +46,9 @@ test: nowait-3
 test: skip-locked
 test: skip-locked-2
 test: skip-locked-3
-test: yb-ignore-rolled-back-savepoint-intent
-test: yb-ensure-lock-only-conflict-always-ignored
-test: yb-drop-probe-waiting-on-aborted-blocker-subtxn
-test: yb_conflict_with_index_only_scan_in_serializable
-test: yb_query_layer_retries_for_a_multi_statement_query
-test: yb_advisory_locks
+test: yb.orig.ignore-rolled-back-savepoint-intent
+test: yb.orig.ensure-lock-only-conflict-always-ignored
+test: yb.orig.drop-probe-waiting-on-aborted-subtxn
+test: yb.orig.serializable_conflict_with_index_only_scan
+test: yb.orig.query_layer_retries_multi_stmt_query
+test: yb.orig.advisory_locks

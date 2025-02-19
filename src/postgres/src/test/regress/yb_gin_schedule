@@ -4,13 +4,13 @@
 # YB GIN Testsuite: Yugabyte-owned (non-ported) gin index tests.
 ################################################################################
 # Upstream postgres ported tests.
-test: yb_pg_gin
+test: yb.port.gin
 
-test: yb_gin
-test: yb_ybgin
-test: yb_ybgin_nulls
-test: yb_ybgin_search_modes
-test: yb_ybgin_misc
-test: yb_ybgin_cost_estimate
-test: yb_ybgin_operators
-test: yb_ybgin_pushdown
+test: yb.orig.gin
+test: yb.orig.ybgin
+test: yb.orig.ybgin_nulls
+test: yb.orig.ybgin_search_modes
+test: yb.orig.ybgin_misc
+test: yb.orig.ybgin_cost_estimate
+test: yb.orig.ybgin_operators
+test: yb.orig.ybgin_pushdown

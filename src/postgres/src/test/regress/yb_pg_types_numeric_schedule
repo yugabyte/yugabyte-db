@@ -4,14 +4,14 @@
 # Postgres Testsuites: Porting from PostgreSQL original tests.
 # This suite includes all tests on numeric datatypes that are enabled for YugaByte.
 ####################################################################################################
-# Dependency for yb_pg_int2, yb_pg_int4, yb_pg_int8, yb_pg_float8.
-test: yb_pg_test_setup
+# Dependency for yb.port.int2, yb.port.int4, yb.port.int8, yb.port.float8.
+test: yb.port.test_setup
 
-test: yb_pg_int2
-test: yb_pg_int4
-test: yb_pg_int8
-test: yb_pg_float4
-test: yb_pg_float8
-test: yb_pg_numeric
-test: yb_pg_numeric_big
-test: yb_pg_money
+test: yb.port.int2
+test: yb.port.int4
+test: yb.port.int8
+test: yb.port.float4
+test: yb.port.float8
+test: yb.port.numeric
+test: yb.port.numeric_big
+test: yb.port.money
