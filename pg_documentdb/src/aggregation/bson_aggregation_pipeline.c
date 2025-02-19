@@ -4278,9 +4278,22 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 			bool isAscending = ValidateOrderbyExpressionAndGetIsAscending(sortDoc);
 			SortByNulls sortByNulls = SORTBY_NULLS_DEFAULT;
 
+			bool hasSortById = strcmp(element.path, "_id") == 0;
+			bool canPushdownSortById = false;
+
+			if (hasSortById)
+			{
+				ReportFeatureUsage(FEATURE_STAGE_SORT_BY_ID);
+
+				if (CanSortByObjectId(query, context))
+				{
+					canPushdownSortById = true;
+					ReportFeatureUsage(FEATURE_STAGE_SORT_BY_ID_PUSHDOWNABLE);
+				}
+			}
+
 			/* If the sort is on _id and we can push it down to the primary key index, use ORDER BY object_id instead. */
-			if (EnableSortbyIdPushDownToPrimaryKey && strcmp(element.path, "_id") == 0 &&
-				CanSortByObjectId(query, context))
+			if (EnableSortbyIdPushDownToPrimaryKey && canPushdownSortById)
 			{
 				expr = (Expr *) makeVar(1,
 										DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,

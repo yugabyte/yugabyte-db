@@ -26,6 +26,12 @@ END LOOP;
 END;
 $$;
 NOTICE:  creating collection
+SELECT 1 FROM documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
 SELECT count(*) from documentdb_api.collection('sort_pushdown', 'coll');
  count 
 ---------------------------------------------------------------------
@@ -98,6 +104,12 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
  Index Scan Backward using _id_ on documents_964001_9640002 collection (actual rows=10000 loops=1)
    Index Cond: (shard_key_value = '964001'::bigint)
 (2 rows)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                             get_feature_counter_pretty                                              
+---------------------------------------------------------------------
+ {"Feature_usage":[{"limit" : 2}, {"match" : 4}, {"sort" : 4}, {"sort_by_id" : 4}, {"sort_by_id_pushdownable" : 4}]}
+(1 row)
 
 -- filter on _id_
 SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 5}}, "sort": {"_id": 1}, "limit":20 }');
@@ -267,6 +279,12 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
          Rows Removed by Filter: 10
 (5 rows)
 
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                             get_feature_counter_pretty                                              
+---------------------------------------------------------------------
+ {"Feature_usage":[{"limit" : 7}, {"match" : 9}, {"sort" : 9}, {"sort_by_id" : 9}, {"sort_by_id_pushdownable" : 9}]}
+(1 row)
+
 BEGIN;
 SET LOCAL documentdb.enableSortbyIdPushDownToPrimaryKey = 'false';
 ---- should not use  Index Scan using _id_ 
@@ -312,6 +330,12 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
                            ->  Bitmap Index Scan on a_id (actual rows=6667 loops=1)
                                  Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "12" }, { "$numberInt" : "14" } ] }'::documentdb_core.bson)
 (16 rows)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                             get_feature_counter_pretty                                              
+---------------------------------------------------------------------
+ {"Feature_usage":[{"limit" : 2}, {"match" : 2}, {"sort" : 2}, {"sort_by_id" : 2}, {"sort_by_id_pushdownable" : 2}]}
+(1 row)
 
 END;
 SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 100}}, "sort": {"_id": 1}, "limit": 20 }');
