@@ -817,6 +817,7 @@ public class HealthChecker {
                   params.universe, UniverseConfKeys.healthCheckClockSyncServiceRequired));
         } else {
           nodeInfo.setClockSyncServiceRequired(false);
+          nodeInfo.setCheckTimeDrift(false);
         }
         if (params.universe.isYbcEnabled()) {
           nodeInfo
