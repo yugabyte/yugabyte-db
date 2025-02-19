@@ -375,6 +375,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   const auto pg_upgrade_data_dir =
       JoinPathSegments(master_opts.fs_opts.data_paths.front(), "pg_upgrade_data");
 
+  RETURN_NOT_OK(PgWrapper::CleanupPgData(pg_upgrade_data_dir));
+
   // Run local initdb to prepare the node for starting postgres.
   auto pg_conf = VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
       FLAGS_rpc_bind_addresses, pg_upgrade_data_dir, master_.GetSharedMemoryFd()));
@@ -421,6 +423,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   pg_upgrade_params.old_version_pg_port = closest_ts_hp.port();
 
   RETURN_NOT_OK(PgWrapper::RunPgUpgrade(pg_upgrade_params));
+
+  RETURN_NOT_OK(PgWrapper::CleanupPgData(pg_upgrade_data_dir));
 
   return Status::OK();
 }

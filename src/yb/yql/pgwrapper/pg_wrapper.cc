@@ -964,10 +964,13 @@ Result<int32_t> GetPgDirectoryVersion(const string& data_dir) {
   return CheckedStoi(slc.Prefix(kVersionChars));
 }
 
+std::string MakeVersionedDataDir(const std::string& data_dir, int32_t version) {
+  return data_dir + "_" + std::to_string(version);
+}
 }  // namespace
 
 string PgWrapper::MakeVersionedDataDir(int32_t version) {
-  return conf_.data_dir + "_" + std::to_string(version);
+  return pgwrapper::MakeVersionedDataDir(conf_.data_dir, version);
 }
 
 // The data directory contains PG files for a particular PG version.
@@ -1030,6 +1033,17 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
   // local initdb if versioned_data_dir already exists.
   RETURN_NOT_OK(InitDb(LocalInitdbParams{versioned_data_dir}));
   return Env::Default()->SymlinkPath(versioned_data_dir, conf_.data_dir);
+}
+
+Status PgWrapper::CleanupPgData(const std::string& data_dir) {
+  const auto current_pg_version = VERIFY_RESULT(GetCurrentPgVersion());
+  const std::string versioned_data_dir =
+      pgwrapper::MakeVersionedDataDir(data_dir, current_pg_version);
+  auto env = Env::Default();
+  RETURN_NOT_OK(DeleteIfExists(versioned_data_dir, env));
+  RETURN_NOT_OK(DeleteIfExists(data_dir, env));
+
+  return Status::OK();
 }
 
 Status PgWrapper::InitDbForYSQL(
