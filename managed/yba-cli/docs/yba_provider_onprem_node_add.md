@@ -21,7 +21,7 @@ yba provider onprem add --name <provider-name> \
 ### Options
 
 ```
-      --instance-type string       [Required] Instance type of the node as describe in the provider.
+      --instance-type string       [Required] Instance type of the node as described in the provider. Run "yba provider onprem instance-type list --name <provider-name>" for a list of instance types associated with the provider.
       --ip string                  [Required] IP address of the node instance.
       --region string              [Required] Region name of the node.
       --zone string                [Required] Zone name of the node.
