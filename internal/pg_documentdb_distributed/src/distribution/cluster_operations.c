@@ -65,6 +65,7 @@ static void GetInstalledVersion(ExtensionVersion *installedVersion);
 static void ParseVersionString(ExtensionVersion *extensionVersion, char *versionString);
 static bool SetupCluster(bool isInitialize);
 static void SetPermissionsForReadOnlyRole(void);
+static void CheckAndReplicateReferenceTable(const char *schema, const char *tableName);
 static ArrayType * GetCollectionIds(void);
 
 PG_FUNCTION_INFO_V1(command_initialize_cluster);
@@ -284,6 +285,16 @@ SetupCluster(bool isInitialize)
 						 ApiDistributedSchemaName, ExtensionObjectPrefix);
 		ExtensionExecuteQueryViaSPI(cmdStr->data, false, SPI_OK_UTILITY,
 									&isNull);
+	}
+
+	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 23, 2))
+	{
+		CheckAndReplicateReferenceTable(ApiCatalogSchemaName, "collections");
+		CheckAndReplicateReferenceTable(ApiCatalogSchemaName, "collection_indexes");
+
+		StringInfo relationName = makeStringInfo();
+		appendStringInfo(relationName, "%s_cluster_data", ExtensionObjectPrefix);
+		CheckAndReplicateReferenceTable(ApiDistributedSchemaName, relationName->data);
 	}
 
 	/* we call the post setup cluster hook to allow the extension to do any additional setup */
@@ -962,6 +973,39 @@ SetPermissionsForReadOnlyRole()
 						 ApiDataSchemaName, collection_id, ApiReadOnlyRole);
 		ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
 									&isNull);
+	}
+}
+
+
+/*
+ * Checks if the given reference table is replicated.
+ */
+static void
+CheckAndReplicateReferenceTable(const char *schema, const char *tableName)
+{
+	StringInfo relationName = makeStringInfo();
+	appendStringInfo(relationName, "%s_%s", ExtensionObjectPrefix, "cluster_data");
+	if (!(strcmp(tableName, "collections") == 0 ||
+		  strcmp(tableName, "collection_indexes") == 0 ||
+		  strcmp(tableName, relationName->data) == 0))
+	{
+		return;
+	}
+
+	StringInfo queryStringInfo = makeStringInfo();
+	appendStringInfo(queryStringInfo,
+					 "SELECT shardid FROM pg_catalog.pg_dist_shard WHERE logicalrelid = '%s.%s'::regclass",
+					 schema, tableName);
+
+	bool isNull = false;
+	ExtensionExecuteQueryViaSPI(queryStringInfo->data, false, SPI_OK_SELECT, &isNull);
+
+	if (isNull)
+	{
+		/* Not replicated, replicate it.*/
+		resetStringInfo(relationName);
+		appendStringInfo(relationName, "%s.%s", schema, tableName);
+		CreateReferenceTable(relationName->data);
 	}
 }
 
