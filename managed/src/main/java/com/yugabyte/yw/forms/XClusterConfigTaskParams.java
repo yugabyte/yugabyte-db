@@ -48,6 +48,8 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   public Set<String> dbs;
   protected Set<String> databaseIdsToAdd;
   protected Set<String> databaseIdsToRemove;
+  @Setter private UUID sourceUniverseUuid;
+  @Setter private UUID targetUniverseUuid;
 
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
@@ -199,6 +201,8 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   public XClusterConfigTaskParams(XClusterConfig xClusterConfig, boolean isForced) {
     this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     this.xClusterConfig = xClusterConfig;
+    this.sourceUniverseUuid = xClusterConfig.getSourceUniverseUUID();
+    this.targetUniverseUuid = xClusterConfig.getTargetUniverseUUID();
     this.isForced = isForced;
   }
 
