@@ -425,9 +425,9 @@ Provider   Key Alias                              Last Rotated   Security Princi
 AWS        XXXXXXXX-e690-42fc-b209-baf969930b2c   -              arn:aws:kms:us-east-1:712345678912:key/db272c8d-1592-4c73-bfa3-420d05822933   ACTIVE
 ```
 
-### Update CMK configuration
+### Rotate your CMK
 
-Use the following commands to update the CMK configuration. If no existing configuration is found, the command creates a new one; otherwise, it updates the current configuration.
+Use the following commands to rotate your CMK. You can also use these commands to encrypt a cluster where the specified cluster does not already have EAR.
 
 Note: Only credentials can be modified in the current configuration (for example, AWS access/secret keys or GCP service account credentials).
 
