@@ -38,5 +38,6 @@ yba ear gcp [flags]
 * [yba ear gcp delete](yba_ear_gcp_delete.md)	 - Delete a YugabyteDB Anywhere GCP encryption at rest configuration
 * [yba ear gcp describe](yba_ear_gcp_describe.md)	 - Describe a GCP YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 * [yba ear gcp list](yba_ear_gcp_list.md)	 - List GCP YugabyteDB Anywhere Encryption In Transit (EAR) configurations
+* [yba ear gcp refresh](yba_ear_gcp_refresh.md)	 - Refresh a GCP YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 * [yba ear gcp update](yba_ear_gcp_update.md)	 - Update a YugabyteDB Anywhere GCP encryption at rest (EAR) configuration
 

@@ -40,4 +40,5 @@ yba ear [flags]
 * [yba ear gcp](yba_ear_gcp.md)	 - Manage a YugabyteDB Anywhere GCP encryption at rest (EAR) configuration
 * [yba ear hashicorp-vault](yba_ear_hashicorp-vault.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
 * [yba ear list](yba_ear_list.md)	 - List YugabyteDB Anywhere Encryption at Rest Configurations
+* [yba ear refresh](yba_ear_refresh.md)	 - Refresh a YugabyteDB Anywhere Encryption At Rest (EAR) configuration
 

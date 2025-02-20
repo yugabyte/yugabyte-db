@@ -38,5 +38,6 @@ yba ear hashicorp-vault [flags]
 * [yba ear hashicorp-vault delete](yba_ear_hashicorp-vault_delete.md)	 - Delete a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration
 * [yba ear hashicorp-vault describe](yba_ear_hashicorp-vault_describe.md)	 - Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 * [yba ear hashicorp-vault list](yba_ear_hashicorp-vault_list.md)	 - List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configurations
+* [yba ear hashicorp-vault refresh](yba_ear_hashicorp-vault_refresh.md)	 - Refresh a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 * [yba ear hashicorp-vault update](yba_ear_hashicorp-vault_update.md)	 - Update a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
 
