@@ -438,7 +438,7 @@ Note: Only credentials can be modified in the current configuration (for example
 ```sh
 ybm cluster encryption update \
   --cluster-name my-sandbox \
-  --encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>
+  --encryption-spec cloud-provider=AWS,aws-secret-key=<new-secret-key>,aws-access-key=<new-access-key>
 ```
 
 {{% /tab %}}
@@ -458,7 +458,7 @@ ybm cluster encryption update \
 ```sh
 ybm cluster encryption update \
   --cluster-name my-sandbox \
-  --encryption-spec cloud-provider=AZURE,azu-client-id=<your-client-id>,azu-client-secret=<your-client-secret>,azu-tenant-id=<your-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<your-key-vault-uri>
+  --encryption-spec cloud-provider=AZURE,azu-client-id=<new-client-id>,azu-client-secret=<new-client-secret>,azu-tenant-id=<new-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<new-key-vault-uri>
 ```
 
 {{% /tab %}}
