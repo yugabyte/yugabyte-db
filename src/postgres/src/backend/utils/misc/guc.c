@@ -2504,6 +2504,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_pg_locks_integrate_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Enables pg_locks to integrate and display advisory locks details correctly."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_pg_locks_integrate_advisory_locks,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_replication_commands", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable the replication commands for Publication and Replication Slots."),
 			NULL,
@@ -3204,18 +3215,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
-  {
-    {"yb_disable_auto_analyze", PGC_USERSET, CUSTOM_OPTIONS,
-      gettext_noop("Run 'ALTER DATABASE <name> SET yb_disable_auto_analyze=on' to disable auto "
-          "analyze on that database. Set it to off to resume auto analyze. Setting this GUC via "
-          "any other method is not allowed."),
-      NULL,
-      GUC_NOT_IN_SAMPLE
-    },
-    &yb_disable_auto_analyze,
-    false,
-    yb_disable_auto_analyze_check_hook, NULL, NULL
-  },
+	{
+		{"yb_disable_auto_analyze", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Run 'ALTER DATABASE <name> SET yb_disable_auto_analyze=on' to disable auto "
+						 "analyze on that database. Set it to off to resume auto analyze. Setting this GUC via "
+						 "any other method is not allowed."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_auto_analyze,
+		false,
+		yb_disable_auto_analyze_check_hook, NULL, NULL
+	},
 
 	{
 		{"yb_extension_upgrade", PGC_SUSET, CUSTOM_OPTIONS,

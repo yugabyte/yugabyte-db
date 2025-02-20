@@ -63,6 +63,11 @@ extern bool yb_pushdown_is_not_null;
 extern bool yb_enable_pg_locks;
 
 /*
+ * GUC that toggles whether pg_locks correctly formats and integrates advisory locks info.
+ */
+extern bool yb_pg_locks_integrate_advisory_locks;
+
+/*
  * Guc variable to suppress non-Postgres logs from appearing in Postgres log file.
  */
 extern bool suppress_nonpg_logs;

@@ -37,6 +37,8 @@ bool yb_pushdown_is_not_null = true;
 
 bool yb_enable_pg_locks = true;
 
+bool yb_pg_locks_integrate_advisory_locks = true;
+
 bool yb_run_with_explain_analyze = false;
 
 bool yb_enable_add_column_missing_default = true;
