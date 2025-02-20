@@ -6339,6 +6339,7 @@ RelationCacheInitializePhase3(void)
 
 		Assert(YBCIsSysTablePrefetchingStarted());
 		Assert(YbCheckCatalogCacheIndexNameTable());
+		Assert(YbCheckSysCacheNames());
 	}
 
 	/*

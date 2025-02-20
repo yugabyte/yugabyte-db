@@ -319,6 +319,19 @@ CatalogCacheComputeHashValue(CatCache *cache, int nkeys,
 	return hashValue;
 }
 
+uint32
+YbCatalogCacheComputeHashValue(CatCache *cache,
+							   Datum v1, Datum v2, Datum v3, Datum v4)
+{
+	/*
+	 * Make sure cache is initialized before computing hash value.
+	 */
+	if (unlikely(cache->cc_tupdesc == NULL))
+		CatalogCacheInitializeCache(cache);
+
+	return CatalogCacheComputeHashValue(cache, cache->cc_nkeys, v1, v2, v3, v4);
+}
+
 /*
  *		CatalogCacheComputeTupleHashValue
  *
