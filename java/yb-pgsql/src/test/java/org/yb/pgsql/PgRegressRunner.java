@@ -61,14 +61,14 @@ public class PgRegressRunner {
    * Failed test line example:
    *
    * <pre>
-   * test yb_tablegroup                ... FAILED
-   * test yb_tablegroup_dml            ... FAILED (test process exited with exit code 2)
+   * test yb.orig.tablegroup           ... FAILED
+   * test yb.orig.tablegroup_dml       ... FAILED (test process exited with exit code 2)
    * </pre>
    *
    * (We don't care about the optional exit code suffix.)
    */
   private final Pattern failedTestLineRe =
-      Pattern.compile("^test\\s+([a-zA-Z0-9_-]+)\\s+[.]+\\s+FAILED");
+      Pattern.compile("^test\\s+(\\S+)\\s+[.]+\\s+FAILED");
 
   private LogErrorListener createLogErrorListener(int pid) {
     return new ExternalDaemonLogErrorListener("pg_regress with pid " + pid) {
