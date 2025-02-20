@@ -117,10 +117,10 @@ check_for_data_types_usage(ClusterInfo *cluster,
 						 strerror(errno));
 			if (!db_used)
 			{
-				fprintf(script, "In database: %s\n", active_db->db_name);
+				yb_fprintf_and_log(script, "In database: %s\n", active_db->db_name);
 				db_used = true;
 			}
-			fprintf(script, "  %s.%s.%s\n",
+			yb_fprintf_and_log(script, "  %s.%s.%s\n",
 					PQgetvalue(res, rowno, i_nspname),
 					PQgetvalue(res, rowno, i_relname),
 					PQgetvalue(res, rowno, i_attname));
@@ -375,12 +375,13 @@ old_11_check_for_sql_identifier_data_type_usage(ClusterInfo *cluster)
 	if (check_for_data_type_usage(cluster, "information_schema.sql_identifier",
 								  output_path))
 	{
-		pg_log(PG_REPORT, "fatal\n");
-		pg_fatal("Your installation contains the \"sql_identifier\" data type in user tables.\n"
+		if (!is_yugabyte_enabled())
+			pg_log(PG_REPORT, "fatal\n");
+		yb_fatal("Your installation contains the \"sql_identifier\" data type in user tables.\n"
 				 "The on-disk format for this data type has changed, so this\n"
 				 "cluster cannot currently be upgraded.  You can\n"
 				 "drop the problem columns and restart the upgrade.\n"
-				 "A list of the problem columns is in the file:\n"
+				 "A list of the problem columns is printed above and in the file:\n"
 				 "    %s\n\n", output_path);
 	}
 	else
