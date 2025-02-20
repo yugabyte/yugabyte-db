@@ -276,6 +276,7 @@ ADD_YB_TEST(upgrade-tests/ycql_only_upgrade-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_matview-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_check-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
