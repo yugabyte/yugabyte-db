@@ -39028,7 +39028,7 @@
         ]
       },
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "updatePitrConfig",
         "parameters" : [
           {
