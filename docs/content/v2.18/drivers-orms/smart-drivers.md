@@ -119,6 +119,8 @@ For example, using the _Go_ smart driver, you can change the interval to four mi
 
 (Note that the parameter names may be different depending on the driver you're using.)
 
+Keep in mind that when a cluster is expanded, newly added nodes do not automatically start to receive client traffic. Your application must either explicitly request new connections or, if you are using a [pooling solution](#connection-pooling), you can configure the pooler to recycle connections periodically (for example, by setting maxLifetime and/or idleTimeout).
+
 ### Topology-aware load balancing
 
 For a database deployment that spans multiple regions, evenly distributing requests across all database nodes may not be optimal. With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. This is beneficial in the following situations:
