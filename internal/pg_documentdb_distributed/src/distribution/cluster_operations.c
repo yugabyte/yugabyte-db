@@ -39,6 +39,12 @@ char *DistributedExtensionName = "documentdb_distributed";
 bool CreateDistributedFunctions = false;
 bool CreateIndexBuildQueueTable = false;
 
+typedef struct ClusterOperationVersions
+{
+	ExtensionVersion InstalledVersion;
+	ExtensionVersion LastUpgradeVersion;
+} ClusterOperationVersions;
+
 extern char * GetIndexQueueName(void);
 
 static char * GetClusterInitializedVersion(void);
@@ -119,12 +125,21 @@ command_complete_upgrade(PG_FUNCTION_ARGS)
  * than the current installed version.
  */
 static inline bool
-ShouldRunSetupForVersion(ExtensionVersion lastUpgradeVersion,
-						 ExtensionVersion installedVersion,
+ShouldRunSetupForVersion(ClusterOperationVersions *versions,
 						 MajorVersion major, int minor, int patch)
 {
-	return !IsExtensionVersionAtleast(lastUpgradeVersion, major, minor, patch) &&
-		   IsExtensionVersionAtleast(installedVersion, major, minor, patch);
+	return !IsExtensionVersionAtleast(versions->LastUpgradeVersion, major, minor,
+									  patch) &&
+		   IsExtensionVersionAtleast(versions->InstalledVersion, major, minor, patch);
+}
+
+
+static bool
+ShouldRunSetupForVersionForHook(void *versionsVoid,
+								int major, int minor, int patch)
+{
+	return ShouldRunSetupForVersion((ClusterOperationVersions *) versionsVoid,
+									(MajorVersion) major, minor, patch);
 }
 
 
@@ -164,7 +179,16 @@ SetupCluster(bool isInitialize)
 					installedVersion.Major, installedVersion.Minor,
 					installedVersion.Patch));
 	}
-	else
+
+	ClusterOperationVersions versions =
+	{
+		.InstalledVersion = installedVersion,
+		.LastUpgradeVersion = lastUpgradeVersion
+	};
+
+	/* If the version is < 0.0-5 or if it's an initialize ensure metadata collections are created */
+	if (isInitialize ||
+		ShouldRunSetupForVersion(&versions, DocDB_V0, 0, 5))
 	{
 		/*
 		 * We should only create and modify schema objects here for versions that are no longer covered by the upgrade path.
@@ -195,19 +219,19 @@ SetupCluster(bool isInitialize)
 	/*
 	 * For initialize, lastUpgradeVersion will always be 1.4-0, so all of the below conditions will apply if the installedVersion meets the requirement.
 	 */
-	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 7, 0))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 7, 0))
 	{
 		AddCollectionsTableViewDefinition();
 	}
 
-	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 7, 0) &&
-		!ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 12, 0))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 7, 0) &&
+		!ShouldRunSetupForVersion(&versions, DocDB_V0, 12, 0))
 	{
 		/* Schedule happens again at 1.12 */
 		ScheduleIndexBuildTasks(ExtensionObjectPrefix);
 	}
 
-	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 8, 0))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 8, 0))
 	{
 		CreateExtensionVersionsTrigger();
 
@@ -216,13 +240,13 @@ SetupCluster(bool isInitialize)
 		AddCollectionsTableValidationColumns();
 	}
 
-	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 12, 0))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 12, 0))
 	{
 		CreateIndexBuildsTable();
 	}
 
-	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 12, 0) &&
-		!ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 15, 0))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 12, 0) &&
+		!ShouldRunSetupForVersion(&versions, DocDB_V0, 15, 0))
 	{
 		/* Unschedule index tasks from old queue. */
 		char *oldExtensionPrefix = ExtensionObjectPrefix;
@@ -232,13 +256,13 @@ SetupCluster(bool isInitialize)
 		ScheduleIndexBuildTasks(extensionPrefix);
 	}
 
-	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 14, 0))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 14, 0))
 	{
 		DropLegacyChangeStream();
 		AddUserColumnsToIndexQueue();
 	}
 
-	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 15, 0))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 15, 0))
 	{
 		/* reduce the Index background cron job schedule to 2 seconds by default. */
 		char *extensionPrefix = ExtensionObjectPrefixV2;
@@ -246,12 +270,12 @@ SetupCluster(bool isInitialize)
 		ScheduleIndexBuildTasks(extensionPrefix);
 	}
 
-	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 17, 1))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 17, 1))
 	{
 		SetPermissionsForReadOnlyRole();
 	}
 
-	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 21, 0))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 21, 0))
 	{
 		if (!isInitialize && ClusterAdminRole[0] != '\0')
 		{
@@ -267,7 +291,7 @@ SetupCluster(bool isInitialize)
 		}
 	}
 
-	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 23, 0))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 23, 0))
 	{
 		/* Re-add the primary key in the context of the cluster operations. */
 		StringInfo cmdStr = makeStringInfo();
@@ -287,7 +311,7 @@ SetupCluster(bool isInitialize)
 									&isNull);
 	}
 
-	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 23, 2))
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 23, 2))
 	{
 		CheckAndReplicateReferenceTable(ApiCatalogSchemaName, "collections");
 		CheckAndReplicateReferenceTable(ApiCatalogSchemaName, "collection_indexes");
@@ -298,7 +322,7 @@ SetupCluster(bool isInitialize)
 	}
 
 	/* we call the post setup cluster hook to allow the extension to do any additional setup */
-	PostSetupClusterHook(isInitialize);
+	PostSetupClusterHook(isInitialize, &ShouldRunSetupForVersionForHook, &versions);
 
 	TriggerInvalidateClusterMetadata();
 	return true;
@@ -359,8 +383,9 @@ DistributeCrudFunctions()
 
 	/* Push down the delete/insert/update one function calls */
 	appendStringInfo(relationName,
-					 "%s.delete_one(bigint,bigint,bson,bson,bool,bson,text)",
-					 ApiInternalSchemaName);
+					 "%s.delete_one(bigint,bigint,%s,%s,bool,%s,text)",
+					 ApiInternalSchemaName, FullBsonTypeName, FullBsonTypeName,
+					 FullBsonTypeName);
 	CreateDistributedFunction(
 		relationName->data,
 		distributionArgName,
@@ -369,8 +394,8 @@ DistributeCrudFunctions()
 		);
 
 	resetStringInfo(relationName);
-	appendStringInfo(relationName, "%s.insert_one(bigint,bigint,bson,text)",
-					 ApiInternalSchemaName);
+	appendStringInfo(relationName, "%s.insert_one(bigint,bigint,%s,text)",
+					 ApiInternalSchemaName, FullBsonTypeName);
 	CreateDistributedFunction(
 		relationName->data,
 		distributionArgName,
@@ -380,8 +405,10 @@ DistributeCrudFunctions()
 
 	resetStringInfo(relationName);
 	appendStringInfo(relationName,
-					 "%s.update_one(bigint,bigint,bson,bson,bson,bool,bson,bool,bson,bson,text)",
-					 ApiInternalSchemaName);
+					 "%s.update_one(bigint,bigint,%s,%s,%s,bool,%s,bool,%s,%s,text)",
+					 ApiInternalSchemaName, FullBsonTypeName, FullBsonTypeName,
+					 FullBsonTypeName,
+					 FullBsonTypeName, FullBsonTypeName, FullBsonTypeName);
 	CreateDistributedFunction(
 		relationName->data,
 		distributionArgName,

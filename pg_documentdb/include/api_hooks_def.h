@@ -160,7 +160,8 @@ extern IsNtoReturnSupported_HookType is_n_to_return_supported_hook;
 typedef bool (*EnsureMetadataTableReplicated_HookType)(const char *);
 extern EnsureMetadataTableReplicated_HookType ensure_metadata_table_replicated_hook;
 
-typedef void (*PostSetupCluster_HookType)(bool);
+typedef void (*PostSetupCluster_HookType)(bool, bool (shouldUpgradeFunc(void *, int, int,
+																		int)), void *);
 extern PostSetupCluster_HookType post_setup_cluster_hook;
 
 typedef IndexAmRoutine *(*GetIndexAmRoutine_HookType)(PG_FUNCTION_ARGS);
