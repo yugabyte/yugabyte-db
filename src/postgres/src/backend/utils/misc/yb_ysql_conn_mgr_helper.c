@@ -747,7 +747,7 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	yb_net_client_connections = CountUserBackends(*roleid);
 
 	if (IsYugaByteEnabled() &&
-		YbGetNumYsqlConnMgrConnections(NULL, rname, &yb_num_logical_conn,
+		YbGetNumYsqlConnMgrConnections(-1, *roleid, &yb_num_logical_conn,
 									   &yb_num_physical_conn_from_ysqlconnmgr))
 	{
 		yb_net_client_connections +=
@@ -954,15 +954,17 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 }
 
 /*
- * Calculate the number of logical and physical connections to a database
- * or user or both. These values are used to calcualte the actual
- * number of client connections which should be considered for DROP DATABASE.
+ * If one out of db_oid or user_oid is invalid (invalid entries are marked with -1),
+ * calculate number of logical and physical connections across all pools corresponding to the
+ * provided valid db_oid or user_oid.
+ * If both db_oid and usr_oid are valid, then connections will be calculated for that specific
+ * pool.
  *
  * These values are read from the shared memory segment for Ysql Connection
  * Manager stats.
  */
 bool
-YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
+YbGetNumYsqlConnMgrConnections(const Oid db_oid, const Oid user_oid,
 							   uint32_t *num_logical_conn,
 							   uint32_t *num_physical_conn)
 {
@@ -1008,14 +1010,14 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 	*num_physical_conn = 0;
 	for (uint32_t itr = 0; itr < YSQL_CONN_MGR_MAX_POOLS; ++itr)
 	{
-		if (strcmp(shmp[itr].database_name, "") == 0 ||
-			strcmp(shmp[itr].user_name, "") == 0)
-			break;
-
-		if (db_name != NULL && strcmp(shmp[itr].database_name, db_name) != 0)
+		if (shmp[itr].user_oid == -1 ||
+			shmp[itr].database_oid == -1)
 			continue;
 
-		if (user_name != NULL && strcmp(shmp[itr].user_name, user_name) != 0)
+		if (db_oid != -1 && shmp[itr].database_oid != db_oid)
+			continue;
+
+		if (user_oid != -1 && shmp[itr].user_oid != user_oid)
 			continue;
 
 		/*

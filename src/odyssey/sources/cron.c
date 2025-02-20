@@ -14,25 +14,29 @@
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
+/*
+ * Returns the index in the stats array where the stats for given db_oid and user_oid are
+ * stored. If the stats exist, their index is returned. If not, the first empty slot is returned.
+ * If the array is full and no matching stats are found, -1 is returned.
+*/
 static int yb_get_stats_index(struct ConnectionStats *yb_stats,
-			      const char *db_name, const char *user_name)
+			      const int db_oid, const int user_oid)
 {
-	if (strlen(db_name) >= DB_NAME_MAX_LEN)
-		return -1;
-
-	if (strlen(user_name) >= USER_NAME_MAX_LEN)
+	int first_empty_index = -1;
+	if (db_oid <= 0 || user_oid <= 0)
 		return -1;
 
 	for (int i = 1; i < YSQL_CONN_MGR_MAX_POOLS; i++) {
-		if (strncmp(yb_stats[i].database_name, db_name, DB_NAME_MAX_LEN) == 0 &&
-			strncmp(yb_stats[i].user_name, user_name, USER_NAME_MAX_LEN) == 0)
+		if (yb_stats[i].database_oid == db_oid &&
+		    yb_stats[i].user_oid == user_oid)
 			return i;
-
-		if (strncmp(yb_stats[i].database_name, "", DB_NAME_MAX_LEN) == 0)
-			return i;
+		
+		if (first_empty_index == -1 &&
+			(yb_stats[i].database_oid == -1 || yb_stats[i].user_oid == -1))
+			first_empty_index = i;
 	}
 
-	return -1;
+	return first_empty_index;
 }
 
 static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
@@ -55,12 +59,21 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 			       "control_connection");
 			strcpy(instance->yb_stats[index].user_name,
 			       "control_connection");
+			instance->yb_stats[index].database_oid = YB_CTRL_CONN_OID;
+			instance->yb_stats[index].user_oid = YB_CTRL_CONN_OID;
 		} else {
 			if (route->id.yb_stats_index == -1) {
 				route->id.yb_stats_index = yb_get_stats_index(
 					instance->yb_stats,
-					(char *)route->yb_database_entry->name,
-					(char *)route->yb_user_entry->name);
+					route->yb_database_entry->oid,
+					route->yb_user_entry->oid);
+				if (route->id.yb_stats_index == -1) {
+					od_error(&instance->logger, "stats", NULL, NULL,
+						 "Unable to find the index for (%s, %s) pool",
+						 (char *)route->yb_database_entry->name,
+						 (char *)route->yb_user_entry->name);
+					return -1;
+				}
 			}
 
 			index = route->id.yb_stats_index;
@@ -68,16 +81,11 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 				(char *)route->yb_database_entry->name,
 				DB_NAME_MAX_LEN - 1);
 			instance->yb_stats[index].database_name[DB_NAME_MAX_LEN - 1] = '\0';
+			instance->yb_stats[index].database_oid = route->yb_database_entry->oid;
 			strncpy(instance->yb_stats[index].user_name,
 				(char *)route->yb_user_entry->name, USER_NAME_MAX_LEN - 1);
 			instance->yb_stats[index].user_name[USER_NAME_MAX_LEN - 1] = '\0';
-		}
-
-		if (index == -1) {
-			od_error(&instance->logger, "stats", NULL, NULL,
-				 "Unable to find the index for db %s",
-				 (char *)route->yb_database_entry->name);
-			return -1;
+			instance->yb_stats[index].user_oid = route->yb_user_entry->oid;
 		}
 
 		od_route_lock(route);
