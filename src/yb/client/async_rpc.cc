@@ -402,6 +402,7 @@ template <class Req, class Resp>
 AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     const AsyncRpcData& data, YBConsistencyLevel consistency_level)
     : AsyncRpc(data, consistency_level) {
+  // TODO(#26139): this set_allocated_* call is not safe.
   req_.set_allocated_tablet_id(const_cast<std::string*>(&tablet_invoker_.tablet()->tablet_id()));
   req_.set_include_trace(IsTracingEnabled());
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
@@ -442,7 +443,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
 
 template <class Req, class Resp>
 AsyncRpcBase<Req, Resp>::~AsyncRpcBase() {
-  req_.release_tablet_id();
+  (void) req_.release_tablet_id();
 }
 
 template <class Req, class Resp>
@@ -599,7 +600,10 @@ template <class Repeated>
 void ReleaseOps(Repeated* repeated) {
   auto size = repeated->size();
   if (size) {
-    repeated->ExtractSubrange(0, size, nullptr);
+    // ExtractSubrange with nullptr for last argument will hit debug assertion, probably due to
+    // unsafety with arenas. We don't use arenas here, so it's not an issue, and
+    // UnsafeArenaExtractSubrange provides the same behavior (but without DCHECK).
+    repeated->UnsafeArenaExtractSubrange(0, size, nullptr);
   }
 }
 
