@@ -248,7 +248,7 @@ my-sandbox   Dedicated   {{< yb-version version="preview" format="build">}}     
 {{% tab header="GCP" %}}
 
 ```sh
-ybm cluster create 
+ybm cluster create \
   --cluster-name my-sandbox \
   --cloud-provider GCP \
   --cluster-tier Dedicated \
@@ -448,7 +448,7 @@ ybm cluster encryption update \
 ```sh
 ybm cluster encryption update \
   --cluster-name my-sandbox \
-  --encryption-spec cloud-provider=GCP,resource-id=projects/yugabyte/locations/global/keyRings/test-byok/cryptoKeys/key1,k=<path-to-service-account-file> 
+  --encryption-spec cloud-provider=GCP,gcp-resource-id=projects/yugabyte/locations/global/keyRings/test-byok/cryptoKeys/key1,gcp-service-account-path=<path-to-service-account-file> 
 ```
 
 {{% /tab %}}
@@ -469,6 +469,18 @@ ybm cluster encryption update \
 
 Use the following commands to enable or disable the CMK state.
 
+#### disable CMK
+
+```sh
+ybm cluster encryption update-state \
+  --cluster-name my-sandbox \
+  --disable
+```
+
+```output
+Successfully DISABLED encryption spec status for cluster my-sandbox
+```
+
 #### enable CMK
 
 ```sh
@@ -481,17 +493,7 @@ ybm cluster encryption update-state \
 Successfully ENABLED encryption spec status for cluster my-sandbox
 ```
 
-#### disable CMK
 
-```sh
-ybm cluster encryption update-state \
-  --cluster-name my-sandbox \
-  --disable
-```
-
-```output
-Successfully DISABLED encryption spec status for cluster my-sandbox
-```
 
 ## Pause, resume, and terminate
 
