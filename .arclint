@@ -173,7 +173,8 @@
     "regress_test": {
       "type": "script-and-regex",
       "include": [
-        "(^src/postgres/.+/(specs|sql|expected)/yb[^/]*$)"
+        "(^src/postgres/.+/(specs|sql|expected)/yb[^/]*$)",
+        "(^src/postgres/third-party-extensions/pg_partman/test/(.+/)*yb[^/]*$)"
       ],
       "script-and-regex.script": "src/lint/regress_test.sh",
       "script-and-regex.regex":
