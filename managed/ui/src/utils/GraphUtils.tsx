@@ -76,6 +76,7 @@ export const getTabContent = (
             prometheusQueryEnabled={prometheusQueryEnabled}
             metricMeasure={metricMeasure}
             operations={uniqueOperations}
+            isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
             isGranularMetricsEnabled={isGranularMetricsEnabled}
             updateTimestamp={updateTimestamp}
             printMode={printMode}
