@@ -180,7 +180,7 @@ The following results are for a 3-node cluster running YBDB version {{< yb-versi
       <th rowspan="2">Workload</th>
       <th colspan="2">Benchmark Statistics</th>
       <th colspan="2">Per Query Statistics</th>
-      <th rowspan="2">Queries part of a single transaction</th>
+      <th rowspan="2">Queries executed in each transaction</th>
     </tr>
     <tr>
       <th>Throughput (txns/sec)</th>
@@ -224,3 +224,5 @@ The following results are for a 3-node cluster running YBDB version {{< yb-versi
     </tr>
   </tbody>
 </table>
+
+Note: The 'Queries executed in each transaction' column represents the number of individual queries that are executed as part of each sysbench transaction. These queries contribute to the overall transaction performance and are key to understanding the workload distribution for different sysbench benchmarks.
