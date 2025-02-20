@@ -811,6 +811,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         (taskType == TaskType.ResumeUniverse
             || taskType == TaskType.ResumeKubernetesUniverse
             || taskType == TaskType.DestroyUniverse
+            || taskType == TaskType.DestroyKubernetesUniverse
             || taskType == TaskType.ResumeXClusterUniverses);
     if (universeDetails.universePaused && !isResumeOrDelete) {
       String msg = "Universe " + universe.getUniverseUUID() + " is currently paused";
@@ -903,6 +904,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             (owner == TaskType.ResumeUniverse
                 || owner == TaskType.ResumeKubernetesUniverse
                 || owner == TaskType.DestroyUniverse
+                || owner == TaskType.DestroyKubernetesUniverse
                 || owner == TaskType.ResumeXClusterUniverses);
         if (universeDetails.universePaused && !isResumeOrDelete) {
           String msg = "Universe " + universe.getUniverseUUID() + " is currently paused";
