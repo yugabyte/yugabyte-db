@@ -36,20 +36,20 @@ This function is helpful while implementing [Row-level geo-partitioning](../../.
     ```sh
     ./bin/yugabyted start                           \
       --base_dir=/home/yugabyte/<IP1>/yugabyte-data \
-      --advertise_address=<IP1>                                \
+      --advertise_address=<IP1>                     \
       --master_flags "placement_cloud=aws,placement_region=us-west-1,placement_zone=us-west-1c" \
       --tserver_flags "placement_cloud=aws,placement_region=us-west-1,placement_zone=us-west-1c"
 
     ./bin/yugabyted start                           \
       --base_dir=/home/yugabyte/<IP2>/yugabyte-data \
-      --advertise_address=<IP2>                                \
+      --advertise_address=<IP2>                     \
       --join=<IP1>                                  \
       --master_flags "placement_cloud=aws,placement_region=us-east-2,placement_zone=us-east-2c" \
       --tserver_flags "placement_cloud=aws,placement_region=us-east-2,placement_zone=us-east-2c"
 
     ./bin/yugabyted start                            \
       --base_dir=/home/yugabyte/<IP3>/yugabyte-data  \
-      --advertise_address=<IP3>                                 \
+      --advertise_address=<IP3>                      \
       --join=<IP1>                                   \
       --master_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a" \
       --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a"
