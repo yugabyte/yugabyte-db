@@ -192,7 +192,7 @@ END;
 $$ LANGUAGE plpgsql;
 ```
 
-Using the value from the method `get_current_lsn_format()`, you can not start your replication stream using:
+Using the value from the method `get_current_lsn_format()`, you can now start your replication stream using:
 
 ```sh
 START_REPLICATION SLOT rs LOGICAL 62D63025/5462E000;
