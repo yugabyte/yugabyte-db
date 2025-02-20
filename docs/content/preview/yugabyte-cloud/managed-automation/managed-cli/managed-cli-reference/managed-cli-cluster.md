@@ -32,7 +32,7 @@ Create a local single-node cluster:
 
 ```sh
 ybm cluster create \
-  --cluster-name test-cluster \
+  --cluster-name my-sandbox \
   --credentials username=admin,password=password123
 ```
 
@@ -47,7 +47,7 @@ ybm cluster create \
   --cluster-tier Dedicated \
   --fault-tolerance ZONE \
   --database-version Innovation \
-  --cluster-name test-cluster \
+  --cluster-name my-sandbox \
   --wait
 ```
 
