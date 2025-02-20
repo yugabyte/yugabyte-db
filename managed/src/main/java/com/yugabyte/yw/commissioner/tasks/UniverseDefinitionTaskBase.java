@@ -1169,9 +1169,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createPodDisruptionBudgetPolicyTask(false /* deletePDB */)
           .setSubTaskGroupType(SubTaskGroupType.CreatePodDisruptionBudgetPolicy);
     }
-
-    // Marks the update of this universe as a success only if all the tasks before it succeeded.
-    createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**

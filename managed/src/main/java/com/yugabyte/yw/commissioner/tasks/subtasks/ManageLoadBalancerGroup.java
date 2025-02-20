@@ -145,7 +145,7 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
 
   public Map<AvailabilityZone, Set<NodeID>> getNodeIDs(
       Map<AvailabilityZone, Set<NodeDetails>> azToNodes) {
-    Map<AvailabilityZone, Set<NodeID>> azToNodeIDs = new HashMap();
+    Map<AvailabilityZone, Set<NodeID>> azToNodeIDs = new HashMap<>();
     for (Map.Entry<AvailabilityZone, Set<NodeDetails>> azToNode : azToNodes.entrySet()) {
       azToNodeIDs.put(
           azToNode.getKey(),
