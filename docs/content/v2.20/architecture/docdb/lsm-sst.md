@@ -5,7 +5,7 @@ linkTitle: LSM & SST
 description: Internals of how an LSM creates and manages SSTs.
 headcontent: Learn the internals of how an LSM creates and manages SSTs
 menu:
-  v2024.1:
+  v2.20:
     identifier: docdb-lsm-sst
     parent: docdb
     weight: 300
@@ -75,10 +75,10 @@ Rather than immediately removing the key from SSTs, the delete operation marks a
 
 As data accumulates in SSTs, a process called compaction merges and sorts the SST files with overlapping key ranges producing a new set of SST files. The merge process during compaction helps to organize and sort the data, maintaining a consistent on-disk format and reclaiming space from obsolete data versions.
 
-The [YB-TServer](../../yb-tserver/) manages multiple compaction queues and enforces throttling to avoid compaction storms. Although full compactions can be scheduled, they can also be triggered manually. Full compactions are also triggered automatically if the system detects tombstones and obsolete keys affecting read performance.
+The YB-TServer manages multiple compaction queues and enforces throttling to avoid compaction storms. Although full compactions can be scheduled, they can also be triggered manually. Full compactions are also triggered automatically if the system detects tombstones and obsolete keys affecting read performance.
 
-{{<lead link="../../yb-tserver/">}}
-To learn more about YB-TServer compaction operations, refer to [YB-TServer](../../yb-tserver/)
+{{<lead link="../../concepts/yb-tserver/">}}
+To learn more about YB-TServer compaction operations, refer to [YB-TServer](../../concepts/yb-tserver/)
 {{</lead>}}
 
 ## Learn more

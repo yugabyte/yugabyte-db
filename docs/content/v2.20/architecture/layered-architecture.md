@@ -67,7 +67,7 @@ For more information, see [DocDB replication](../docdb-replication/).
 
 In order to persist data, a log-structured row- and document-oriented storage is used. It includes several optimizations for handling ever-growing data sets efficiently.
 
-For more information, see [DocDB persistence](../docdb/persistence/).
+For more information, see [DocDB storage layer](../docdb/).
 
 ### Transactions
 
