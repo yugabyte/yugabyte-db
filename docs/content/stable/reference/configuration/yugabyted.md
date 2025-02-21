@@ -948,8 +948,8 @@ For example, to create a new xCluster replication, execute the following command
 
 ```sh
 ./bin/yugabyted xcluster create_checkpoint \
-    --replication_id <replication_id> \
-    --databases <comma_separated_database_names>
+    --replication_id=<replication_id> \
+    --databases=<comma_separated_database_names>
 ```
 
 The `create_checkpoint` command takes a snapshot of the database and determines whether any of the databases to be replicated need to be copied to the target ([bootstrapped](#bootstrap-databases-for-xcluster)).
@@ -977,9 +977,9 @@ Use the sub-command `yugabyted xcluster add_to_checkpoint` to add new databases 
 For example, to add new databases to xCluster replication, first checkpoint them using the following command:
 
 ```sh
-./bin/yugabyted xcluster add_to_checkpoint \
-    --replication_id <replication_id> \
-    --databases <comma_separated_database_names>
+./bin/yugabyted xcluster create_checkpoint \
+    --replication_id=<replication_id> \
+    --databases=<comma_separated_database_names>
 ```
 
 The `add_to_checkpoint` command takes a snapshot of the database and determines whether any of the databases to added to the replication need to be copied to the target ([bootstrapped](#bootstrap-databases-for-xcluster)).
@@ -1008,8 +1008,8 @@ For example, to set up xCluster replication between two clusters, run the follow
 
 ```sh
 ./bin/yugabyted xcluster set_up \
-    --target_address <ip_of_any_target_cluster_node> \
-    --replication_id <replication_id> \
+    --target_address=<ip_of_any_target_cluster_node> \
+    --replication_id=<replication_id> \
     --bootstrap_done
 ```
 
@@ -1039,9 +1039,9 @@ For example, to add new databases to an existing xCluster replication between tw
 
 ```sh
 ./bin/yugabyted xcluster add_to_replication \
-    --databases <comma_separated_database_names> \
-    --target_address <ip_of_any_target_cluster_node> \
-    --replication_id <replication_id> \
+    --databases=<comma_separated_database_names> \
+    --target_address=<ip_of_any_target_cluster_node> \
+    --replication_id=<replication_id> \
     --bootstrap_done
 ```
 
@@ -1079,7 +1079,7 @@ For example, to display replication information for all xCluster replications to
 To display the status of a specific xCluster replication, run the following command:
 
 ```sh
-./bin/yugabyted xcluster status --replication_id <replication_id>
+./bin/yugabyted xcluster status --replication_id=<replication_id>
 ```
 
 ##### status flags
@@ -1102,8 +1102,8 @@ For example, delete an xCluster replication using the following command:
 
 ```sh
 ./bin/yugabyted xcluster delete_replication \
-    --replication_id <replication_id> \
-    --target_address <ip_of_any_target_cluster_node>
+    --replication_id=<replication_id> \
+    --target_address=<ip_of_any_target_cluster_node>
 ```
 
 ##### delete_replication flags
@@ -1129,9 +1129,9 @@ For example, remove a database from an xCluster replication using the following 
 
 ```sh
 ./bin/yugabyted xcluster remove_database_from_replication \
-    --databases <comma_separated_database_names> \
-    --replication_id <replication_id> \
-    --target_address <ip_of_any_target_cluster_node>
+    --databases=<comma_separated_database_names> \
+    --replication_id=<replication_id> \
+    --target_address=<ip_of_any_target_cluster_node>
 ```
 
 ##### remove_database_from_replication flags
