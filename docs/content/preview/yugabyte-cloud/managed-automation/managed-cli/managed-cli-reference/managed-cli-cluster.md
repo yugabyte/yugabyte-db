@@ -115,6 +115,16 @@ Update the credentials to use for the customer managed key (CMK) used to encrypt
 | --cluster-name | Required. Name of the cluster. |
 | --encryption-spec | CMK credentials for encryption at rest, provided as key-value pairs.<br>Arguments:<ul><li>cloud-provider - cloud provider (`AWS`, `AZURE`, or `GCP`); required</li></ul>Required for AWS only:<ul><li>aws-access-key - access key ID</li><li>aws-secret-key - secret access key</li><li>aws-arn - Amazon resource name of the CMK</li></ul>If not provided, you are prompted for the secret access key. AWS secret access key can also be configured using the YBM_AWS_SECRET_KEY [environment variable](../../managed-cli-overview/#environment-variables).<br><br>Required for GCP only:<ul><li>gcp-resource-id - cloud KMS resource ID</li><li>gcp-service-account-path - path to the service account credentials key file</li></ul>Required for Azure only:<ul><li>azu-client-id - client ID of registered application</li><li>azu-client-secret - client secret of registered application</li><li>azu-tenant-id - Azure tenant ID</li><li>azu-key-name - key name</li><li>azu-key-vault-uri - key vault URI in the form `https://myvault.vault.azure.net`</li></ul> |
 
+### encryption update-state
+
+Update the Encryption at Rest (EaR) state for the specified cluster.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | Name of the cluster. |
+| --enable | Enable Encryption at Rest for the cluster. |
+| --disable | Disable Encryption at Rest for the cluster. |
+
 ### list
 
 List all the clusters to which you have access.
