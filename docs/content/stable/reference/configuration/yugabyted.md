@@ -1989,7 +1989,9 @@ You add databases to an existing xCluster replication using the `yugabyted xclus
     Run the `yugabyted xcluster add_to_checkpoint` command from any source cluster node, with the --replication_id and --databases flags. For --replication_id, provide the `replication_id` of the xCluster replication to which the databases are to be added. The --databases flag takes a comma-separated list of databases to be added.
 
     ```sh
-    ./bin/yugabyted xcluster add_to_checkpoint --replication_id <replication_id> --databases <comma_separated_database_names>
+    ./bin/yugabyted xcluster add_to_checkpoint \
+        --replication_id=<replication_id> \
+        --databases=<comma_separated_database_names>
     ```
 
     The output for this command provides directions for bootstrapping the databases that you included.
@@ -2005,7 +2007,7 @@ You add databases to an existing xCluster replication using the `yugabyted xclus
 
     ```sh
     ./bin/yugabyted xcluster add_to_replication \
-        --databases <comma_separated_database_names> \
+        --databases=<comma_separated_database_names> \
         --replication_id=<replication_id> \
         --target_address=<IP-of-any-target-node> \
         --bootstrap_done
@@ -2018,7 +2020,7 @@ To remove databases from an existing xCluster replication, use the `yugabyted xc
 ```sh
 ./bin/yugabyted xcluster remove_database_from_replication \
     --replication_id=<replication_id> \
-    --databases <comma_separated_database_names> \
+    --databases=<comma_separated_database_names> \
     --target_address=<IP-of-any-target-node>
 ```
 
