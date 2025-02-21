@@ -654,6 +654,9 @@ public class UniverseCRUDHandler {
         if (installNodeExporter) {
           taskParams.nodeExporterUser = nodeExporterUser;
         }
+      } else {
+        // Setting dedicatedNodes to true for k8s universes.
+        c.userIntent.dedicatedNodes = true;
       }
 
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
