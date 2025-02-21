@@ -7943,11 +7943,14 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	need_remote_index_filters =
 		!index_only && !index->hypothetical && !is_primary_index;
 
-	extract_pushdown_clauses(qpquals,
-							 need_remote_index_filters ? index : NULL,
-							 false /* bitmapindex */ ,
-							 &local_clauses, &base_table_pushed_down_filters, &base_table_colrefs,
-							 &index_pushed_down_filters, &index_colrefs);
+	yb_extract_pushdown_clauses(qpquals,
+								need_remote_index_filters ? index : NULL,
+								false, /* bitmapindex */
+								&local_clauses,
+								&base_table_pushed_down_filters,
+								&base_table_colrefs,
+								&index_pushed_down_filters,
+								&index_colrefs);
 
 	/*
 	 * Sort the index conditions into `index_conditions_on_each_column`.
@@ -8615,11 +8618,14 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	List	   *rel_remote_quals = NIL;
 	List	   *rel_colrefs = NIL;
 
-	extract_pushdown_clauses(non_index_clauses, NULL /* index_info */ ,
-							 false /* bitmapindex */ , &local_quals,
-							 &rel_remote_quals, &rel_colrefs,
-							 NULL /* idx_remote_quals */ ,
-							 NULL /* idx_colrefs */ );
+	yb_extract_pushdown_clauses(non_index_clauses,
+								NULL, /* index_info */
+								false, /* bitmapindex */
+								&local_quals,
+								&rel_remote_quals,
+								&rel_colrefs,
+								NULL, /* idx_remote_quals */
+								NULL); /* idx_colrefs */
 
 	tuples_scanned = clamp_row_est(baserel->tuples *
 								   clauselist_selectivity(root, indexquals, baserel->relid,

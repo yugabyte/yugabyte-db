@@ -8,6 +8,7 @@ import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.Rota
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
@@ -61,6 +63,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -3838,5 +3841,50 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           details.universePaused = false;
           u.setUniverseDetails(details);
         });
+  }
+
+  protected void createCommonFinalizeUpgradeTasks(
+      boolean upgradeSystemCatalog,
+      boolean finalizeCatalogUpgrade,
+      boolean requireAdditionalSuperUserForCatalogUpgrade) {
+    Universe universe = getUniverse();
+    String version = universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
+    if (finalizeCatalogUpgrade) {
+      createFinalizeYsqlMajorCatalogUpgradeTask();
+    }
+
+    // Promote all auto flags upto class External.
+    createPromoteAutoFlagTask(
+        universe.getUniverseUUID(),
+        true /* ignoreErrors */,
+        AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
+
+    if (upgradeSystemCatalog) {
+      // Run YSQL upgrade on the universe.
+      createRunYsqlUpgradeTask(version);
+    }
+
+    if (requireAdditionalSuperUserForCatalogUpgrade) {
+      // Delete the superuser created for catalog upgrade.
+      createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
+    }
+  }
+
+  protected void createSetYBMajorVersionUpgradeCompatibility(
+      Universe universe, List<NodeDetails> nodes, String flagValue) {
+    if (nodes.isEmpty()) {
+      return;
+    }
+    createSetFlagInMemoryTasks(
+            nodes,
+            ServerType.TSERVER,
+            (node, params) -> {
+              params.force = true;
+              // Override only expression pushdown flag.
+              params.gflags =
+                  ImmutableMap.of(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
+            })
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
 }

@@ -77,6 +77,7 @@ export const getTabContent = (
             metricMeasure={metricMeasure}
             operations={uniqueOperations}
             isGranularMetricsEnabled={isGranularMetricsEnabled}
+            isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
             updateTimestamp={updateTimestamp}
             printMode={printMode}
             metricsTimezone={timezone}

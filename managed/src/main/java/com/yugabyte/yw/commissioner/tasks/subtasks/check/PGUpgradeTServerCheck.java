@@ -2,11 +2,14 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -14,21 +17,29 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class PGUpgradeTServerCheck extends ServerSubTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
 
   private final int PG_UPGRADE_CHECK_TIMEOUT = 300;
 
+  private final String K8S_PG_UPGRADE_CHECK_LOC = "/mnt/disk0/yw-data";
+
   public static class Params extends ServerSubTaskParams {
     public String ybSoftwareVersion;
+    public boolean downloadPackage = true;
   }
 
   @Override
@@ -38,32 +49,176 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
 
   @Inject
   protected PGUpgradeTServerCheck(
-      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+      BaseTaskDependencies baseTaskDependencies,
+      NodeUniverseManager nodeUniverseManager,
+      KubernetesManagerFactory kubernetesManagerFactory) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    List<NodeDetails> tServerNodes = universe.getTServers();
+    NodeDetails node = universe.getTServersInPrimaryCluster().stream().findAny().get();
+    boolean isK8sUniverse =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(CloudType.kubernetes);
 
-    // Run the check on all the tServer nodes and fail the task only if it fails on all nodes.
-    boolean success = false;
-    for (NodeDetails node : tServerNodes) {
-      try {
-        runCheckOnNode(universe, node);
-        success = true;
-        break;
-      } catch (RuntimeException e) {
-        log.error("Error while running PG15 upgrade check on node: " + node.nodeName, e);
+    if (taskParams().downloadPackage) {
+      // Clean up the downloaded package from the node.
+      cleanUpDownloadedPackage(universe, node, isK8sUniverse);
+
+      // Download the package to the node.
+      downloadPackage(universe, node, isK8sUniverse);
+    }
+
+    // Run check on the node
+    if (isK8sUniverse) {
+      runCheckOnPod(universe, node);
+    } else {
+      runCheckOnNode(universe, node);
+    }
+
+    if (taskParams().downloadPackage) {
+      // Clean up the downloaded package from the node.
+      cleanUpDownloadedPackage(universe, node, isK8sUniverse);
+    }
+  }
+
+  private void cleanUpDownloadedPackage(
+      Universe universe, NodeDetails node, boolean isK8sUniverse) {
+    ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
+    if (isK8sUniverse) {
+      String ybServerPackage = release.getFilePath(getArchitectureOnK8sPod(node));
+      String packageName = extractPackageName(ybServerPackage);
+      String versionName = extractVersionName(ybServerPackage);
+      Map<String, String> zoneConfig =
+          CloudInfoInterface.fetchEnvVars(AvailabilityZone.getOrBadRequest(node.azUuid));
+      String namespace = node.cloudInfo.kubernetesNamespace;
+      String podName = node.cloudInfo.kubernetesPodName;
+      List<String> deletePackageCommand =
+          ImmutableList.of(
+              "/bin/bash",
+              "-c",
+              String.format(
+                  "rm -rf %s %s;",
+                  K8S_PG_UPGRADE_CHECK_LOC + "/" + packageName,
+                  K8S_PG_UPGRADE_CHECK_LOC + "/" + versionName));
+      kubernetesManagerFactory
+          .getManager()
+          .executeCommandInPodContainer(
+              zoneConfig, namespace, podName, "yb-tserver", deletePackageCommand);
+    } else {
+      String ybServerPackage = release.getFilePath(universe.getUniverseDetails().arch);
+      String packageName = extractPackageName(ybServerPackage);
+      String versionName = extractVersionName(ybServerPackage);
+      String tmpDirectory = nodeUniverseManager.getRemoteTmpDir(node, universe);
+      nodeUniverseManager.runCommand(
+          node,
+          universe,
+          ImmutableList.of(
+              "rm", "-rf", tmpDirectory + "/" + packageName, tmpDirectory + "/" + versionName),
+          ShellProcessContext.builder().logCmdOutput(true).build());
+    }
+  }
+
+  private void downloadPackage(Universe universe, NodeDetails node, boolean isk8sUniverse) {
+    ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
+    if (isk8sUniverse) {
+      Map<String, String> zoneConfig =
+          CloudInfoInterface.fetchEnvVars(AvailabilityZone.getOrBadRequest(node.azUuid));
+      String namespace = node.cloudInfo.kubernetesNamespace;
+      String podName = node.cloudInfo.kubernetesPodName;
+      Architecture arch = getArchitectureOnK8sPod(node);
+      String ybServerPackage = release.getFilePath(arch);
+      String packageName = extractPackageName(ybServerPackage);
+      String versionName = extractVersionName(ybServerPackage);
+      // Copy the package to the node in temp directory
+      if (release.isHttpDownload(ybServerPackage)) {
+        kubernetesManagerFactory
+            .getManager()
+            .executeCommandInPodContainer(
+                zoneConfig,
+                namespace,
+                podName,
+                "yb-tserver",
+                ImmutableList.of(
+                    "/bin/bash",
+                    "-c",
+                    "curl -o "
+                        + K8S_PG_UPGRADE_CHECK_LOC
+                        + "/"
+                        + packageName
+                        + " "
+                        + ybServerPackage));
+      } else {
+        kubernetesManagerFactory
+            .getManager()
+            .copyFileToPod(
+                zoneConfig,
+                namespace,
+                podName,
+                "yb-tserver",
+                ybServerPackage,
+                K8S_PG_UPGRADE_CHECK_LOC);
       }
+      // Extract the package
+      String command =
+          String.format(
+              "mkdir -p %s; tar -xvzf %s -C %s --strip-components=1",
+              K8S_PG_UPGRADE_CHECK_LOC + "/" + versionName,
+              K8S_PG_UPGRADE_CHECK_LOC + "/" + packageName,
+              K8S_PG_UPGRADE_CHECK_LOC + "/" + versionName);
+      List<String> extractPackageCommand = ImmutableList.of("/bin/bash", "-c", command);
+      kubernetesManagerFactory
+          .getManager()
+          .executeCommandInPodContainer(
+              zoneConfig, namespace, podName, "yb-tserver", extractPackageCommand);
+    } else {
+      // TODO(vbansal): Add support for downloading package to the VM node.
     }
+  }
 
-    if (!success) {
-      throw new RuntimeException(
-          "PG15 upgrade check failed on all tServer nodes. Check logs for more info.");
-    }
+  private void runCheckOnPod(Universe universe, NodeDetails node) {
+    ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
+    Architecture arch = getArchitectureOnK8sPod(node);
+    String ybServerPackage = release.getFilePath(arch);
+    String versionName = extractVersionName(ybServerPackage);
+    String tmpDirectory = nodeUniverseManager.getRemoteTmpDir(node, universe);
+
+    Map<String, String> zoneConfig =
+        CloudInfoInterface.fetchEnvVars(AvailabilityZone.getOrBadRequest(node.azUuid));
+    String namespace = node.cloudInfo.kubernetesNamespace;
+    String podName = node.cloudInfo.kubernetesPodName;
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    String pgUpgradeBinaryLocation =
+        String.format("%s/%s/postgres/bin/pg_upgrade", K8S_PG_UPGRADE_CHECK_LOC, versionName);
+    String oldHost =
+        primaryCluster.userIntent.enableYSQLAuth
+            ? "$(ls -d -t " + tmpDirectory + "/.yb.* | head -1)"
+            : podName;
+    String oldPort =
+        primaryCluster.userIntent.enableConnectionPooling
+            ? String.valueOf(node.internalYsqlServerRpcPort)
+            : String.valueOf(node.ysqlServerRpcPort);
+    String upgradeCheckCommand =
+        String.format(
+            "%s -d %s/pg_data --old-host %s --old-port %s --username yugabyte --check",
+            pgUpgradeBinaryLocation,
+            Util.getDataDirectoryPath(universe, node, config),
+            oldHost,
+            oldPort);
+    List<String> pgUpgradeCheckCommand = ImmutableList.of("/bin/bash", "-c", upgradeCheckCommand);
+    kubernetesManagerFactory
+        .getManager()
+        .executeCommandInPodContainer(
+            zoneConfig, namespace, podName, "yb-tserver", pgUpgradeCheckCommand);
   }
 
   private void runCheckOnNode(Universe universe, NodeDetails node) {
@@ -76,7 +231,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     String pgUpgradeBinaryLocation =
         nodeUniverseManager.getYbHomeDir(node, universe)
             + "/yb-software/"
-            + extractVersionDir(ybServerPackage)
+            + extractVersionName(ybServerPackage)
             + "/postgres/bin/pg_upgrade";
     command.add(pgUpgradeBinaryLocation);
     command.add("-d");
@@ -115,9 +270,27 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     }
   }
 
-  private String extractVersionDir(String ybServerPackage) {
+  private String extractVersionName(String ybServerPackage) {
+    return extractPackageName(ybServerPackage).replace(".tar.gz", "");
+  }
+
+  private String extractPackageName(String ybServerPackage) {
     String[] parts = ybServerPackage.split("/");
-    String tarPackageName = parts[parts.length - 1];
-    return tarPackageName.replace(".tar.gz", "");
+    return parts[parts.length - 1];
+  }
+
+  private Architecture getArchitectureOnK8sPod(NodeDetails node) {
+    Map<String, String> zoneConfig =
+        CloudInfoInterface.fetchEnvVars(AvailabilityZone.getOrBadRequest(node.azUuid));
+    String architecture =
+        kubernetesManagerFactory
+            .getManager()
+            .executeCommandInPodContainer(
+                zoneConfig,
+                node.cloudInfo.kubernetesNamespace,
+                node.cloudInfo.kubernetesPodName,
+                "yb-controller",
+                Arrays.asList("uname", "-m"));
+    return Architecture.valueOf(architecture);
   }
 }

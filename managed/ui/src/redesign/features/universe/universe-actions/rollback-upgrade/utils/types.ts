@@ -23,6 +23,7 @@ export interface DBUpgradePayload {
   nodePrefix: string;
   enableYbc: boolean;
   rollMaxBatchSize?: RollMaxBatchSize;
+  runOnlyPrechecks: boolean;
 }
 
 export interface DBRollbackFormFields {

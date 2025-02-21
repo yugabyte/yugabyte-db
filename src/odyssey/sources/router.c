@@ -327,6 +327,8 @@ int od_router_expire(od_router_t *router, od_list_t *expire_list)
 static inline int od_router_gc_cb(od_route_t *route, void **argv)
 {
 	od_route_pool_t *pool = argv[0];
+	od_instance_t *instance = argv[1];
+	int index = route->id.yb_stats_index;
 	od_route_lock(route);
 
 	if (od_server_pool_total(&route->server_pool) > 0 ||
@@ -341,6 +343,11 @@ static inline int od_router_gc_cb(od_route_t *route, void **argv)
 	pool->count--;
 	od_list_unlink(&route->link);
 
+	if (index > 0) {
+		instance->yb_stats[index].database_oid = -1;
+		instance->yb_stats[index].user_oid = -1;
+	}
+
 	od_route_unlock(route);
 
 	/* unref route rule and free route object */
@@ -354,7 +361,7 @@ done:
 
 void od_router_gc(od_router_t *router)
 {
-	void *argv[] = { &router->route_pool };
+	void *argv[] = { &router->route_pool, router->global->instance };
 	od_router_foreach(router, od_router_gc_cb, argv);
 }
 
@@ -367,6 +374,10 @@ void od_router_stat(od_router_t *router, uint64_t prev_time_us,
 	od_router_lock(router);
 	od_instance_t *instance = argv[0];
 	clear_stats(instance->yb_stats);
+	/* 
+	 * TOOD: Fix data race condition. Once all the stats are cleared, if read before updating
+	 * will return stale (NULL) values.
+	 */
 	od_route_pool_stat(&router->route_pool, prev_time_us,
 #ifdef PROM_FOUND
 			   metrics,

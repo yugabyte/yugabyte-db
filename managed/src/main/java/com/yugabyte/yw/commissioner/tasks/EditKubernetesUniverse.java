@@ -558,14 +558,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newIntent.ybSoftwareVersion,
           universeOverrides,
           azOverrides,
-          true,
-          true,
           newNamingStyle,
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           ybcManager.getStableYbcVersion(),
-          PodUpgradeParams.DEFAULT);
+          PodUpgradeParams.DEFAULT,
+          null /* ysqlMajorVersionUpgradeState */);
 
       upgradePodsTask(
           universe.getName(),
@@ -576,14 +575,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newIntent.ybSoftwareVersion,
           universeOverrides,
           azOverrides,
-          false,
-          true,
           newNamingStyle,
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           ybcManager.getStableYbcVersion(),
-          PodUpgradeParams.DEFAULT);
+          PodUpgradeParams.DEFAULT,
+          null /* ysqlMajorVersionUpgradeState */);
     } else if (instanceTypeChanged) {
       upgradePodsTask(
           universe.getName(),
@@ -594,14 +592,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newIntent.ybSoftwareVersion,
           universeOverrides,
           azOverrides,
-          false,
-          true,
           newNamingStyle,
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           ybcManager.getStableYbcVersion(),
-          PodUpgradeParams.DEFAULT);
+          PodUpgradeParams.DEFAULT,
+          null /* ysqlMajorVersionUpgradeState */);
     } else if (masterAddressesChanged) {
       // Update master_addresses flag on Master
       // and tserver_master_addrs flag on tserver without restart.
@@ -1038,7 +1035,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 false /* usePreviousGflagsChecksum */,
                 null /* previousGflagsChecksumMap */,
                 false /* useNewMasterDiskSize */,
-                false /* useNewTserverDiskSize */));
+                false /* useNewTserverDiskSize */,
+                null /* ysqlMajorVersionUpgradeState */));
         // Add subtask to pvcExpand subtask group
         pvcExpand.addSubTask(
             getSingleKubernetesExecutorTaskForServerTypeTask(
@@ -1062,7 +1060,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 false /* usePreviousGflagsChecksum */,
                 null /* previousGflagsChecksumMap */,
                 false /* useNewMasterDiskSize */,
-                false /* useNewTserverDiskSize */));
+                false /* useNewTserverDiskSize */,
+                null /* ysqlMajorVersionUpgradeState */));
       }
       // This helm upgrade will only create the new statefulset with the new disk size, nothing else
       // should change here and this is idempotent, since its a helm_upgrade.
@@ -1104,7 +1103,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               usePreviousGflagsChecksum,
               previousGflagsChecksumMap,
               true /* useNewMasterDiskSize */,
-              serverType == ServerType.TSERVER ? true : false /* useNewTserverDiskSize */));
+              serverType == ServerType.TSERVER ? true : false /* useNewTserverDiskSize */,
+              null /* ysqlMajorVersionUpgradeState */));
       // Add subtask to postExpansionValidate subtask group
       postExpansionValidate.addSubTask(
           createPostExpansionValidateTask(

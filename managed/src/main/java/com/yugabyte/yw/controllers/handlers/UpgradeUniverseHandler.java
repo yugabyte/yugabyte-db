@@ -227,12 +227,13 @@ public class UpgradeUniverseHandler {
     // update prev software version to track version in the task details.
     requestParams.ybPrevSoftwareVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    TaskType taskType =
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.FinalizeKubernetesUpgrade
+            : TaskType.FinalizeUpgrade;
     return submitUpgradeTask(
-        TaskType.FinalizeUpgrade,
-        CustomerTask.TaskType.FinalizeUpgrade,
-        requestParams,
-        customer,
-        universe);
+        taskType, CustomerTask.TaskType.FinalizeUpgrade, requestParams, customer, universe);
   }
 
   public UUID rollbackUpgrade(

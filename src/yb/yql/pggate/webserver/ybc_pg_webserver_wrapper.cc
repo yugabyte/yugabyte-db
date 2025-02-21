@@ -164,9 +164,10 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
   }
 
   for (uint32_t itr = 0; itr < num_pools; itr++) {
-    if (strcmp(shmp[itr].database_name, "") == 0
-      || strcmp(shmp[itr].user_name, "") == 0 )
-      break;
+    // OID as -1 means either that pool has been deleted due to no activity for a while or this
+    // index is never been used to store the stats for any pool in connection manager.
+    if (shmp[itr].database_oid == -1 || shmp[itr].user_oid == -1)
+      continue;
     stats->push_back(shmp[itr]);
   }
 
@@ -454,9 +455,13 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
     // "control".
     writer.String("database_name");
     writer.String(stat.database_name);
+    writer.String("DB OID");
+    writer.Int64(stat.database_oid);
 
     writer.String("user_name");
     writer.String(stat.user_name);
+    writer.String("User OID");
+    writer.Int64(stat.user_oid);
 
     // Number of logical connections that are attached to any physical connection. A logical
     // connection gets attached to a physical connection during lifetime of a transaction.

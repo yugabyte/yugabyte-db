@@ -32,6 +32,7 @@
 
 #include "yb/common/init.h"
 
+#include <csignal>
 #include <string>
 
 #include "yb/gutil/cpu.h"

@@ -42,6 +42,10 @@ To create an API key:
 
 1. Set the key expiration or select **Never expire** to create a key without an expiration.
 
+1. Choose whether to **Allow all IP addresses** to use the API key or **Restrict to trusted IP addresses only** using [IP allow lists](../../cloud-secure-clusters/add-connections/).
+
+    If you are restricting the API key to specific addresses, click **Select IP Allow List** to choose the allow lists.
+
 1. Click **Generate Key**.
 
 1. Click the Copy icon to copy the key and store the key in a secure location.

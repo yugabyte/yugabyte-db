@@ -25,6 +25,7 @@
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_error.h"
 
 #include "yb/tserver/tserver_service.pb.h"

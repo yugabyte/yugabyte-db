@@ -2,22 +2,25 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
-import java.io.IOException;
-import javax.inject.Inject;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import lombok.extern.slf4j.Slf4j;
-import play.mvc.Http.Status;
+import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
 @Slf4j
 @Abortable
@@ -25,14 +28,17 @@ import play.mvc.Http.Status;
 public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
   private final AutoFlagUtil autoFlagUtil;
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
   protected SoftwareKubernetesUpgradeYB(
       BaseTaskDependencies baseTaskDependencies,
       AutoFlagUtil autoFlagUtil,
+      SoftwareUpgradeHelper softwareUpgradeHelper,
       OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies, operatorStatusUpdaterFactory);
     this.autoFlagUtil = autoFlagUtil;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @Override
@@ -65,36 +71,104 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
   @Override
   public void run() {
+    String newVersion = taskParams().ybSoftwareVersion;
+    String currentVersion =
+        getUniverse().getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    Universe universe = getUniverse();
+    boolean ysqlMajorVersionUpgrade =
+        softwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            universe, currentVersion, newVersion);
+    boolean requireAdditionalSuperUserForCatalogUpgrade =
+        softwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
+            universe, currentVersion, newVersion);
     runUpgrade(
         () -> {
-          String newVersion = taskParams().ybSoftwareVersion;
-          String currentVersion =
-              getUniverse().getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-
           createUpdateUniverseSoftwareUpgradeStateTask(
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
               true /* isSoftwareRollbackAllowed */);
-
-          Universe universe = getUniverse();
-          boolean ysqlMajorVersionUpgrade =
-              gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, newVersion)
-                  && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+          String password = null;
+          boolean catalogUpgradeCompleted = false;
 
           if (ysqlMajorVersionUpgrade) {
-            throw new PlatformServiceException(
-                Status.BAD_REQUEST, "Cannot upgrade to this version with PG15 upgrade enabled");
+            if (requireAdditionalSuperUserForCatalogUpgrade) {
+              if (softwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(universe, "15")) {
+                YsqlMajorCatalogUpgradeState state =
+                    softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe);
+                if (state.equals(
+                    YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK)) {
+                  log.info(
+                      "YSQL catalog upgrade is in a failed state. Rolling back catalog upgrade.");
+                  createRollbackYsqlMajorVersionCatalogUpgradeTask();
+                } else if (!state.equals(
+                    YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
+                  catalogUpgradeCompleted = true;
+                }
+              }
+            }
+
+            // Set ysql_yb_major_version_upgrade_compatibility to 11 for tservers for ysql major
+            // upgrade.
+            // This gflag change also reverts the master in case of a retry to enable DDLs for the
+            // upgrade
+            // user, as it performs a helm upgrade with the previous Yugabyte image which can revert
+            // masters
+            // if they are on a different version. Fortunately, this works in our favor as during a
+            // retry we
+            // want to revert masters to the previous version and proceed with the ysql major
+            // upgrade.
+            if (!catalogUpgradeCompleted) {
+              createGFlagsUpgradeAndRollbackMastersTaskForYSQLMajorUpgrade(
+                  universe, currentVersion, YsqlMajorVersionUpgradeState.IN_PROGRESS);
+
+              // Run pg upgrade pre-check
+              createPGUpgradeTServerCheckTask(newVersion);
+
+              if (requireAdditionalSuperUserForCatalogUpgrade) {
+                password = Util.getPostgresCompatiblePassword();
+                createManageCatalogUpgradeSuperUserTask(Action.CREATE_USER, password);
+              }
+            }
           }
 
-          String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
-
           // Create Kubernetes Upgrade Task
+          if (!catalogUpgradeCompleted) {
+            createUpgradeTask(
+                getUniverse(),
+                taskParams().ybSoftwareVersion,
+                true,
+                false,
+                taskParams().isEnableYbc(),
+                confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion),
+                getSoftwareUpgradeContext(
+                    newVersion,
+                    ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
+          }
+
+          if (ysqlMajorVersionUpgrade && !catalogUpgradeCompleted) {
+            createPGUpgradeTServerCheckTask(newVersion);
+
+            if (password != null) {
+              createManageCatalogUpgradeSuperUserTask(Action.CREATE_PG_PASS_FILE, password);
+            }
+
+            createRunYsqlMajorVersionCatalogUpgradeTask();
+
+            if (requireAdditionalSuperUserForCatalogUpgrade) {
+              // Delete the pg_pass file after catalog upgrade.
+              createManageCatalogUpgradeSuperUserTask(Action.DELETE_PG_PASS_FILE);
+            }
+          }
+
           createUpgradeTask(
               getUniverse(),
               taskParams().ybSoftwareVersion,
               true,
               true,
               taskParams().isEnableYbc(),
-              stableYbcVersion);
+              confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion),
+              getSoftwareUpgradeContext(
+                  newVersion,
+                  ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
 
           createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID());
 
@@ -118,28 +192,36 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
           }
 
           if (!taskParams().rollbackSupport) {
-            createFinalizeUpgradeTasks(taskParams().upgradeSystemCatalog);
-            return;
-          }
-
-          boolean upgradeRequireFinalize;
-          try {
-            upgradeRequireFinalize =
-                autoFlagUtil.upgradeRequireFinalize(currentVersion, newVersion);
-          } catch (IOException e) {
-            log.error("Error: ", e);
-            throw new PlatformServiceException(
-                Status.INTERNAL_SERVER_ERROR, "Error while checking auto-finalize for upgrade");
-          }
-          if (upgradeRequireFinalize) {
-            createUpdateUniverseSoftwareUpgradeStateTask(
-                UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
-                true /* isSoftwareRollbackAllowed */);
+            createFinalizeUpgradeTasks(
+                taskParams().upgradeSystemCatalog,
+                ysqlMajorVersionUpgrade,
+                requireAdditionalSuperUserForCatalogUpgrade);
           } else {
-            createUpdateUniverseSoftwareUpgradeStateTask(
-                UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-                true /* isSoftwareRollbackAllowed */);
+            boolean upgradeRequireFinalize =
+                softwareUpgradeHelper.checkUpgradeRequireFinalize(currentVersion, newVersion);
+            if (upgradeRequireFinalize) {
+              createUpdateUniverseSoftwareUpgradeStateTask(
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
+                  true /* isSoftwareRollbackAllowed */);
+            } else {
+              createUpdateUniverseSoftwareUpgradeStateTask(
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+                  true /* isSoftwareRollbackAllowed */);
+            }
+          }
+        },
+        () -> {
+          if (requireAdditionalSuperUserForCatalogUpgrade) {
+            createManageCatalogUpgradeSuperUserTask(Action.DELETE_PG_PASS_FILE);
           }
         });
+  }
+
+  protected UpgradeContext getSoftwareUpgradeContext(
+      String targetSoftwareVersion, YsqlMajorVersionUpgradeState ysqlMajorVersionUpgrade) {
+    return UpgradeContext.builder()
+        .targetSoftwareVersion(targetSoftwareVersion)
+        .ysqlMajorVersionUpgradeState(ysqlMajorVersionUpgrade)
+        .build();
   }
 }

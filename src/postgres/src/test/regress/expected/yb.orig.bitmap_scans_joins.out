@@ -250,16 +250,15 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 -- join PK to PK
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 1
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_pkey (actual rows=1 loops=10)
                Index Cond: (k = joina.k)
-(7 rows)
+(6 rows)
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -273,16 +272,15 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 1
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_pkey (actual rows=1 loops=10)
                Index Cond: (k = joina.k)
-(7 rows)
+(6 rows)
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -296,16 +294,15 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 1
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_pkey (actual rows=1 loops=10)
                Index Cond: (k = joina.k)
-(7 rows)
+(6 rows)
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -319,16 +316,15 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 1
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_pkey (actual rows=1 loops=10)
                Index Cond: (k = joina.k)
-(7 rows)
+(6 rows)
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -343,16 +339,15 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 -- join index col to PK
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 0
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_pkey (actual rows=0 loops=10)
                Index Cond: (k = joina.a)
-(7 rows)
+(6 rows)
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -389,16 +384,15 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 0
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_pkey (actual rows=0 loops=10)
                Index Cond: (k = joina.a)
-(7 rows)
+(6 rows)
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -412,16 +406,15 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 0
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_pkey (actual rows=0 loops=10)
                Index Cond: (k = joina.a)
-(7 rows)
+(6 rows)
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -436,16 +429,15 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 -- join PK to index col
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 0
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_c_idx (actual rows=0 loops=10)
                Index Cond: (c = joina.k)
-(7 rows)
+(6 rows)
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -459,16 +451,15 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 0
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_c_idx (actual rows=0 loops=10)
                Index Cond: (c = joina.k)
-(7 rows)
+(6 rows)
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -482,16 +473,15 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 0
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_c_idx (actual rows=0 loops=10)
                Index Cond: (c = joina.k)
-(7 rows)
+(6 rows)
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -505,16 +495,15 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 0
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_c_idx (actual rows=0 loops=10)
                Index Cond: (c = joina.k)
-(7 rows)
+(6 rows)
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -529,16 +518,15 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 -- join index col to index col
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 1
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_c_idx (actual rows=1 loops=10)
                Index Cond: (c = joina.a)
-(7 rows)
+(6 rows)
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -575,16 +563,15 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 1
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_c_idx (actual rows=1 loops=10)
                Index Cond: (c = joina.a)
-(7 rows)
+(6 rows)
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -598,16 +585,15 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    ->  YB Bitmap Table Scan on joinb (actual rows=0 loops=10)
-         Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
-         Rows Removed by Filter: 1
+         Storage Filter: ((joina.a < 10) OR (joina.b < 15) OR (c < 10) OR (d < 15))
          ->  Bitmap Index Scan on joinb_c_idx (actual rows=1 loops=10)
                Index Cond: (c = joina.a)
-(7 rows)
+(6 rows)
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
@@ -720,13 +706,12 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
    ->  Nested Loop (actual rows=33 loops=1)
          ->  Seq Scan on test_join_filter table3 (actual rows=20 loops=1)
          ->  YB Bitmap Table Scan on test_join_filter table2 (actual rows=2 loops=20)
-               Filter: ((table3.a <> b) AND (((table3.v)::text = (v)::text) OR (table3.b = a)))
-               Rows Removed by Filter: 9
+               Storage Filter: ((table3.a <> b) AND (((table3.v)::text = (v)::text) OR (table3.b = a)))
                ->  Bitmap Index Scan on test_join_filter_a_idx (actual rows=10 loops=20)
                      Index Cond: (a <= table3.a)
    ->  Materialize (actual rows=20 loops=33)
          ->  Seq Scan on test_join_filter table1 (actual rows=20 loops=1)
-(12 rows)
+(11 rows)
 
 -- we don't need a join filter here because the final scan does satisfy all quals (because its a bitmap scan)
 /*+ BitmapScan(table1) Leading(((table3 table2) table1)) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
@@ -742,8 +727,7 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
          ->  Seq Scan on test_join_filter table3 (actual rows=20 loops=1)
          ->  Index Scan using test_join_filter_a_idx on test_join_filter table2 (actual rows=2 loops=20)
                Index Cond: (a <= table3.a)
-               Filter: ((table3.a <> b) AND (((table3.v)::text = (v)::text) OR (table3.b = a)))
-               Rows Removed by Filter: 9
+               Storage Filter: ((table3.a <> b) AND (((table3.v)::text = (v)::text) OR (table3.b = a)))
    ->  YB Bitmap Table Scan on test_join_filter table1 (actual rows=5 loops=33)
          Storage Recheck Cond: ((((v)::text = 'g'::text) AND ((v)::text = 's'::text)) OR (a <= table2.b))
          ->  BitmapOr (actual rows=6 loops=33)
@@ -751,7 +735,7 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
                      Index Cond: (((v)::text = 'g'::text) AND ((v)::text = 's'::text))
                ->  Bitmap Index Scan on test_join_filter_a_idx (actual rows=5 loops=33)
                      Index Cond: (a <= table2.b)
-(14 rows)
+(13 rows)
 
 --
 -- Rescans where we don't need the actual rows

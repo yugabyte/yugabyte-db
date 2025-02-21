@@ -564,7 +564,7 @@ public class TestTransaction extends BaseCQLTest {
       int currentRestarts = 0;
       int currentRetries = 0;
       long start_time = System.currentTimeMillis();
-      while ((System.currentTimeMillis() - start_time) < 100 * 1000) {
+      while ((System.currentTimeMillis() - start_time) < 250 * 1000) {
         i++;
         List<Row> rows = session.execute(selectStmt.bind()).all();
         assertEquals(2, rows.size());

@@ -355,6 +355,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.SoftwareUpgrade,
           TaskType.SoftwareUpgradeYB,
           TaskType.FinalizeUpgrade,
+          TaskType.FinalizeKubernetesUpgrade,
           TaskType.RollbackUpgrade,
           TaskType.RollbackKubernetesUpgrade,
           TaskType.RestartUniverse,
@@ -1721,12 +1722,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createManageCatalogUpgradeSuperUserTask(
       ManageCatalogUpgradeSuperUser.Action action) {
+    return createManageCatalogUpgradeSuperUserTask(action, null);
+  }
+
+  public SubTaskGroup createManageCatalogUpgradeSuperUserTask(
+      ManageCatalogUpgradeSuperUser.Action action, String password) {
     SubTaskGroup subTaskGroup =
         createSubTaskGroup("ManageCatalogUpgradeSuperUser", SubTaskGroupType.ConfigureUniverse);
     ManageCatalogUpgradeSuperUser task = createTask(ManageCatalogUpgradeSuperUser.class);
     ManageCatalogUpgradeSuperUser.Params params = new ManageCatalogUpgradeSuperUser.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.action = action;
+    params.password = password;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -6339,58 +6346,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       } else {
         log.debug("Error ignored");
       }
-    }
-  }
-
-  protected void createFinalizeUpgradeTasks(boolean upgradeSystemCatalog) {
-    createFinalizeUpgradeTasks(upgradeSystemCatalog, null);
-  }
-
-  protected void createFinalizeUpgradeTasks(
-      boolean upgradeSystemCatalog, Runnable ysqlUpgradeFinalizeTask) {
-    Universe universe = getUniverse();
-    String version = universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
-        false /* isSoftwareRollbackAllowed */,
-        true /* retainPrevYBSoftwareConfig */);
-
-    if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
-      if (universe.getUniverseDetails().prevYBSoftwareConfig != null) {
-        UniverseDefinitionTaskParams.Cluster primaryCluster =
-            universe.getUniverseDetails().getPrimaryCluster();
-        String oldVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
-        String currentVersion = primaryCluster.userIntent.ybSoftwareVersion;
-        if (this.gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, currentVersion)
-            && primaryCluster.userIntent.enableYSQL) {
-          createFinalizeYsqlMajorCatalogUpgradeTask();
-        }
-      }
-
-      // Promote all auto flags upto class External.
-      createPromoteAutoFlagTask(
-          universe.getUniverseUUID(),
-          true /* ignoreErrors */,
-          AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
-
-      if (upgradeSystemCatalog) {
-        // Run YSQL upgrade on the universe.
-        createRunYsqlUpgradeTask(version);
-      }
-
-      if (ysqlUpgradeFinalizeTask != null) {
-        // Run YSQL upgrade finalize task on the universe.
-        // This is a temp step as we need to remove flags set during upgrade.
-        ysqlUpgradeFinalizeTask.run();
-      }
-
-      createUpdateUniverseSoftwareUpgradeStateTask(
-          UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-          false /* isSoftwareRollbackAllowed */);
-
-    } else {
-      log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
     }
   }
 

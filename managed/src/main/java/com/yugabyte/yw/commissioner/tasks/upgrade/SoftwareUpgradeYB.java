@@ -6,7 +6,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
-import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -15,13 +15,11 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
-import play.mvc.Http.Status;
 
 /**
  * Use this task to upgrade software yugabyte DB version if universe is already on version greater
@@ -32,13 +30,13 @@ import play.mvc.Http.Status;
 @Abortable
 public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
-  private final AutoFlagUtil autoFlagUtil;
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
   protected SoftwareUpgradeYB(
-      BaseTaskDependencies baseTaskDependencies, AutoFlagUtil autoFlagUtil) {
+      BaseTaskDependencies baseTaskDependencies, SoftwareUpgradeHelper softwareUpgradeHelper) {
     super(baseTaskDependencies);
-    this.autoFlagUtil = autoFlagUtil;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   public NodeState getNodeState() {
@@ -79,14 +77,16 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     String newVersion = taskParams().ybSoftwareVersion;
     String currentVersion =
         getUniverse().getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    boolean requireYsqlMajorVersionUpgrade =
+        softwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            universe, currentVersion, newVersion);
+    boolean requireAdditionalSuperUserForCatalogUpgrade =
+        softwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
+            universe, currentVersion, newVersion);
     runUpgrade(
         () -> {
           MastersAndTservers nodesToApply = getNodesToBeRestarted();
           Set<NodeDetails> allNodes = toOrderedSet(fetchNodes(taskParams().upgradeOption).asPair());
-          boolean requireYsqlMajorVersionUpgrade =
-              isYsqlMajorVersionUpgrade(universe, currentVersion, newVersion);
-          boolean requireAdditionalSuperUserForCatalogUpgrade =
-              isSuperUserRequiredForCatalogUpgrade(universe, currentVersion, newVersion);
 
           createUpdateUniverseSoftwareUpgradeStateTask(
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
@@ -99,37 +99,37 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             createXClusterSourceRootCertDirPathGFlagTasks();
           }
 
-          boolean skipGflagChangeBeforeMajorUpgrade = false;
+          boolean rollbackMaster = false;
 
-          // Check if the YSQL major version upgrade is in a failed state.
-          if (requireAdditionalSuperUserForCatalogUpgrade && nodesToApply.mastersList.size() == 0) {
-            YsqlMajorCatalogUpgradeState state = getYsqlMajorCatalogUpgradeState(universe);
-
-            // Perform rollback if the catalog upgrade is in a failed state
-            if (state.equals(
-                YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK)) {
-              log.info(
-                  "YSQL major version upgrade is in a failed state. Rolling back masters before"
-                      + " upgrade to enable DDLs to create upgrade user.");
-              skipGflagChangeBeforeMajorUpgrade = true;
-
-              // Create tasks for rollback ysql major catalog upgrade.
-              createRollbackYsqlMajorVersionCatalogUpgradeTask();
-
-              // Create tasks for download and rollback of masters.
-              createDownloadTasks(universe.getMasters(), currentVersion);
-              createMasterUpgradeFlowTasks(
-                  universe,
-                  universe.getMasters(),
-                  currentVersion,
-                  getUpgradeContext(currentVersion),
-                  YsqlMajorVersionUpgradeState.IN_PROGRESS,
-                  true // activeRole
-                  );
-
-              // Update nodes to apply changes.
-              nodesToApply = new MastersAndTservers(universe.getMasters(), universe.getTServers());
+          if (requireAdditionalSuperUserForCatalogUpgrade) {
+            if (softwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(universe, "15")) {
+              YsqlMajorCatalogUpgradeState state =
+                  softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe);
+              if (state.equals(
+                  YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK)) {
+                log.info(
+                    "YSQL catalog upgrade is in a failed state. Rolling back catalog upgrade.");
+                createRollbackYsqlMajorVersionCatalogUpgradeTask();
+                rollbackMaster = true;
+              }
+            } else if (softwareUpgradeHelper.isAnyMasterUpgradedOrInProgressForYsqlMajorVersion(
+                universe, "15")) {
+              rollbackMaster = true;
             }
+          }
+
+          if (rollbackMaster) {
+            log.info("Rolling back master before upgrade to enable DDLs to create upgrade user.");
+            createDownloadTasks(universe.getMasters(), currentVersion);
+            createMasterUpgradeFlowTasks(
+                universe,
+                universe.getMasters(),
+                currentVersion,
+                getUpgradeContext(currentVersion),
+                YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS,
+                true // activeRole
+                );
+            nodesToApply = new MastersAndTservers(universe.getMasters(), universe.getTServers());
           }
 
           // Download software to nodes which does not have either master or tserver with new
@@ -139,19 +139,21 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           // If any master has been updated to new version, then this step would have been
           // completed and we don't need to do it again.
           if (requireYsqlMajorVersionUpgrade) {
-            if (!skipGflagChangeBeforeMajorUpgrade
-                && nodesToApply.mastersList.size() == universe.getMasters().size()) {
-              // Set yb_major_version_upgrade_compatibility to 11 for tservers for ysql major
+            if (nodesToApply.mastersList.size() == universe.getMasters().size()) {
+              // Set ysql_yb_major_version_upgrade_compatibility to 11 for tservers for ysql major
               // upgrade.
               createGFlagsUpgradeTaskForYSQLMajorUpgrade(
                   universe, YsqlMajorVersionUpgradeState.IN_PROGRESS);
+
               // Run this pre-check after downloading software as it require pg_upgrade binary.
               createPGUpgradeTServerCheckTask(newVersion);
             }
 
-            if (requireAdditionalSuperUserForCatalogUpgrade) {
-              // Create a superuser for ysql catalog upgrade.
-              createManageCatalogUpgradeSuperUserTask(Action.CREATE_USER);
+            if (requireAdditionalSuperUserForCatalogUpgrade
+                && nodesToApply.tserversList.size() == universe.getTServers().size()) {
+              // Create a superuser and pgpass file for ysql catalog upgrade.
+              createManageCatalogUpgradeSuperUserTask(
+                  Action.CREATE_USER_AND_PG_PASS_FILE, Util.getPostgresCompatiblePassword());
             }
           }
 
@@ -175,9 +177,12 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
           if (nodesToApply.tserversList.size() == universe.getTServers().size()) {
             // If any tservers is upgraded, then we can assume pg upgrade is completed.
-            if (requireYsqlMajorVersionUpgrade
-                && nodesToApply.tserversList.size() == universe.getTServers().size()) {
-              createPGUpgradeTServerCheckTask(newVersion);
+            if (requireYsqlMajorVersionUpgrade) {
+              if (softwareUpgradeHelper
+                  .getYsqlMajorCatalogUpgradeState(universe)
+                  .equals(YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
+                createPGUpgradeTServerCheckTask(newVersion);
+              }
 
               createRunYsqlMajorVersionCatalogUpgradeTask();
 
@@ -223,16 +228,14 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
           if (!taskParams().rollbackSupport) {
             // If rollback is not supported, then finalize the upgrade during this task.
-            if (requireYsqlMajorVersionUpgrade) {
-              createFinalizeUpgradeTasks(
-                  taskParams().upgradeSystemCatalog, getFinalizeYSQLMajorUpgradeTask(universe));
-            } else {
-              createFinalizeUpgradeTasks(taskParams().upgradeSystemCatalog);
-            }
+            createFinalizeUpgradeTasks(
+                taskParams().upgradeSystemCatalog,
+                requireYsqlMajorVersionUpgrade,
+                requireAdditionalSuperUserForCatalogUpgrade);
           } else {
             // Check if upgrade require finalize.
             boolean upgradeRequireFinalize =
-                checkUpgradeRequireFinalize(currentVersion, newVersion);
+                softwareUpgradeHelper.checkUpgradeRequireFinalize(currentVersion, newVersion);
 
             if (upgradeRequireFinalize) {
               createUpdateUniverseSoftwareUpgradeStateTask(
@@ -247,19 +250,9 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         },
         null /* firstRunTxnCallback */,
         () -> {
-          if (isSuperUserRequiredForCatalogUpgrade(universe, currentVersion, newVersion)) {
+          if (requireAdditionalSuperUserForCatalogUpgrade) {
             createManageCatalogUpgradeSuperUserTask(Action.DELETE_PG_PASS_FILE);
           }
         });
-  }
-
-  private boolean checkUpgradeRequireFinalize(String currentVersion, String newVersion) {
-    try {
-      return autoFlagUtil.upgradeRequireFinalize(currentVersion, newVersion);
-    } catch (IOException e) {
-      log.error("Error: ", e);
-      throw new PlatformServiceException(
-          Status.INTERNAL_SERVER_ERROR, "Error while checking auto-finalize for upgrade");
-    }
   }
 }

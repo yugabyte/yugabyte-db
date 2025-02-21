@@ -241,7 +241,7 @@ export const K8sProviderCreateForm = ({
                       }),
                       ...(azFormValues.certIssuerGroup && {
                         certManagerIssuerGroup: azFormValues.certIssuerGroup
-                      }),
+                      })
                     }
                   }
                 }

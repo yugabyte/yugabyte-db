@@ -249,4 +249,7 @@ extern long *YbGetCatCacheTableMisses();
 extern YbCatCListIterator YbCatCListIteratorBegin(CatCList *list);
 extern HeapTuple YbCatCListIteratorGetNext(YbCatCListIterator *iterator);
 extern void YbCatCListIteratorFree(YbCatCListIterator *iterator);
+
+extern uint32 YbCatalogCacheComputeHashValue(CatCache *cache, Datum v1, Datum v2, Datum v3, Datum v4);
+
 #endif							/* CATCACHE_H */

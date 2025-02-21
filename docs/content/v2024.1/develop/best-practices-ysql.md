@@ -174,6 +174,10 @@ YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/) provide advanced c
 For more information, see [Load balancing with smart drivers](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#load-balancing-with-smart-driver).
 {{</lead>}}
 
+## Make sure the application uses new nodes
+
+When a cluster is expanded, newly added nodes do not automatically start to receive client traffic. Regardless of the language of the driver or whether you are using a smart driver, the application must either explicitly request new connections or, if it is using a pooling solution, it can configure the pooler to recycle connections periodically (for example, by setting maxLifetime and/or idleTimeout).
+
 ## Scale your application with connection pools
 
 Set up different pools with different load balancing policies as needed for your application to scale by using popular pooling solutions such as HikariCP and Tomcat along with YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/).

@@ -100,6 +100,7 @@
       }
     },
     "universeActions": {
+      "runPrechecksButton": "Run Prechecks",
       "lbState": {
         "loadBalancerEnabled": "Tablet Load Balancer",
         "loadIsBalanced": "Tablet load is balanced",
@@ -2169,6 +2170,7 @@
         "currentVersion": "Current Version",
         "targetVersion": "Target Version",
         "retired": "Retired",
+        "runPrechecksButton": "Run Prechecks",
         "retiredTooltip": "Current version is retired",
         "infoContent": "<b>Note!</b><br/><br/>The process of upgrading the Universe OS is <b>time-consuming</b>, as it involves upgrading one node at a time through a rolling upgrade approach. Each individual node upgrade consists of detaching the current boot disk, attaching a new boot disk, and then rebooting the node. <br/><br/>Throughout this entire process, no other Universe operations can take place, but your application will remain intact. It is advisable to <b>upgrade during off-peak hours.</b>",
         "submitLabel": "Upgrade",

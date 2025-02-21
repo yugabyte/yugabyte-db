@@ -183,6 +183,7 @@ extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
 extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
 #ifndef NDEBUG
 extern bool YbCheckCatalogCacheIndexNameTable();
+extern bool YbCheckSysCacheNames();
 #endif
 extern const char *YbGetCatalogCacheIndexName(int cache_id);
 extern const char *YbGetCatalogCacheTableNameFromTableId(int table_id);
@@ -241,6 +242,9 @@ extern void SysCacheInvalidate(int cacheId, uint32 hashValue);
 extern bool RelationInvalidatesSnapshotsOnly(Oid relid);
 extern bool RelationHasSysCache(Oid relid);
 extern bool RelationSupportsSysCache(Oid relid);
+
+extern uint32 YbSysCacheComputeHashValue(int cache_id, Datum v1, Datum v2, Datum v3, Datum v4);
+extern void YbCopyCacheInfoToValues(int cache_id, Datum *values);
 
 /*
  * The use of the macros below rather than direct calls to the corresponding

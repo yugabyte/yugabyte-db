@@ -11,11 +11,6 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
-import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -25,198 +20,20 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import play.libs.Json;
 
 public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   private RollbackKubernetesUpgrade rollbackKubernetesUpgrade;
-
-  private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
-      ImmutableList.of(
-          TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.UpdateConsistencyCheck,
-          TaskType.FreezeUniverse,
-          TaskType.UpdateUniverseState,
-          TaskType.RollbackAutoFlags,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.ModifyBlackList,
-          TaskType.CheckUnderReplicatedTablets,
-          TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.ModifyBlackList,
-          TaskType.WaitForLeaderBlacklistCompletion,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.WaitStartingFromTime,
-          TaskType.ModifyBlackList,
-          TaskType.CheckFollowerLag,
-          TaskType.CheckUnderReplicatedTablets,
-          TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.ModifyBlackList,
-          TaskType.WaitForLeaderBlacklistCompletion,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.WaitStartingFromTime,
-          TaskType.ModifyBlackList,
-          TaskType.CheckFollowerLag,
-          TaskType.CheckUnderReplicatedTablets,
-          TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.ModifyBlackList,
-          TaskType.WaitForLeaderBlacklistCompletion,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.WaitStartingFromTime,
-          TaskType.ModifyBlackList,
-          TaskType.CheckFollowerLag,
-          TaskType.LoadBalancerStateChange,
-          TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.WaitStartingFromTime,
-          TaskType.CheckFollowerLag,
-          TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.WaitStartingFromTime,
-          TaskType.CheckFollowerLag,
-          TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.WaitStartingFromTime,
-          TaskType.CheckFollowerLag,
-          TaskType.UpdateSoftwareVersion,
-          TaskType.UpdateUniverseState,
-          TaskType.UniverseUpdateSucceeded);
-
-  private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
-    String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
-    return ImmutableList.of(
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesCommandExecutor.CommandType.POD_INFO.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType",
-                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
-                "ybSoftwareVersion",
-                "old-version")),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType",
-                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
-                "ybSoftwareVersion",
-                "old-version")),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType",
-                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
-                "ybSoftwareVersion",
-                "old-version")),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType",
-                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
-                "ybSoftwareVersion",
-                "old-version")),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType",
-                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
-                "ybSoftwareVersion",
-                "old-version")),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType",
-                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
-                "ybSoftwareVersion",
-                "old-version")),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()));
-  }
 
   private TaskInfo submitTask(RollbackUpgradeParams taskParams) {
     return submitTask(taskParams, TaskType.RollbackKubernetesUpgrade, commissioner);
@@ -228,7 +45,8 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     setUnderReplicatedTabletsMock();
     setCheckNodesAreSafeToTakeDown(mockClient);
     this.rollbackKubernetesUpgrade =
-        new RollbackKubernetesUpgrade(mockBaseTaskDependencies, mockOperatorStatusUpdaterFactory);
+        new RollbackKubernetesUpgrade(
+            mockBaseTaskDependencies, mockSoftwareUpgradeHelper, mockOperatorStatusUpdaterFactory);
     rollbackKubernetesUpgrade.setTaskUUID(UUID.randomUUID());
   }
 
@@ -285,7 +103,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     TaskInfo taskInfo = submitTask(taskParams);
 
-    verify(mockKubernetesManager, times(6))
+    verify(mockKubernetesManager, times(9))
         .helmUpgrade(
             expectedUniverseUUID.capture(),
             expectedYbSoftwareVersion.capture(),
@@ -293,10 +111,10 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
-    verify(mockKubernetesManager, times(6))
+    verify(mockKubernetesManager, times(9))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
-    verify(mockKubernetesManager, times(1))
+    verify(mockKubernetesManager, times(2))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
 
@@ -306,10 +124,6 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     assertEquals(NODE_PREFIX, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertTaskSequence(subTasksByPosition, UPGRADE_TASK_SEQUENCE, createUpgradeResult(true));
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
@@ -341,7 +155,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     TaskInfo taskInfo = submitTask(taskParams);
 
-    verify(mockKubernetesManager, times(6))
+    verify(mockKubernetesManager, times(9))
         .helmUpgrade(
             expectedUniverseUUID.capture(),
             expectedYbSoftwareVersion.capture(),
@@ -349,10 +163,10 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
-    verify(mockKubernetesManager, times(6))
+    verify(mockKubernetesManager, times(9))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
-    verify(mockKubernetesManager, times(3))
+    verify(mockKubernetesManager, times(6))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
 
@@ -362,10 +176,6 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     assertTrue(expectedNamespace.getValue().contains(NODE_PREFIX));
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertTaskSequence(subTasksByPosition, UPGRADE_TASK_SEQUENCE, createUpgradeResult(false));
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);

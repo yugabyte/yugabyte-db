@@ -943,7 +943,11 @@ class KeysProcessor : public std::enable_shared_from_this<KeysProcessor> {
       array_response.mutable_elements()->AddAllocated(elements[i]);
     }
 
-    response.mutable_array_response()->mutable_elements()->ExtractSubrange(0, count, nullptr);
+    // ExtractSubrange with nullptr for last argument will hit debug assertion, probably due to
+    // unsafety with arenas. We don't use arenas here, so it's not an issue, and
+    // UnsafeArenaExtractSubrange provides the same behavior (but without DCHECK).
+    response.mutable_array_response()->mutable_elements()->UnsafeArenaExtractSubrange(
+        0, count, nullptr);
 
     if (keys_threshold_ == 0) {
       ProcessedAll(Status::OK());

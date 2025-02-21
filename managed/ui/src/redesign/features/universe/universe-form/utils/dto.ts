@@ -891,4 +891,17 @@ export interface ImageBundle {
   active: true;
 }
 
+export enum PRECHECK_UPGRADE_TYPE {
+  SOFTWARE = 'Software', // Upgrade database version
+  SYSTEMD = 'Systemd', // Upgrade to systemd
+  VMIMAGE = 'VMImage', // Upgade linux version
+  RESTART = 'Restart', // Restart universe
+  CERTS = 'Certs', // Rotate certificates
+  TOGGLE_TLS = 'ToggleTls', // Edit security
+  RESIZE_NODE = 'ResizeNode', // Resize node
+  REBOOT = 'Reboot', // Reboot universe
+  THIRDPARTY = 'ThirdPartyPackages', // Third party packages upgrade
+  GFLAGS = 'GFlags' // Edit flags
+}
+
 //-------------------------------------------------------- Remaining types - Field/API Ends -------------------------------------------------------------------

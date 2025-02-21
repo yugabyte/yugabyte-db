@@ -58,7 +58,6 @@ When a unique index is applied to two or more columns, the combined values in th
 By default a NULL value is treated as a distinct value, allowing you to have multiple NULL values in a column with a unique index. This can be turned OFF by adding the [NULLS NOT DISTINCT](../../api/ysql/the-sql-language/statements/ddl_create_index#nulls-not-distinct) option when creating the unique index.
 {{</note>}}
 
-
 {{<lead link="../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/">}}
 For more details, see [Unique indexes](../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/).
 {{</lead>}}
@@ -178,6 +177,10 @@ YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/) provide advanced c
 {{<lead link="https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#load-balancing-with-smart-driver">}}
 For more information, see [Load balancing with smart drivers](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#load-balancing-with-smart-driver).
 {{</lead>}}
+
+## Make sure the application uses new nodes
+
+When a cluster is expanded, newly added nodes do not automatically start to receive client traffic. Regardless of the language of the driver or whether you are using a smart driver, the application must either explicitly request new connections or, if it is using a pooling solution, it can configure the pooler to recycle connections periodically (for example, by setting maxLifetime and/or idleTimeout).
 
 ## Scale your application with connection pools
 

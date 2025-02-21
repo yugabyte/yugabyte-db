@@ -201,8 +201,6 @@ set(UTIL_SRCS
   rw_semaphore.cc
   rwc_lock.cc
   shared_mem.cc
-  shmem/reserved_address_segment.cc
-  shmem/robust_mutex.cc
   signal_util.cc
   slice.cc
   slice_parts.cc
@@ -295,6 +293,24 @@ configure_file(
   COPYONLY)
 
 #######################################
+# yb_util_shmem
+#######################################
+
+set(UTIL_SHMEM_SRCS
+  shmem/reserved_address_segment.cc
+  shmem/robust_mutex.cc
+  shmem/shared_mem_allocator.cc
+  shmem/shared_mem_segment.cc
+  )
+
+set(UTIL_SHMEM_LIBS
+  yb_util)
+
+ADD_YB_LIBRARY(yb_util_shmem
+  SRCS ${UTIL_SHMEM_SRCS}
+  DEPS ${UTIL_SHMEM_LIBS})
+
+#######################################
 # yb_test_util
 #######################################
 
@@ -302,7 +318,7 @@ ADD_YB_TEST_LIBRARY(
   yb_test_util
   SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc
        multi_drive_test_env.cc
-  DEPS gflags glog gmock gtest yb_util)
+  DEPS gflags glog gmock gtest yb_util yb_util_shmem)
 
 #######################################
 # yb_test_main
@@ -403,6 +419,7 @@ ADD_YB_TEST(scope_exit-test)
 ADD_YB_TEST(shared_mem-test)
 ADD_YB_TEST(shmem/reserved_address_segment-test)
 ADD_YB_TEST(shmem/robust_mutex-test)
+ADD_YB_TEST(shmem/shared_mem_allocator-test)
 ADD_YB_TEST(slice-test)
 ADD_YB_TEST(spinlock_profiling-test)
 ADD_YB_TEST(split-test)

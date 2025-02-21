@@ -51,6 +51,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TemplateManager;
@@ -244,6 +245,7 @@ public class MainModule extends AbstractModule {
     bind(YBReconcilerFactory.class).asEagerSingleton();
     bind(ReleasesUtils.class).asEagerSingleton();
     bind(ReleaseContainerFactory.class).asEagerSingleton();
+    bind(SoftwareUpgradeHelper.class).asEagerSingleton();
 
     // Destroy current session on SSO logout.
     final LogoutController logoutController = new LogoutController();
