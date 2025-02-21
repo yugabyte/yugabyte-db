@@ -66,6 +66,7 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
@@ -3138,10 +3139,26 @@ void MasterPathHandlers::HandleVersionInfoDump(
 void MasterPathHandlers::HandleLoadBalancer(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
+  *output << "<h1>Cluster Balancer</h1>\n";
+
+  // TODO(asrivastava): Display tasks with started_by_lb() set here.
+  // TODO(asrivastava): Display LB bottleneck here.
+
+  *output << "<h2>Warnings Summary</h2>\n";
+  *output << "<table class='table table-striped'>\n";
+  *output << "<thead><tr>"
+          << "<th>Sample warning</th>"
+          << "<th>Count of similar messages (in previous run)</th>"
+          << "</tr></thead>";
+  auto activity_info = master_->catalog_manager()->load_balancer()->GetActivityInfo();
+  for (const auto& warning : activity_info.warnings.GetWarningSummary()) {
+    *output << Format("<tr><td>$0</td><td>$1</td></tr>\n", warning.example_message, warning.count);
+  }
+  *output << "</table>\n";
+
+  *output << "<h2>Tablet Distribution</h2>\n";
   auto descs = master_->ts_manager()->GetAllDescriptors();
-
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
-
   auto tserver_tree_result = CalculateTServerTree(-1 /* max_table_count */);
   if (!tserver_tree_result.ok()) {
     *output << "<div class='alert alert-warning'>"

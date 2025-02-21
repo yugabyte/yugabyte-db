@@ -384,8 +384,6 @@ TEST_F(PgTablespacesTest, TestAlterTableMajority) {
 
   SetupObjects(&conn, "valid_ts");
 
-  WaitForLoadBalanceCompletion();
-
   // Verify that the replicas for the table are distributed in valid_ts.
   VerifyObjectPlacement(valid_placement_blocks);
 
@@ -394,8 +392,6 @@ TEST_F(PgTablespacesTest, TestAlterTableMajority) {
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 SET TABLESPACE majority_ts", table_name));
   ASSERT_OK(conn.ExecuteFormat("ALTER INDEX $0 SET TABLESPACE majority_ts", index_name));
   ASSERT_OK(conn.ExecuteFormat("ALTER MATERIALIZED VIEW $0 SET TABLESPACE majority_ts", mv_name));
-
-  WaitForLoadBalanceCompletion();
 
   // Even though we have moved the table to majority_ts, the replicas should still be in the
   // valid_placement_blocks because there are only 2 valid placement blocks in majority_ts.

@@ -84,6 +84,7 @@ DECLARE_uint32(leaderless_tablet_alert_delay_secs);
 DECLARE_bool(TEST_assert_local_op);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(enable_load_balancing);
+DECLARE_int32(load_balancer_initial_delay_secs);
 
 namespace yb {
 namespace master {
@@ -1697,6 +1698,19 @@ TEST_F_EX(
   // Delete the table; it and its tablets will be retained as hidden due to the schedule.
   DeleteTestTable();
   ExpectLoadDistributionViewTabletsShown(5);
+}
+
+TEST_F(MasterPathHandlersItest, TestClusterBalancerWarnings) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 0;
+  CreateTestTable(3 /* num_tablets */);
+  auto hp = HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr());
+  ASSERT_OK(yb_admin_client_->ChangeBlacklist({hp}, true /* add */, false /* blacklist_leader */));
+
+  SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms); // Let the load balancer run once
+  faststring result;
+  ASSERT_OK(GetUrl("/load-distribution", &result));
+  const auto webpage = result.ToString();
+  ASSERT_STR_CONTAINS(webpage, "Could not find a valid tserver to host tablet");
 }
 
 TEST_F(MasterPathHandlersItest, StatefulServices) {
