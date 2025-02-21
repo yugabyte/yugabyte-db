@@ -245,7 +245,6 @@ my-sandbox   Dedicated   {{< yb-version version="preview" format="build">}}     
 
 You can list the EAR details using the encryption list command.
 
-
 ```sh
 ybm cluster encryption list --cluster-name my-sandbox
 ```
@@ -256,41 +255,6 @@ AWS        XXXXXXXX-e690-42fc-b209-baf969930b2c   -              arn:aws:kms:us-
 ```
 
 EAR details are also shown when you use `cluster describe` command.
-
-```sh
-ybm cluster describe --cluster-name my-sandbox
-```
-
-```output
-General
-Name                 ID                                     Version        State     Health
-my-sandbox   b1676d3f-8898-4c04-a1d6-bedf5bXXXXXX   2.18.3.0-b75   ACTIVE    💚
-
-Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
-AWS        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
-
-
-Regions
-Region      Nodes     vCPU/Node   Mem/Node   Disk/Node   VPC
-us-east-2    3         4           16GB       200GB       
-
-
-Endpoints
-Region      Accessibility   State     Host
-us-east-2    PUBLIC          ACTIVE    us-east-2 .XXXXXXXX-8898-4c04-a1d6-bedf5bXXXXXX.aws.devcloud.yugabyte.com
-
-
-Encryption at Rest
-Provider   Key Alias                              Last Rotated               Security Principals                                                           CMK Status
-AWS        0a80e409-e690-42fc-b209-XXXXXXXXXXX   2023-11-03T07:37:26.351Z   arn:aws:kms:us-east-1:<your-account-id>:key/<your-key-id>   ACTIVE
-
-
-Nodes
-Name                    Region[zone]            Health    Master    Tserver   ReadReplica   Used Memory(MB)
-my-sandbox-n1   us-east-2 [us-east-2 a]   💚        ✅        ✅        ❌            75MB
-my-sandbox-n2   us-east-2 [us-east-2 b]   💚        ✅        ✅        ❌            96MB
-my-sandbox-n3   us-east-2 [us-east-2 c]   💚        ✅        ✅        ❌            76MB
-```
 
 {{% /tab %}}
 
@@ -316,7 +280,6 @@ my-sandbox   Dedicated   {{< yb-version version="preview" format="build">}}     
 
 You can list the EAR details using the encryption list command.
 
-
 ```sh
 ybm cluster encryption list --cluster-name my-sandbox
 ```
@@ -326,42 +289,7 @@ Provider   Key Alias      Last Rotated               Security Principals        
 GCP        <your-key-name>   2023-11-03T07:37:26.351Z   projects/<your-project-id>/<your-location>/global/keyRings/<your-key-ring-name>/cryptoKeys/<your-key-name>   ACTIVE
 ```
 
-Note the EAR details are also shown when you use `cluster describe` command.
-
-```sh
-ybm cluster describe --cluster-name my-sandbox
-```
-
-```output
-General
-Name                 ID                                     Version        State     Health
-my-sandbox   b1676d3f-8898-4c04-a1d6-bedf5bXXXXXX   2.18.3.0-b75   ACTIVE    💚
-
-Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
-GCP        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
-
-
-Regions
-Region      Nodes     vCPU/Node   Mem/Node   Disk/Node   VPC
-us-central1    3         4           16GB       200GB       
-
-
-Endpoints
-Region      Accessibility   State     Host
-us-central1    PUBLIC          ACTIVE    us-central1.b1676d3f-8898-4c04-a1d6-bedf5bXXXXXX.gcp.devcloud.yugabyte.com
-
-
-Encryption at Rest
-Provider   Key Alias      Last Rotated               Security Principals                                                                              CMK Status
-GCP        <your-key-name>   2023-11-03T07:37:26.351Z   projects/<your-project-id>/<your-location>/global/keyRings/<your-key-ring-name>/cryptoKeys/<your-key-name>   ACTIVE
-
-
-Nodes
-Name                    Region[zone]            Health    Master    Tserver   ReadReplica   Used Memory(MB)
-my-sandbox-n1   us-central1 [us-central1 a]   💚        ✅        ✅        ❌            75MB
-my-sandbox-n2   us-central1 [us-central1 b]   💚        ✅        ✅        ❌            96MB
-my-sandbox-n3   us-central1 [us-central1 c]   💚        ✅        ✅        ❌            76MB
-```
+EAR details are also shown when you use `cluster describe` command.
 
 {{% /tab %}}
 
@@ -386,7 +314,6 @@ my-sandbox   Dedicated   {{< yb-version version="preview" format="build">}}     
 
 You can list the EAR details using the encryption list command.
 
-
 ```sh
 ybm cluster encryption list --cluster-name my-sandbox
 ```
@@ -396,42 +323,7 @@ Provider   Key Alias                              Last Rotated               Sec
 AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   <your-key-vault-uri>   ACTIVE
 ```
 
-Note the EAR details are also shown when you use `cluster describe` command.
-
-```sh
-ybm cluster describe --cluster-name my-sandbox
-```
-
-```output
-General
-Name                 ID                                     Version        State     Health
-my-sandbox   b1676d3f-8898-4c04-a1d6-bedf5b7867ff   2.18.3.0-b75   ACTIVE    💚
-
-Provider   Tier        Fault Tolerance   Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
-AZURE        Dedicated   ZONE, RF 3        3         4 / 16GB / 200GB / 3000
-
-
-Regions
-Region      Nodes     vCPU/Node   Mem/Node   Disk/Node   VPC
-eastus   3         4           16GB       200GB       
-
-
-Endpoints
-Region      Accessibility   State     Host
-eastus   PUBLIC          ACTIVE    eastus.b1676d3f-8898-4c04-a1d6-bedf5b7867ff.azure.devcloud.yugabyte.com
-
-
-Encryption at Rest
-Provider   Key Alias                              Last Rotated               Security Principals                      CMK Status
-AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   <your-key-vault-uri>   ACTIVE
-
-
-Nodes
-Name                    Region[zone]            Health    Master    Tserver   ReadReplica   Used Memory(MB)
-my-sandbox-n1   eastus[eastusa]   💚        ✅        ✅        ❌            75MB
-my-sandbox-n2   eastus[eastusb]   💚        ✅        ✅        ❌            96MB
-my-sandbox-n3   eastus[eastusc]   💚        ✅        ✅        ❌            76MB
-```
+EAR details are also shown when you use `cluster describe` command.
 
 {{% /tab %}}
 
@@ -481,7 +373,6 @@ ybm cluster encryption update \
 
 To disable EAR on a cluster, use the following command:
 
-
 ```sh
 ybm cluster encryption update-state \
   --cluster-name my-sandbox \
@@ -489,9 +380,21 @@ ybm cluster encryption update-state \
 ```
 
 ```output
-Successfully DISABLED encryption spec status for cluster my-sandbox
+Successfully DISABLED encryption at rest for cluster my-sandbox
 ```
+
 After you disable EAR, YugabyteDB Aeon uses lazy decryption to decrypt the cluster.
+
+You can check the status of the EAR using the encryption list command.
+
+```sh
+ybm cluster encryption list --cluster-name my-sandbox
+```
+
+```output
+Provider   Key Alias                              Last Rotated               Security Principals                      CMK Status
+AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   <your-key-vault-uri>   NOT_ACTIVE
+```
 
 To re-enable EAR on a cluster, use the following command:
 
@@ -502,10 +405,8 @@ ybm cluster encryption update-state \
 ```
 
 ```output
-Successfully ENABLED encryption spec status for cluster my-sandbox
+Successfully ENABLED encryption at rest for cluster my-sandbox
 ```
-
-
 
 ## Pause, resume, and terminate
 
