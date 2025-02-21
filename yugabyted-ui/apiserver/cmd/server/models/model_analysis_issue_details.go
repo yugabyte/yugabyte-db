@@ -1,11 +1,9 @@
 package models
 
-// ErrorsAndSuggestionsDetails - Errors and suggestions details
-type ErrorsAndSuggestionsDetails struct {
+// AnalysisIssueDetails - Details of issues in Schema Analysis Report
+type AnalysisIssueDetails struct {
 
     IssueType string `json:"issueType"`
-
-    ObjectType string `json:"objectType"`
 
     ObjectName string `json:"objectName"`
 
@@ -18,4 +16,8 @@ type ErrorsAndSuggestionsDetails struct {
     Suggestion string `json:"suggestion"`
 
     GH string `json:"GH"`
+
+    DocsLink string `json:"docs_link"`
+
+    MinimumVersionsFixedIn []string `json:"minimum_versions_fixed_in"`
 }
