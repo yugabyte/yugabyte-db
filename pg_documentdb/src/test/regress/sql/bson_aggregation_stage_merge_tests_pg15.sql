@@ -1,0 +1,1 @@
+\i sql/bson_aggregation_stage_merge_tests_core.sql

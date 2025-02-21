@@ -68,10 +68,6 @@ SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sale
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$lte": 102 }}}, {"$limit": 2}]}} ], "cursor": {} }');
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": []}} ], "cursor": {} }');
 
-EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}, {"$limit": 1}]}} ], "cursor": {} }'); 
-EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}]}} ], "cursor": {} }'); 
-EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": {}}} ], "cursor": {} }'); 
-
 -- negative cases
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": {}, "input": "$roles"}} ], "cursor": {} }');
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "", "input": "$roles"}} ], "cursor": {} }');

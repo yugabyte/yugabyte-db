@@ -6,6 +6,10 @@ Makefile:;
 
 .PHONY: %
 
+check-no-distributed:
+	$(MAKE) -C pg_documentdb_core check
+	$(MAKE) -C pg_documentdb check
+
 .DEFAULT:
 	$(MAKE) -C pg_documentdb_core
 	$(MAKE) -C pg_documentdb
