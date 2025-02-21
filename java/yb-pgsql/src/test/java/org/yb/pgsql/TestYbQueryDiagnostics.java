@@ -338,23 +338,28 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                                          int diagnosticsInterval) throws Exception {
         Thread.sleep(diagnosticsInterval * 1000 + BG_WORKER_INTERVAL_MS);
 
-        long start_time = System.currentTimeMillis();
-        while (true)
-        {
-            System.out.println("Waiting in forever loop");
+        long startTime = System.currentTimeMillis();
 
-            ResultSet resultSet = statement.executeQuery(
-                                  "SELECT * FROM yb_query_diagnostics_status where query_id = " +
-                                  queryId);
+        try {
+            TestUtils.waitFor(() -> {
+                ResultSet resultSet = statement.executeQuery(
+                        "SELECT * FROM yb_query_diagnostics_status where query_id = " +
+                                queryId);
 
-            if (resultSet.next() && !resultSet.getString("status").equals("In Progress"))
-                break;
+                if (resultSet.next() && !resultSet.getString("status").equals("In Progress"))
+                    return true;
 
-            if (System.currentTimeMillis() - start_time > 60000) // 1 minute
-                fail("Bundle did not complete within the expected time");
-
-            Thread.sleep(BG_WORKER_INTERVAL_MS);
+                return false;
+            },
+                    60000L, BG_WORKER_INTERVAL_MS);
+        } catch (Exception e) {
+            throw new AssertionError(
+                    "Bundle did not complete within the expected time");
         }
+    }
+
+    private void waitForBundleCompletion(String queryId, Statement statement) throws Exception {
+        waitForBundleCompletion(queryId, statement, 0);
     }
 
     /*
@@ -1397,12 +1402,12 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
              * we consider only half the length.
              */
             int varLen = minLen / 2;
-            String largeVariable = new String(new char[ varLen ]).replace('\0', 'a');
+            String largeVariable = new String(new char[varLen]).replace('\0', 'a');
 
             /* To ensure that the buffer overflows we do twice as many iterations */
             int noOfIterations = (maxLen / varLen) + 1;
 
-            int diagnosticsInterval = noOfIterations * (BG_WORKER_INTERVAL_MS / 1000);
+            int diagnosticsInterval = 2 * noOfIterations * (BG_WORKER_INTERVAL_MS / 1000);
             QueryDiagnosticsParams params = new QueryDiagnosticsParams(
                 diagnosticsInterval,
                 100 /* explainSampleRate */,
@@ -1420,19 +1425,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 Thread.sleep(BG_WORKER_INTERVAL_MS);
             }
 
-            long start_time = System.currentTimeMillis();
-            while (true)
-            {
-                ResultSet resultSet = statement.executeQuery(
-                                      "SELECT * FROM yb_query_diagnostics_status");
-                if (resultSet.next() && resultSet.getString("status").equals("Success"))
-                    break;
-
-                if (System.currentTimeMillis() - start_time > 60000) // 1 minute
-                    fail("Bundle did not complete within the expected time");
-
-                Thread.sleep(BG_WORKER_INTERVAL_MS);
-            }
+            waitForBundleCompletion(queryId, statement);
 
             /* Bundle has expired */
             Path bindVariablesPath = bundleDataPath.resolve("constants_and_bind_variables.csv");
@@ -1443,6 +1436,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             String bindVariablesContent = new String(Files.readAllBytes(bindVariablesPath));
             String explainPlanContent = new String(Files.readAllBytes(explainPlanPath));
+
+            LOG.info("Explain plan content: \n" + explainPlanContent);
+            LOG.info("Bind variables content: \n" + bindVariablesContent);
 
             int bindVariablesLength = bindVariablesContent.length();
             int explainPlanLength = explainPlanContent.length();
