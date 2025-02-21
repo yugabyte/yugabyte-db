@@ -43,7 +43,7 @@ YugabyteDB Anywhere requires the following additional software to be pre-install
 
   Alternately, if you are using the default version of python3, you might be able to install the python3-libselinux package.
 
-- OpenSSH Server. Allowing SSH is recommended but optional. Using SSH can be skipped in some on-premises deployment approaches; all other workflows require it. [Tectia SSH](../../create-deployments/connect-to-universe/#enable-tectia-ssh) is also supported.
+- OpenSSH Server. Allowing SSH is optional. Using SSH is required in some [legacy on-premises deployment](../server-nodes-software/software-on-prem-legacy/) approaches. [Tectia SSH](../../create-deployments/connect-to-universe/#enable-tectia-ssh) is also supported.
 - tar
 - unzip
 - policycoreutils-python-utils
