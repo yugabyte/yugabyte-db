@@ -254,6 +254,11 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
     max_graceful_shutdown_wait_sec_ = max_graceful_shutdown_wait_sec;
   }
 
+  template <class T>
+  std::unique_ptr<T> Proxy() {
+    return std::make_unique<T>(proxy_cache_, bound_rpc_addr());
+  }
+
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;
   virtual ~ExternalDaemon();

@@ -29,6 +29,7 @@
 #include "yb/master/master_error.h"
 
 #include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -2673,6 +2674,16 @@ TEST_F(PgIndexBackfillTest, VectorIndex) {
   thread_holder.Stop();
   LOG(INFO) << "Max time without inserts: " << max_time_without_inserts;
   ASSERT_LT(max_time_without_inserts, 1s * kBackfillSleepSec);
+  SCOPED_TRACE(Format("Total rows: $0", counter.load()));
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    tserver::VerifyVectorIndexesRequestPB req;
+    tserver::VerifyVectorIndexesResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(30s);
+    auto proxy = cluster_->tablet_server(i)->Proxy<tserver::TabletServerServiceProxy>();
+    ASSERT_OK(proxy->VerifyVectorIndexes(req, &resp, &controller));
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+  }
   for (int i = 2; i < counter.load(); ++i) {
     auto rows = ASSERT_RESULT(conn_->FetchAllAsString(Format(
         "SELECT id FROM test ORDER BY embedding <-> '[$0]' LIMIT 3", i * 1.0 - 0.01)));

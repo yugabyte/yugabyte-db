@@ -76,6 +76,8 @@ class TabletVectorIndexes : public TabletComponent {
     return has_vector_indexes_.load();
   }
 
+  Status Verify();
+
  private:
   void ScheduleBackfill(
       const docdb::VectorIndexPtr& vector_index, HybridTime backfill_ht,

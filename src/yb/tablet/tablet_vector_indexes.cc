@@ -26,6 +26,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
+#include "yb/dockv/vector_id.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -46,6 +47,63 @@ DEFINE_test_flag(int32, sleep_before_vector_index_backfill_seconds, 0,
 DECLARE_uint64(vector_index_initial_chunk_size);
 
 namespace yb::tablet {
+
+namespace {
+
+class IndexedTableReader {
+ public:
+  IndexedTableReader(
+      std::reference_wrapper<const TableInfo> indexed_table,
+      const docdb::VectorIndex& vector_index)
+      : indexed_table_(indexed_table),
+        projection_(indexed_table_.schema(), {vector_index.column_id()}),
+        row_(projection_) {
+  }
+
+  Result<std::unique_ptr<docdb::DocRowwiseIterator>> CreateIterator(
+      Tablet& tablet, HybridTime read_ht, std::optional<Slice> start_key) {
+    auto result = VERIFY_RESULT(tablet.NewUninitializedDocRowIterator(
+        projection_, ReadHybridTime::SingleTime(read_ht), indexed_table_.table_id));
+    result->InitForTableType(
+        TableType::PGSQL_TABLE_TYPE, start_key ? *start_key : Slice(), docdb::SkipSeek(!start_key));
+    return result;
+  }
+
+  Status Init(Tablet& tablet, HybridTime read_ht, Slice start_key) {
+    iter_ = VERIFY_RESULT(CreateIterator(tablet, read_ht, start_key));
+    return Status::OK();
+  }
+
+  Result<bool> FetchNext() {
+    for (;;) {
+      auto result = VERIFY_RESULT(iter_->PgFetchNext(&row_));
+      if (!result) {
+        return false;
+      }
+      auto value = row_.GetValueByIndex(0);
+      if (value) {
+        return true;
+      }
+      // Skip entries with NULL vector value.
+    }
+  }
+
+  Slice current_vector_slice() const {
+    return row_.GetValueByIndex(0)->binary_value();
+  }
+
+  Slice current_ybctid() const {
+    return iter_->GetTupleId();
+  }
+
+ private:
+  const TableInfo& indexed_table_;
+  dockv::ReaderProjection projection_;
+  dockv::PgTableRow row_;
+  std::unique_ptr<docdb::DocRowwiseIterator> iter_;
+};
+
+} // namespace
 
 // A way to block backfilling vector index after the first vector index chunk is flushed.
 bool TEST_block_after_backfilling_first_vector_index_chunks = false;
@@ -199,14 +257,10 @@ Status TabletVectorIndexes::Backfill(
     std::this_thread::sleep_for(FLAGS_TEST_sleep_before_vector_index_backfill_seconds * 1s);
   }
 
-  auto read_ht = ReadHybridTime::SingleTime(backfill_ht);
-  dockv::ReaderProjection projection(indexed_table.schema(), {vector_index->column_id()});
-  auto iter = VERIFY_RESULT(tablet().NewUninitializedDocRowIterator(
-      projection, read_ht, indexed_table.table_id));
-  iter->InitForTableType(TableType::PGSQL_TABLE_TYPE, from_key);
+  IndexedTableReader reader(indexed_table, *vector_index);
+  RETURN_NOT_OK(reader.Init(tablet(), backfill_ht, from_key));
 
   // Expecting one row at most.
-  dockv::PgTableRow row(projection);
   VectorIndexBackfillHelper helper(backfill_ht);
   for (;;) {
     if (tablet().IsShutdownRequested()) {
@@ -217,19 +271,14 @@ Status TabletVectorIndexes::Backfill(
       std::this_thread::sleep_for(10ms);
       continue;
     }
-    if (!VERIFY_RESULT_PREPEND(iter->PgFetchNext(&row), "Fetch row")) {
+    if (!VERIFY_RESULT(reader.FetchNext())) {
       break;
     }
-    auto value = row.GetValueByIndex(0);
-    if (!value) {
-      continue;
-    }
-
-    auto ybctid = iter->GetTupleId();
+    auto ybctid = reader.current_ybctid();
     if (helper.NeedFlush()) {
       RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, ybctid));
     }
-    helper.Add(ybctid, value->binary_value());
+    helper.Add(ybctid, reader.current_vector_slice());
   }
 
   RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, Slice()));
@@ -381,6 +430,41 @@ void TabletVectorIndexes::FillMaxPersistentOpIds(
   for (const auto& vector_index : *list) {
     out.push_back(MaxPersistentOpIdForDb(vector_index.get(), invalid_if_no_new_data));
   }
+}
+
+Status TabletVectorIndexes::Verify() {
+  auto list = List();
+  if (!list) {
+    return Status::OK();
+  }
+  auto read_ht = VERIFY_RESULT(tablet().SafeTime(RequireLease::kFalse));
+  for (const auto& vector_index : *list) {
+    while (!vector_index->BackfillDone()) {
+      std::this_thread::sleep_for(10ms);
+    }
+    auto index_table = VERIFY_RESULT(metadata().GetTableInfo(vector_index->table_id()));
+    auto indexed_table = VERIFY_RESULT(metadata().GetTableInfo(
+        index_table->index_info->indexed_table_id()));
+    IndexedTableReader reader(*indexed_table, *vector_index);
+    RETURN_NOT_OK(reader.Init(tablet(), read_ht, Slice()));
+    auto reverse_index_iterator = VERIFY_RESULT(reader.CreateIterator(
+        tablet(), read_ht, std::nullopt));
+    while (VERIFY_RESULT(reader.FetchNext())) {
+      auto value = dockv::EncodedDocVectorValue::FromSlice(reader.current_vector_slice());
+      auto vector_id = VERIFY_RESULT(value.DecodeId());
+      auto vector_id_key = dockv::VectorIdKey(vector_id);
+      auto ybctid = CHECK_RESULT(reverse_index_iterator->FetchDirect(vector_id_key.AsSlice()));
+      if (reader.current_ybctid() != ybctid) {
+        LOG_WITH_FUNC(DFATAL)
+            << "Wrong reverse record for: " << vector_id << ": " << ybctid.ToDebugHexString()
+            << ", while expected: " << reader.current_ybctid().ToDebugHexString();
+      }
+      if (!VERIFY_RESULT(vector_index->HasVectorId(vector_id))) {
+        LOG_WITH_FUNC(DFATAL) << "Missing vector id in index: " << vector_id;
+      }
+    }
+  }
+  return Status::OK();
 }
 
 Status VectorIndexList::WaitForFlush() {

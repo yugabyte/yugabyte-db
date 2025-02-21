@@ -66,6 +66,7 @@ class VectorIndex {
   virtual rocksdb::FlushAbility GetFlushAbility() = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
+  virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
 
   bool BackfillDone();
 

@@ -609,6 +609,27 @@ void MergeChunkResults(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+auto VectorLSM<Vector, DistanceResult>::AllIndexes() const -> Result<std::vector<VectorIndexPtr>> {
+  // TODO(vector_index) Optimize memory allocation.
+  std::vector<VectorIndexPtr> result;
+  {
+    SharedLock lock(mutex_);
+    RETURN_NOT_OK(failed_status_);
+
+    result.reserve(1 + immutable_chunks_.size());
+    if (mutable_chunk_) {
+      result.push_back(mutable_chunk_->index);
+    }
+    for (const auto& chunk : immutable_chunks_) {
+      if (chunk->index) {
+        result.push_back(chunk->index);
+      }
+    }
+  }
+  return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 auto VectorLSM<Vector, DistanceResult>::Search(
     const Vector& query_vector, const SearchOptions& options) const ->
     Result<typename VectorLSM<Vector, DistanceResult>::SearchResults> {
@@ -616,22 +637,7 @@ auto VectorLSM<Vector, DistanceResult>::Search(
     return SearchResults();
   }
 
-  // TODO(vector_index) Optimize memory allocation.
-  std::vector<VectorIndexPtr> indexes;
-  {
-    SharedLock lock(mutex_);
-    RETURN_NOT_OK(failed_status_);
-
-    indexes.reserve(1 + immutable_chunks_.size());
-    if (mutable_chunk_) {
-      indexes.push_back(mutable_chunk_->index);
-    }
-    for (const auto& chunk : immutable_chunks_) {
-      if (chunk->index) {
-        indexes.push_back(chunk->index);
-      }
-    }
-  }
+  auto indexes = VERIFY_RESULT(AllIndexes());
   bool dump_stats = FLAGS_vector_index_dump_stats;
 
   auto start_registry_search = dump_stats ? MonoTime::Now() : MonoTime();
@@ -659,6 +665,26 @@ auto VectorLSM<Vector, DistanceResult>::Search(
       << "us";
 
   return intermediate_results;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Result<bool> VectorLSM<Vector, DistanceResult>::HasVectorId(
+    const vector_index::VectorId& vector_id) const {
+  // Search in insert registry is not implemented, so just wait until all entries are inserted.
+  while (insert_registry_->HasRunningTasks()) {
+    std::this_thread::sleep_for(10ms);
+  }
+  auto indexes = VERIFY_RESULT(AllIndexes());
+  for (const auto& index : indexes) {
+    auto vector_res = index->GetVector(vector_id);
+    if (vector_res.ok()) {
+      return true;
+    }
+    if (!vector_res.status().IsNotFound()) {
+      return vector_res.status();
+    }
+  }
+  return false;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
