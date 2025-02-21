@@ -328,6 +328,11 @@ class ProvisionCommand(Command):
         self._compare_ynp_version()
         self._run_script(precheck_combined_script)
 
+    def dry_run(self):
+        install_script, precheck_script = self._generate_template()
+        logger.info("Install Script: %s", install_script)
+        logger.info("Precheck Script: %s", precheck_script)
+
     def cleanup(self):
         # Cleanup tasks to clean up any tmp data to support rerun
         pass

@@ -29,6 +29,8 @@ def parse_arguments():
     parser.add_argument('--extra_vars', default='{}',
                         help='Path to the JSON file containing extra variables \
                         required for execution.')
+    parser.add_argument('--dry-run', action="store_true",
+                        help='Render Execution Scripts without executing them for dry-run')
     args = parser.parse_args()
 
     # Read extra_vars from JSON file if the path is provided
