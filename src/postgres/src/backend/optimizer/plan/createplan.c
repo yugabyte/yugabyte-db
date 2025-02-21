@@ -3309,10 +3309,13 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	List	   *subpath_tlist = NIL;
 	List	   *colrefs = NIL;
 	TargetEntry **indexquals = NULL;
+	int			rt_index;
 	int			attr_num;
 	AttrNumber	attr_offset;
 	Bitmapset  *update_attrs = NULL;
 	Bitmapset  *pushdown_update_attrs = NULL;
+	Bitmapset  *affected_generated_attrs = NULL;
+	Bitmapset  *generated_cols_source_attrs = NULL;
 
 	/* Delay bailout because of not pushable expressions to analyze indexes. */
 	bool		has_unpushable_exprs = false;
@@ -3352,6 +3355,9 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				 */
 				relInfo = rel;
 				relid = root->simple_rte_array[rti]->relid;
+
+				/* Store the range table index for future look up. */
+				rt_index = rti;
 			}
 			else
 			{
@@ -3542,6 +3548,45 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 												   resno - attr_offset);
 		}
 	}
+
+	/*
+	 * Generated columns are excluded from the updated column set constructed
+	 * above as they cannot be directly referenced by the query's set list.
+	 * However, they may have triggers or indexes on them. So, make a set of
+	 * generated columns that depend on any of the columns that are marked for
+	 * update. Additionally, compute a set of columns that these generated cols
+	 * depend on ("generated_cols_source_attrs"). These independent columns that
+	 * are marked for update cannot be pushed down to DocDB as we currently do
+	 * not have the ability to push down the computation of generated columns.
+	 * Consequently, this necessitates a scan of these columns, and thus making
+	 * it impossible to perform a "single row update".
+	 * Consider the following example:
+	 * CREATE TABLE t (k INT, v1 INT, v2 INT, vgen INT GENERATED ALWAYS AS (v1 + v2) STORED);
+	 * CREATE INDEX vgen_idx ON t (vgen);
+	 * In the above example, any updates to v1 or v2 cannot be pushed down.
+	 * Further, any updates to v1 or v2 will also require an index update of vgen_idx.
+	 */
+	affected_generated_attrs = get_dependent_generated_columns(root, rt_index,
+															   update_attrs,
+															   &generated_cols_source_attrs);
+
+	if (bms_overlap(generated_cols_source_attrs, pushdown_update_attrs))
+		has_unpushable_exprs = true;
+
+	/*
+	 * Updates to relations having generated columns are applicable for "single
+	 * row updates" only if the query explicitly specifies (ie. set) all
+	 * (or none) of the independent columns that the generated columns depend
+	 * on. If not, the values of missing columns would have to be read from
+	 * storage to compute the generated columns, requiring a scan.
+	 */
+	if (!has_unpushable_exprs &&
+		!bms_is_subset(generated_cols_source_attrs, update_attrs))
+		has_unpushable_exprs = true;
+
+	update_attrs = bms_add_members(update_attrs, affected_generated_attrs);
+	bms_free(generated_cols_source_attrs);
+	bms_free(affected_generated_attrs);
 
 	/*
 	 * Cannot support before row triggers for single-row update/delete, as the
@@ -3998,7 +4043,8 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 		{
 			updatedCols =
 				bms_add_members(get_dependent_generated_columns(root, rt_index,
-																rte->updatedCols),
+																rte->updatedCols,
+																NULL /* yb_generated_cols_source */ ),
 								rte->updatedCols);
 			plan->yb_update_affected_entities =
 				YbComputeAffectedEntitiesForRelation(plan, rel, updatedCols);
