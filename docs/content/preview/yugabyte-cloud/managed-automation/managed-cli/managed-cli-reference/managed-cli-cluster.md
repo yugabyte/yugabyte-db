@@ -20,6 +20,8 @@ Use the `cluster` resource to perform operations on a YugabyteDB Aeon cluster, i
 - download the cluster certificate
 - encrypt clusters and manage encryption
 
+For a tutorial using the `cluster` command, including creating and updating clusters, connecting, and using encryption at rest, refer to [Create clusters](../../managed-cli-examples/managed-cli-example-create/).
+
 ## Syntax
 
 ```text
@@ -108,7 +110,7 @@ List the encryption at rest configuration for the specified cluster.
 
 ### encryption update
 
-Update the credentials to use for the customer managed key (CMK) used to encrypt the specified cluster.
+Update the credentials and rotate the customer managed key (CMK) used to encrypt the specified cluster.
 
 | <div style="width:125px">Flag</div> | Description |
 | :--- | :--- |
@@ -117,13 +119,13 @@ Update the credentials to use for the customer managed key (CMK) used to encrypt
 
 ### encryption update-state
 
-Update the Encryption at Rest (EaR) state for the specified cluster.
+Update the encryption at rest state for the specified cluster.
 
 | Flag | Description |
 | :--- | :--- |
 | --cluster-name | Name of the cluster. |
-| --enable | Enable Encryption at Rest for the cluster. |
-| --disable | Disable Encryption at Rest for the cluster. |
+| --enable | Enable encryption at rest for the cluster. |
+| --disable | Disable encryption at rest for the cluster. |
 
 ### list
 
