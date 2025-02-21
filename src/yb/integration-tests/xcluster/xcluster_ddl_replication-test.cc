@@ -105,6 +105,30 @@ TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
   ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name2));
 }
 
+TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST_ON_MACOS(SurviveRestarts)) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  {
+    TEST_SetThreadPrefixScoped prefix_se("NP");
+    ASSERT_OK(producer_cluster_.mini_cluster_.get()->RestartSync());
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  {
+    TEST_SetThreadPrefixScoped prefix_se("NC");
+    ASSERT_OK(consumer_cluster_.mini_cluster_.get()->RestartSync());
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  {
+    TEST_SetThreadPrefixScoped prefix_se("NNP");
+    ASSERT_OK(producer_cluster_.mini_cluster_.get()->RestartSync());
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
 TEST_F(XClusterDDLReplicationTest, TestExtensionDeletionWithMultipleReplicationGroups) {
   const xcluster::ReplicationGroupId kReplicationGroupId2("ReplicationGroup2");
   ASSERT_OK(SetUpClusters());
