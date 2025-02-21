@@ -1099,7 +1099,7 @@ removing_database_from_system:
 		 * if pg_backend is unable to read the shared memory segment for
 		 * Ysql Connection Manager stats.
 		 */
-		if (YbGetNumYsqlConnMgrConnections(dbname, NULL, &yb_num_logical_conn,
+		if (YbGetNumYsqlConnMgrConnections(db_id, -1, &yb_num_logical_conn,
 									   &yb_num_physical_conn_from_ysqlconnmgr))
 		{
 			yb_net_client_connections +=
@@ -1302,7 +1302,7 @@ RenameDatabase(const char *oldname, const char *newname)
 		 * if pg_backend is unable to read the shared memory segment for
 		 * Ysql Connection Manager stats.
 		 */
-		if (YbGetNumYsqlConnMgrConnections(oldname, NULL, &yb_num_logical_conn,
+		if (YbGetNumYsqlConnMgrConnections(db_id, -1, &yb_num_logical_conn,
 									   &yb_num_physical_conn_from_ysqlconnmgr))
 		{
 			yb_net_client_connections +=
