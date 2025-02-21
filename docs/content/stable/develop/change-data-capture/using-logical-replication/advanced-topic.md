@@ -170,7 +170,7 @@ YugabyteDB supports 2 [LSN types](../using-logical-replication/key-concepts#lsn-
 You can obtain the current hybrid time value by using the in-built method:
 
 ```sql
-select * from yb_get_current_hybrid_time();
+select * from yb_get_current_hybrid_time_lsn();
 ```
 
 The above will give an output in terms of a long value, it can further be converted to a `pg_lsn` format by definining the following method:
@@ -200,7 +200,13 @@ START_REPLICATION SLOT rs LOGICAL 62D63025/5462E000;
 
 The replication slot being used here must be created with LSN type as `HYBRID_TIME`.
 
-{{</note>}}
+{{< /note >}}
+
+{{< warn title="To be used strictly with HYBRID_TIME" >}}
+
+Note that the method `yb_get_current_hybrid_time_lsn()` is only supposed to be used with LSN type `HYBRID_TIME` and it will not work with `SEQUENCE`.
+
+{{< /warn >}}
 
 ### Permissions
 

@@ -181,13 +181,13 @@ CREATE TABLE test (id INT PRIMARY KEY);
 Create a logical replication slot with the output plugin `test_decoding` and LSN type `HYBRID_TIME` using the following:
 
 ```sql
-CREATE_REPLICATION_SLOT test_logical_replication_slot LOGICAL test_decoding HYBRID_TIME;
+SELECT * FROM pg_create_logical_replication_slot('test_logical_replication_slot', 'test_decoding', false, 'HYBRID_TIME');
 ```
 
 ```output
-           slot_name           | consistent_point |    snapshot_name    | output_plugin
--------------------------------+------------------+---------------------+---------------
- test_logical_replication_slot | 0/2              | 7127147414403211264 | test_decoding
+           slot_name           | lsn
+-------------------------------+-----
+ test_logical_replication_slot | 0/2
 ```
 
 ### Start pg_recvlogical

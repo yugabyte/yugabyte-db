@@ -34,7 +34,7 @@ To overcome the differences, YugabyteDB offers the users to specify the LSN type
 
 The default value is `SEQUENCE` and it is valid in the context of a slot. This is a monotonic increasing number that will determine the record in global order within the context of a slot. However, this LSN can’t be compared across two different slots.
 
-The value `HYBRID_TIME` means that the LSN will be denoted by the HybridTime of the transaction commit record. All the records of the transaction that is streamed will have the same LSN as that of the commit record. The user has to ensure that the changes of a transaction are applied in totality and the acknowledgement is sent only if the commit record of a transaction is processed.
+The value `HYBRID_TIME` means that the LSN will be denoted by the HybridTime of the transaction commit record. All the records of the transaction that is streamed will have the same LSN, including that of the commit record. The user has to ensure that the changes of a transaction are applied in totality and the acknowledgement is sent only if the commit record of a transaction is processed.
 
 ### Publication
 
