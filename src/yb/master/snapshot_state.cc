@@ -36,7 +36,7 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
+DEFINE_RUNTIME_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
               "Delay for snapshot cleanup after deletion.");
 
 DEFINE_RUNTIME_int64(max_concurrent_snapshot_rpcs, -1,
@@ -277,6 +277,7 @@ Status SnapshotState::CheckDoneStatus(const Status& status) {
   }
   MasterError error(status);
   if (error == MasterErrorPB::TABLET_NOT_RUNNING || error == MasterErrorPB::TABLE_NOT_RUNNING) {
+    LOG(INFO) << "Tablet or table not running; marking snapshot operation as done.";
     return Status::OK();
   }
   return status;

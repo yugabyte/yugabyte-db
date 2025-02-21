@@ -63,6 +63,8 @@ class StateWithTablets {
   bool AllTabletsDone() const;
   bool PassedSinceCompletion(const MonoDelta& duration) const;
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state);
+
+  // Returns true if the tablet is in a terminal state now.
   void Done(const TabletId& tablet_id, Status status);
   bool AllInState(SysSnapshotEntryPB::State state) const;
   bool HasInState(SysSnapshotEntryPB::State state);
