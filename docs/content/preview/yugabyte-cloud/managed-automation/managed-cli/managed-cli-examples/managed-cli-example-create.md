@@ -255,7 +255,7 @@ Provider   Key Alias                              Last Rotated   Security Princi
 AWS        XXXXXXXX-e690-42fc-b209-baf969930b2c   -              arn:aws:kms:us-east-1:712345678912:key/db272c8d-1592-4c73-bfa3-420d05822933   ACTIVE
 ```
 
-Note the EAR details are also shown when you use `cluster describe` command.
+EAR details are also shown when you use `cluster describe` command.
 
 ```sh
 ybm cluster describe --cluster-name my-sandbox
@@ -477,11 +477,10 @@ ybm cluster encryption update \
 
 {{< /tabpane >}}
 
-### Update CMK state
+### Enable and disable EAR
 
-Use the following commands to enable or disable the CMK state.
+To disable EAR on a cluster, use the following command:
 
-#### disable CMK
 
 ```sh
 ybm cluster encryption update-state \
@@ -492,8 +491,9 @@ ybm cluster encryption update-state \
 ```output
 Successfully DISABLED encryption spec status for cluster my-sandbox
 ```
+After you disable EAR, YugabyteDB Aeon uses lazy decryption to decrypt the cluster.
 
-#### enable CMK
+To re-enable EAR on a cluster, use the following command:
 
 ```sh
 ybm cluster encryption update-state \
