@@ -66,7 +66,6 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
 
     CreateContinuousBackup.Params taskParams = new CreateContinuousBackup.Params();
     taskParams.cbConfig = cbConfig;
-    // TODO: list of components?
     Schedule schedule =
         Schedule.create(
             cUUID,
@@ -101,16 +100,61 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
   }
 
   public ContinuousBackup editContinuousBackup(
-      Http.Request request, UUID cUUID, UUID bUUID, ContinuousBackupSpec continuousBackupCreateSpec)
+      Http.Request request, UUID cUUID, UUID bUUID, ContinuousBackupSpec continuousBackupEditSpec)
       throws Exception {
     Optional<ContinuousBackupConfig> optional = ContinuousBackupConfig.get(bUUID);
+    // Validate params
     if (!optional.isPresent()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "No continous backup config found with UUID " + bUUID);
     }
-    ContinuousBackupConfig cbConfig = optional.get();
-    // TODO: Actual edit work
+    UUID newStorageConfigUuid = continuousBackupEditSpec.getStorageConfigUuid();
+    CustomerConfig customerConfig = CustomerConfig.get(newStorageConfigUuid);
+    if (customerConfig == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Could not find storage config UUID.");
+    }
+    StorageUtil storageUtil = storageUtilFactory.getStorageUtil(customerConfig.getName());
+    String storageLocation =
+        storageUtil.getStorageLocation(
+            customerConfig.getDataObject(), continuousBackupEditSpec.getBackupDir());
+    if (storageLocation == null || storageLocation.isBlank()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Could not determine storage location.");
+    }
+
+    // Delete the active continuous backup schedules
+    Schedule.getAllActiveSchedulesByOwnerUUIDAndType(bUUID, TaskType.CreateContinuousBackup)
+        .stream()
+        .forEach(
+            schedule -> {
+              schedule.delete();
+            });
+    // Clear metrics
     CreateContinuousBackup.clearGauge();
+
+    // Edit work
+    ContinuousBackupConfig cbConfig = optional.get();
+    cbConfig.setStorageConfigUUID(continuousBackupEditSpec.getStorageConfigUuid());
+    cbConfig.setBackupDir(continuousBackupEditSpec.getBackupDir());
+    cbConfig.setFrequency(continuousBackupEditSpec.getFrequency());
+    cbConfig.setFrequencyTimeUnit(
+        TimeUnit.valueOf(continuousBackupEditSpec.getFrequencyTimeUnit().name()));
+    cbConfig.setNumBackupsToRetain(continuousBackupEditSpec.getNumBackups());
+    cbConfig.setStorageLocation(storageLocation);
+    cbConfig.update();
+    CreateContinuousBackup.Params taskParams = new CreateContinuousBackup.Params();
+    taskParams.cbConfig = cbConfig;
+    Schedule schedule =
+        Schedule.create(
+            cUUID,
+            cbConfig.getUuid(),
+            taskParams,
+            TaskType.CreateContinuousBackup,
+            cbConfig.getFrequency(),
+            null,
+            false /* useLocalTimezone */,
+            cbConfig.getFrequencyTimeUnit(),
+            "ContinuousBackupSchedule");
+
     return ContinuousBackupMapper.INSTANCE.toContinuousBackup(cbConfig);
   }
 
