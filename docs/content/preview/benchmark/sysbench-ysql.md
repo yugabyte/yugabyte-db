@@ -129,17 +129,17 @@ Before starting the workload, load the data as follows:
 
 ```sh
 sysbench <workload> \
---pgsql-host=<comma-separated-ips> \
---tables=20 \
---table_size=5000000 \
---range_key_partitioning=false \
---serial_cache_size=1000 \
---create_secondary=true \
---pgsql-db=yugabyte \
---pgsql-user=yugabyte \
---db-driver=pgsql \
---pgsql-port=5433 \
-prepare
+  --pgsql-host=<comma-separated-ips> \
+  --tables=20 \
+  --table_size=5000000 \
+  --range_key_partitioning=false \
+  --serial_cache_size=1000 \
+  --create_secondary=true \
+  --pgsql-db=yugabyte \
+  --pgsql-user=yugabyte \
+  --db-driver=pgsql \
+  --pgsql-port=5433 \
+  prepare
 
 ```
 
@@ -147,26 +147,26 @@ Run a workload as follows:
 
 ```sh
 sysbench <workload> \
---pgsql-host=<comma-separated-ips> \
---tables=20 \
---table_size=5000000  \
---range_key_partitioning=false \
---serial_cache_size=1000 \
---create_secondary=true \
---pgsql-db=yugabyte \
---pgsql-user=yugabyte \
---db-driver=pgsql \
---pgsql-port=5433 \
---time=1800 \
---warmup-time=300 \
---num_rows_in_insert=10 \
---point_selects=10 \
---index_updates=10 \
---non_index_updates=10 \
---range_selects=false \
---thread-init-timeout=90 \
---threads=60 \
-run
+  --pgsql-host=<comma-separated-ips> \
+  --tables=20 \
+  --table_size=5000000  \
+  --range_key_partitioning=false \
+  --serial_cache_size=1000 \
+  --create_secondary=true \
+  --pgsql-db=yugabyte \
+  --pgsql-user=yugabyte \
+  --db-driver=pgsql \
+  --pgsql-port=5433 \
+  --time=1800 \
+  --warmup-time=300 \
+  --num_rows_in_insert=10 \
+  --point_selects=10 \
+  --index_updates=10 \
+  --non_index_updates=10 \
+  --range_selects=false \
+  --thread-init-timeout=90 \
+  --threads=60 \
+  run
 
 ```
 
