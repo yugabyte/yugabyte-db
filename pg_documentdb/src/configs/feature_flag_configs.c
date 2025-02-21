@@ -92,6 +92,10 @@ bool EnableMergeAcrossDB = DEFAULT_ENABLE_MERGE_ACROSS_DB;
 #define DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN false
 bool EnableMultiIndexRumJoin = DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN;
 
+#define DEFAULT_ENABLE_ALLOW_NESTED_AGGREGATION_FUNCTION_IN_QUERIES true
+bool AllowNestedAggregationFunctionInQueries =
+	DEFAULT_ENABLE_ALLOW_NESTED_AGGREGATION_FUNCTION_IN_QUERIES;
+
 #define DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE false
 bool EnableNowSystemVariable = DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE;
 
@@ -210,6 +214,17 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		NULL,
 		&EnableMultiIndexRumJoin,
 		DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.allowNestedAggregationFunctionInQueries", newGucPrefix),
+		gettext_noop(
+			"Whether or not to support having aggregation queries as nested subqueries or in CTEs"),
+		NULL,
+		&AllowNestedAggregationFunctionInQueries,
+		DEFAULT_ENABLE_ALLOW_NESTED_AGGREGATION_FUNCTION_IN_QUERIES,
 		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);

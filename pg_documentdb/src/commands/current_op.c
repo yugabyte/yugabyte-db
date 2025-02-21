@@ -25,6 +25,7 @@
 #include "utils/version_utils.h"
 #include "utils/query_utils.h"
 #include "commands/parse_error.h"
+#include "commands/commands_common.h"
 #include "commands/diagnostic_commands_common.h"
 #include "io/bson_set_returning_functions.h"
 #include "metadata/collection.h"
@@ -103,12 +104,14 @@ typedef struct
 	IndexSpec *indexSpec;
 } SingleWorkerActivity;
 
+PG_FUNCTION_INFO_V1(command_current_op);
 PG_FUNCTION_INFO_V1(command_current_op_command);
 PG_FUNCTION_INFO_V1(command_current_op_worker);
 PG_FUNCTION_INFO_V1(command_current_op_aggregation);
 
-
-static void CurrentOpAggregateCore(PG_FUNCTION_ARGS, TupleDesc descriptor,
+static pgbson * BuildAggregateSpecFromCommandSpec(pgbson *commandSpec,
+												  pgbson **filterSpec);
+static void CurrentOpAggregateCore(pgbson *spec, TupleDesc descriptor,
 								   Tuplestorestate *tupleStore);
 static void PopulateCurrentOpOptions(pgbson *bson, CurrentOpOptions *options);
 static void MergeWorkerBsons(List *workerBsons, TupleDesc descriptor,
@@ -142,7 +145,8 @@ const char *FirstLockingPidQuery =
 
 /*
  * Command wrapper for CurrentOp. Tracks feature counter usage
- * and simply calls the common logic
+ * and simply calls the common logic.
+ * TODO: Deprecate this once the service doesn't depend on it.
  */
 Datum
 command_current_op_command(PG_FUNCTION_ARGS)
@@ -152,8 +156,53 @@ command_current_op_command(PG_FUNCTION_ARGS)
 	TupleDesc descriptor;
 	Tuplestorestate *tupleStore = SetupBsonTuplestore(fcinfo, &descriptor);
 
-	CurrentOpAggregateCore(fcinfo, descriptor, tupleStore);
+	CurrentOpAggregateCore(PG_GETARG_PGBSON(0), descriptor, tupleStore);
+
 	PG_RETURN_VOID();
+}
+
+
+Datum
+command_current_op(PG_FUNCTION_ARGS)
+{
+	ReportFeatureUsage(FEATURE_COMMAND_CURRENTOP);
+
+	pgbson *commandSpec = PG_GETARG_PGBSON(0);
+	pgbson *filterSpec = NULL;
+	pgbson *aggregateSpec = BuildAggregateSpecFromCommandSpec(commandSpec, &filterSpec);
+
+	/* Now write the response */
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+
+	StringInfo str = makeStringInfo();
+	appendStringInfo(str,
+					 "WITH currentOpQuery AS (SELECT %s.current_op_aggregation($1) AS document), "
+					 "currentOpResponse AS (SELECT COALESCE(array_agg(document), '{}') AS \"inprog\", "
+					 " 1::float AS \"ok\" FROM currentOpQuery WHERE $2 IS NULL OR document OPERATOR(%s.@@) $2) "
+					 " SELECT %s.row_get_bson(currentOpResponse) FROM currentOpResponse",
+					 ApiInternalSchemaNameV2, ApiCatalogSchemaName, CoreSchemaName);
+
+	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
+	Datum argValues[2] = { PointerGetDatum(aggregateSpec), PointerGetDatum(filterSpec) };
+	char argNulls[2] = { ' ', ' ' };
+	if (filterSpec == NULL)
+	{
+		argNulls[1] = 'n';
+	}
+
+	bool readOnly = true;
+	bool isNull = false;
+	Datum result = ExtensionExecuteQueryWithArgsViaSPI(str->data, 2, argTypes, argValues,
+													   argNulls, readOnly, SPI_OK_SELECT,
+													   &isNull);
+	if (isNull)
+	{
+		ereport(ERROR, (errmsg(
+							"Unexpected - currentOp internal query returned a null response")));
+	}
+
+	PG_RETURN_DATUM(result);
 }
 
 
@@ -167,7 +216,7 @@ command_current_op_aggregation(PG_FUNCTION_ARGS)
 	TupleDesc descriptor;
 	Tuplestorestate *tupleStore = SetupBsonTuplestore(fcinfo, &descriptor);
 
-	CurrentOpAggregateCore(fcinfo, descriptor, tupleStore);
+	CurrentOpAggregateCore(PG_GETARG_PGBSON(0), descriptor, tupleStore);
 	PG_RETURN_VOID();
 }
 
@@ -195,11 +244,9 @@ command_current_op_worker(PG_FUNCTION_ARGS)
  * Core implementation logic for currentOp on the query Coordinator.
  */
 static void
-CurrentOpAggregateCore(PG_FUNCTION_ARGS, TupleDesc descriptor,
+CurrentOpAggregateCore(pgbson *spec, TupleDesc descriptor,
 					   Tuplestorestate *tupleStore)
 {
-	pgbson *spec = PG_GETARG_PGBSON(0);
-
 	CurrentOpOptions options = { 0 };
 	PopulateCurrentOpOptions(spec, &options);
 
@@ -1429,4 +1476,59 @@ WriteIndexSpec(SingleWorkerActivity *activity,
 	WriteIndexSpecAsCurrentOpCommand(commandWriter, activity->processedMongoDatabase,
 									 activity->processedMongoCollection,
 									 activity->indexSpec);
+}
+
+
+static pgbson *
+BuildAggregateSpecFromCommandSpec(pgbson *commandSpec, pgbson **filterSpec)
+{
+	*filterSpec = NULL;
+	bool allOps = false;
+	bool hasFilter = false;
+	bson_iter_t commandIter;
+	PgbsonInitIterator(commandSpec, &commandIter);
+	pgbson_writer filterWriter;
+	PgbsonWriterInit(&filterWriter);
+	while (bson_iter_next(&commandIter))
+	{
+		const char *key = bson_iter_key(&commandIter);
+		if (strcmp(key, "currentOp") == 0)
+		{
+			continue;
+		}
+		else if (strcmp(key, "$all") == 0)
+		{
+			EnsureTopLevelFieldIsBooleanLike("$all", &commandIter);
+			allOps = BsonValueAsBool(bson_iter_value(&commandIter));
+		}
+		else if (strcmp(key, "$ownOps") == 0)
+		{
+			EnsureTopLevelFieldIsBooleanLike("$ownOps", &commandIter);
+		}
+		else if (IsCommonSpecIgnoredField(key))
+		{
+			/* Ignore these */
+		}
+		else
+		{
+			/* Treat other field sas a filter */
+			hasFilter = true;
+			PgbsonWriterAppendValue(&filterWriter, key, strlen(key), bson_iter_value(
+										&commandIter));
+		}
+	}
+
+	if (hasFilter)
+	{
+		*filterSpec = PgbsonWriterGetPgbson(&filterWriter);
+	}
+
+	/* TODO: Handle ownOps */
+	pgbson_writer specWriter;
+	PgbsonWriterInit(&specWriter);
+	PgbsonWriterAppendBool(&specWriter, "allUsers", 8, allOps);
+	PgbsonWriterAppendBool(&specWriter, "idleConnections", 15, true);
+	PgbsonWriterAppendBool(&specWriter, "idleSessions", 12, true);
+
+	return PgbsonWriterGetPgbson(&specWriter);
 }

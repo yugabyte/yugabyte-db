@@ -15,6 +15,8 @@ SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": 1, "pipe
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": 1, "pipeline": [ { "$currentOp": {} }] }');
 
+-- does the same as aggregation.
+SELECT current_op_command('{ "op_prefix": { "$lt": 2 }}');
 
 -- collection agnostic with no pipeline should work and return 0 rows.
 SELECT document from bson_aggregation_pipeline('db', '{ "aggregate" : 1.0, "pipeline" : [  ], "cursor" : {  }, "txnNumber" : 0, "lsid" : { "id" : { "$binary" : { "base64": "H+W3J//vSn6obaefeJ6j/g==", "subType" : "04" } } }, "$db" : "admin" }');

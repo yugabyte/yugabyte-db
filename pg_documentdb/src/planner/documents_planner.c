@@ -58,6 +58,7 @@ typedef enum MongoQueryFlag
 	HAS_CURSOR_STATE_PARAM = 1 << 3,
 	HAS_CURSOR_FUNC = 1 << 4,
 	HAS_AGGREGATION_FUNCTION = 1 << 5,
+	HAS_NESTED_AGGREGATION_FUNCTION = 1 << 6,
 } MongoQueryFlag;
 
 typedef struct ReplaceMongoCollectionContext
@@ -72,8 +73,19 @@ typedef struct ReplaceMongoCollectionContext
 	Query *query;
 } ReplaceMongoCollectionContext;
 
+/*
+ * State that tracks the MongoQueryFlags walker
+ */
+typedef struct MongoQueryFlagsState
+{
+	/* Output: The set of flags encountered */
+	int mongoQueryFlags;
 
-static bool MongoQueryFlagsWalker(Node *node, int *queryFlags);
+	/* The current depth (intermediate state during walking) */
+	int queryDepth;
+} MongoQueryFlagsState;
+
+static bool MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags);
 static int MongoQueryFlags(Query *query);
 static bool IsReadWriteCommand(Query *query);
 static Query * ReplaceMongoCollectionFunction(Query *query, ParamListInfo boundParams,
@@ -88,8 +100,10 @@ static bool ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Inde
 static inline bool IsAMergeOuterQuery(PlannerInfo *root, RelOptInfo *rel);
 static Query * ExpandAggregationFunction(Query *node, ParamListInfo boundParams,
 										 PlannedStmt **plan);
+static Query * ExpandNestedAggregationFunction(Query *node, ParamListInfo boundParams);
 
 extern bool ForceRUMIndexScanToBitmapHeapScan;
+extern bool AllowNestedAggregationFunctionInQueries;
 
 planner_hook_type ExtensionPreviousPlannerHook = NULL;
 set_rel_pathlist_hook_type ExtensionPreviousSetRelPathlistHook = NULL;
@@ -127,6 +141,12 @@ DocumentDBApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 			{
 				return plan;
 			}
+		}
+
+		if (AllowNestedAggregationFunctionInQueries &&
+			queryFlags & HAS_NESTED_AGGREGATION_FUNCTION)
+		{
+			parse = (Query *) ExpandNestedAggregationFunction(parse, boundParams);
 		}
 
 		/* replace the @@ operators and inject shard_key_value filters */
@@ -735,11 +755,21 @@ ExtensionRelPathlistHook(PlannerInfo *root, RelOptInfo *rel, Index rti,
 static int
 MongoQueryFlags(Query *query)
 {
-	int queryFlags = 0;
+	MongoQueryFlagsState queryFlags = { 0 };
 
 	MongoQueryFlagsWalker((Node *) query, &queryFlags);
 
-	return queryFlags;
+	return queryFlags.mongoQueryFlags;
+}
+
+
+inline static bool
+IsAggregationFunction(Oid funcId)
+{
+	return funcId == ApiCatalogAggregationPipelineFunctionId() ||
+		   funcId == ApiCatalogAggregationFindFunctionId() ||
+		   funcId == ApiCatalogAggregationCountFunctionId() ||
+		   funcId == ApiCatalogAggregationDistinctFunctionId();
 }
 
 
@@ -748,7 +778,7 @@ MongoQueryFlags(Query *query)
  * extension-specific constructs that are relevant to the planner.
  */
 static bool
-MongoQueryFlagsWalker(Node *node, int *queryFlags)
+MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags)
 {
 	CHECK_FOR_INTERRUPTS();
 
@@ -763,7 +793,7 @@ MongoQueryFlagsWalker(Node *node, int *queryFlags)
 
 		if (IsMongoCollectionBasedRTE(rte))
 		{
-			*queryFlags |= HAS_MONGO_COLLECTION_RTE;
+			queryFlags->mongoQueryFlags |= HAS_MONGO_COLLECTION_RTE;
 		}
 		else if (rte->rtekind == RTE_FUNCTION &&
 				 list_length(rte->functions) == 1)
@@ -788,12 +818,17 @@ MongoQueryFlagsWalker(Node *node, int *queryFlags)
 				return false;
 			}
 
-			if (funcExpr->funcid == ApiCatalogAggregationPipelineFunctionId() ||
-				funcExpr->funcid == ApiCatalogAggregationFindFunctionId() ||
-				funcExpr->funcid == ApiCatalogAggregationCountFunctionId() ||
-				funcExpr->funcid == ApiCatalogAggregationDistinctFunctionId())
+			if (IsAggregationFunction(funcExpr->funcid))
 			{
-				*queryFlags |= HAS_AGGREGATION_FUNCTION;
+				if (queryFlags->queryDepth > 1 && AllowNestedAggregationFunctionInQueries)
+				{
+					queryFlags->mongoQueryFlags |= HAS_NESTED_AGGREGATION_FUNCTION;
+				}
+				else
+				{
+					queryFlags->mongoQueryFlags |= HAS_AGGREGATION_FUNCTION;
+				}
+
 				return true;
 			}
 		}
@@ -806,7 +841,7 @@ MongoQueryFlagsWalker(Node *node, int *queryFlags)
 
 		if (opExpr->opno == BsonQueryOperatorId())
 		{
-			*queryFlags |= HAS_QUERY_OPERATOR;
+			queryFlags->mongoQueryFlags |= HAS_QUERY_OPERATOR;
 		}
 
 		return false;
@@ -817,12 +852,12 @@ MongoQueryFlagsWalker(Node *node, int *queryFlags)
 
 		if (funcExpr->funcid == ApiCursorStateFunctionId())
 		{
-			*queryFlags |= HAS_CURSOR_FUNC;
+			queryFlags->mongoQueryFlags |= HAS_CURSOR_FUNC;
 
 			Node *queryNode = lsecond(funcExpr->args);
 			if (IsA(queryNode, Param))
 			{
-				*queryFlags |= HAS_CURSOR_STATE_PARAM;
+				queryFlags->mongoQueryFlags |= HAS_CURSOR_STATE_PARAM;
 			}
 		}
 
@@ -830,8 +865,11 @@ MongoQueryFlagsWalker(Node *node, int *queryFlags)
 	}
 	else if (IsA(node, Query))
 	{
-		return query_tree_walker((Query *) node, MongoQueryFlagsWalker,
-								 queryFlags, QTW_EXAMINE_RTES_BEFORE);
+		queryFlags->queryDepth++;
+		bool result = query_tree_walker((Query *) node, MongoQueryFlagsWalker,
+										queryFlags, QTW_EXAMINE_RTES_BEFORE);
+		queryFlags->queryDepth--;
+		return result;
 	}
 
 	return expression_tree_walker(node, MongoQueryFlagsWalker, queryFlags);
@@ -1447,11 +1485,60 @@ IsAMergeOuterQuery(PlannerInfo *root, RelOptInfo *rel)
 
 
 /*
+ * Walks queries and if it encounters a query that could meet the requirements of the aggregation
+ * query, replaces it with the post-processed query.
+ */
+static Node *
+MutateQueryAggregatorFunction(Node *node, ParamListInfo boundParams)
+{
+	if (node == NULL)
+	{
+		return node;
+	}
+
+	if (IsA(node, Query))
+	{
+		ListCell *cell;
+		Query *query = (Query *) node;
+		foreach(cell, query->rtable)
+		{
+			RangeTblEntry *entry = lfirst(cell);
+			if (entry->rtekind == RTE_FUNCTION &&
+				list_length(entry->functions) == 1)
+			{
+				RangeTblFunction *expr = (RangeTblFunction *) linitial(entry->functions);
+				if (IsA(expr->funcexpr, FuncExpr) &&
+					IsAggregationFunction(castNode(FuncExpr, expr->funcexpr)->funcid))
+				{
+					PlannedStmt *stmt = NULL;
+					return (Node *) ExpandAggregationFunction(query, boundParams, &stmt);
+				}
+			}
+		}
+
+		return (Node *) query_tree_mutator((Query *) node, MutateQueryAggregatorFunction,
+										   boundParams, QTW_DONT_COPY_QUERY |
+										   QTW_EXAMINE_RTES_BEFORE);
+	}
+
+	return expression_tree_mutator(node, MutateQueryAggregatorFunction, boundParams);
+}
+
+
+static Query *
+ExpandNestedAggregationFunction(Query *query, ParamListInfo boundParams)
+{
+	return query_tree_mutator(query, MutateQueryAggregatorFunction, boundParams,
+							  QTW_DONT_COPY_QUERY | QTW_EXAMINE_RTES_BEFORE);
+}
+
+
+/*
  * Traverses the query looking for an aggregation pipeline function.
  * If it's found, then replaces the function with nothing, and updates the query
  * to track the contents of the aggregation pipeline.
  */
-Query *
+static Query *
 ExpandAggregationFunction(Query *query, ParamListInfo boundParams, PlannedStmt **plan)
 {
 	/* Top level validations - these are right now during development */

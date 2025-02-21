@@ -26,6 +26,13 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
    Function Call: documentdb_api_internal.current_op_aggregation('{ }'::bson)
 (3 rows)
 
+-- does the same as aggregation.
+SELECT current_op_command('{ "op_prefix": { "$lt": 2 }}');
+                   current_op_command                    
+---------------------------------------------------------
+ { "inprog" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
 -- collection agnostic with no pipeline should work and return 0 rows.
 SELECT document from bson_aggregation_pipeline('db', '{ "aggregate" : 1.0, "pipeline" : [  ], "cursor" : {  }, "txnNumber" : 0, "lsid" : { "id" : { "$binary" : { "base64": "H+W3J//vSn6obaefeJ6j/g==", "subType" : "04" } } }, "$db" : "admin" }');
  document 
