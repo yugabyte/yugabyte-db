@@ -402,12 +402,20 @@ public class NFSUtil implements StorageUtil {
       // Copy the file
       Files.copy(backup.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
       log.info("Backup successfully copied to: " + targetFile.getAbsolutePath());
+      return true;
     } catch (IOException e) {
       log.error("Failed to copy backup: " + e.getMessage());
-      return false;
     }
+    return false;
+  }
 
-    return true;
+  @Override
+  public String getStorageLocation(CustomerConfigData configData, String backupDir) {
+    String nfsDirectory = ((CustomerConfigStorageNFSData) configData).backupLocation;
+
+    // Construct the full path to the target directory
+    File targetDir = new File(nfsDirectory, backupDir);
+    return targetDir.toString();
   }
 
   @Override

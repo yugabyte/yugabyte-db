@@ -883,7 +883,8 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
@@ -1050,7 +1051,8 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
@@ -1331,7 +1333,8 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
