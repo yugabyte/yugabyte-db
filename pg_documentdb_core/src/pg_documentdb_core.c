@@ -34,7 +34,7 @@ _PG_init(void)
 	if (!process_shared_preload_libraries_in_progress)
 	{
 		ereport(ERROR, (errmsg(
-							"pg_documentdb_core can only be loaded via shared_preload_libraries"
+							"pg_documentdb_core can only be loaded via shared_preload_libraries. "
 							"Add pg_documentdb_core to shared_preload_libraries configuration "
 							"variable in postgresql.conf.")));
 	}
