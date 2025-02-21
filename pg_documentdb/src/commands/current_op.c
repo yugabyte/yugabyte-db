@@ -1310,6 +1310,38 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 }
 
 
+static const char *
+PhaseToUserMessage(const char *phaseString)
+{
+	if (strcmp(phaseString, "initializing") == 0)
+	{
+		return "Initializing index.";
+	}
+	else if (strcmp(phaseString, "waiting for old snapshots") == 0)
+	{
+		return "Index is waiting for commands to reach snapshot threshold.";
+	}
+	else if (strstr(phaseString, "waiting for") != NULL)
+	{
+		return "Index is waiting for other concurrent commands.";
+	}
+	else if (strcmp(phaseString, "building index") == 0)
+	{
+		return "Building index.";
+	}
+	else if (strstr(phaseString, "index validation") != NULL)
+	{
+		return "Validating index.";
+	}
+	else
+	{
+		ereport(WARNING, (errmsg("Index build is in an unknown phase %s",
+								 phaseString)));
+		return "Index is in an unknown phase";
+	}
+}
+
+
 /*
  * Gets the index progress data from pg_stat_progress_create_index and writes it out to the
  * "progress" document as well as builds a message for the top level currentOp.
@@ -1320,9 +1352,31 @@ WriteIndexBuildProgressAndGetMessage(SingleWorkerActivity *activity,
 									 pgbson_writer *writer)
 {
 	/* For multi-shard operations like create index that uses multiple connections per node, we could see multiple entries in citus_stat_activity with same global_pid but different pids on same node. We should check for global_pid here */
-	const char *query =
-		"SELECT phase, blocks_done, blocks_total, tuples_done, tuples_total, pg_catalog.citus_calculate_gpid(pg_catalog.citus_nodeid_for_gpid($1), current_locker_pid::integer)"
-		" FROM pg_stat_progress_create_index WHERE pid IN (SELECT process_id FROM pg_catalog.get_all_active_transactions() WHERE global_pid = $1) LIMIT 1";
+	StringInfo str = makeStringInfo();
+
+	/* NULLIF(blocks_total) ensures that "Progress" is NULL if blocks_total is 0 so we don't get div by zero errors and row_get_bson skips the field. */
+	appendStringInfo(str,
+					 "WITH c1 AS (SELECT phase, blocks_done, blocks_total, (blocks_done * 100.0 / NULLIF(blocks_total, 0)) AS \"Progress\", "
+					 " tuples_done AS \"documents_done\", tuples_total AS \"documents_total\", ");
+
+	if (DefaultInlineWriteOperations)
+	{
+		/* Match the distributed set up to say a single node has a global pid of node 1 + PID (Similar to citus logic) */
+		appendStringInfo(str,
+						 " (10000000000 + current_locker_pid)::int8 AS AS \"Waiting on op_prefix\""
+						 " FROM pg_stat_progress_create_index WHERE (10000000000 + current_locker_pid)::int8 = $1), ");
+	}
+	else
+	{
+		appendStringInfo(str,
+						 " pg_catalog.citus_calculate_gpid(pg_catalog.citus_nodeid_for_gpid($1), current_locker_pid::integer) AS \"Waiting on op_prefix\""
+						 " FROM pg_stat_progress_create_index WHERE pid IN (SELECT process_id FROM pg_catalog.get_all_active_transactions() WHERE global_pid = $1)), ");
+	}
+
+	appendStringInfo(str,
+					 " c2 AS (SELECT %s.row_get_bson(c1) AS document FROM c1) "
+					 " SELECT %s.bson_array_agg(c2.document, '') FROM c2", CoreSchemaName,
+					 ApiCatalogSchemaName);
 
 	Oid argTypes[1] = { INT8OID };
 	Datum argValues[1] = {
@@ -1331,74 +1385,64 @@ WriteIndexBuildProgressAndGetMessage(SingleWorkerActivity *activity,
 	char argNulls[1] = { ' ' };
 	bool readOnly = true;
 
-	Datum outputValues[6] = { 0 };
-	bool outputNulls[6] = { 0 };
-	ExtensionExecuteMultiValueQueryWithArgsViaSPI(query, 1, argTypes, argValues, argNulls,
-												  readOnly, SPI_OK_SELECT, outputValues,
-												  outputNulls, 6);
+	bool isNull = false;
+	Datum result = ExtensionExecuteQueryWithArgsViaSPI(str->data, 1, argTypes, argValues,
+													   argNulls,
+													   readOnly, SPI_OK_SELECT, &isNull);
+	if (isNull)
+	{
+		return "";
+	}
+
+	pgbson *resultBson = DatumGetPgBson(result);
+	pgbsonelement resultElement;
+	bson_iter_t arrayIter;
+	PgbsonToSinglePgbsonElement(resultBson, &resultElement);
+
+	if (resultElement.bsonValue.value_type != BSON_TYPE_ARRAY)
+	{
+		/* somehow we didn't get an array */
+		return "";
+	}
+
+	BsonValueInitIterator(&resultElement.bsonValue, &arrayIter);
 
 	/* Phase */
 	StringInfo messageInfo = makeStringInfo();
-	if (!outputNulls[0])
+
+	pgbson_array_writer progress_elem_writer;
+	PgbsonWriterStartArray(writer, "builds", 6, &progress_elem_writer);
+	while (bson_iter_next(&arrayIter))
 	{
-		const char *phaseString = TextDatumGetCString(outputValues[0]);
-		if (strcmp(phaseString, "initializing") == 0)
+		/* Should be documents */
+		bson_iter_t subDocument;
+		if (BSON_ITER_HOLDS_DOCUMENT(&arrayIter) &&
+			bson_iter_recurse(&arrayIter, &subDocument))
 		{
-			appendStringInfo(messageInfo, "Initializing index.");
-		}
-		else if (strcmp(phaseString, "waiting for old snapshots") == 0)
-		{
-			appendStringInfo(messageInfo,
-							 "Index is waiting for commands to reach snapshot threshold.");
-		}
-		else if (strstr(phaseString, "waiting for") != NULL)
-		{
-			appendStringInfo(messageInfo,
-							 "Index is waiting for other concurrent commands.");
-		}
-		else if (strcmp(phaseString, "building index") == 0)
-		{
-			appendStringInfo(messageInfo, "Building index.");
-		}
-		else if (strstr(phaseString, "index validation") != NULL)
-		{
-			appendStringInfo(messageInfo, "Validating index.");
-		}
-		else
-		{
-			appendStringInfo(messageInfo, "Index is in an unknown phase");
-			ereport(WARNING, (errmsg("Index build is in an unknown phase %s",
-									 phaseString)));
+			pgbson_writer singleWriter;
+			PgbsonArrayWriterStartDocument(&progress_elem_writer, &singleWriter);
+			while (bson_iter_next(&subDocument))
+			{
+				const char *key = bson_iter_key(&subDocument);
+				if (strcmp(key, "phase") == 0)
+				{
+					uint32_t length;
+					const char *phaseString = bson_iter_utf8(&subDocument, &length);
+					const char *userString = PhaseToUserMessage(phaseString);
+					appendStringInfo(messageInfo, "%s,", userString);
+					PgbsonWriterAppendUtf8(&singleWriter, "phase", 5, userString);
+				}
+				else
+				{
+					PgbsonWriterAppendValue(&singleWriter, key, strlen(key),
+											bson_iter_value(&subDocument));
+				}
+			}
+
+			PgbsonArrayWriterEndDocument(&progress_elem_writer, &singleWriter);
 		}
 	}
-
-	if (!outputNulls[1] && !outputNulls[2])
-	{
-		/* Blocks are available */
-		int64 blocksDone = DatumGetInt64(outputValues[1]);
-		int64 blocksTotal = DatumGetInt64(outputValues[2]);
-
-		double progress = blocksDone * 1.0 / blocksTotal;
-
-		appendStringInfo(messageInfo, "Progress %.10f.", progress);
-
-		PgbsonWriterAppendInt64(writer, "blocks_done", 11, blocksDone);
-		PgbsonWriterAppendInt64(writer, "blocks_total", 12, blocksTotal);
-	}
-
-	if (!outputNulls[3] && !outputNulls[4])
-	{
-		PgbsonWriterAppendInt64(writer, "documents_done", 11, DatumGetInt64(
-									outputValues[3]));
-		PgbsonWriterAppendInt64(writer, "documents_total", 12, DatumGetInt64(
-									outputValues[4]));
-	}
-
-	if (!outputNulls[5])
-	{
-		appendStringInfo(messageInfo, "Waiting on op_prefix: %ld.", DatumGetInt64(
-							 outputValues[5]));
-	}
+	PgbsonWriterEndArray(writer, &progress_elem_writer);
 
 	return messageInfo->data;
 }
