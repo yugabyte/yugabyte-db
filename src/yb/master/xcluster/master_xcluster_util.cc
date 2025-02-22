@@ -115,8 +115,14 @@ Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
   if (include_sequences_data) {
     auto sequence_table_info = catalog_manager.GetTableInfo(kPgSequencesDataTableId);
     if (sequence_table_info) {
-      table_designators.emplace_back(
-          TableDesignator::CreateSequenceTableDesignator(sequence_table_info, namespace_id));
+      // Due to a bug with the CreateTable code, it is possible for GetTableInfo to return a
+      // TableInfo for a table being created still in-state UNKNOWN.  If we see this, just ignore
+      // the table as it is still being created and we can pretend we looked before it started being
+      // created.
+      if (sequence_table_info.get()->LockForRead()->pb.state() != SysTablesEntryPB::UNKNOWN) {
+        table_designators.emplace_back(
+            TableDesignator::CreateSequenceTableDesignator(sequence_table_info, namespace_id));
+      }
     }
   }
   return table_designators;
