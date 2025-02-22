@@ -19,5 +19,5 @@ test: collection_management
 test: bson_aggregation_object_operators_tests bson_aggregation_pipeline_diagnostic_command_tests bson_aggregation_functions_nested_tests
 test: commands_crud_ignore_common_spec_fields
 test: bson_aggregation_type_operators_tests
-test: bson_aggregation_stage_merge_tests_pg!MAJOR_VERSION!
+test: bson_aggregation_stage_merge_tests
 test: ttl_index_delete_rows

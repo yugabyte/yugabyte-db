@@ -6,6 +6,8 @@ set -u -e
 source="${BASH_SOURCE[0]}"
 diff=/usr/bin/diff
 
+pg_version=$1
+
 while [[ -h $source ]]; do
    scriptroot="$( cd -P "$( dirname "$source" )" && pwd )"
    source="$(readlink "$source")"
@@ -49,7 +51,9 @@ aggregateShardIdStr=""
 maxCollectionIdStr=""
 
 validationExceptions="/sql/documentdb_distributed_test_helpers.sql,/sql/public_api_schema.sql,/sql/documentdb_distributed_setup.sql"
-for validationFile in $(ls ./expected/*.out); do
+
+echo "Validating test file output"
+for validationFile in $(ls $scriptDir/expected/*.out); do
     fileName=$(basename $validationFile);
     sqlFile="${fileName%.out}.sql";
     sqlExceptionStr="/sql/$sqlFile"
@@ -74,7 +78,7 @@ for validationFile in $(ls ./expected/*.out); do
     fi;
 
     # Extract the actual collection ID (we'll use this to check for uniqueness).
-    collectionIdOutput=$(grep 'documentdb.next_collection_id' $validationFile)
+    collectionIdOutput=$(grep 'documentdb.next_collection_id' $validationFile || true)
 
     # Fail if not found.
     if [ "$collectionIdOutput" == "" ]; then
@@ -92,8 +96,11 @@ for validationFile in $(ls ./expected/*.out); do
     fi
 
     # If it matches something seen before - fail.
-    if [[ "$aggregateCollectionIdStr" =~ ":$collectionIdOutput:" ]]; then
-        echo "Duplicate CollectionId used in '$sqlFile' - please use unique collection Ids across tests: $collectionIdOutput. Current Max: $maxCollectionIdStr";
+    if [[ "$sqlFile" =~ _pg[0-9]+.sql ]] && [[ ! "$sqlFile" =~ "_pg${pg_version}.sql" ]]; then
+        echo "Skipping duplicate check for $sqlFile"
+        continue;
+    elif [[ "$aggregateCollectionIdStr" =~ ":$collectionIdOutput:" ]]; then
+        echo "Duplicate CollectionId used in '$sqlFile' - please use unique collection Ids across tests: $collectionIdOutput. Current max: $maxCollectionIdStr";
         exit 1;
     fi
 
@@ -112,7 +119,7 @@ for validationFile in $(ls ./expected/*.out); do
     aggregateCollectionIdStr="$aggregateCollectionIdStr :$collectionIdOutput:"
 
     # See if the index id is also set.
-    collectionIndexIdOutput=$(grep 'documentdb.next_collection_index_id' $validationFile)
+    collectionIndexIdOutput=$(grep 'documentdb.next_collection_index_id' $validationFile || true)
     if [ "$collectionIndexIdOutput" == "" ]; then
         echo "Test file '${sqlFile}' does not set next_collection_index_id: consider setting documentdb.next_collection_index_id";
         exit 1;
@@ -126,7 +133,7 @@ for validationFile in $(ls ./expected/*.out); do
     fi
 
     # Validate citus.next_shard_id.
-    nextShardIdOutput=$(grep 'citus.next_shard_id' $validationFile)
+    nextShardIdOutput=$(grep 'citus.next_shard_id' $validationFile || true)
     if [ "$nextShardIdOutput" == "" ]; then
         echo "Test file '${sqlFile}' does not set citus.next_shard_id: consider setting citus.next_shard_id";
         exit 1;

@@ -38,12 +38,12 @@ check-bson-minimal:
 	$(call common_test,--schedule=./minimal_schedule, $(EXTRA_TESTS))
 
 check-test-output:
-	./validate_test_output.sh
+	./validate_test_output.sh $(pg_major_version)
 
 generate_version_schedule:
 	@mkdir -p log
 	@cp basic_schedule log/basic_schedule_$(pg_major_version)
-	@sed -i -e 's/!MAJOR_VERSION!/$(pg_major_version)/g' log/basic_schedule_$(pg_major_version)
+	@./mutate_schedule.sh log/basic_schedule_$(pg_major_version) $(pg_major_version)
 
 
 all: check-basic check-test-output

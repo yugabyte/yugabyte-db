@@ -955,26 +955,26 @@ SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", 
 (5 rows)
 
 -- explain plan validation
-EXPLAIN SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "b": { "method": "linear" }}}}]}');
-                                                                         QUERY PLAN                                                                         
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "b": { "method": "linear" }}}}]}');
+                                                                              QUERY PLAN                                                                              
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
+ Custom Scan (Citus Adaptive)
    Task Count: 1
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Subquery Scan on agg_stage_0  (cost=12.69..12.85 rows=4 width=32)
-               ->  WindowAgg  (cost=12.69..12.79 rows=4 width=96)
-                     ->  Sort  (cost=12.69..12.70 rows=4 width=64)
+         ->  Subquery Scan on agg_stage_0
+               ->  WindowAgg
+                     ->  Sort
                            Sort Key: (documentdb_api_catalog.bson_orderby(collection.document, '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
-                           ->  Bitmap Heap Scan on documents_4693_468212 collection  (cost=4.18..12.65 rows=4 width=64)
+                           ->  Bitmap Heap Scan on documents_4693_468212 collection
                                  Recheck Cond: (shard_key_value = '4693'::bigint)
-                                 ->  Bitmap Index Scan on _id_  (cost=0.00..4.18 rows=4 width=0)
+                                 ->  Bitmap Index Scan on _id_
                                        Index Cond: (shard_key_value = '4693'::bigint)
 (13 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "b": { "value": 1 }}}}]}');
-                                                             QUERY PLAN                                                              
+                                                                  QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -989,21 +989,21 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db','{ "aggr
                            Index Cond: (shard_key_value = '4693'::bigint)
 (11 rows)
 
-EXPLAIN SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "c": { "method": "linear" }, "b": { "value": 1 }}}}]}');
-                                                                         QUERY PLAN                                                                         
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "c": { "method": "linear" }, "b": { "value": 1 }}}}]}');
+                                                                              QUERY PLAN                                                                              
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
+ Custom Scan (Citus Adaptive)
    Task Count: 1
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Subquery Scan on agg_stage_0  (cost=12.69..12.88 rows=4 width=32)
-               ->  WindowAgg  (cost=12.69..12.82 rows=4 width=128)
-                     ->  Sort  (cost=12.69..12.70 rows=4 width=64)
+         ->  Subquery Scan on agg_stage_0
+               ->  WindowAgg
+                     ->  Sort
                            Sort Key: (documentdb_api_catalog.bson_orderby(collection.document, '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
-                           ->  Bitmap Heap Scan on documents_4693_468212 collection  (cost=4.18..12.65 rows=4 width=64)
+                           ->  Bitmap Heap Scan on documents_4693_468212 collection
                                  Recheck Cond: (shard_key_value = '4693'::bigint)
-                                 ->  Bitmap Index Scan on _id_  (cost=0.00..4.18 rows=4 width=0)
+                                 ->  Bitmap Index Scan on _id_
                                        Index Cond: (shard_key_value = '4693'::bigint)
 (13 rows)
 

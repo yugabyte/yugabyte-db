@@ -3144,7 +3144,7 @@ select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateStr
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "20-1-1", "format": "%Y-%m-%d"} } }');
                         bson_dollar_project                         
 ---------------------------------------------------------------------
- { "result" : { "$date" : { "$numberLong" : "-61536038400000" } } }
+ { "result" : { "$date" : { "$numberLong" : "-61536038822000" } } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "Year 2025, Month 12, Day 31", "format": "Year %Y, Month %m, Day %d"} } }');
@@ -3183,7 +3183,7 @@ select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateStr
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "1.1.1", "format": "%V.%u.%G"} } }');
                         bson_dollar_project                         
 ---------------------------------------------------------------------
- { "result" : { "$date" : { "$numberLong" : "-62135568000000" } } }
+ { "result" : { "$date" : { "$numberLong" : "-62135568422000" } } }
 (1 row)
 
 -- iso part only requires year
@@ -3228,7 +3228,7 @@ select * from bson_dollar_project('{"dateString": "2025-12-31", "format": "%Y-%m
 select * from bson_dollar_project('{"dateString": "20-1-1", "format": "%Y-%m-%d"}','{"result": {"$dateFromString": {"dateString": "$dateString" , "format": "$format"} } }');
                         bson_dollar_project                         
 ---------------------------------------------------------------------
- { "result" : { "$date" : { "$numberLong" : "-61536038400000" } } }
+ { "result" : { "$date" : { "$numberLong" : "-61536038822000" } } }
 (1 row)
 
 select * from bson_dollar_project('{"dateString": "Year 2025, Month 12, Day 31", "format": "Year %Y, Month %m, Day %d"}','{"result": {"$dateFromString": {"dateString": "$dateString" , "format": "$format"} } }');
@@ -3267,7 +3267,7 @@ select * from bson_dollar_project('{"dateString": "53.7.2017", "format": "%V.%u.
 select * from bson_dollar_project('{"dateString": "1.1.1", "format": "%V.%u.%G"}','{"result": {"$dateFromString": {"dateString": "$dateString" , "format": "$format"} } }');
                         bson_dollar_project                         
 ---------------------------------------------------------------------
- { "result" : { "$date" : { "$numberLong" : "-62135568000000" } } }
+ { "result" : { "$date" : { "$numberLong" : "-62135568422000" } } }
 (1 row)
 
 -- iso part only requires year

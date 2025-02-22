@@ -6,6 +6,8 @@ set -u -e
 source="${BASH_SOURCE[0]}"
 diff=/usr/bin/diff
 
+pg_version=$1
+
 while [[ -h $source ]]; do
    scriptroot="$( cd -P "$( dirname "$source" )" && pwd )"
    source="$(readlink "$source")"
@@ -58,8 +60,9 @@ for validationFile in $(ls $scriptDir/expected/*.out); do
     collectionIdOutput=${collectionIdOutput/[\s|;]/};
 
     # If it matches something seen before - fail.
-    if [[ "$sqlFile" =~ "_pg16.sql" ]] || [[ "$sqlFile" =~ "_pg17.sql" ]]; then
+    if [[ "$sqlFile" =~ _pg[0-9]+.sql ]] && [[ ! "$sqlFile" =~ "_pg${pg_version}.sql" ]]; then
         echo "Skipping duplicate check for $sqlFile"
+        continue;
     elif [[ "$aggregateCollectionIdStr" =~ ":$collectionIdOutput:" ]]; then
         echo "Duplicate CollectionId used in '$sqlFile' - please use unique collection Ids across tests: $collectionIdOutput. Current max: $maxCollectionIdStr";
         exit 1;
