@@ -652,6 +652,15 @@ SELECT documentdb_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id
 SELECT document from documentdb_api.collection('update', 'NonID');
 
 ROLLBACK;
+
+-- regex operator and update
+SELECT documentdb_api.insert_one('db', 'regexColl', '{ "_id" : 1, "Login": "robert.bean@networkrail.co.uk", "RefreshTokens": [ ] }', NULL);
+SELECT documentdb_api.insert_one('db', 'regexColl', '{ "_id" : 2, "Login": "peter.ramesh@networkrail.co.uk", "RefreshTokens": [ ] }', NULL);
+SELECT documentdb_api.insert_one('db', 'regexColl', '{ "_id" : 3, "Login": "picop1@test.co.uk", "RefreshTokens": [ ] }', NULL);
+SELECT documentdb_api.insert_one('db', 'regexColl', '{ "_id" : 4, "Login": "peter.claxton@networkrail.co.uk", "RefreshTokens": [ ] }', NULL);
+SELECT documentdb_api.update('db', '{"update":"regexColl", "updates":[{ "q" : { "Login" : { "$regularExpression" : { "pattern" : "^picop1@test\\.co\\.uk$", "options" : "i" } } },"u":{"$addToSet": { "RefreshTokens": { "RefreshToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImYxNDNhY2ZmMzNjODQ" } }}}]}');
+SELECT document from documentdb_api.collection('db', 'regexColl');
+
 -- test update with upsert
 BEGIN;
 set documentdb.useLocalExecutionShardQueries to off;

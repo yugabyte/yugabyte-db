@@ -1731,6 +1731,47 @@ NOTICE:  executing the command locally: SELECT document FROM documentdb_data.doc
 (1 row)
 
 ROLLBACK;
+-- regex operator and update
+SELECT documentdb_api.insert_one('db', 'regexColl', '{ "_id" : 1, "Login": "robert.bean@networkrail.co.uk", "RefreshTokens": [ ] }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'regexColl', '{ "_id" : 2, "Login": "peter.ramesh@networkrail.co.uk", "RefreshTokens": [ ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'regexColl', '{ "_id" : 3, "Login": "picop1@test.co.uk", "RefreshTokens": [ ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'regexColl', '{ "_id" : 4, "Login": "peter.claxton@networkrail.co.uk", "RefreshTokens": [ ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.update('db', '{"update":"regexColl", "updates":[{ "q" : { "Login" : { "$regularExpression" : { "pattern" : "^picop1@test\\.co\\.uk$", "options" : "i" } } },"u":{"$addToSet": { "RefreshTokens": { "RefreshToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImYxNDNhY2ZmMzNjODQ" } }}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'regexColl');
+                                                                            document                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "Login" : "robert.bean@networkrail.co.uk", "RefreshTokens" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "Login" : "peter.ramesh@networkrail.co.uk", "RefreshTokens" : [  ] }
+ { "_id" : { "$numberInt" : "3" }, "Login" : "picop1@test.co.uk", "RefreshTokens" : [ { "RefreshToken" : "eyJhbGciOiJSUzI1NiIsImtpZCI6ImYxNDNhY2ZmMzNjODQ" } ] }
+ { "_id" : { "$numberInt" : "4" }, "Login" : "peter.claxton@networkrail.co.uk", "RefreshTokens" : [  ] }
+(4 rows)
+
 -- test update with upsert
 BEGIN;
 set documentdb.useLocalExecutionShardQueries to off;

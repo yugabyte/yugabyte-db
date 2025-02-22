@@ -306,6 +306,11 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 				/* however note that, "field" : /regex/ is not equality */
 				processValueFunc(context, key, bson_iter_value(queryDocument));
 			}
+			else if (processFilterFunc)
+			{
+				/* { "_id" : { "$regularExpression" : { "pattern" : "abc", "options" : "i" } } } */
+				processFilterFunc(context);
+			}
 		}
 	}
 }
