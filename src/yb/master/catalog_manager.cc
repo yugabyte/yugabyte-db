@@ -4224,7 +4224,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       } else {
         // Adding a table to an existing colocation tablet.
         if (is_vector_index) {
-          tablets = VERIFY_RESULT(indexed_table->GetTablets());
+          tablets = VERIFY_RESULT(indexed_table->GetTablets(GetTabletsMode::kOrderByTabletId));
         } else {
           auto tablet = tablegroup ?
               tablegroup->tablet() :
