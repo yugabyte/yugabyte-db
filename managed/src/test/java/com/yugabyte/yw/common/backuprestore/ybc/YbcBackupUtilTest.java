@@ -53,12 +53,14 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -98,7 +100,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
             universeInfoHandler,
             configService,
             encryptionAtRestManager,
-            mockStorageUtilFactory);
+            mockStorageUtilFactory,
+            mockGFlagsValidation);
 
     initResponseObjects();
     testCustomer = ModelFactory.testCustomer();
@@ -344,12 +347,14 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     tableParams.useTablespaces = true;
     tableParams.customerUuid = testCustomer.getUuid();
     tableParams.backupUuid = UUID.randomUUID();
+    tableParams.backupType = TableType.PGSQL_TABLE_TYPE;
     tableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     String backupKeys = TestUtils.readResource(filePath);
     ObjectMapper mapper = new ObjectMapper();
     ObjectNode keysNode = mapper.readValue(backupKeys, ObjectNode.class);
     when(encryptionAtRestManager.backupUniverseKeyHistory(tableParams.getUniverseUUID()))
         .thenReturn(keysNode);
+    when(mockGFlagsValidation.getYsqlMajorVersion(any())).thenReturn(Optional.of(15));
     YbcSuccessBackupConfig backupConfig = new YbcSuccessBackupConfig();
     String universeVersion =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
@@ -358,6 +363,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     backupConfig.masterKeyMetadata = keysNode.get("master_key_metadata");
     backupConfig.backupUUID = tableParams.backupUuid.toString();
     backupConfig.customerUUID = tableParams.customerUuid.toString();
+    backupConfig.ysqlMajorVersion = "15";
     BackupTableYbc.Params params = new BackupTableYbc.Params(tableParams, null, defaultUniverse);
     BackupServiceTaskExtendedArgs extArgs = ybcBackupUtil.getExtendedArgsForBackup(params);
     assertEquals(true, extArgs.getUseTablespaces());
@@ -1015,5 +1021,31 @@ public class YbcBackupUtilTest extends FakeDBApplication {
         new BackupPointInTimeRestoreWindow(restorableWindowActual);
     assertEquals(pitWindow.timestampRetentionWindowEndMillis, restorableWindowEndExpected);
     assertEquals(pitWindow.timestampRetentionWindowStartMillis, restorableWindowStartExpected);
+  }
+
+  @Test
+  @Parameters({
+    "11, 11, false",
+    "15, 11, true",
+    ", , false",
+    "11, 15, false",
+    "11, , false",
+    "15, , true"
+  })
+  public void testValidateYsqlMajorVersion(
+      String backupYsqlMajorVersion, String universeYsqlMajoVersion, boolean error)
+      throws IOException {
+    when(mockGFlagsValidation.getYsqlMajorVersion(any()))
+        .thenReturn(
+            StringUtils.isEmpty(universeYsqlMajoVersion)
+                ? Optional.empty()
+                : Optional.of(Integer.valueOf(universeYsqlMajoVersion)));
+    if (error) {
+      assertThrows(
+          PlatformServiceException.class,
+          () -> ybcBackupUtil.validateYsqlMajorVersion(defaultUniverse, backupYsqlMajorVersion));
+    } else {
+      ybcBackupUtil.validateYsqlMajorVersion(defaultUniverse, backupYsqlMajorVersion);
+    }
   }
 }

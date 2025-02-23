@@ -63,6 +63,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -121,6 +122,7 @@ public class YbcBackupUtil {
   private final CustomerConfigService configService;
   private final EncryptionAtRestManager encryptionAtRestManager;
   private final StorageUtilFactory storageUtilFactory;
+  private final GFlagsValidation gFlagsValidation;
 
   @Inject
   public YbcBackupUtil(
@@ -128,12 +130,14 @@ public class YbcBackupUtil {
       UniverseInfoHandler universeInfoHandler,
       CustomerConfigService configService,
       EncryptionAtRestManager encryptionAtRestManager,
-      StorageUtilFactory storageUtilFactory) {
+      StorageUtilFactory storageUtilFactory,
+      GFlagsValidation gFlagsValidation) {
     this.universeInfoHandler = universeInfoHandler;
     this.configService = configService;
     this.encryptionAtRestManager = encryptionAtRestManager;
     this.storageUtilFactory = storageUtilFactory;
     this.autoFlagUtil = autoFlagUtil;
+    this.gFlagsValidation = gFlagsValidation;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(YbcBackupUtil.class);
@@ -251,6 +255,9 @@ public class YbcBackupUtil {
 
     @JsonProperty("backup_uuid")
     public String backupUUID;
+
+    @JsonProperty("ysql_major_version")
+    public String ysqlMajorVersion;
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -1050,6 +1057,16 @@ public class YbcBackupUtil {
         config.universeKeys = universeKeyHistory.get("universe_keys");
         config.masterKeyMetadata = universeKeyHistory.get("master_key_metadata");
       }
+
+      if (tableParams.backupType != null
+          && tableParams.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
+        Optional<Integer> ysqlMajorVersionOptional =
+            gFlagsValidation.getYsqlMajorVersion(ybdbSoftwareVersion);
+        if (ysqlMajorVersionOptional.isPresent()) {
+          config.ysqlMajorVersion = String.valueOf(ysqlMajorVersionOptional.get());
+        }
+      }
+
       BackupServiceTaskExtendedArgs.Builder extendedArgsBuilder =
           BackupServiceTaskExtendedArgs.newBuilder();
       ObjectMapper mapper = new ObjectMapper();
@@ -1067,6 +1084,28 @@ public class YbcBackupUtil {
               "%s Unable to generate backup keys metadata. error : %s",
               getBaseLogMessage(tableParams.backupUuid, tableParams.getKeyspace()),
               e.getMessage()));
+    }
+  }
+
+  public void validateYsqlMajorVersion(Universe restoreUniverse, String backupYsqlMajorVersion)
+      throws IOException {
+    if (StringUtils.isEmpty(backupYsqlMajorVersion)) {
+      return;
+    }
+    Optional<Integer> restoreUniverseYsqlMajorVersionOptional =
+        gFlagsValidation.getYsqlMajorVersion(
+            restoreUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+    int restoreUniverseYsqlMajorVersion =
+        restoreUniverseYsqlMajorVersionOptional.isPresent()
+            ? restoreUniverseYsqlMajorVersionOptional.get()
+            : 11;
+    if (Integer.parseInt(backupYsqlMajorVersion) > restoreUniverseYsqlMajorVersion) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot restore backup as the backup was taken on YSQL major version %s and the"
+                  + " universe is running on YSQL major version %s",
+              backupYsqlMajorVersion, restoreUniverseYsqlMajorVersion));
     }
   }
 

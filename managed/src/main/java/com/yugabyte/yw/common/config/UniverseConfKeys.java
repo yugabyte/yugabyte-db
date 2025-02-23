@@ -1490,4 +1490,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
+      new ConfKeyInfo<>(
+          "yb.upgrade.wait_attempts_for_major_catalog_upgrade",
+          ScopeType.UNIVERSE,
+          "Wait Attempts for major catalog upgrade",
+          "Wait Attempts for major catalog upgrade",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
