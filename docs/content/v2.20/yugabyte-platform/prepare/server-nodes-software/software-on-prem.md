@@ -176,7 +176,7 @@ To audit the commands that are run by the script, do the following:
 
     The preflight check renders templates containing all the bash commands that the script will execute for provisioning.
 
-1. Identify the rendered templates using `grep` as follows:
+1. Identify the rendered templates using grep as follows:
 
     ```sh
     sudo ./node-agent-provision.sh --preflight_check 2>&1 | grep "INFO - /tmp/tmp.*$"
