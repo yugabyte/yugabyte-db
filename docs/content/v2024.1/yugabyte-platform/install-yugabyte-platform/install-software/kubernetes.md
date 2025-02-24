@@ -154,37 +154,28 @@ To install YugabyteDB Anywhere (YBA) and a universe using the Yugabyte Kubernete
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/2024.1/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="v2024.1" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Run the following `helm install` command to set the parameters from the preceding YAML file to install the YugabyteDB Anywhere (`yugaware`) Helm chart:
 
     ```sh
-    # Modify the fields kubernetesOperatorNamespace and defaultUser.password fields as required
-    helm install yugabytedb/yugaware \
-      --version 2024.1.0 \
-      --set kubernetesOperatorEnabled=true,kubernetesOperatorNamespace="yb-platform-test",defaultUser.enabled=true,defaultUser.password="Password#Test123"-generate-name
+    # Modify the fields kubernetesOperatorNamespace and defaultUser username, email and password fields as required
+    helm install yba yugabytedb/yugaware \
+      --version {{< yb-version version="v2024.1" format="short">}} \
+      --namespace yb-platform \
+      --set yugaware.kubernetesOperatorEnabled=true \
+      --set yugaware.kubernetesOperatorNamespace='yb-platform-test' \
+      --set yugaware.defaultUser.enabled=true \
+      --set yugaware.defaultUser.username=yb_platform_user \
+      --set yugaware.defaultUser.email='yugabyte_k8s@yugabyte.com' \
+      --set yugaware.defaultUser.password='Password#Test123'
     ```
 
-1. Verify that YBA is up, and the Kubernetes Operator is installed successfully using the following commands:
+1. Verify that YBA is up and the Kubernetes Operator is installed successfully using the following command:
 
     ```sh
     kubectl get pods -n <yba_namespace>
-    ```
-
-    ```sh
-    kubectl get pods -n <operator_namespace>
-    ```
-
-    ```output
-    NAME                                       READY   STATUS    RESTARTS   AGE
-    chart-1706728534-yugabyte-k8s-operator-0   3/3     Running   0          26h
-    ```
-
-    Additionally, you should see no stack traces, but the following messages in the `KubernetesOperatorReconciler` log:
-
-    ```output
-    LOG.info("Finished running ybUniverseController");
     ```
 
 1. Create the following custom resource, and save it as `demo-universe.yaml`.
@@ -202,7 +193,7 @@ To install YugabyteDB Anywhere (YBA) and a universe using the Yugabyte Kubernete
       enableNodeToNodeEncrypt: true
       enableClientToNodeEncrypt: true
       enableLoadBalancer: true
-      ybSoftwareVersion: "2024.1.0-b2" <- This will be the YBA  version
+      ybSoftwareVersion: "{{< yb-version version="v2024.1" format="build">}}" <- This will be the YBA  version
       enableYSQLAuth: false
       enableYCQL: true
       enableYCQLAuth: false
@@ -218,7 +209,7 @@ To install YugabyteDB Anywhere (YBA) and a universe using the Yugabyte Kubernete
 1. Create a universe using the custom resource `demo-universe.yaml` as follows:
 
     ```sh
-    kubectl apply -f demo-universe.yaml -n yb-platform
+    kubectl apply -f demo-universe.yaml -n yb-platform-test
     ```
 
 1. Check the status of the universe as follows:
@@ -228,10 +219,8 @@ To install YugabyteDB Anywhere (YBA) and a universe using the Yugabyte Kubernete
     ```
 
     ```output
-    NAME                STATE   SOFTWARE VERSION
-    anab-test-2         Ready   2.23.0.0-b33
-    anab-test-backups   Ready   2.21.1.0-b269
-    anab-test-restore   Ready   2.21.1.0-b269
+    NAME        STATE   SOFTWARE VERSION
+    demo-test   Ready   {{< yb-version version="v2024.1" format="build">}}
     ```
 
 For more details, see [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/).
