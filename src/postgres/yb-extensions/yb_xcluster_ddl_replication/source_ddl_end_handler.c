@@ -237,7 +237,9 @@ IsSequence(Oid rel_oid)
 	if (!rel)
 		elog(ERROR, "Could not find relation with OID %d", rel_oid);
 
-	return rel->rd_rel->relkind == RELKIND_SEQUENCE;
+	const char relkind = rel->rd_rel->relkind;
+	RelationClose(rel);
+	return relkind == RELKIND_SEQUENCE;
 }
 
 /*

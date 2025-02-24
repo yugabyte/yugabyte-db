@@ -762,6 +762,13 @@ bool XClusterManager::IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace
          XClusterTargetManager::IsNamespaceInAutomaticDDLMode(namespace_id);
 }
 
+bool XClusterManager::IsNamespaceInAutomaticModeSource(const NamespaceId& namespace_id) const {
+  return XClusterSourceManager::IsNamespaceInAutomaticDDLMode(namespace_id);
+}
+
+bool XClusterManager::IsNamespaceInAutomaticModeTarget(const NamespaceId& namespace_id) const {
+  return XClusterTargetManager::IsNamespaceInAutomaticDDLMode(namespace_id);
+}
 
 bool XClusterManager::IsTableBiDirectionallyReplicated(const TableId& table_id) const {
   // In theory this would return true for B in the case of chaining A -> B -> C, but we don't
