@@ -31,12 +31,10 @@
 #include "yb_oid_entry.h"
 
 /* TODO(janand): GH#21436 Use hash map instead of list */
-#define MAX_DATABASES YSQL_CONN_MGR_MAX_POOLS
-#define MAX_USERS YSQL_CONN_MGR_MAX_POOLS
 #define YB_INVALID_OID_IN_PKT 0
 
-yb_oid_entry_t database_entry_list[MAX_DATABASES];
-yb_oid_entry_t user_entry_list[MAX_USERS];
+yb_oid_entry_t* database_entry_list = NULL;
+yb_oid_entry_t* user_entry_list = NULL;
 od_atomic_u64_t database_count = 0;
 od_atomic_u64_t user_count = 0;
 
@@ -61,12 +59,12 @@ static inline int add_oid_obj_entry(int obj_type, int oid, const char *name,
 
 	if (obj_type == YB_DATABASE) {
 		oid_obj_count = &database_count;
-		max_oid_obj_count = MAX_DATABASES;
+		max_oid_obj_count = instance->config.yb_max_pools;
 		oid_obj_entry_list = database_entry_list;
 		lock = &database_rwlock;
 	} else {
 		oid_obj_count = &user_count;
-		max_oid_obj_count = MAX_USERS;
+		max_oid_obj_count = instance->config.yb_max_pools;
 		oid_obj_entry_list = user_entry_list;
 		lock = &user_rwlock;
 	}
@@ -183,11 +181,24 @@ yb_oid_entry_t *yb_get_oid_obj_entry(const int obj_type, const int yb_obj_oid)
 	return NULL;
 }
 
-void yb_oid_list_init(od_instance_t *instance)
+int yb_oid_list_init(od_instance_t *instance)
 {
+	database_entry_list = (yb_oid_entry_t *)malloc(
+		instance->config.yb_max_pools * sizeof(yb_oid_entry_t));
+	if (!database_entry_list)
+		return -1;
+
+	user_entry_list = (yb_oid_entry_t *)malloc(
+		instance->config.yb_max_pools * sizeof(yb_oid_entry_t));
+	if (!user_entry_list) {
+		free(database_entry_list);
+		return -1;
+	}
+
 	/* Add entry for the control connection */
 	add_oid_obj_entry(YB_DATABASE, YB_CTRL_CONN_OID, "yugabyte", instance);
 	add_oid_obj_entry(YB_USER, YB_CTRL_CONN_OID, "yugabyte", instance);
+	return 0;
 }
 
 static inline char *parse_single_col_data_row_pkt(machine_msg_t *msg)

@@ -169,6 +169,9 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr, false,
     "Enable Ysql Connection Manager for the cluster. Tablet Server will start a "
     "Ysql Connection Manager process as a child process.");
 
+DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_pools, 10000,
+    "Max total pools supported in YSQL Connection Manager.");
+
 DEFINE_UNKNOWN_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
 DEFINE_UNKNOWN_bool(tserver_enable_metrics_snapshotter, false,

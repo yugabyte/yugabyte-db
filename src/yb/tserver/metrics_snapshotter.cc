@@ -116,6 +116,7 @@ DEFINE_UNKNOWN_uint64(metrics_snapshotter_ttl_ms, 7 * 24 * 60 * 60 * 1000 /* 1 w
 TAG_FLAG(metrics_snapshotter_ttl_ms, advanced);
 
 DECLARE_bool(enable_ysql_conn_mgr_stats);
+DECLARE_int32(ysql_conn_mgr_max_pools);
 
 using std::shared_ptr;
 using std::vector;
@@ -355,8 +356,6 @@ Status MetricsSnapshotter::Thread::DoPrometheusMetricsSnapshot(const client::Tab
 
 namespace {
 
-constexpr uint32_t kYsqlConnMgrMaxPools = YSQL_CONN_MGR_MAX_POOLS;
-
 constexpr auto kMetricWhitelistItemNodeUp = "node_up";
 constexpr auto kMetricWhitelistItemCpuUsage = "cpu_usage";
 constexpr auto kMetricWhitelistItemDiskUsage = "disk_usage";
@@ -395,7 +394,7 @@ Status MetricsSnapshotter::Thread::DoYsqlConnMgrMetricsSnapshot(const client::Ta
                                       << strerror(errno);
     return Status::OK();
   }
-  for (uint32_t itr = 0; itr < kYsqlConnMgrMaxPools; itr++) {
+  for (int32_t itr = 0; itr < FLAGS_ysql_conn_mgr_max_pools; itr++) {
     if (strcmp(shmp[itr].database_name, "") == 0) {
       // All the valid entries in the shmem have been processed.
       break;

@@ -29,7 +29,7 @@ extern int yb_handle_oid_pkt_server(od_instance_t *instance,
 
 extern yb_oid_entry_t *yb_get_oid_obj_entry(const int obj_type, const int yb_obj_oid);
 
-extern void yb_oid_list_init(od_instance_t *instance);
+extern int yb_oid_list_init(od_instance_t *instance);
 
 extern int yb_resolve_oid_status(const int obj_type, od_global_t *global, yb_oid_entry_t *entry,
 				od_server_t *server);
