@@ -694,6 +694,13 @@ class YBClient {
 
   void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
 
+  void AcquireObjectLocksGlobalAsync(
+      const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
+      MonoDelta rpc_timeout);
+  void ReleaseObjectLocksGlobalAsync(
+      const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
+      MonoDelta rpc_timeout);
+
   // Update a CDC stream's options.
   Status UpdateCDCStream(
       const std::vector<xrepl::StreamId>& stream_ids,
@@ -1074,9 +1081,6 @@ class YBClient {
   int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
 
   void RequestAbortAllRpcs();
-
-  Status AcquireObjectLocksGlobal(const tserver::AcquireObjectLockRequestPB& lock_req);
-  Status ReleaseObjectLocksGlobal(const tserver::ReleaseObjectLockRequestPB& release_req);
 
  private:
   class Data;
