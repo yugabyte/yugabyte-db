@@ -361,6 +361,14 @@ class YBClient::Data {
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
       StdStatusCallback callback);
 
+  void AcquireObjectLocksGlobalAsync(
+      YBClient* client, master::AcquireObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
+      StdStatusCallback callback);
+
+  void ReleaseObjectLocksGlobalAsync(
+      YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
+      StdStatusCallback callback);
+
   void GetTableLocations(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
       RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,

@@ -232,7 +232,6 @@ Status YBClient::Data::SyncLeaderMasterRpc(
 // These are not actually exposed outside, but it's nice to auto-add using directive.
 YB_CLIENT_SPECIALIZE_SIMPLE(AlterNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(AlterTable);
-YB_CLIENT_SPECIALIZE_SIMPLE(AcquireObjectLocksGlobal);
 YB_CLIENT_SPECIALIZE_SIMPLE(BackfillIndex);
 YB_CLIENT_SPECIALIZE_SIMPLE(ChangeMasterClusterConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
@@ -265,7 +264,6 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTablegroups);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
-YB_CLIENT_SPECIALIZE_SIMPLE(ReleaseObjectLocksGlobal);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Encryption, GetFullUniverseKeyRegistry);
@@ -286,8 +284,6 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigGet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigSet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, ReservePgsqlOids);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetStatefulServiceLocation);
-YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, AcquireObjectLocksGlobal);
-YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, ReleaseObjectLocksGlobal);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, GetAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, ValidateAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalanced);
@@ -2312,6 +2308,94 @@ class IsXClusterBootstrapRequiredRpc : public ClientMasterRpc<
   std::function<void(Result<bool>)> user_cb_;
 };
 
+class AcquireObjectLocksGlobalRpc
+    : public ClientMasterRpc<
+          master::AcquireObjectLocksGlobalRequestPB, master::AcquireObjectLocksGlobalResponsePB> {
+ public:
+  AcquireObjectLocksGlobalRpc(
+      YBClient* client, master::AcquireObjectLocksGlobalRequestPB request,
+      StdStatusCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
+    req_.CopyFrom(request);
+  }
+
+  string ToString() const override {
+    return Format(
+        "AcquireObjectLocksGlobal (request: $0, num_attempts: $1)", req_.DebugString(),
+        num_attempts());
+  }
+
+  virtual ~AcquireObjectLocksGlobalRpc() {}
+
+ private:
+  Status ResponseStatus() override {
+    return StatusFromResp(resp_);
+  }
+
+  bool ShouldRetry(const Status& status) override {
+    return status.IsTryAgain();
+  }
+
+  void CallRemoteMethod() override {
+    master_ddl_proxy()->AcquireObjectLocksGlobalAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&AcquireObjectLocksGlobalRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+    }
+    user_cb_(status);
+  }
+
+  StdStatusCallback user_cb_;
+};
+
+class ReleaseObjectLocksGlobalRpc
+    : public ClientMasterRpc<
+          master::ReleaseObjectLocksGlobalRequestPB, master::ReleaseObjectLocksGlobalResponsePB> {
+ public:
+  ReleaseObjectLocksGlobalRpc(
+      YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request,
+      StdStatusCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
+    req_.CopyFrom(request);
+  }
+
+  string ToString() const override {
+    return Format(
+        "ReleaseObjectLocksGlobal (request: $0, num_attempts: $1)", req_.DebugString(),
+        num_attempts());
+  }
+
+  virtual ~ReleaseObjectLocksGlobalRpc() {}
+
+ private:
+  Status ResponseStatus() override {
+    return StatusFromResp(resp_);
+  }
+
+  bool ShouldRetry(const Status& status) override {
+    return status.IsTryAgain();
+  }
+
+  void CallRemoteMethod() override {
+    master_ddl_proxy()->ReleaseObjectLocksGlobalAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&ReleaseObjectLocksGlobalRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+    }
+    user_cb_(status);
+  }
+
+  StdStatusCallback user_cb_;
+};
+
 } // namespace internal
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
@@ -2571,6 +2655,18 @@ void YBClient::Data::DeleteNotServingTablet(
     StdStatusCallback callback) {
   auto rpc = StartRpc<internal::DeleteNotServingTabletRpc>(
       client, tablet_id, callback, deadline);
+}
+
+void YBClient::Data::AcquireObjectLocksGlobalAsync(
+    YBClient* client, master::AcquireObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
+    StdStatusCallback callback) {
+  auto rpc = StartRpc<internal::AcquireObjectLocksGlobalRpc>(client, request, callback, deadline);
+}
+
+void YBClient::Data::ReleaseObjectLocksGlobalAsync(
+    YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
+    StdStatusCallback callback) {
+  auto rpc = StartRpc<internal::ReleaseObjectLocksGlobalRpc>(client, request, callback, deadline);
 }
 
 void YBClient::Data::GetTableLocations(
