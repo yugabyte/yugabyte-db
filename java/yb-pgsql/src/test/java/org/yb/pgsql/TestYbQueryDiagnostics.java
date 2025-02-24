@@ -655,18 +655,34 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         String[] tokens = generateTokensForPgssData(pgssPath);
         validatePgssData(pgssPath, queryId, noOfCalls, tokens);
 
+        Float actualTotalPlanTime = Float.parseFloat(tokens[3]);
+        Float actualTotalExecTime = Float.parseFloat(tokens[4]);
+        Float actualTotalTime = actualTotalPlanTime + actualTotalExecTime;
+
+        Float actualMinPlanTime = Float.parseFloat(tokens[5]);
+        Float actualMinExecTime = Float.parseFloat(tokens[6]);
+        Float actualMinTime = actualMinPlanTime + actualMinExecTime;
+
+        Float actualMaxPlanTime = Float.parseFloat(tokens[7]);
+        Float actualMaxExecTime = Float.parseFloat(tokens[8]);
+        Float actualMaxTime = actualMaxPlanTime + actualMaxExecTime;
+
+        Float actualMeanPlanTime = Float.parseFloat(tokens[9]);
+        Float actualMeanExecTime = Float.parseFloat(tokens[10]);
+        Float actualMeanTime = actualMeanPlanTime + actualMeanExecTime;
+
         if (unnecessaryString != null)
             assertTrue("pg_stat_statements contains unnecessary data",
                     !tokens[1].contains(unnecessaryString));
         /* pg_stat_statements outputs data in ms */
         assertLessThan("total_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[3]) - expectedTotalTimeMs), epsilonMs);
+                       Math.abs(actualTotalTime - expectedTotalTimeMs), epsilonMs);
         assertLessThan("min_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[4]) - expectedMinTimeMs), epsilonMs);
+                       Math.abs(actualMinTime - expectedMinTimeMs), epsilonMs);
         assertLessThan("max_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[5]) - expectedMaxTimeMs), epsilonMs);
+                       Math.abs(actualMaxTime - expectedMaxTimeMs), epsilonMs);
         assertLessThan("mean_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[6]) - expectedMeanTimeMs), epsilonMs);
+                       Math.abs(actualMeanTime - expectedMeanTimeMs), epsilonMs);
     }
 
     private void validateConstantsOrBindVarData(Path bindVarPath, int noOfConstantsPerLine,

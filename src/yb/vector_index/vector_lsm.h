@@ -108,6 +108,8 @@ class VectorLSM {
   Result<SearchResults> Search(
       const Vector& query_vector, const SearchOptions& options) const;
 
+  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const;
+
   Status Flush(bool wait);
   Status WaitForFlush();
 
@@ -149,6 +151,8 @@ class VectorLSM {
   Status CreateNewMutableChunk(size_t min_vectors) REQUIRES(mutex_);
 
   Status RemoveUpdateQueueEntry(size_t order_no) REQUIRES(mutex_);
+
+  Result<std::vector<VectorIndexPtr>> AllIndexes() const EXCLUDES(mutex_);
 
   Options options_;
   rocksdb::Env* const env_;

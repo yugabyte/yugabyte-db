@@ -737,7 +737,7 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-            !isKubernetesUniverse && isAuditLogEnabled && isYSQLEnabledInUniverse && (
+            isAuditLogEnabled && isYSQLEnabledInUniverse && (
               <Tab.Pane
                 eventKey={'db-audit-log'}
                 tabtitle="Logs"

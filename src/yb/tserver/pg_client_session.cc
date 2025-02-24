@@ -149,7 +149,6 @@ struct SessionData {
 
 struct SetupSessionResult {
   SessionData session_data;
-  UsedReadTimeApplier used_read_time_applier;
   bool is_plain = false;
 };
 
@@ -878,7 +877,7 @@ Status Commit(client::YBTransaction* txn, PgResponseCache::Disabler disabler) {
 }
 
 UsedReadTimeApplier BuildUsedReadTimeApplier(
-    std::weak_ptr<UsedReadTime>&& used_read_time, size_t signature) {
+    std::weak_ptr<UsedReadTime> used_read_time, size_t signature) {
   return [used_read_time_weak = std::move(used_read_time), signature](
       TabletReadTime&& read_time_data) {
     const auto used_read_time_ptr = used_read_time_weak.lock();
@@ -1051,6 +1050,12 @@ YsqlAdvisoryLocksTableLockId MakeAdvisoryLockId(uint32_t db_oid, const AdvisoryL
           .class_oid = lock_pb.classid(),
           .objid = lock_pb.objid(),
           .objsubid = lock_pb.objsubid()};
+}
+
+size_t RenewSignature(UsedReadTime& used_read_time) {
+  std::lock_guard guard(used_read_time.lock);
+  used_read_time.data.reset();
+  return ++used_read_time.signature;
 }
 
 } // namespace
@@ -1293,7 +1298,7 @@ class PgClientSession::Impl {
 
   Result<ReadHybridTime> GetTxnSnapshotReadTime(
       const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
-    auto setup_session_result = VERIFY_RESULT(SetupSession(options, deadline, HybridTime()));
+    auto setup_session_result = VERIFY_RESULT(SetupSession(options, deadline));
     RSTATUS_DCHECK(setup_session_result.is_plain, IllegalState, "Unexpected session is prepared");
     return setup_session_result.session_data.session->read_point()->GetReadTime();
   }
@@ -1304,7 +1309,7 @@ class PgClientSession::Impl {
     SCHECK(
         txn_serial_no_ != options.txn_serial_no(), IllegalState,
         "Snapshot read time can only be set at the very beginning of transaction.");
-    return ResultToStatus(SetupSession(options, deadline, HybridTime()));
+    return ResultToStatus(SetupSession(options, deadline));
   }
 
   Status WaitForBackendsCatalogVersion(
@@ -1972,7 +1977,7 @@ class PgClientSession::Impl {
       DCHECK(&pg_session_data == primary_session_data) << "Expected session of kind kPgSession.";
     } else {
       RSTATUS_DCHECK(
-          VERIFY_RESULT(SetupSession(req.options(), deadline, HybridTime())).is_plain,
+          VERIFY_RESULT(SetupSession(req.options(), deadline)).is_plain,
           IllegalState, "Expected session of kind kPlain.");
     }
     RSTATUS_DCHECK(
@@ -2166,7 +2171,7 @@ class PgClientSession::Impl {
     }
     ADOPT_TRACE(context ? context->trace() : Trace::CurrentTrace());
 
-    data->used_read_time_applier = setup_session_result.used_read_time_applier;
+    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result);
     data->used_in_txn_limit = in_txn_limit;
     data->transaction = std::move(transaction);
     data->pg_node_level_mutation_counter = pg_node_level_mutation_counter();
@@ -2295,7 +2300,7 @@ class PgClientSession::Impl {
   }
 
   Result<SetupSessionResult> SetupSession(
-      const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit) {
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit = {}) {
     const auto txn_serial_no = options.txn_serial_no();
     const auto read_time_serial_no = options.read_time_serial_no();
     auto kind = PgClientSessionKind::kPlain;
@@ -2331,7 +2336,6 @@ class PgClientSession::Impl {
     VLOG_WITH_PREFIX_AND_FUNC(4) << options.ShortDebugString() << ", deadline: "
                                 << MonoDelta(deadline - CoarseMonoClock::now());
 
-    UsedReadTimeApplier used_read_time_applier;
     if (options.restart_transaction()) {
       if (options.ddl_mode()) {
         return STATUS(NotSupported, "Restarting a DDL transaction not supported");
@@ -2359,11 +2363,8 @@ class PgClientSession::Impl {
       } else if (options.has_read_time() ||
                 options.use_catalog_session() ||
                 (is_plain_session && (read_time_serial_no_ != read_time_serial_no))) {
-        used_read_time_applier = ResetReadPoint(kind);
+        ResetReadPoint(kind);
       } else {
-        if (!txn && is_plain_session) {
-          RETURN_NOT_OK(CheckPlainSessionReadTimeIsSet());
-        }
         VLOG_WITH_PREFIX(3) << "Keep read time: " << session.read_point()->GetReadTime();
       }
     }
@@ -2425,11 +2426,10 @@ class PgClientSession::Impl {
 
     return SetupSessionResult{
         .session_data = session_data,
-        .used_read_time_applier = used_read_time_applier,
         .is_plain = (kind == PgClientSessionKind::kPlain)};
   }
 
-  UsedReadTimeApplier ResetReadPoint(PgClientSessionKind kind) {
+  void ResetReadPoint(PgClientSessionKind kind) {
     const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
     DCHECK(is_plain_session || kind == PgClientSessionKind::kCatalog);
     const auto& data = GetSessionData(kind);
@@ -2437,23 +2437,12 @@ class PgClientSession::Impl {
     session.SetReadPoint({});
     VLOG_WITH_PREFIX(3) << "Reset read time: " << session.read_point()->GetReadTime();
 
-    if (!is_plain_session || data.transaction) {
-      return {};
+    if (!is_plain_session || data.transaction || !plain_session_used_read_time_.pending_update) {
+      return;
     }
-    if (plain_session_used_read_time_.pending_update) {
-      LOG(INFO) << "Previous pending used_read_time update is still active, overwriting";
-    }
-    plain_session_used_read_time_.pending_update = true;
-    auto& used_read_time = plain_session_used_read_time_.value;
-    size_t signature = 0;
-    std::weak_ptr<UsedReadTime> used_read_time_ptr;
-    {
-      std::lock_guard guard(used_read_time.lock);
-      used_read_time.data.reset();
-      used_read_time_ptr = std::shared_ptr<UsedReadTime>{shared_this_.lock(), &used_read_time};
-      signature = ++used_read_time.signature;
-    }
-    return BuildUsedReadTimeApplier(std::move(used_read_time_ptr), signature);
+    LOG(INFO) << "Previous pending used_read_time update is still active, deactivating";
+    plain_session_used_read_time_.pending_update = false;
+    RenewSignature(plain_session_used_read_time_.value);
   }
 
   Status BeginTransactionIfNecessary(
@@ -2512,11 +2501,12 @@ class PgClientSession::Impl {
         client::ForceGlobalTransaction{options.force_global_transaction()}, deadline);
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     RETURN_NOT_OK(txn->SetPgTxnStart(options.pg_txn_start_us()));
+    auto* read_point = session->read_point();
     if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
-            isolation == IsolationLevel::READ_COMMITTED) &&
-        txn_serial_no_ == options.txn_serial_no()) {
-      RETURN_NOT_OK(CheckPlainSessionReadTimeIsSet());
-      txn->InitWithReadPoint(isolation, std::move(*session->read_point()));
+         isolation == IsolationLevel::READ_COMMITTED) &&
+        txn_serial_no_ == options.txn_serial_no() &&
+        (read_point && read_point->GetReadTime())) {
+      txn->InitWithReadPoint(isolation, std::move(*read_point));
       VLOG_WITH_PREFIX(2) << "Start transaction " << IsolationLevel_Name(isolation)
                           << ", id: " << txn->id()
                           << ", kept read time: " << txn->read_point().GetReadTime();
@@ -2680,13 +2670,6 @@ class PgClientSession::Impl {
     return session;
   }
 
-  Status CheckPlainSessionReadTimeIsSet() const {
-    RSTATUS_DCHECK(
-        Session(PgClientSessionKind::kPlain)->read_point()->GetReadTime(),
-        IllegalState, "Read time is not set");
-    return Status::OK();
-  }
-
   Status CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial_no) {
     if (!plain_session_used_read_time_.pending_update) {
       return Status::OK();
@@ -2796,6 +2779,21 @@ class PgClientSession::Impl {
       out_req->set_ysql_catalog_version(in_req.ysql_catalog_version());
     }
     return Status::OK();
+  }
+
+  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {
+    auto* read_point = result.session_data.session->read_point();
+    if (!result.is_plain ||
+        result.session_data.transaction ||
+        (read_point && read_point->GetReadTime())) {
+      return {};
+    }
+
+    plain_session_used_read_time_.pending_update = true;
+    auto& used_read_time = plain_session_used_read_time_.value;
+    return BuildUsedReadTimeApplier(
+        std::shared_ptr<UsedReadTime>{shared_this_.lock(), &used_read_time},
+        RenewSignature(used_read_time));
   }
 
   client::YBClient& client_;

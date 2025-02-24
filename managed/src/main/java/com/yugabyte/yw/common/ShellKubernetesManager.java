@@ -1470,4 +1470,13 @@ public class ShellKubernetesManager extends KubernetesManager {
       return Optional.empty();
     }
   }
+
+  public void checkOpentelemetryOperatorRunning() {
+    List<String> commandList =
+        ImmutableList.of("kubectl", "api-resources", "--api-group=opentelemetry.io");
+    ShellResponse response = execCommand(null, commandList);
+    if (!response.getMessage().toLowerCase().contains("opentelemetrycollectors")) {
+      throw new RuntimeException("Opentelemetry Operator is not installed in the cluster");
+    }
+  }
 }

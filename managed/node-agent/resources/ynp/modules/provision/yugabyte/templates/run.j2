@@ -59,10 +59,10 @@ fi
         if [ ! -d "$mount_point" ]; then
             echo "Creating mount point: $mount_point"
             mkdir -p "$mount_point"
-            chown -R {{ yb_user }}:{{ yb_user }} "$mount_point"
         else
             echo "Mount point already exists: $mount_point"
         fi
+        chown -R {{ yb_user }}:{{ yb_user }} "$mount_point"
     done
 
     # Set up the ssh key access for yugabyte
@@ -91,6 +91,9 @@ fi
 
 {% if is_install_node_agent == 'True' %}
 installer_dir="{{ ynp_dir }}/../../bin"
+{% if cloud_type is defined and cloud_type != '' %}
+    installer_dir="{{ ynp_dir }}/../"
+{% endif %}
 # Copy node-agent binary to yugabyte home directory. This is needed so that yugabyte user
 # can read the binary in restricted environment.
 mkdir -p {{ yb_home_dir }}/.install

@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.NodeAgentManager;
@@ -113,17 +114,18 @@ public class YNPProvisioning extends AbstractTaskBase {
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
-    List<String> devicePaths =
-        this.queryHelper.getDeviceNames(
-            provider,
-            Common.CloudType.valueOf(node.cloudInfo.cloud),
-            Integer.toString(taskParams().deviceInfo.numVolumes),
-            taskParams().deviceInfo.storageType.toString().toLowerCase(),
-            node.cloudInfo.region,
-            node.cloudInfo.instance_type);
-    String paths = String.join(" ", devicePaths);
-
-    extraNode.put("device_paths", paths);
+    if (!provider.getCode().equals(CloudType.onprem.toString())) {
+      List<String> devicePaths =
+          this.queryHelper.getDeviceNames(
+              provider,
+              Common.CloudType.valueOf(node.cloudInfo.cloud),
+              Integer.toString(taskParams().deviceInfo.numVolumes),
+              taskParams().deviceInfo.storageType.toString().toLowerCase(),
+              node.cloudInfo.region,
+              node.cloudInfo.instance_type);
+      String paths = String.join(" ", devicePaths);
+      extraNode.put("device_paths", paths);
+    }
     rootNode.set("extra", extraNode);
 
     ObjectNode loggingNode = mapper.createObjectNode();

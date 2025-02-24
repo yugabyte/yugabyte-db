@@ -25,15 +25,18 @@
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_error.h"
 
 #include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
@@ -2570,113 +2573,153 @@ TEST_F_EX(PgIndexBackfillTest, ConcurrentDelete, PgIndexBackfill1kRowsPerSec) {
   thread_holder_.JoinAll();
 }
 
-TEST_F(PgIndexBackfillTest, VectorIndex) {
-  constexpr int kBig = 100000000;
+struct VectorIndexWriter {
+  static constexpr int kBig = 100000000;
 
+  std::atomic<int> counter = 0;
+  std::atomic<int> extra_values_counter = kBig * 2;
+  std::atomic<CoarseTimePoint> last_write;
+  std::atomic<MonoDelta> max_time_without_inserts = MonoDelta::FromNanoseconds(0);
+  std::atomic<bool> failure = false;
+
+  void Perform(PGConn& conn) {
+    std::vector<int> values;
+    for (int i = RandomUniformInt(3, 6); i > 0; --i) {
+      values.push_back(++counter);
+    }
+    size_t keep_values = values.size();
+    for (int i = RandomUniformInt(0, 2); i > 0; --i) {
+      values.push_back(++extra_values_counter);
+    }
+    bool use_2_steps = RandomUniformBool();
+
+    int offset = use_2_steps ? kBig : 0;
+    ASSERT_NO_FATALS(Insert(conn, values, offset));
+    if (use_2_steps || keep_values != values.size()) {
+      ASSERT_NO_FATALS(UpdateAndDelete(conn, values, keep_values));
+    }
+  }
+
+  void Insert(PGConn& conn, const std::vector<int>& values, int offset) {
+    for (;;) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      bool failed = false;
+      for (auto value : values) {
+        auto res = conn.ExecuteFormat(
+            "INSERT INTO test VALUES ($0, '[$1.0]')", value, value + offset);
+        if (!res.ok()) {
+          ASSERT_OK(conn.RollbackTransaction());
+          LOG(INFO) << "Insert " << value << " failed: " << res;
+          ASSERT_STR_CONTAINS(res.message().ToBuffer(), "schema version mismatch");
+          failed = true;
+          break;
+        }
+      }
+      if (!failed) {
+        ASSERT_OK(conn.CommitTransaction());
+        auto now = CoarseMonoClock::Now();
+        auto prev_last_write = last_write.exchange(now);
+        if (prev_last_write != CoarseTimePoint()) {
+          MonoDelta new_value(now - prev_last_write);
+          if (MakeAtLeast(max_time_without_inserts, new_value)) {
+            LOG(INFO) << "Update max time without inserts: " << new_value;
+          }
+        }
+        std::this_thread::sleep_for(100ms);
+        break;
+      }
+    }
+  }
+
+  void UpdateAndDelete(PGConn& conn, const std::vector<int>& values, size_t keep_values) {
+    for (;;) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      bool failed = false;
+      for (size_t i = 0; i != values.size(); ++i) {
+        auto value = values[i];
+        Status res;
+        if (i < keep_values) {
+          res = conn.ExecuteFormat(
+              "UPDATE test SET embedding = '[$0.0]' WHERE id = $0", value);
+        } else {
+          res = conn.ExecuteFormat("DELETE FROM test WHERE id = $0", value);
+        }
+        if (!res.ok()) {
+          ASSERT_OK(conn.RollbackTransaction());
+          LOG(INFO) <<
+              (i < keep_values ? "Update " : "Delete " ) << value << " failed: " << res;
+          ASSERT_STR_CONTAINS(res.message().ToBuffer(), "schema version mismatch");
+          failed = true;
+          break;
+        }
+      }
+      if (!failed) {
+        ASSERT_OK(conn.CommitTransaction());
+        std::this_thread::sleep_for(100ms);
+        break;
+      }
+    }
+  }
+
+  void WaitWritten(int num_rows) {
+    auto limit = counter.load() + num_rows;
+    while (counter.load() < limit && !failure) {
+      std::this_thread::sleep_for(10ms);
+    }
+  }
+
+  void Verify(PGConn& conn) {
+    for (int i = 2; i < counter.load(); ++i) {
+      auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
+          "SELECT id FROM test ORDER BY embedding <-> '[$0]' LIMIT 3", i * 1.0 - 0.01)));
+      ASSERT_EQ(rows, Format("$0; $1; $2", i, i - 1, i + 1));
+    }
+  }
+};
+
+TEST_F(PgIndexBackfillTest, VectorIndex) {
   ASSERT_OK(conn_->Execute("CREATE EXTENSION vector"));
   ASSERT_OK(conn_->ExecuteFormat(
       "CREATE TABLE test (id INT PRIMARY KEY, embedding vector(1))"));
   TestThreadHolder thread_holder;
-  std::atomic<int> counter = 0;
-  std::atomic<int> extra_values_counter = kBig * 2;
-  std::atomic<CoarseTimePoint> last_write;
-  MonoDelta max_time_without_inserts = MonoDelta::FromNanoseconds(0);
+  VectorIndexWriter writer;
   for (int i = 0; i != 8; ++i) {
     thread_holder.AddThreadFunctor(
-        [this, &stop_flag = thread_holder.stop_flag(), &counter, &last_write, &extra_values_counter,
-         &max_time_without_inserts] {
+        [this, &stop_flag = thread_holder.stop_flag(), &writer] {
+      bool done = false;
+      auto se = ScopeExit([&done, &writer] {
+        if (!done) {
+          writer.failure = true;
+        }
+      });
       auto conn = ASSERT_RESULT(Connect());
       while (!stop_flag.load()) {
-        std::vector<int> values;
-        for (int i = RandomUniformInt(1, 4); i-- > 0;) {
-          values.push_back(++counter);
-        }
-        size_t keep_values = values.size();
-        for (int i = RandomUniformInt(0, 2); i-- > 0;) {
-          values.push_back(++extra_values_counter);
-        }
-        bool use_2_steps = RandomUniformBool();
-
-        int offset = use_2_steps ? kBig : 0;
-        for (;;) {
-          ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-          bool failed = false;
-          for (auto value : values) {
-            auto res = conn.ExecuteFormat(
-                "INSERT INTO test VALUES ($0, '[$1.0]')", value, value + offset);
-            if (!res.ok()) {
-              ASSERT_OK(conn.RollbackTransaction());
-              LOG(INFO) << "Insert " << value << " failed: " << res;
-              ASSERT_STR_CONTAINS(res.message().ToBuffer(), "schema version mismatch");
-              failed = true;
-              break;
-            }
-          }
-          if (!failed) {
-            ASSERT_OK(conn.CommitTransaction());
-            auto now = CoarseMonoClock::Now();
-            auto prev_last_write = last_write.exchange(now);
-            if (prev_last_write != CoarseTimePoint() &&
-                prev_last_write + max_time_without_inserts < now) {
-              max_time_without_inserts = now - prev_last_write;
-              LOG(INFO) << "Update max time without inserts: " << max_time_without_inserts;
-            }
-            std::this_thread::sleep_for(100ms);
-            break;
-          }
-        }
-        if (use_2_steps || keep_values != values.size()) {
-          for (;;) {
-            ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-            bool failed = false;
-            for (size_t i = 0; i != values.size(); ++i) {
-              auto value = values[i];
-              Status res;
-              if (i < keep_values) {
-                res = conn.ExecuteFormat(
-                    "UPDATE test SET embedding = '[$0.0]' WHERE id = $0", value);
-              } else {
-                res = conn.ExecuteFormat("DELETE FROM test WHERE id = $0", value);
-              }
-              if (!res.ok()) {
-                ASSERT_OK(conn.RollbackTransaction());
-                LOG(INFO) <<
-                    (i < keep_values ? "Update " : "Delete " ) << value << " failed: " << res;
-                ASSERT_STR_CONTAINS(res.message().ToBuffer(), "schema version mismatch");
-                failed = true;
-                break;
-              }
-            }
-            if (!failed) {
-              ASSERT_OK(conn.CommitTransaction());
-              std::this_thread::sleep_for(100ms);
-              break;
-            }
-          }
-        }
+        ASSERT_NO_FATALS(writer.Perform(conn));
       }
+      done = true;
     });
   }
-  while (counter.load() < 32) {
-    std::this_thread::sleep_for(10ms);
-  }
+  writer.WaitWritten(32);
   LOG(INFO) << "Started to create index";
   // TODO(vector_index) Switch to using CONCURRENT index creation when it will be ready.
   ASSERT_OK(conn_->Execute(
       "CREATE INDEX NONCONCURRENTLY ON test USING ybhnsw (embedding vector_l2_ops)"));
   LOG(INFO) << "Finished to create index";
-  auto limit = counter.load() + 32;
-  while (counter.load() < limit) {
-    std::this_thread::sleep_for(10ms);
-  }
+  writer.WaitWritten(32);
   thread_holder.Stop();
-  LOG(INFO) << "Max time without inserts: " << max_time_without_inserts;
-  ASSERT_LT(max_time_without_inserts, 1s * kBackfillSleepSec);
-  for (int i = 2; i < counter.load(); ++i) {
-    auto rows = ASSERT_RESULT(conn_->FetchAllAsString(Format(
-        "SELECT id FROM test ORDER BY embedding <-> '[$0]' LIMIT 3", i * 1.0 - 0.01)));
-    ASSERT_EQ(rows, Format("$0; $1; $2", i, i - 1, i + 1));
+  LOG(INFO) << "Max time without inserts: " << writer.max_time_without_inserts;
+  ASSERT_LT(writer.max_time_without_inserts, 1s * kBackfillSleepSec);
+  SCOPED_TRACE(Format("Total rows: $0", writer.counter.load()));
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    tserver::VerifyVectorIndexesRequestPB req;
+    tserver::VerifyVectorIndexesResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(30s);
+    auto proxy = cluster_->tablet_server(i)->Proxy<tserver::TabletServerServiceProxy>();
+    ASSERT_OK(proxy->VerifyVectorIndexes(req, &resp, &controller));
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
   }
+  writer.Verify(*conn_);
 }
 
 } // namespace yb::pgwrapper

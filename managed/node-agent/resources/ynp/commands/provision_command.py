@@ -191,7 +191,7 @@ class ProvisionCommand(Command):
         major_version = version.split('.')[0] if version else ""
 
         # Determine OS family
-        if distribution in {"rhel", "centos", "almalinux", "oraclelinux", "fedora"}:
+        if distribution in {"rhel", "centos", "almalinux", "ol", "fedora"}:
             os_family = OSFamily.REDHAT
         elif distribution in {"ubuntu", "debian"}:
             os_family = OSFamily.DEBIAN

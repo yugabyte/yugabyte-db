@@ -73,6 +73,7 @@
 
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
 using std::string;
@@ -205,18 +206,18 @@ class TsTabletManagerTest : public YBTest {
     tablet_manager_ = mini_server_->server()->tablet_manager();
   }
 
-  void AddTablets(size_t num, TSTabletManager::TabletPeers* peers = nullptr) {
+  // Return the actual size of peers if adding of `num` tablets was successful.
+  Result<size_t> AddTabletPeers(TSTabletManager::TabletPeers* peers, size_t num = 2) {
+    SCHECK_NOTNULL(peers);
+    SCHECK_NE(num, 0UL, InvalidArgument, "");
+
     // Add series of tablets
-    ASSERT_NE(num, 0);
     for (size_t i = 0; i < num; ++i) {
       std::shared_ptr<TabletPeer> peer;
-      const auto tid = Format("tablet-$0", peers->size());
-      ASSERT_OK(CreateNewTablet(kTableId, tid, schema_, &peer));
-      ASSERT_EQ(tid, peer->tablet()->tablet_id());
-      if (peers) {
-        peers->push_back(peer);
-      }
+      RETURN_NOT_OK(CreateNewTablet(kTableId, Format("tablet-$0", peers->size()), schema_, &peer));
+      peers->push_back(peer);
     }
+    return peers->size();
   }
 
   Result<TSTabletManager::TabletPeers> GetPeers(
@@ -646,121 +647,191 @@ void SetRateLimiterSharingMode(RateLimiterSharingMode mode) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_sharing_mode) = ToString(mode);
 }
 
-Result<size_t> CountUniqueLimiters(const TSTabletManager::TabletPeers& peers,
-                                   const size_t start_idx = 0) {
-  SCHECK_LT(start_idx, peers.size(), IllegalState,
-            "Start index must be less than number of peers");
-  std::unordered_set<rocksdb::RateLimiter*> unique;
-  for (size_t i = start_idx; i < peers.size(); ++i) {
-    auto db = peers[i]->tablet()->regular_db();
-    SCHECK_NOTNULL(db);
-    auto rl = db->GetDBOptions().rate_limiter.get();
-    if (rl) {
-      unique.insert(rl);
+Status SetRateLimiterBytesPerSec(int64_t bytes_per_sec) {
+  return SET_FLAG(rocksdb_compact_flush_rate_limit_bytes_per_sec, bytes_per_sec);
+}
+
+std::unordered_map<const rocksdb::RateLimiter*, int64_t> GetUniqueRateLimiterWithBurstBytes(
+    const TSTabletManager::TabletPeers& peers) {
+  std::unordered_map<const rocksdb::RateLimiter*, int64_t> result;
+  for (const auto& peer : peers) {
+    auto tablet_result = peer->shared_tablet_safe();
+    if (!tablet_result.ok()) {
+      LOG(INFO) << "Unable to get tablet: " << tablet_result.status();
+      continue;
+    }
+    auto tablet = *tablet_result;
+    for (auto db : {tablet->regular_db(), tablet->intents_db()}) {
+      if (db && db->GetDBOptions().rate_limiter) {
+        result.emplace(db->GetDBOptions().rate_limiter.get(),
+                       db->GetDBOptions().rate_limiter->GetSingleBurstBytes());
+      }
     }
   }
-  return unique.size();
+  return result;
+}
+
+Status CheckExpectedBurst(
+    const TSTabletManager::TabletPeers& peers,
+    size_t expected_num_limiters,
+    int64_t expected_burst = 0) {
+  auto burst_per_limiter = GetUniqueRateLimiterWithBurstBytes(peers);
+  SCHECK_EQ(expected_num_limiters, burst_per_limiter.size(), IllegalState, "Num limiters");
+  if (expected_num_limiters) {
+    SCHECK_GT(expected_burst, 0, InvalidArgument, "expected_burst");
+    for (const auto& it : burst_per_limiter) {
+      SCHECK_EQ(expected_burst, it.second,  IllegalState, "Burst");
+    }
+  }
+  return Status::OK();
+}
+
+std::string TransactToString(const testing::TestParamInfo<bool>& param_info) {
+  return param_info.param ? "Transactional" : "NonTransactional";
 }
 
 } // namespace
 
-TEST_F(TsTabletManagerTest, RateLimiterSharing) {
+class TsTabletManagerRateLimiterTest
+    : public TsTabletManagerTest,
+      public testing::WithParamInterface<bool> {
+ protected:
+  constexpr static int64_t kRateLimitBPS = 100_MB;
+
+  void SetUp() override {
+    schema_.mutable_table_properties()->SetTransactional(GetParam());
+    CHECK_OK(SetRateLimiterBytesPerSec(kRateLimitBPS));
+    SetRateLimiterSharingMode(RateLimiterSharingMode::NONE);
+
+    TsTabletManagerTest::SetUp();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(, TsTabletManagerRateLimiterTest, ::testing::Bool(), TransactToString);
+
+TEST_P(TsTabletManagerRateLimiterTest, SharingMode) {
   // The test checks rocksdb::RateLimiter is correctly shared between RocksDB instances
   // depending on the flags `FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec` and
   // `FLAGS_rocksdb_compact_flush_rate_limit_sharing_mode`, inlcuding possible effect
-  // of changing flags on-the-fly (emulating forced changed)
-
-  // No tablets exist, reset flags and reload
+  // of changing flags on-the-fly (emulating forced changed).
   size_t peers_num = 0;
-  constexpr auto kBPS = 128_MB;
-  SetRateLimiterSharingMode(RateLimiterSharingMode::NONE);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS;
-  ASSERT_NO_FATAL_FAILURE(Reload());
   TSTabletManager::TabletPeers peers = ASSERT_RESULT(GetPeers(peers_num));
 
-  // `NONE`: add tablets and make sure they have unique limiters
-  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
-  ASSERT_EQ(peers_num + 2, ASSERT_RESULT(CountUniqueLimiters(peers)));
-  peers_num = peers.size();
+  // `NONE`: add tablets and make sure they have unique limiters.
+  peers_num = ASSERT_RESULT(AddTabletPeers(&peers));
+  auto burst_per_limiter = GetUniqueRateLimiterWithBurstBytes(peers);
+  ASSERT_EQ(peers_num, burst_per_limiter.size());
+  const auto full_burst = burst_per_limiter.begin()->second; // Corresponds to kRateLimitBPS.
 
-  // `NONE`: emulating forced change for bps flag: make sure new unique limiters are created
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS / 2;
-  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
-  ASSERT_EQ(peers_num + 2, ASSERT_RESULT(CountUniqueLimiters(peers)));
-  peers_num = peers.size();
+  // `NONE`: emulating forced change for bps flag: make sure new unique limiters are created.
+  burst_per_limiter = GetUniqueRateLimiterWithBurstBytes(peers);
+  ASSERT_EQ(peers_num, burst_per_limiter.size());
+  ASSERT_OK(SetRateLimiterBytesPerSec(kRateLimitBPS / 2));
+  peers_num = ASSERT_RESULT(AddTabletPeers(&peers));
+  {
+    auto burst_per_limiter_old = burst_per_limiter;
+    burst_per_limiter = GetUniqueRateLimiterWithBurstBytes(peers);
+    ASSERT_EQ(peers_num, burst_per_limiter.size());
+    size_t match_count = 0;
+    for (const auto& it : burst_per_limiter) {
+      auto old = burst_per_limiter_old.find(it.first);
+      if (old == burst_per_limiter_old.end()) {
+        ASSERT_EQ(2 * it.second, full_burst);
+      } else {
+        ASSERT_EQ(2 * it.second, burst_per_limiter_old[it.first]);
+        ++match_count;
+      }
+    }
+    ASSERT_EQ(match_count, burst_per_limiter_old.size());
+  }
 
-  // `NONE`: emulating forced reset for bps flag: make sure new tablets are added with no limiters
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = 0;
-  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
-  ASSERT_EQ(0, ASSERT_RESULT(CountUniqueLimiters(peers, peers_num)));
-  peers_num = peers.size();
+  // `NONE`: emulating forced reset for bps flag: make sure new tablets are added with no limiters.
+  // Current peers should not change their limit.
+  ASSERT_OK(SetRateLimiterBytesPerSec(/* bytes_per_second = */ 0));
+  peers_num = ASSERT_RESULT(AddTabletPeers(&peers));
+  {
+    auto burst_per_limiter_old = burst_per_limiter;
+    burst_per_limiter = GetUniqueRateLimiterWithBurstBytes(peers);
+    ASSERT_EQ(burst_per_limiter_old.size(), burst_per_limiter.size());
+    for (const auto& it : burst_per_limiter) {
+      ASSERT_TRUE(burst_per_limiter_old.contains(it.first));
+      ASSERT_EQ(it.second, burst_per_limiter_old[it.first]);
+    }
+  }
 
-  // `NONE` + no bps: reload the cluster with bps flag unset to make sure no limiters are created
+  // `NONE` + no bps: reload the cluster with bps flag unset to make sure no limiters are created.
   ASSERT_NO_FATAL_FAILURE(Reload());
   peers = ASSERT_RESULT(GetPeers(peers_num));
-  ASSERT_EQ(0, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  ASSERT_OK(CheckExpectedBurst(peers, /* expected_num_limiters = */ 0));
 
-  // `NONE` + no bps: add tablets and make sure limiters are not created
-  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
-  ASSERT_EQ(0, ASSERT_RESULT(CountUniqueLimiters(peers)));
-  peers_num = peers.size();
+  // `NONE` + no bps: add tablets and make sure limiters are not created.
+  peers_num = ASSERT_RESULT(AddTabletPeers(&peers));
+  ASSERT_OK(CheckExpectedBurst(peers, /* expected_num_limiters = */ 0));
 
-  // `NONE`: reload the cluster with bps flag set and make sure all limiter are unique
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS;
+  // `NONE`: reload the cluster with bps flag set and make sure all limiters are unique.
+  ASSERT_OK(SetRateLimiterBytesPerSec(kRateLimitBPS));
   ASSERT_NO_FATAL_FAILURE(Reload());
   peers = ASSERT_RESULT(GetPeers(peers_num));
-  ASSERT_EQ(peers_num, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  ASSERT_OK(CheckExpectedBurst(peers, peers_num, full_burst));
 
-  // `NONE`: emulating forced change for mode flag: should act as if `NONE` is still set
+  // `NONE`: emulating forced change for mode flag: should act as if `NONE` is still set.
   SetRateLimiterSharingMode(RateLimiterSharingMode::TSERVER);
-  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
-  ASSERT_EQ(peers_num + 2, ASSERT_RESULT(CountUniqueLimiters(peers)));
-  peers_num = peers.size();
+  peers_num = ASSERT_RESULT(AddTabletPeers(&peers));
+  ASSERT_OK(CheckExpectedBurst(peers, peers_num, full_burst));
 
-  // `TSERVER`: reload the cluster to apply `TSERVER` sharing mode
-  // and make sure all tablets share the same rate limiter
+  // `NONE`: emulating forced change for both flags: should act as if `NONE` is still set.
+  ASSERT_OK(SetRateLimiterBytesPerSec(kRateLimitBPS / 2));
+  peers_num = ASSERT_RESULT(AddTabletPeers(&peers));
+  ASSERT_OK(CheckExpectedBurst(peers, peers_num, full_burst / 2));
+
+  // `TSERVER`: reload the cluster to apply `TSERVER` sharing mode and make sure all tablets
+  // share the same rate limiter.
   ASSERT_NO_FATAL_FAILURE(Reload());
   peers = ASSERT_RESULT(GetPeers(peers_num));
-  ASSERT_EQ(1, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  burst_per_limiter = GetUniqueRateLimiterWithBurstBytes(peers);
+  ASSERT_OK(CheckExpectedBurst(peers, /* expected_num_limiters = */ 1, full_burst / 2));
 
-  // `TSERVER`: emulating forced change for bps flag: make sure this has no effect on sharing
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS / 2;
-  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
-  ASSERT_EQ(1, ASSERT_RESULT(CountUniqueLimiters(peers)));
-  peers_num = peers.size();
+  // `TSERVER`: emulating forced change for bps flag: make sure this has no effect on sharing.
+  ASSERT_OK(SetRateLimiterBytesPerSec(kRateLimitBPS));
+  peers_num = ASSERT_RESULT(AddTabletPeers(&peers));
+  ASSERT_OK(CheckExpectedBurst(peers, /* expected_num_limiters = */ 1, full_burst));
 
-  // `TSERVER`: emulating forced reset for bps flag: make sure this has no effect on sharing
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = 0;
-  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
-  ASSERT_EQ(1, ASSERT_RESULT(CountUniqueLimiters(peers)));
-  peers_num = peers.size();
+  // `TSERVER`: emulating forced reset for bps flag: make sure this has no effect on sharing.
+  ASSERT_OK(SetRateLimiterBytesPerSec(/* bytes_per_second = */ 0));
+  peers_num = ASSERT_RESULT(AddTabletPeers(&peers));
+  ASSERT_OK(CheckExpectedBurst(peers, /* expected_num_limiters = */ 1, full_burst));
 
-  // `TSERVER`: emulating forced change for mode flag:
-  // should act as if `TSERVER` is still set
+  // `TSERVER`: emulating forced change for mode flag: should act as if `TSERVER` is still set.
   SetRateLimiterSharingMode(RateLimiterSharingMode::NONE);
-  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
-  ASSERT_EQ(1, ASSERT_RESULT(CountUniqueLimiters(peers)));
-  peers_num = peers.size();
+  peers_num = ASSERT_RESULT(AddTabletPeers(&peers));
+  ASSERT_OK(CheckExpectedBurst(peers, /* expected_num_limiters = */ 1, full_burst));
 
-  // `TSERVER` + no bps: reload the cluster
-  //  with bps flag unset to make sure no limiters are created
+  // `TSERVER` + no bps: reload the cluster with bps flag unset: no limiters are created.
   SetRateLimiterSharingMode(RateLimiterSharingMode::TSERVER);
   ASSERT_NO_FATAL_FAILURE(Reload());
   peers = ASSERT_RESULT(GetPeers(peers_num));
-  ASSERT_EQ(0, ASSERT_RESULT(CountUniqueLimiters(peers)));
+  ASSERT_OK(CheckExpectedBurst(peers, /* expected_num_limiters = */ 0));
 
-  // `TSERVER` + no bps: add tablets and make sure no limiters are created
-  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
-  ASSERT_EQ(0, ASSERT_RESULT(CountUniqueLimiters(peers)));
-  peers_num = peers.size();
+  // `TSERVER` + no bps: add tablets and make sure no limiters are created.
+  peers_num = ASSERT_RESULT(AddTabletPeers(&peers));
+  ASSERT_OK(CheckExpectedBurst(peers, /* expected_num_limiters = */ 0));
 
-  // `TSERVER` + no bps: emulating forced change for both flags:
-  // should act as a `NONE` is applied with some bps set
+  // `TSERVER` + no bps: emulating forced change for both flags: should act as if `NONE`
+  // is applied with some bps set.
   SetRateLimiterSharingMode(RateLimiterSharingMode::NONE);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS;
-  ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
-  ASSERT_EQ(2, ASSERT_RESULT(CountUniqueLimiters(peers, peers_num)));
-  peers_num = peers.size();
+  ASSERT_OK(SetRateLimiterBytesPerSec(kRateLimitBPS));
+  peers_num = ASSERT_RESULT(AddTabletPeers(&peers));
+  ASSERT_OK(CheckExpectedBurst(peers, /* expected_num_limiters = */ 2, full_burst));
+
+  // Get back to shared rate limiter.
+  SetRateLimiterSharingMode(RateLimiterSharingMode::TSERVER);
+  ASSERT_NO_FATAL_FAILURE(Reload());
+  peers = ASSERT_RESULT(GetPeers(peers_num));
+
+  // Covering the case for forced change of sharing mode without restart.
+  SetRateLimiterSharingMode(RateLimiterSharingMode::NONE);
+  ASSERT_OK(SetRateLimiterBytesPerSec(kRateLimitBPS / 2));
+  ASSERT_OK(CheckExpectedBurst(peers, /* expected_num_limiters = */ 1, full_burst / 2));
 }
 
 TEST_F(TsTabletManagerTest, DataAndWalFilesLocations) {

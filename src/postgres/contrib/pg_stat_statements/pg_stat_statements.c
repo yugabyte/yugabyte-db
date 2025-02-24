@@ -1768,6 +1768,10 @@ pgss_store(const char *query, uint64 queryId,
 	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
 #endif
 
+	if (yb_enable_query_diagnostics && !jstate)
+		YbQueryDiagnosticsAccumulatePgss(queryId, (YbQdPgssStoreKind) kind,
+										 total_time, rows, bufusage, walusage, jitusage);
+
 	/* Set up key for hashtable search */
 
 	/* memset() is required when pgssHashKey is without padding only */

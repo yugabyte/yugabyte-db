@@ -133,7 +133,7 @@ class CALL_GTEST_TEST_CLASS_NAME_(MasterPartitionedTest, VerifyOldLeaderStepsDow
 namespace tablet {
 
 struct TableInfo;
-enum RaftGroupStatePB;
+enum RaftGroupStatePB : int;
 
 }
 

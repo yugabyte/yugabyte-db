@@ -263,6 +263,10 @@ class VectorIndexImpl : public VectorIndex {
     return name_;
   }
 
+  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const override {
+    return lsm_.HasVectorId(vector_id);
+  }
+
  private:
   std::string DirName() const {
     return kVectorIndexDirPrefix + table_id_;

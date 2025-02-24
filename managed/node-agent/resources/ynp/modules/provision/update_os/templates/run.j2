@@ -96,12 +96,12 @@ if [[ {{ os_family }} == RedHat && {{ os_version }} != 7 && {{ is_airgap }} == '
 fi
 
 # Accept target in firewalld on Oracle Linux
-if [[ {{ os_distribution }} == oraclelinux ]]; then
+if [[ {{ os_distribution }} == ol ]]; then
   firewall-cmd --set-target=ACCEPT --permanent && systemctl restart firewalld
 fi
 
 # Clean dnf and reinstall SELinux policy on Oracle Linux 8
-if [[ {{ os_distribution }} == oraclelinux && {{ os_version }} == 8 && {{ is_airgap }} == 'False' ]]; then
+if [[ {{ os_distribution }} == ol && {{ os_version }} == 8 && {{ is_airgap }} == 'False' ]]; then
   dnf clean all
   for i in {1..10}; do
     dnf reinstall --refresh -y selinux-policy && break || sleep 5

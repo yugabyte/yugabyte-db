@@ -213,6 +213,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           createLoadBalancerMap(taskParams(), null, null, null);
       createManageLoadBalancerTasks(loadBalancerMap);
 
+      // Marks the update of this universe as a success only if all the tasks before it succeeded.
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {

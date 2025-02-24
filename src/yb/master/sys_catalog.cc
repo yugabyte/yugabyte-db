@@ -824,7 +824,7 @@ Status SysCatalogTable::GetTableSchema(
     QLValue found_entry_type, entry_id, metadata;
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
     SCHECK_EQ(
-        found_entry_type.int8_value(), SysRowEntryType::TABLE, Corruption,
+        SysRowEntryType(found_entry_type.int8_value()), SysRowEntryType::TABLE, Corruption,
         "Found wrong entry type");
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
     const Slice& entry_id_value = entry_id.binary_value();

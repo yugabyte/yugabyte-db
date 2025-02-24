@@ -80,7 +80,7 @@ std::vector<xrepl::StreamTabletStats> StreamMetadata::GetAllStreamTabletStats(
     stat.stream_id_str = stream_id.ToString();
     stat.producer_tablet_id = tablet_id;
     stat.producer_table_id = table_ids.size() == 1 ? table_ids[0] : yb::AsString(table_ids);
-    stat.state = SysCDCStreamEntryPB_State_Name(state_);
+    stat.state = SysCDCStreamEntryPB_State_Name(state_.load());
     metadata->PopulateStats(&stat);
 
     result.emplace_back(std::move(stat));

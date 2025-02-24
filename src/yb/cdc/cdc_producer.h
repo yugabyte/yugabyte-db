@@ -42,13 +42,31 @@ struct SchemaDetails {
 // We will maintain a map for each stream, tablet pait. The schema details will correspond to the
 // the current 'running' schema.
 using SchemaDetailsMap = std::map<TableId, SchemaDetails>;
+using consensus::HaveMoreMessages;
 
 struct CDCThroughputMetrics {
   uint64_t records_sent = 0;
   uint64_t bytes_sent = 0;
 };
 
+using UpdateOnSplitOpFunc = std::function<Status(const consensus::ReplicateMsg&)>;
+
 class StreamMetadata;
+
+struct XClusterGetChangesContext {
+  const xrepl::StreamId& stream_id;
+  const TabletId&  tablet_id;
+  const OpId& from_op_id;
+  const std::shared_ptr<tablet::TabletPeer>& tablet_peer;
+  UpdateOnSplitOpFunc update_on_split_op_func;
+  const MemTrackerPtr& mem_tracker;
+  const CoarseTimePoint& deadline;
+  StreamMetadata* stream_metadata;
+  consensus::ReplicateMsgsHolder* msgs_holder;
+  GetChangesResponsePB* resp;
+  HaveMoreMessages* have_more_messages;
+  int64_t* last_readable_opid_index;
+};
 
 Status GetChangesForCDCSDK(
     const xrepl::StreamId& stream_id,
@@ -77,19 +95,6 @@ Status GetChangesForCDCSDK(
 
 bool IsReplicationSlotStream(const StreamMetadata& stream_metadata);
 
-using UpdateOnSplitOpFunc = std::function<Status(const consensus::ReplicateMsg&)>;
-
-Status GetChangesForXCluster(
-    const xrepl::StreamId& stream_id,
-    const TabletId& tablet_id,
-    const OpId& op_id,
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    UpdateOnSplitOpFunc update_on_split_op_func,
-    const std::shared_ptr<MemTracker>& mem_tracker,
-    const CoarseTimePoint& deadline,
-    StreamMetadata* stream_metadata,
-    consensus::ReplicateMsgsHolder* msgs_holder,
-    GetChangesResponsePB* resp,
-    int64_t* last_readable_opid_index = nullptr);
+Status GetChangesForXCluster(const XClusterGetChangesContext& context);
 }  // namespace cdc
 }  // namespace yb

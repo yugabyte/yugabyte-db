@@ -24,6 +24,8 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -76,6 +78,8 @@ public class PlatformReplicationManager {
 
   private final ConfigHelper configHelper;
 
+  private final RuntimeConfGetter confGetter;
+
   private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
 
   public static final Gauge HA_LAST_BACKUP_TIME =
@@ -93,12 +97,14 @@ public class PlatformReplicationManager {
       PlatformReplicationHelper replicationHelper,
       FileDataService fileDataService,
       PrometheusConfigHelper prometheusConfigHelper,
-      ConfigHelper configHelper) {
+      ConfigHelper configHelper,
+      RuntimeConfGetter confGetter) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.fileDataService = fileDataService;
     this.prometheusConfigHelper = prometheusConfigHelper;
     this.configHelper = configHelper;
+    this.confGetter = confGetter;
     this.schedule = new AtomicReference<>();
   }
 
@@ -762,7 +768,7 @@ public class PlatformReplicationManager {
         commandArgs.addAll(getYbaInstallerArgs());
         commandArgs.add("--destination");
         commandArgs.add(replicationHelper.getBaseInstall());
-      } else {
+      } else if (confGetter.getGlobalConf(GlobalConfKeys.k8sYbaRestoreSkipDumpFileDelete)) {
         commandArgs.add("--skip_dump_file_delete");
       }
 

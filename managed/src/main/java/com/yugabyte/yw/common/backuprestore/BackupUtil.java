@@ -164,18 +164,22 @@ public class BackupUtil {
   }
 
   public static long getMinRecoveryTimeForSchedule(
-      List<SnapshotInfo> snapshotInfoList, long retentionPeriodInSeconds) {
-    Optional<SnapshotInfo> oldestSuccessfulSnaptshoScheduletOptional =
+      List<SnapshotInfo> snapshotInfoList, PitrConfig pitrConfig) {
+    Optional<SnapshotInfo> oldestSuccessfulSnapshotScheduleOptional =
         snapshotInfoList.stream()
-            .filter(
-                i ->
-                    i.getState().equals(State.COMPLETE)
-                        && (i.getSnapshotTime()
-                            >= System.currentTimeMillis() - (retentionPeriodInSeconds * 1000L)))
+            .filter(i -> i.getState().equals(State.COMPLETE))
             .sorted(Comparator.comparing(SnapshotInfo::getSnapshotTime))
             .findFirst();
-    if (oldestSuccessfulSnaptshoScheduletOptional.isPresent()) {
-      return oldestSuccessfulSnaptshoScheduletOptional.get().getSnapshotTime();
+    if (oldestSuccessfulSnapshotScheduleOptional.isPresent()) {
+      SnapshotInfo oldestSuccessfulSnapshot = oldestSuccessfulSnapshotScheduleOptional.get();
+      long currentTimeMillis = System.currentTimeMillis();
+      return oldestSuccessfulSnapshot.getPreviousSnapshotTime() == 0L
+          ? Math.max(
+              currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
+              pitrConfig.getCreateTime().getTime())
+          : Math.max(
+              currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
+              oldestSuccessfulSnapshot.getPreviousSnapshotTime());
     }
     return 0L;
   }

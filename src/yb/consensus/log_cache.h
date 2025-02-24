@@ -65,8 +65,6 @@
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status_callback.h"
 
-YB_STRONGLY_TYPED_BOOL(HaveMoreMessages);
-
 namespace yb {
 
 class MetricEntity;

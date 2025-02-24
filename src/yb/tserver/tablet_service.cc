@@ -88,6 +88,7 @@
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
@@ -3521,6 +3522,19 @@ void TabletServiceAdminImpl::TestRetry(
 }
 
 void TabletServiceImpl::Shutdown() {
+}
+
+Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
+    const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) {
+  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  for (auto& peer : tablet_peers) {
+    auto tablet = peer->shared_tablet();
+    if (!tablet) {
+      continue;
+    }
+    RETURN_NOT_OK(tablet->vector_indexes().Verify());
+  }
+  return VerifyVectorIndexesResponsePB();
 }
 
 }  // namespace yb::tserver

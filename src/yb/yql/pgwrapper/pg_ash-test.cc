@@ -696,27 +696,51 @@ TEST_F(PgBgWorkersTest, ValidateIdleWaitEventsNotPresent) {
 }
 
 TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
-  GTEST_SKIP() << "Skipping until #26012 is done";
-  constexpr auto kSleepTime = 5;
   constexpr auto kDefaultQueryId = 5;
   constexpr auto kBgWorkerQueryId = 7;
+  constexpr auto kTableName = "test_table";
+  const auto insert_query = Format(
+      "INSERT INTO $0 VALUES (1)", kTableName);
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn_->Execute(insert_query));
+
+  const auto queryid = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT%'"));
 
   // start the query diagnostics worker for a random query id
   ASSERT_OK(conn_->FetchFormat(
-      "SELECT yb_query_diagnostics(query_id => 100, "
-      "diagnostics_interval_sec => $0)",
-      2 * kSleepTime));
+      "SELECT yb_query_diagnostics(query_id => $0, "
+      "diagnostics_interval_sec => 10)", queryid));
 
-  // let ASH collect some samples
-  SleepFor(kSleepTime * 1s);
+  // keep executing insert query
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(), &insert_query]() {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!stop) {
+      ASSERT_OK(conn.Execute(insert_query));
+      SleepFor(30ms);
+    }
+  });
 
-  // get the query diagnostics bg worker pid
-  const auto pid = ASSERT_RESULT(conn_->FetchRow<int32_t>(
-      "SELECT pid FROM pg_stat_activity WHERE backend_type = "
-      "'yb_query_diagnostics bgworker'"));
+  int pid = 0;
 
-  // let ASH collect some more samples
-  SleepFor((kSleepTime + 1) * 1s);
+  ASSERT_OK(WaitFor([this, &pid]() -> Result<bool> {
+    auto rows = VERIFY_RESULT((conn_->FetchRows<int32_t>(
+        "SELECT pid FROM pg_stat_activity WHERE backend_type = "
+        "'yb_query_diagnostics bgworker'")));
+    if (!rows.empty()) {
+      pid = rows[0];
+      return true;
+    }
+    return false;
+  }, 30s, "Wait for query diagnostics bg worker"));
+
+  ASSERT_NE(pid, 0);
+
+  // wait for ASH samples
+  SleepFor(10s);
 
   constexpr auto kQueryString =
       "SELECT COUNT(*) FROM yb_active_session_history WHERE "

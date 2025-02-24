@@ -24,7 +24,8 @@ if ! [[ "$1" =~ /yb[^/]+$ ]]; then
   exit 1
 fi
 
-if ! [[ "$1" =~ (expected/[^/]+\.out|specs/[^/]+\.spec|sql/[^/]+\.sql)$ ]]; then
+if ! [[ "$1" =~ (expected/[^/]+\.out|specs/[^/]+\.spec|sql/[^/]+\.sql|\
+pg_partman/test/.*\.sql)$ ]]; then
   echo 'error:bad_regress_test_file_extension:'\
 "${1##*/} has unexpected extension:1:$(head -1 "$1")"
 fi

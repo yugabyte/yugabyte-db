@@ -2878,7 +2878,7 @@ TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, RocksDBTest) {
 
     // Set rate for last file flush to take about 1 second.
     LOG(INFO) << "Last SST size: " << last_sst_size;
-    rate_limiter->SetBytesPerSecond(last_sst_size);
+    ASSERT_OK(rate_limiter->SetBytesPerSecond(last_sst_size));
 
     std::vector<std::thread> threads;
     std::atomic<size_t> manual_compactions_finished{0};
@@ -2922,7 +2922,7 @@ TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, RocksDBTest) {
     ASSERT_EQ(down_cast<DBImpl*>(dbs[0].db.get())->TEST_NumTotalRunningCompactions(), 1)
         << "First compaction should be still running";
 
-    rate_limiter->SetBytesPerSecond(kMaxCompactFlushRate);
+    ASSERT_OK(rate_limiter->SetBytesPerSecond(kMaxCompactFlushRate));
 
     ASSERT_OK(yb::LoggedWaitFor(
         [&manual_compactions_finished] { return manual_compactions_finished == 2; }, kTimeout,

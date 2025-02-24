@@ -46,6 +46,9 @@
 #include "utils/rel.h"
 #include "utils/typcache.h"
 
+/* YB includes */
+#include "utils/syscache.h"
+
 #define EXPECT_TRUE(expr)	\
 	do { \
 		if (!(expr)) \
@@ -1316,4 +1319,136 @@ yb_run_spi(PG_FUNCTION_ARGS)
 	SPI_finish();
 
 	PG_RETURN_INT64(return_count);
+}
+
+/*
+ * Set-returning function to return information about the catalog caches.
+ *
+ * Used in tests to verify the catalog cache has not been unexpectedly modified.
+ */
+PG_FUNCTION_INFO_V1(yb_cacheinfo);
+Datum
+yb_cacheinfo(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		TupleDesc	tupdesc;
+		MemoryContext oldcontext;
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/*
+		 * Switch to memory context appropriate for multiple function calls
+		 */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		/*
+		 * Build a tuple descriptor for our result rows.
+		 * We'll return:
+		 *   cache_id (int4)
+		 *   name     (text)
+		 *   reloid   (oid)
+		 *   indoid   (oid)
+		 *   nkeys    (int4)
+		 *   key1     (int4)
+		 *   key2     (int4)
+		 *   key3     (int4)
+		 *   key4     (int4)
+		 *   nbuckets (int4)
+		 */
+		tupdesc = CreateTemplateTupleDesc(10);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "cache_id", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "name",     TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "reloid",   OIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "indoid",   OIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "nkeys",    INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "key1",     INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "key2",     INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "key3",     INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "key4",     INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "nbuckets", INT4OID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		/*
+		 * Store the array length so we know how many times to iterate.
+		 */
+		funcctx->max_calls = SysCacheSize;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	/* stuff done on every call of the function */
+	funcctx = SRF_PERCALL_SETUP();
+
+	if (funcctx->call_cntr < funcctx->max_calls)
+	{
+		Datum		values[10];
+		bool		nulls[10];
+		HeapTuple	tuple;
+		Datum		result;
+
+		/* Clear null flags */
+		MemSet(nulls, false, sizeof(nulls));
+
+		/* Fill values from cacheinfo */
+		YbCopyCacheInfoToValues(funcctx->call_cntr, values);
+
+		/* Build tuple and convert to datum */
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+
+	SRF_RETURN_DONE(funcctx);
+}
+
+/*
+ * Helper to extract the cache id + up to 4 key attributes from the passed-in record,
+ * then compute the hash value.
+ */
+PG_FUNCTION_INFO_V1(catalog_cache_compute_hash_tuple);
+Datum
+catalog_cache_compute_hash_tuple(PG_FUNCTION_ARGS)
+{
+	Datum *values;
+	bool *nulls;
+	HeapTupleData tmptup;
+
+	/*
+	 * If the argument is NULL (e.g. SELECT catalog_cache_compute_hash_tuple(NULL)),
+	 * we'll just return NULL.
+	 */
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	/*
+	 * Extract the tuple argument.
+	 */
+	HeapTupleHeader td = PG_GETARG_HEAPTUPLEHEADER(0);
+
+	/*
+	 * From the tuple header, fetch the rowtype's OID and typmod so we can look up
+	 * its TupleDesc (layout info).
+	 */
+	Oid tupType = HeapTupleHeaderGetTypeId(td);
+	int32 tupTypmod = HeapTupleHeaderGetTypMod(td);
+	TupleDesc tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+	tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
+	ItemPointerSetInvalid(&(tmptup.t_self));
+	tmptup.t_tableOid = InvalidOid;
+	tmptup.t_data = td;
+
+	/* Deform the tuple into a Datum array so we can pass the keys to the hash function. */
+	values = (Datum *) palloc0(sizeof(Datum) * tupdesc->natts);
+	nulls  = (bool *)  palloc0(sizeof(bool)  * tupdesc->natts);
+	heap_deform_tuple(&tmptup, tupdesc, values, nulls);
+
+	/* Compute the hash value. */
+	uint32 hashval = YbSysCacheComputeHashValue(values[0], values[1], values[2], values[3], values[4]);
+
+	ReleaseTupleDesc(tupdesc);
+	PG_RETURN_UINT32(hashval);
 }

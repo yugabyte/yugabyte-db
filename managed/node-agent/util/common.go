@@ -135,13 +135,14 @@ func ExtractBaseURL(value string) (string, error) {
 	var baseUrl string
 	if parsedUrl.Port() == "" {
 		baseUrl = fmt.Sprintf("%s://%s", parsedUrl.Scheme, parsedUrl.Hostname())
+	} else {
+		baseUrl = fmt.Sprintf(
+			"%s://%s:%s",
+			parsedUrl.Scheme,
+			parsedUrl.Hostname(),
+			parsedUrl.Port(),
+		)
 	}
-	baseUrl = fmt.Sprintf(
-		"%s://%s:%s",
-		parsedUrl.Scheme,
-		parsedUrl.Hostname(),
-		parsedUrl.Port(),
-	)
 	return baseUrl, nil
 }
 

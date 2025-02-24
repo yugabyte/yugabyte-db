@@ -302,6 +302,9 @@ class Tablet : public AbstractTablet,
   // If abort_ops is specified, aborts pending RocksDB operations that are abortable.
   void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
+  // Triggered by a corresponding tablet peer when it has been moved into RUNNING state.
+  Status CompleteStartup();
+
   Status ImportData(const std::string& source_dir);
 
   docdb::ApplyTransactionState ApplyIntents(const TransactionApplyData& data) override;
@@ -978,6 +981,11 @@ class Tablet : public AbstractTablet,
   void TEST_SleepBeforeApplyIntents(MonoDelta value) {
     TEST_sleep_before_apply_intents_ = value;
   }
+
+  // Reads the current value of FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and
+  // updates both regular db and intents db rate limiter speed.
+  void RefreshCompactFlushRateLimitBytesPerSec();
+  void SetCompactFlushRateLimitBytesPerSec(int64_t bytes_per_sec);
 
  private:
   friend class Iterator;
