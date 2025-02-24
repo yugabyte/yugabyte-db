@@ -341,16 +341,15 @@ mod tests {
     }
 
     #[pg_test]
-    #[should_panic(expected = "unsupported s3 uri")]
+    #[should_panic(expected = "relative path not allowed")]
     fn test_s3_unsupported_uri() {
         object_store_cache_clear();
 
-        let cloudflare_s3_uri = "https://ACCOUNT_ID.r2.cloudflarestorage.com/bucket".into();
+        let create_table = "create table test_table(id int);";
+        Spi::run(create_table).unwrap();
 
-        let test_table = TestTable::<i32>::new("int4".into()).with_uri(cloudflare_s3_uri);
-
-        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
-        test_table.assert_expected_and_result_rows();
+        Spi::run("copy test_table to 'https://ACCOUNT_ID.r2.cloudflarestorage.com/bucket';")
+            .unwrap();
     }
 
     #[pg_test]
@@ -621,38 +620,58 @@ mod tests {
     }
 
     #[pg_test]
-    #[should_panic(expected = "unsupported azure blob storage uri")]
+    #[should_panic(expected = "could not open file")]
     fn test_azure_unsupported_uri() {
         object_store_cache_clear();
 
-        let fabric_azure_blob_uri = "https://ACCOUNT.dfs.fabric.microsoft.com".into();
+        let create_table = "create table test_table(id int);";
+        Spi::run(create_table).unwrap();
 
-        let test_table = TestTable::<i32>::new("int4".into()).with_uri(fabric_azure_blob_uri);
-
-        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
-        test_table.assert_expected_and_result_rows();
+        Spi::run("copy test_table from 'https://ACCOUNT.dfs.fabric.microsoft.com';").unwrap();
     }
 
     #[pg_test]
-    #[should_panic(expected = "unsupported scheme gs in uri gs://testbucket")]
-    fn test_unsupported_uri() {
+    #[should_panic(expected = "relative path not allowed")]
+    fn test_copy_to_unsupported_scheme() {
         object_store_cache_clear();
 
-        let test_table =
-            TestTable::<i32>::new("int4".into()).with_uri("gs://testbucket".to_string());
-        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
-        test_table.assert_expected_and_result_rows();
+        let create_table = "create table test_table(id int);";
+        Spi::run(create_table).unwrap();
+
+        Spi::run("copy test_table to 'gs://testbucket/dummy.parquet';").unwrap();
     }
 
     #[pg_test]
-    #[should_panic(expected = "unrecognized uri dummy://testbucket")]
-    fn test_unrecognized_uri() {
+    #[should_panic(expected = "relative path not allowed")]
+    fn test_copy_to_unrecognized_scheme() {
         object_store_cache_clear();
 
-        let test_table =
-            TestTable::<i32>::new("int4".into()).with_uri("dummy://testbucket".to_string());
-        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
-        test_table.assert_expected_and_result_rows();
+        let create_table = "create table test_table(id int);";
+        Spi::run(create_table).unwrap();
+
+        Spi::run("copy test_table to 'dummy://testbucket/dummy.parquet';").unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "relative path not allowed")]
+    fn test_copy_to_non_parquet_uri() {
+        object_store_cache_clear();
+
+        let create_table = "create table test_table(id int);";
+        Spi::run(create_table).unwrap();
+
+        Spi::run("copy test_table to 's3://testbucket/dummy.csv';").unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "could not open file")]
+    fn test_copy_from_non_parquet_uri() {
+        object_store_cache_clear();
+
+        let create_table = "create table test_table(id int);";
+        Spi::run(create_table).unwrap();
+
+        Spi::run("copy test_table from 's3://testbucket/dummy.csv';").unwrap();
     }
 
     #[pg_test]

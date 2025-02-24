@@ -10,10 +10,9 @@ use pgrx::{
     },
     void_mut_ptr, PgBox, PgLogLevel, PgRelation, PgSqlErrorCode,
 };
-use url::Url;
 
 use crate::{
-    arrow_parquet::parquet_reader::ParquetReaderContext,
+    arrow_parquet::{parquet_reader::ParquetReaderContext, uri_utils::ParsedUriInfo},
     parquet_copy_hook::copy_utils::{
         copy_from_stmt_create_option_list, copy_stmt_lock_mode, copy_stmt_relation_oid,
     },
@@ -114,7 +113,7 @@ pub(crate) fn execute_copy_from(
     p_stmt: &PgBox<PlannedStmt>,
     query_string: &CStr,
     query_env: &PgBox<QueryEnvironment>,
-    uri: Url,
+    uri_info: ParsedUriInfo,
 ) -> u64 {
     let rel_oid = copy_stmt_relation_oid(p_stmt);
 
@@ -142,7 +141,7 @@ pub(crate) fn execute_copy_from(
 
     unsafe {
         // parquet reader context is used throughout the COPY FROM operation.
-        let parquet_reader_context = ParquetReaderContext::new(uri, match_by, &tupledesc);
+        let parquet_reader_context = ParquetReaderContext::new(uri_info, match_by, &tupledesc);
         push_parquet_reader_context(parquet_reader_context);
 
         // makes sure to set binary format

@@ -8,7 +8,6 @@ use parquet::{
     format::KeyValue,
 };
 use pgrx::{heap_tuple::PgHeapTuple, AllocatedByRust, PgTupleDesc};
-use url::Url;
 
 use crate::{
     arrow_parquet::{
@@ -27,7 +26,10 @@ use crate::{
     PG_BACKEND_TOKIO_RUNTIME,
 };
 
-use super::pg_to_arrow::{context::PgToArrowAttributeContext, to_arrow_array};
+use super::{
+    pg_to_arrow::{context::PgToArrowAttributeContext, to_arrow_array},
+    uri_utils::ParsedUriInfo,
+};
 
 pub(crate) const DEFAULT_ROW_GROUP_SIZE: i64 = 122880;
 pub(crate) const DEFAULT_ROW_GROUP_SIZE_BYTES: i64 = DEFAULT_ROW_GROUP_SIZE * 1024;
@@ -40,7 +42,7 @@ pub(crate) struct ParquetWriterContext {
 
 impl ParquetWriterContext {
     pub(crate) fn new(
-        uri: Url,
+        uri_info: ParsedUriInfo,
         compression: PgParquetCompression,
         compression_level: i32,
         tupledesc: &PgTupleDesc,
@@ -62,7 +64,7 @@ impl ParquetWriterContext {
 
         let writer_props = Self::writer_props(tupledesc, compression, compression_level);
 
-        let parquet_writer = parquet_writer_from_uri(&uri, schema.clone(), writer_props);
+        let parquet_writer = parquet_writer_from_uri(uri_info, schema.clone(), writer_props);
 
         let attribute_contexts =
             collect_pg_to_arrow_attribute_contexts(&attributes, &schema.fields);

@@ -49,17 +49,19 @@ fn process_copy_to_parquet(
     params: &PgBox<ParamListInfoData>,
     query_env: &PgBox<QueryEnvironment>,
 ) -> u64 {
-    let uri = copy_stmt_uri(p_stmt).expect("uri is None");
+    let uri_info = copy_stmt_uri(p_stmt).unwrap_or_else(|e| panic!("{}", e));
+
+    let uri = uri_info.uri.clone();
 
     let copy_from = false;
     ensure_access_privilege_to_uri(&uri, copy_from);
 
-    validate_copy_to_options(p_stmt, &uri);
+    validate_copy_to_options(p_stmt, uri_info.clone());
 
     let row_group_size = copy_to_stmt_row_group_size(p_stmt);
     let row_group_size_bytes = copy_to_stmt_row_group_size_bytes(p_stmt);
-    let compression = copy_to_stmt_compression(p_stmt, uri.clone());
-    let compression_level = copy_to_stmt_compression_level(p_stmt, uri.clone());
+    let compression = copy_to_stmt_compression(p_stmt, uri_info.clone());
+    let compression_level = copy_to_stmt_compression_level(p_stmt, uri_info.clone());
 
     let parquet_dest = create_copy_to_parquet_dest_receiver(
         uri_as_string(&uri).as_pg_cstr(),
@@ -91,14 +93,16 @@ fn process_copy_from_parquet(
     query_string: &CStr,
     query_env: &PgBox<QueryEnvironment>,
 ) -> u64 {
-    let uri = copy_stmt_uri(p_stmt).expect("uri is None");
+    let uri_info = copy_stmt_uri(p_stmt).unwrap_or_else(|e| panic!("{}", e));
+
+    let uri = uri_info.uri.clone();
 
     let copy_from = true;
     ensure_access_privilege_to_uri(&uri, copy_from);
 
     validate_copy_from_options(p_stmt);
 
-    PgTryBuilder::new(|| execute_copy_from(p_stmt, query_string, query_env, uri))
+    PgTryBuilder::new(|| execute_copy_from(p_stmt, query_string, query_env, uri_info))
         .catch_others(|cause| {
             // make sure to pop the parquet reader context
             // In case we did not push the context, we should not throw an error while popping

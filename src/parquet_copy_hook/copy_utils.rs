@@ -18,14 +18,14 @@ use crate::{
         compression::{all_supported_compressions, PgParquetCompression},
         match_by::MatchBy,
         parquet_writer::{DEFAULT_ROW_GROUP_SIZE, DEFAULT_ROW_GROUP_SIZE_BYTES},
-        uri_utils::parse_uri,
+        uri_utils::ParsedUriInfo,
     },
     pgrx_utils::extension_exists,
 };
 
 use super::{hook::ENABLE_PARQUET_COPY_HOOK, pg_compat::strVal};
 
-pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri: &Url) {
+pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri_info: ParsedUriInfo) {
     validate_copy_option_names(
         p_stmt,
         &[
@@ -106,7 +106,7 @@ pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri: &Url) {
     if !compression_level_option.is_null() {
         let compression_level = unsafe { defGetInt32(compression_level_option.as_ptr()) };
 
-        let compression = copy_to_stmt_compression(p_stmt, uri.clone());
+        let compression = copy_to_stmt_compression(p_stmt, uri_info);
 
         compression.ensure_compression_level(compression_level);
     }
@@ -162,15 +162,15 @@ fn validate_copy_option_names(p_stmt: &PgBox<PlannedStmt>, allowed_options: &[&s
     }
 }
 
-pub(crate) fn copy_stmt_uri(p_stmt: &PgBox<PlannedStmt>) -> Option<Url> {
+pub(crate) fn copy_stmt_uri(p_stmt: &PgBox<PlannedStmt>) -> Result<ParsedUriInfo, String> {
     let copy_stmt = unsafe { PgBox::<CopyStmt>::from_pg(p_stmt.utilityStmt as _) };
 
     if copy_stmt.is_program {
-        return None;
+        return Err("program is not supported".to_string());
     }
 
     if copy_stmt.filename.is_null() {
-        return None;
+        return Err("filename is not specified".to_string());
     }
 
     let uri = unsafe {
@@ -179,7 +179,7 @@ pub(crate) fn copy_stmt_uri(p_stmt: &PgBox<PlannedStmt>) -> Option<Url> {
             .expect("uri option is not a valid CString")
     };
 
-    Some(parse_uri(uri))
+    ParsedUriInfo::try_from(uri)
 }
 
 pub(crate) fn copy_to_stmt_row_group_size(p_stmt: &PgBox<PlannedStmt>) -> i64 {
@@ -204,12 +204,12 @@ pub(crate) fn copy_to_stmt_row_group_size_bytes(p_stmt: &PgBox<PlannedStmt>) -> 
 
 pub(crate) fn copy_to_stmt_compression(
     p_stmt: &PgBox<PlannedStmt>,
-    uri: Url,
+    uri_info: ParsedUriInfo,
 ) -> PgParquetCompression {
     let compression_option = copy_stmt_get_option(p_stmt, "compression");
 
     if compression_option.is_null() {
-        PgParquetCompression::try_from(uri).unwrap_or_default()
+        PgParquetCompression::try_from(uri_info.uri).unwrap_or_default()
     } else {
         let compression = unsafe { defGetString(compression_option.as_ptr()) };
 
@@ -223,11 +223,14 @@ pub(crate) fn copy_to_stmt_compression(
     }
 }
 
-pub(crate) fn copy_to_stmt_compression_level(p_stmt: &PgBox<PlannedStmt>, uri: Url) -> Option<i32> {
+pub(crate) fn copy_to_stmt_compression_level(
+    p_stmt: &PgBox<PlannedStmt>,
+    uri_info: ParsedUriInfo,
+) -> Option<i32> {
     let compression_level_option = copy_stmt_get_option(p_stmt, "compression_level");
 
     if compression_level_option.is_null() {
-        let compression = copy_to_stmt_compression(p_stmt, uri);
+        let compression = copy_to_stmt_compression(p_stmt, uri_info);
 
         compression.default_compression_level()
     } else {
@@ -326,9 +329,17 @@ fn is_copy_parquet_stmt(p_stmt: &PgBox<PlannedStmt>, copy_from: bool) -> bool {
         return false;
     }
 
-    let uri = copy_stmt_uri(p_stmt).expect("uri is None");
+    let uri_info = copy_stmt_uri(p_stmt);
 
-    if !is_parquet_format_option(p_stmt) && !is_parquet_uri(uri) {
+    // uri can not be handled by pg_parquet
+    if uri_info.is_err() {
+        return false;
+    }
+
+    let uri_info = uri_info.unwrap();
+
+    // only parquet format is supported
+    if !is_parquet_format_option(p_stmt) && !is_parquet_uri(uri_info.uri.clone()) {
         return false;
     }
 

@@ -12,7 +12,7 @@ use pgrx::{prelude::*, FromDatum, PgList, PgMemoryContexts, PgTupleDesc};
 use crate::arrow_parquet::{
     compression::{PgParquetCompression, INVALID_COMPRESSION_LEVEL},
     parquet_writer::{ParquetWriterContext, DEFAULT_ROW_GROUP_SIZE, DEFAULT_ROW_GROUP_SIZE_BYTES},
-    uri_utils::parse_uri,
+    uri_utils::ParsedUriInfo,
 };
 
 #[repr(C)]
@@ -171,7 +171,9 @@ extern "C" fn copy_startup(dest: *mut DestReceiver, _operation: i32, tupledesc: 
         .to_str()
         .expect("uri is not a valid C string");
 
-    let uri = parse_uri(uri);
+    let uri_info = ParsedUriInfo::try_from(uri).unwrap_or_else(|e| {
+        panic!("{}", e.to_string());
+    });
 
     let compression = parquet_dest.copy_options.compression;
 
@@ -179,7 +181,7 @@ extern "C" fn copy_startup(dest: *mut DestReceiver, _operation: i32, tupledesc: 
 
     // leak the parquet writer context since it will be used during the COPY operation
     let parquet_writer_context =
-        ParquetWriterContext::new(uri, compression, compression_level, &tupledesc);
+        ParquetWriterContext::new(uri_info, compression, compression_level, &tupledesc);
     parquet_dest.parquet_writer_context = Box::into_raw(Box::new(parquet_writer_context));
 }
 

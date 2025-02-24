@@ -10,10 +10,9 @@ use once_cell::sync::Lazy;
 use pgrx::{ereport, PgLogLevel, PgSqlErrorCode};
 use url::Url;
 
-use super::{
-    aws::parse_s3_bucket, azure::parse_azure_blob_container, create_azure_object_store,
-    create_local_file_object_store, create_s3_object_store,
-};
+use crate::arrow_parquet::uri_utils::ParsedUriInfo;
+
+use super::{create_azure_object_store, create_local_file_object_store, create_s3_object_store};
 
 // OBJECT_STORE_CACHE is a global cache for object stores per Postgres session.
 // It caches object stores based on the scheme and bucket.
@@ -21,12 +20,12 @@ use super::{
 static mut OBJECT_STORE_CACHE: Lazy<ObjectStoreCache> = Lazy::new(ObjectStoreCache::new);
 
 pub(crate) fn get_or_create_object_store(
-    uri: &Url,
+    uri_info: ParsedUriInfo,
     copy_from: bool,
 ) -> (Arc<dyn ObjectStore>, Path) {
     #[allow(static_mut_refs)]
     unsafe {
-        OBJECT_STORE_CACHE.get_or_create(uri, copy_from)
+        OBJECT_STORE_CACHE.get_or_create(uri_info, copy_from)
     }
 }
 
@@ -41,21 +40,30 @@ impl ObjectStoreCache {
         }
     }
 
-    fn get_or_create(&mut self, uri: &Url, copy_from: bool) -> (Arc<dyn ObjectStore>, Path) {
-        let (scheme, path) = ObjectStoreScheme::parse(uri).unwrap_or_else(|_| {
-            panic!(
-                "unrecognized uri {}. pg_parquet supports local paths, s3:// or azure:// schemes.",
-                uri
-            )
-        });
+    fn get_or_create(
+        &mut self,
+        uri_info: ParsedUriInfo,
+        copy_from: bool,
+    ) -> (Arc<dyn ObjectStore>, Path) {
+        let ParsedUriInfo {
+            uri,
+            path,
+            scheme,
+            bucket,
+        } = uri_info;
 
-        // no need to cache for local files
+        // no need to cache local files
         if scheme == ObjectStoreScheme::Local {
-            let item = Self::create(scheme, uri, copy_from);
+            let item = Self::create(scheme, &uri, copy_from);
             return (item.object_store, path);
         }
 
-        let key = ObjectStoreCacheKey::from_uri(uri, scheme.clone());
+        let bucket = bucket.expect("bucket is None");
+
+        let key = ObjectStoreCacheKey {
+            scheme: scheme.clone(),
+            bucket,
+        };
 
         if let Some(item) = self.cache.get(&key) {
             if item.expired(&key.bucket) {
@@ -65,7 +73,7 @@ impl ObjectStoreCache {
             }
         }
 
-        let item = Self::create(scheme, uri, copy_from);
+        let item = Self::create(scheme, &uri, copy_from);
 
         self.cache.insert(key, item.clone());
 
@@ -124,23 +132,6 @@ impl ObjectStoreWithExpiration {
 struct ObjectStoreCacheKey {
     scheme: ObjectStoreScheme,
     bucket: String,
-}
-
-impl ObjectStoreCacheKey {
-    fn from_uri(uri: &Url, scheme: ObjectStoreScheme) -> Self {
-        let bucket = match scheme {
-            ObjectStoreScheme::AmazonS3 => parse_s3_bucket(uri).unwrap_or_else(|| panic!("unsupported s3 uri: {uri}")),
-            ObjectStoreScheme::MicrosoftAzure => parse_azure_blob_container(uri).unwrap_or_else(|| panic!("unsupported azure blob storage uri: {uri}")),
-            ObjectStoreScheme::Local => panic!("local paths should not be cached"),
-            _ => panic!(
-                "unsupported scheme {} in uri {}. pg_parquet supports local paths, s3:// or azure:// schemes.",
-                uri.scheme(),
-                uri
-            ),
-        };
-
-        ObjectStoreCacheKey { scheme, bucket }
-    }
 }
 
 impl Hash for ObjectStoreCacheKey {

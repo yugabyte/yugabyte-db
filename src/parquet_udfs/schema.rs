@@ -1,5 +1,5 @@
 use crate::arrow_parquet::uri_utils::{
-    ensure_access_privilege_to_uri, parquet_schema_from_uri, parse_uri, uri_as_string,
+    ensure_access_privilege_to_uri, parquet_schema_from_uri, uri_as_string, ParsedUriInfo,
 };
 
 use ::parquet::{
@@ -32,10 +32,14 @@ mod parquet {
             name!(logical_type, Option<String>),
         ),
     > {
-        let uri = parse_uri(&uri);
+        let uri_info = ParsedUriInfo::try_from(uri.as_str()).unwrap_or_else(|e| {
+            panic!("{}", e.to_string());
+        });
+
+        let uri = uri_info.uri.clone();
 
         ensure_access_privilege_to_uri(&uri, true);
-        let parquet_schema = parquet_schema_from_uri(&uri);
+        let parquet_schema = parquet_schema_from_uri(uri_info);
 
         let root_type = parquet_schema.root_schema();
         let thrift_schema_elements = to_thrift(root_type).unwrap_or_else(|e| {

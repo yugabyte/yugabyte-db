@@ -2,7 +2,7 @@ use ::parquet::file::statistics::Statistics;
 use pgrx::{iter::TableIterator, name, pg_extern, pg_schema};
 
 use crate::arrow_parquet::uri_utils::{
-    ensure_access_privilege_to_uri, parquet_metadata_from_uri, parse_uri, uri_as_string,
+    ensure_access_privilege_to_uri, parquet_metadata_from_uri, uri_as_string, ParsedUriInfo,
 };
 
 #[pg_schema]
@@ -39,10 +39,14 @@ mod parquet {
             name!(total_uncompressed_size, i64),
         ),
     > {
-        let uri = parse_uri(&uri);
+        let uri_info = ParsedUriInfo::try_from(uri.as_str()).unwrap_or_else(|e| {
+            panic!("{}", e.to_string());
+        });
+
+        let uri = uri_info.uri.clone();
 
         ensure_access_privilege_to_uri(&uri, true);
-        let parquet_metadata = parquet_metadata_from_uri(&uri);
+        let parquet_metadata = parquet_metadata_from_uri(uri_info);
 
         let mut rows = vec![];
 
@@ -138,10 +142,14 @@ mod parquet {
             name!(format_version, String),
         ),
     > {
-        let uri = parse_uri(&uri);
+        let uri_info = ParsedUriInfo::try_from(uri.as_str()).unwrap_or_else(|e| {
+            panic!("{}", e.to_string());
+        });
+
+        let uri = uri_info.uri.clone();
 
         ensure_access_privilege_to_uri(&uri, true);
-        let parquet_metadata = parquet_metadata_from_uri(&uri);
+        let parquet_metadata = parquet_metadata_from_uri(uri_info);
 
         let created_by = parquet_metadata
             .file_metadata()
@@ -176,10 +184,15 @@ mod parquet {
             name!(value, Option<Vec<u8>>),
         ),
     > {
-        let uri = parse_uri(&uri);
+        let uri_info = ParsedUriInfo::try_from(uri.as_str()).unwrap_or_else(|e| {
+            panic!("{}", e.to_string());
+        });
+
+        let uri = uri_info.uri.clone();
 
         ensure_access_privilege_to_uri(&uri, true);
-        let parquet_metadata = parquet_metadata_from_uri(&uri);
+        let parquet_metadata = parquet_metadata_from_uri(uri_info);
+
         let kv_metadata = parquet_metadata.file_metadata().key_value_metadata();
 
         if kv_metadata.is_none() {

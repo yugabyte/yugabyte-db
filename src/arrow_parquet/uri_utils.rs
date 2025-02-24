@@ -1,6 +1,7 @@
 use std::{panic, sync::Arc};
 
 use arrow::datatypes::SchemaRef;
+use object_store::{path::Path, ObjectStoreScheme};
 use parquet::{
     arrow::{
         arrow_to_parquet_schema,
@@ -19,20 +20,76 @@ use url::Url;
 
 use crate::{
     arrow_parquet::parquet_writer::DEFAULT_ROW_GROUP_SIZE,
-    object_store::object_store_cache::get_or_create_object_store, PG_BACKEND_TOKIO_RUNTIME,
+    object_store::{
+        aws::parse_s3_bucket, azure::parse_azure_blob_container,
+        object_store_cache::get_or_create_object_store,
+    },
+    PG_BACKEND_TOKIO_RUNTIME,
 };
 
 const PARQUET_OBJECT_STORE_READ_ROLE: &str = "parquet_object_store_read";
 const PARQUET_OBJECT_STORE_WRITE_ROLE: &str = "parquet_object_store_write";
 
-pub(crate) fn parse_uri(uri: &str) -> Url {
-    if !uri.contains("://") {
-        // local file
-        return Url::from_file_path(uri)
-            .unwrap_or_else(|_| panic!("not a valid file path: {}", uri));
+// ParsedUriInfo is a struct that holds the parsed uri information.
+#[derive(Debug, Clone)]
+pub(crate) struct ParsedUriInfo {
+    pub(crate) uri: Url,
+    pub(crate) bucket: Option<String>,
+    pub(crate) path: Path,
+    pub(crate) scheme: ObjectStoreScheme,
+}
+
+impl ParsedUriInfo {
+    fn try_parse_uri(uri: &str) -> Result<Url, String> {
+        if !uri.contains("://") {
+            // local file
+            Url::from_file_path(uri).map_err(|_| format!("not a valid file path: {}", uri))
+        } else {
+            Url::parse(uri).map_err(|e| e.to_string())
+        }
     }
 
-    Url::parse(uri).unwrap_or_else(|e| panic!("{}", e))
+    fn try_parse_scheme(uri: &Url) -> Result<(ObjectStoreScheme, Path), String> {
+        ObjectStoreScheme::parse(uri).map_err(|_| {
+            format!(
+                "unrecognized uri {}. pg_parquet supports local paths, s3:// or azure:// schemes.",
+                uri
+            )
+        })
+    }
+
+    fn try_parse_bucket(scheme: &ObjectStoreScheme, uri: &Url) -> Result<Option<String>, String> {
+        match scheme {
+            ObjectStoreScheme::AmazonS3 => parse_s3_bucket(uri)
+                .ok_or(format!("unsupported s3 uri {uri}"))
+                .map(Some),
+            ObjectStoreScheme::MicrosoftAzure => parse_azure_blob_container(uri)
+                .ok_or(format!("unsupported azure blob storage uri: {uri}"))
+                .map(Some),
+            ObjectStoreScheme::Local => Ok(None),
+            _ => Err(format!("unsupported scheme {} in uri {}. pg_parquet supports local paths, s3:// or azure:// schemes.",
+                            uri.scheme(), uri))
+        }
+    }
+}
+
+impl TryFrom<&str> for ParsedUriInfo {
+    type Error = String;
+
+    fn try_from(uri: &str) -> Result<Self, Self::Error> {
+        let uri = Self::try_parse_uri(uri)?;
+
+        let (scheme, path) = Self::try_parse_scheme(&uri)?;
+
+        let bucket = Self::try_parse_bucket(&scheme, &uri)?;
+
+        Ok(ParsedUriInfo {
+            uri: uri.clone(),
+            bucket,
+            path,
+            scheme,
+        })
+    }
 }
 
 pub(crate) fn uri_as_string(uri: &Url) -> String {
@@ -48,24 +105,27 @@ pub(crate) fn uri_as_string(uri: &Url) -> String {
     uri.to_string()
 }
 
-pub(crate) fn parquet_schema_from_uri(uri: &Url) -> SchemaDescriptor {
-    let parquet_reader = parquet_reader_from_uri(uri);
+pub(crate) fn parquet_schema_from_uri(uri_info: ParsedUriInfo) -> SchemaDescriptor {
+    let parquet_reader = parquet_reader_from_uri(uri_info);
 
     let arrow_schema = parquet_reader.schema();
 
     arrow_to_parquet_schema(arrow_schema).unwrap_or_else(|e| panic!("{}", e))
 }
 
-pub(crate) fn parquet_metadata_from_uri(uri: &Url) -> Arc<ParquetMetaData> {
+pub(crate) fn parquet_metadata_from_uri(uri_info: ParsedUriInfo) -> Arc<ParquetMetaData> {
     let copy_from = true;
-    let (parquet_object_store, location) = get_or_create_object_store(uri, copy_from);
+    let (parquet_object_store, location) = get_or_create_object_store(uri_info.clone(), copy_from);
 
     PG_BACKEND_TOKIO_RUNTIME.block_on(async {
         let object_store_meta = parquet_object_store
             .head(&location)
             .await
             .unwrap_or_else(|e| {
-                panic!("failed to get object store metadata for uri {}: {}", uri, e)
+                panic!(
+                    "failed to get object store metadata for uri {}: {}",
+                    uri_info.uri, e
+                )
             });
 
         let parquet_object_reader =
@@ -79,16 +139,21 @@ pub(crate) fn parquet_metadata_from_uri(uri: &Url) -> Arc<ParquetMetaData> {
     })
 }
 
-pub(crate) fn parquet_reader_from_uri(uri: &Url) -> ParquetRecordBatchStream<ParquetObjectReader> {
+pub(crate) fn parquet_reader_from_uri(
+    uri_info: ParsedUriInfo,
+) -> ParquetRecordBatchStream<ParquetObjectReader> {
     let copy_from = true;
-    let (parquet_object_store, location) = get_or_create_object_store(uri, copy_from);
+    let (parquet_object_store, location) = get_or_create_object_store(uri_info.clone(), copy_from);
 
     PG_BACKEND_TOKIO_RUNTIME.block_on(async {
         let object_store_meta = parquet_object_store
             .head(&location)
             .await
             .unwrap_or_else(|e| {
-                panic!("failed to get object store metadata for uri {}: {}", uri, e)
+                panic!(
+                    "failed to get object store metadata for uri {}: {}",
+                    uri_info.uri, e
+                )
             });
 
         let parquet_object_reader =
@@ -108,17 +173,22 @@ pub(crate) fn parquet_reader_from_uri(uri: &Url) -> ParquetRecordBatchStream<Par
 }
 
 pub(crate) fn parquet_writer_from_uri(
-    uri: &Url,
+    uri_info: ParsedUriInfo,
     arrow_schema: SchemaRef,
     writer_props: WriterProperties,
 ) -> AsyncArrowWriter<ParquetObjectWriter> {
     let copy_from = false;
-    let (parquet_object_store, location) = get_or_create_object_store(uri, copy_from);
+    let (parquet_object_store, location) = get_or_create_object_store(uri_info.clone(), copy_from);
 
     let parquet_object_writer = ParquetObjectWriter::new(parquet_object_store, location);
 
     AsyncArrowWriter::try_new(parquet_object_writer, arrow_schema, Some(writer_props))
-        .unwrap_or_else(|e| panic!("failed to create parquet writer for uri {}: {}", uri, e))
+        .unwrap_or_else(|e| {
+            panic!(
+                "failed to create parquet writer for uri {}: {}",
+                uri_info.uri, e
+            )
+        })
 }
 
 pub(crate) fn ensure_access_privilege_to_uri(uri: &Url, copy_from: bool) {
