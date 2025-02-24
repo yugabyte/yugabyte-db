@@ -419,6 +419,10 @@ if(IS_GCC)
     # https://gist.githubusercontent.com/mbautin/de18543ea85d46db49dfa4b4b7df082a/raw
     ADD_CXX_FLAGS("-Wno-use-after-free")
   endif()
+
+  # This normally gets disabled automatically (with a warning) for some files due to size of code.
+  # Disable it explicitly to avoid the warning about it getting disabled automatically.
+  ADD_CXX_FLAGS("-Wno-misleading-indentation")
 endif()
 
 if(USING_LINUXBREW)
