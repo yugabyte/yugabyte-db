@@ -230,19 +230,13 @@ yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
 		if (!left_op || !right_op)
 			continue;
 
-		op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno,
-											   index->opfamily[indexcol]);
-		if (op_strategy != BTEqualStrategyNumber)
+		/* Check whether the clause is of the form indexkey = constant. */
+		if (!equal(indexkey, left_op) || !IsA(right_op, Const))
 			continue;
 
-		/* Check whether the clause is of the form indexkey = constant. */
-		if (equal(indexkey, left_op) &&
-			rinfo->right_ec && EC_MUST_BE_REDUNDANT(rinfo->right_ec))
-			return true;
-
-		/* Check whether the indexkey is on the right. */
-		if (equal(indexkey, right_op) &&
-			rinfo->left_ec && EC_MUST_BE_REDUNDANT(rinfo->left_ec))
+		op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno,
+											   index->opfamily[indexcol]);
+		if (op_strategy == BTEqualStrategyNumber)
 			return true;
 	}
 
