@@ -52,7 +52,7 @@ Install yb-voyager using a Docker image in an airgapped environment using the fo
 
 {{% tab header="Yum" %}}
 
-You can perform an airgapped installation on RHEL 8/9 and CentOS 8/9
+You can perform an airgapped installation on RHEL 8/9 and CentOS 8/9.
 
 1. Download the airgapped bundle:
 
