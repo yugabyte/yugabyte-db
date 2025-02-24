@@ -6,7 +6,7 @@ private=true
 
 {{< tabpane text=true >}}
 
-{{% tab header="Docker" %}}
+{{% tab header="Docker" lang="docker" %}}
 
 You can perform an airgapped installation on Docker.
 
@@ -50,7 +50,7 @@ Install yb-voyager using a Docker image in an airgapped environment using the fo
 
 {{% /tab %}}
 
-{{% tab header="Yum" %}}
+{{% tab header="Yum" lang="yum" %}}
 
 You can perform an airgapped installation on RHEL 8/9 and CentOS 8/9.
 
@@ -164,7 +164,7 @@ You can download the oracle instant client rpms from the following links:
 
 {{% /tab %}}
 
-{{% tab header="Ubuntu" %}}
+{{% tab header="Ubuntu" lang="ubuntu" %}}
 
 You can perform an airgapped installation on Ubuntu 22 and later.
 

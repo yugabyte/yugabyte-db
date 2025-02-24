@@ -17,12 +17,10 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ### Enhancements
 
-- Installation
-  - Added support for installing yb-voyager on RHEL 9.
-  - Installer script only installs postgres-17-client package on ubuntu instead of postgresql-17.
-- Import Data
-  - Improved import-data snapshot performance by importing multiple tables at the same time.
-- Enhanced the grant permissions script for PG>=15 to grant the SET permission on `session_replication_role` to source-db-user. This eliminates the need for the user to disable Foreign Keys and triggers on the source database before running import-data-to-source.
+- Added support for installing yb-voyager on RHEL 9.
+- Installer script now installs the postgres-17-client package on Ubuntu instead of postgresql-17.
+- Improved import-data snapshot performance by importing multiple tables at the same time.
+- Enhanced the grant permissions script for PostgreSQL 15 and later to grant the SET permission on `session_replication_role` to source-db-user. This eliminates the need for you to disable Foreign Keys and triggers on the source database before running import-data-to-source.
 
 ## v1.8.11 - February 11, 2025
 

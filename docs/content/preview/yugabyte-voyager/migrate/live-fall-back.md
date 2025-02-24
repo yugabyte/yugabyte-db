@@ -1007,9 +1007,9 @@ Use the following PL/SQL commands to disable triggers, and disable referential c
 
   {{% tab header="PostgreSQL" %}}
 
-  To disable triggers and foreign key checks in PostgreSQL 15 and later, `import data to source` sets the session parameter <code>[session_replication_role](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-SESSION-REPLICATION-ROLE)</code> on each connection to apply changes from the target. However, in PostgreSQL versions earlier than 15, this parameter is restricted to superusers.
+  To disable triggers and foreign key checks in PostgreSQL 15 and later, `import data to source` sets the session parameter [session_replication_role](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-SESSION-REPLICATION-ROLE) on each connection to apply changes from the target. However, in PostgreSQL versions earlier than 15, this parameter is restricted to superusers.
 
-  If superuser privileges cannot be granted to the `source-db-user`, use the following PL/SQL commands to disable triggers and drop foreign key constraints on the source.
+  If superuser privileges cannot be granted to the `source-db-user`, use the following PL/SQL commands to disable triggers and drop foreign key constraints on the source:
 
   ```sql
   --disable triggers

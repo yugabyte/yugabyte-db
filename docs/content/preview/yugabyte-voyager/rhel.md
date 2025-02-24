@@ -6,7 +6,7 @@ private=true
 
 {{< tabpane text=true >}}
 
-{{% tab header="RHEL 8" %}}
+{{% tab header="RHEL 8" lang="rhel8" %}}
 
 Perform the following steps to install yb-voyager using yum for RHEL 8 and CentOS 8:
 
@@ -90,7 +90,7 @@ sudo yum update yb-voyager
 
 {{% /tab %}}
 
-{{% tab header="RHEL 9" %}}
+{{% tab header="RHEL 9" lang="rhel9" %}}
 
 Perform the following steps to install yb-voyager using yum for RHEL 9 and CentOS 9:
 
@@ -162,7 +162,7 @@ Perform the following steps to install yb-voyager using yum for RHEL 9 and CentO
     sudo dnf install yb-voyager
     ```
 
-    To install a specific version of `yb-voyager` on your machine, use the following command: \
+    To install a specific version of `yb-voyager` on your machine, use the following command:
 
     ```sh
     sudo dnf install yb-voyager-<VERSION>
