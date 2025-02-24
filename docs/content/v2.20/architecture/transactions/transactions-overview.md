@@ -41,7 +41,7 @@ YugabyteDB maintains data consistency internally using multi-version concurrency
 
 ### MVCC using hybrid time
 
-YugabyteDB implements MVCC and internally keeps track of multiple versions of values corresponding to the same key (for example, of a particular column in a particular row), as described in [Persistence on top of RocksDB](../../docdb/persistence). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
+YugabyteDB implements MVCC and internally keeps track of multiple versions of values corresponding to the same key (for example, of a particular column in a particular row), as described in [Persistence on top of RocksDB](../../docdb/). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
 
 The timestamp used for MVCC comes from the [hybrid time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local real-time (physical) clocks and Lamport clocks. The hybrid time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value observed, including the current physical time on the server. Multiple aspects of YugabyteDB's transaction model rely on these properties of hybrid time. Consider the following examples:
 

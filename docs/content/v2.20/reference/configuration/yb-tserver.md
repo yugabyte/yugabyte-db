@@ -1076,15 +1076,15 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 
 ## Packed row flags
 
-Packed row format support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
+The packed row format for the YSQL API is {{<tags/feature/ga>}} as of v2.20.0, and for the YCQL API is {{<tags/feature/tp>}}.
 
-To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format) in the architecture section.
+To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/packed-rows/) in the architecture section.
 
 ##### --ysql_enable_packed_row
 
 Whether packed row is enabled for YSQL.
 
-Default: `false`
+Default: `true`
 
 Packed Row for YSQL can be used from version 2.16.4 in production environments if the cluster is not used in xCluster settings. For xCluster scenarios, use version 2.18.1 and later. Starting from version 2.19 and later, the flag default is true for new clusters.
 
