@@ -52,13 +52,21 @@ Install yb-voyager using a Docker image in an airgapped environment using the fo
 
 {{% tab header="Yum" %}}
 
-You can perform an airgapped installation on RHEL 8 and CentOS 8.
+You can perform an airgapped installation on RHEL 8/9 and CentOS 8/9
 
 1. Download the airgapped bundle:
 
-    ```sh
-    wget https://downloads.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
-    ```
+    * For RHEL8:
+
+        ```sh
+        wget https://downloads.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
+        ```
+
+    * For RHEL9:
+
+        ```sh
+        wget https://downloads.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-9-x86_64.tar.gz
+        ```
 
 1. Extract the bundle.
 
@@ -94,7 +102,7 @@ You can perform an airgapped installation on RHEL 8 and CentOS 8.
     yb-voyager version
     ```
 
-### Dependencies for RHEL and CentOS 8
+### Dependencies for RHEL 8/9 and CentOS 8/9
 
 Binutils: Minimum version: 2.25
 
@@ -114,7 +122,8 @@ psql: Minimum version: 14
 - perl-DBI (no version dependency)
 - perl-App-cpanminus (no version dependency)
 - perl-ExtUtils-MakeMaker (no version dependency)
-- mysql-devel (no version dependency)
+- mysql-devel (For RHEL 8) (no version dependency)
+- mysql-community-devel (For RHEL 9) (no version dependency)
 - oracle-instantclient-tools with exact version 21.5.0.0.0
 - oracle-instantclient-basic with exact version 21.5.0.0.0
 - oracle-instantclient-devel with exact version 21.5.0.0.0
