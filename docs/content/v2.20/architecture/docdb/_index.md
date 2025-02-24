@@ -8,7 +8,7 @@ menu:
   v2.20:
     identifier: docdb
     parent: architecture
-    weight: 600
+    weight: 1140
 type: indexpage
 ---
 
