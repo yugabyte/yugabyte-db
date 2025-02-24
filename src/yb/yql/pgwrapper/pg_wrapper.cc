@@ -60,6 +60,7 @@
 #include "ybgate/ybgate_cpp_util.h"
 
 DECLARE_bool(enable_ysql_conn_mgr);
+DECLARE_int32(ysql_conn_mgr_max_pools);
 
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
@@ -812,8 +813,11 @@ Status PgWrapper::Start() {
   std::string stats_key = std::to_string(ysql_conn_mgr_stats_shmem_key_);
 
   unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
-  if (FLAGS_enable_ysql_conn_mgr_stats)
-    proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, stats_key);
+  if (FLAGS_enable_ysql_conn_mgr_stats) {
+     proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, stats_key);
+     proc_->SetEnv("FLAGS_ysql_conn_mgr_max_pools",
+                   std::to_string(FLAGS_ysql_conn_mgr_max_pools));
+  }
 
   proc_->ShareParentStderr();
   proc_->ShareParentStdout();
@@ -1357,7 +1361,7 @@ key_t PgSupervisor::GetYsqlConnManagerStatsShmkey() {
   // Let's use a key start at 13000 + 997 (largest 3 digit prime number). Just decreasing
   // the chances of collision with the pg shared memory key space logic.
   key_t shmem_key = 13000 + 997;
-  size_t size_of_shmem = YSQL_CONN_MGR_MAX_POOLS * sizeof(struct ConnectionStats);
+  size_t size_of_shmem = FLAGS_ysql_conn_mgr_max_pools * sizeof(struct ConnectionStats);
   key_t shmid = -1;
 
   while (true) {
