@@ -39,11 +39,14 @@ class XClusterOutboundReplicationGroup
  public:
   struct HelperFunctions {
     const std::function<Status()> create_sequences_data_table_func;
+    const std::function<Result<uint32_t>(NamespaceId namespace_id)>
+        get_normal_oid_higher_than_any_used_normal_oid_func;
     const std::function<Result<scoped_refptr<NamespaceInfo>>(const NamespaceIdentifierPB&)>
         get_namespace_func;
     const std::function<Result<std::vector<TableDesignator>>(
         const NamespaceId&, bool include_sequences_data)>
         get_tables_func;
+    const std::function<bool(NamespaceId namespace_id)> is_automatic_mode_switchover_func;
     const std::function<Result<std::unique_ptr<XClusterCreateStreamsContext>>(
         const std::vector<TableId>&, const LeaderEpoch&)>
         create_xcluster_streams_func;
