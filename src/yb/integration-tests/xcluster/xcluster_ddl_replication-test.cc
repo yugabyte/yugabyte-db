@@ -17,7 +17,6 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/colocated_util.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/master/catalog_manager.h"
@@ -25,6 +24,7 @@
 #include "yb/util/logging_test_util.h"
 #include "yb/util/tsan_util.h"
 
+DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
 
@@ -1196,6 +1196,110 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingDDL) {
     LOG(INFO) << "tables on B:\n" << b_result;
   }
   ASSERT_EQ(a_result, b_result);
+}
+
+TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverBumpsAboveUsedOids) {
+  // To understand this test, it helps to picture the result of A->B replication before we do a
+  // switchover.  The following is an example of the OID spaces of A and B for one database after A
+  // has allocated three OIDs we don't care about preserving (the Ns) and one OID we do care about
+  // preserving (P).  The [OID ptr]'s indicate where the next OID would be allocated in each space
+  // modulo we skip OIDs already in use in that space on that universe.
+  //
+  // In particular, the next normal space OID that will be allocated on B is the one marked (*),
+  // which conflicts with an OID already in use in cluster A.  While not a problem while B is a
+  // target (targets only allocate in the secondary space), this will be a problem if we switch the
+  // replication direction so B is now the source.
+  //
+  // Accordingly, xCluster is designed to bump up B's normal space [OID ptr] to after A's normal
+  // space [OID ptr] as part of doing switchover; this test attempts to verify that that
+  // successfully avoids the OID conflict problem described above.
+  //
+  //           A:                  B:
+  //  Normal:
+  //           N                [OID ptr] (*)
+  //           N
+  //           P                   P
+  //           N
+  //         [OID ptr]
+  //
+  //  Secondary:
+  //         [OID ptr]             N
+  //                               N
+  //                               N
+  //                            [OID ptr]
+
+  // Limit how many OIDs we cache at a time so cache flushing doesn't consume too many OIDs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_oid_cache_prefetch_size) = 1;
+
+  ASSERT_OK(SetUpClusters());
+  // Set up replication from A to B.
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Log information about OID reservations; search logs for (case insensitive) "reserve".
+  google::SetVLOGLevel("catalog_manager*", 2);
+  google::SetVLOGLevel("pg_client_service*", 2);
+
+  // Use up a lot of pg_class OIDs in the normal OIDs space on A; we are using views here because
+  // those are faster to create than tables when using xCluster.  These will be allocated on B in
+  // the secondary space because it is a target.  We create several times more than the number of
+  // OIDs cached to ensure cache flushing alone doesn't pass this test.
+  uint32_t highest_normal_oid_used = 0;
+  {
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE my_table (f INT)"));
+    for (uint32_t i = 0; i < FLAGS_ysql_oid_cache_prefetch_size * 10; i++) {
+      ASSERT_OK(conn.ExecuteFormat("CREATE VIEW my_view_$0 AS SELECT f FROM my_table", i));
+    }
+    // As a simplification here, we are ignoring OIDs of kinds other than pg_class.
+    highest_normal_oid_used = ASSERT_RESULT(
+        conn.FetchRow<pgwrapper::PGOid>("SELECT oid FROM pg_class ORDER BY oid DESC LIMIT 1"));
+    LOG(INFO) << "Highest normal OID in use in universe A: " << highest_normal_oid_used;
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Perform switchover from A->B to B->A.
+  LOG(INFO) << "===== Beginning switchover: checkpoint B";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(CheckpointReplicationGroup(
+      kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  LOG(INFO) << "===== Switchover: set up replication from B to A";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(CreateReplicationFromCheckpoint(
+      cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
+  LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
+  SetReplicationDirection(ReplicationDirection::AToB);
+  ASSERT_OK(DeleteOutboundReplicationGroup());
+  LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+      ASSERT_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+  LOG(INFO) << "===== Switchover done";
+
+  // Attempt to allocate pg_class OIDs on B in the normal space that we will want to preserve and
+  // thus use the same OIDs on A.
+  //
+  // This will fail if the normal space OID counter on B was not bumped above the highest OID
+  // already used in the normal space on A.  (Otherwise, the OID that B picks may already be in use
+  // on A.)
+  //
+  // Note that the OID cache flush from switching OID allocation spaces itself will bump the OID
+  // counter by the size of the OID cache; we require more bumping than that to make sure this test
+  // is not passed just by the flushing.
+  {
+    auto conn = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
+    for (int i = 0; i < 20; i++) {
+      ASSERT_OK(conn.ExecuteFormat("CREATE SEQUENCE my_sequence_$0", i));
+    }
+
+    uint32_t my_sequence_0_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+        "SELECT oid FROM pg_class WHERE pg_class.relname = 'my_sequence_0'"));
+    LOG(INFO) << "my_sequence_0's OID: " << my_sequence_0_oid;
+    ASSERT_GT(my_sequence_0_oid, highest_normal_oid_used);
+  }
+
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 }
 
 class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTest {
