@@ -56,13 +56,13 @@ You can perform an airgapped installation on RHEL 8/9 and CentOS 8/9
 
 1. Download the airgapped bundle:
 
-    * For RHEL8:
+    - For RHEL8:
 
         ```sh
         wget https://downloads.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
         ```
 
-    * For RHEL9:
+    - For RHEL9:
 
         ```sh
         wget https://downloads.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-9-x86_64.tar.gz
