@@ -1947,3 +1947,112 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
                Output: documentdb_api_internal.bson_dollar_project(document, '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
 (9 rows)
 
+-- Test limit on aggregation stages
+CREATE OR REPLACE FUNCTION check_aggregation_stages_limit(num_stages int)
+RETURNS boolean AS $fn$
+DECLARE
+    pipeline jsonb := '[]'::jsonb;
+    aggregate_spec jsonb;
+BEGIN
+    -- Create a json array of form [{$match: {}}] with num_stages elements
+    FOR i IN 1..num_stages LOOP
+        pipeline := pipeline || '{"$match": {}}'::jsonb;
+    END LOOP;
+    aggregate_spec := jsonb_build_object('aggregate', 'dummy', 'pipeline', pipeline);
+
+    PERFORM document FROM bson_aggregation_pipeline('db', aggregate_spec::text::documentdb_core.bson);
+
+    RETURN true;
+END;
+$fn$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION check_lookup_stages_limit(num_inline_stages int, num_non_inline_stages int)
+RETURNS boolean AS $fn$
+DECLARE
+    pipeline jsonb := '[]'::jsonb;
+    aggregate_spec jsonb;
+    lookup_spec jsonb;
+BEGIN
+    -- Create a json array of form [{$match: {}}] with num_stages elements
+    FOR i IN 1..num_inline_stages LOOP
+        pipeline := pipeline || '{"$match": {  }}'::jsonb;
+    END LOOP;
+    FOR i IN 1..num_non_inline_stages LOOP
+        pipeline := pipeline || '{"$count": "dummy" }'::jsonb;
+    END LOOP;
+    
+    lookup_spec := jsonb_build_object('$lookup', jsonb_build_object('from', 'dummy', 'as', 'dummy', 'localField', 'dummy', 'foreignField', 'dummy', 'pipeline', pipeline));
+    aggregate_spec := jsonb_build_object('aggregate', 'dummy', 'pipeline', '[]'::jsonb || lookup_spec);
+
+    PERFORM document FROM bson_aggregation_pipeline('db', aggregate_spec::text::documentdb_core.bson);
+
+    RETURN true;
+END;
+$fn$ LANGUAGE plpgsql;
+SELECT check_aggregation_stages_limit(100);
+ check_aggregation_stages_limit 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT check_aggregation_stages_limit(1000);
+ check_aggregation_stages_limit 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT check_aggregation_stages_limit(1001);
+ERROR:  Pipeline length must be no longer than 1000 stages.
+CONTEXT:  SQL statement "SELECT document FROM bson_aggregation_pipeline('db', aggregate_spec::text::documentdb_core.bson)"
+PL/pgSQL function check_aggregation_stages_limit(integer) line 12 at PERFORM
+SELECT check_lookup_stages_limit(1, 1);
+ check_lookup_stages_limit 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT check_lookup_stages_limit(1000, 0);
+ check_lookup_stages_limit 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT check_lookup_stages_limit(0, 1000);
+ check_lookup_stages_limit 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT check_lookup_stages_limit(500, 500);
+ check_lookup_stages_limit 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT check_lookup_stages_limit(1000, 1);
+ERROR:  Pipeline length must be no longer than 1000 stages.
+CONTEXT:  SQL statement "SELECT document FROM bson_aggregation_pipeline('db', aggregate_spec::text::documentdb_core.bson)"
+PL/pgSQL function check_lookup_stages_limit(integer,integer) line 18 at PERFORM
+SELECT check_lookup_stages_limit(1, 1000);
+ERROR:  Pipeline length must be no longer than 1000 stages.
+CONTEXT:  SQL statement "SELECT document FROM bson_aggregation_pipeline('db', aggregate_spec::text::documentdb_core.bson)"
+PL/pgSQL function check_lookup_stages_limit(integer,integer) line 18 at PERFORM
+SET documentdb.aggregation_stages_limit = 1005;
+SELECT check_aggregation_stages_limit(1001);
+ check_aggregation_stages_limit 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT check_lookup_stages_limit(1000, 1);
+ check_lookup_stages_limit 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT check_lookup_stages_limit(1, 1000);
+ check_lookup_stages_limit 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+RESET documentdb.aggregation_stages_limit;

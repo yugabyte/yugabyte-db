@@ -103,6 +103,9 @@ char *BlockedRolePrefixList = DEFAULT_BLOCKED_ROLE_PREFIX_LIST;
 #define DEFAULT_CURRENT_OP_APPLICATION_NAME ""
 char *CurrentOpApplicationName = DEFAULT_CURRENT_OP_APPLICATION_NAME;
 
+#define DEFAULT_AGGREGATION_STAGES_LIMIT 1000
+int MaxAggregationStagesAllowed = DEFAULT_AGGREGATION_STAGES_LIMIT;
+
 void
 InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
 {
@@ -292,5 +295,14 @@ InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
 		gettext_noop(
 			"Application name that is tracked for current_op. '' means track all"),
 		NULL, &CurrentOpApplicationName, DEFAULT_CURRENT_OP_APPLICATION_NAME,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.aggregation_stages_limit", newGucPrefix),
+		gettext_noop("The number of maximum aggregation stages allowed in a pipeline."),
+		NULL,
+		&MaxAggregationStagesAllowed,
+		DEFAULT_AGGREGATION_STAGES_LIMIT, DEFAULT_AGGREGATION_STAGES_LIMIT,
+		5 * DEFAULT_AGGREGATION_STAGES_LIMIT, /* Ballpark number for max is 5 times, we should rarely need to update it*/
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

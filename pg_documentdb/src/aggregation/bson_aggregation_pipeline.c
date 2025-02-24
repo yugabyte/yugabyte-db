@@ -77,6 +77,7 @@ extern bool EnableFastPathPointLookupPlanner;
 extern bool DefaultInlineWriteOperations;
 extern bool EnableSimplifyGroupAccumulators;
 extern bool EnableSortbyIdPushDownToPrimaryKey;
+extern int MaxAggregationStagesAllowed;
 
 /* GUC to config tdigest compression */
 extern int TdigestCompressionAccuracy;
@@ -924,6 +925,21 @@ CreateChangeStreamContinuationtVar(void)
 	return makeVar(varno, DOCUMENT_CHANGE_STREAM_TABLE_CONTINUATION_VAR_ATTR_NUMBER,
 				   BsonTypeId(), DOCUMENT_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
 				   DOCUMENT_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
+}
+
+
+/*
+ * Helper function to limit the number of aggregation stages in a pipeline.
+ */
+inline static void
+CheckMaxAllowedAggregationStages(int numberOfStages)
+{
+	if (numberOfStages > MaxAggregationStagesAllowed)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION7749501),
+						errmsg("Pipeline length must be no longer than %d stages.",
+							   MaxAggregationStagesAllowed)));
+	}
 }
 
 
@@ -2018,8 +2034,10 @@ CanInlineLookupPipeline(const bson_value_t *pipeline,
 
 	PgbsonWriterStartArray(&inlineWriter, "", 0, &inlineArrayWriter);
 	PgbsonWriterStartArray(&nonInlineWriter, "", 0, &nonInlineArrayWriter);
+	int pipelineSize = 0;
 	while (bson_iter_next(&pipelineIter))
 	{
+		pipelineSize++;
 		if (!BSON_ITER_HOLDS_DOCUMENT(&pipelineIter))
 		{
 			canInline = false;
@@ -2076,6 +2094,12 @@ CanInlineLookupPipeline(const bson_value_t *pipeline,
 
 		PgbsonArrayWriterWriteValue(&inlineArrayWriter, stageValue);
 	}
+
+	/*
+	 * Validate number of stages for lookup nested pipeline, because after this we divide it
+	 * into a set of inline and non-inlined pipelines.
+	 */
+	CheckMaxAllowedAggregationStages(pipelineSize);
 
 	PgbsonWriterEndArray(&inlineWriter, &inlineArrayWriter);
 	PgbsonWriterEndArray(&nonInlineWriter, &nonInlineArrayWriter);
@@ -6071,6 +6095,15 @@ ExtractAggregationStages(const bson_value_t *pipelineValue,
 
 		aggregationStages = lappend(aggregationStages, stage);
 	}
+
+	/*
+	 * Validate number of stages in the pipeline, we purposefully do it here because
+	 * it saves a few CPU cycles to not check the length everytime for each stage
+	 *
+	 * But, because of this large pipelines will not fail as soon as they exceed the limit but eventually
+	 * fail. This is a tradeoff for perf b/w most of the valid cases v/s the rare invalid ones.
+	 */
+	CheckMaxAllowedAggregationStages(list_length(aggregationStages));
 
 	if (context->optimizePipelineStages)
 	{

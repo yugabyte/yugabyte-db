@@ -465,3 +465,64 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
 
 SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$project": { "a" : 1 } } ] }');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$project": { "a" : 1 } } ] }');
+
+
+-- Test limit on aggregation stages
+CREATE OR REPLACE FUNCTION check_aggregation_stages_limit(num_stages int)
+RETURNS boolean AS $fn$
+DECLARE
+    pipeline jsonb := '[]'::jsonb;
+    aggregate_spec jsonb;
+BEGIN
+    -- Create a json array of form [{$match: {}}] with num_stages elements
+    FOR i IN 1..num_stages LOOP
+        pipeline := pipeline || '{"$match": {}}'::jsonb;
+    END LOOP;
+    aggregate_spec := jsonb_build_object('aggregate', 'dummy', 'pipeline', pipeline);
+
+    PERFORM document FROM bson_aggregation_pipeline('db', aggregate_spec::text::documentdb_core.bson);
+
+    RETURN true;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION check_lookup_stages_limit(num_inline_stages int, num_non_inline_stages int)
+RETURNS boolean AS $fn$
+DECLARE
+    pipeline jsonb := '[]'::jsonb;
+    aggregate_spec jsonb;
+    lookup_spec jsonb;
+BEGIN
+    -- Create a json array of form [{$match: {}}] with num_stages elements
+    FOR i IN 1..num_inline_stages LOOP
+        pipeline := pipeline || '{"$match": {  }}'::jsonb;
+    END LOOP;
+    FOR i IN 1..num_non_inline_stages LOOP
+        pipeline := pipeline || '{"$count": "dummy" }'::jsonb;
+    END LOOP;
+    
+    lookup_spec := jsonb_build_object('$lookup', jsonb_build_object('from', 'dummy', 'as', 'dummy', 'localField', 'dummy', 'foreignField', 'dummy', 'pipeline', pipeline));
+    aggregate_spec := jsonb_build_object('aggregate', 'dummy', 'pipeline', '[]'::jsonb || lookup_spec);
+
+    PERFORM document FROM bson_aggregation_pipeline('db', aggregate_spec::text::documentdb_core.bson);
+
+    RETURN true;
+END;
+$fn$ LANGUAGE plpgsql;
+
+SELECT check_aggregation_stages_limit(100);
+SELECT check_aggregation_stages_limit(1000);
+SELECT check_aggregation_stages_limit(1001);
+
+SELECT check_lookup_stages_limit(1, 1);
+SELECT check_lookup_stages_limit(1000, 0);
+SELECT check_lookup_stages_limit(0, 1000);
+SELECT check_lookup_stages_limit(500, 500);
+SELECT check_lookup_stages_limit(1000, 1);
+SELECT check_lookup_stages_limit(1, 1000);
+
+SET documentdb.aggregation_stages_limit = 1005;
+SELECT check_aggregation_stages_limit(1001);
+SELECT check_lookup_stages_limit(1000, 1);
+SELECT check_lookup_stages_limit(1, 1000);
+RESET documentdb.aggregation_stages_limit;
