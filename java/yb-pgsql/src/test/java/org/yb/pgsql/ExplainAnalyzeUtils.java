@@ -241,7 +241,7 @@ public class ExplainAnalyzeUtils {
         options.summary, options.timing, options.verbose);
   }
 
-  private static TopLevelCheckerBuilder makeTopLevelBuilder() {
+  public static TopLevelCheckerBuilder makeTopLevelBuilder() {
     return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class, false);
   }
 
