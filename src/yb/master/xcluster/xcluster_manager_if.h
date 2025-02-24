@@ -83,6 +83,9 @@ class XClusterManagerIf {
 
   virtual bool IsTableReplicationConsumer(const TableId& table_id) const = 0;
 
+  virtual bool IsNamespaceInAutomaticModeSource(const NamespaceId& namespace_id) const = 0;
+  virtual bool IsNamespaceInAutomaticModeTarget(const NamespaceId& namespace_id) const = 0;
+
   virtual void RemoveTableConsumerStreams(
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::set<TableId>& tables_to_clear) = 0;

@@ -134,29 +134,22 @@ bool IsAutomaticDdlMode(const SysUniverseReplicationEntryPB& replication_info) {
 
 Status SetupDDLReplicationExtension(
     CatalogManagerIf& catalog_manager, const std::string& database_name,
-    XClusterDDLReplicationRole role, CoarseTimePoint deadline, StdStatusCallback callback) {
+    XClusterDDLReplicationRole role, StdStatusCallback callback) {
   std::vector<std::string> statements;
-  if (role == XClusterDDLReplicationRole::kSource) {
-    // In 1:N replication the source universe will already have the extension created.
-    statements.push_back(Format("CREATE EXTENSION IF NOT EXISTS $0", kXClusterDDLExtensionName));
-  } else {
-    // We could have older data in the table due to a backup restore from the source universe.
-    // So, we drop the extension and recreate it so that we start with empty tables.
-    statements.push_back(Format("SET $0.replication_role = DISABLED", kXClusterDDLExtensionName));
-    statements.push_back(Format("DROP EXTENSION IF EXISTS $0", kXClusterDDLExtensionName));
-    statements.push_back(Format("CREATE EXTENSION $0", kXClusterDDLExtensionName));
-  }
 
+  statements.push_back(Format("CREATE EXTENSION IF NOT EXISTS $0", kXClusterDDLExtensionName));
   statements.push_back(Format(
       "ALTER DATABASE \"$0\" SET $1.replication_role = $2", database_name,
       kXClusterDDLExtensionName,
       role == XClusterDDLReplicationRole::kSource ? "SOURCE" : "TARGET"));
 
   return ExecutePgsqlStatements(
-      database_name, statements, catalog_manager, deadline, std::move(callback));
+      database_name, statements, catalog_manager,
+      CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
+      std::move(callback));
 }
 
-Status DropDDLReplicationExtension(
+Status DropDDLReplicationExtensionIfExists(
     CatalogManagerIf& catalog_manager, const NamespaceId& namespace_id,
     StdStatusCallback callback) {
   auto namespace_name = VERIFY_RESULT(catalog_manager.FindNamespaceById(namespace_id))->name();

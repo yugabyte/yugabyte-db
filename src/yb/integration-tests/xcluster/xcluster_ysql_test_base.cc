@@ -987,7 +987,7 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 }
 
 Status XClusterYsqlTestBase::CheckpointReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id) {
+    const xcluster::ReplicationGroupId& replication_group_id, bool require_no_bootstrap_needed) {
   auto producer_namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
                     .CreateOutboundReplicationGroup(
@@ -995,7 +995,9 @@ Status XClusterYsqlTestBase::CheckpointReplicationGroup(
 
   auto bootstrap_required =
       VERIFY_RESULT(IsXClusterBootstrapRequired(replication_group_id, producer_namespace_id));
-  SCHECK(!bootstrap_required, IllegalState, "Bootstrap should not be required");
+  SCHECK(
+      !require_no_bootstrap_needed || !bootstrap_required, IllegalState,
+      "Bootstrap should not be required");
 
   return Status::OK();
 }
@@ -1036,12 +1038,13 @@ Status XClusterYsqlTestBase::AddNamespaceToXClusterReplication(
 }
 
 Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish(
-    const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names) {
+    const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names,
+    xcluster::ReplicationGroupId replication_group_id) {
   RETURN_NOT_OK(LoggedWaitFor(
-      [this, &target_master_addresses]() -> Result<bool> {
+      [this, &target_master_addresses, replication_group_id]() -> Result<bool> {
         auto result = VERIFY_RESULT(
             client::XClusterClient(*producer_client())
-                .IsCreateXClusterReplicationDone(kReplicationGroupId, target_master_addresses));
+                .IsCreateXClusterReplicationDone(replication_group_id, target_master_addresses));
         if (!result.status().ok()) {
           return result.status();
         }
@@ -1070,7 +1073,16 @@ Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
                     .CreateXClusterReplicationFromCheckpoint(replication_group_id, master_addr));
 
-  return WaitForCreateReplicationToFinish(master_addr, namespace_names);
+  return WaitForCreateReplicationToFinish(master_addr, namespace_names, replication_group_id);
+}
+
+Status XClusterYsqlTestBase::DeleteOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  auto source_xcluster_client = client::XClusterClient(*producer_client());
+  const auto target_master_address = consumer_cluster()->GetMasterAddresses();
+
+  return source_xcluster_client.DeleteOutboundReplicationGroup(
+      kReplicationGroupId, target_master_address);
 }
 
 Status XClusterYsqlTestBase::VerifyDDLExtensionTablesCreation(

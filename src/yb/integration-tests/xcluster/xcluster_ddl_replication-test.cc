@@ -97,8 +97,7 @@ TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
   ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name2));
 
   // Drop replication.
-  ASSERT_OK(source_xcluster_client.DeleteOutboundReplicationGroup(
-      kReplicationGroupId, target_master_address));
+  ASSERT_OK(DeleteOutboundReplicationGroup());
 
   // Extension should no longer exist on either side.
   ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name));
@@ -928,6 +927,194 @@ TEST_F(XClusterDDLReplicationTest, ExtraOidAllocationsOnTarget) {
 
   // Wait to see if applying the DDL on the target runs into problems.
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
+class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTest {
+ public:
+  bool SetReplicationDirection(ReplicationDirection direction) override {
+    if (XClusterDDLReplicationTest::SetReplicationDirection(direction)) {
+      std::swap(cluster_A_, cluster_B_);
+      return true;
+    }
+    return false;
+  }
+
+  Cluster* cluster_A_ = &producer_cluster_;
+  Cluster* cluster_B_ = &consumer_cluster_;
+  const xcluster::ReplicationGroupId kBackwardsReplicationGroupId =
+      xcluster::ReplicationGroupId("backwards_replication");
+};
+
+TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
+  ASSERT_OK(SetUpClusters());
+  // Set up replication from A to B.
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(ValidateReplicationRole(*cluster_A_, "source"));
+  ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+  // Create a table and write some rows, ensure that replication is setup correctly.
+  uint32_t num_rows_written = 0;
+  const auto kNumRecordsPerBatch = 10;
+  auto table_name = ASSERT_RESULT(CreateYsqlTable(/*idx=*/1, /*num_tablets=*/3, cluster_A_));
+  InsertRowsIntoProducerTableAndVerifyConsumer(
+      table_name, num_rows_written, num_rows_written + kNumRecordsPerBatch);
+  num_rows_written += kNumRecordsPerBatch;
+
+  LOG(INFO) << "===== Beginning switchover: checkpoint B";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(CheckpointReplicationGroup(
+      kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  // B should still have the target role.
+  ASSERT_OK(ValidateReplicationRole(*cluster_A_, "source"));
+  ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+  LOG(INFO) << "===== Switchover: test writes after checkpoint";
+  SetReplicationDirection(ReplicationDirection::AToB);
+  // Write to A should succeed and be replicated.
+  InsertRowsIntoProducerTableAndVerifyConsumer(
+      table_name, num_rows_written, num_rows_written + kNumRecordsPerBatch);
+  num_rows_written += kNumRecordsPerBatch;
+  // B should still disallow writes as it is still a target.
+  ASSERT_NOK_STR_CONTAINS(
+      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_B_),
+      "Data modification is forbidden");
+
+  LOG(INFO) << "===== Switchover: set up replication from B to A";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(CreateReplicationFromCheckpoint(
+      cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
+  // Both sides should now be targets and disallow writes.
+  ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
+  ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+  ASSERT_NOK_STR_CONTAINS(
+      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_A_),
+      "Data modification is forbidden");
+  ASSERT_NOK_STR_CONTAINS(
+      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_B_),
+      "Data modification is forbidden");
+
+  LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
+  SetReplicationDirection(ReplicationDirection::AToB);
+  ASSERT_OK(DeleteOutboundReplicationGroup());
+
+  LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+      ASSERT_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+
+  LOG(INFO) << "===== Switchover done";
+  // Roles should match the new switchover state.
+  ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
+  ASSERT_OK(ValidateReplicationRole(*cluster_B_, "source"));
+
+  // Ensure writes from B->A are now allowed and are replicated.
+  SetReplicationDirection(ReplicationDirection::BToA);
+  auto cluster_b_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(GetYsqlTable(
+      cluster_B_, table_name.namespace_name(), table_name.pgschema_name(),
+      table_name.table_name()))));
+  InsertRowsIntoProducerTableAndVerifyConsumer(
+      cluster_b_table->name(), num_rows_written, num_rows_written + kNumRecordsPerBatch,
+      kBackwardsReplicationGroupId);
+  // Writes on A should be blocked.
+  ASSERT_NOK_STR_CONTAINS(
+      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_A_),
+      "Data modification is forbidden");
+}
+
+TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingDDL) {
+  ASSERT_OK(SetUpClusters());
+  // Set up replication from A to B.
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(ValidateReplicationRole(*cluster_A_, "source"));
+  ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+  {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE my_table (f INT)"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    // Pause replication and perform additional DDLs to add some pending DDLs to the queue.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE my_table RENAME TO my_table2"));
+    // TODO(#26028): Also handle create/drop table here, those need additional handling of the
+    // outbound replication group state.
+  }
+
+  {
+    LOG(INFO) << "===== Beginning switchover: checkpoint B";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    ASSERT_OK(CheckpointReplicationGroup(
+        kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    // B should still have the target role.
+    ASSERT_OK(ValidateReplicationRole(*cluster_A_, "source"));
+    ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+    // This should fail since the schemas are not in sync.
+    LOG(INFO) << "===== Switchover: fail to create replication from B to A";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    ASSERT_NOK_STR_CONTAINS(
+        CreateReplicationFromCheckpoint(
+            cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId),
+        "Could not find matching table");
+    // Note that A will get marked as a target at this point.
+    // TODO(#26160): reset A back to a source on replication failure.
+    ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
+    ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+    LOG(INFO) << "===== Switchover: unpause and wait for replication to catch up";
+    SetReplicationDirection(ReplicationDirection::AToB);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    LOG(INFO) << "===== Switchover: set up replication from B to A";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    ASSERT_OK(CreateReplicationFromCheckpoint(
+        cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
+    // Both sides should be targets.
+    ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
+    ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+    LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
+    SetReplicationDirection(ReplicationDirection::AToB);
+    ASSERT_OK(DeleteOutboundReplicationGroup());
+
+    LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+        ASSERT_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+
+    LOG(INFO) << "===== Switchover done";
+    // Roles should match the new switchover state.
+    ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
+    ASSERT_OK(ValidateReplicationRole(*cluster_B_, "source"));
+  }
+
+  // Create a new table on B and ensure that it is replicated to A.
+  {
+    SetReplicationDirection(ReplicationDirection::BToA);
+    auto conn = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE my_table3 (f INT)"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  }
+
+  // Verify that both sides have the same tables.
+  const auto fetch_tables_query =
+      "SELECT relname FROM pg_class WHERE relname LIKE '%my_table%' ORDER BY relname ASC;";
+  std::string a_result, b_result;
+  {
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    a_result = ASSERT_RESULT(conn.FetchAllAsString(fetch_tables_query, ", ", "\n"));
+    LOG(INFO) << "tables on A:\n" << a_result;
+  }
+  {
+    auto conn = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
+    b_result = ASSERT_RESULT(conn.FetchAllAsString(fetch_tables_query, ", ", "\n"));
+    LOG(INFO) << "tables on B:\n" << b_result;
+  }
+  ASSERT_EQ(a_result, b_result);
 }
 
 class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTest {

@@ -45,8 +45,6 @@ const int kTabletCount = 3;
 const string kTableName = "test_table";
 constexpr auto kNumRecordsPerBatch = 10;
 
-YB_DEFINE_ENUM(ReplicationDirection, (ProducerToConsumer)(ConsumerToProducer))
-
 class XClusterDRTest : public XClusterYsqlTestBase {
   typedef XClusterYsqlTestBase super;
 
@@ -79,7 +77,7 @@ class XClusterDRTest : public XClusterYsqlTestBase {
     ASSERT_OK(producer_snapshot_util_.CreateSchedule(namespace_name, client::WaitSnapshot::kTrue));
     ASSERT_OK(consumer_snapshot_util_.CreateSchedule(namespace_name, client::WaitSnapshot::kTrue));
 
-    SetReplicationDirection(ReplicationDirection::ProducerToConsumer);
+    SetReplicationDirection(ReplicationDirection::AToB);
   }
 
   Result<client::YBTableName> CreateYsqlTable(Cluster* cluster, const std::string& namespace_name) {
@@ -119,7 +117,7 @@ class XClusterDRTest : public XClusterYsqlTestBase {
   }
 
   void SetReplicationDirection(ReplicationDirection replication_direction) {
-    if (replication_direction == ReplicationDirection::ProducerToConsumer) {
+    if (replication_direction == ReplicationDirection::AToB) {
       source_tables_for_bootstrap_ = {producer_table_};
       source_table_ = &producer_table_;
       source_cluster_ = &producer_cluster_;
@@ -270,7 +268,7 @@ TEST_F(XClusterDRTest, Failover) {
   ASSERT_OK(DeleteUniverseReplication(
       kReplicationGroupId, target_client_, target_cluster_->mini_cluster_.get()));
 
-  SetReplicationDirection(ReplicationDirection::ConsumerToProducer);
+  SetReplicationDirection(ReplicationDirection::BToA);
 
   ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
       (*source_table_)->name().namespace_id(), /*is_read_only=*/false, source_cluster_));
@@ -302,7 +300,7 @@ TEST_F(XClusterDRTest, Switchover) {
   ASSERT_OK(WaitForTargetRowsToMatchSource());
 
   // Swap the source and target clusters.
-  SetReplicationDirection(ReplicationDirection::ConsumerToProducer);
+  SetReplicationDirection(ReplicationDirection::BToA);
 
   // Bootstrap the new source cluster.
   auto new_bootstrap_ids =
