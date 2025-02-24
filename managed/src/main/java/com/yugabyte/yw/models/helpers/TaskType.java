@@ -1062,6 +1062,9 @@ public enum TaskType {
   PGUpgradeTServerCheck(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.PGUpgradeTServerCheck.class),
 
+  CleanUpPGUpgradeDataDir(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CleanUpPGUpgradeDataDir.class),
+
   RunYsqlMajorVersionCatalogUpgrade(
       com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlMajorVersionCatalogUpgrade.class),
 

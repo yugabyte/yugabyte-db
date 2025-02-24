@@ -43,6 +43,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeSafeToDelete;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CleanUpPGUpgradeDataDir;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
@@ -1679,13 +1680,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Create a task to store auto flags version of current software version.
    *
    * @param universeUUID
+   * @param targetUpgradeSoftwareVersion
    * @return
    */
-  public SubTaskGroup createStoreAutoFlagConfigVersionTask(UUID universeUUID) {
+  public SubTaskGroup createStoreAutoFlagConfigVersionTask(
+      UUID universeUUID, String targetUpgradeSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("StoreAutoFlagConfig");
     StoreAutoFlagConfigVersion task = createTask(StoreAutoFlagConfigVersion.class);
     StoreAutoFlagConfigVersion.Params params = new StoreAutoFlagConfigVersion.Params();
     params.setUniverseUUID(universeUUID);
+    params.targetUpgradeSoftwareVersion = targetUpgradeSoftwareVersion;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1716,6 +1720,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     PGUpgradeTServerCheck.Params params = new PGUpgradeTServerCheck.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.ybSoftwareVersion = ybSoftwareVersion;
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createCleanUpPGUpgradeDataDirTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("CleanUpPGUpgradeDataDir", SubTaskGroupType.ConfigureUniverse);
+    CleanUpPGUpgradeDataDir task = createTask(CleanUpPGUpgradeDataDir.class);
+    CleanUpPGUpgradeDataDir.Params params = new CleanUpPGUpgradeDataDir.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
