@@ -41,7 +41,13 @@ func write(t *testing.T, testname string, w *Writer, src string) {
 		t.Errorf("--- test: %s\n--- src:\n%q\n--- write error: %v\n", testname, src, err)
 	}
 	if written != len(src) {
-		t.Errorf("--- test: %s\n--- src:\n%q\n--- written = %d, len(src) = %d\n", testname, src, written, len(src))
+		t.Errorf(
+			"--- test: %s\n--- src:\n%q\n--- written = %d, len(src) = %d\n",
+			testname,
+			src,
+			written,
+			len(src),
+		)
 	}
 }
 
@@ -53,11 +59,24 @@ func verify(t *testing.T, testname string, w *Writer, b *buffer, src, expected s
 
 	res := b.String()
 	if res != expected {
-		t.Errorf("--- test: %s\n--- src:\n%q\n--- found:\n%q\n--- expected:\n%q\n", testname, src, res, expected)
+		t.Errorf(
+			"--- test: %s\n--- src:\n%q\n--- found:\n%q\n--- expected:\n%q\n",
+			testname,
+			src,
+			res,
+			expected,
+		)
 	}
 }
 
-func check(t *testing.T, testname string, minwidth, tabwidth, padding int, padchar byte, flags uint, src, expected string) {
+func check(
+	t *testing.T,
+	testname string,
+	minwidth, tabwidth, padding int,
+	padchar byte,
+	flags uint,
+	src, expected string,
+) {
 	var b buffer
 	b.init(1000)
 
@@ -611,7 +630,17 @@ var tests = []struct {
 
 func Test(t *testing.T) {
 	for _, e := range tests {
-		check(t, e.testname, e.minwidth, e.tabwidth, e.padding, e.padchar, e.flags, e.src, e.expected)
+		check(
+			t,
+			e.testname,
+			e.minwidth,
+			e.tabwidth,
+			e.padding,
+			e.padchar,
+			e.flags,
+			e.src,
+			e.expected,
+		)
 	}
 }
 
@@ -662,7 +691,14 @@ func BenchmarkTable(b *testing.B) {
 				b.Run("new", func(b *testing.B) {
 					b.ReportAllocs()
 					for i := 0; i < b.N; i++ {
-						w := NewWriter(io.Discard, 4, 4, 1, ' ', 0) // no particular reason for these settings
+						w := NewWriter(
+							io.Discard,
+							4,
+							4,
+							1,
+							' ',
+							0,
+						) // no particular reason for these settings
 						// Write the line h times.
 						for j := 0; j < h; j++ {
 							w.Write(line)
@@ -673,7 +709,14 @@ func BenchmarkTable(b *testing.B) {
 
 				b.Run("reuse", func(b *testing.B) {
 					b.ReportAllocs()
-					w := NewWriter(io.Discard, 4, 4, 1, ' ', 0) // no particular reason for these settings
+					w := NewWriter(
+						io.Discard,
+						4,
+						4,
+						1,
+						' ',
+						0,
+					) // no particular reason for these settings
 					for i := 0; i < b.N; i++ {
 						// Write the line h times.
 						for j := 0; j < h; j++ {
@@ -694,7 +737,14 @@ func BenchmarkPyramid(b *testing.B) {
 		b.Run(fmt.Sprintf("%d", x), func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				w := NewWriter(io.Discard, 4, 4, 1, ' ', 0) // no particular reason for these settings
+				w := NewWriter(
+					io.Discard,
+					4,
+					4,
+					1,
+					' ',
+					0,
+				) // no particular reason for these settings
 				// Write increasing prefixes of that line.
 				for j := 0; j < x; j++ {
 					w.Write(line[:j*2])
@@ -716,7 +766,14 @@ func BenchmarkRagged(b *testing.B) {
 		b.Run(fmt.Sprintf("%d", h), func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				w := NewWriter(io.Discard, 4, 4, 1, ' ', 0) // no particular reason for these settings
+				w := NewWriter(
+					io.Discard,
+					4,
+					4,
+					1,
+					' ',
+					0,
+				) // no particular reason for these settings
 				// Write the lines in turn h times.
 				for j := 0; j < h; j++ {
 					w.Write(lines[j%len(lines)])

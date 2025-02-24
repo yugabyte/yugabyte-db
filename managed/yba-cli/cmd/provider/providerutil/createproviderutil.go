@@ -49,7 +49,12 @@ func WaitForCreateProviderTask(
 		providerData, response, err = authAPI.GetListOfProviders().
 			Name(providerName).ProviderCode(providerCode).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider", "Create - Fetch Provider")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Provider",
+				"Create - Fetch Provider",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		providersCtx := formatter.Context{

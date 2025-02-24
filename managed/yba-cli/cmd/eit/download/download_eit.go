@@ -29,7 +29,8 @@ func init() {
 	DownloadEITCmd.AddCommand(downloadRootEITCmd)
 	DownloadEITCmd.AddCommand(downloadClientEITCmd)
 
-	DownloadEITCmd.PersistentFlags().StringP("name", "n", "", "[Required] Name of the configuration.")
+	DownloadEITCmd.PersistentFlags().
+		StringP("name", "n", "", "[Required] Name of the configuration.")
 	DownloadEITCmd.MarkPersistentFlagRequired("name")
 	DownloadEITCmd.PersistentFlags().StringP("cert-type", "c", "",
 		"[Optional] Type of the certificate. "+

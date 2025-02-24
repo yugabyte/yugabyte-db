@@ -41,7 +41,11 @@ var createRestoreCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to restore backup to\n", formatter.RedColor))
+				formatter.Colorize(
+					"No universe name found to restore backup to\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		storageConfigNameFlag, err := cmd.Flags().GetString("storage-config-name")
@@ -51,7 +55,11 @@ var createRestoreCmd = &cobra.Command{
 		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No storage config name found for restore\n", formatter.RedColor))
+				formatter.Colorize(
+					"No storage config name found for restore\n",
+					formatter.RedColor,
+				),
+			)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -68,7 +76,12 @@ var createRestoreCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "Create - Get Universe")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Restore",
+				"Create - Get Universe",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -194,8 +207,17 @@ var createRestoreCmd = &cobra.Command{
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
-				logrus.Info(fmt.Sprintf("\nWaiting for restore task %s on universe %s (%s) to be completed\n",
-					formatter.Colorize(taskUUID, formatter.GreenColor), universeNameFlag, universeUUID))
+				logrus.Info(
+					fmt.Sprintf(
+						"\nWaiting for restore task %s on universe %s (%s) to be completed\n",
+						formatter.Colorize(
+							taskUUID,
+							formatter.GreenColor,
+						),
+						universeNameFlag,
+						universeUUID,
+					),
+				)
 				err = authAPI.WaitForTask(taskUUID, msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -275,7 +297,8 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 					backupDetails["storage-location"] = val
 				}
 			case "backup-type":
-				if !strings.EqualFold(val, "ysql") && !strings.EqualFold(val, "ycql") && !strings.EqualFold(val, "yedis") {
+				if !strings.EqualFold(val, "ysql") && !strings.EqualFold(val, "ycql") &&
+					!strings.EqualFold(val, "yedis") {
 					logrus.Fatalf(fmt.Sprintf("Table type provided %s is not supported", val))
 				}
 

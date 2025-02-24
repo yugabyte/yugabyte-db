@@ -51,7 +51,12 @@ func WaitForUpgradeUniverseTask(
 
 		universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Upgrade - Fetch Universe")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Universe",
+				"Upgrade - Fetch Universe",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		universesCtx := formatter.Context{

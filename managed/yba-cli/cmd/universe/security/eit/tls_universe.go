@@ -46,8 +46,11 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 			if strings.Compare(upgradeOption, "Rolling") == 0 {
 				cmd.Help()
 				logrus.Fatalln(
-					formatter.Colorize("Only a \"Non-Rolling\" type of restart is allowed for TLS upgrade.\n",
-						formatter.RedColor))
+					formatter.Colorize(
+						"Only a \"Non-Rolling\" type of restart is allowed for TLS upgrade.\n",
+						formatter.RedColor,
+					),
+				)
 			}
 		}
 
@@ -60,7 +63,11 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 			if strings.Compare(clientToNodeEncryption, util.EnableOpType) != 0 &&
 				strings.Compare(clientToNodeEncryption, util.DisableOpType) != 0 {
 				logrus.Fatalf(
-					formatter.Colorize("Invalid client-to-node-encryption value\n", formatter.RedColor))
+					formatter.Colorize(
+						"Invalid client-to-node-encryption value\n",
+						formatter.RedColor,
+					),
+				)
 			}
 		}
 
@@ -73,7 +80,11 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 			if strings.Compare(nodeToNodeEncryption, util.EnableOpType) != 0 &&
 				strings.Compare(nodeToNodeEncryption, util.DisableOpType) != 0 {
 				logrus.Fatalf(
-					formatter.Colorize("Invalid node-to-node-encryption value\n", formatter.RedColor))
+					formatter.Colorize(
+						"Invalid node-to-node-encryption value\n",
+						formatter.RedColor,
+					),
+				)
 			}
 		}
 
@@ -147,7 +158,10 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 				logrus.Debugf("Enable client-to-node encryption is already set to %t\n",
 					enableClientToNodeEncryption)
 			}
-			logrus.Debugf("Setting client-to-node encryption to: %t\n", enableClientToNodeEncryption)
+			logrus.Debugf(
+				"Setting client-to-node encryption to: %t\n",
+				enableClientToNodeEncryption,
+			)
 			requestBody.SetEnableClientToNodeEncrypt(enableClientToNodeEncryption)
 		} else {
 			logrus.Debugf("Setting client-to-node encryption to: %t\n",

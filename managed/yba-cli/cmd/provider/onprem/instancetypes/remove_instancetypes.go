@@ -46,8 +46,13 @@ var removeInstanceTypesCmd = &cobra.Command{
 					"\n", formatter.RedColor))
 		}
 		err = util.ConfirmCommand(
-			fmt.Sprintf("Are you sure you want to remove %s: %s", "instance type", instanceTypeName),
-			viper.GetBool("force"))
+			fmt.Sprintf(
+				"Are you sure you want to remove %s: %s",
+				"instance type",
+				instanceTypeName,
+			),
+			viper.GetBool("force"),
+		)
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -60,7 +65,8 @@ var removeInstanceTypesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		providerListRequest := authAPI.GetListOfProviders()
-		providerListRequest = providerListRequest.Name(providerName).ProviderCode(util.OnpremProviderType)
+		providerListRequest = providerListRequest.Name(providerName).
+			ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
@@ -82,7 +88,8 @@ var removeInstanceTypesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		rDelete, response, err := authAPI.DeleteInstanceType(providerUUID, instanceTypeName).Execute()
+		rDelete, response, err := authAPI.DeleteInstanceType(providerUUID, instanceTypeName).
+			Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Instance Type", "Remove")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))

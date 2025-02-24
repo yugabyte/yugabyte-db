@@ -17,32 +17,33 @@ import (
 )
 
 // CreateBackupSchedule creates a backup schedule
-func (a *AuthAPIClient) CreateBackupSchedule() (
-	ybaclient.BackupsApiApiCreateBackupScheduleAsyncRequest) {
+func (a *AuthAPIClient) CreateBackupSchedule() ybaclient.BackupsApiApiCreateBackupScheduleAsyncRequest {
 	return a.APIClient.BackupsApi.CreateBackupScheduleAsync(a.ctx, a.CustomerUUID)
 }
 
 // ListBackupSchedules associated with the customer
-func (a *AuthAPIClient) ListBackupSchedules() (
-	ybaclient.ScheduleManagementApiApiListSchedulesV2Request) {
+func (a *AuthAPIClient) ListBackupSchedules() ybaclient.ScheduleManagementApiApiListSchedulesV2Request {
 	return a.APIClient.ScheduleManagementApi.ListSchedulesV2(a.ctx, a.CustomerUUID)
 }
 
 // GetBackupSchedule fetches backups by the universe and task UUID
-func (a *AuthAPIClient) GetBackupSchedule(scheduleUUID string) (
-	ybaclient.ScheduleManagementApiApiGetScheduleRequest) {
+func (a *AuthAPIClient) GetBackupSchedule(
+	scheduleUUID string,
+) ybaclient.ScheduleManagementApiApiGetScheduleRequest {
 	return a.APIClient.ScheduleManagementApi.GetSchedule(a.ctx, a.CustomerUUID, scheduleUUID)
 }
 
 // DeleteBackupSchedule deletes the backup schedule
-func (a *AuthAPIClient) DeleteBackupSchedule(scheduleUUID string) (
-	ybaclient.ScheduleManagementApiApiDeleteScheduleV2Request) {
+func (a *AuthAPIClient) DeleteBackupSchedule(
+	scheduleUUID string,
+) ybaclient.ScheduleManagementApiApiDeleteScheduleV2Request {
 	return a.APIClient.ScheduleManagementApi.DeleteScheduleV2(a.ctx, a.CustomerUUID, scheduleUUID)
 }
 
 // EditBackupSchedule edits a backup schedule
-func (a *AuthAPIClient) EditBackupSchedule(scheduleUUID string) (
-	ybaclient.ScheduleManagementApiApiEditBackupScheduleV2Request) {
+func (a *AuthAPIClient) EditBackupSchedule(
+	scheduleUUID string,
+) ybaclient.ScheduleManagementApiApiEditBackupScheduleV2Request {
 	return a.APIClient.ScheduleManagementApi.EditBackupScheduleV2(
 		a.ctx,
 		a.CustomerUUID,

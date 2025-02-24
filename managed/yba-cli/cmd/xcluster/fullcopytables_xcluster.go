@@ -146,10 +146,13 @@ var fullCopyXClusterCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			tablesNeedBootstrap = append(tablesNeedBootstrap, util.XClusterConfigNeedBootstrapResponse{
-				TableUUID:     tableID,
-				BootstrapInfo: &needBootstrapInfo,
-			})
+			tablesNeedBootstrap = append(
+				tablesNeedBootstrap,
+				util.XClusterConfigNeedBootstrapResponse{
+					TableUUID:     tableID,
+					BootstrapInfo: &needBootstrapInfo,
+				},
+			)
 		}
 
 		xcluster.FullCopyTableWrite(xclusterNeedBootstrapCtx, tablesNeedBootstrap)

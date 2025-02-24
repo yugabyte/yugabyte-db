@@ -66,7 +66,12 @@ func DeleteEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 		if len(strings.TrimSpace(commandCall)) != 0 {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Delete - List KMS Configs")
+		errMessage := util.ErrorFromHTTPResponse(
+			response,
+			err,
+			callSite,
+			"Delete - List KMS Configs",
+		)
 		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
 

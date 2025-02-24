@@ -132,7 +132,8 @@ var deleteBackupScheduleCmd = &cobra.Command{
 
 			// Prepare next page request
 			scheduleAPIQuery.Offset = offset
-			scheduleListRequest = authAPI.ListBackupSchedules().PageScheduleRequest(scheduleAPIQuery)
+			scheduleListRequest = authAPI.ListBackupSchedules().
+				PageScheduleRequest(scheduleAPIQuery)
 		}
 
 		if len(scheduleUUID) == 0 {
