@@ -243,6 +243,7 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       HybridTime commit_ht,
       HybridTime log_ht,
       HybridTime file_filter_ht,
+      const OpId& apply_op_id,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
       rocksdb::DB* intents_db,
@@ -275,9 +276,10 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
   const TabletId& tablet_id_;
   const ApplyTransactionState* apply_state_;
   const SubtxnSet& aborted_;
-  HybridTime commit_ht_;
-  HybridTime log_ht_;
   IntraTxnWriteId write_id_;
+  const HybridTime commit_ht_;
+  const HybridTime log_ht_;
+  const OpId apply_op_id_;
   const KeyBounds* key_bounds_;
   VectorIndexesPtr vector_indexes_;
   StorageSet apply_to_storages_;

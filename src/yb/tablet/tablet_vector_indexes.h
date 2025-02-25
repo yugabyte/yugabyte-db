@@ -80,11 +80,11 @@ class TabletVectorIndexes : public TabletComponent {
 
  private:
   void ScheduleBackfill(
-      const docdb::VectorIndexPtr& vector_index, HybridTime backfill_ht,
+      const docdb::VectorIndexPtr& vector_index, HybridTime backfill_ht, OpId op_id,
       const TableInfoPtr& indexed_table, std::shared_ptr<ScopedRWOperation> read_op);
   Status Backfill(
       const docdb::VectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice key,
-      HybridTime read_ht);
+      HybridTime backkfill_ht, OpId op_id);
 
   Status DoCreateIndex(
       const TableInfo& index_table, const TableInfoPtr& indexed_table, bool allow_inplace_insert)

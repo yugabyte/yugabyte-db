@@ -345,7 +345,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
         table.table_type(), schema, qlexpr::IndexMap(table.indexes()),
         table.has_index_info() ? std::optional<qlexpr::IndexInfo>(table.index_info())
                                : std::nullopt,
-        table.schema_version(), partition_schema, HybridTime::FromPB(table.hybrid_time()),
+        table.schema_version(), partition_schema, OpId::FromPB(table.op_id()),
+        HybridTime::FromPB(table.hybrid_time()),
         table.pg_table_id(), tablet::SkipTableTombstoneCheck(table.skip_table_tombstone_check()));
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
 

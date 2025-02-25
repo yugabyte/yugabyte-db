@@ -103,6 +103,9 @@ struct TableInfo {
   // Partition schema of the table.
   dockv::PartitionSchema partition_schema;
 
+  // Id of operation that added this table to the tablet.
+  OpId op_id;
+
   // Hybrid time when this table was added to the tablet.
   HybridTime hybrid_time;
 
@@ -139,6 +142,7 @@ struct TableInfo {
             const std::optional<qlexpr::IndexInfo>& index_info,
             SchemaVersion schema_version,
             dockv::PartitionSchema partition_schema,
+            const OpId& op_id,
             HybridTime ht,
             TableId pg_table_id,
             SkipTableTombstoneCheck skip_table_tombstone_check);

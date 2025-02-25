@@ -161,6 +161,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
                      const std::optional<IndexInfo>& index_info,
                      const SchemaVersion schema_version,
                      dockv::PartitionSchema partition_schema,
+                     const OpId& op_id_,
                      HybridTime ht,
                      TableId pg_table_id_,
                      SkipTableTombstoneCheck skip_table_tombstone_check_)
@@ -177,6 +178,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(std::move(partition_schema)),
+      op_id(op_id_),
       hybrid_time(ht),
       pg_table_id(std::move(pg_table_id_)),
       skip_table_tombstone_check(skip_table_tombstone_check_) {
@@ -202,6 +204,7 @@ TableInfo::TableInfo(const TableInfo& other,
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(other.partition_schema),
+      op_id(other.op_id),
       hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
@@ -225,6 +228,7 @@ TableInfo::TableInfo(const TableInfo& other,
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
       partition_schema(other.partition_schema),
+      op_id(other.op_id),
       hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
@@ -245,6 +249,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
       partition_schema(other.partition_schema),
+      op_id(other.op_id),
       hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
@@ -284,6 +289,7 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   table_name = pb.table_name();
   table_type = pb.table_type();
   cotable_id = VERIFY_RESULT(ParseCotableId(primary, table_id));
+  op_id = OpId::FromPB(pb.op_id());
   hybrid_time = HybridTime::FromPB(pb.hybrid_time());
   pg_table_id = pb.pg_table_id();
   skip_table_tombstone_check = SkipTableTombstoneCheck(pb.skip_table_tombstone_check());
@@ -366,6 +372,7 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
     deleted_col.CopyToPB(pb->mutable_deleted_cols()->Add());
   }
   pb->set_hybrid_time(hybrid_time.ToPB());
+  op_id.ToPB(pb->mutable_op_id());
   pb->set_pg_table_id(pg_table_id);
   pb->set_skip_table_tombstone_check(skip_table_tombstone_check);
 }
@@ -454,7 +461,7 @@ TableInfoPtr TableInfo::TEST_CreateWithLogPrefix(
   return std::make_shared<TableInfo>(
       std::move(log_prefix), Primary::kTrue, std::move(table_id), std::move(namespace_name),
       std::move(table_name), table_type, schema, qlexpr::IndexMap(),
-      std::nullopt /* index_info */, 0 /* schema_version */, partition_schema, HybridTime(),
+      std::nullopt /* index_info */, 0 /* schema_version */, partition_schema, OpId{}, HybridTime{},
       "" /* pg_table_id */, tablet::SkipTableTombstoneCheck::kFalse);
 }
 
@@ -1448,6 +1455,7 @@ Result<TableInfoPtr> RaftGroupMetadata::AddTable(
                                                             index_info,
                                                             schema_version,
                                                             partition_schema,
+                                                            op_id,
                                                             ht,
                                                             pg_table_id,
                                                             skip_table_tombstone_check);

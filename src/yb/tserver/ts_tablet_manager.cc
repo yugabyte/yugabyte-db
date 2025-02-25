@@ -1386,6 +1386,7 @@ Status TSTabletManager::DoApplyCloneTablet(
       std::move(target_table_index_info),
       source_table->schema_version, /* fixed by restore */
       target_partition_schema,
+      operation->op_id(),
       operation->hybrid_time(),
       target_pg_table_id,
       tablet::SkipTableTombstoneCheck(target_skip_table_tombstone_check));

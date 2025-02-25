@@ -446,34 +446,29 @@ std::string MakeTabletLogPrefix(
 // log_ht - apply raft operation hybrid time.
 // commit_ht - transaction commit hybrid time.
 // So frontiers should cover range of those times.
-docdb::ConsensusFrontiers* InitFrontiers(
-    const OpId op_id,
-    const HybridTime log_ht,
-    const HybridTime commit_ht,
-    docdb::ConsensusFrontiers* frontiers) {
-  if (FLAGS_TEST_disable_adding_user_frontier_to_sst) {
-    return nullptr;
-  }
-  set_op_id(op_id, frontiers);
+void InitFrontiers(
+    OpId op_id,
+    HybridTime log_ht,
+    HybridTime commit_ht,
+    docdb::ConsensusFrontiers& frontiers) {
+  CHECK(!op_id.empty());
+  set_op_id(op_id, &frontiers);
   HybridTime min_ht = log_ht;
   HybridTime max_ht = log_ht;
   if (commit_ht) {
     min_ht = std::min(min_ht, commit_ht);
     max_ht = std::max(max_ht, commit_ht);
   }
-  frontiers->Smallest().set_hybrid_time(min_ht);
-  frontiers->Largest().set_hybrid_time(max_ht);
-  return frontiers;
+  frontiers.Smallest().set_hybrid_time(min_ht);
+  frontiers.Largest().set_hybrid_time(max_ht);
 }
 
-docdb::ConsensusFrontiers* InitFrontiers(
-    const TransactionApplyData& data, docdb::ConsensusFrontiers* frontiers) {
-  return InitFrontiers(data.op_id, data.log_ht, data.commit_ht, frontiers);
+void InitFrontiers(const TransactionApplyData& data, docdb::ConsensusFrontiers& frontiers) {
+  InitFrontiers(data.op_id, data.log_ht, data.commit_ht, frontiers);
 }
 
-docdb::ConsensusFrontiers* InitFrontiers(
-    const RemoveIntentsData& data, docdb::ConsensusFrontiers* frontiers) {
-  return InitFrontiers(data.op_id, data.log_ht, HybridTime::kInvalid, frontiers);
+void InitFrontiers(const RemoveIntentsData& data, docdb::ConsensusFrontiers& frontiers) {
+  InitFrontiers(data.op_id, data.log_ht, HybridTime::kInvalid, frontiers);
 }
 
 rocksdb::UserFrontierPtr GetMutableMemTableFrontierFromDb(
@@ -1660,32 +1655,29 @@ Status Tablet::ApplyOperation(
   docdb::ConsensusFrontiers frontiers;
   // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
   // frontier.
-  auto frontiers_ptr = InitFrontiers(
-      operation.op_id(), batch_hybrid_time,
-      /* commit_ht= */ HybridTime::kInvalid, &frontiers);
-  if (frontiers_ptr) {
-    auto ttl = write_batch.has_ttl()
-        ? MonoDelta::FromNanoseconds(write_batch.ttl())
-        : dockv::ValueControlFields::kMaxTtl;
-    frontiers_ptr->Largest().set_max_value_level_ttl_expiration_time(
-        dockv::FileExpirationFromValueTTL(batch_hybrid_time, ttl));
-    for (const auto& p : write_batch.table_schema_version()) {
-      // Since new frontiers does not contain schema version just add it there.
-      auto table_id = p.table_id().empty()
-          ? Uuid::Nil() : VERIFY_RESULT(Uuid::FromSlice(p.table_id()));
-      frontiers_ptr->Smallest().AddSchemaVersion(table_id, p.schema_version());
-      frontiers_ptr->Largest().AddSchemaVersion(table_id, p.schema_version());
-    }
+  InitFrontiers(
+      operation.op_id(), batch_hybrid_time, /* commit_ht= */ HybridTime::kInvalid, frontiers);
+  auto ttl = write_batch.has_ttl()
+      ? MonoDelta::FromNanoseconds(write_batch.ttl())
+      : dockv::ValueControlFields::kMaxTtl;
+  frontiers.Largest().set_max_value_level_ttl_expiration_time(
+      dockv::FileExpirationFromValueTTL(batch_hybrid_time, ttl));
+  for (const auto& p : write_batch.table_schema_version()) {
+    // Since new frontiers does not contain schema version just add it there.
+    auto table_id = p.table_id().empty()
+        ? Uuid::Nil() : VERIFY_RESULT(Uuid::FromSlice(p.table_id()));
+    frontiers.Smallest().AddSchemaVersion(table_id, p.schema_version());
+    frontiers.Largest().AddSchemaVersion(table_id, p.schema_version());
   }
   return ApplyKeyValueRowOperations(
-      batch_idx, write_batch, frontiers_ptr, write_hybrid_time, batch_hybrid_time);
+      batch_idx, write_batch, frontiers, write_hybrid_time, batch_hybrid_time);
 }
 
 Status Tablet::WriteTransactionalBatch(
     int64_t batch_idx,
     const docdb::LWKeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
-    const rocksdb::UserFrontiers* frontiers) {
+    const rocksdb::UserFrontiers& frontiers) {
   auto transaction_id = CHECK_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
 
@@ -1737,7 +1729,7 @@ Status Tablet::WriteTransactionalBatch(
 
 Status Tablet::ApplyKeyValueRowOperations(
     int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& put_batch,
-    docdb::ConsensusFrontiers* frontiers, HybridTime write_hybrid_time,
+    docdb::ConsensusFrontiers& frontiers, HybridTime write_hybrid_time,
     HybridTime batch_hybrid_time) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
       put_batch.lock_pairs().empty() && put_batch.apply_external_transactions().empty()) {
@@ -1757,7 +1749,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
         &GetSchemaPackingProvider());
-    batcher.SetFrontiers(frontiers);
+    batcher.SetFrontiers(&frontiers);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
@@ -1782,7 +1774,7 @@ Status Tablet::ApplyKeyValueRowOperations(
 }
 
 void Tablet::WriteToRocksDB(
-    const rocksdb::UserFrontiers* frontiers,
+    const rocksdb::UserFrontiers& frontiers,
     rocksdb::WriteBatch* write_batch,
     docdb::StorageDbType storage_db_type) {
   rocksdb::DB* dest_db = nullptr;
@@ -1791,10 +1783,7 @@ void Tablet::WriteToRocksDB(
     case StorageDbType::kIntents: dest_db = intents_db_.get(); break;
   }
 
-  // Frontiers can be null for deferred apply operations.
-  if (frontiers) {
-    write_batch->SetFrontiers(frontiers);
-  }
+  write_batch->SetFrontiers(&frontiers);
 
   // We are using Raft replication index for the RocksDB sequence number for
   // all members of this write batch.
@@ -2318,7 +2307,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   auto vector_indexes = vector_indexes_->List();
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
-      min_running_ht, &key_bounds_, metadata_.get(), intents_db_.get(), vector_indexes,
+      min_running_ht, data.op_id, &key_bounds_, metadata_.get(), intents_db_.get(), vector_indexes,
       data.apply_to_storages);
   docdb::IntentsWriter intents_writer(
       data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
@@ -2328,9 +2317,9 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
-  auto frontiers_ptr = data.op_id.empty() ? nullptr : InitFrontiers(data, &frontiers);
-  context.SetFrontiers(frontiers_ptr);
-  WriteToRocksDB(frontiers_ptr, &regular_write_batch, StorageDbType::kRegular);
+  InitFrontiers(data, frontiers);
+  context.SetFrontiers(&frontiers);
+  WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
   return context.apply_state();
 }
 
@@ -2354,8 +2343,8 @@ Status Tablet::RemoveIntentsImpl(
           intents_db_.get(), &context);
       intents_write_batch.SetDirectWriter(&writer);
       docdb::ConsensusFrontiers frontiers;
-      auto frontiers_ptr = InitFrontiers(data, &frontiers);
-      WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
+      InitFrontiers(data, frontiers);
+      WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
 
       if (!context.apply_state().active()) {
         break;
@@ -2465,7 +2454,7 @@ Status Tablet::WritePostApplyMetadata(std::span<const PostApplyTransactionMetada
   docdb::PostApplyMetadataWriter writer(metadatas);
   write_batch.SetDirectWriter(&writer);
 
-  WriteToRocksDB(&frontiers, &write_batch, StorageDbType::kIntents);
+  WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
 
   return Status::OK();
 }

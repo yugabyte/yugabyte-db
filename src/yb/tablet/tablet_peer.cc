@@ -277,7 +277,7 @@ Status TabletPeer::InitTabletPeer(
         static const char* error_msg =
             "A memtable with no frontiers set found when deciding what memtables to "
             "flush! This should not happen.";
-        LOG(ERROR) << error_msg << " Stack trace:\n" << GetStackTrace();
+        LOG(DFATAL) << error_msg;
         return STATUS(IllegalState, error_msg);
       };
     });

@@ -553,6 +553,7 @@ ApplyIntentsContext::ApplyIntentsContext(
     HybridTime commit_ht,
     HybridTime log_ht,
     HybridTime file_filter_ht,
+    const OpId& apply_op_id,
     const KeyBounds* key_bounds,
     SchemaPackingProvider* schema_packing_provider,
     rocksdb::DB* intents_db,
@@ -567,9 +568,10 @@ ApplyIntentsContext::ApplyIntentsContext(
       // set at commit time. Rather then copy that set upstream so it is passed in as aborted, we
       // simply grab a reference to it here, if it is defined, to use in this method.
       aborted_(apply_state ? apply_state->aborted : aborted),
+      write_id_(apply_state ? apply_state->write_id : 0),
       commit_ht_(commit_ht),
       log_ht_(log_ht),
-      write_id_(apply_state ? apply_state->write_id : 0),
+      apply_op_id_(apply_op_id),
       key_bounds_(key_bounds),
       vector_indexes_(vector_indexes),
       apply_to_storages_(apply_to_storages),
@@ -588,6 +590,7 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   ApplyTransactionStatePB pb;
   apply_state().ToPB(&pb);
   pb.set_commit_ht(commit_ht_.ToUint64());
+  apply_op_id_.ToPB(pb.mutable_apply_op_id());
   faststring encoded_pb;
   RETURN_NOT_OK(pb_util::SerializeToString(pb, &encoded_pb));
   char string_value_type = ValueEntryTypeAsChar::kString;
@@ -595,6 +598,8 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
     Slice(&string_value_type, 1),
     Slice(encoded_pb.data(), encoded_pb.size())
   }};
+  VLOG_WITH_FUNC(4)
+      << "TXN: " << transaction_id() << ", commit_ht: " << commit_ht_ << ", pb: " << AsString(pb);
   PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
   return true;
 }
