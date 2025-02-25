@@ -3835,6 +3835,11 @@
           "description" : "Frequency of the schedule",
           "format" : "int64",
           "type" : "integer"
+        },
+        "timeBeforeDelete" : {
+          "description" : "Time before deleting the backup from storage, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
         }
       },
       "type" : "object"
@@ -7686,6 +7691,11 @@
             "Editing"
           ],
           "type" : "string"
+        },
+        "timeBeforeDelete" : {
+          "description" : "Time before deleting the backup from storage, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
         }
       },
       "type" : "object"

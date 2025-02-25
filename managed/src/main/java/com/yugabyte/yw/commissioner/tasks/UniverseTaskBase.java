@@ -282,6 +282,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.joda.time.DateTime;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
 import org.yb.CommonTypes;
@@ -6728,8 +6729,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         getRunnableTask().runSubTasks();
       }
-      // Mark schedule Active
-      schedule = Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+      if (scheduleParams.timeBeforeDelete > 0L) {
+        // Update expiry time of backups related to this schedule.
+        Backup.fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID)
+            .forEach(
+                backup -> {
+                  Date newExpiry =
+                      new DateTime(backup.getCreateTime())
+                          .plusMillis((int) scheduleParams.timeBeforeDelete)
+                          .toDate();
+                  backup.setExpiry(newExpiry);
+                  backup.save();
+                });
+      }
+      // Restore schedule status
+      schedule.setStatus(schedule.getPrevStableStatus());
       if (kubernetesStatus != null) {
         kubernetesStatus.updateBackupScheduleStatus(
             scheduleParams.getKubernetesResourceDetails(), schedule);
