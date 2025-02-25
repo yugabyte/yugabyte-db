@@ -6637,11 +6637,16 @@ Status CatalogManager::DeleteTableInternal(
     // Send a DeleteTablet() request to each tablet replica in the table.
     RETURN_NOT_OK(DeleteOrHideTabletsOfTable(
         *table.table_info_with_write_lock, table.delete_retainer, epoch));
+    // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
+    // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
+    // Note that we call TryRemoveFromTablegroup irrespective of colocated_tablet because
+    // it is possible that the tablet is already removed from table by a racing thread and
+    // in that case colocated_tablet will be nullptr.
+    if (table.table_info_with_write_lock.info->IsColocatedUserTable()) {
+      RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
+    }
     auto colocated_tablet = table.table_info_with_write_lock->GetColocatedUserTablet();
     if (colocated_tablet) {
-      // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
-      // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
-      RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
       // Send a RemoveTableFromTablet() request to each
       // colocated parent tablet replica in the table.
       if (!table.delete_retainer.IsHideOnly()) {
