@@ -394,8 +394,7 @@ ybm cluster encryption list --cluster-name my-sandbox
 
 ```output
 Provider   Key Alias                              Last Rotated               Security Principals                      CMK Status
-AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   <your-key-vault-uri>   NOT_ACTIVE
-```
+AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   <your-key-vault-uri>   DISABLED
 
 To re-enable EAR on a cluster, use the following command:
 
