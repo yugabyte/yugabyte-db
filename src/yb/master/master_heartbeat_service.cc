@@ -277,20 +277,6 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     rpc::RpcContext rpc) {
   LongOperationTracker long_operation_tracker("TSHeartbeat", 1s);
 
-  // If CatalogManager is not initialized don't even know whether or not we will
-  // be a leader (so we can't tell whether or not we can accept tablet reports).
-  SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
-
-  if (req->common().ts_instance().permanent_uuid().empty()) {
-    // In FSManager, we have already added empty UUID protection so that TServer will
-    // crash before even sending heartbeat to Master. Here is only for the case that
-    // new updated Master might received empty UUID from old version of TServer that
-    // doesn't have the crash code in FSManager.
-    rpc.RespondFailure(STATUS(InvalidArgument, "Recevied Empty UUID from instance: ",
-                              req->common().ts_instance().ShortDebugString()));
-    return;
-  }
-
   consensus::ConsensusStatePB cpb;
   Status s = catalog_manager_->GetCurrentConfig(&cpb);
   if (!s.ok()) {
@@ -304,6 +290,21 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
                 << req->common().ts_instance().permanent_uuid();
     }
   } // Do nothing if config not ready.
+
+
+  // If CatalogManager is not initialized don't even know whether or not we will
+  // be a leader (so we can't tell whether or not we can accept tablet reports).
+  SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
+
+  if (req->common().ts_instance().permanent_uuid().empty()) {
+    // In FSManager, we have already added empty UUID protection so that TServer will
+    // crash before even sending heartbeat to Master. Here is only for the case that
+    // new updated Master might received empty UUID from old version of TServer that
+    // doesn't have the crash code in FSManager.
+    rpc.RespondFailure(STATUS(InvalidArgument, "Recevied Empty UUID from instance: ",
+                              req->common().ts_instance().ShortDebugString()));
+    return;
+  }
 
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     resp->set_leader_master(false);

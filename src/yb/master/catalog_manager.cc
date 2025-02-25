@@ -928,8 +928,6 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
       sys_catalog_(DCHECK_NOTNULL(sys_catalog)),
       tablet_exists_(false),
       state_(kConstructed),
-      leader_ready_term_(-1),
-      leader_lock_(RWMutex::Priority::PREFER_WRITING),
       load_balance_policy_(std::make_unique<ClusterLoadBalancer>(this)),
       tablegroup_manager_(std::make_unique<YsqlTablegroupManager>()),
       object_lock_info_manager_(std::make_unique<ObjectLockInfoManager>(master_, this)),
@@ -1132,12 +1130,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
     }
   }
 
-  {
-    std::lock_guard l(state_lock_);
-    leader_ready_term_ = term;
-    is_catalog_loaded_ = true;
-    LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
-  }
+  LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
 
   // Finalize state and do post loading work.
   SysCatalogLoaded(std::move(state));
@@ -1292,14 +1285,14 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
   // Block new catalog operations, and wait for existing operations to finish.
   int64_t term = state->epoch.leader_term;
   LOG_WITH_PREFIX_AND_FUNC(INFO)
-    << "Wait on leader_lock_ for any existing operations to finish. Term: " << term;
+    << "Wait on leader_mutex_ for any existing operations to finish. Term: " << term;
   auto start = std::chrono::steady_clock::now();
-  std::lock_guard leader_lock_guard(leader_lock_);
+  std::lock_guard leader_lock_guard(leader_mutex_);
   auto finish = std::chrono::steady_clock::now();
 
   static const auto kLongLockAcquisitionLimit = RegularBuildVsSanitizers(100ms, 750ms);
   if (finish > start + kLongLockAcquisitionLimit) {
-    LOG_WITH_PREFIX(WARNING) << "Long wait on leader_lock_: " << yb::ToString(finish - start);
+    LOG_WITH_PREFIX(WARNING) << "Long wait on leader_mutex_: " << yb::ToString(finish - start);
   }
 
   // Exclusive mutex_ scope.
@@ -1395,6 +1388,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
           tables_->GetAllTables(), sys_catalog_, *ysql_manager_.get(), state->epoch));
     }
   }  // Exclusive mutex_ scope.
+  leader_ready_term_ = term;
   return Status::OK();
 }
 
@@ -2078,11 +2072,11 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
   }
 
   {
-    std::lock_guard l(state_lock_);
-    if (PREDICT_FALSE(leader_ready_term_ != cstate.current_term())) {
+    auto leader_ready_term = leader_ready_term_.load();
+    if (PREDICT_FALSE(leader_ready_term != cstate.current_term())) {
       return STATUS_SUBSTITUTE(ServiceUnavailable,
           "Leader not yet ready to serve requests: ready term $0 vs cstate term $1",
-          leader_ready_term_, cstate.current_term());
+          leader_ready_term, cstate.current_term());
     }
   }
   return Status::OK();
@@ -12918,6 +12912,18 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   StartPostLoadTasks(std::move(state.post_load_tasks));
   StartWriteTableToSysCatalogTasks(std::move(state.write_to_disk_tables));
 
+  ysql_manager_->SysCatalogLoaded(state.epoch);
+
+  master_->snapshot_coordinator().SysCatalogLoaded(state.epoch.leader_term);
+
+  xcluster_manager_->SysCatalogLoaded(state.epoch);
+  SchedulePostTabletCreationTasksForPendingTables(state.epoch);
+
+  {
+    std::lock_guard lock(leader_mutex_);
+    restoring_sys_catalog_ = false;
+  }
+
   if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql) {
     // Initialize the catalog version cache.
     // This is needed for cases like major YSQL upgrade where master runs a postgres process.
@@ -12926,13 +12932,6 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
         GetYsqlAllDBCatalogVersions(false /* use_cache */, &versions, nullptr /* fingerprint */),
         "Failed to read all DB catalog versions");
   }
-
-  ysql_manager_->SysCatalogLoaded(state.epoch);
-
-  master_->snapshot_coordinator().SysCatalogLoaded(state.epoch.leader_term);
-
-  xcluster_manager_->SysCatalogLoaded(state.epoch);
-  SchedulePostTabletCreationTasksForPendingTables(state.epoch);
 }
 
 Status CatalogManager::UpdateLastFullCompactionRequestTime(

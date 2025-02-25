@@ -2649,16 +2649,6 @@ Status CatalogManager::RestoreSysCatalogSlowPitr(
   // wait for this operation to complete before starting shutdown rocksdb.
   auto tablet_pending_op = tablet->CreateScopedRWOperationBlockingRocksDbShutdownStart();
 
-  bool restore_successful = false;
-  // If sys catalog restoration fails then unblock other RPCs.
-  auto scope_exit = ScopeExit([this, &restore_successful] {
-    if (!restore_successful) {
-      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
-      std::lock_guard l(state_lock_);
-      is_catalog_loaded_ = true;
-    }
-  });
-
   RestoreSysCatalogState state(restoration);
   docdb::DocWriteBatch write_batch(
       tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
@@ -2678,8 +2668,6 @@ Status CatalogManager::RestoreSysCatalogSlowPitr(
     RETURN_NOT_OK(ElectedAsLeaderCb());
   }
 
-  restore_successful = true;
-
   return Status::OK();
 }
 
@@ -2693,16 +2681,6 @@ Status CatalogManager::RestoreSysCatalogFastPitr(
   // triggering a shutdown. So we don't need a ScopedRWOperation guarding this area against
   // Rocsdb shutdowns. Create a dummy ScopedRWOperation here.
   ScopedRWOperation tablet_pending_op;
-  bool restore_successful = false;
-
-  // If sys catalog restoration fails then unblock other RPCs.
-  auto scope_exit = ScopeExit([this, &restore_successful] {
-    if (!restore_successful) {
-      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
-      std::lock_guard<simple_spinlock> l(state_lock_);
-      is_catalog_loaded_ = true;
-    }
-  });
 
   docdb::DocWriteBatch write_batch(
       tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
@@ -2747,18 +2725,23 @@ Status CatalogManager::RestoreSysCatalogFastPitr(
     RETURN_NOT_OK(ElectedAsLeaderCb());
   }
 
-  restore_successful = true;
-
   return Status::OK();
 }
 
 Status CatalogManager::RestoreSysCatalog(
-    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, bool leader_mode,
+    Status* complete_status) {
   Status s;
   if (GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
     s = RestoreSysCatalogFastPitr(restoration, tablet);
   } else {
     s = RestoreSysCatalogSlowPitr(restoration, tablet);
+  }
+  if (!s.ok() && leader_mode) {
+    LOG_WITH_PREFIX_AND_FUNC(INFO)
+        << "PITR: Accepting RPCs to the master leader because of restoration failure: " << s;
+    std::lock_guard l(leader_mutex_);
+    restoring_sys_catalog_ = false;
   }
   // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
   // status in case of validation failures so that it gets propagated back to the client before
@@ -3211,8 +3194,8 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
 void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
   {
-    std::lock_guard l(state_lock_);
-    is_catalog_loaded_ = false;
+    std::lock_guard l(leader_mutex_);
+    restoring_sys_catalog_ = true;
   }
   sys_catalog_->IncrementPitrCount();
 }
