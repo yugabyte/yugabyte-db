@@ -977,9 +977,9 @@ class StrongConflictChecker {
           << ", read time: " << read_time_
           << ", doc ht: " << doc_ht.hybrid_time()
           << ", found key: " << SubDocKey::DebugSliceToString(entry->key)
-          << ", after start: " << (doc_ht.hybrid_time() >= read_time_)
+          << ", after start: " << (doc_ht.hybrid_time() > read_time_)
           << ", value: " << entry->value.ToDebugString();
-      if (doc_ht.hybrid_time() >= read_time_) {
+      if (doc_ht.hybrid_time() > read_time_) {
         if (conflict_management_policy == SKIP_ON_CONFLICT) {
           return STATUS(InternalError, "Skip locking since entity was modified in regular db",
                         TransactionError(TransactionErrorCode::kSkipLocking));
@@ -987,9 +987,10 @@ class StrongConflictChecker {
           tablet_metrics_.Increment(tablet::TabletCounters::kTransactionConflicts);
           return STATUS_EC_FORMAT(
               TryAgain, TransactionError(TransactionErrorCode::kConflict),
-              "Conflict with concurrently committed data. Value write after transaction start: "
-              "doc ht ($0) >= read time ($1), key: $2",
-              doc_ht.hybrid_time(), read_time_, SubDocKey::DebugSliceToString(intent_key));
+              "$0 conflict with concurrently committed data. Value write after transaction start: "
+              "doc ht ($1) > read time ($2), key: $3",
+              transaction_id_, doc_ht.hybrid_time(), read_time_,
+              SubDocKey::DebugSliceToString(intent_key));
         }
       }
       buffer_.Reset(existing_key);
@@ -1275,7 +1276,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
       //
       // In all other cases we have a concrete read time and should conflict with transactions
       // that were committed after this point.
-      if (has_non_lock_conflict && commit_time >= read_time_) {
+      if (has_non_lock_conflict && (commit_time > read_time_ || commit_time == HybridTime::kMax)) {
         if (GetConflictManagementPolicy() == SKIP_ON_CONFLICT) {
           return STATUS(InternalError, "Skip locking since entity was modified by a recent commit",
                         TransactionError(TransactionErrorCode::kSkipLocking));
