@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	pb "node-agent/generated/service"
 	"node-agent/model"
 	"node-agent/util"
 	"os"
@@ -275,11 +276,10 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 	return taskStatus, err
 }
 
-// Handler implements the AsyncTask method.
-func (s *ShellTask) Handler() util.Handler {
-	return util.Handler(func(ctx context.Context) (any, error) {
-		return s.Process(ctx)
-	})
+// Handle implements the AsyncTask method.
+func (s *ShellTask) Handle(ctx context.Context) (*pb.DescribeTaskResponse, error) {
+	_, err := s.Process(ctx)
+	return nil, err
 }
 
 // CurrentTaskStatus implements the AsyncTask method.
@@ -304,11 +304,6 @@ func (s *ShellTask) String() string {
 	return s.cmd
 }
 
-// ResponseConverter returns response converter for async task.
-func (s *ShellTask) ResponseConverter() util.RPCResponseConverter {
-	return nil
-}
-
 // Result returns the result.
 func (s *ShellTask) Result() any {
 	return nil
@@ -317,12 +312,11 @@ func (s *ShellTask) Result() any {
 // CreatePreflightCheckParam returns PreflightCheckParam from the given parameters.
 func CreatePreflightCheckParam(
 	provider *model.Provider,
-	instanceType *model.NodeInstanceType,
-	accessKey *model.AccessKey) *model.PreflightCheckParam {
+	instanceType *model.NodeInstanceType) *model.PreflightCheckParam {
 	param := &model.PreflightCheckParam{}
 	param.AirGapInstall = provider.AirGapInstall
-	param.SkipProvisioning = accessKey.KeyInfo.SkipProvisioning
-	param.InstallNodeExporter = accessKey.KeyInfo.InstallNodeExporter
+	param.SkipProvisioning = provider.Details.SkipProvisioning
+	param.InstallNodeExporter = provider.Details.InstallNodeExporter
 	param.YbHomeDir = util.NodeHomeDirectory
 	if homeDir, ok := provider.Config["YB_HOME_DIR"]; ok {
 		param.YbHomeDir = homeDir
@@ -335,7 +329,7 @@ func CreatePreflightCheckParam(
 			param.MountPaths[i] = volumeDetail.MountPath
 		}
 	}
-	param.AirGapInstall = param.AirGapInstall || accessKey.KeyInfo.AirGapInstall
+	param.AirGapInstall = param.AirGapInstall || provider.Details.AirGapInstall
 	return param
 }
 
