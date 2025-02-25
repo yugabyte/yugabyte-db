@@ -1042,4 +1042,46 @@ TEST_F_EX(PgTxnTest, ReadAtMultipleTimestamps, PgReadCommittedTxnTest) {
   }
 }
 
+TEST_F(PgTxnTest, MultiInsertUpdate) {
+  constexpr int kBig = 100000000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test (id INT PRIMARY KEY, value INT)"));
+  TestThreadHolder thread_holder;
+  // Use the same type as key/value in the table.
+  std::atomic<int> counter = 0;
+  for (int i = 0; i != 8; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop_flag = thread_holder.stop_flag(), &counter] {
+      auto conn = ASSERT_RESULT(Connect());
+      std::vector<int> values(5);
+      while (!stop_flag.load()) {
+        std::generate(values.begin(), values.end(), [&counter]() {return ++counter; });
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        for (auto value : values) {
+          ASSERT_OK(conn.ExecuteFormat(
+              "INSERT INTO test VALUES ($0, $1)", value, value + kBig));
+        }
+        ASSERT_OK(conn.CommitTransaction());
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        for (auto value : values) {
+          ASSERT_OK(conn.ExecuteFormat(
+              "UPDATE test SET value = $0 WHERE id = $0", value));
+        }
+        ASSERT_OK(conn.CommitTransaction());
+      }
+    });
+  }
+  thread_holder.WaitAndStop(3s);
+
+  auto res = ASSERT_RESULT((conn.FetchRows<int, int>("SELECT * FROM test ORDER BY id")));
+  ASSERT_EQ(res.size(), counter.load());
+  int i = 0;
+  for (auto [key, value] : res) {
+    ++i;
+    ASSERT_EQ(i, key);
+    ASSERT_EQ(i, value);
+  }
+}
+
 } // namespace yb::pgwrapper
