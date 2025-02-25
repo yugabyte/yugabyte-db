@@ -41,7 +41,7 @@ After you created the required tables, you can set up unidirectional replication
       ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id
       ```
 
-      The preceding command lists all the tables, including system tables. To locate a specific table, you can add `grep`, as follows:
+      The preceding command lists all the tables, including system tables. To locate a specific table, you can add grep as follows:
 
       ```sh
       ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id | grep table_name

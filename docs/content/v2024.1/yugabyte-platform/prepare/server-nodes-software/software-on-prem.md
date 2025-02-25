@@ -159,6 +159,44 @@ If specified, node agent creates the on-premises provider configuration; or, if 
 
 After the node is provisioned, YugabyteDB Anywhere does not need sudo access to the node.
 
+## sudo whitelist
+
+If security restrictions require you to explicitly list the commands that you'll be running as root under sudo, you can add the following commands to the sudo whitelist:
+
+```sh
+sudo ./node-agent-provision.sh --preflight_check
+sudo ./node-agent-provision.sh
+```
+
+The underlying fine-grained commands that the script runs during provisioning depend on the version of YugabyteDB Anywhere, and are updated as newer capabilities are incorporated.
+
+To audit the commands that are run by the script, do the following:
+
+1. [Run the preflight check](#preflight-check).
+
+    The preflight check renders templates containing all the bash commands that the script will execute for provisioning.
+
+1. Identify the rendered templates using grep as follows:
+
+    ```sh
+    sudo ./node-agent-provision.sh --preflight_check 2>&1 | grep "INFO - /tmp/tmp.*$"
+    ```
+
+    You should see output similar to the following:
+
+    ```output
+    2025-02-20 23:01:37,290 - commands.provision_command - INFO - /tmp/tmp0ey61a1c
+
+    2025-02-20 23:01:37,290 - commands.provision_command - INFO - /tmp/tmppri1g4r_
+    ```
+
+1. Use `cat` or any other CLI tool to inspect the content of these files to understand the code that the script will execute when provisioning a node.
+
+    - The first file in the log is the precheck template.
+    - The second file in the log is the actual execution template.
+
+    Note that these files are specific to the operating system and YugabyteDB Anywhere release, and can vary between releases.
+
 ## Next steps
 
 If you did not provide details for the provider configuration, you will need to do the following:
