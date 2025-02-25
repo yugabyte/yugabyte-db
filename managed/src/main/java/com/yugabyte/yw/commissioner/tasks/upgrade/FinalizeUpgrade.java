@@ -24,7 +24,7 @@ public class FinalizeUpgrade extends SoftwareUpgradeTaskBase {
   @Inject
   protected FinalizeUpgrade(
       BaseTaskDependencies baseTaskDependencies, SoftwareUpgradeHelper softwareUpgradeHelper) {
-    super(baseTaskDependencies);
+    super(baseTaskDependencies, softwareUpgradeHelper);
     this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
