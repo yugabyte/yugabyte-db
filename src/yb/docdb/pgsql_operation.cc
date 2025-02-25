@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "yb/common/common.pb.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
@@ -121,10 +122,6 @@ DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, true,
 DEFINE_UNKNOWN_uint64(
     ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
-
-DEFINE_test_flag(bool, ysql_suppress_ybctid_corruption_details, false,
-                 "Whether to show less details on ybctid corruption error status message.  Useful "
-                 "during tests that require consistent output.");
 
 DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
                     "Whether to enable packed row for full row update.");
@@ -684,7 +681,7 @@ Result<FetchResult> FetchTableRow(
   switch(fetch_result) {
     case FetchResult::NotFound: {
       if (index && index->delayed_failure.ok()) {
-        const auto* fmt = FLAGS_TEST_ysql_suppress_ybctid_corruption_details
+        const auto* fmt = FLAGS_TEST_hide_details_for_pg_regress
             ? "ybctid not found in indexed table"
             : "$0 not found in indexed table. Index table id is $1, row $2";
         index->delayed_failure = STATUS_FORMAT(

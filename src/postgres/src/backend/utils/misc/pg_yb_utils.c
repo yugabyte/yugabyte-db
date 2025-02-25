@@ -6635,3 +6635,21 @@ YbInvalidationMessagesTableExists()
 }
 
 bool yb_is_calling_internal_function_for_ddl;
+
+char *
+YbGetPotentiallyHiddenOidText(Oid oid)
+{
+	if (*YBCGetGFlags()->TEST_hide_details_for_pg_regress)
+		return "<oid_hidden_for_pg_regress>";
+	else
+	{
+		char	   *oid_text = palloc(11 * sizeof(char));
+
+		sprintf(oid_text, "%u", oid);
+		/*
+		 * It is expected the caller uses this string in an error message, so
+		 * the palloc'd memory will get freed via memory context free.
+		 */
+		return oid_text;
+	}
+}

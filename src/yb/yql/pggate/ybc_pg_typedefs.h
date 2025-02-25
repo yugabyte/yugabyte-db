@@ -403,7 +403,7 @@ typedef struct {
   const bool*     ysql_use_optimized_relcache_update;
   const bool*     ysql_enable_pg_per_database_oid_allocator;
   const bool*     ysql_enable_db_catalog_version_mode;
-  const bool*     TEST_ysql_hide_catalog_version_increment_log;
+  const bool*     TEST_hide_details_for_pg_regress;
   const bool*     TEST_generate_ybrowid_sequentially;
   const bool*     ysql_use_fast_backward_scan;
   const char*     TEST_ysql_conn_mgr_dowarmup_all_pools_mode;

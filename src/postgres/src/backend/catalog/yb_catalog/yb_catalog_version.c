@@ -134,7 +134,7 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	if (!snapshot_set)
 		PushActiveSnapshot(GetTransactionSnapshot());
 
-	if (!(*YBCGetGFlags()->TEST_ysql_hide_catalog_version_increment_log))
+	if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
 	{
 		bool		log_ysql_catalog_versions =
 		*YBCGetGFlags()->log_ysql_catalog_versions;
@@ -179,7 +179,7 @@ MaybeLogNewSQLIncrementCatalogVersion(bool success,
 									  const char *command_tag,
 									  uint64_t new_version)
 {
-	if (!(*YBCGetGFlags()->TEST_ysql_hide_catalog_version_increment_log))
+	if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
 	{
 		bool log_ysql_catalog_versions =
 			*YBCGetGFlags()->log_ysql_catalog_versions;
@@ -535,7 +535,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 
 	int			rows_affected_count = 0;
 
-	if (!(*YBCGetGFlags()->TEST_ysql_hide_catalog_version_increment_log))
+	if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
 	{
 		bool		log_ysql_catalog_versions = *YBCGetGFlags()->log_ysql_catalog_versions;
 		char		tmpbuf[30] = "";

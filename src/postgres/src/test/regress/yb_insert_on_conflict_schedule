@@ -1,10 +1,7 @@
-# Make multiplan the first test in the schedule since it has an error message
-# which emits oid.
-test: yb.orig.insert_on_conflict_multiplan
-
 # Dependency for yb.orig.insert_on_conflict.
 test: yb.orig.create_function
 
 test: yb.orig.insert_on_conflict
+test: yb.orig.insert_on_conflict_multiplan
 test: yb.orig.insert_on_conflict_with
 test: yb.orig.insert_on_conflict_with_spi

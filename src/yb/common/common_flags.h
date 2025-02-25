@@ -27,7 +27,7 @@ DECLARE_bool(ysql_enable_pg_per_database_oid_allocator);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_enable_replication_slot_consumption);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms);
-DECLARE_bool(TEST_ysql_hide_catalog_version_increment_log);
+DECLARE_bool(TEST_hide_details_for_pg_regress);
 DECLARE_bool(TEST_check_catalog_version_overflow);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 DECLARE_bool(ysql_enable_auto_analyze_service);

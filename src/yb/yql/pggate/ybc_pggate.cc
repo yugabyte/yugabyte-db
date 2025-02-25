@@ -2091,8 +2091,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_pg_per_database_oid_allocator,
       .ysql_enable_db_catalog_version_mode =
           &FLAGS_ysql_enable_db_catalog_version_mode,
-      .TEST_ysql_hide_catalog_version_increment_log =
-          &FLAGS_TEST_ysql_hide_catalog_version_increment_log,
+      .TEST_hide_details_for_pg_regress =
+          &FLAGS_TEST_hide_details_for_pg_regress,
       .TEST_generate_ybrowid_sequentially =
           &FLAGS_TEST_generate_ybrowid_sequentially,
       .ysql_use_fast_backward_scan = &FLAGS_use_fast_backward_scan,
