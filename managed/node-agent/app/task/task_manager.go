@@ -31,18 +31,27 @@ var (
 
 // TaskStatus carries information about the task progress.
 type TaskStatus struct {
-	Info       util.Buffer
+	// Info is a buffer to send any output to the client while the task is running.
+	Info util.Buffer
+	// ExitStatus is the final status of the task execution.
 	ExitStatus *ExitStatus
 }
 
 // AsyncTask is the interface for a async task.
 type AsyncTask interface {
-	// Handler returns the method to be executed.
-	Handler() util.Handler
+	// Handle is the method to be executed.
+	Handle(context.Context) (*pb.DescribeTaskResponse, error)
 	// CurrentTaskStatus returns the current task status.
 	CurrentTaskStatus() *TaskStatus
 	// String returns the identifier for this task.
 	String() string
+}
+
+// Handler converts AsyncTask Handle to the executor handler.
+func ToHandler(handle func(context.Context) (*pb.DescribeTaskResponse, error)) util.Handler {
+	return func(ctx context.Context) (any, error) {
+		return handle(ctx)
+	}
 }
 
 // ExitStatus stores the Error (if any) and the exit code of a command.
@@ -67,13 +76,12 @@ type TaskManager struct {
 }
 
 type taskInfo struct {
-	ctx                  context.Context
-	cancel               context.CancelFunc
-	mutex                *sync.Mutex
-	asyncTask            AsyncTask
-	future               *executor.Future
-	rpcResponseConverter util.RPCResponseConverter
-	updatedAt            time.Time
+	ctx       context.Context
+	cancel    context.CancelFunc
+	mutex     *sync.Mutex
+	asyncTask AsyncTask
+	future    *executor.Future
+	updatedAt time.Time
 }
 
 // InitTaskManager initializes the task manager.
@@ -137,9 +145,7 @@ func (m *TaskManager) updateTime(taskID string) {
 func (m *TaskManager) Submit(
 	ctx context.Context,
 	taskID string,
-	asyncTask AsyncTask,
-	rpcResponseConverter util.RPCResponseConverter,
-) error {
+	asyncTask AsyncTask) error {
 	if taskID == "" {
 		return errors.New("Task ID is not valid")
 	}
@@ -148,19 +154,18 @@ func (m *TaskManager) Submit(
 	i, ok := m.taskInfos.LoadOrStore(
 		taskID,
 		&taskInfo{
-			ctx:                  bgCtx,
-			cancel:               cancel,
-			mutex:                &sync.Mutex{},
-			updatedAt:            time.Now(),
-			asyncTask:            asyncTask,
-			rpcResponseConverter: rpcResponseConverter,
+			ctx:       bgCtx,
+			cancel:    cancel,
+			mutex:     &sync.Mutex{},
+			updatedAt: time.Now(),
+			asyncTask: asyncTask,
 		},
 	)
 	if ok {
 		return fmt.Errorf("Task %s already exists", taskID)
 	}
 	tInfo := i.(*taskInfo)
-	future, err := executor.GetInstance().SubmitTask(bgCtx, asyncTask.Handler())
+	future, err := executor.GetInstance().SubmitTask(bgCtx, ToHandler(asyncTask.Handle))
 	if err != nil {
 		m.taskInfos.Delete(taskID)
 		util.FileLogger().
@@ -216,15 +221,11 @@ func (m *TaskManager) Subscribe(
 
 			size = 0
 			if taskStatus.ExitStatus.Code == 0 {
-				if tInfo.rpcResponseConverter != nil {
-					result, err := tInfo.future.Get()
-					if err != nil {
-						return err
-					}
-					response, err := tInfo.rpcResponseConverter(result)
-					if err != nil {
-						return err
-					}
+				result, err := tInfo.future.Get()
+				if err != nil {
+					return err
+				}
+				if response, ok := result.(*pb.DescribeTaskResponse); ok {
 					callbackData := &TaskCallbackData{State: tInfo.future.State()}
 					callbackData.RPCResponse = response
 					err = callback(callbackData)
