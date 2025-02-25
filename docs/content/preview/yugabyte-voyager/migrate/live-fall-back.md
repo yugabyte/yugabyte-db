@@ -1121,7 +1121,7 @@ Perform the following steps as part of the cutover process:
   Use the following PL/SQL to enable the triggers and create foreign key constraints back before using the source again.
 
   ```sql
-  --disable triggers
+  --re-enable triggers
   DO $$
   DECLARE
       r RECORD;
