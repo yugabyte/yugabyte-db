@@ -2312,6 +2312,7 @@ static void od_application_name_add_host(od_client_t *client)
 #endif
 }
 
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 /*
  * Clean the shared memory segment which is storing the client's context.
  * A control connection will be used here.
@@ -2366,6 +2367,7 @@ int yb_clean_shmem(od_client_t *client, od_server_t *server)
 		}
 	}
 }
+#endif
 
 void od_frontend(void *arg)
 {

@@ -817,21 +817,16 @@ YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superus
 
 	/*
 	 * Create a shared memory block for a client connection if YB_GUC_SUPPORT_VIA_SHMEM
-	 * is enabled. Otherwise send 1 for every logical client and disable the code to delete the
+	 * is enabled. Otherwise don't send any packet and disable the code to delete the
 	 * shared memory block in DeleteSharedMemory() based on YB_GUC_SUPPORT_VIA_SHMEM.
-	 * TODO (mkumar) GH #24350 Don't send errhint packet if YB_GUC_SUPPORT_VIA_SHMEM
-	 * 			mode is not enabled.
 	 */
-	int			new_client_id =
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
-	yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
-#else
-	1;
+		int new_client_id = yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
+		if (new_client_id > 0)
+			ereport(NOTICE, (errhint("shmkey=%d", new_client_id)));
+		else
+			ereport(FATAL, (errmsg("unable to create the shared memory block")));
 #endif
-	if (new_client_id > 0)
-		ereport(NOTICE, (errhint("shmkey=%d", new_client_id)));
-	else
-		ereport(FATAL, (errmsg("unable to create the shared memory block")));
 }
 
 void
