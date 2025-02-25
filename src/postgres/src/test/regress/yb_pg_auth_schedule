@@ -9,3 +9,4 @@ test: yb.port.privileges
 test: yb.port.init_privs
 test: yb.port.rowsecurity
 test: yb.port.password
+test: yb.port.create_role
