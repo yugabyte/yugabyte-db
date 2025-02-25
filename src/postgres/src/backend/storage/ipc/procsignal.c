@@ -35,6 +35,8 @@
 
 /* Yugabyte includes */
 #include "storage/procsignal.h"
+#include "pg_yb_utils.h"
+#include "yb_tcmalloc_utils.h"
 
 /*
  * The SIGUSR1 signal is multiplexed to support signaling multiple event
@@ -685,6 +687,12 @@ procsignal_sigusr1_handler(SIGNAL_ARGS)
 
 	if (CheckProcSignal(PROCSIG_LOG_MEMORY_CONTEXT))
 		HandleLogMemoryContextInterrupt();
+
+	if (CheckProcSignal(PROCSIG_LOG_HEAP_SNAPSHOT))
+		HandleLogHeapSnapshotInterrupt();
+
+	if (CheckProcSignal(PROCSIG_LOG_HEAP_SNAPSHOT_PEAK))
+		HandleLogHeapSnapshotPeakInterrupt();
 
 	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_DATABASE))
 		RecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_DATABASE);

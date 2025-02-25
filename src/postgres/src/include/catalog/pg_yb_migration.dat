@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V69__1284__ybctid_column.sql
-{ major => '69', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V70__21851__yb_backend_heap_snapshot.sql
+{ major => '70', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

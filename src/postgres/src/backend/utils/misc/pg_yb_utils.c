@@ -121,6 +121,7 @@
 #include "nodes/readfuncs.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
+#include "storage/procarray.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>

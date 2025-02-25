@@ -101,6 +101,7 @@
 #include "replication/walsender_private.h"
 #include "utils/guc_tables.h"
 #include "yb_ysql_conn_mgr_helper.h"
+#include "yb_tcmalloc_utils.h"
 
 /* ----------------
  *		global variables
@@ -3561,6 +3562,9 @@ ProcessInterrupts(void)
 
 	if (LogMemoryContextPending)
 		ProcessLogMemoryContextInterrupt();
+
+	if (LogHeapSnapshotPending)
+		ProcessLogHeapSnapshotInterrupt();
 }
 
 
