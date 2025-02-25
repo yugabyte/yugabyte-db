@@ -59,6 +59,7 @@ typedef enum MongoQueryFlag
 	HAS_CURSOR_FUNC = 1 << 4,
 	HAS_AGGREGATION_FUNCTION = 1 << 5,
 	HAS_NESTED_AGGREGATION_FUNCTION = 1 << 6,
+	HAS_QUERY_MATCH_FUNCTION = 1 << 7
 } MongoQueryFlag;
 
 typedef struct ReplaceMongoCollectionContext
@@ -104,6 +105,7 @@ static Query * ExpandNestedAggregationFunction(Query *node, ParamListInfo boundP
 
 extern bool ForceRUMIndexScanToBitmapHeapScan;
 extern bool AllowNestedAggregationFunctionInQueries;
+extern bool EnableCollationAndLetForQueryMatch;
 
 planner_hook_type ExtensionPreviousPlannerHook = NULL;
 set_rel_pathlist_hook_type ExtensionPreviousSetRelPathlistHook = NULL;
@@ -151,7 +153,8 @@ DocumentDBApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 
 		/* replace the @@ operators and inject shard_key_value filters */
 		if (queryFlags & HAS_QUERY_OPERATOR ||
-			queryFlags & HAS_MONGO_COLLECTION_RTE)
+			queryFlags & HAS_MONGO_COLLECTION_RTE ||
+			queryFlags & HAS_QUERY_MATCH_FUNCTION)
 		{
 			parse = (Query *) ReplaceBsonQueryOperators(parse, boundParams);
 		}
@@ -859,6 +862,12 @@ MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags)
 			{
 				queryFlags->mongoQueryFlags |= HAS_CURSOR_STATE_PARAM;
 			}
+		}
+
+		if (EnableCollationAndLetForQueryMatch &&
+			funcExpr->funcid == BsonQueryMatchWithCollationAndLetFunctionId())
+		{
+			queryFlags->mongoQueryFlags |= HAS_QUERY_MATCH_FUNCTION;
 		}
 
 		return false;

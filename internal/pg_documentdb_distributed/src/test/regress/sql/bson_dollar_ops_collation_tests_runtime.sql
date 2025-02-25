@@ -463,4 +463,56 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6
 -- unsupported $merge
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6", "pipeline": [{"$merge" : { "into": "ci_search7", "whenMatched" : "replace" }} ], "collation": { "locale": "en", "strength" : 1} }');
 
+-- query match
+-- enableCollationAndLetForQueryMatch GUC off: ignore collation
+SET documentdb.enableCollationAndLetForQueryMatch TO off;
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"a": "CAT"}', 'en-u-ks-level1', NULL);
+
+-- enableCollationAndLetForQueryMatch GUC on: enforce collation
+SET documentdb.enableCollationAndLetForQueryMatch TO on;
+
+-- query match: _id tests
+SELECT documentdb_api_internal.bson_query_match('{"_id": "cat"}', '{"_id": "CAT"}', 'en-u-ks-level1', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"_id": "cat"}', '{"_id": "CAT"}', 'en-u-ks-level2', NULL);
+
+-- query match: $eq
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"a": "CAT"}', 'en-u-ks-level1', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$eq" : "CAT"} }', 'de-u-ks-level1', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$eq" : "càt"} }', 'fr-u-ks-level3', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat", "b": "dog"}', '{"a": "CAT", "b": "DOG"}', 'en-u-ks-level1', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat", "b": "dog"}', '{"a": "CAT", "b": "DOG"}', 'sv-u-ks-level1', NULL);
+
+-- query match: $ne
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$ne" : "CAT"} }', 'de-u-ks-level1', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$ne" : "càt"} }', 'fr-u-ks-level3', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat", "b": "dog"}', '{"a": "CAT", "b": "DOG"}', 'en-u-ks-level1', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat", "b": "dog"}', '{"a": "CAT", "b": "DOG"}', 'sv-u-ks-level1', NULL);
+
+-- query match: $gt/$gte
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$gt" : "CAT"} }', 'de-u-ks-level1', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$gte" : "CAT"} }', 'en-u-ks-level1', NULL);
+
+-- query match: $lt/$lte
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$lte" : "CAT"} }', 'de-u-ks-level1', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$lte" : "càt"} }', 'fr-u-ks-level3', NULL);
+
+-- query match: $in
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$in" : ["CAT", "DOG"]} }', 'de-u-ks-level1', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$in" : ["càt", "dòg"]} }', 'fr-u-ks-level3', NULL);
+
+-- query match: $nin
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$nin" : ["CAT", "DOG"]} }', 'en-u-ks-level1', NULL);
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{ "a": {"$nin" : ["càt", "dòg"]} }', 'fr-u-ks-level3', NULL);
+
+-- not supported yet
+-- query match: sharded collection with collation-aware shard key
+SELECT documentdb_api.insert_one('db', 'coll_query_op', '{ "_id": "cat", "a": "cat" }');
+SELECT documentdb_api.insert_one('db', 'coll_query_op', '{ "_id": "dog", "a": "dog" }');
+
+SELECT documentdb_api.shard_collection('db', 'coll_query_op', '{ "_id": "hashed" }', false);
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op') WHERE documentdb_api_internal.bson_query_match(document, '{ "_id": "CAT" }', 'en-u-ks-level1', NULL);
+
+RESET documentdb.enableCollationAndLetForQueryMatch;
+
 RESET documentdb_core.enablecollation;

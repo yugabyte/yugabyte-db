@@ -108,6 +108,7 @@ typedef struct IdFilterWalkerContext
 } IdFilterWalkerContext;
 
 extern bool EnableCollation;
+extern bool EnableCollationAndLetForQueryMatch;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -117,7 +118,8 @@ static Node * ReplaceBsonQueryOperatorsMutator(Node *node,
 											   ReplaceBsonQueryOperatorsContext *context);
 static Expr * ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 									  Query *currentQuery, ParamListInfo boundParams,
-									  List **targetEntries, List **sortClauses);
+									  List **targetEntries, List **sortClauses,
+									  const char *collationString);
 static Expr * CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 												  BsonQueryOperatorContext *c,
 												  const char *traversedPath);
@@ -226,7 +228,7 @@ PG_FUNCTION_INFO_V1(query_match_support);
 
 /*
  * bson_query_match is a lazy, inefficient implementation of the @@
- * operator, used only when we cannot replace it in the planner hook.
+ * operator and bson_query_match, used only when we cannot replace it in the planner hook.
  */
 Datum
 bson_query_match(PG_FUNCTION_ARGS)
@@ -237,21 +239,43 @@ bson_query_match(PG_FUNCTION_ARGS)
 	Const *documentConst = MakeBsonConst(document);
 	Const *queryConst = MakeBsonConst(query);
 
-	OpExpr *queryExpr = makeNode(OpExpr);
-	queryExpr->opno = BsonQueryOperatorId();
-	queryExpr->opfuncid = BsonQueryMatchFunctionId();
-	queryExpr->inputcollid = InvalidOid;
-	queryExpr->opresulttype = BsonTypeId();
-	queryExpr->args = list_make2(documentConst, queryConst);
-	queryExpr->location = -1;
-
 	ereport(NOTICE, (errmsg("using bson_query_match implementation")));
 
-	/* expand the @@ operator into regular BSON operators */
 	ReplaceBsonQueryOperatorsContext context;
 	memset(&context, 0, sizeof(context));
 
-	Node *quals = ReplaceBsonQueryOperatorsMutator((Node *) queryExpr, &context);
+	/* if EnableEnableCollationAndLetForQueryMatch is off,  */
+	/* the collationString and variableSpec will be ignored  */
+	Node *quals = NULL;
+	if (!EnableCollationAndLetForQueryMatch || PG_NARGS() == 2)
+	{
+		/* Expand the @@ operator into regular BSON operators */
+		OpExpr *queryExpr = makeNode(OpExpr);
+		queryExpr->opno = BsonQueryOperatorId();
+		queryExpr->opfuncid = BsonQueryMatchFunctionId();
+		queryExpr->inputcollid = InvalidOid;
+		queryExpr->opresulttype = BsonTypeId();
+		queryExpr->args = list_make2(documentConst, queryConst);
+		queryExpr->location = -1;
+
+		quals = ReplaceBsonQueryOperatorsMutator((Node *) queryExpr, &context);
+	}
+	else if (EnableCollationAndLetForQueryMatch && PG_NARGS() == 4)
+	{
+		Datum collationDatum = PG_ARGISNULL(2) ? CStringGetDatum("") :
+							   CStringGetDatum(PG_GETARG_CSTRING(2));
+
+		Const *collationConst = makeConst(TEXTOID, -1, InvalidOid, -1, collationDatum,
+										  false, false);
+		Const *variableConst = makeNullConst(BsonTypeId(), -1, InvalidOid);
+
+		List *args = list_make4(documentConst, queryConst, collationConst, variableConst);
+		FuncExpr *funcExpr = makeFuncExpr(BsonQueryMatchWithCollationAndLetFunctionId(),
+										  BsonTypeId(), args,
+										  InvalidOid, InvalidOid, InvalidOid);
+
+		quals = ReplaceBsonQueryOperatorsMutator((Node *) funcExpr, &context);
+	}
 
 	/* evaluate the constant expressions */
 	Node *evaluatedExpr = eval_const_expressions(NULL, (Node *) quals);
@@ -735,13 +759,75 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 			 */
 			if (IsA(queryNode, Const))
 			{
+				const char *collationString = NULL;
+
 				Node *expandedExpr =
 					(Node *) ExpandBsonQueryOperator(opExpr,
 													 queryNode,
 													 context->currentQuery,
 													 context->boundParams,
 													 &(context->targetEntries),
-													 &(context->sortClauses));
+													 &(context->sortClauses),
+													 collationString);
+
+				return expandedExpr;
+			}
+		}
+
+		return node;
+	}
+	else if (IsA(node, FuncExpr))
+	{
+		FuncExpr *funcExpr = (FuncExpr *) node;
+		if (EnableCollationAndLetForQueryMatch &&
+			funcExpr->funcid == BsonQueryMatchWithCollationAndLetFunctionId())
+		{
+			Node *queryNode = lsecond(funcExpr->args);
+			if (IsA(queryNode, Param))
+			{
+				queryNode = EvaluateBoundParameters(queryNode,
+													context->boundParams);
+			}
+
+			Node *collationStringNode = lthird(funcExpr->args);
+			if (IsA(collationStringNode, Param))
+			{
+				collationStringNode = EvaluateBoundParameters(collationStringNode,
+															  context->boundParams);
+			}
+
+			if (IsA(queryNode, Const) && IsA(collationStringNode, Const))
+			{
+				Node *documentNode = linitial(funcExpr->args);
+				if (IsA(documentNode, RelabelType))
+				{
+					RelabelType *relabeled = (RelabelType *) documentNode;
+					if (relabeled->relabelformat == COERCE_IMPLICIT_CAST)
+					{
+						documentNode = (Node *) relabeled->arg;
+					}
+				}
+
+				char *collationString = NULL;
+				Const *collationConst = (Const *) collationStringNode;
+				if (!collationConst->constisnull)
+				{
+					collationString = TextDatumGetCString(collationConst->constvalue);
+				}
+
+				/* Create a dummy opExr with the document and query as operands. */
+				/* We only need the operands in ExpandBsonQueryOperator so we ignore setting the other fields.  */
+				OpExpr *opExpr = makeNode(OpExpr);
+				opExpr->args = list_make2(documentNode, queryNode);
+
+				Node *expandedExpr =
+					(Node *) ExpandBsonQueryOperator(opExpr,
+													 queryNode,
+													 context->currentQuery,
+													 context->boundParams,
+													 &(context->targetEntries),
+													 &(context->sortClauses),
+													 collationString);
 
 				return expandedExpr;
 			}
@@ -817,7 +903,8 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 static Expr *
 ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 						Query *currentQuery, ParamListInfo boundParams,
-						List **targetEntries, List **sortClauses)
+						List **targetEntries, List **sortClauses,
+						const char *collationString)
 {
 	BsonQueryOperatorContext context = { 0 };
 	context.documentExpr = linitial(queryOpExpr->args);
@@ -826,6 +913,11 @@ ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 	context.coerceOperatorExprIfApplicable = true;
 	context.requiredFilterPathNameHashSet = NULL;
 	context.variableContext = NULL;
+
+	if (IsCollationApplicable(collationString))
+	{
+		context.collationString = collationString;
+	}
 
 	Node *queryExpr = queryNode;
 

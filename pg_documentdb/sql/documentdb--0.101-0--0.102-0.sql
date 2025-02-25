@@ -1,6 +1,7 @@
 #include "udfs/metadata/list_databases--0.102-0.sql"
 #include "udfs/ttl/ttl_support_functions--0.102-0.sql"
 #include "udfs/commands_diagnostic/current_op--0.102-0.sql"
+#include "udfs/query/bson_query_match--0.102-0.sql"
 
 -- Schedule TTL Cron job to prune TTL indexes on every documentdb instance.
 DO LANGUAGE plpgsql $cmd$

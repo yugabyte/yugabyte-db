@@ -37,7 +37,7 @@ test: bson_dollar_operators_negation_tests_runtime
 test: bson_dollar_operators_negation_tests_index
 test: bson_dollar_operators_negation_tests_explain_index
 test: bson_dollar_operators_negation_tests_explain_runtime
-test: bson_dollar_ops_collation_runtime_tests 
+test: bson_dollar_ops_collation_tests_runtime 
 
 test: create_indexes_cosmos_vector
 test: bson_query_operator_geospatial_tests_index
