@@ -234,19 +234,19 @@ The example below expects the following servers to be added to the cluster:
   --base_dir=/home/yugabyte/<IP8>/yugabyte-data \
   --advertise_address=<IP8>                     \
   --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1b"
+  --cloud_location=aws.us-east-1.us-east-1b     \
 
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP9>/yugabyte-data \
   --advertise_address=<IP9>                     \
   --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=us-east-2,placement_zone=us-east-2a"
+  --cloud_location=aws.us-east-2.us-east-2a     \
 
   ./bin/yugabyted start                          \
   --base_dir=/home/yugabyte/<IP10>/yugabyte-data \
   --advertise_address=<IP10>                     \
   --join=<IP1>                                   \
-  --tserver_flags "placement_cloud=aws,placement_region=us-west-1,placement_zone=us-west-1a"
+  --cloud_location=aws.us-west-1.us-west-1a      \
 ```
 
 {{< /note >}}
