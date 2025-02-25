@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Review cluster nodes using the **Nodes** tab. The tab shows node status and activity, including the read and write operations, tablet distribution, memory and size, and which nodes host [Masters](../../../architecture/key-concepts/#master-server) and [TServers](../../../architecture/key-concepts/#tserver).
+Use the **Nodes** tab to review cluster nodes, including their status and activity. The tab displays read/write operations, tablet distribution, memory use, size, and which nodes host [Masters](../../../architecture/key-concepts/#master-server) and [TServers](../../../architecture/key-concepts/#tserver).
 
 ![Cluster Nodes tab](/images/yb-cloud/monitor-nodes.png)
 
