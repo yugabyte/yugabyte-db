@@ -2675,7 +2675,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             30000 /* maxDelaysMs */,
             timeout.toMillis(),
             () -> {
-              Set<String> tabletsOnServer = getTserverTablets(universe, currentNode);
+              Set<String> tabletsOnServer;
+              try {
+                tabletsOnServer = getTserverTablets(universe, currentNode);
+              } catch (Exception e) {
+                log.error(
+                    "Error fetching tablets for node {}: {}",
+                    currentNode.getNodeName(),
+                    e.getMessage());
+                return false;
+              }
               log.debug(
                   "Number of tablets on node {}'s tserver is {} tablets",
                   currentNode.getNodeName(),
