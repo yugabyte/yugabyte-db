@@ -7,9 +7,13 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -17,6 +21,9 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -26,11 +33,13 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class PGUpgradeTServerCheck extends ServerSubTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
+  private final NodeManager nodeManager;
   private final KubernetesManagerFactory kubernetesManagerFactory;
 
   private final int PG_UPGRADE_CHECK_TIMEOUT = 300;
@@ -51,9 +60,11 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   protected PGUpgradeTServerCheck(
       BaseTaskDependencies baseTaskDependencies,
       NodeUniverseManager nodeUniverseManager,
+      NodeManager nodeManager,
       KubernetesManagerFactory kubernetesManagerFactory) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
+    this.nodeManager = nodeManager;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 
@@ -69,24 +80,24 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
             .providerType
             .equals(CloudType.kubernetes);
 
-    if (taskParams().downloadPackage) {
-      // Clean up the downloaded package from the node.
-      cleanUpDownloadedPackage(universe, node, isK8sUniverse);
-
-      // Download the package to the node.
-      downloadPackage(universe, node, isK8sUniverse);
-    }
-
-    // Run check on the node
-    if (isK8sUniverse) {
-      runCheckOnPod(universe, node);
-    } else {
-      runCheckOnNode(universe, node);
-    }
-
-    if (taskParams().downloadPackage) {
-      // Clean up the downloaded package from the node.
-      cleanUpDownloadedPackage(universe, node, isK8sUniverse);
+    try {
+      if (taskParams().downloadPackage) {
+        // Clean up the downloaded package from the node.
+        cleanUpDownloadedPackage(universe, node, isK8sUniverse);
+        // Download the package to the node.
+        downloadPackage(universe, node, isK8sUniverse);
+      }
+      // Run check on the node
+      if (isK8sUniverse) {
+        runCheckOnPod(universe, node);
+      } else {
+        runCheckOnNode(universe, node);
+      }
+    } finally {
+      if (taskParams().downloadPackage) {
+        // Clean up the downloaded package from the node.
+        cleanUpDownloadedPackage(universe, node, isK8sUniverse);
+      }
     }
   }
 
@@ -117,13 +128,13 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       String ybServerPackage = release.getFilePath(universe.getUniverseDetails().arch);
       String packageName = extractPackageName(ybServerPackage);
       String versionName = extractVersionName(ybServerPackage);
-      String tmpDirectory = nodeUniverseManager.getRemoteTmpDir(node, universe);
+      String ybSoftwareDir = nodeUniverseManager.getYbHomeDir(node, universe) + "/yb-software/";
       nodeUniverseManager
           .runCommand(
               node,
               universe,
               ImmutableList.of(
-                  "rm", "-rf", tmpDirectory + "/" + packageName, tmpDirectory + "/" + versionName),
+                  "rm", "-rf", ybSoftwareDir + packageName, ybSoftwareDir + versionName),
               ShellProcessContext.builder().logCmdOutput(true).build())
           .processErrors();
     }
@@ -182,7 +193,10 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
           .executeCommandInPodContainer(
               zoneConfig, namespace, podName, "yb-tserver", extractPackageCommand);
     } else {
-      // TODO(vbansal): Add support for downloading package to the VM node.
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParamsToDownloadSoftware(
+              universe, node, taskParams().ybSoftwareVersion);
+      nodeManager.nodeCommand(NodeCommandType.Configure, params).processErrors();
     }
   }
 
@@ -255,6 +269,8 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     command.add("--username");
     command.add("\"yugabyte\"");
     command.add("--check");
+    // Pipe stdout to stderr to capture the failed checks in logs.
+    command.add("1>&2");
 
     ShellProcessContext context =
         ShellProcessContext.builder()
@@ -294,5 +310,32 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
                 "yb-controller",
                 Arrays.asList("uname", "-m"));
     return Architecture.valueOf(architecture);
+  }
+
+  private AnsibleConfigureServers.Params getAnsibleConfigureServerParamsToDownloadSoftware(
+      Universe universe, NodeDetails node, String ybSoftwareVersion) {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.instanceType = node.cloudInfo.instance_type;
+    params.nodeName = node.nodeName;
+    params.azUuid = node.azUuid;
+    params.placementUuid = node.placementUuid;
+    if (userIntent.providerType.equals(CloudType.onprem)) {
+      params.instanceType = node.cloudInfo.instance_type;
+    }
+
+    params.type = UpgradeTaskType.Software;
+    params.setProperty("processType", ServerType.TSERVER.toString());
+    params.setProperty("taskSubType", UpgradeTaskSubType.Download.toString());
+    // The software package to install for this cluster.
+    params.ybSoftwareVersion = ybSoftwareVersion;
+
+    params.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
+    if (!StringUtils.isEmpty(params.getYbcSoftwareVersion())) {
+      params.setEnableYbc(true);
+    }
+    return params;
   }
 }

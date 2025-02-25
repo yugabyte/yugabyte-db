@@ -35,7 +35,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
   @Inject
   protected SoftwareUpgradeYB(
       BaseTaskDependencies baseTaskDependencies, SoftwareUpgradeHelper softwareUpgradeHelper) {
-    super(baseTaskDependencies);
+    super(baseTaskDependencies, softwareUpgradeHelper);
     this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
@@ -145,9 +145,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               // upgrade.
               createGFlagsUpgradeTaskForYSQLMajorUpgrade(
                   universe, YsqlMajorVersionUpgradeState.IN_PROGRESS);
-
-              // Run this pre-check after downloading software as it require pg_upgrade binary.
-              createPGUpgradeTServerCheckTask(newVersion);
             }
 
             if (requireAdditionalSuperUserForCatalogUpgrade
@@ -182,7 +179,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               if (catalogUpgradeState != null
                   && catalogUpgradeState.equals(
                       YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
-                createPGUpgradeTServerCheckTask(newVersion);
+                createPGUpgradeTServerCheckTask(newVersion, false /* downloadPackage */);
               }
 
               createRunYsqlMajorVersionCatalogUpgradeTask();

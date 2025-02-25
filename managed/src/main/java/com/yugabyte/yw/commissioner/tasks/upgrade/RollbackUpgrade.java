@@ -31,7 +31,7 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
   @Inject
   protected RollbackUpgrade(
       BaseTaskDependencies baseTaskDependencies, SoftwareUpgradeHelper softwareUpgradeHelper) {
-    super(baseTaskDependencies);
+    super(baseTaskDependencies, softwareUpgradeHelper);
     this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 

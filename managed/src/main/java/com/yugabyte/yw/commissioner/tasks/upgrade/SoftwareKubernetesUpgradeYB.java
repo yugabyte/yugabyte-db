@@ -65,7 +65,12 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    createSoftwareUpgradePrecheckTasks(taskParams().ybSoftwareVersion);
+    boolean ysqlMajorVersionUpgrade =
+        softwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            universe,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            taskParams().ybSoftwareVersion);
+    createSoftwareUpgradePrecheckTasks(taskParams().ybSoftwareVersion, ysqlMajorVersionUpgrade);
     addBasicPrecheckTasks();
   }
 
@@ -122,9 +127,6 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
             if (!catalogUpgradeCompleted) {
               createGFlagsUpgradeAndRollbackMastersTaskForYSQLMajorUpgrade(
                   universe, currentVersion, YsqlMajorVersionUpgradeState.IN_PROGRESS);
-
-              // Run pg upgrade pre-check
-              createPGUpgradeTServerCheckTask(newVersion);
 
               if (requireAdditionalSuperUserForCatalogUpgrade) {
                 password = Util.getPostgresCompatiblePassword();

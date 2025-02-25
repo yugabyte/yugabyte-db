@@ -666,8 +666,14 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     }
   }
 
-  protected void createSoftwareUpgradePrecheckTasks(String ybSoftwareVersion) {
+  protected void createSoftwareUpgradePrecheckTasks(
+      String ybSoftwareVersion, boolean ysqlMajorVersionUpgrade) {
     createCheckUpgradeTask(ybSoftwareVersion).setSubTaskGroupType(getTaskSubGroupType());
+    // Skip PG Upgrade check on tserver nodes if it is an retry task.
+    // Pre-check will still be executed after the master upgrade as part of main task.
+    if (ysqlMajorVersionUpgrade && taskParams().getPreviousTaskUUID() == null) {
+      createPGUpgradeTServerCheckTask(ybSoftwareVersion);
+    }
   }
 
   protected void createFinalizeUpgradeTasks(
