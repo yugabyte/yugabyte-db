@@ -126,34 +126,46 @@ You can choose to run the following workloads individually:
 Before starting the workload, load the data as follows:
 
 ```sh
-$ sysbench <workload>                       \
-      --tables=10                           \
-      --table-size=100000                   \
-      --range_key_partitioning=true         \
-      --db-driver=pgsql                     \
-      --pgsql-host=<comma-separated-ips>    \
-      --pgsql-port=5433                     \
-      --pgsql-user=yugabyte                 \
-      --pgsql-db=yugabyte                   \
-      prepare
+sysbench <workload> \
+  --pgsql-host=<comma-separated-ips> \
+  --tables=20 \
+  --table_size=5000000 \
+  --range_key_partitioning=false \
+  --serial_cache_size=1000 \
+  --create_secondary=true \
+  --pgsql-db=yugabyte \
+  --pgsql-user=yugabyte \
+  --db-driver=pgsql \
+  --pgsql-port=5433 \
+  prepare
+
 ```
 
 Run a workload as follows:
 
 ```sh
-$ sysbench <workload>                       \
-      --tables=10                           \
-      --table-size=100000                   \
-      --range_key_partitioning=true         \
-      --db-driver=pgsql                     \
-      --pgsql-host=<comma-separated-ips>    \
-      --pgsql-port=5433                     \
-      --pgsql-user=yugabyte                 \
-      --pgsql-db=yugabyte                   \
-      --threads=64                          \
-      --time=120                            \
-      --warmup-time=120                     \
-      run
+sysbench <workload> \
+  --pgsql-host=<comma-separated-ips> \
+  --tables=20 \
+  --table_size=5000000  \
+  --range_key_partitioning=false \
+  --serial_cache_size=1000 \
+  --create_secondary=true \
+  --pgsql-db=yugabyte \
+  --pgsql-user=yugabyte \
+  --db-driver=pgsql \
+  --pgsql-port=5433 \
+  --time=1800 \
+  --warmup-time=300 \
+  --num_rows_in_insert=10 \
+  --point_selects=10 \
+  --index_updates=10 \
+  --non_index_updates=10 \
+  --range_selects=false \
+  --thread-init-timeout=90 \
+  --threads=60 \
+  run
+
 ```
 
 ## Expected results
@@ -162,9 +174,55 @@ The following results are for a 3-node cluster running YBDB version {{< yb-versi
 
 ### 10 tables each with 100k rows
 
-| Workload          | Throughput(txns/sec) | Latency(ms) |
-|------------------------|---------------------------|------------------|
-| oltp_read_only         | 39130                    | 1.53             |
-| oltp_read_write        | 2138                     | 11.22               |
-| oltp_multi_insert      | 5305                     | 4.52              |
-| oltp_update_index      | 2413                     | 9.94             |
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2">Workload</th>
+      <th colspan="2">Benchmark Statistics</th>
+      <th colspan="2">Per Query Statistics</th>
+      <th rowspan="2">Queries executed in each transaction</th>
+    </tr>
+    <tr>
+      <th>Throughput (txns/sec)</th>
+      <th>Latency (ms) - avg</th>
+      <th>Throughput (queries/sec)</th>
+      <th>Latency (ms) - avg</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>oltp_read_only</td>
+      <td>3913.23</td>
+      <td>15.33</td>
+      <td>39132.3</td>
+      <td>1.53</td>
+      <td>10 point selects</td>
+    </tr>
+    <tr>
+      <td>oltp_read_write</td>
+      <td>213.87</td>
+      <td>112.21</td>
+      <td>6843.84</td>
+      <td>3.5</td>
+      <td>10 point selects <br> 10 index updates <br> 10 non-index update <br> 1 Insert <br> 1 Delete</td>
+    </tr>
+    <tr>
+      <td>oltp_multi_insert</td>
+      <td>530.52</td>
+      <td>45.24</td>
+      <td>5305.2</td>
+      <td>4.52</td>
+      <td>10 Insert</td>
+    </tr>
+    <tr>
+      <td>oltp_update_index</td>
+      <td>241.34</td>
+      <td>99.44</td>
+      <td>2413.4</td>
+      <td>9.94</td>
+      <td>10 index updates</td>
+    </tr>
+  </tbody>
+</table>
+
+The _Queries executed in each transaction_ column shows the individual queries that are executed as part of each sysbench transaction, for each workload. These queries impact the overall transaction performance and are key to understanding the workload distribution for different sysbench benchmarks.
