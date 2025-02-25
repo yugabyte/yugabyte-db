@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.models.Customer;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 
@@ -44,7 +46,7 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
 
   public ServerType configureServer;
 
-  public Map<String, String> connectionPoolingGflags = new HashMap<>();
+  public Map<UUID, SpecificGFlags> connectionPoolingGflags = new HashMap<>();
 
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {

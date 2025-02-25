@@ -58,7 +58,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean isMaster = false;
     public boolean enableYSQL = false;
     public boolean enableConnectionPooling = false;
-    public Map<String, String> connectionPoolingGflags = new HashMap<>();
     public boolean enableYCQL = false;
     public boolean enableYSQLAuth = false;
     public boolean enableYCQLAuth = false;
