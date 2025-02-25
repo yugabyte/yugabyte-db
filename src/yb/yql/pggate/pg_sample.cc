@@ -43,6 +43,94 @@ TAG_FLAG(ysql_docdb_blocks_sampling_method, hidden);
 
 namespace yb::pggate {
 
+namespace {
+
+class PgDocSampleOp : public PgDocReadOp {
+ public:
+  PgDocSampleOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op)
+      : PgDocReadOp(pg_session, table, std::move(read_op)) {}
+
+  // Create one sampling operator per partition and arrange their execution in random order
+  Result<bool> DoCreateRequests() override {
+    // Create one PgsqlOp per partition
+    ClonePgsqlOps(table_->GetPartitionListSize());
+    // Partitions are sampled sequentially, one at a time
+    parallelism_level_ = 1;
+    // Assign partitions to operators.
+    const auto& partition_keys = table_->GetPartitionList();
+    SCHECK_EQ(
+        partition_keys.size(), pgsql_ops_.size(), IllegalState,
+        "Number of partitions and number of partition keys are not the same");
+
+    // Bind requests to partitions
+    for (size_t partition = 0; partition < partition_keys.size(); ++partition) {
+      // Use partition index to setup the protobuf to identify the partition that this request
+      // is for. Batcher will use this information to send the request to correct tablet server, and
+      // server uses this information to operate on correct tablet.
+      // - Range partition uses range partition key to identify partition.
+      // - Hash partition uses "next_partition_key" and "max_hash_code" to identify partition.
+      if (VERIFY_RESULT(SetLowerUpperBound(&GetReadReq(partition), partition))) {
+        // Currently we do not set boundaries on sampling requests other than partition boundaries,
+        // so result is going to be always true, though that may change.
+        pgsql_ops_[partition]->set_active(true);
+        ++active_op_count_;
+      }
+    }
+    // Got some inactive operations, move them away
+    if (active_op_count_ < pgsql_ops_.size()) {
+      MoveInactiveOpsOutside();
+    }
+    VLOG(1) << "Number of partitions to sample: " << active_op_count_;
+
+    return true;
+  }
+
+  Status CompleteProcessResponse() override {
+    const auto send_count = std::min(parallelism_level_, active_op_count_);
+
+    // There can be at most one op at a time for sampling, since any modifications to the random
+    // sampling state need to be propagated after one op completes to the next.
+    SCHECK_LE(
+        send_count, size_t{1}, IllegalState,
+        "We should send at most 1 sampling request at a time.");
+    if (send_count == 0) {
+      // Let super class to complete processing if still needed.
+      return PgDocReadOp::CompleteProcessResponse();
+    }
+
+    auto& res = *GetReadOp(0).response();
+    SCHECK(res.has_sampling_state(), IllegalState, "Sampling response should have sampling state");
+    auto* sampling_state = res.mutable_sampling_state();
+    VLOG_WITH_FUNC(1) << "Received sampling state: " << sampling_state->ShortDebugString();
+    estimated_total_rows_ = sampling_state->has_estimated_total_rows()
+                                ? sampling_state->estimated_total_rows()
+                                : sampling_state->samplerows();
+
+    RETURN_NOT_OK(PgDocReadOp::CompleteProcessResponse());
+
+    if (active_op_count_ > 0) {
+      auto& next_active_op = GetReadOp(0);
+      next_active_op.read_request().ref_sampling_state(sampling_state);
+      VLOG_WITH_FUNC(1) << "Continue sampling from " << sampling_state->ShortDebugString()
+                        << " for " << &next_active_op;
+    }
+
+    return Status::OK();
+  }
+
+  EstimatedRowCount GetEstimatedRowCount() const {
+    VLOG(1) << "Returning liverows " << estimated_total_rows_;
+    // Postgres wants estimation of dead tuples count to trigger vacuuming, but it is unlikely it
+    // will be useful for us.
+    return EstimatedRowCount{.live = estimated_total_rows_, .dead = 0};
+  }
+
+ private:
+  double estimated_total_rows_ = 0;
+};
+
+} // namespace
+
 // Internal class to select sample rows ybctids.
 class PgSample::SamplePicker : public PgSelect {
  public:
@@ -69,7 +157,7 @@ class PgSample::SamplePicker : public PgSelect {
 
   EstimatedRowCount GetEstimatedRowCount() const {
     AtomicFlagSleepMs(&FLAGS_TEST_delay_after_table_analyze_ms);
-    return down_cast<const PgDocReadOp*>(doc_op_.get())->GetEstimatedRowCount();
+    return GetSampleOp().GetEstimatedRowCount();
   }
 
   static Result<std::unique_ptr<SamplePicker>> Make(
@@ -112,7 +200,7 @@ class PgSample::SamplePicker : public PgSelect {
     // when PgSample tries to fetch the rows.
     read_op->set_read_time(ReadHybridTime::SingleTime(read_time));
     read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
-    doc_op_ = std::make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
+    doc_op_ = std::make_shared<PgDocSampleOp>(pg_session_, &target_, std::move(read_op));
 
     reservoir_.insert(reservoir_.begin(), targrows, {});
     ybctids_.reserve(targrows);
@@ -134,6 +222,8 @@ class PgSample::SamplePicker : public PgSelect {
     rand.set_s1(rand_state.s1);
     return Status::OK();
   }
+
+  PgDocSampleOp& GetSampleOp() const { return down_cast<PgDocSampleOp&>(*doc_op_); }
 
   // The reservoir to keep ybctids of selected sample rows
   std::vector<std::string> reservoir_;
