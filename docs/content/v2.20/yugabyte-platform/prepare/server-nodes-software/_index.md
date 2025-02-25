@@ -29,6 +29,14 @@ YugabyteDB Anywhere supports deploying YugabyteDB on a variety of [operating sys
 
 AlmaLinux OS 8 disk images are used by default, but you can specify a custom disk image and OS.
 
+On Red Hat Enterprise Linux 8-based systems (Red Hat Enterprise Linux 8, Oracle Enterprise Linux 8.x, Amazon Linux 2), additionally, add the following line to `/etc/systemd/system.conf` and `/etc/systemd/user.conf`:
+
+```sh
+DefaultLimitNOFILE=1048576
+```
+
+You must reboot the system for these two settings to take effect.
+
 ### Additional software
 
 YugabyteDB Anywhere requires the following additional software to be pre-installed on nodes:
