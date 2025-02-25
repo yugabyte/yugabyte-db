@@ -913,6 +913,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Cooldown after disk resize in aws (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> gcpHyperdiskResizeCooldownHours =
+      new ConfKeyInfo<>(
+          "yb.gcp.hyperdisk_resize_cooldown_hours",
+          ScopeType.GLOBAL,
+          "Cooldown after hyperdisk resize in gcp (in hours)",
+          "Cooldown after hyperdisk resize in gcp (in hours)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ybTmpDirectoryPath =
       new ConfKeyInfo<>(
           "yb.filepaths.tmpDirectory",
