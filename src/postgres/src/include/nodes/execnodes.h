@@ -2217,7 +2217,7 @@ typedef enum YbNLBatchStatus
 	BNL_FLUSHING
 } YbNLBatchStatus;
 
-/* Struct to contain tuple and its matching info in a hash bucket*/
+/* Struct to contain tuple and its matching info in a hash bucket */
 typedef struct YbBucketTupleInfo
 {
 	MinimalTuple tuple;

@@ -168,7 +168,7 @@ SPI_TextArrayGetElement(HeapTuple spi_tuple, int column_id, int element_index)
 
 	get_typlenbyvalalign(element_type, &typlen, &typbyval, &typalign);
 	deconstruct_array(array, element_type, typlen, typbyval, typalign,
-					  &elements, /*elog on NULL values*/ NULL,
+					  &elements, /* elog on NULL values */ NULL,
 					  &num_elements);
 
 	if (element_index >= 0 && element_index < num_elements)

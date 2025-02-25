@@ -259,7 +259,7 @@ YbResetCatalogCacheVersion()
 	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
-/** These values are lazily initialized based on corresponding environment variables. */
+/* These values are lazily initialized based on corresponding environment variables. */
 int			ybc_pg_double_write = -1;
 int			ybc_disable_pg_locking = -1;
 

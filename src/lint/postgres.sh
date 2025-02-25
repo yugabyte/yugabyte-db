@@ -32,9 +32,30 @@ if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
   grep -nvE '^('$'\t''* {0,3}\S|$)' "$1" \
     | sed 's/^/error:leading_whitespace:Remove leading whitespace:/'
 fi
-grep -nE '/\*(\w+|\s\w+|\w+\s)\*/' "$1" \
-  | sed 's,^,error:bad_parameter_comment_spacing:'\
+
+# there are three cases to catch:
+# 1. /*no whitespace before/after*/
+# 2. /*no whitespace before */
+# 3. /* no whitespace after*/
+# We search for strings that do not start or end with a whitespace: \S+(.*\S+)?
+# leading / trailing whitespace is not caught by that regex, so we can check it
+# explicitly.
+#
+# second grep removes lines that have continuous ---, *** characters
+# third grep removes lines that have /*#define or /*-, because PG uses those sometimes
+if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
+        "$1" == src/postgres/src/backend/utils/activity/pgstat.c ||
+        "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ||
+        "$1" == src/postgres/contrib/pgcrypto/px-crypt.h ||
+        "$1" == src/postgres/src/include/tsearch/dicts/regis.h ||
+        "$1" == src/postgres/src/pl/plperl/ppport.h ]]; then
+  grep -nE '/\*(\S+(.*\S+)?|\s\S+(.*\S+)?|\S+(.*\S+)?\s)\*/' "$1" \
+    | grep -vE '[\*\-]{3}' \
+    | grep -vE '/\*(#define|\-)' \
+    | sed 's,^,error:bad_comment_spacing:'\
 'Spacing should be like /* param */:,'
+fi
+
 if ! [[ "$1" == src/postgres/contrib/ltree/* ||
         "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
         "$1" == src/postgres/src/backend/utils/adt/tsquery.c ||
