@@ -1263,17 +1263,18 @@ AddTargetCollectionRTEDollarMerge(Query *query, MongoCollection *targetCollectio
 	RangeVar *rangeVar = makeRangeVar(ApiDataSchemaName, targetCollection->tableName, -1);
 	rte->relid = RangeVarGetRelid(rangeVar, RowExclusiveLock, false);
 
-	#if PG_VERSION_NUM >= 160000
+#if PG_VERSION_NUM >= 160000
 	RTEPermissionInfo *permInfo = addRTEPermissionInfo(&query->rteperminfos, rte);
 	permInfo->requiredPerms = ACL_SELECT;
-	#else
+#else
 	rte->requiredPerms = ACL_SELECT;
-	#endif
+#endif
 	RangeTblEntry *existingrte = list_nth(query->rtable, 0);
 	query->rtable = list_make2(rte, existingrte);
 	query->resultRelation = 1;
 
 #if PG_VERSION_NUM >= 170000
+	query->mergeTargetRelation = query->resultRelation;
 #else
 	query->mergeUseOuterJoin = true;
 #endif
@@ -1355,7 +1356,11 @@ WriteJoinConditionToQueryDollarMerge(Query *query,
 							BsonTypeName(mergeArgs.on.value_type))));
 	}
 
+#if PG_VERSION_NUM >= 170000
+	query->mergeJoinCondition = (Node *) make_ands_explicit(joinFilterList);
+#else
 	query->jointree->quals = (Node *) make_ands_explicit(joinFilterList);
+#endif
 }
 
 
@@ -1888,12 +1893,22 @@ HandleOut(const bson_value_t *existingValue, Query *query,
 	RangeTblRef *rtr = makeNode(RangeTblRef);
 	rtr->rtindex = 2;
 	query->jointree = makeFromExpr(list_make1(rtr), NULL);
+
+#if PG_VERSION_NUM >= 170000
+	query->mergeJoinCondition = (Node *) make_opclause(PostgresInt4EqualOperatorOid(),
+													   BOOLOID, false,
+													   (Expr *) targetShardKeyValueVar,
+													   (Expr *) sourceShardKeyValueVar,
+													   InvalidOid,
+													   InvalidOid);
+#else
 	query->jointree->quals = (Node *) make_opclause(PostgresInt4EqualOperatorOid(),
 													BOOLOID, false,
 													(Expr *) targetShardKeyValueVar,
 													(Expr *) sourceShardKeyValueVar,
 													InvalidOid,
 													InvalidOid);
+#endif
 	return query;
 }
 
