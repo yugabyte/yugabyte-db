@@ -56,7 +56,9 @@ var deleteXClusterCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		rTask, response, err := authAPI.DeleteXClusterConfig(uuid).IsForceDelete(forceDelete).Execute()
+		rTask, response, err := authAPI.DeleteXClusterConfig(uuid).
+			IsForceDelete(forceDelete).
+			Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
 				response,

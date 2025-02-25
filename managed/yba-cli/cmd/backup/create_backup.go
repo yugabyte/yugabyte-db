@@ -49,7 +49,11 @@ var createBackupCmd = &cobra.Command{
 		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No storage config name found to take a backup\n", formatter.RedColor))
+				formatter.Colorize(
+					"No storage config name found to take a backup\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		tableTypeFlag, err := cmd.Flags().GetString("table-type")
@@ -59,7 +63,11 @@ var createBackupCmd = &cobra.Command{
 		if len(strings.TrimSpace(tableTypeFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("Table type not specified to take a backup\n", formatter.RedColor))
+				formatter.Colorize(
+					"Table type not specified to take a backup\n",
+					formatter.RedColor,
+				),
+			)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -76,7 +84,12 @@ var createBackupCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Get Universe")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Backup",
+				"Create - Get Universe",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -252,8 +265,17 @@ var createBackupCmd = &cobra.Command{
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
-				logrus.Info(fmt.Sprintf("\nWaiting for backup task %s on universe %s (%s) to be completed\n",
-					formatter.Colorize(taskUUID, formatter.GreenColor), universeNameFlag, universeUUID))
+				logrus.Info(
+					fmt.Sprintf(
+						"\nWaiting for backup task %s on universe %s (%s) to be completed\n",
+						formatter.Colorize(
+							taskUUID,
+							formatter.GreenColor,
+						),
+						universeNameFlag,
+						universeUUID,
+					),
+				)
 				err = authAPI.WaitForTask(taskUUID, msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -262,7 +284,12 @@ var createBackupCmd = &cobra.Command{
 			backupTaskRequest := authAPI.GetBackupByTaskUUID(universeUUID, taskUUID)
 			rBackup, response, err := backupTaskRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Get Backup")
+				errMessage := util.ErrorFromHTTPResponse(
+					response,
+					err,
+					"Backup",
+					"Create - Get Backup",
+				)
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 			backupUUID := rBackup[0].GetBackupUUID()
@@ -295,7 +322,12 @@ var createBackupCmd = &cobra.Command{
 			backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 			r, response, err := backupListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Describe Backup")
+				errMessage := util.ErrorFromHTTPResponse(
+					response,
+					err,
+					"Backup",
+					"Create - Describe Backup",
+				)
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 

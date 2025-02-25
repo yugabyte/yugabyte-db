@@ -50,7 +50,12 @@ var updateRoleCmd = &cobra.Command{
 
 		rList, response, err := authAPI.ListRoles().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Role", "Update - List Roles")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"RBAC: Role",
+				"Update - List Roles",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		r := make([]ybaclient.Role, 0)
@@ -93,7 +98,9 @@ var updateRoleCmd = &cobra.Command{
 			PermissionList: rolePermissions,
 		}
 
-		rUpdate, response, err := authAPI.EditRole(updateRole.GetRoleUUID()).RoleFormData(req).Execute()
+		rUpdate, response, err := authAPI.EditRole(updateRole.GetRoleUUID()).
+			RoleFormData(req).
+			Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Role", "Update")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
@@ -153,7 +160,8 @@ func removePermissions(
 	for _, permissionString := range removePermissions {
 		permission := buildPermissionMapFromString(permissionString)
 		for i, r := range rolePermissions {
-			if r.GetResourceType() == permission["resource-type"] && r.GetAction() == permission["action"] {
+			if r.GetResourceType() == permission["resource-type"] &&
+				r.GetAction() == permission["action"] {
 				rolePermissions = append(rolePermissions[:i], rolePermissions[i+1:]...)
 			}
 		}

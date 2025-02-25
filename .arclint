@@ -58,7 +58,7 @@
      },
      "go-files-length": {
          "type": "text",
-         "text.max-line-length": 100,
+        "text.max-line-length": 120,
          "include": "(^managed/yba-cli/.*[.]go$)",
          "severity": {
              "2": "disabled"

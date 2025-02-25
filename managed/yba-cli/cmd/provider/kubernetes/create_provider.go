@@ -125,11 +125,13 @@ var createK8sProviderCmd = &cobra.Command{
 						KubernetesImageRegistry: util.GetStringPointer(imageRegistry),
 						KubernetesProvider: util.GetStringPointer(
 							strings.ToLower(providerType)),
-						KubernetesPullSecretContent:   util.GetStringPointer(pullSecretContent),
-						KubernetesPullSecretName:      util.GetStringPointer(pullSecretName),
-						KubernetesImagePullSecretName: util.GetStringPointer(kubernetesImagePullSecretName),
-						KubernetesStorageClass:        util.GetStringPointer(storageClass),
-						KubeConfigContent:             util.GetStringPointer(configContent),
+						KubernetesPullSecretContent: util.GetStringPointer(pullSecretContent),
+						KubernetesPullSecretName:    util.GetStringPointer(pullSecretName),
+						KubernetesImagePullSecretName: util.GetStringPointer(
+							kubernetesImagePullSecretName,
+						),
+						KubernetesStorageClass: util.GetStringPointer(storageClass),
+						KubeConfigContent:      util.GetStringPointer(configContent),
 					},
 				},
 			},
@@ -243,14 +245,20 @@ func buildK8sRegions(
 			Details: &ybaclient.RegionDetails{
 				CloudInfo: &ybaclient.RegionCloudInfo{
 					Kubernetes: &ybaclient.KubernetesRegionInfo{
-						CertManagerClusterIssuer: util.GetStringPointer(region["cert-manager-cluster-issuer"]),
-						CertManagerIssuer:        util.GetStringPointer(region["cert-manager-issuer"]),
-						KubeConfigContent:        util.GetStringPointer(configContent),
-						KubeDomain:               util.GetStringPointer(region["domain"]),
-						KubeNamespace:            util.GetStringPointer(region["namespace"]),
-						KubePodAddressTemplate:   util.GetStringPointer(region["pod-address-template"]),
-						KubernetesStorageClass:   util.GetStringPointer(region["storage-class"]),
-						Overrides:                util.GetStringPointer(overrides),
+						CertManagerClusterIssuer: util.GetStringPointer(
+							region["cert-manager-cluster-issuer"],
+						),
+						CertManagerIssuer: util.GetStringPointer(
+							region["cert-manager-issuer"],
+						),
+						KubeConfigContent: util.GetStringPointer(configContent),
+						KubeDomain:        util.GetStringPointer(region["domain"]),
+						KubeNamespace:     util.GetStringPointer(region["namespace"]),
+						KubePodAddressTemplate: util.GetStringPointer(
+							region["pod-address-template"],
+						),
+						KubernetesStorageClass: util.GetStringPointer(region["storage-class"]),
+						Overrides:              util.GetStringPointer(overrides),
 					},
 				},
 			},
@@ -290,14 +298,20 @@ func buildK8sZones(
 				Details: &ybaclient.AvailabilityZoneDetails{
 					CloudInfo: &ybaclient.AZCloudInfo{
 						Kubernetes: &ybaclient.KubernetesRegionInfo{
-							CertManagerClusterIssuer: util.GetStringPointer(zone["cert-manager-cluster-issuer"]),
-							CertManagerIssuer:        util.GetStringPointer(zone["cert-manager-issuer"]),
-							KubeConfigContent:        util.GetStringPointer(configContent),
-							KubeDomain:               util.GetStringPointer(zone["domain"]),
-							KubeNamespace:            util.GetStringPointer(zone["namespace"]),
-							KubePodAddressTemplate:   util.GetStringPointer(zone["pod-address-template"]),
-							KubernetesStorageClass:   util.GetStringPointer(zone["storage-class"]),
-							Overrides:                util.GetStringPointer(overrides),
+							CertManagerClusterIssuer: util.GetStringPointer(
+								zone["cert-manager-cluster-issuer"],
+							),
+							CertManagerIssuer: util.GetStringPointer(
+								zone["cert-manager-issuer"],
+							),
+							KubeConfigContent: util.GetStringPointer(configContent),
+							KubeDomain:        util.GetStringPointer(zone["domain"]),
+							KubeNamespace:     util.GetStringPointer(zone["namespace"]),
+							KubePodAddressTemplate: util.GetStringPointer(
+								zone["pod-address-template"],
+							),
+							KubernetesStorageClass: util.GetStringPointer(zone["storage-class"]),
+							Overrides:              util.GetStringPointer(overrides),
 						},
 					},
 				},

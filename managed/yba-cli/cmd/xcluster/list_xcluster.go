@@ -36,7 +36,8 @@ var listXClusterCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(sourceUniName)) == 0 || len(strings.TrimSpace(targetUniName)) == 0 {
+		if len(strings.TrimSpace(sourceUniName)) == 0 ||
+			len(strings.TrimSpace(targetUniName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("Missing source or target universe name\n", formatter.RedColor))
@@ -62,7 +63,10 @@ var listXClusterCmd = &cobra.Command{
 		if len(sourceXClusterConfigList) < 1 {
 			logrus.Fatalf(
 				formatter.Colorize(
-					fmt.Sprintf("No source xcluster found in universe: %s\n", sourceUniverse.GetName()),
+					fmt.Sprintf(
+						"No source xcluster found in universe: %s\n",
+						sourceUniverse.GetName(),
+					),
 					formatter.RedColor,
 				))
 		}
@@ -72,12 +76,18 @@ var listXClusterCmd = &cobra.Command{
 		if len(targetXClusterConfigList) < 1 {
 			logrus.Fatalf(
 				formatter.Colorize(
-					fmt.Sprintf("No target xcluster found in universe: %s\n", targetUniverse.GetName()),
+					fmt.Sprintf(
+						"No target xcluster found in universe: %s\n",
+						targetUniverse.GetName(),
+					),
 					formatter.RedColor,
 				))
 		}
 
-		xclusterUUIDs := util.FindCommonStringElements(sourceXClusterConfigList, targetXClusterConfigList)
+		xclusterUUIDs := util.FindCommonStringElements(
+			sourceXClusterConfigList,
+			targetXClusterConfigList,
+		)
 		if len(xclusterUUIDs) < 1 {
 			logrus.Fatalf(
 				formatter.Colorize(

@@ -53,9 +53,13 @@ var encryptionAtRestCmd = &cobra.Command{
 
 		}
 		err = util.ConfirmCommand(
-			fmt.Sprintf("Are you sure you want to change encryption at rest configuration for %s: %s",
-				util.UniverseType, universeName),
-			viper.GetBool("force"))
+			fmt.Sprintf(
+				"Are you sure you want to change encryption at rest configuration for %s: %s",
+				util.UniverseType,
+				universeName,
+			),
+			viper.GetBool("force"),
+		)
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}

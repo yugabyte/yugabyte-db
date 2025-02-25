@@ -142,7 +142,12 @@ var updateReleaseCmd = &cobra.Command{
 
 		rGet, response, err := authAPI.GetNewRelease(requestedRelease.GetReleaseUuid()).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Release", "Update - Get Release")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Release",
+				"Update - Get Release",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 

@@ -34,7 +34,11 @@ var deleteRoleBindingCmd = &cobra.Command{
 		if len(email) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No user email found to delete role binding\n", formatter.RedColor))
+				formatter.Colorize(
+					"No user email found to delete role binding\n",
+					formatter.RedColor,
+				),
+			)
 		}
 		roleBindingUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {
@@ -108,7 +112,10 @@ var deleteRoleBindingCmd = &cobra.Command{
 					if strings.Compare(role.GetRoleType(), util.CustomRoleType) == 0 {
 						roleResourceDefintion.SetResourceGroup(r.GetResourceGroup())
 					}
-					roleResourceDefintionList = append(roleResourceDefintionList, roleResourceDefintion)
+					roleResourceDefintionList = append(
+						roleResourceDefintionList,
+						roleResourceDefintion,
+					)
 				} else {
 					logrus.Debug("Removing role binding with UUID: ", uuid)
 				}
@@ -126,7 +133,9 @@ var deleteRoleBindingCmd = &cobra.Command{
 			RoleResourceDefinitions: roleResourceDefintionList,
 		}
 
-		rDelete, response, err := authAPI.SetRoleBinding(userUUID).RoleBindingFormData(req).Execute()
+		rDelete, response, err := authAPI.SetRoleBinding(userUUID).
+			RoleBindingFormData(req).
+			Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Role Binding", "Delete")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))

@@ -18,7 +18,11 @@ var listS3StorageConfigurationCmd = &cobra.Command{
 	Example: `yba storage-config s3 list`,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		storageconfigurationutil.ListStorageConfigurationUtil(cmd, util.S3StorageConfigType, util.S3StorageConfigType)
+		storageconfigurationutil.ListStorageConfigurationUtil(
+			cmd,
+			util.S3StorageConfigType,
+			util.S3StorageConfigType,
+		)
 
 	},
 }

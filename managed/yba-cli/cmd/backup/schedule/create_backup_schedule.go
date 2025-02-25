@@ -38,7 +38,11 @@ var createBackupScheduleCmd = &cobra.Command{
 		if len(strings.TrimSpace(scheduleName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No schedule name specified to create a backup schedule\n", formatter.RedColor))
+				formatter.Colorize(
+					"No schedule name specified to create a backup schedule\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		universeNameFlag, err := cmd.Flags().GetString("universe-name")
@@ -48,7 +52,11 @@ var createBackupScheduleCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to create a backup schedule\n", formatter.RedColor))
+				formatter.Colorize(
+					"No universe name found to create a backup schedule\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		storageConfigNameFlag, err := cmd.Flags().GetString("storage-config-name")
@@ -58,7 +66,11 @@ var createBackupScheduleCmd = &cobra.Command{
 		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No storage config name found to create a backup schedule\n", formatter.RedColor))
+				formatter.Colorize(
+					"No storage config name found to create a backup schedule\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		tableTypeFlag, err := cmd.Flags().GetString("table-type")
@@ -68,7 +80,11 @@ var createBackupScheduleCmd = &cobra.Command{
 		if len(strings.TrimSpace(tableTypeFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("Table type not specified to create a backup schedule\n", formatter.RedColor))
+				formatter.Colorize(
+					"Table type not specified to create a backup schedule\n",
+					formatter.RedColor,
+				),
+			)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -210,8 +226,11 @@ var createBackupScheduleCmd = &cobra.Command{
 
 		if scheduleFrequencyInSecs == 0 && len(strings.TrimSpace(cronExpression)) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Neither frequency of the schedule nor cron expression are provided",
-					formatter.RedColor))
+				formatter.Colorize(
+					"Neither frequency of the schedule nor cron expression are provided",
+					formatter.RedColor,
+				),
+			)
 		}
 		frequencyTimeUnit := "MINUTES"
 
@@ -253,7 +272,8 @@ var createBackupScheduleCmd = &cobra.Command{
 			requestBody.SetCronExpression(cronExpression)
 		}
 
-		incrementalBackupFrequencyInSecs, err := cmd.Flags().GetInt64("incremental-backup-frequency-in-secs")
+		incrementalBackupFrequencyInSecs, err := cmd.Flags().
+			GetInt64("incremental-backup-frequency-in-secs")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -279,7 +299,13 @@ var createBackupScheduleCmd = &cobra.Command{
 			if taskUUID != "" {
 				logrus.Info(fmt.Sprintf(
 					"\nWaiting for backup schedule %s creation on universe %s (%s) to be completed\n",
-					formatter.Colorize(scheduleName, formatter.GreenColor), universeNameFlag, universeUUID))
+					formatter.Colorize(
+						scheduleName,
+						formatter.GreenColor,
+					),
+					universeNameFlag,
+					universeUUID,
+				))
 				err = authAPI.WaitForTask(taskUUID, msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))

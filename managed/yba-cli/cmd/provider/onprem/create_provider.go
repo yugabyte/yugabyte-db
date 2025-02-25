@@ -96,8 +96,11 @@ var createOnpremProviderCmd = &cobra.Command{
 			}
 			if len(sshFileContent) == 0 {
 				logrus.Fatalf(
-					formatter.Colorize("No ssh keypair file content found while using --ssh-keypair-name\n",
-						formatter.RedColor))
+					formatter.Colorize(
+						"No ssh keypair file content found while using --ssh-keypair-name\n",
+						formatter.RedColor,
+					),
+				)
 			}
 		}
 

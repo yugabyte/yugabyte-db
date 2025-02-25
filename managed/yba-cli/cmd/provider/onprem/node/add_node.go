@@ -49,7 +49,8 @@ var addNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		providerListRequest := authAPI.GetListOfProviders()
-		providerListRequest = providerListRequest.Name(providerName).ProviderCode(util.OnpremProviderType)
+		providerListRequest = providerListRequest.Name(providerName).
+			ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
@@ -106,7 +107,12 @@ var addNodesCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		regionUUID, err := fetchRegionUUIDFromRegionName(authAPI, providerName, providerUUID, region)
+		regionUUID, err := fetchRegionUUIDFromRegionName(
+			authAPI,
+			providerName,
+			providerUUID,
+			region,
+		)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -182,7 +188,12 @@ var addNodesCmd = &cobra.Command{
 			}
 		}
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance", "Add - Fetch Universes")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Node Instance",
+				"Add - Fetch Universes",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		onprem.Write(nodesCtx, nodeInstanceList)
