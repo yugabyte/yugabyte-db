@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -97,6 +98,12 @@ public class ConfigureDBApis extends UpgradeTaskBase {
       userIntent.enableConnectionPooling = taskParams().enableConnectionPooling;
       userIntent.enableYCQL = taskParams().enableYCQL;
       userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;
+      currentCluster.userIntent.specificGFlags =
+          SpecificGFlags.combine(
+              userIntent.specificGFlags,
+              taskParams()
+                  .connectionPoolingGflags
+                  .getOrDefault(currentCluster.uuid, new SpecificGFlags()));
       List<NodeDetails> masterNodes =
           universe.getMasters().stream()
               .filter(n -> n.placementUuid.equals(currentCluster.uuid))
@@ -126,8 +133,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                 currClusters,
                 currentCluster,
                 currClusters,
-                taskParams().communicationPorts,
-                taskParams().connectionPoolingGflags);
+                taskParams().communicationPorts);
             if (processTypes.size() == 1 && processTypes.contains(ServerType.TSERVER)) {
               NodeDetails node = nodes.iterator().next();
               node.isYqlServer = taskParams().enableYCQL;

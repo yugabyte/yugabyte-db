@@ -62,6 +62,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -3250,7 +3251,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean enableYSQL,
       boolean enableYSQLAuth,
       boolean enableConnectionPooling,
-      Map<String, String> connectionPoolingGflags,
+      Map<UUID, SpecificGFlags> connectionPoolingGflags,
       boolean enableYCQL,
       boolean enableYCQLAuth) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterAPIDetails");
