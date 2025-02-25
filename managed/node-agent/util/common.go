@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/url"
-	pb "node-agent/generated/service"
 	"os"
 	"os/user"
 	"path"
@@ -105,9 +104,6 @@ type ContextKey string
 // Handler is a generic handler func.
 type Handler func(context.Context) (any, error)
 
-// RPCResponseConverter is the converter for response in async executor.
-type RPCResponseConverter func(any) (*pb.DescribeTaskResponse, error)
-
 // UserDetail is a placeholder for OS user.
 type UserDetail struct {
 	User      *user.User
@@ -146,11 +142,6 @@ func PlatformGetProvidersEndpoint(cuuid string) string {
 // Returns the platform endpoint for fetching the provider.
 func PlatformGetProviderEndpoint(cuuid, puuid string) string {
 	return fmt.Sprintf("/api/customers/%s/providers/%s", cuuid, puuid)
-}
-
-// Returns the platform endpoint for fetching access keys for a provider.
-func PlatformGetAccessKeysEndpoint(cuuid, puuid string) string {
-	return fmt.Sprintf("/api/customers/%s/providers/%s/access_keys", cuuid, puuid)
 }
 
 // Returns the platform endpoint for fetching Users.
