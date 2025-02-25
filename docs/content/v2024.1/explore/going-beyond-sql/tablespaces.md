@@ -232,21 +232,21 @@ The example below expects the following servers to be added to the cluster:
 ```sh
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP8>/yugabyte-data \
-  --listen=<IP8>                                \
+  --advertise_address=<IP8>                     \
   --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1b"
+  --cloud_location=aws.us-east-1.us-east-1b     \
 
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP9>/yugabyte-data \
-  --listen=<IP9>                                \
+  --advertise_address=<IP9>                     \
   --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=us-east-2,placement_zone=us-east-2a"
+  --cloud_location=aws.us-east-2.us-east-2a     \
 
-  ./bin/yugabyted start                           \
+  ./bin/yugabyted start                          \
   --base_dir=/home/yugabyte/<IP10>/yugabyte-data \
-  --listen=<IP10>                                \
-  --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=us-west-1,placement_zone=us-west-1a"
+  --advertise_address=<IP10>                     \
+  --join=<IP1>                                   \
+  --cloud_location=aws.us-west-1.us-west-1a      \
 ```
 
 {{< /note >}}
