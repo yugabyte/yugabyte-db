@@ -299,26 +299,7 @@ class AddressSegmentNegotiator::Impl {
     if (PREDICT_FALSE(addr != nullptr)) {
       return addr;
     }
-
-#ifdef THREAD_SANITIZER
     return GenerateProbeAddress();
-#else
-    // Postmaster and TServer typically have addresses reserved near the following:
-    // 0x010000000000, 0x020000000000
-    // 0x250000000000
-    // 0x370000000000
-    // 0x550000000000 executable, heap
-    // 0x7f0000000000 dynamic libraries, stack
-    //
-    // We start by probing something in 0x600000000000-0x700000000000, which is likely unused,
-    // so that in the event of a postmaster restart, it is likely we can reuse the existing mapping.
-    //
-    // This range is also in kHighMem for ASAN on x86_64, so we can use it without issue.
-    constexpr uintptr_t kStartRange = 0x600000000000;
-    constexpr uintptr_t kEndRange = 0x700000000000;
-
-    return RandomProbeAddress(kStartRange, kEndRange);
-#endif
   }
 
   void* GenerateProbeAddress() {
@@ -334,12 +315,25 @@ class AddressSegmentNegotiator::Impl {
     constexpr uintptr_t kMaxAddress = 0x7f6000000000;
 #endif
 #else
-    // Both OS X and Linux uses addresses in lower half of 48-bit range for userspace.
-    // OS X reserves the bottom 4GB.
-    // This may conflict with the shadow region for TSAN/ASAN, but the shadow region is already
-    // mapped to, so we just end up trying a different address.
-    constexpr uintptr_t kMinAddress = 0x000100000000;
-    constexpr uintptr_t kMaxAddress = 0x800000000000;
+    // Postmaster and TServer typically have addresses reserved near the following:
+    // 0x010000000000, 0x020000000000
+    // 0x250000000000
+    // 0x370000000000
+    // 0x550000000000-0x660000000000 executable, heap
+    // 0x7f0000000000 dynamic libraries, stack
+    //
+    // Additionally, tcmalloc mappings randomly use up many other ranges.
+    //
+    // We try probing something in 0x350000000000-0x3f0000000000, which appeared to be unused when
+    // tested over 300x YB process instaces for both GCC and clang builds, so that in the event of
+    // postmaster restart, it is likely we can reuse the existing mapping.
+    //
+    // This range is also in kHighMem for ASAN on x86_64, so we can use it without issue.
+    //
+    // In the event this range is actually not available, mmap will return something elsewhere and
+    // we use that instead.
+    constexpr uintptr_t kMinAddress = 0x350000000000;
+    constexpr uintptr_t kMaxAddress = 0x3f0000000000;
 #endif
     return RandomProbeAddress(kMinAddress, kMaxAddress);
   }
