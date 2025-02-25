@@ -5911,13 +5911,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected SubTaskGroup createUpdateDrConfigParamsTask(
       UUID drConfigUUID,
-      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
-      DrConfigCreateForm.PitrParams pitrParams) {
+      @Nullable XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams,
+      @Nullable List<String> webhookUrls) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateDrConfigParams");
     UpdateDrConfigParams.Params params = new UpdateDrConfigParams.Params();
     params.drConfigUUID = drConfigUUID;
     params.setBootstrapParams(bootstrapParams);
     params.setPitrParams(pitrParams);
+    params.setWebhookUrls(webhookUrls);
     UpdateDrConfigParams task = createTask(UpdateDrConfigParams.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

@@ -175,6 +175,7 @@ public class FailoverDrConfig extends EditDrConfig {
               false /* deleteSourcePitrConfigs */,
               false /* deleteTargetPitrConfigs */);
         }
+        createDrConfigWebhookCallTask(failoverXClusterConfig.getDrConfig());
 
         createSetDrStatesTask(
                 failoverXClusterConfig,

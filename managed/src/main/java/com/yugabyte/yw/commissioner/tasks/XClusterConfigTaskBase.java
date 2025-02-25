@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.webhook.DrConfigWebhookCall;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddExistingPitrToXClusterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
@@ -62,6 +63,7 @@ import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Webhook;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -3362,6 +3364,20 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       ret.append(")");
       return ret.toString();
     }
+  }
+
+  protected SubTaskGroup createDrConfigWebhookCallTask(DrConfig drConfig) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DrConfigWebhookCall");
+    for (Webhook webhook : drConfig.getWebhooks()) {
+      DrConfigWebhookCall task = createTask(DrConfigWebhookCall.class);
+      DrConfigWebhookCall.Params params = new DrConfigWebhookCall.Params();
+      params.drConfigUuid = drConfig.getUuid();
+      params.hook = webhook;
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   // --------------------------------------------------------------------------------

@@ -926,6 +926,9 @@ public enum TaskType {
   AddExistingPitrToXClusterConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddExistingPitrToXClusterConfig.class),
 
+  DrConfigWebhookCall(
+      com.yugabyte.yw.commissioner.tasks.subtasks.webhook.DrConfigWebhookCall.class),
+
   SetRestoreState(com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreState.class),
 
   // Tasks belonging to subtasks.cloud classpath
