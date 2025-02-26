@@ -5,7 +5,7 @@ linkTitle: yba CLI
 description: Use YugabyteDB Anywhere CLI to create and manage resources in YBA.
 headcontent: Install the CLI, configure default settings, and set up autocompletion
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   preview_yugabyte-platform:
     parent: anywhere-automation
@@ -22,7 +22,7 @@ Reference documentation for yba CLI commands and their flags is available in the
 
 The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
-The CLI is in [Tech Preview](/preview/releases/versioning/#feature-maturity). Commands and options may change before {{<tags/feature/ga>}}.
+The CLI is [Early Access](/preview/releases/versioning/#feature-maturity). Commands and options may change before {{<tags/feature/ga>}}.
 
 ## Install CLI
 
