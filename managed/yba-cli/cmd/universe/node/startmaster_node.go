@@ -13,13 +13,12 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
-// releaseNodeCmd represents the universe command
-var releaseNodeCmd = &cobra.Command{
-	Use:   "release",
-	Short: "Release a node instance from YugabyteDB Anywhere universe",
-	Long: "Release a node instance from YugabyteDB Anywhere universe.\n" +
-		"Release the instance to the IaaS/provider. Only for stopped/removed nodes.",
-	Example: `yba universe node release --name <universe-name> --node-name <node-name>`,
+// startMasterNodeCmd represents the universe command
+var startMasterNodeCmd = &cobra.Command{
+	Use:     "start-master",
+	Short:   "Start master of a node in YugabyteDB Anywhere universe",
+	Long:    "Start master of a node in YugabyteDB Anywhere universe.",
+	Example: `yba universe node start-master --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -28,7 +27,7 @@ var releaseNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to release node instance"+
+				formatter.Colorize("No universe name found to start master node"+
 					"\n", formatter.RedColor))
 		}
 		nodeName, err := cmd.Flags().GetString("node-name")
@@ -39,17 +38,17 @@ var releaseNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(nodeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No node name found to release"+
+				formatter.Colorize("No node name found to start master"+
 					"\n", formatter.RedColor))
 		}
 
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		nodeOperationsUtil(cmd, "Release", util.ReleaseNode)
+		nodeOperationsUtil(cmd, "StartMaster", util.StartMasterNode)
 
 	},
 }
 
 func init() {
-	releaseNodeCmd.Flags().SortFlags = false
+	startMasterNodeCmd.Flags().SortFlags = false
 }

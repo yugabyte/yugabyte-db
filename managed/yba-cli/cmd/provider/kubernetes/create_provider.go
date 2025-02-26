@@ -158,7 +158,7 @@ func init() {
 
 	createK8sProviderCmd.Flags().String("type", "",
 		"[Required] Kubernetes cloud type. Allowed values: aks, eks, gke, custom.")
-	createK8sProviderCmd.MarkFlagRequired(util.K8sProviderType)
+	createK8sProviderCmd.MarkFlagRequired("type")
 	createK8sProviderCmd.Flags().String("image-registry", "quay.io/yugabyte/yugabyte",
 		"[Optional] Kubernetes Image Registry.")
 

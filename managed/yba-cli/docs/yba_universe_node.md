@@ -35,12 +35,13 @@ yba universe node [flags]
 ### SEE ALSO
 
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
-* [yba universe node add](yba_universe_node_add.md)	 - Add a node instance to YugabyteDB Anywhere universe
+* [yba universe node decommission](yba_universe_node_decommission.md)	 - Decommission a node in YugabyteDB Anywhere universe
+* [yba universe node hard-reboot](yba_universe_node_hard-reboot.md)	 - Hard reboot a node in YugabyteDB Anywhere universe
 * [yba universe node list](yba_universe_node_list.md)	 - List YugabyteDB Anywhere universe nodes
-* [yba universe node reboot](yba_universe_node_reboot.md)	 - Reboot a node instance in YugabyteDB Anywhere universe
-* [yba universe node release](yba_universe_node_release.md)	 - Release a node instance from YugabyteDB Anywhere universe
-* [yba universe node remove](yba_universe_node_remove.md)	 - Remove a node instance to YugabyteDB Anywhere universe
-* [yba universe node reprovision](yba_universe_node_reprovision.md)	 - Reprovision a node instance in YugabyteDB Anywhere universe
-* [yba universe node start](yba_universe_node_start.md)	 - Start a node instance in YugabyteDB Anywhere universe
-* [yba universe node stop](yba_universe_node_stop.md)	 - Stop a node instance in YugabyteDB Anywhere universe
+* [yba universe node reboot](yba_universe_node_reboot.md)	 - Reboot a node in YugabyteDB Anywhere universe
+* [yba universe node replace](yba_universe_node_replace.md)	 - Decommission and replace a node in a universe with another new node
+* [yba universe node reprovision](yba_universe_node_reprovision.md)	 - Reprovision a node in YugabyteDB Anywhere universe
+* [yba universe node start-master](yba_universe_node_start-master.md)	 - Start master of a node in YugabyteDB Anywhere universe
+* [yba universe node start-processes](yba_universe_node_start-processes.md)	 - Start YugbayteDB processes on a node in YugabyteDB Anywhere universe
+* [yba universe node stop-processes](yba_universe_node_stop-processes.md)	 - Stop YugbayteDB processes on a node in YugabyteDB Anywhere universe
 

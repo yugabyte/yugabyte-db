@@ -1,14 +1,14 @@
-## yba universe node stop
+## yba universe node stop-processes
 
-Stop a node instance in YugabyteDB Anywhere universe
+Stop YugbayteDB processes on a node in YugabyteDB Anywhere universe
 
 ### Synopsis
 
-Stop a node instance in YugabyteDB Anywhere universe.
+Stop YugbayteDB processes on a node in YugabyteDB Anywhere universe.
 Stop the server processes running on the node.
 
 ```
-yba universe node stop [flags]
+yba universe node stop-processes [flags]
 ```
 
 ### Examples
@@ -20,7 +20,7 @@ yba universe node stop --name <universe-name> --node-name <node-name>
 ### Options
 
 ```
-  -h, --help   help for stop
+  -h, --help   help for stop-processes
 ```
 
 ### Options inherited from parent commands

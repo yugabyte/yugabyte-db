@@ -13,14 +13,13 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
-// removeNodeCmd represents the universe command
-var removeNodeCmd = &cobra.Command{
-	Use:     "remove",
-	Aliases: []string{"delete", "rm"},
-	Short:   "Remove a node instance to YugabyteDB Anywhere universe",
-	Long: "Remove a node instance from YugabyteDB Anywhere universe and move its data out.\n" +
-		"The same instance is not expected to be used for this cluster again.",
-	Example: `yba universe node remove --name <universe-name> --node-name <node-name>`,
+// decommissionNodeCmd represents the universe command
+var decommissionNodeCmd = &cobra.Command{
+	Use:   "decommission",
+	Short: "Decommission a node in YugabyteDB Anywhere universe",
+	Long: "Decommission a node in YugabyteDB Anywhere universe. " +
+		"Performs scaling-in of the universe by removing (detaching) the node permanently from the universe.",
+	Example: `yba universe node decommission --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -29,7 +28,7 @@ var removeNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to remove node instance"+
+				formatter.Colorize("No universe name found to decommission node"+
 					"\n", formatter.RedColor))
 		}
 		nodeName, err := cmd.Flags().GetString("node-name")
@@ -40,17 +39,17 @@ var removeNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(nodeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No node name found to remove"+
+				formatter.Colorize("No node name found to decommission"+
 					"\n", formatter.RedColor))
 		}
 
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		nodeOperationsUtil(cmd, "Remove", util.RemoveNode)
+		nodeOperationsUtil(cmd, "Decommission", util.DecommissionNode)
 
 	},
 }
 
 func init() {
-	removeNodeCmd.Flags().SortFlags = false
+	decommissionNodeCmd.Flags().SortFlags = false
 }

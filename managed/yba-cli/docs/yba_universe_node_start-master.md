@@ -1,26 +1,25 @@
-## yba universe node release
+## yba universe node start-master
 
-Release a node instance from YugabyteDB Anywhere universe
+Start master of a node in YugabyteDB Anywhere universe
 
 ### Synopsis
 
-Release a node instance from YugabyteDB Anywhere universe.
-Release the instance to the IaaS/provider. Only for stopped/removed nodes.
+Start master of a node in YugabyteDB Anywhere universe.
 
 ```
-yba universe node release [flags]
+yba universe node start-master [flags]
 ```
 
 ### Examples
 
 ```
-yba universe node release --name <universe-name> --node-name <node-name>
+yba universe node start-master --name <universe-name> --node-name <node-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for release
+  -h, --help   help for start-master
 ```
 
 ### Options inherited from parent commands
