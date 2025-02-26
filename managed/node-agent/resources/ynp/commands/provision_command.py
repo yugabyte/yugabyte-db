@@ -76,7 +76,8 @@ class ProvisionCommand(Command):
         return temp_file.name
 
     def _run_script(self, script_path):
-        result = subprocess.run(["/bin/bash", "-lc", script_path], capture_output=True, text=True)
+        result = subprocess.run(["/bin/bash", "-lc", script_path], stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, universal_newlines=True)
         logger.info("Output: %s", result.stdout)
         logger.info("Error: %s", result.stderr)
         logger.info("Return Code: %s", result.returncode)

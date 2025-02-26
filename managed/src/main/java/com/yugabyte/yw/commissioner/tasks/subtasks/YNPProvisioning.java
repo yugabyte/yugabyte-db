@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
@@ -69,12 +70,19 @@ public class YNPProvisioning extends AbstractTaskBase {
   }
 
   public void getProvisionArguments(
-      Universe universe, NodeDetails node, String outputFilePath, Path nodeAgentHome) {
+      Universe universe,
+      NodeDetails node,
+      Provider provider,
+      String outputFilePath,
+      Path nodeAgentHome) {
     ObjectNode rootNode = mapper.createObjectNode();
     ObjectNode ynpNode = mapper.createObjectNode();
     ynpNode.put("node_ip", node.cloudInfo.private_ip);
     ynpNode.put("is_install_node_agent", false);
     ynpNode.put("yb_user_id", "1994");
+    ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
+    ynpNode.put(
+        "tmp_directory", confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
     rootNode.set("ynp", ynpNode);
 
     ObjectNode extraNode = mapper.createObjectNode();
@@ -111,9 +119,6 @@ public class YNPProvisioning extends AbstractTaskBase {
       extraNode.put("package_path", localPackagePath);
     }
 
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
     if (!provider.getCode().equals(CloudType.onprem.toString())) {
       List<String> devicePaths =
           this.queryHelper.getDeviceNames(
@@ -164,9 +169,12 @@ public class YNPProvisioning extends AbstractTaskBase {
 
     StringBuilder sb = new StringBuilder();
 
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
     String tmpDirectory =
         confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath) + "/config.json";
-    getProvisionArguments(universe, node, tmpDirectory, Paths.get(nodeAgent.getHome()));
+    getProvisionArguments(universe, node, provider, tmpDirectory, Paths.get(nodeAgent.getHome()));
     nodeUniverseManager.uploadFileToNode(
         node, universe, tmpDirectory, nodeAgent.getHome() + "/", "755", shellContext);
 
@@ -179,6 +187,9 @@ public class YNPProvisioning extends AbstractTaskBase {
         .append(configFilePath)
         .append(" --cloud_type ")
         .append(node.cloudInfo.cloud);
+    if (provider.getDetails().airGapInstall) {
+      sb.append(" --is_airgap");
+    }
     List<String> command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running YNP installation command: {}", command);
     try {
