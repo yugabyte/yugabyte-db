@@ -43,11 +43,13 @@ echo "building and installing citus extension ..."
 ./configure --without-lz4 --without-zstd --without-libcurl
 make PATH=$PATH clean
 
-has_process_makefile_func=$(declare -F ProcessCitusMakefileGlobal )
-
-if [ "$has_process_makefile_func" == "ProcessCitusMakefileGlobal" ]; then
+if declare -F ProcessCitusMakefileGlobal > /dev/null; then
+    echo "Function ProcessCitusMakefileGlobal is defined"
     ProcessCitusMakefileGlobal
+else
+    echo "Function ProcessCitusMakefileGlobal is not defined"
 fi
+
 
 if [ "${DESTINSTALLDIR:-}" == "" ]; then
 make PATH=$PATH -j$(cat /proc/cpuinfo | grep -c "processor") install
