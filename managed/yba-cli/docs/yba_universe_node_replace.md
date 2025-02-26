@@ -1,26 +1,25 @@
-## yba universe node add
+## yba universe node replace
 
-Add a node instance to YugabyteDB Anywhere universe
+Decommission and replace a node in a universe with another new node
 
 ### Synopsis
 
-Add a node instance to YugabyteDB Anywhere universe.
-Add a previously removed (or not in-use) node to the cluster and balance data onto it.
+Decommission and replace a node in a universe with another new node.
 
 ```
-yba universe node add [flags]
+yba universe node replace [flags]
 ```
 
 ### Examples
 
 ```
-yba universe node add --name <universe-name> --node-name <node-name>
+yba universe node replace --name <universe-name> --node-name <node-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for add
+  -h, --help   help for replace
 ```
 
 ### Options inherited from parent commands

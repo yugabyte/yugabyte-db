@@ -13,12 +13,12 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
-// rebootNodeCmd represents the universe command
-var rebootNodeCmd = &cobra.Command{
-	Use:     "reboot",
-	Short:   "Reboot a node in YugabyteDB Anywhere universe",
-	Long:    "Reboot a node in YugabyteDB Anywhere universe.",
-	Example: `yba universe node reboot --name <universe-name> --node-name <node-name>`,
+// replaceNodeCmd represents the universe command
+var replaceNodeCmd = &cobra.Command{
+	Use:     "replace",
+	Short:   "Decommission and replace a node in a universe with another new node",
+	Long:    "Decommission and replace a node in a universe with another new node.",
+	Example: `yba universe node replace --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -27,7 +27,7 @@ var rebootNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to reboot node"+
+				formatter.Colorize("No universe name found to replace node"+
 					"\n", formatter.RedColor))
 		}
 		nodeName, err := cmd.Flags().GetString("node-name")
@@ -38,17 +38,17 @@ var rebootNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(nodeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No node name found to reboot"+
+				formatter.Colorize("No node name found to replace"+
 					"\n", formatter.RedColor))
 		}
 
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		nodeOperationsUtil(cmd, "Reboot", util.RebootNode)
+		nodeOperationsUtil(cmd, "Replace", util.ReplaceNode)
 
 	},
 }
 
 func init() {
-	rebootNodeCmd.Flags().SortFlags = false
+	replaceNodeCmd.Flags().SortFlags = false
 }

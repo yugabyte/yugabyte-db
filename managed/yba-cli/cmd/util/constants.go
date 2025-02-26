@@ -277,6 +277,16 @@ const (
 	StopNode = "STOP"
 	// RemoveNode operation
 	RemoveNode = "REMOVE"
+	// DeleteNode operation
+	DeleteNode = "DELETE"
+	// ReplaceNode operation
+	ReplaceNode = "REPLACE"
+	// DecommissionNode operation
+	DecommissionNode = "DECOMMISSION"
+	// HardRebootNode operation
+	HardRebootNode = "HARD_REBOOT"
+	// StartMasterNode operation
+	StartMasterNode = "START_MASTER"
 	// ReprovisionNode operation
 	ReprovisionNode = "REPROVISION"
 	// ReleaseNode operation

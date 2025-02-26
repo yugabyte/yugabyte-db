@@ -1,10 +1,10 @@
 ## yba universe node reprovision
 
-Reprovision a node instance in YugabyteDB Anywhere universe
+Reprovision a node in YugabyteDB Anywhere universe
 
 ### Synopsis
 
-Reprovision a node instance in YugabyteDB Anywhere universe.
+Reprovision a node in YugabyteDB Anywhere universe.
 Re-provision node with already stopped processes.
 
 ```

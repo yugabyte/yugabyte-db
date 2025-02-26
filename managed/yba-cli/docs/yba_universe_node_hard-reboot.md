@@ -1,27 +1,25 @@
-## yba universe node start
+## yba universe node hard-reboot
 
-Start a node instance in YugabyteDB Anywhere universe
+Hard reboot a node in YugabyteDB Anywhere universe
 
 ### Synopsis
 
-Start a node instance in YugabyteDB Anywhere universe.
-Start the server processes on a previously stopped node.
-Ideally it is added back very soon.
+Hard reboot a node in YugabyteDB Anywhere universe.
 
 ```
-yba universe node start [flags]
+yba universe node hard-reboot [flags]
 ```
 
 ### Examples
 
 ```
-yba universe node start --name <universe-name> --node-name <node-name>
+yba universe node hard-reboot --name <universe-name> --node-name <node-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for start
+  -h, --help   help for hard-reboot
 ```
 
 ### Options inherited from parent commands

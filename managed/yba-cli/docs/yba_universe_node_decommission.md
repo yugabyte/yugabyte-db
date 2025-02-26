@@ -1,26 +1,25 @@
-## yba universe node remove
+## yba universe node decommission
 
-Remove a node instance to YugabyteDB Anywhere universe
+Decommission a node in YugabyteDB Anywhere universe
 
 ### Synopsis
 
-Remove a node instance from YugabyteDB Anywhere universe and move its data out.
-The same instance is not expected to be used for this cluster again.
+Decommission a node in YugabyteDB Anywhere universe. Performs scaling-in of the universe by removing (detaching) the node permanently from the universe.
 
 ```
-yba universe node remove [flags]
+yba universe node decommission [flags]
 ```
 
 ### Examples
 
 ```
-yba universe node remove --name <universe-name> --node-name <node-name>
+yba universe node decommission --name <universe-name> --node-name <node-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for remove
+  -h, --help   help for decommission
 ```
 
 ### Options inherited from parent commands

@@ -1,25 +1,25 @@
-## yba universe node reboot
+## yba universe node start-processes
 
-Reboot a node in YugabyteDB Anywhere universe
+Start YugbayteDB processes on a node in YugabyteDB Anywhere universe
 
 ### Synopsis
 
-Reboot a node in YugabyteDB Anywhere universe.
+Start YugbayteDB processes on a node in YugabyteDB Anywhere universe.Start the server processes on a previously stopped node.Ideally it is added back very soon.
 
 ```
-yba universe node reboot [flags]
+yba universe node start-processes [flags]
 ```
 
 ### Examples
 
 ```
-yba universe node reboot --name <universe-name> --node-name <node-name>
+yba universe node start --name <universe-name> --node-name <node-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for reboot
+  -h, --help   help for start-processes
 ```
 
 ### Options inherited from parent commands

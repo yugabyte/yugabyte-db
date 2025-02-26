@@ -13,14 +13,12 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
-// addNodeCmd represents the universe command
-var addNodeCmd = &cobra.Command{
-	Use:     "add",
-	Aliases: []string{"create"},
-	Short:   "Add a node instance to YugabyteDB Anywhere universe",
-	Long: "Add a node instance to YugabyteDB Anywhere universe.\n" +
-		"Add a previously removed (or not in-use) node to the cluster and balance data onto it.",
-	Example: `yba universe node add --name <universe-name> --node-name <node-name>`,
+// hardRebootNodeCmd represents the universe command
+var hardRebootNodeCmd = &cobra.Command{
+	Use:     "hard-reboot",
+	Short:   "Hard reboot a node in YugabyteDB Anywhere universe",
+	Long:    "Hard reboot a node in YugabyteDB Anywhere universe.",
+	Example: `yba universe node hard-reboot --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -29,7 +27,7 @@ var addNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to add node instance"+
+				formatter.Colorize("No universe name found to hard reboot node"+
 					"\n", formatter.RedColor))
 		}
 		nodeName, err := cmd.Flags().GetString("node-name")
@@ -40,17 +38,17 @@ var addNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(nodeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No node name found to add"+
+				formatter.Colorize("No node name found to hard reboot"+
 					"\n", formatter.RedColor))
 		}
 
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		nodeOperationsUtil(cmd, "Add", util.AddNode)
+		nodeOperationsUtil(cmd, "HardReboot", util.HardRebootNode)
 
 	},
 }
 
 func init() {
-	addNodeCmd.Flags().SortFlags = false
+	hardRebootNodeCmd.Flags().SortFlags = false
 }
