@@ -292,7 +292,8 @@ void InitPgGateImpl(
 
 Status PgInitSessionImpl(YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
   return WithMaskedYsqlSignals([&session_stats, is_binary_upgrade] {
-    return pgapi->InitSession(session_stats, is_binary_upgrade);
+    pgapi->InitSession(session_stats, is_binary_upgrade);
+    return static_cast<Status>(Status::OK());
   });
 }
 

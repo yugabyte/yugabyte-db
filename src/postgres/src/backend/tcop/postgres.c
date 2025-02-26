@@ -5147,7 +5147,7 @@ yb_restart_current_stmt(int attempt, bool is_read_restart)
 			 GetCurrentSubTransactionId(), GetCurrentSubTransactionId() + 1);
 
 	/*
-	 * TODO(Piyush): Perform pg_session_->InvalidateForeignKeyReferenceCache()
+	 * TODO(Piyush): Perform foreign key reference cacahe cleanup
 	 * and create tests that would fail without this.
 	 */
 
