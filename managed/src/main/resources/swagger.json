@@ -214,6 +214,16 @@
       },
       "type" : "object"
     },
+    "AdditionalServicesStateData" : {
+      "description" : "Additional services state",
+      "properties" : {
+        "earlyoomConfig" : {
+          "$ref" : "#/definitions/EarlyoomConfig",
+          "description" : "Configuration for earlyoom service."
+        }
+      },
+      "type" : "object"
+    },
     "Admin notification" : {
       "properties" : {
         "code" : {
@@ -2033,7 +2043,8 @@
             "Unlock",
             "LdapUniverseSync",
             "UpdateProxyConfig",
-            "CloneNamespace"
+            "CloneNamespace",
+            "UpdateAdditionalServicesState"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -2772,7 +2783,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -5406,7 +5419,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -7577,6 +7592,38 @@
       },
       "type" : "object"
     },
+    "EarlyoomConfig" : {
+      "description" : "State for earlyoom service",
+      "properties" : {
+        "availMemoryKillKb" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "availMemoryKillPercent" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "availMemoryTermKb" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "availMemoryTermPercent" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "enabled" : {
+          "type" : "boolean"
+        },
+        "preferPattern" : {
+          "type" : "string"
+        },
+        "reportInterval" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "type" : "object"
+    },
     "EditAccessKeyRotationScheduleParams" : {
       "properties" : {
         "schedulingFrequencyDays" : {
@@ -8355,7 +8402,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -9127,7 +9176,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -10517,7 +10568,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -14665,7 +14718,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -15653,7 +15708,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -16452,7 +16509,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -17940,7 +17999,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -18471,7 +18532,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -18844,7 +18907,9 @@
               "RunNodeCommand",
               "MasterLeaderStepdown",
               "SetupYNP",
-              "YNPProvisioning"
+              "YNPProvisioning",
+              "UpdateOOMServiceState",
+              "ConfigureOOMServiceOnNode"
             ],
             "type" : "string"
           },
@@ -19638,7 +19703,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -20698,7 +20765,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -21225,7 +21294,8 @@
               "RestoreContinuousBackup",
               "EnableNodeAgent",
               "Decommission",
-              "CloneNamespace"
+              "CloneNamespace",
+              "UpdateOOMServiceState"
             ],
             "type" : "string"
           },
@@ -21960,7 +22030,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -22602,7 +22674,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -23499,7 +23573,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -24105,7 +24181,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -24711,7 +24789,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -25719,7 +25799,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -26880,7 +26962,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "UpdateOOMServiceState",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },

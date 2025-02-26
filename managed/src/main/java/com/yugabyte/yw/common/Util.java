@@ -934,7 +934,11 @@ public class Util {
   }
 
   public static boolean isOnPremManualProvisioning(Universe universe) {
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    return isOnPremManualProvisioning(universe.getUniverseDetails());
+  }
+
+  public static boolean isOnPremManualProvisioning(UniverseDefinitionTaskParams params) {
+    UserIntent userIntent = params.getPrimaryCluster().userIntent;
     if (userIntent.providerType == Common.CloudType.onprem) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
       return provider.getDetails().skipProvisioning;

@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentStub;
+import com.yugabyte.yw.nodeagent.Server;
 import com.yugabyte.yw.nodeagent.Server.AbortTaskRequest;
 import com.yugabyte.yw.nodeagent.Server.DescribeTaskRequest;
 import com.yugabyte.yw.nodeagent.Server.DescribeTaskResponse;
@@ -877,6 +878,18 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), PreflightCheckOutput.class);
+  }
+
+  public Server.ConfigureServiceOutput runConfigureEarlyoom(
+      NodeAgent nodeAgent, Server.ConfigureServiceInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(String.format("ConfigureEarlyoom-%s", UUID.randomUUID().toString()))
+            .setConfigureServiceInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), Server.ConfigureServiceOutput.class);
   }
 
   public synchronized void cleanupCachedClients() {
