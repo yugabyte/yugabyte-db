@@ -74,6 +74,7 @@
 
 bool		yb_disable_transactional_writes = false;
 bool		yb_enable_upsert_mode = false;
+bool		yb_fast_path_for_colocated_copy = false;
 
 /*
  * Hack to ensure that the next CommandCounterIncrement() will call
