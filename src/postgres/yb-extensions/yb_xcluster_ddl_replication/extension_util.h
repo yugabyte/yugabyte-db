@@ -59,7 +59,6 @@
 
 /* Global variables. */
 extern const char *kManualReplicationErrorMsg;
-extern bool TEST_AllowColocatedObjects;
 
 /* Get int64 value from string extension variable. */
 extern int64 GetInt64FromVariable(const char *var, const char *var_name);
@@ -73,6 +72,9 @@ extern Oid XClusterExtensionOwner(void);
 
 extern Oid SPI_GetOid(HeapTuple spi_tuple, int column_id);
 
+/* Returns InvalidOid (0) if value doesn't exist/is null. */
+extern Oid SPI_GetOidIfExists(HeapTuple spi_tuple, int column_id);
+
 extern char *SPI_GetText(HeapTuple spi_tuple, int column_id);
 
 extern bool SPI_GetBool(HeapTuple spi_tuple, int column_id);
@@ -84,5 +86,8 @@ extern char *SPI_TextArrayGetElement(HeapTuple spi_tuple, int column_id,
 
 /* If true, any object in this schema is a temporary object. */
 extern bool IsTempSchema(const char *schema_name);
+
+/* Returns the relation's colocation id or 0 if not colocated. */
+extern Oid GetColocationIdFromRelation(Relation *rel);
 
 #endif

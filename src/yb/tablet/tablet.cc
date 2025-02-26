@@ -2991,6 +2991,7 @@ Status Tablet::BackfillIndexesForYsql(
     const HostPort& pgsql_proxy_bind_address,
     const std::string& database_name,
     const uint64_t postgres_auth_key,
+    bool is_xcluster_target,
     size_t* number_of_rows_processed,
     std::string* backfilled_until) {
   LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
@@ -3033,6 +3034,14 @@ Status Tablet::BackfillIndexesForYsql(
         read_time.ToUint64(),
         b2a_hex(partition_key));
     VLOG(1) << __func__ << ": libpq query string: " << query_str;
+
+    if (is_xcluster_target) {
+      // For xCluster targets, we don't need to use the xCluster safe time as we are reading at
+      // a point in time.
+      // For automatic mode colocated indexes, this is necessary since the ddl_queue table would
+      // hold up the xCluster safe time, and thus backfill would get stuck.
+      RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet;"));
+    }
 
     const auto spec = VERIFY_RESULT(QueryPostgresToDoBackfill(&conn, query_str));
     *number_of_rows_processed += spec.count();

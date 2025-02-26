@@ -175,6 +175,7 @@ class Tablet : public AbstractTablet,
       const HostPort& pgsql_proxy_bind_address,
       const std::string& database_name,
       const uint64_t postgres_auth_key,
+      bool is_xcluster_target,
       size_t* number_of_rows_processed,
       std::string* backfilled_until);
 

@@ -46,7 +46,7 @@ class TserverXClusterContextIf {
 
   virtual Status SetSourceTableInfoMappingForCreateTable(
       const YsqlFullTableName& table_name, const PgObjectId& source_table_id,
-      ColocationId colocation_id) = 0;
+      ColocationId colocation_id, const HybridTime& backfill_time_opt) = 0;
   virtual void ClearSourceTableInfoMappingForCreateTable(const YsqlFullTableName& table_name) = 0;
 
   virtual void PrepareCreateTableHelper(

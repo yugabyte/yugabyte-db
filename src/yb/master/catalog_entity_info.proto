@@ -195,6 +195,9 @@ message SysTablesEntryPB {
     // before and after the table is created.
     // This is cleaned up after the table is created.
     repeated dockv.SchemaPackingPB xcluster_colocated_old_schema_packings = 2;
+
+    // If set, use this time for the index backfill time.
+    optional fixed64 xcluster_backfill_hybrid_time = 3;
   }
 
   optional XClusterTableInfo xcluster_table_info = 42;
