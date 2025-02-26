@@ -111,15 +111,15 @@ YSQL Connection Manager enables a larger number of client connections to efficie
 
 Some other characteristics of sticky connections:
 - Backend processes corresponding to sticky connections are destroyed at the end of the session, and so, sticky connections do not return to the pool once used.
-- As of now, sticky connections cannot be reverted back to an "un"-sticky connection; once a sticky connection is formed, it will remain sticky until the end of the session.
+- Currently, once formed, sticky connections remain sticky until the end of the session.
 
 When using YSQL Connection Manager, sticky connections can form in the following circumstances:
 
 - Creating TEMP tables
 - Declaring a CURSOR using the WITH HOLD attribute
 - Using a PREPARE query (not to be confused with protocol-level preparation of statements)
-- Superuser connections (This can be disabled using the `ysql_conn_mgr_superuser_sticky` flag)
-- Using a SEQUENCE. (Refer to `ysql_conn_mgr_sequence_support_mode` for support without stickiness.)
+- Superuser connections; if you want superuser connections to not be sticky, set the `ysql_conn_mgr_superuser_sticky` flag to false
+- Using a SEQUENCE with `ysql_conn_mgr_sequence_support_mode` set to `session`. (Other values for this flag provide lesser support without stickiness.)
 - Replication connections
 - Setting the following configuration parameters during the session:
   - `session_authorization`
