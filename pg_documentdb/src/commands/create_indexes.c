@@ -36,6 +36,7 @@
 #include <utils/ruleutils.h>
 #include <utils/snapmgr.h>
 #include <utils/syscache.h>
+#include <catalog/index.h>
 
 #include "api_hooks.h"
 #include "io/bson_core.h"
@@ -184,6 +185,7 @@ extern int MaxWildcardIndexKeySize;
 extern bool DefaultEnableLargeUniqueIndexKeys;
 extern bool SkipFailOnCollation;
 extern bool ForceEnableNewUniqueOpClass;
+extern bool DisableStatisticsForUniqueColumns;
 
 #define WILDCARD_INDEX_SUFFIX "$**"
 #define DOT_WILDCARD_INDEX_SUFFIX "." WILDCARD_INDEX_SUFFIX
@@ -211,6 +213,7 @@ PG_FUNCTION_INFO_V1(generate_create_index_arg);
 PG_FUNCTION_INFO_V1(command_create_indexes_non_concurrently);
 PG_FUNCTION_INFO_V1(command_create_temp_indexes_non_concurrently);
 PG_FUNCTION_INFO_V1(command_index_build_is_in_progress);
+PG_FUNCTION_INFO_V1(command_fix_unique_index_stats_for_collection);
 
 static ReIndexResult reindex_concurrently(Datum dbNameDatum,
 										  Datum collectionNameDatum);
@@ -472,6 +475,44 @@ command_create_temp_indexes_non_concurrently(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_POINTER(MakeCreateIndexesMsg(&result));
+}
+
+
+/*
+ * Update the index stats for unique indexes uuid column for the given collection to be 0
+ * so that analyze doesn't run on such index columns.
+ */
+Datum
+command_fix_unique_index_stats_for_collection(PG_FUNCTION_ARGS)
+{
+	uint64 collectionId = (uint64) PG_GETARG_INT64(0);
+
+	MongoCollection *collection = GetMongoCollectionByColId(collectionId,
+															AccessShareLock);
+	if (collection == NULL)
+	{
+		ereport(NOTICE, errmsg("Collection is null"));
+		PG_RETURN_VOID();
+	}
+
+	List *indexList = CollectionIdGetValidIndexes(collectionId, true, true);
+	List *indexIdList = NIL;
+	ListCell *cell;
+	foreach(cell, indexList)
+	{
+		IndexDetails *det = lfirst(cell);
+		if (det->indexSpec.indexUnique == BoolIndexOption_True)
+		{
+			indexIdList = lappend_int(indexIdList, det->indexId);
+		}
+	}
+
+	if (indexIdList != NIL)
+	{
+		UpdateIndexStatsForPostgresIndex(collectionId, indexIdList);
+	}
+
+	PG_RETURN_VOID();
 }
 
 
@@ -928,6 +969,9 @@ create_indexes_non_concurrently(Datum dbNameDatum, CreateIndexesArg createIndexe
 		bool isTempCollection = false;
 		CreatePostgresIndex(collectionId, indexDef, indexId, createIndexesConcurrently,
 							isTempCollection, isUnsharded);
+
+		/* Set statistics for the created indexes */
+		UpdateIndexStatsForPostgresIndex(collectionId, list_make1_int(indexId));
 	}
 
 	/*
@@ -4047,6 +4091,9 @@ TryCreateCollectionIndexes(uint64 collectionId, List *indexDefList,
 	ResourceOwner oldOwner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
 
+	/* Set statistics for the created indexes */
+	UpdateIndexStatsForPostgresIndex(collectionId, indexIdList);
+
 	/* declared volatile because of the longjmp in PG_CATCH */
 	volatile bool markedIndexesAsValid = false;
 	PG_TRY();
@@ -5796,4 +5843,72 @@ GenerateUniqueProjectionSpec(IndexDefKey *indexDefKey)
 	/* Now get the pgbson */
 	pgbson *bson = PgbsonWriterGetPgbson(&writer);
 	return PgbsonToHexadecimalString(bson);
+}
+
+
+void
+UpdateIndexStatsForPostgresIndex(uint64 collectionId, List *indexIdList)
+{
+	if (!DisableStatisticsForUniqueColumns)
+	{
+		return;
+	}
+
+	StringInfo indexExprStringInfo = makeStringInfo();
+	ListCell *cell;
+	foreach(cell, indexIdList)
+	{
+		int indexId = lfirst_int(cell);
+
+		char indexName[NAMEDATALEN];
+		sprintf(indexName, DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT, indexId);
+
+		Oid indexOid = get_relname_relid(indexName, ApiDataNamespaceOid());
+		List *columnNumbers = NIL;
+		if (indexOid != InvalidOid)
+		{
+			Relation indexRel = index_open(indexOid, AccessShareLock);
+			IndexInfo *indexInfo = BuildIndexInfo(indexRel);
+			RelationClose(indexRel);
+
+			/* Only do this for RUM indexes. Vectore and GEO indexes do need statistics. */
+			if (indexInfo->ii_Am != RumIndexAmId())
+			{
+				continue;
+			}
+
+			/* Only do this if there's index expressions (which is only true for unique indexes) */
+			if (indexInfo->ii_Expressions != NIL)
+			{
+				for (int i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
+				{
+					int keycol = indexInfo->ii_IndexAttrNumbers[i];
+					if (keycol == 0)
+					{
+						/* This is an index expression. */
+						columnNumbers = lappend_int(columnNumbers, i + 1);
+					}
+				}
+			}
+		}
+
+		if (columnNumbers != NIL)
+		{
+			ListCell *numberCell;
+			foreach(numberCell, columnNumbers)
+			{
+				resetStringInfo(indexExprStringInfo);
+				appendStringInfo(indexExprStringInfo,
+								 "ALTER INDEX %s.%s ALTER COLUMN %d SET STATISTICS 0",
+								 ApiDataSchemaName, indexName, lfirst_int(numberCell));
+				bool readOnly = false;
+				bool isNullIgnore;
+				ExtensionExecuteQueryViaSPI(indexExprStringInfo->data, readOnly,
+											SPI_OK_UTILITY, &isNullIgnore);
+			}
+
+			list_free(columnNumbers);
+			columnNumbers = NIL;
+		}
+	}
 }

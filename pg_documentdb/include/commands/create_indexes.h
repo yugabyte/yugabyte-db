@@ -278,6 +278,7 @@ char * CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, i
 									  bool concurrently, bool isTempCollection);
 void ExecuteCreatePostgresIndexCmd(char *cmd, bool concurrently, const Oid userOid,
 								   bool useSerialExecution);
+void UpdateIndexStatsForPostgresIndex(uint64 collectionId, List *indexIdList);
 void AcquireAdvisoryExclusiveLockForCreateIndexes(uint64 collectionId);
 IndexSpec MakeIndexSpecForIndexDef(IndexDef *indexDef);
 pgbson * MakeCreateIndexesMsg(CreateIndexesResult *result);

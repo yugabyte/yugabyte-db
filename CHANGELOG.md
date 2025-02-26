@@ -6,6 +6,7 @@
 * Support joining between postgres and documentdb tables *[Feature]* (#61)
 * Support current_op command *[Feature]* (#59)
 * Support for list_databases command *[Feature]* (#45)
+* Disable analyze statistics for unique index uuid columns which improves resource usage *[Perf]*
 
 ### documentdb v0.101-0 (February 12, 2025) ###
 * Push $graphlookup recursive CTE JOIN filters to index *[Perf]*

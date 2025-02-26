@@ -36,6 +36,9 @@ bool EnableVectorForceIndexPushdown = DEFAULT_ENABLE_VECTOR_FORCE_INDEX_PUSHDOWN
 #define DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS false
 bool DefaultEnableLargeUniqueIndexKeys = DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS;
 
+#define DEFAULT_DISABLE_STATISTICS_FOR_UNIQUE_COLUMNS true
+bool DisableStatisticsForUniqueColumns = DEFAULT_DISABLE_STATISTICS_FOR_UNIQUE_COLUMNS;
+
 #define DEFAULT_ENABLE_RUM_INDEX_SCAN false
 bool EnableRumIndexScan = DEFAULT_ENABLE_RUM_INDEX_SCAN;
 
@@ -154,6 +157,14 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		psprintf("%s.enable_large_unique_index_keys", newGucPrefix),
 		gettext_noop("Whether or not to enable large index keys on unique indexes."),
 		NULL, &DefaultEnableLargeUniqueIndexKeys, DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.disable_statistics_for_unique_columns", newGucPrefix),
+		gettext_noop(
+			"Whether or not to disable statistics for unique columns in analyze"),
+		NULL, &DisableStatisticsForUniqueColumns,
+		DEFAULT_DISABLE_STATISTICS_FOR_UNIQUE_COLUMNS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(

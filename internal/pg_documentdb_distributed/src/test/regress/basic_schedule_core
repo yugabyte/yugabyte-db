@@ -99,6 +99,7 @@ test: bson_aggregation_stage_merge_tests commands_create_indexes_text bson_aggre
 test: bson_aggregation_pipeline_tests_geonear bson_aggregation_pipeline_stage_setWindowFields
 
 test: cursors_basic_support cursors_seqscan bson_aggregation_cursor_tests
+test: commands_create_unique_index_stats
 
 # Not to be run concurrently with other tests to prevent flakiness
 test: mongo_feature_counters

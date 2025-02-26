@@ -374,6 +374,10 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 	volatile bool markedIndexAsValid = false;
 	if (indexCreated)
 	{
+		/* Set the stats target for the index to 0 for unique indexes */
+		UpdateIndexStatsForPostgresIndex(indexCmdRequest->collectionId, list_make1_int(
+											 indexCmdRequest->indexId));
+
 		/*
 		 * Now try marking entries inserted for collection index as valid.
 		 *
