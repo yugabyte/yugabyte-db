@@ -1290,6 +1290,13 @@ Status ExternalMiniCluster::StartMasters() {
   if (opts_.enable_ysql) {
     RETURN_NOT_OK(WaitForInitDb());
   }
+
+  // Trigger an election to avoid an unnecessary 3s wait on every cluster startup.
+  if (!masters_.empty()) {
+    WARN_NOT_OK(WaitForMastersToCommitUpTo(0), "Masters did not commit opid 0 in time");
+    WARN_NOT_OK(StartElection(RandomElement(masters_).get()), "Could not start election");
+  }
+
   return Status::OK();
 }
 
