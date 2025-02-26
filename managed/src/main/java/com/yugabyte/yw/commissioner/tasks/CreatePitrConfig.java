@@ -162,7 +162,9 @@ public class CreatePitrConfig extends UniverseTaskBase {
               throw new RuntimeException(e);
             }
           });
-      pitrConfig.setCreateTime(new Date());
+      Date currentDate = new Date();
+      pitrConfig.setCreateTime(currentDate);
+      pitrConfig.setUpdateTime(currentDate);
       pitrConfig.save();
     } catch (Exception e) {
       log.error("{} hit exception : {}", getName(), e.getMessage());

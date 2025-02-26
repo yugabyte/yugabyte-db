@@ -171,15 +171,11 @@ public class BackupUtil {
             .sorted(Comparator.comparing(SnapshotInfo::getSnapshotTime))
             .findFirst();
     if (oldestSuccessfulSnapshotScheduleOptional.isPresent()) {
-      SnapshotInfo oldestSuccessfulSnapshot = oldestSuccessfulSnapshotScheduleOptional.get();
-      long currentTimeMillis = System.currentTimeMillis();
-      return oldestSuccessfulSnapshot.getPreviousSnapshotTime() == 0L
-          ? Math.max(
-              currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
-              pitrConfig.getCreateTime().getTime())
-          : Math.max(
-              currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
-              oldestSuccessfulSnapshot.getPreviousSnapshotTime());
+      return Math.max(
+          System.currentTimeMillis() - pitrConfig.getRetentionPeriod() * 1000L,
+          Math.max(
+              pitrConfig.getCreateTime().getTime(),
+              pitrConfig.getIntermittentMinRecoverTimeInMillis()));
     }
     return 0L;
   }
