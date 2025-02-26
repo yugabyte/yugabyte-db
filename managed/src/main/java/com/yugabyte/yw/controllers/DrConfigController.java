@@ -1352,12 +1352,14 @@ public class DrConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
     verifyTaskAllowed(drConfig, TaskType.SyncDrConfig);
+    // This api will not work for the importing dr config. The config must already exist
+    // in the yba db and we can sync the fields of the config.
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
 
     XClusterConfigSyncFormData formData = new XClusterConfigSyncFormData();
     formData.targetUniverseUUID = xClusterConfig.getTargetUniverseUUID();
     formData.replicationGroupName = xClusterConfig.getReplicationGroupName();
-    XClusterConfigTaskParams params = new XClusterConfigTaskParams(formData);
+    XClusterConfigTaskParams params = new XClusterConfigTaskParams(xClusterConfig, formData);
 
     UUID taskUUID = commissioner.submit(TaskType.SyncDrConfig, params);
     CustomerTask.create(

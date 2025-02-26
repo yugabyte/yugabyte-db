@@ -212,7 +212,9 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   }
 
   /** It is used in the sync method. */
-  public XClusterConfigTaskParams(XClusterConfigSyncFormData syncFormData) {
+  public XClusterConfigTaskParams(
+      @Nullable XClusterConfig xClusterConfig, XClusterConfigSyncFormData syncFormData) {
+    this.xClusterConfig = xClusterConfig;
     this.syncFormData = syncFormData;
     this.setUniverseUUID(syncFormData.targetUniverseUUID);
   }
