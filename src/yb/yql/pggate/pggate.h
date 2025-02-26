@@ -837,6 +837,11 @@ class PgApiImpl {
   Status ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode);
   Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
 
+  //----------------------------------------------------------------------------------------------
+  // Table Locks.
+  //----------------------------------------------------------------------------------------------
+  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+
  private:
   class Interrupter;
 

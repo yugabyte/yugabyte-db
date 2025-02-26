@@ -389,6 +389,15 @@ static void LockRefindAndRelease(LockMethod lockMethodTable, PGPROC *proc,
 static void GetSingleProcBlockerStatusData(PGPROC *blocked_proc,
 										   BlockedProcsData *data);
 
+static YbcObjectLockId
+GetYBObjectLockId(const LOCKTAG *locktag)
+{
+	return (YbcObjectLockId)
+	{
+		.db_oid = locktag->locktag_field1,
+		.object_oid = locktag->locktag_field2,
+	};
+}
 
 /*
  * InitLocks -- Initialize the lock manager's data structures.
@@ -803,7 +812,12 @@ LockAcquireExtended(const LOCKTAG *locktag,
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * Oids < FirstNormalObjectId seem to be reserved for both manual assignment and assignment
+		 * during initdb. Hence, lock requests corresponding to user objects/tables would have oids
+		 * greater than FirstNormalObjectId. */
+		if (locktag->locktag_field2 >= FirstNormalObjectId)
+			HandleYBStatus(YBCAcquireObjectLock(GetYBObjectLockId(locktag), (YbcObjectLockMode) lockmode));
 		return LOCKACQUIRE_OK;
 	}
 

@@ -264,6 +264,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kCronSetLastMinute)
   (kAcquireAdvisoryLock)
   (kReleaseAdvisoryLock)
+  (kAcquireObjectLock)
   (kExportTxnSnapshot)
   (kSetTxnSnapshot)
   (kClearExportedTxnSnapshots)

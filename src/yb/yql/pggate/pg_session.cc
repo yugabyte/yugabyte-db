@@ -1042,11 +1042,6 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
 }
 
 Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
-  if (pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL) {
-    VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
-    return Status::OK();
-  }
-
   // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
   // SubTransactionMetadata.
   // TODO(read committed): performance improvement -
@@ -1054,9 +1049,7 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // rpc layer and beyond. For such ops, rely on aborted sub txn list in status tablet to invalidate
   // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
-  tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options));
-  auto status = pg_client_.RollbackToSubTransaction(id, &options);
+  const auto status = pg_txn_manager_->RollbackToSubTransaction(id);
   VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
   return status;
 }

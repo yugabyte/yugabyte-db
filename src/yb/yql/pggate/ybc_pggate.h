@@ -966,6 +966,8 @@ YbcStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time);
 bool YBCPgHasExportedSnapshots();
 void YBCPgClearExportedTxnSnapshots();
 
+YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

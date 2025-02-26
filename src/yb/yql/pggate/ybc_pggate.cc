@@ -2954,6 +2954,10 @@ bool YBCPgHasExportedSnapshots() { return pgapi->HasExportedSnapshots(); }
 
 void YBCPgClearExportedTxnSnapshots() { pgapi->ClearExportedTxnSnapshots(); }
 
+YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode) {
+  return ToYBCStatus(pgapi->AcquireObjectLock(lock_id, mode));
+}
+
 } // extern "C"
 
 } // namespace yb::pggate

@@ -920,6 +920,23 @@ typedef struct {
   uint32_t end_range;
 } YbcReplicationSlotHashRange;
 
+typedef struct {
+  uint32_t db_oid;
+  uint32_t object_oid;
+} YbcObjectLockId;
+
+typedef enum {
+  YB_OBJECT_NO_LOCK,
+  YB_OBJECT_ACCESS_SHARE_LOCK,
+  YB_OBJECT_ROW_SHARE_LOCK,
+  YB_OBJECT_ROW_EXCLUSIVE_LOCK,
+  YB_OBJECT_SHARE_UPDATE_EXCLUSIVE_LOCK,
+  YB_OBJECT_SHARE_LOCK,
+  YB_OBJECT_SHARE_ROW_EXCLUSIVE_LOCK,
+  YB_OBJECT_EXCLUSIVE_LOCK,
+  YB_OBJECT_ACCESS_EXCLUSIVE_LOCK
+} YbcObjectLockMode;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

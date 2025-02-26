@@ -105,7 +105,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       PgTxnSnapshotDescriptor snapshot_descriptor);
   bool HasExportedSnapshots() const;
   void ClearExportedTxnSnapshots();
-
+  Status RollbackToSubTransaction(SubTransactionId id);
+  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;
@@ -199,6 +200,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool has_exported_snapshots_ = false;
 
   YbcPgCallbacks pg_callbacks_;
+
+  const bool enable_table_locking_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 };

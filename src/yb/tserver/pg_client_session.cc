@@ -60,6 +60,7 @@
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
@@ -72,6 +73,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
 #include "yb/util/write_buffer.h"
@@ -984,9 +986,11 @@ class TransactionProvider {
     }
   }
 
-  const TransactionId& NextTxnIdForPlain(CoarseTimePoint deadline) {
+  Result<const TransactionId&> NextTxnIdForPlain(CoarseTimePoint deadline) {
     if (!next_plain_) {
-      next_plain_ = Build(deadline, {});
+      auto txn = Build(deadline, {});
+      RETURN_NOT_OK(txn->GetMetadata(deadline).get());
+      next_plain_.swap(txn);
     }
     return next_plain_->id();
   }
@@ -1056,6 +1060,32 @@ size_t RenewSignature(UsedReadTime& used_read_time) {
   std::lock_guard guard(used_read_time.lock);
   used_read_time.data.reset();
   return ++used_read_time.signature;
+}
+
+bool IsTableLockTypeGlobal(TableLockType lock_type) {
+  switch (lock_type) {
+    // ACCESS_SHARE, ROW_SHARE, ROW_EXCLUSIVE don't conflict among themselves, and hence acquire
+    // these locks just locally.
+    case TableLockType::NONE: [[fallthrough]];
+    case ACCESS_SHARE: [[fallthrough]];
+    case ROW_SHARE: [[fallthrough]];
+    case ROW_EXCLUSIVE: return false;
+    // The rest either conflict among themselves or with the above ACCESS_SHARE, ROW_SHARE &
+    // ROW_EXCLUSIVE. Hence we try acquiring them globally in order to rightly detect conflicts.
+    case SHARE_UPDATE_EXCLUSIVE: [[fallthrough]];
+    case SHARE: [[fallthrough]];
+    case SHARE_ROW_EXCLUSIVE: [[fallthrough]];
+    case EXCLUSIVE: [[fallthrough]];
+    case ACCESS_EXCLUSIVE: return true;
+  }
+  FATAL_INVALID_ENUM_VALUE(TableLockType, lock_type);
+}
+
+Status MergeStatus(Status&& main, Status&& aux) {
+  if (!main.ok() && !aux.ok()) {
+    return main.CloneAndPrepend(aux.message());
+  }
+  return std::move(main.ok() ? aux : main);
 }
 
 } // namespace
@@ -1371,8 +1401,9 @@ class PgClientSession::Impl {
       const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
       rpc::RpcContext* context) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
+    const auto subtxn_id = req.sub_transaction_id();
     RSTATUS_DCHECK_GE(
-        req.sub_transaction_id(), kMinSubTransactionId,
+        subtxn_id, kMinSubTransactionId,
         InvalidArgument,
         Format("Expected sub_transaction_id to be >= $0", kMinSubTransactionId));
 
@@ -1406,7 +1437,7 @@ class PgClientSession::Impl {
 
     if (!transaction) {
       LOG_WITH_PREFIX_AND_FUNC(WARNING)
-        << "RollbackToSubTransaction " << req.sub_transaction_id()
+        << "RollbackToSubTransaction " << subtxn_id
         << " when no distributed transaction of kind"
         << (kind == PgClientSessionKind::kPlain ? "kPlain" : "kDdl")
         << " is running. This can happen if no distributed transaction has been started yet"
@@ -1443,91 +1474,37 @@ class PgClientSession::Impl {
       transaction->SetActiveSubTransaction(req.options().active_sub_transaction_id());
     }
 
-    RSTATUS_DCHECK(transaction->HasSubTransaction(req.sub_transaction_id()), InvalidArgument,
+    RSTATUS_DCHECK(transaction->HasSubTransaction(subtxn_id), InvalidArgument,
                   Format("Transaction of kind $0 doesn't have sub transaction $1",
                           kind == PgClientSessionKind::kPlain ? "kPlain" : "kDdl",
-                          req.sub_transaction_id()));
+                          subtxn_id));
 
-    return transaction->RollbackToSubTransaction(req.sub_transaction_id(),
-                                                context->GetClientDeadline());
+    const auto deadline = context->GetClientDeadline();
+    RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
+    return ReleaseObjectLocksIfNecessary(kind, deadline, subtxn_id);
   }
 
   Status FinishTransaction(
       const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
       rpc::RpcContext* context) {
     saved_priority_.reset();
-    auto is_ddl = false;
-    auto kind = PgClientSessionKind::kPlain;
-    auto has_docdb_schema_changes = false;
-    std::optional<uint32_t> silently_altered_db;
-    if (req.has_ddl_mode()) {
-      const auto& ddl_mode = req.ddl_mode();
-      is_ddl = true;
-      kind = PgClientSessionKind::kDdl;
-      has_docdb_schema_changes = ddl_mode.has_docdb_schema_changes();
-      if (ddl_mode.has_silently_altered_db()) {
-        silently_altered_db = ddl_mode.silently_altered_db().value();
-      }
-    }
+    const bool is_ddl = req.has_ddl_mode();
+    const auto kind = is_ddl
+        ? PgClientSessionKind::kDdl
+        : PgClientSessionKind::kPlain;
+    const auto deadline = context->GetClientDeadline();
+    auto release_locks_status = ReleaseObjectLocksIfNecessary(kind, deadline);
     auto& txn = GetSessionData(kind).transaction;
     if (!txn) {
-      VLOG_WITH_PREFIX_AND_FUNC(2) << "ddl: " << is_ddl << ", no running transaction";
-      return Status::OK();
+      VLOG_WITH_PREFIX_AND_FUNC(2) << "ddl: " << is_ddl << ", no running distributed transaction";
+      return release_locks_status;
     }
 
-    const TransactionMetadata* metadata = nullptr;
-    if (has_docdb_schema_changes) {
-      metadata = VERIFY_RESULT(GetDdlTransactionMetadata(true, context->GetClientDeadline()));
-      LOG_IF(DFATAL, !metadata) << "metadata is required";
-    }
     client::YBTransactionPtr txn_value;
     txn.swap(txn_value);
     Session(kind)->SetTransaction(nullptr);
-
-    if (req.commit()) {
-      const auto commit_status = Commit(
-          txn_value.get(),
-          silently_altered_db ? response_cache().Disable(*silently_altered_db)
-                              : PgResponseCache::Disabler());
-
-      VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "ddl: " << is_ddl << ", txn: " << txn_value->id()
-          << ", commit: " << commit_status;
-      // If commit_status is not ok, we cannot be sure whether the commit was successful or not. It
-      // is possible that the commit succeeded at the transaction coordinator but we failed to get
-      // the response back. Thus we will not report any status to the YB-Master in this case. But
-      // we still need to call WaitForDdlVerificationToFinish so that YB-Master can start its
-      // background task to figure out whether the transaction succeeded or failed.
-      if (!commit_status.ok()) {
-        auto status = DdlAtomicityFinishTransaction(
-            has_docdb_schema_changes, metadata, std::nullopt);
-        if (!status.ok()) {
-          // As of 2024-09-24, it is known that if we come here it is possible that YB-Master will
-          // not be able to start a background task to figure out whether the DDL transaction
-          // status (committed or aborted) and do the necessary cleanup of leftover any DocDB index
-          // table. Therefore we can have orphaned DocDB tables/indexes that are not garbage
-          // collected. One way to fix this we need to add a periodic scan job in YB-Master to look
-          // for any table/index that are involved in a DDL transaction and start a background task
-          // to complete the DDL transaction at the DocDB side.
-          LOG(ERROR) << "DdlAtomicityFinishTransaction failed: " << status;
-        }
-        return commit_status;
-      }
-      if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
-          pg_node_level_mutation_counter()) {
-        // Gather # of mutated rows for each table (count only the committed sub-transactions).
-        auto table_mutations = txn_value->GetTableMutationCounts();
-        VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "
-                            << AsString(table_mutations) << " for txn: " << txn_value->id();
-        pg_node_level_mutation_counter()->IncreaseBatch(table_mutations);
-      }
-    } else {
-      VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "ddl: " << is_ddl << ", txn: " << txn_value->id() << ", abort";
-      txn_value->Abort();
-    }
-
-    return DdlAtomicityFinishTransaction(has_docdb_schema_changes, metadata, req.commit());
+    return MergeStatus(
+        DoFinishTransaction(req, deadline, txn_value), std::move(release_locks_status));
   }
 
   Status Perform(
@@ -2039,6 +2016,41 @@ class PgClientSession::Impl {
     return status;
   }
 
+  Status AcquireObjectLock(
+      const PgAcquireObjectLockRequestPB& req, PgAcquireObjectLockResponsePB* resp,
+      rpc::RpcContext* context) {
+    RSTATUS_DCHECK(IsObjectLockingEnabled(), IllegalState, "Table Locking feature not enabled.");
+
+    const auto& options = req.options();
+    // TODO(table-locks): Global lock request should be sent to the master.
+    if (options.ddl_mode()) {
+      return Status::OK();
+    }
+
+    const auto deadline = context->GetClientDeadline();
+    auto setup_session_result = VERIFY_RESULT(SetupSession(
+        options, deadline, GetInTxnLimit(options, clock().get())));
+    RSTATUS_DCHECK(setup_session_result.is_plain, IllegalState, "Expected kPlain session");
+    auto& txn_id = setup_session_result.session_data.transaction
+        ? setup_session_result.session_data.transaction->id()
+        : VERIFY_RESULT_REF(transaction_provider_.NextTxnIdForPlain(deadline));
+    VLOG_WITH_PREFIX_AND_FUNC(1)
+        << "txn_id " << txn_id << " req: " << req.ShortDebugString();
+
+    tserver::AcquireObjectLockRequestPB lock_req;
+    lock_req.set_txn_id(txn_id.data(), txn_id.size());
+    lock_req.set_subtxn_id(options.active_sub_transaction_id());
+    lock_req.set_session_host_uuid(instance_uuid());
+    auto& lock = *lock_req.add_object_locks();
+    lock.set_database_oid(req.database_oid());
+    lock.set_object_oid(req.object_oid());
+    const auto lock_type = static_cast<TableLockType>(req.lock_type());
+    lock.set_lock_type(lock_type);
+    RSTATUS_DCHECK(
+        !IsTableLockTypeGlobal(lock_type), IllegalState, "Unexpected exclusive object lock req");
+    return ts_lock_manager()->AcquireObjectLocks(lock_req, deadline);
+  }
+
   void StartShutdown() {
     if (const auto& txn = Transaction(PgClientSessionKind::kPgSession); txn) {
       txn->Abort();
@@ -2085,6 +2097,14 @@ class PgClientSession::Impl {
 
   const EventStatsPtr& stats_exchange_response_size() const {
     return context_.stats_exchange_response_size;
+  }
+
+  tserver::TSLocalLockManager* ts_lock_manager() const {
+    return context_.ts_lock_manager;
+  }
+
+  const std::string instance_uuid() const {
+    return context_.instance_uuid;
   }
 
   PrefixLogger LogPrefix() const { return PrefixLogger{id_}; }
@@ -2340,7 +2360,7 @@ class PgClientSession::Impl {
       if (options.ddl_mode()) {
         return STATUS(NotSupported, "Restarting a DDL transaction not supported");
       }
-      RETURN_NOT_OK(RestartTransaction(session_data));
+      RETURN_NOT_OK(RestartTransaction(kind, deadline));
     } else {
       const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
       const auto has_time_manipulation =
@@ -2552,7 +2572,8 @@ class PgClientSession::Impl {
     return &ddl_txn_metadata_;
   }
 
-  Status RestartTransaction(SessionData& session_data) {
+  Status RestartTransaction(PgClientSessionKind kind, CoarseTimePoint deadline) {
+    auto& session_data = GetSessionData(kind);
     auto& session = *session_data.session;
     auto& txn = session_data.transaction;
     if (!txn) {
@@ -2567,12 +2588,13 @@ class PgClientSession::Impl {
       LOG_IF_WITH_PREFIX(DFATAL, old_read_time == new_read_time)
           << "Read time did not change during restart: " << old_read_time
           << " => " << new_read_time;
-      return Status::OK();
+      return ReleaseObjectLocksIfNecessary(kind, deadline);
     }
 
     SCHECK(
         txn->IsRestartRequired(), IllegalState,
         "Attempted to restart when transaction does not require restart");
+    RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(kind, deadline));
     txn = VERIFY_RESULT(txn->CreateRestartedTransaction());
     session.SetTransaction(txn);
     VLOG_WITH_PREFIX(3) << "Restarted transaction";
@@ -2781,6 +2803,109 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
+  Status DoFinishTransaction(
+      const PgFinishTransactionRequestPB& req, CoarseTimePoint deadline,
+      client::YBTransactionPtr& txn) {
+    const auto is_ddl = req.has_ddl_mode();
+    auto has_docdb_schema_changes = false;
+    std::optional<uint32_t> silently_altered_db;
+
+    if (is_ddl) {
+      const auto& ddl_mode = req.ddl_mode();
+      has_docdb_schema_changes = ddl_mode.has_docdb_schema_changes();
+      if (ddl_mode.has_silently_altered_db()) {
+        silently_altered_db = ddl_mode.silently_altered_db().value();
+      }
+    }
+
+    const TransactionMetadata* metadata = nullptr;
+    if (has_docdb_schema_changes) {
+      metadata = &ddl_txn_metadata_;
+      LOG_IF(DFATAL, metadata->transaction_id.IsNil()) << "Valid ddl metadata is required";
+    }
+
+    if (req.commit()) {
+      const auto commit_status = Commit(
+          txn.get(),
+          silently_altered_db ? response_cache().Disable(*silently_altered_db)
+                              : PgResponseCache::Disabler());
+
+      VLOG_WITH_PREFIX_AND_FUNC(2)
+          << "ddl: " << is_ddl << ", txn: " << txn->id()
+          << ", commit: " << commit_status;
+      // If commit_status is not ok, we cannot be sure whether the commit was successful or not. It
+      // is possible that the commit succeeded at the transaction coordinator but we failed to get
+      // the response back. Thus we will not report any status to the YB-Master in this case. But
+      // we still need to call WaitForDdlVerificationToFinish so that YB-Master can start its
+      // background task to figure out whether the transaction succeeded or failed.
+      if (!commit_status.ok()) {
+        auto status = DdlAtomicityFinishTransaction(
+            has_docdb_schema_changes, metadata, std::nullopt);
+        if (!status.ok()) {
+          // As of 2024-09-24, it is known that if we come here it is possible that YB-Master will
+          // not be able to start a background task to figure out whether the DDL transaction
+          // status (committed or aborted) and do the necessary cleanup of leftover any DocDB index
+          // table. Therefore we can have orphaned DocDB tables/indexes that are not garbage
+          // collected. One way to fix this we need to add a periodic scan job in YB-Master to look
+          // for any table/index that are involved in a DDL transaction and start a background task
+          // to complete the DDL transaction at the DocDB side.
+          LOG(ERROR) << "DdlAtomicityFinishTransaction failed: " << status;
+        }
+        return commit_status;
+      }
+      if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
+          pg_node_level_mutation_counter()) {
+        // Gather # of mutated rows for each table (count only the committed sub-transactions).
+        auto table_mutations = txn->GetTableMutationCounts();
+        VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "
+                            << AsString(table_mutations) << " for txn: " << txn->id();
+        pg_node_level_mutation_counter()->IncreaseBatch(table_mutations);
+      }
+    } else {
+      VLOG_WITH_PREFIX_AND_FUNC(2)
+          << "ddl: " << is_ddl << ", txn: " << txn->id() << ", abort";
+      txn->Abort();
+    }
+    return DdlAtomicityFinishTransaction(has_docdb_schema_changes, metadata, req.commit());
+  }
+
+  Status ReleaseObjectLocksIfNecessary(
+      PgClientSessionKind kind, CoarseTimePoint deadline,
+      std::optional<SubTransactionId> subtxn_id = std::nullopt) {
+    if (!IsObjectLockingEnabled()) {
+      return Status::OK();
+    }
+    // TODO(table-locks): Figure out the semantics for releasing exclusive object locks. Ideally,
+    // we need to enfore catalog cache refresh on the release path, so locks should be released
+    // once the sys catalog's ddl verification task completes and applies the schema changes.
+    if (kind == PgClientSessionKind::kDdl) {
+      return Status::OK();
+    }
+    if (kind != PgClientSessionKind::kPlain) {
+      return Status::OK();
+    }
+    auto& txn = GetSessionData(PgClientSessionKind::kPlain).transaction;
+    RSTATUS_DCHECK(
+        txn || !subtxn_id, IllegalState,
+        "Cannot release object locks of a subtxn when there is no distributed txn with session");
+    return DoReleaseObjectLocks(
+        txn ? txn->id() :  VERIFY_RESULT_REF(transaction_provider_.NextTxnIdForPlain(deadline)),
+        subtxn_id);
+  }
+
+  Status DoReleaseObjectLocks(
+      const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id = std::nullopt) {
+    VLOG_WITH_PREFIX_AND_FUNC(2)
+        << "txn: " << txn_id << " subtxn: " << AsString(subtxn_id);
+    tserver::ReleaseObjectLockRequestPB req;
+    req.set_txn_id(txn_id.data(), txn_id.size());
+    if (subtxn_id) {
+      req.set_subtxn_id(*subtxn_id);
+    }
+    req.set_session_host_uuid(instance_uuid());
+    return ts_lock_manager()->ReleaseObjectLocks(req);
+  }
+
   UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {
     auto* read_point = result.session_data.session->read_point();
     if (!result.is_plain ||
@@ -2795,6 +2920,8 @@ class PgClientSession::Impl {
         std::shared_ptr<UsedReadTime>{shared_this_.lock(), &used_read_time},
         RenewSignature(used_read_time));
   }
+
+  [[nodiscard]] bool IsObjectLockingEnabled() const { return ts_lock_manager(); }
 
   client::YBClient& client_;
   const PgClientSessionContext& context_;
