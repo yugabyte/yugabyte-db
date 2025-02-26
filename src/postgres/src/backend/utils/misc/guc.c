@@ -2758,6 +2758,17 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+
+	{
+		{"yb_fast_path_for_colocated_copy", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Enable fast-path transaction for copy on colocated tables. For testint now."),
+			NULL
+		},
+		&yb_fast_path_for_colocated_copy,
+		false,
+		NULL, NULL, NULL
+	},
+
 	{
 		{"suppress_nonpg_logs", PGC_SIGHUP, LOGGING_WHAT,
 			gettext_noop("Suppresses non-Postgres logs from appearing in the Postgres log file."),
