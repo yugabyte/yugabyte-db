@@ -297,6 +297,7 @@ configure_file(
 #######################################
 
 set(UTIL_SHMEM_SRCS
+  shmem/annotations.cc
   shmem/reserved_address_segment.cc
   shmem/robust_mutex.cc
   shmem/shared_mem_allocator.cc
@@ -417,6 +418,7 @@ if (NOT "${YB_BUILD_TYPE}" STREQUAL "asan")
 endif()
 ADD_YB_TEST(scope_exit-test)
 ADD_YB_TEST(shared_mem-test)
+ADD_YB_TEST(shmem/annotations-test)
 ADD_YB_TEST(shmem/reserved_address_segment-test)
 ADD_YB_TEST(shmem/robust_mutex-test)
 ADD_YB_TEST(shmem/shared_mem_allocator-test)
