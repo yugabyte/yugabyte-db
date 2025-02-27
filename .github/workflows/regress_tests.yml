@@ -30,6 +30,7 @@ jobs:
         pg_version:
           - 15
           - 16
+          - 17
         os_name:
           - ubuntu-22.04
     steps:
@@ -139,3 +140,11 @@ jobs:
       - name: Validate sanity of files
         run: |
           ./scripts/validate_extension_file_state.sh
+
+      - name: Upload Log Files
+        if: always() 
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs_${{ matrix.os_name }}_PG${{ matrix.pg_version }}
+          overwrite: true
+          path: "**/*.log"
