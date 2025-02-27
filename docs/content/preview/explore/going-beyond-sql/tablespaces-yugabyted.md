@@ -3,59 +3,56 @@ To create a local cluster with the preceding configuration, use the following yu
 ```sh
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP1>/yugabyte-data \
-  --listen=<IP1>                                \
-  --master_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a" \
-  --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a"
+  --advertise_address=<IP1>                     \
+  --cloud_location=aws.us-east-1.us-east-1a     \
 ```
 
 ```sh
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP2>/yugabyte-data \
-  --listen=<IP2>                                \
+  --advertise_address=<IP2>                     \
   --join=<IP1>                                  \
-  --master_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1b" \
-  --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1b"
+  --cloud_location=aws.us-east-1.us-east-1b     \
 ```
 
 ```sh
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP3>/yugabyte-data \
-  --listen=<IP3>                                \
+  --advertise_address=<IP3>                     \
   --join=<IP1>                                  \
-  --master_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1c" \
-  --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1c"
+  --cloud_location=aws.us-east-1.us-east-1c     \
 ```
 
 ```sh
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP4>/yugabyte-data \
-  --listen=<IP4>                                \
+  --advertise_address=<IP4>                     \
   --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=ap-south-1,placement_zone=ap-south-1a"
+  --cloud_location=aws.ap-south-1.ap-south-1a     \
 ```
 
 ```sh
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP5>/yugabyte-data \
-  --listen=<IP5>                                \
+  --advertise_address=<IP5>                     \
   --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=eu-west-2,placement_zone=eu-west-2c"
+  --cloud_location=aws.eu-west-2.eu-west-2c     \
 ```
 
 ```sh
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP6>/yugabyte-data \
-  --listen=<IP6>                                \
+  --advertise_address=<IP6>                     \
   --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a"
+  --cloud_location=aws.us-east-1.us-east-1a     \
 ```
 
 ```sh
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP7>/yugabyte-data \
-  --listen=<IP7>                                \
+  --advertise_address=<IP7>                     \
   --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a"
+  --cloud_location=aws.us-east-1.us-east-1a     \
 ```
 
 After cluster creation, verify that the nodes have been created with the given configuration by navigating to the Tablet Servers page in the YB-Master UI.
