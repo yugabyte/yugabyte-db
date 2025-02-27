@@ -933,6 +933,18 @@ WAL retention time, in seconds, to be used for tables for which a CDC stream was
 
 Default: `28800` (8 hours)
 
+##### --cdc_intent_retention_ms
+
+The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
+
+Default: `28800000` (8 hours)
+
+##### --cdcsdk_tablet_not_of_interest_timeout_secs
+
+Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
+Default: `14400` (4 hours)
+
 ##### --enable_tablet_split_of_cdcsdk_streamed_tables
 
 Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
