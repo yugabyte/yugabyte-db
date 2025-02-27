@@ -100,6 +100,7 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
@@ -895,6 +896,12 @@ void TabletServiceAdminImpl::BackfillIndex(
           &context);
       return;
     }
+    // Check if this is an xCluster target of automatic DDL replication, if so then we need to use
+    // tablet level read consistency as the ddl_queue table is holding up xCluster safe time.
+    bool is_xcluster_automatic_mode_target =
+        server_->GetXClusterContext().IsTargetAndInAutomaticMode(
+            tablet.peer->tablet_metadata()->namespace_id());
+
     backfill_status = tablet.tablet->BackfillIndexesForYsql(
         indexes_to_backfill,
         req->start_key(),
@@ -903,6 +910,7 @@ void TabletServiceAdminImpl::BackfillIndex(
         server_->pgsql_proxy_bind_address(),
         req->namespace_name(),
         server_->GetSharedMemoryPostgresAuthKey(),
+        is_xcluster_automatic_mode_target,
         &number_rows_processed,
         &backfilled_until);
     if (backfill_status.IsIllegalState()) {

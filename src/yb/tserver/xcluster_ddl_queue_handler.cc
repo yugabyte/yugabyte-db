@@ -82,6 +82,7 @@ const char* kDDLJsonNewRelMap = "new_rel_map";
 const char* kDDLJsonRelName = "rel_name";
 const char* kDDLJsonRelFileOid = "relfile_oid";
 const char* kDDLJsonColocationId = "colocation_id";
+const char* kDDLJsonIsIndex = "is_index";
 const char* kDDLJsonEnumLabelInfo = "enum_label_info";
 const char* kDDLJsonSequenceInfo = "sequence_info";
 const char* kDDLJsonManualReplication = "manual_replication";
@@ -277,7 +278,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
       }
     });
 
-    RETURN_NOT_OK(ProcessNewRelations(doc, query_info.schema, new_relations));
+    RETURN_NOT_OK(ProcessNewRelations(doc, query_info.schema, new_relations, target_safe_ht));
     RETURN_NOT_OK(ProcessDDLQuery(query_info));
 
     VLOG_WITH_PREFIX(2) << "ProcessDDLQueueTable: Successfully processed entry "
@@ -330,7 +331,7 @@ Result<XClusterDDLQueueHandler::DDLQueryInfo> XClusterDDLQueueHandler::GetDDLQue
 
 Status XClusterDDLQueueHandler::ProcessNewRelations(
     rapidjson::Document& doc, const std::string& schema,
-    std::unordered_set<YsqlFullTableName>& new_relations) {
+    std::unordered_set<YsqlFullTableName>& new_relations, const HybridTime& target_safe_ht) {
   const auto source_db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id_));
   // If there are new relations, need to update the context with the table name -> source
   // table id mapping. This will be passed to CreateTable and will be used in
@@ -345,13 +346,19 @@ Status XClusterDDLQueueHandler::ProcessNewRelations(
       const auto relfile_oid = rel[kDDLJsonRelFileOid].GetUint();
       const auto rel_name = rel[kDDLJsonRelName].GetString();
 
+      // Only need to set the backfill time for colocated indexes.
+      const auto is_index =
+          HAS_MEMBER_OF_TYPE(rel, kDDLJsonIsIndex, IsBool) ? rel[kDDLJsonIsIndex].GetBool() : false;
       const auto colocation_id = HAS_MEMBER_OF_TYPE(rel, kDDLJsonColocationId, IsUint)
                                      ? rel[kDDLJsonColocationId].GetUint()
                                      : kColocationIdNotSet;
+      const auto& backfill_time_opt = (is_index && colocation_id != kColocationIdNotSet)
+                                          ? target_safe_ht
+                                          : HybridTime::kInvalid;
 
       RETURN_NOT_OK(xcluster_context_.SetSourceTableInfoMappingForCreateTable(
           {namespace_name_, schema, rel_name}, PgObjectId(source_db_oid, relfile_oid),
-          colocation_id));
+          colocation_id, backfill_time_opt));
       new_relations.insert({namespace_name_, schema, rel_name});
     }
   }
