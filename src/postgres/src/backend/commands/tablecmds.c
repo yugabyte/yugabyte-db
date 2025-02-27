@@ -6594,29 +6594,6 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 					case CONSTR_CHECK:
 						if (!ExecCheck(con->qualstate, econtext))
 						{
-							/*
-							 * If YugaByte is enabled, the add constraint
-							 * operation is not atomic. So we must delete the
-							 * relevant entries from the catalog tables.
-							 */
-							/*
-							 * YB_TODO(fizaa) : clean this up -- this condition
-							 * is incomplete as we don't want to drop the
-							 * constraint if we are performing the check
-							 * as part of a VALIDATE CONSTRAINT operation.
-							 */
-							if (IsYugaByteEnabled() && !YbDdlRollbackEnabled())
-							{
-								/*
-								 * Even though we pass oldrel as a reference, it won't change
-								 * for CHECK constraint.
-								 */
-								Relation	oldrel_prev PG_USED_FOR_ASSERTS_ONLY = oldrel;
-
-								ATExecDropConstraint(NULL, tab, &oldrel, con->name, DROP_RESTRICT, true,
-													 false, false, lockmode);
-								Assert(oldrel == oldrel_prev);
-							}
 							ereport(ERROR,
 									(errcode(ERRCODE_CHECK_VIOLATION),
 									 errmsg("check constraint \"%s\" of relation \"%s\" is violated by some row",
