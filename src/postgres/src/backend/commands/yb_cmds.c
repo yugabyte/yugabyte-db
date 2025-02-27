@@ -1771,6 +1771,17 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			*needsYBAlter = false;
 			break;
 
+		case AT_DropInherit:
+			switch_fallthrough();
+		case AT_AddInherit:
+			/*
+			 * Altering the inheritance should keep the docdb column list the same and not
+			 * require an ALTER.
+			 * This will need to be re-evaluated, if NULLability is propagated to docdb.
+			 */
+			*needsYBAlter = false;
+			break;
+
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

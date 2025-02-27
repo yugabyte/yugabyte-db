@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -24,6 +25,13 @@ public class TestPgRegressPgConstraints extends BasePgRegressTestPorted {
     @Override
     public int getTestMethodTimeoutSec() {
         return 1800;
+    }
+
+    @Override
+    protected Map<String, String> getTServerFlags() {
+      Map<String, String> flags = super.getTServerFlags();
+      flags.put("ysql_enable_inheritance", "true");
+      return flags;
     }
 
     @Test

@@ -282,10 +282,6 @@ CREATE VIEW ptif_test_view AS SELECT 1;
 CREATE MATERIALIZED VIEW ptif_test_matview AS SELECT 1;
 CREATE TABLE ptif_li_parent ();
 CREATE TABLE ptif_li_child () INHERITS (ptif_li_parent);
-ERROR:  INHERITS not supported yet
-LINE 1: CREATE TABLE ptif_li_child () INHERITS (ptif_li_parent);
-                                      ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 SELECT * FROM pg_partition_tree('ptif_test_view');
  relid | parentrelid | isleaf | level 
 -------+-------------+--------+-------
@@ -301,7 +297,11 @@ SELECT * FROM pg_partition_tree('ptif_li_parent');
 -------+-------------+--------+-------
 (0 rows)
 
--- SELECT * FROM pg_partition_tree('ptif_li_child'); -- YB: #1129 INHERITS is not supported
+SELECT * FROM pg_partition_tree('ptif_li_child');
+ relid | parentrelid | isleaf | level 
+-------+-------------+--------+-------
+(0 rows)
+
 SELECT * FROM pg_partition_ancestors('ptif_test_view');
  relid 
 -------
@@ -317,7 +317,11 @@ SELECT * FROM pg_partition_ancestors('ptif_li_parent');
 -------
 (0 rows)
 
--- SELECT * FROM pg_partition_ancestors('ptif_li_child'); -- YB: #1129 INHERITS is not supported
+SELECT * FROM pg_partition_ancestors('ptif_li_child');
+ relid 
+-------
+(0 rows)
+
 SELECT pg_partition_root('ptif_test_view');
  pg_partition_root 
 -------------------
@@ -336,7 +340,12 @@ SELECT pg_partition_root('ptif_li_parent');
  
 (1 row)
 
--- SELECT pg_partition_root('ptif_li_child'); -- YB: #1129 INHERITS is not supported
+SELECT pg_partition_root('ptif_li_child');
+ pg_partition_root 
+-------------------
+ 
+(1 row)
+
 DROP VIEW ptif_test_view;
 DROP MATERIALIZED VIEW ptif_test_matview;
-DROP TABLE ptif_li_parent; -- , ptif_li_child; -- YB: #1129 INHERITS is not supported
+DROP TABLE ptif_li_parent, ptif_li_child;

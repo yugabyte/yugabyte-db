@@ -2989,6 +2989,13 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 					break;
 
 				/*
+				 * Increment the catalog version for create inherited tables
+				 * so that the corresponding cache can be invalidated
+				 */
+				if (stmt->inhRelations)
+					break;
+
+				/*
 				 * For system catalog additions we need to force cache refresh
 				 * because of negative caching of pg_class and pg_type
 				 * (see SearchCatCacheMiss).

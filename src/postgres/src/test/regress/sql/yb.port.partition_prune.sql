@@ -1000,7 +1000,6 @@ drop table pp_lp;
 
 create table inh_lp (a int, value int);
 create table inh_lp1 (a int, value int, check(a = 1)) inherits (inh_lp);
-/* YB: CREATE TABLE INHERITS is not supported
 create table inh_lp2 (a int, value int, check(a = 2)) inherits (inh_lp);
 
 set constraint_exclusion = 'partition';
@@ -1013,11 +1012,8 @@ explain (costs off) delete from inh_lp where a = 1;
 -- Ensure we don't exclude normal relations when we only expect to exclude
 -- inheritance children
 explain (costs off) update inh_lp1 set value = 10 where a = 2;
-*/ -- YB: CREATE TABLE INHERITS is not supported
 
-\set VERBOSITY terse \\ -- YB: suppress cascade details
 drop table inh_lp cascade;
-\set VERBOSITY default \\ -- YB
 
 reset enable_partition_pruning;
 reset constraint_exclusion;

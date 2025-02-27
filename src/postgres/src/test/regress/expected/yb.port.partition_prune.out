@@ -3192,27 +3192,64 @@ drop table pp_lp;
 -- Ensure enable_partition_prune does not affect non-partitioned tables.
 create table inh_lp (a int, value int);
 create table inh_lp1 (a int, value int, check(a = 1)) inherits (inh_lp);
-ERROR:  INHERITS not supported yet
-LINE 1: ...te table inh_lp1 (a int, value int, check(a = 1)) inherits (...
-                                                             ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
-/* YB: CREATE TABLE INHERITS is not supported
+NOTICE:  merging column "a" with inherited definition
+NOTICE:  merging column "value" with inherited definition
 create table inh_lp2 (a int, value int, check(a = 2)) inherits (inh_lp);
-
+NOTICE:  merging column "a" with inherited definition
+NOTICE:  merging column "value" with inherited definition
 set constraint_exclusion = 'partition';
-
 -- inh_lp2 should be removed in the following 3 cases.
 explain (costs off) select * from inh_lp where a = 1;
+             QUERY PLAN             
+------------------------------------
+ Append
+   ->  Seq Scan on inh_lp inh_lp_1
+         Storage Filter: (a = 1)
+   ->  Seq Scan on inh_lp1 inh_lp_2
+         Storage Filter: (a = 1)
+(5 rows)
+
 explain (costs off) update inh_lp set value = 10 where a = 1;
+                   QUERY PLAN                   
+------------------------------------------------
+ Update on inh_lp
+   Update on inh_lp inh_lp_1
+   Update on inh_lp1 inh_lp_2
+   ->  Result
+         ->  Append
+               ->  Seq Scan on inh_lp inh_lp_1
+                     Storage Filter: (a = 1)
+               ->  Seq Scan on inh_lp1 inh_lp_2
+                     Storage Filter: (a = 1)
+(9 rows)
+
 explain (costs off) delete from inh_lp where a = 1;
+                QUERY PLAN                
+------------------------------------------
+ Delete on inh_lp
+   Delete on inh_lp inh_lp_1
+   Delete on inh_lp1 inh_lp_2
+   ->  Append
+         ->  Seq Scan on inh_lp inh_lp_1
+               Storage Filter: (a = 1)
+         ->  Seq Scan on inh_lp1 inh_lp_2
+               Storage Filter: (a = 1)
+(8 rows)
 
 -- Ensure we don't exclude normal relations when we only expect to exclude
 -- inheritance children
 explain (costs off) update inh_lp1 set value = 10 where a = 2;
-*/ -- YB: CREATE TABLE INHERITS is not supported
-\set VERBOSITY terse \\ -- YB: suppress cascade details
+           QUERY PLAN            
+---------------------------------
+ Update on inh_lp1
+   ->  Seq Scan on inh_lp1
+         Storage Filter: (a = 2)
+(3 rows)
+
 drop table inh_lp cascade;
-\set VERBOSITY default \\ -- YB
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table inh_lp1
+drop cascades to table inh_lp2
 reset enable_partition_pruning;
 reset constraint_exclusion;
 -- Check pruning for a partition tree containing only temporary relations

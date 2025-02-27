@@ -1,7 +1,5 @@
 \set ON_ERROR_STOP on
 
-CREATE TABLESPACE tsp1 LOCATION '/data';
-
 CREATE TABLE tbl1 (a SERIAL, b INT);
 INSERT INTO tbl1 (b) VALUES (100);
 
@@ -25,6 +23,8 @@ CREATE INDEX tbl8_idx3 ON tbl8 (b ASC);
 CREATE INDEX tbl8_idx4 ON tbl8 (b DESC);
 CREATE INDEX tbl8_idx5 ON tbl8 (c);
 
+
+
 CREATE TABLE tbl9 (a INT, b INT, c INT, PRIMARY KEY((a,b) HASH));
 
 CREATE TABLE tbl10 (a INT, b INT, c INT, d INT, PRIMARY KEY((a,c) HASH, b));
@@ -35,7 +35,6 @@ CREATE TABLE tbl12 (a INT, b INT, c INT, d INT, PRIMARY KEY(a ASC, d DESC, c DES
 
 CREATE TABLE tbl13 (a INT, b INT, c INT, d INT, PRIMARY KEY((b,c) HASH));
 
-CREATE USER tablegroup_test_user SUPERUSER;
 CREATE USER rls_user NOLOGIN;
 
 CREATE TABLE rls_public(k INT PRIMARY KEY, v TEXT);
@@ -63,30 +62,6 @@ ALTER TABLE uaccount ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY account_policies ON uaccount USING (pguser = current_user);
 
-SET SESSION AUTHORIZATION tablegroup_test_user;
-
-CREATE TABLEGROUP grp1;
-CREATE TABLEGROUP grp2;
-CREATE TABLEGROUP grp_with_spc TABLESPACE tsp1;
-
-CREATE TABLE tgroup_no_options_and_tgroup (a INT) TABLEGROUP grp1;
-CREATE TABLE tgroup_one_option (a INT) WITH (autovacuum_enabled = true);
-CREATE TABLE tgroup_one_option_and_tgroup (a INT) WITH (autovacuum_enabled = true) TABLEGROUP grp2;
-CREATE TABLE tgroup_options (a INT) WITH (autovacuum_enabled=true, parallel_workers=2);
-CREATE TABLE tgroup_options_and_tgroup (a INT) WITH (autovacuum_enabled=true, parallel_workers=2) TABLEGROUP grp2;
-CREATE TABLE tgroup_options_tgroup_and_custom_colocation_id (a INT) WITH (autovacuum_enabled=true, colocation_id=100500, parallel_workers=2) TABLEGROUP grp2;
-CREATE TABLE tgroup_after_options (a INT) TABLEGROUP grp1;
-CREATE TABLE tgroup_in_between_options (a INT) WITH (autovacuum_enabled = true) TABLEGROUP grp1;
-CREATE TABLE tgroup_empty_options (a INT);
-CREATE TABLE tgroup_with_spc (a INT) TABLEGROUP grp_with_spc;
-BEGIN;
-    SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
-    UPDATE pg_class SET reloptions = ARRAY[]::TEXT[] WHERE relname = 'tgroup_empty_options';
-    UPDATE pg_class SET reloptions = array_prepend('parallel_workers=2', reloptions) WHERE relname = 'tgroup_after_options';
-    UPDATE pg_class SET reloptions = array_prepend('parallel_workers=2', reloptions) WHERE relname = 'tgroup_in_between_options';
-COMMIT;
-
-RESET SESSION AUTHORIZATION;
 
 ------------------------------------------------
 -- Test table and index explicit splitting.
@@ -144,10 +119,6 @@ CREATE INDEX ON tr2(c DESC) SPLIT AT VALUES ((100.5), (1.5));
 
 -- Range-partitioned table with multi-column key
 CREATE INDEX ON tr2(c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));
-
-------------------------------------
--- Extensions
-CREATE EXTENSION pg_hint_plan;
 
 ------------------------------------------------
 -- Test alter with add constraint using unique index.
@@ -228,6 +199,7 @@ ALTER TABLE part_uniq_const ADD CONSTRAINT part_uniq_const_unique UNIQUE (v1, v2
 CREATE UNIQUE INDEX part_uniq_const_50_100_v2_idx ON part_uniq_const_50_100 (v2 ASC);
 
 ALTER TABLE part_uniq_const_50_100 ADD CONSTRAINT part_uniq_const_50_100_v2_uniq  UNIQUE USING INDEX part_uniq_const_50_100_v2_idx;
+
 
 -- Test inheritance
 CREATE TABLE level0(c1 int, c2 text not null, c3 text, c4 text);

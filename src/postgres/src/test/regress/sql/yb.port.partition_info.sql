@@ -115,15 +115,15 @@ CREATE TABLE ptif_li_child () INHERITS (ptif_li_parent);
 SELECT * FROM pg_partition_tree('ptif_test_view');
 SELECT * FROM pg_partition_tree('ptif_test_matview');
 SELECT * FROM pg_partition_tree('ptif_li_parent');
--- SELECT * FROM pg_partition_tree('ptif_li_child'); -- YB: #1129 INHERITS is not supported
+SELECT * FROM pg_partition_tree('ptif_li_child');
 SELECT * FROM pg_partition_ancestors('ptif_test_view');
 SELECT * FROM pg_partition_ancestors('ptif_test_matview');
 SELECT * FROM pg_partition_ancestors('ptif_li_parent');
--- SELECT * FROM pg_partition_ancestors('ptif_li_child'); -- YB: #1129 INHERITS is not supported
+SELECT * FROM pg_partition_ancestors('ptif_li_child');
 SELECT pg_partition_root('ptif_test_view');
 SELECT pg_partition_root('ptif_test_matview');
 SELECT pg_partition_root('ptif_li_parent');
--- SELECT pg_partition_root('ptif_li_child'); -- YB: #1129 INHERITS is not supported
+SELECT pg_partition_root('ptif_li_child');
 DROP VIEW ptif_test_view;
 DROP MATERIALIZED VIEW ptif_test_matview;
-DROP TABLE ptif_li_parent; -- , ptif_li_child; -- YB: #1129 INHERITS is not supported
+DROP TABLE ptif_li_parent, ptif_li_child;
