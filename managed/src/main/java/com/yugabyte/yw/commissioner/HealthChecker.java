@@ -999,6 +999,8 @@ public class HealthChecker {
     if (ddlAtomicityCheckEnabled) {
       int ddlAtomicityIntervalSec =
           confGetter.getConfForScope(universe, UniverseConfKeys.ddlAtomicityIntervalSec);
+      nodeCheckTimeoutSec =
+          confGetter.getConfForScope(universe, UniverseConfKeys.nodeCheckTimeoutDdlSec);
 
       Instant lastDdlAtomicitySuccessfulCheckTimestamp =
           ddlAtomicitySuccessfulCheckTimestamp.get(universe.getUniverseUUID());
