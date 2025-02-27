@@ -838,7 +838,10 @@ class GetHelperBase : public PackedRowContext {
     auto& fetched_key = VERIFY_RESULT_REF(Prepare(prefetched_key, root_write_time));
 
     if constexpr (kCheckExistOnly) {
-      if (found_) {
+      // In case of fast backward scan enabled, row reading happens in the reverse order,
+      // from the overy oldest to very newest record, which mean it is required to scan all
+      // the records to understand if the row exists.
+      if (found_ && !kFastBackward) {
         return FoundResult(/* iter_valid= */ true);
       }
       auto iter_valid = VERIFY_RESULT(Scan(&fetched_key, root_write_time));
@@ -901,6 +904,7 @@ class GetHelperBase : public PackedRowContext {
 
     // Skip too old root records.
     if (key_result.write_time < root_write_time->encoded()) {
+      DVLOG_WITH_PREFIX_AND_FUNC(4) << "record is too old, skipping";
       Move<kFastBackward>(data_.iter);
       return true; // Continue scanning.
     }
@@ -911,11 +915,13 @@ class GetHelperBase : public PackedRowContext {
       auto has_row_update = data_.packed_row->HasUpdatesAfter(key_result.write_time);
       if (has_row_update.value_or(true)) {
         // Delete record is too old, just skip it.
+        DVLOG_WITH_PREFIX_AND_FUNC(4) << "tombstoned record is too old, skipping";
         Move<kFastBackward>(data_.iter);
         return true; // Continue scanning.
       }
 
       // This is a more recent delete, need to be taken it into account.
+      DVLOG_WITH_PREFIX_AND_FUNC(4) << "read tombstoned record, row is considered deleted";
       found_ = false;
     }
 
@@ -970,7 +976,8 @@ class GetHelperBase : public PackedRowContext {
     DVLOG_WITH_PREFIX_AND_FUNC(4)
         << "key: " << dockv::SubDocKey::DebugSliceToString(key_result.key)
         << ", write time: " << key_result.write_time.ToString()
-        << ", value: " << key_result.value.ToDebugHexString();
+        << ", value: " << key_result.value.ToDebugHexString()
+        << ", root write time: " << root_write_time->ToString();
     DCHECK(key_result.key.starts_with(root_doc_key_));
 
     // With the fast backward scan, the full packed row may be not the first record met during
@@ -1046,9 +1053,6 @@ class GetHelperBase : public PackedRowContext {
           << "current position: " << dockv::SubDocKey::DebugSliceToString(current_entry->key)
           << ", value: " << current_entry->value.ToDebugHexString();
       RETURN_NOT_OK(ProcessEntry(subkeys, current_entry->value, current_entry->write_time));
-      if (kCheckExistOnly && found_) {
-        return false;
-      }
 
       data_.packed_row->TrackColumnUpdate(current_column_->id, current_entry->write_time);
 
@@ -1071,7 +1075,7 @@ class GetHelperBase : public PackedRowContext {
       // Check if the iterator moved out the current column after the Prev().
       current_entry = &VERIFY_RESULT_REF(data_.iter->Fetch());
       if (!IsEntrySubKeysSame(*current_entry, subkeys)) {
-        // No more entries for the given root doc key or move out the given column.
+        // No more entries for the given root doc key or the iterator moved out the given column.
         break;
       }
 
