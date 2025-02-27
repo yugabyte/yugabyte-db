@@ -9,6 +9,7 @@ public abstract class AbstractReconciler<T extends CustomResource<?, ?>>
     implements ResourceEventHandler<T> {
   protected final KubernetesClient client;
   protected final YBInformerFactory informerFactory;
+  protected final Integer reconcileExceptionBackoffMS = 5000;
 
   public AbstractReconciler(KubernetesClient client, YBInformerFactory informerFactory) {
     this.client = client;

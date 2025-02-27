@@ -211,6 +211,9 @@ public class KubernetesOperator {
                   YBUniverseReconciler ybUniverseController =
                       reconcilerFactory.getYBUniverseReconciler(client);
 
+                  ScheduledBackupReconciler scheduledBackupReconciler =
+                      reconcilerFactory.getScheduledBackupReconciler(client);
+
                   ReleaseReconciler releaseReconciler =
                       new ReleaseReconciler(
                           ybSoftwareReleaseIndexInformer,
@@ -263,7 +266,22 @@ public class KubernetesOperator {
                   backupReconciler.run();
                   restoreJobReconciler.run();
                   supportBundleReconciler.run();
-                  ybUniverseController.run();
+
+                  // Async start reconcilers
+                  Thread ybUniverseReconcilerThread = new Thread(() -> ybUniverseController.run());
+                  Thread scheduledBackupReconcilerThread =
+                      new Thread(() -> scheduledBackupReconciler.run());
+                  if (confGetter.getGlobalConf(
+                      GlobalConfKeys.KubernetesOperatorCrashYbaOnOperatorFail)) {
+                    Thread.UncaughtExceptionHandler exceptionHandler = getExceptionHandler();
+                    ybUniverseReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                    scheduledBackupReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                  }
+                  ybUniverseReconcilerThread.start();
+                  scheduledBackupReconcilerThread.start();
+
+                  ybUniverseReconcilerThread.join();
+                  scheduledBackupReconcilerThread.join();
 
                   LOG.info("Finished running ybUniverseController");
                 } catch (KubernetesClientException | ExecutionException exception) {
@@ -283,16 +301,18 @@ public class KubernetesOperator {
 
     // Add exception handler
     if (confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorCrashYbaOnOperatorFail)) {
-      Thread.UncaughtExceptionHandler operatorFailHandler =
-          new UncaughtExceptionHandler() {
-            @Override
-            public void uncaughtException(Thread operatorThread, Throwable t) {
-              LOG.error("Kubernetes operator thread failed", t);
-              System.exit(1);
-            }
-          };
-      kubernetesOperatorThread.setUncaughtExceptionHandler(operatorFailHandler);
+      kubernetesOperatorThread.setUncaughtExceptionHandler(getExceptionHandler());
     }
     kubernetesOperatorThread.start();
+  }
+
+  private Thread.UncaughtExceptionHandler getExceptionHandler() {
+    return new UncaughtExceptionHandler() {
+      @Override
+      public void uncaughtException(Thread operatorThread, Throwable t) {
+        LOG.error("Kubernetes operator thread failed", t);
+        System.exit(1);
+      }
+    };
   }
 }

@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
@@ -197,6 +198,11 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(hidden = true)
   public final Map<UUID, ParallelBackupState> backupDBStates = new ConcurrentHashMap<>();
 
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
+
   @ToString
   public static class ParallelBackupState {
     public String nodeIp;
@@ -252,6 +258,7 @@ public class BackupTableParams extends TableManagerParams {
     this.baseBackupUUID = backupRequestParams.baseBackupUUID;
     this.enableVerboseLogs = backupRequestParams.enableVerboseLogs;
     this.setPointInTimeRestoreEnabled(backupRequestParams.enablePointInTimeRestore);
+    this.setKubernetesResourceDetails(backupRequestParams.getKubernetesResourceDetails());
   }
 
   @JsonIgnore

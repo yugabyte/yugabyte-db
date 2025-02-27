@@ -184,6 +184,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -6544,6 +6545,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       BackupRequestParams scheduleParams,
       UUID customerUUID,
       String stableYbcVersion) {
+    addAllCreateBackupScheduleTasks(
+        backupScheduleSubTasks,
+        scheduleParams,
+        customerUUID,
+        stableYbcVersion,
+        null /* kubernetesStatus */);
+  }
+
+  protected void addAllCreateBackupScheduleTasks(
+      Runnable backupScheduleSubTasks,
+      BackupRequestParams scheduleParams,
+      UUID customerUUID,
+      String stableYbcVersion,
+      @Nullable KubernetesOperatorStatusUpdater kubernetesStatus) {
     Universe universe = getUniverse();
     Schedule schedule = null;
 
@@ -6551,13 +6566,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     lockAndFreezeUniverseForUpdate(
         universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
     try {
-      // Get or create schedule
+      // Create schedule
       schedule = Schedule.getOrCreateSchedule(customerUUID, scheduleParams);
       UUID scheduleUUID = schedule.getScheduleUUID();
       log.info(
           "Creating backup schedule for customer {}, schedule uuid = {}.",
           scheduleParams.customerUUID,
           scheduleUUID);
+
+      // Update kubernetes status
+      if (kubernetesStatus != null) {
+        kubernetesStatus.updateBackupScheduleStatus(
+            scheduleParams.getKubernetesResourceDetails(), schedule);
+      }
 
       boolean ybcBackup =
           !BackupCategory.YB_BACKUP_SCRIPT.equals(scheduleParams.backupCategory)
@@ -6599,13 +6620,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       getRunnableTask().runSubTasks();
 
       // Mark schedule Active
-      Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+      schedule = Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+
+      if (kubernetesStatus != null) {
+        kubernetesStatus.updateBackupScheduleStatus(
+            scheduleParams.getKubernetesResourceDetails(), schedule);
+      }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       // Update schedule state to Error
       if (schedule != null) {
-        Schedule.updateStatusAndSave(
-            customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        schedule =
+            Schedule.updateStatusAndSave(
+                customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        if (kubernetesStatus != null) {
+          kubernetesStatus.updateBackupScheduleStatus(
+              scheduleParams.getKubernetesResourceDetails(), schedule);
+        }
       }
       throw t;
     } finally {
@@ -6619,6 +6650,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       BackupRequestParams scheduleParams,
       UUID customerUUID,
       UUID scheduleUUID) {
+    addAllEditBackupScheduleTasks(
+        backupScheduleSubTasks,
+        scheduleParams,
+        customerUUID,
+        scheduleUUID,
+        null /* kubernetesStatus */);
+  }
+
+  protected void addAllEditBackupScheduleTasks(
+      Runnable backupScheduleSubTasks,
+      BackupRequestParams scheduleParams,
+      UUID customerUUID,
+      UUID scheduleUUID,
+      @Nullable KubernetesOperatorStatusUpdater kubernetesStatus) {
     Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
     Universe universe = getUniverse();
     // Lock schedule
@@ -6637,8 +6682,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           customerUUID,
           scheduleUUID);
       // Modify params and set state to Editing
-      Schedule.updateNewBackupScheduleTimeAndStatusAndSave(
-          customerUUID, scheduleUUID, State.Editing, scheduleParams);
+      schedule =
+          Schedule.updateNewBackupScheduleTimeAndStatusAndSave(
+              customerUUID, scheduleUUID, State.Editing, scheduleParams);
+
+      if (kubernetesStatus != null) {
+        kubernetesStatus.updateBackupScheduleStatus(
+            scheduleParams.getKubernetesResourceDetails(), schedule);
+      }
 
       if (scheduleParams.enablePointInTimeRestore) {
         backupScheduleSubTasks.run();
@@ -6648,13 +6699,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         getRunnableTask().runSubTasks();
       }
       // Mark schedule Active
-      Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+      schedule = Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+      if (kubernetesStatus != null) {
+        kubernetesStatus.updateBackupScheduleStatus(
+            scheduleParams.getKubernetesResourceDetails(), schedule);
+      }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       // Update schedule state to Error
       if (schedule != null) {
-        Schedule.updateStatusAndSave(
-            customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        schedule =
+            Schedule.updateStatusAndSave(
+                customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        if (kubernetesStatus != null) {
+          kubernetesStatus.updateBackupScheduleStatus(
+              scheduleParams.getKubernetesResourceDetails(), schedule);
+        }
       }
       throw t;
     } finally {
@@ -6673,7 +6733,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       BackupRequestParams scheduleParams,
       UUID customerUUID,
       UUID scheduleUUID) {
-    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
+    addAllDeleteBackupScheduleTasks(
+        backupScheduleSubTasks,
+        scheduleParams,
+        customerUUID,
+        scheduleUUID,
+        null /* kubernetesStatus */);
+  }
+
+  protected void addAllDeleteBackupScheduleTasks(
+      Runnable backupScheduleSubTasks,
+      BackupRequestParams scheduleParams,
+      UUID customerUUID,
+      UUID scheduleUUID,
+      @Nullable KubernetesOperatorStatusUpdater kubernetesStatus) {
+    Optional<Schedule> optSchedule = Schedule.maybeGet(customerUUID, scheduleUUID);
+    if (!optSchedule.isPresent()) {
+      log.info("Schedule already deleted!");
+      return;
+    }
+    Schedule schedule = optSchedule.get();
     Universe universe = getUniverse();
     // Lock schedule
     // Ok to fail, don't put this inside try block.
@@ -6690,7 +6769,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           "Deleting backup schedule for customer {}, schedule uuid = {}.",
           customerUUID,
           scheduleUUID);
-      Schedule.updateStatusAndSave(customerUUID, scheduleUUID, State.Deleting);
+      schedule = Schedule.updateStatusAndSave(customerUUID, scheduleUUID, State.Deleting);
+
+      if (kubernetesStatus != null) {
+        kubernetesStatus.updateBackupScheduleStatus(
+            scheduleParams.getKubernetesResourceDetails(), schedule);
+      }
 
       if (scheduleParams.enablePointInTimeRestore) {
         backupScheduleSubTasks.run();
@@ -6708,8 +6792,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       // Update schedule state to Error
       if (schedule != null) {
-        Schedule.updateStatusAndSave(
-            customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        schedule =
+            Schedule.updateStatusAndSave(
+                customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        if (kubernetesStatus != null) {
+          kubernetesStatus.updateBackupScheduleStatus(
+              scheduleParams.getKubernetesResourceDetails(), schedule);
+        }
       }
       throw t;
     } finally {
