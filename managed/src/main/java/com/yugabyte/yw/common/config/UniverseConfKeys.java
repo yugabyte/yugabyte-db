@@ -47,6 +47,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Integer> nodeCheckTimeoutDdlSec =
+      new ConfKeyInfo<>(
+          "yb.health.nodeCheckTimeoutDdlSec",
+          ScopeType.UNIVERSE,
+          "Node Checkout Time for DDL check",
+          "The timeout (in seconds) for node check operation as part of universe health check in"
+              + " case DDL atomicity check is performed",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> ddlAtomicityCheckEnabled =
       new ConfKeyInfo<>(
           "yb.health.ddl_atomicity_check_enabled",
