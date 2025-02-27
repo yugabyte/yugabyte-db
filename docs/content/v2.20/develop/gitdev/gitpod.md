@@ -124,7 +124,7 @@ tasks:
   - name: db-run
     before: /usr/local/yugabyte/bin/post_install.sh
     init: |
-      yugabyted start --base_dir=$STORE/ybd1 --listen=$LISTEN && \
+      yugabyted start --base_dir=$STORE/ybd1 --advertise_address=$LISTEN && \
       [[ ! -f $STORE/.init-db.sql.completed ]] &&  { for i in {1..10}; do (nc -vz $LISTEN $PORT >/dev/null 2>&1); [[ $? -eq 0 ]] &&  { ysqlsh -f $STORE/init-db.sql; touch $STORE/.init-db.sql.completed; break; } || sleep $i; done } && \
       [[ ! -f $STORE/.init-db.sql.completed ]] && echo 'YugabyteDB is not running!'
   - name: app-run

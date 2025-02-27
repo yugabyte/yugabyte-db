@@ -44,23 +44,20 @@ Do the following to create a 3-node multi-region cluster and a geo-partitioned t
     ```sh
     ./bin/yugabyted start                           \
       --base_dir=/home/yugabyte/<IP1>/yugabyte-data \
-      --listen=<IP1>                                \
-      --master_flags "placement_cloud=aws,placement_region=us-west-1,placement_zone=us-west-1c" \
-      --tserver_flags "placement_cloud=aws,placement_region=us-west-1,placement_zone=us-west-1c"
+      --advertise_address=<IP1>                     \
+      --cloud_location=aws.us-west-1.us-west-1c     \
 
     ./bin/yugabyted start                           \
       --base_dir=/home/yugabyte/<IP2>/yugabyte-data \
-      --listen=<IP2>                                \
+      --advertise_address=<IP2>                     \
       --join=<IP1>                                  \
-      --master_flags "placement_cloud=aws,placement_region=us-east-2,placement_zone=us-east-2c" \
-      --tserver_flags "placement_cloud=aws,placement_region=us-east-2,placement_zone=us-east-2c"
+      --cloud_location=aws.us-east-2.us-east-2c     \
 
     ./bin/yugabyted start                            \
       --base_dir=/home/yugabyte/<IP3>/yugabyte-data  \
-      --listen=<IP3>                                 \
+      --advertise_address=<IP3>                      \
       --join=<IP1>                                   \
-      --master_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a" \
-      --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a"
+      --cloud_location=aws.us-east-1.us-east-1a     \
     ```
 
 1. Use [yb-admin](../../../../../admin/yb-admin/) to specify the placement configuration to be used by the cluster:

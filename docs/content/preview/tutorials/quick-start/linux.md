@@ -116,8 +116,10 @@ Use the [yugabyted](../../../reference/configuration/yugabyted/) utility to crea
 To create a single-node local cluster with a replication factor (RF) of 1, run the following command:
 
 ```sh
-./bin/yugabyted start
+./bin/yugabyted start --advertise_address 127.0.0.1
 ```
+
+Note: By default, yugabyted on Linux-based machines binds to the internal IP address. If it fails to do so, set the --advertise_address flag.
 
 {{< readfile "/preview/tutorials/quick-start/include-connect.md" >}}
 
