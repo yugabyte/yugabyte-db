@@ -262,8 +262,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       node.ybPrebuiltAmi =
           taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       List<NodeDetails> nodeList = Collections.singletonList(node);
+      // Must use ansible provisioning for non-systemd universes
       boolean useAnsibleProvisioning =
-          confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning);
+          confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning) || !userIntent.useSystemd;
       // TODO This can be improved to skip already provisioned nodes as there are long running
       // subtasks.
       if (userIntent.providerType != CloudType.local) {

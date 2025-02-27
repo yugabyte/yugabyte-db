@@ -225,6 +225,18 @@ public class ModelFactory {
         "Test Universe", UUID.randomUUID(), customerId, Common.CloudType.aws, null, rootCA);
   }
 
+  public static Universe createUniverse(String universeName, long customerId, boolean useSystemd) {
+    return createUniverse(
+        universeName,
+        UUID.randomUUID(),
+        customerId,
+        Common.CloudType.aws,
+        null,
+        UUID.randomUUID(),
+        true,
+        useSystemd);
+  }
+
   public static Universe createUniverse(String universeName, long customerId) {
     return createUniverse(universeName, UUID.randomUUID(), customerId, Common.CloudType.aws);
   }
@@ -270,6 +282,19 @@ public class ModelFactory {
       PlacementInfo pi,
       UUID rootCA,
       boolean enableYbc) {
+    return createUniverse(
+        universeName, universeUUID, customerId, cloudType, pi, rootCA, enableYbc, true);
+  }
+
+  public static Universe createUniverse(
+      String universeName,
+      UUID universeUUID,
+      long customerId,
+      Common.CloudType cloudType,
+      PlacementInfo pi,
+      UUID rootCA,
+      boolean enableYbc,
+      boolean useSystemd) {
     Customer c = Customer.get(customerId);
     // Custom setup a default AWS provider, can be overridden later.
     List<Provider> providerList = Provider.get(c.getUuid(), cloudType);
@@ -281,6 +306,7 @@ public class ModelFactory {
     userIntent.provider = p.getUuid().toString();
     userIntent.providerType = cloudType;
     userIntent.ybSoftwareVersion = "2.17.0.0-b1";
+    userIntent.useSystemd = useSystemd;
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.setUniverseUUID(universeUUID);
     params.nodeDetailsSet = new HashSet<>();
@@ -861,6 +887,7 @@ public class ModelFactory {
     userIntent.providerType = provider.getCloudCode();
     userIntent.preferredRegion = null;
     userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.useSystemd = true;
 
     UniverseUpdater updater =
         u -> {

@@ -183,7 +183,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
 
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -241,7 +241,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
     TaskInfo taskInfo = submitTask(taskParams);
 
-    verify(mockNodeManager, times(10)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     UniverseDefinitionTaskParams univUTP =
         Universe.getOrBadRequest(onPremUniverse.getUniverseUUID()).getUniverseDetails();

@@ -103,6 +103,7 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
     userIntent.replicationFactor = 3;
     userIntent.regionList =
         defaultProvider.getAllRegions().stream().map(Region::getUuid).collect(Collectors.toList());
+    userIntent.useSystemd = true;
 
     String caFile = createTempFile("destroy_universe_test", "ca.crt", "test content");
     certFolder = new File(caFile).getParentFile();
@@ -189,6 +190,7 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
               primaryCluster.userIntent.enableYSQLAuth = true;
               primaryCluster.userIntent.enableYEDIS = false;
               primaryCluster.userIntent.ysqlPassword = "Admin@123";
+              primaryCluster.userIntent.useSystemd = true;
               for (NodeDetails node : universeDetails.nodeDetailsSet) {
                 // Reset for creation.
                 node.state = NodeDetails.NodeState.ToBeAdded;
