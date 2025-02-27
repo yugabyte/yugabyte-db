@@ -724,19 +724,27 @@ class PgClientServiceImpl::Impl {
       oid_chunk.next_oid =
           use_secondary_space ? kPgFirstSecondarySpaceObjectId : kPgFirstNormalObjectId;
       oid_chunk.allocated_from_secondary_space = use_secondary_space;
+      oid_chunk.oid_cache_invalidations_count = 0;
     }
-    if (oid_chunk.oid_count == 0) {
+    uint32_t highest_received_invalidations_count =
+        tablet_server_.get_oid_cache_invalidations_count();
+    while (oid_chunk.oid_count == 0 ||
+           oid_chunk.oid_cache_invalidations_count < highest_received_invalidations_count) {
+      // We don't have any valid OIDs left so fetch more.
       const uint32_t next_oid =
           oid_chunk.next_oid + static_cast<uint32_t>(FLAGS_TEST_ysql_oid_prefetch_adjustment);
-      uint32_t begin_oid, end_oid;
+      uint32_t begin_oid, end_oid, oid_cache_invalidations_count;
       RETURN_NOT_OK(client().ReservePgsqlOids(
-          namespace_id, next_oid, kYbOidPrefetch, &begin_oid, &end_oid, use_secondary_space));
+          namespace_id, next_oid, kYbOidPrefetch, &begin_oid, &end_oid, use_secondary_space,
+          &oid_cache_invalidations_count));
       oid_chunk.next_oid = begin_oid;
       oid_chunk.oid_count = end_oid - begin_oid;
+      oid_chunk.oid_cache_invalidations_count = oid_cache_invalidations_count;
       VLOG(1) << "Reserved oids in database: " << db_oid << ", next_oid: " << next_oid
-              << ", begin_oid: " << begin_oid << ", end_oid: " << end_oid;
+              << ", begin_oid: " << begin_oid << ", end_oid: " << end_oid
+              << ", invalidation count: " << oid_cache_invalidations_count;
     }
-    uint32 new_oid = oid_chunk.next_oid;
+    uint32_t new_oid = oid_chunk.next_oid;
     oid_chunk.next_oid++;
     oid_chunk.oid_count--;
     resp->set_new_oid(new_oid);
@@ -2219,6 +2227,7 @@ class PgClientServiceImpl::Impl {
     uint32_t next_oid = kPgFirstNormalObjectId;
     uint32_t oid_count = 0;
     bool allocated_from_secondary_space = false;
+    uint32_t oid_cache_invalidations_count = 0;
   };
   // Domain here is db_oid of namespace we are allocating OIDs for.
   std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);

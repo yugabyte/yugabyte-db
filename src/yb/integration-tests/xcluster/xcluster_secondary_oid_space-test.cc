@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 namespace yb {
@@ -120,6 +121,57 @@ TEST_F(OidAllocationTest, OidAllocationOverlappingLimits) {
   // Already at limit so no OIDs available.
   ASSERT_NOK(ReservePgsqlOids(0, 1, false));
   ASSERT_NOK(ReservePgsqlOids(0, 1, true));
+}
+
+TEST_F(OidAllocationTest, CacheInvalidation) {
+  // Log information about OID reservations; search logs for "Reserve".
+  google::SetVLOGLevel("catalog_manager*", 2);
+  google::SetVLOGLevel("pg_client_service*", 2);
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto AllocateOid = [&]() -> Result<uint32_t> {
+    static int sequence_no = 0;
+    sequence_no++;
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE SEQUENCE my_sequence_$0", sequence_no));
+    uint32_t oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+        Format("SELECT oid FROM pg_class WHERE pg_class.relname = 'my_sequence_$0'", sequence_no)));
+    LOG(INFO) << "allocated OID: " << oid;
+    return oid;
+  };
+
+  uint32_t begin_oid;
+  uint32_t end_oid;
+  uint32_t oid_cache_invalidations_count;
+  auto ReservePgsqlOids = [&](uint32_t next_oid, uint32_t count) {
+    return client_->ReservePgsqlOids(
+        namespace_id_, next_oid, count, &begin_oid, &end_oid, /*use_secondary_space=*/false,
+        &oid_cache_invalidations_count);
+  };
+
+  // Ensure we have some OIDs cached and they are below the next allocation point we are going to
+  // use.
+  uint32_t oid = ASSERT_RESULT(AllocateOid());
+  ASSERT_LT(oid, 50'000);
+
+  // Reserve on master 100 OIDs at 100K without invalidating caches.  This should not affect the
+  // next OIDs the TServer returns.
+  ASSERT_OK(ReservePgsqlOids(100'000, 100));
+  ASSERT_EQ(oid_cache_invalidations_count, 0);
+  uint32_t oid1 = ASSERT_RESULT(AllocateOid());
+  ASSERT_LT(oid1, 100'000);
+
+  // Invalidate the caches; now when allocating we should see OIDs beyond the previous reservation.
+  auto* catalog_manager_if = ASSERT_RESULT(catalog_manager());
+  ASSERT_OK(catalog_manager_if->InvalidateTserverOidCaches());
+  // We need to wait for each TServer to receive a heartbeat response from the master before their
+  // caches will be effectively cleared.
+  SleepFor(10s * kTimeMultiplier);
+  uint32_t oid2 = ASSERT_RESULT(AllocateOid());
+  ASSERT_GE(oid2, 100'100);
+
+  // Reserve on master 100 OIDs at 200K and check if the invalidations count has been bumped.
+  ASSERT_OK(ReservePgsqlOids(200'000, 100));
+  ASSERT_EQ(oid_cache_invalidations_count, 1);
 }
 
 }  // namespace yb
