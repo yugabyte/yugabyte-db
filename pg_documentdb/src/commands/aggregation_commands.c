@@ -308,7 +308,7 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 
 	bool queryFullyDrained;
 	pgbson *continuationDoc;
-	bool isTailableCursor = false;
+	pgbson *postBatchResumeToken = NULL;
 	switch (getMoreInfo.cursorKind)
 	{
 		case CursorKind_Persisted:
@@ -398,7 +398,6 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 			QueryData queryData = { 0 };
 			queryData.timeSystemVariables = getMoreInfo.queryData.timeSystemVariables;
 
-			isTailableCursor = true;
 			bool setStatementTimeout = false;
 			query = GenerateAggregationQuery(PointerGetDatum(database),
 											 getMoreInfo.querySpec, &queryData,
@@ -406,10 +405,10 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 			HTAB *cursorMap = CreateTailableCursorHashSet();
 			BuildTailableCursorContinuationMap(cursorSpec, cursorMap);
 			int numIterations = 0;
-			DrainTailableQuery(cursorMap, query,
-							   getMoreInfo.queryData.batchSize,
-							   &numIterations,
-							   accumulatedSize, &arrayWriter);
+			postBatchResumeToken = DrainTailableQuery(cursorMap, query,
+													  getMoreInfo.queryData.batchSize,
+													  &numIterations,
+													  accumulatedSize, &arrayWriter);
 			continuationDoc = BuildStreamingContinuationDocument(cursorMap,
 																 getMoreInfo.querySpec,
 																 getMoreInfo.cursorId,
@@ -432,7 +431,7 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 
 	Datum responseDatum = PostProcessCursorPage(fcinfo, &cursorDoc, &arrayWriter, &writer,
 												getMoreInfo.cursorId, continuationDoc,
-												persistConnection, isTailableCursor);
+												persistConnection, postBatchResumeToken);
 	PG_RETURN_DATUM(responseDatum);
 }
 
@@ -520,7 +519,7 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 	bool queryFullyDrained;
 	pgbson *continuationDoc;
 	bool persistConnection = false;
-	bool addOperationTime = false;
+	pgbson *postBatchResumeToken = NULL;
 	switch (queryData->cursorKind)
 	{
 		case QueryCursorType_SingleBatch:
@@ -540,11 +539,13 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 
 		case QueryCursorType_Tailable:
 		{
-			addOperationTime = true;
 			HTAB *tailableCursorMap = CreateTailableCursorHashSet();
-			DrainTailableQuery(tailableCursorMap, query, queryData->batchSize,
-							   &numIterations, accumulatedSize,
-							   &arrayWriter);
+			postBatchResumeToken = DrainTailableQuery(tailableCursorMap,
+													  query,
+													  queryData->batchSize,
+													  &numIterations,
+													  accumulatedSize,
+													  &arrayWriter);
 			cursorId = GenerateCursorId(cursorId);
 			continuationDoc = BuildStreamingContinuationDocument(tailableCursorMap,
 																 querySpec,
@@ -640,7 +641,7 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 
 	return PostProcessCursorPage(fcinfo, &cursorDoc, &arrayWriter, &writer, cursorId,
 								 continuationDoc, persistConnection,
-								 addOperationTime);
+								 postBatchResumeToken);
 }
 
 

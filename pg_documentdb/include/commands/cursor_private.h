@@ -15,9 +15,9 @@
 bool DrainStreamingQuery(HTAB *cursorMap, Query *query, int batchSize,
 						 int32_t *numIterations, uint32_t accumulatedSize,
 						 pgbson_array_writer *arrayWriters);
-bool DrainTailableQuery(HTAB *cursorMap, Query *query, int batchSize,
-						int32_t *numIterations, uint32_t accumulatedSize,
-						pgbson_array_writer *arrayWriter);
+pgbson * DrainTailableQuery(HTAB *cursorMap, Query *query, int batchSize,
+							int32_t *numIterations, uint32_t accumulatedSize,
+							pgbson_array_writer *arrayWriter);
 bool CreateAndDrainPersistedQuery(const char *cursorName, Query *query,
 								  int batchSize, int32_t *numIterations, uint32_t
 								  accumulatedSize,
@@ -37,7 +37,7 @@ Datum PostProcessCursorPage(PG_FUNCTION_ARGS,
 							pgbson_array_writer *arrayWriter,
 							pgbson_writer *topLevelWriter, int64_t cursorId,
 							pgbson *continuation, bool persistConnection,
-							bool isTailableCursor);
+							pgbson *lastContinuationToken);
 
 HTAB * CreateCursorHashSet(void);
 HTAB * CreateTailableCursorHashSet(void);

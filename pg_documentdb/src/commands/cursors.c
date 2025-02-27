@@ -104,16 +104,40 @@ static void UpdateTailableCursorInContinuationMapCore(bson_iter_t *iter,
 
 static Portal PlanStreamingQuery(Query *query, Datum parameter, HTAB *cursorMap);
 static void CleanupPortalState(Portal portal);
-static TerminationReason FetchCursorAndWriteUntilPageOrSize(Portal portal, int32_t
-															batchSize,
+static TerminationReason FetchCursorAndWriteUntilPageOrSize(Portal portal,
+															int32_t batchSize,
 															pgbson_array_writer *writer,
 															uint32_t *accumulatedSize,
 															HTAB *cursorMap,
 															int32_t *numRowsFetched,
 															uint64_t *
 															currentAccumulatedSize,
+															MemoryContext writerContext);
+static pgbson * FetchTailableCursorAndWriteUntilPageOrSize(Portal portal,
+														   int32_t batchSize,
+														   pgbson_array_writer *writer,
+														   uint32_t *accumulatedSize,
+														   HTAB *cursorMap,
+														   int32_t *numRowsFetched,
+														   uint64_t *
+														   currentAccumulatedSize,
+														   MemoryContext writerContext);
+
+static bool ProcessCursorResultRowDataAttribute(TerminationReason *reason,
+												bool *isDataNull,
+												uint32_t *accumulatedSize,
+												int32_t batchSize,
+												int32_t *numRowsFetched,
+												uint64_t *currentAccumulatedSize,
+												MemoryContext writerContext,
+												pgbson_array_writer *writer);
+
+static pgbson * ProcessCursorResultRowContinuationAttribute(HTAB *cursorMap,
 															MemoryContext writerContext,
 															bool isTailableCursor);
+static void AppendLastContinuationTokenToCursor(pgbson_writer *writer,
+												pgbson *continuationDoc);
+
 
 const char NodeId[] = "nodeId";
 uint32_t NodeIdLength = 7;
@@ -214,7 +238,7 @@ DrainStreamingQuery(HTAB *cursorMap, Query *query, int batchSize,
 		uint64_t currentAccumulatedSize = 0;
 		TerminationReason reason = FetchCursorAndWriteUntilPageOrSize(
 			queryPortal, batchSize, arrayWriter, &accumulatedSize, cursorMap,
-			&accumulatedRows, &currentAccumulatedSize, currentContext, isTailableCursor);
+			&accumulatedRows, &currentAccumulatedSize, currentContext);
 
 		/* Close the portal since the current page is retrieved. */
 		SPI_cursor_close(queryPortal);
@@ -259,17 +283,18 @@ DrainStreamingQuery(HTAB *cursorMap, Query *query, int batchSize,
  * Drain a tailable query by planning and executing the query and fetch the results
  * using a cursor and then drain the cursor until there are no more events available
  * currently or until the page size/batch size is reached. Note that the cursor is
- * never fully drained for a tailable cursor.
+ * never fully drained for a tailable cursor. It returns the last continuationDoc
+ * received from the pipeline, which is required for the lastContinuationToken for
+ * change stream cursors.
  */
-bool
+pgbson *
 DrainTailableQuery(HTAB *cursorMap, Query *query, int batchSize,
 				   int32_t *numIterations, uint32_t accumulatedSize,
 				   pgbson_array_writer *arrayWriter)
 {
-	/* For a tailable cursor the query is never fully drained. */
-	bool queryFullyDrained = false;
 	int32_t accumulatedRows = 0;
 	bool isTailableCursor = true;
+	pgbson *continuationDoc = NULL;
 
 	Datum continuationParam = (Datum) 0;
 	if (cursorMap != NULL)
@@ -285,17 +310,14 @@ DrainTailableQuery(HTAB *cursorMap, Query *query, int batchSize,
 
 	/* Drain the cursor and fetch the next page based on batchSize provided. */
 	uint64_t currentAccumulatedSize = 0;
-
-	FetchCursorAndWriteUntilPageOrSize(queryPortal,
-									   batchSize,
-									   arrayWriter,
-									   &accumulatedSize,
-									   cursorMap,
-									   &accumulatedRows,
-									   &
-									   currentAccumulatedSize,
-									   currentContext,
-									   isTailableCursor);
+	continuationDoc = FetchTailableCursorAndWriteUntilPageOrSize(queryPortal,
+																 batchSize,
+																 arrayWriter,
+																 &accumulatedSize,
+																 cursorMap,
+																 &accumulatedRows,
+																 &currentAccumulatedSize,
+																 currentContext);
 
 	/* Close the portal since the current page is retrieved. */
 	SPI_cursor_close(queryPortal);
@@ -304,7 +326,7 @@ DrainTailableQuery(HTAB *cursorMap, Query *query, int batchSize,
 
 	(*numIterations)++;
 
-	return queryFullyDrained;
+	return continuationDoc;
 }
 
 
@@ -434,7 +456,7 @@ CreateAndDrainPersistedQuery(const char *cursorName, Query *query,
 																  cursorMap,
 																  &numRowsFetched,
 																  &currentAccumulatedSize,
-																  currentContext, false);
+																  currentContext);
 	if (closeCursor || (reason == TerminationReason_CursorCompletion))
 	{
 		SPI_cursor_close(queryPortal);
@@ -501,7 +523,7 @@ CreateAndDrainPointReadQuery(const char *cursorName, Query *query,
 																  cursorMap,
 																  &numRowsFetched,
 																  &currentAccumulatedSize,
-																  currentContext, false);
+																  currentContext);
 	SPI_cursor_close(queryPortal);
 	SPI_finish();
 	return reason == TerminationReason_CursorCompletion;
@@ -686,8 +708,7 @@ DrainPersistedCursor(const char *cursorName, int batchSize,
 																  cursorMap,
 																  &numRowsFetched,
 																  &currentAccumulatedSize,
-																  currentContext,
-																  false);
+																  currentContext);
 	if (reason == TerminationReason_CursorCompletion)
 	{
 		SPI_cursor_close(portal);
@@ -709,10 +730,11 @@ FetchCursorAndWriteUntilPageOrSize(Portal portal, int32_t batchSize,
 								   HTAB *cursorMap,
 								   int32_t *numRowsFetched,
 								   uint64_t *currentAccumulatedSize,
-								   MemoryContext writerContext,
-								   bool isTailableCursor)
+								   MemoryContext writerContext)
 {
-	/* BatchSize = 0 means we don't actually move the cursor forward. */
+	TerminationReason reason;
+
+	/* BatchSize = 0 means we don't actually move the cursor forward */
 	if (batchSize == 0)
 	{
 		return TerminationReason_BatchItemLimit;
@@ -723,6 +745,7 @@ FetchCursorAndWriteUntilPageOrSize(Portal portal, int32_t batchSize,
 	 * means it's already positioned to the current row.
 	 */
 	bool shouldFetch = portal->portalPos == 0;
+
 	while (true)
 	{
 		/* move forward 1. */
@@ -745,96 +768,241 @@ FetchCursorAndWriteUntilPageOrSize(Portal portal, int32_t batchSize,
 		shouldFetch = true;
 		if (SPI_tuptable && SPI_tuptable->tupdesc->natts >= 1)
 		{
-			bool isNull = false;
-			int tupleNumber = 0;
-			AttrNumber attrNumber = 1;
-			Datum resultDatum = SPI_getbinval(SPI_tuptable->vals[tupleNumber],
-											  SPI_tuptable->tupdesc, attrNumber,
-											  &isNull);
-			pgbson *documentValue = NULL;
-			uint32_t datumSize = 0;
-			if (isNull)
+			/* Process the "Data" attribute from the row fetched above. */
+			bool isDataNull = false;
+			bool isCursorTerminated = ProcessCursorResultRowDataAttribute(&reason,
+																		  &isDataNull,
+																		  accumulatedSize,
+																		  batchSize,
+																		  numRowsFetched,
+																		  currentAccumulatedSize,
+																		  writerContext,
+																		  writer);
+
+			/* If the cursor is terminated due to batch iterm/size, return the reason */
+			if (isCursorTerminated)
 			{
-				/*
-				 * For tailable cursors, we can have NULL documents, so process the continuation.
-				 * For non-tailable cursors, skip this NULL document and continuation.
-				 */
-				if (!isTailableCursor)
-				{
-					continue;
-				}
-			}
-			else
-			{
-				documentValue = DatumGetPgBsonPacked(resultDatum);
-				datumSize = VARSIZE_ANY_EXHDR(documentValue);
-
-				/* if the new total size is > Max Bson Size */
-				if (datumSize > BSON_MAX_ALLOWED_SIZE)
-				{
-					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BSONOBJECTTOOLARGE),
-									errmsg("Size %u is larger than MaxDocumentSize %u",
-										   datumSize, BSON_MAX_ALLOWED_SIZE)));
-				}
-
-				*currentAccumulatedSize += datumSize;
-
-				/* this is the overhead of the array index (The string "1", "2" etc). */
-				/* we use a simple const of 9 digits as 16 MB in bytes has 8 digits, so */
-				/* realistically we won't have more than 16,777,216 entries with trailing 0. */
-				const int perDocOverhead = 9;
-				int64_t totalSize = *accumulatedSize + datumSize + perDocOverhead;
-
-				/*
-				 * Allow at least one document to get through for the size limit - this accounts for
-				 * ensuring that 1 16 MB doc can be returned per response.
-				 */
-				bool sizeLimitReached = (totalSize >= BSON_MAX_ALLOWED_SIZE &&
-										 *numRowsFetched > 0);
-				if (sizeLimitReached || *numRowsFetched >= batchSize)
-				{
-					/* we've exceeded the budget - bail. */
-					return sizeLimitReached ?
-						   TerminationReason_BatchSizeLimit :
-						   TerminationReason_BatchItemLimit;
-				}
-
-				(*numRowsFetched)++;
+				return reason;
 			}
 
-			/* Fetch continuation if it exists */
-			pgbson *continuation = NULL;
-			if (cursorMap != NULL && SPI_tuptable->tupdesc->natts >= 2)
+			/*
+			 * Process the "Continuation" attribute from the row fetched above. Note that
+			 * the continuation token is not processed if the data is null for non-tailable
+			 * cursors.
+			 */
+			if (!isDataNull && cursorMap != NULL && SPI_tuptable->tupdesc->natts >= 2)
 			{
-				bool isContinuationNull = false;
-				AttrNumber continuationAttribute = 2;
-				Datum continuationDatum = SPI_getbinval(SPI_tuptable->vals[tupleNumber],
-														SPI_tuptable->tupdesc,
-														continuationAttribute,
-														&isContinuationNull);
-				if (!isContinuationNull)
-				{
-					continuation = DatumGetPgBsonPacked(continuationDatum);
-				}
+				ProcessCursorResultRowContinuationAttribute(cursorMap,
+															writerContext,
+															false);
 			}
-
-			/* copy and insert the tuple */
-			MemoryContext spiContext = MemoryContextSwitchTo(writerContext);
-			if (documentValue != NULL)
-			{
-				PgbsonArrayWriterWriteDocument(writer, documentValue);
-			}
-
-			/* Update the continuation map in the original context if available */
-			if (continuation != NULL)
-			{
-				UpdateCursorInContinuationMap(continuation, cursorMap, isTailableCursor);
-			}
-
-			MemoryContextSwitchTo(spiContext);
-			*accumulatedSize += datumSize + 9;
 		}
 	}
+}
+
+
+/*
+ * Fetches the next page from the given cursor up until MaxBsonSize
+ * or batchSize and writes it to the cursor bson array. Also updates
+ * the cursorMap if provided. For tailable cursors, it returns the last
+ * continuation token received from the pipeline. Also handling of the
+ * empty batch is different for tailable cursors. If the batch is empty,
+ * the continuation token should still be fetched and returned to the
+ * user.
+ */
+static pgbson *
+FetchTailableCursorAndWriteUntilPageOrSize(Portal portal, int32_t batchSize,
+										   pgbson_array_writer *writer,
+										   uint32_t *accumulatedSize,
+										   HTAB *cursorMap,
+										   int32_t *numRowsFetched,
+										   uint64_t *currentAccumulatedSize,
+										   MemoryContext writerContext)
+{
+	pgbson *continuationToken = NULL;
+	TerminationReason reason;
+
+	/* NOTE: For tailable cursors, we should fetch the continuation token even if the
+	 * batch size is 0. So the condition if (batchSize == 0) not needed here.
+	 */
+
+	/* If the cursor has never been enumerated, fetch once when we start
+	 * Otherwise, we bailed on this cursor due to size/batch limits which
+	 * means it's already positioned to the current row.
+	 */
+	bool shouldFetch = portal->portalPos == 0;
+
+	while (true)
+	{
+		/* move forward 1. */
+		if (shouldFetch)
+		{
+			SPI_cursor_fetch(portal, true, 1);
+		}
+		else
+		{
+			/* Refetch current row */
+			SPI_cursor_fetch(portal, true, 0);
+		}
+
+		bool hasMore = SPI_processed >= 1;
+		if (!hasMore)
+		{
+			/* Return the last continuation token in the writer context. */
+			return CopyPgbsonIntoMemoryContext(continuationToken,
+											   writerContext);
+		}
+
+		shouldFetch = true;
+		if (SPI_tuptable && SPI_tuptable->tupdesc->natts >= 1)
+		{
+			/* Process the "Data" attribute from the row fetched above. */
+			bool isDataNull = false;
+			bool isCursorTerminated = ProcessCursorResultRowDataAttribute(&reason,
+																		  &isDataNull,
+																		  accumulatedSize,
+																		  batchSize,
+																		  numRowsFetched,
+																		  currentAccumulatedSize,
+																		  writerContext,
+																		  writer);
+
+			/*
+			 * For tailable cursors, if the cursor is terminated due to batch/size limit, just
+			 * return the continuation token, sicne the cursor is never fully drained for tailable
+			 * cursors. we just stop here and return the last continuation token to the user
+			 * to resume the cursor at this point later.
+			 */
+			if (isCursorTerminated)
+			{
+				return continuationToken;
+			}
+
+			/*
+			 * Process the "Continuation" attribute from the row fetched above.
+			 * For tailable cursors, we need to remember the last continuation token
+			 * and return it to the caller. Also, the continuation token is
+			 * processed even if the data is null.
+			 */
+			if (cursorMap != NULL && SPI_tuptable->tupdesc->natts >= 2)
+			{
+				continuationToken = ProcessCursorResultRowContinuationAttribute(cursorMap,
+																				writerContext,
+																				true);
+			}
+		}
+	}
+}
+
+
+/*
+ * Process the "Data" attribute from the row fetched cursor result.
+ * It checks for the size limit and batch item limit and returns
+ * the reason for termination if any. Writes the data to the
+ * pgbson_array_writer.
+ */
+static bool
+ProcessCursorResultRowDataAttribute(TerminationReason *reason,
+									bool *isDataNull,
+									uint32_t *accumulatedSize,
+									int32_t batchSize, int32_t *numRowsFetched,
+									uint64_t *currentAccumulatedSize,
+									MemoryContext writerContext,
+									pgbson_array_writer *writer)
+{
+	pgbson *documentValue = NULL;
+	int tupleNumber = 0;
+	AttrNumber attrNumber = 1;
+	Datum resultDatum = SPI_getbinval(SPI_tuptable->vals[tupleNumber],
+									  SPI_tuptable->tupdesc, attrNumber,
+									  isDataNull);
+	if (*isDataNull)
+	{
+		return false;
+	}
+
+	documentValue = DatumGetPgBsonPacked(resultDatum);
+	uint32_t datumSize = VARSIZE_ANY_EXHDR(documentValue);
+
+	/* if the new total size is > Max Bson Size */
+	if (datumSize > BSON_MAX_ALLOWED_SIZE)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BSONOBJECTTOOLARGE),
+						errmsg("Size %u is larger than MaxDocumentSize %u",
+							   datumSize, BSON_MAX_ALLOWED_SIZE)));
+	}
+
+	*currentAccumulatedSize += datumSize;
+
+	/* this is the overhead of the array index (The string "1", "2" etc). */
+	/* we use a simple const of 9 digits as 16 MB in bytes has 8 digits, so */
+	/* realistically we won't have more than 16,777,216 entries with trailing 0. */
+	const int perDocOverhead = 9;
+	int64_t totalSize = *accumulatedSize + datumSize + perDocOverhead;
+
+	/*
+	 * Allow at least one document to get through for the size limit - this accounts for
+	 * ensuring that 1 16 MB doc can be returned per response.
+	 */
+	bool sizeLimitReached = (totalSize >= BSON_MAX_ALLOWED_SIZE &&
+							 *numRowsFetched > 0);
+	if (sizeLimitReached || *numRowsFetched >= batchSize)
+	{
+		/* we've exceeded the budget - bail. */
+		*reason = sizeLimitReached ?
+				  TerminationReason_BatchSizeLimit :
+				  TerminationReason_BatchItemLimit;
+		return true;
+	}
+
+	(*numRowsFetched)++;
+	*accumulatedSize += datumSize + 9;
+
+	/* copy and insert the tuple */
+	MemoryContext spiContext = MemoryContextSwitchTo(writerContext);
+	if (documentValue != NULL)
+	{
+		PgbsonArrayWriterWriteDocument(writer, documentValue);
+	}
+	MemoryContextSwitchTo(spiContext);
+
+	return false;
+}
+
+
+/*
+ * Process the "Continuation" attribute from the cursor result row. It updates
+ * the cursor map with the continuation token if available.
+ */
+static pgbson *
+ProcessCursorResultRowContinuationAttribute(HTAB *cursorMap, MemoryContext writerContext,
+											bool isTailableCursor)
+{
+	/* Fetch continuation if it exists */
+	pgbson *continuation = NULL;
+	int tupleNumber = 0;
+	bool isContinuationNull = false;
+	AttrNumber continuationAttribute = 2;
+	Datum continuationDatum = SPI_getbinval(SPI_tuptable->vals[tupleNumber],
+											SPI_tuptable->tupdesc,
+											continuationAttribute,
+											&isContinuationNull);
+	if (!isContinuationNull)
+	{
+		continuation = DatumGetPgBsonPacked(continuationDatum);
+	}
+
+	/* copy and insert the tuple */
+	MemoryContext spiContext = MemoryContextSwitchTo(writerContext);
+
+	/* Update the continuation map in the original context if available */
+	if (continuation != NULL)
+	{
+		UpdateCursorInContinuationMap(continuation, cursorMap, isTailableCursor);
+	}
+
+	MemoryContextSwitchTo(spiContext);
+	return continuation;
 }
 
 
@@ -1275,13 +1443,22 @@ PostProcessCursorPage(PG_FUNCTION_ARGS,
 					  pgbson_writer *cursorDoc, pgbson_array_writer *arrayWriter,
 					  pgbson_writer *topLevelWriter, int64_t cursorId,
 					  pgbson *continuation, bool persistConnection,
-					  bool addOperationTime)
+					  pgbson *lastContinuationToken)
 {
 	/* Finish the cursor doc*/
 	PgbsonWriterEndArray(cursorDoc, arrayWriter);
+
+	/*
+	 * For tailable cursors, append the last continuation token to the cursor.
+	 */
+	if (lastContinuationToken != NULL)
+	{
+		AppendLastContinuationTokenToCursor(cursorDoc, lastContinuationToken);
+	}
+
 	PgbsonWriterEndDocument(topLevelWriter, cursorDoc);
 	PgbsonWriterAppendDouble(topLevelWriter, "ok", 2, 1);
-	if (addOperationTime)
+	if (lastContinuationToken != NULL)
 	{
 		/*
 		 * TODO:  Currently, the operationTime field is applicable only for change
@@ -1356,4 +1533,34 @@ PostProcessCursorPage(PG_FUNCTION_ARGS,
 
 	HeapTuple ret = heap_form_tuple(tupleDescriptor, values, nulls);
 	return HeapTupleGetDatum(ret);
+}
+
+
+/*
+ * Appends the last continuation token to the cursor document.
+ */
+static void
+AppendLastContinuationTokenToCursor(pgbson_writer *writer, pgbson *lastContinuationDoc)
+{
+	uint32_t length = 0;
+	bson_iter_t continuationTokenIter;
+
+	/* Make sure the lastContinuationDoc has continuationToken field. */
+	if (!PgbsonInitIteratorAtPath(lastContinuationDoc, "continuationToken",
+								  &continuationTokenIter))
+	{
+		ereport(ERROR, (errmsg("continuationToken not found in lastContinuationDoc.")));
+	}
+
+	/* Extract the continuation token and add it as the lastContinuationToken in cursorDoc. */
+	if (BSON_ITER_HOLDS_UTF8(&continuationTokenIter))
+	{
+		const char *resumeToken = bson_iter_utf8(&continuationTokenIter, &length);
+		pgbson_writer resumeTokenWriter;
+		PgbsonWriterInit(&resumeTokenWriter);
+		PgbsonWriterStartDocument(writer, "postBatchResumeToken", 20,
+								  &resumeTokenWriter);
+		PgbsonWriterAppendUtf8(&resumeTokenWriter, "_data", 5, resumeToken);
+		PgbsonWriterEndDocument(writer, &resumeTokenWriter);
+	}
 }
