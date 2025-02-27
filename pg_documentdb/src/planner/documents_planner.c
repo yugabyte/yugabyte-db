@@ -865,7 +865,7 @@ MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags)
 		}
 
 		if (EnableCollationAndLetForQueryMatch &&
-			funcExpr->funcid == BsonQueryMatchWithCollationAndLetFunctionId())
+			funcExpr->funcid == BsonQueryMatchWithLetAndCollationFunctionId())
 		{
 			queryFlags->mongoQueryFlags |= HAS_QUERY_MATCH_FUNCTION;
 		}

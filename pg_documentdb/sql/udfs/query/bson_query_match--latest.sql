@@ -17,7 +17,7 @@ CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_true_match(__CORE_SCHEMA_
  IMMUTABLE PARALLEL SAFE STRICT
 AS 'MODULE_PATHNAME', $function$bson_true_match$function$;
 
-CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bson_query_match(document __CORE_SCHEMA__.bson, query __CORE_SCHEMA__.bson, collationString text, variableSpec __CORE_SCHEMA__.bson)
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bson_query_match(document __CORE_SCHEMA__.bson, query __CORE_SCHEMA__.bson, variableSpec __CORE_SCHEMA__.bson, collationString text)
  RETURNS bool
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE

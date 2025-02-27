@@ -1048,7 +1048,7 @@ typedef struct DocumentDBApiOidCacheData
 	Oid BsonArrayTypeOid;
 
 	/* Oid of ApiInternalSchemaName.bson_query_match with collation and let */
-	Oid BsonQueryMatchWithCollationAndLetFunctionId;
+	Oid BsonQueryMatchWithLetAndCollationFunctionId;
 } DocumentDBApiOidCacheData;
 
 static DocumentDBApiOidCacheData Cache;
@@ -1496,20 +1496,20 @@ BsonQueryMatchFunctionId(void)
 
 
 /*
- * BsonQueryMatchWithCollationAndLetFunctionId returns the OID of ApiCatalogSchemaName.bson_query_match function
+ * BsonQueryMatchWithLetAndCollationFunctionId returns the OID of ApiCatalogSchemaName.bson_query_match function
  * with collation and let arguments.
  */
 Oid
-BsonQueryMatchWithCollationAndLetFunctionId(void)
+BsonQueryMatchWithLetAndCollationFunctionId(void)
 {
 	int nargs = 4;
 	Oid bsonTypeId = BsonTypeId();
-	Oid argTypes[4] = { bsonTypeId, bsonTypeId, TEXTOID, bsonTypeId };
+	Oid argTypes[4] = { bsonTypeId, bsonTypeId, bsonTypeId, TEXTOID };
 	bool missingOk = true;
 
 	return GetSchemaFunctionIdWithNargs(
-		&Cache.BsonQueryMatchWithCollationAndLetFunctionId,
-		ApiInternalSchemaName,
+		&Cache.BsonQueryMatchWithLetAndCollationFunctionId,
+		DocumentDBApiInternalSchemaName,
 		"bson_query_match", nargs,
 		argTypes, missingOk);
 }

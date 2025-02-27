@@ -262,15 +262,22 @@ bson_query_match(PG_FUNCTION_ARGS)
 	}
 	else if (EnableCollationAndLetForQueryMatch && PG_NARGS() == 4)
 	{
-		Datum collationDatum = PG_ARGISNULL(2) ? CStringGetDatum("") :
-							   CStringGetDatum(PG_GETARG_CSTRING(2));
+		Const *collationConst = NULL;
+		if (PG_ARGISNULL(3))
+		{
+			collationConst = makeNullConst(TEXTOID, -1, InvalidOid);
+		}
+		else
+		{
+			Datum collationDatum = CStringGetDatum(PG_GETARG_CSTRING(3));
+			collationConst = makeConst(TEXTOID, -1, InvalidOid, -1, collationDatum,
+									   false, false);
+		}
 
-		Const *collationConst = makeConst(TEXTOID, -1, InvalidOid, -1, collationDatum,
-										  false, false);
 		Const *variableConst = makeNullConst(BsonTypeId(), -1, InvalidOid);
 
-		List *args = list_make4(documentConst, queryConst, collationConst, variableConst);
-		FuncExpr *funcExpr = makeFuncExpr(BsonQueryMatchWithCollationAndLetFunctionId(),
+		List *args = list_make4(documentConst, queryConst, variableConst, collationConst);
+		FuncExpr *funcExpr = makeFuncExpr(BsonQueryMatchWithLetAndCollationFunctionId(),
 										  BsonTypeId(), args,
 										  InvalidOid, InvalidOid, InvalidOid);
 
@@ -780,7 +787,7 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 	{
 		FuncExpr *funcExpr = (FuncExpr *) node;
 		if (EnableCollationAndLetForQueryMatch &&
-			funcExpr->funcid == BsonQueryMatchWithCollationAndLetFunctionId())
+			funcExpr->funcid == BsonQueryMatchWithLetAndCollationFunctionId())
 		{
 			Node *queryNode = lsecond(funcExpr->args);
 			if (IsA(queryNode, Param))
@@ -789,7 +796,7 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 													context->boundParams);
 			}
 
-			Node *collationStringNode = lthird(funcExpr->args);
+			Node *collationStringNode = lfourth(funcExpr->args);
 			if (IsA(collationStringNode, Param))
 			{
 				collationStringNode = EvaluateBoundParameters(collationStringNode,

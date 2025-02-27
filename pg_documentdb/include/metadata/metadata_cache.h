@@ -91,7 +91,7 @@ Oid ApiCurrentCursorStateFunctionId(void);
 Oid ExtensionTableSampleSystemRowsFunctionId(void);
 Oid BsonInRangeNumericFunctionId(void);
 Oid BsonInRangeIntervalFunctionId(void);
-Oid BsonQueryMatchWithCollationAndLetFunctionId(void);
+Oid BsonQueryMatchWithLetAndCollationFunctionId(void);
 
 /* bson_value functions */
 Oid BsonValueEqualMatchFunctionId(void);
