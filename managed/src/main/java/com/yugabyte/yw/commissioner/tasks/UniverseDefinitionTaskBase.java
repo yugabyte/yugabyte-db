@@ -2455,9 +2455,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean ignoreNodeStatus,
       @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
 
-    boolean useAnsibleProvisioning =
-        confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning);
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    // Must use ansible provisioning for non-systemd universes
+    boolean useAnsibleProvisioning =
+        confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning) || !userIntent.useSystemd;
     boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.

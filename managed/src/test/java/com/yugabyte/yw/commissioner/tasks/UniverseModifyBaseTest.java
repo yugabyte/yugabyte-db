@@ -184,6 +184,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     userIntent.providerType = providerType;
     userIntent.provider = provider.getUuid().toString();
     userIntent.universeName = universeName;
+    userIntent.useSystemd = true;
     if (providerType == Common.CloudType.onprem) {
       createOnpremInstance(zone);
       createOnpremInstance(zone);
@@ -253,6 +254,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     userIntent.providerType = providerType;
     userIntent.provider = provider.getUuid().toString();
     userIntent.universeName = universeName;
+    userIntent.useSystemd = true;
 
     Region region = Region.getByProvider(provider.getUuid()).get(0);
     PlacementInfo pi = new PlacementInfo();

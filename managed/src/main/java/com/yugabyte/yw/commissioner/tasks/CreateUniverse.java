@@ -13,10 +13,12 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
@@ -56,6 +58,18 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     if (isFirstTry) {
       // Verify the task params.
       verifyParams(UniverseOpType.CREATE);
+      if (!confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning)) {
+        for (Cluster cluster : taskParams().clusters) {
+          // Local provider can still use cron.
+          if (!cluster.userIntent.useSystemd
+              && cluster.userIntent.providerType != CloudType.local) {
+            log.warn(
+                "cron based universe cannot be created with YNP, will fallback to ansible "
+                    + "provisioning");
+            break;
+          }
+        }
+      }
     }
   }
 
