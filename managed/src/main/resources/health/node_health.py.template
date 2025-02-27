@@ -1672,13 +1672,16 @@ class NodeChecker():
                     try:
                         table_schema_json = json.loads(table_schema_response)
                     except Exception as ex:
+                        # Somehow this can happen during DDL operations.
+                        # We will recheck once, and if happens again - raise an error.
                         logging.warning("Table HTTP API response is not a valid json: %s",
                                          table_schema_response)
-                        metric.add_value(0)
-                        return (e.fill_and_return_entry(
-                            ['Table HTTP API response is not a valid json'],
-                            has_error=True,
-                            metrics=[metric]), [])
+                        tables_with_errors.append(tableid)
+                        errors.append(("Table {} with oid {} and uuid {} exists in {} but master "
+                                       "leader API returns wrong table details - {}")
+                                       .format(tablename, pg_oid, tableid, dbname,
+                                               table_schema_response))
+                        continue
                     columns = [html.unescape(
                         column['column']) for column in table_schema_json["columns"]]
                     # Check if each column exists in pg_attribute
