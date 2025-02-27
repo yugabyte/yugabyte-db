@@ -570,7 +570,8 @@ TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
       "YbAshCircularBuffer",
       "YbAshMetadata",
       "YbQueryDiagnostics",
-      "YbQueryDiagnosticsCircularBuffer"};
+      "YbQueryDiagnosticsCircularBuffer",
+      "YbTerminatedQueries"};
 
   std::unordered_set<std::string> yb_events;
   for (const auto& code : ash::WaitStateCodeList()) {

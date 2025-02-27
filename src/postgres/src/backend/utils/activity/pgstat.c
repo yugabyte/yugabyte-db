@@ -335,18 +335,6 @@ static const PgStat_KindInfo pgstat_kind_infos[PGSTAT_NUM_KINDS] = {
 		.reset_timestamp_cb = pgstat_subscription_reset_timestamp_cb,
 	},
 
-	[PGSTAT_KIND_YB_TERMINATED_QUERIES] = {
-		.name = "yb_terminated_queries",
-
-		.fixed_amount = false,
-		.accessed_across_databases = true,
-
-		.shared_size = sizeof(PgStatShared_YbTerminatedQuery),
-		.shared_data_off = offsetof(PgStatShared_YbTerminatedQuery, stats),
-		.shared_data_len = sizeof(((PgStatShared_YbTerminatedQuery *) 0)->stats),
-		.pending_size = sizeof(PgStat_YbTerminatedQuery),
-	},
-
 	/* stats for fixed-numbered (mostly 1) objects */
 
 	[PGSTAT_KIND_ARCHIVER] = {

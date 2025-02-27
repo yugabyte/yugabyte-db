@@ -102,6 +102,7 @@
 #include "storage/ipc.h"
 #include "utils/guc.h"
 #include "utils/resowner_private.h"
+#include "yb_terminated_queries.h"
 
 /* Define PG_FLUSH_DATA_WORKS if we have an implementation for pg_flush_data */
 #if defined(HAVE_SYNC_FILE_RANGE)
@@ -2208,7 +2209,7 @@ FileWrite(File file, char *buffer, int amount, off_t offset,
 				snprintf(query_termination_message, sizeof(query_termination_message),
 						 "temporary file size exceeds temp_file_limit (%dkB)", temp_file_limit);
 
-				pgstat_report_query_termination(query_termination_message, MyProcPid);
+				yb_report_query_termination(query_termination_message, MyProcPid);
 
 				ereport(ERROR,
 						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),

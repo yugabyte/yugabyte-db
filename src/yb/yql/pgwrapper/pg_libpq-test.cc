@@ -3247,7 +3247,7 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_NOK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
   ASSERT_NOK(conn2.Fetch("SELECT 1"));
 
-#ifdef YB_TODO // yb_terminated_queries is not yet supported in PG15
+#ifdef YB_TODO // yb_terminated_queries view is not persistent on postmaster reset.
   // validate that this query is added to yb_terminated_queries
   auto conn3 = ASSERT_RESULT(Connect());
   const string get_yb_terminated_queries =
