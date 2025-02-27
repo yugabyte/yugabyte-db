@@ -659,7 +659,7 @@ publication_for_option =
 (* 'CREATE_REPLICATION_SLOT' *)
 create_replication_slot =
   'CREATE_REPLICATION_SLOT' slot_name 'LOGICAL' output_plugin
-  [ 'NOEXPORT_SNAPSHOT' | 'USE_SNAPSHOT' ] ;
+  [ 'NOEXPORT_SNAPSHOT' | 'USE_SNAPSHOT' ] [ 'SEQUENCE' | 'HYBRID_TIME' ];
 
 (* 'CREATE' 'RULE' *)
 create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event 'TO' table_name \
