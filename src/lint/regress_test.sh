@@ -87,8 +87,8 @@ if [[ "$1" =~ /yb.port.[^/]+$ ]]; then
       # "yb" lines may trigger this lint message.  That is a desirable
       # side-effect.
       differing_line_count=$(diff -d "$1" "$pg_orig_test" | grep -c '^<')
-      total_line_count=$(wc -l "$1" | cut -d' ' -f1)
-      if [ "$differing_line_count" -gt $(("$total_line_count" / 2)) ]; then
+      total_line_count=$(wc -l "$1" | awk '{print$1}')
+      if [ "$differing_line_count" -gt $((total_line_count / 2)) ]; then
         echo 'error:too_many_differences_in_ported_test:'\
 'More than 50% of the lines in this ported test '\
 'are different from the original test '"$pg_orig_test:1:$(head -1 "$1")"
