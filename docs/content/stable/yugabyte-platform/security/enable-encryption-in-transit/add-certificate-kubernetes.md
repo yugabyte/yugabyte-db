@@ -52,9 +52,9 @@ Add TLS certificates issued by the cert-manager as follows:
 
 After the certificate is added to YugabyteDB Anywhere, configure the Kubernetes provider configuration by following instructions provided in [Configure region and zones](../../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones).
 
-In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected.
+In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer kind, Issuer name, and optionally the Issuer group for each zone.
 
-![Add new region](/images/yp/security/kubernetes-cert-manager-add-region.png)
+![Add new region](/images/yp/security/kubernetes-cert-manager-add-region-2024-2-2.png)
 
 ## Troubleshoot
 
