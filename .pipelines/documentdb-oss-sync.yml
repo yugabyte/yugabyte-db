@@ -2,6 +2,9 @@ trigger:
   branches:
     include:
       - "*"
+  paths:
+    exclude:
+      - ".github/*"
   batch: true
 
 pool:
