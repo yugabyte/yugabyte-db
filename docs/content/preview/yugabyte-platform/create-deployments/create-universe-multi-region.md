@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere allows you to create a universe spanning multiple geographic regions.
+Using YugabyteDB Anywhere you can create a universe spanning multiple geographic regions.
 
 For example, you can deploy a universe across Oregon (US-West), South Carolina (US-East), and Tokyo (Asia-Northeast).
 
@@ -21,45 +21,37 @@ Before you start creating a universe, ensure that you have created a provider co
 
 ## Create a universe
 
-After you have created a provider configuration, such as, for example [Google Cloud Provider](../../configure-yugabyte-platform/gcp/) (GCP), navigate to **Universes**, click **Create Universe**, and enter the following sample values:
+To create a multi-region universe:
 
-- In the **Name** field, enter **helloworld2**.
+1. Navigate to **Dashboard** or **Universes**, and click **Create Universe**.
 
-- In the **Provider** field, select the provider you configured.
+1. Enter the universe details. Refer to [Universe settings](../create-universe-multi-zone/#universe-settings).
 
-- Use the **Regions** field to select the regions where you want to deploy nodes.
+    The settings are identical to deploying a multi-zone universe, except for the placement of nodes in multiple regions.
 
-- Choose the **Linux version** to be provisioned on the nodes of the universe.
+1. Select the regions in which to deploy nodes. The available regions will depend on the provider you selected.
 
-- In the **Instance Type** field, select a suitable instance type; these will vary depending on the cloud provider.
+1. Optionally, for **G-Flags**, click **Add Flags**, **Add to Master**, and add the following flags for Master:
 
-  ![Create multi-region universe1 on GCP](/images/yp/create-deployments/create-multi-region-uni1.png)
+    ```properties
+    leader_failure_max_missed_heartbeat_periods 5
+    raft_heartbeat_interval_ms 1500
+    leader_lease_duration_ms 6000
+    ```
 
-- Provide any other desired settings for [Security Configurations](../create-universe-multi-zone/#security-configurations), and [Advanced Configuration](../create-universe-multi-zone/#advanced-configuration).
+    And add the following flags for T-Server:
 
-- For **G-Flags**, click **Add Flags**, **Add to Master**, and add the following flags for Master:
+    ```properties
+    leader_failure_max_missed_heartbeat_periods 5
+    raft_heartbeat_interval_ms 1500
+    leader_lease_duration_ms 6000
+    ```
 
-  ```properties
-  leader_failure_max_missed_heartbeat_periods 5
-  raft_heartbeat_interval_ms 1500
-  leader_lease_duration_ms 6000
-  ```
+    Because the data is globally replicated, RPC latencies are higher; you can use these flags to increase the failure detection interval in a higher RPC latency deployment.
 
-  And add the following flags for T-Server:
+    ![Create multi-region universe on GCP](/images/yp/create-deployments/create-multi-region-uni2.png)
 
-  ```properties
-  leader_failure_max_missed_heartbeat_periods 5
-  raft_heartbeat_interval_ms 1500
-  leader_lease_duration_ms 6000
-  ```
-
-  Note that because the data is globally replicated, RPC latencies are higher; these flags are used for increasing the failure detection interval in a higher RPC latency deployment.
-
-  ![Create multi-region universe on GCP](/images/yp/create-deployments/create-multi-region-uni2.png)
-
-- Click **Create**.
-
-Note that all YugabyteDB universes created using YugabyteDB Anywhere have the YB Controller automatically installed on their nodes. The YB Controller works in the background to speed up backup and restore of universes.
+1. Click **Create**.
 
 ## Examine the universe
 
@@ -67,7 +59,7 @@ When the universe is created, you can access it via **Universes** or **Dashboard
 
 To see a list of nodes that belong to this universe, select **Nodes**. Notice that the nodes are distributed across geographic regions.
 
-You can also verify that the instances were created in the appropriate regions by clicking on the node name to access the cloud provider's instances page. For GCP, you navigate to **Compute Engine > VM Instances** and search for instances that contain `helloworld2` in their name.
+You can also verify that the instances were created in the appropriate regions by clicking on the node name to access the cloud provider's instances page. For GCP, you navigate to **Compute Engine > VM Instances** and search for instances that contain the name of your universe in their name.
 
 ## Run a global application
 

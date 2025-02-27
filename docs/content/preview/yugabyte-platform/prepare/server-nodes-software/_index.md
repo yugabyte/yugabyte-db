@@ -73,6 +73,12 @@ python3 -c "import selinux; import sys; print(sys.version)"
 
 Alternately, if you are using the default version of python3, you might be able to install the python3-libselinux package.
 
+#### CA certificates
+
+By default, YugabyteDB Anywhere can automatically generate and copy self-signed TLS certificates used for node-to-node encryption in transit to universe nodes when the universe is created.
+
+However, if you want to use your own CA certificates, you must manually copy them to universe nodes. For more information, refer to [CA certificates](../../security/enable-encryption-in-transit/add-certificate-ca/). (CA certificates can only be used with on-premises universes.)
+
 ### Additional software for airgapped deployment
 
 Additionally, if not connected to the public Internet (that is, airgapped); and not connected to a local Yum repository that contains the [additional software](#additional-software), database cluster nodes must also have the following additional software pre-installed:
