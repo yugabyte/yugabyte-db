@@ -18,7 +18,7 @@ To test and take advantage of features developed for enhanced PostgreSQL compati
 
 | Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
-| [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | |
+| [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | {{<release "2024.2.2">}} |
 | [Wait-on-conflict](#wait-on-conflict-concurrency) | [enable_wait_queues](../../reference/configuration/yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1">}} |
 | [Cost based optimizer](#cost-based-optimizer) | [yb_enable_base_scans_cost_model](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | {{<release "2024.1">}} | |
 | [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../../reference/configuration/yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
