@@ -35,14 +35,23 @@ const awsRegionList = AWS_REGIONS.map((region, index) => {
   };
 });
 
+const KmsProvider = {
+  AWS: 'AWS',
+  HASHICORP: 'HASHICORP',
+  GCP: 'GCP',
+  AZU: 'AZU',
+  CIPHERTRUST: 'CIPHERTRUST'
+};
+
 // TODO: (Daniel) - Replace this hard-coding with an API that returns a list of supported KMS Configurations
 let kmsConfigTypes = [
   // Equinix KMS support is deprecated from 2.12.1
   // { value: 'SMARTKEY', label: 'Equinix SmartKey' },
-  { value: 'AWS', label: 'AWS KMS' },
-  { value: 'HASHICORP', label: 'Hashicorp Vault' },
-  { value: 'GCP', label: 'GCP KMS' },
-  { value: 'AZU', label: 'Azure KMS' }
+  { value: KmsProvider.AWS, label: 'AWS KMS' },
+  { value: KmsProvider.HASHICORP, label: 'Hashicorp Vault' },
+  { value: KmsProvider.GCP, label: 'GCP KMS' },
+  { value: KmsProvider.AZU, label: 'Azure KMS' },
+  { value: KmsProvider.CIPHERTRUST, label: 'CipherTrust KMS' }
 ];
 
 //GCP KMS
@@ -64,13 +73,51 @@ const KEY_SIZES = [
 const DEFAULT_AZU_PROTECTION_ALGO = AZU_PROTECTION_ALGOS[0];
 const DEFAULT_KEY_SIZE = KEY_SIZES[0];
 
+// CipherTrust KMS
+const CipherTrustAuthType = {
+  PASSWORD: 'PASSWORD',
+  REFRESH_TOKEN: 'REFRESH_TOKEN'
+};
+const CIPHERTRUST_AUTH_OPTIONS = [
+  { value: CipherTrustAuthType.PASSWORD, label: 'User Credentials' },
+  { value: CipherTrustAuthType.REFRESH_TOKEN, label: 'Refresh Token' }
+];
+const DEFAULT_CIPHERTRUST_AUTH_OPTION = CIPHERTRUST_AUTH_OPTIONS[0];
+
+const CipherTrustKeyAlgorithm = {
+  AES: 'AES'
+};
+
+const CIPHERTRUST_KEY_SIZE_OPTIONS = {
+  [CipherTrustKeyAlgorithm.AES]: {
+    default: { label: '256', value: 256 },
+    options: [
+      { label: '128', value: 128 },
+      { label: '192', value: 192 },
+      { label: '256', value: 256 }
+    ]
+  }
+};
+
+const CIPHERTRUST_KEY_ALGORITHM_OPTIONS = Object.keys(CIPHERTRUST_KEY_SIZE_OPTIONS).map(
+  (keyAlgo) => ({
+    label: keyAlgo,
+    value: keyAlgo
+  })
+);
+const DEFAULT_CIPHERTRUST_KEY_ALGORITHM_OPTION = CIPHERTRUST_KEY_ALGORITHM_OPTIONS[0];
+
 //Form Data
 const DEFAULT_FORM_DATA = {
   kmsProvider: kmsConfigTypes[0],
   PROTECTION_LEVEL: DEFAULT_PROTECTION,
   LOCATION_ID: DEFAULT_GCP_LOCATION,
   AZU_KEY_ALGORITHM: DEFAULT_AZU_PROTECTION_ALGO,
-  AZU_KEY_SIZE: DEFAULT_KEY_SIZE
+  AZU_KEY_SIZE: DEFAULT_KEY_SIZE,
+  ciphertrustAuthType: DEFAULT_CIPHERTRUST_AUTH_OPTION,
+  cipherTrustKeyAlgorithm: DEFAULT_CIPHERTRUST_KEY_ALGORITHM_OPTION,
+  cipherTrustKeySize:
+    CIPHERTRUST_KEY_SIZE_OPTIONS[DEFAULT_CIPHERTRUST_KEY_ALGORITHM_OPTION?.value]?.default
 };
 
 //HCP KMS
@@ -105,12 +152,12 @@ class KeyManagementConfiguration extends Component {
   isTokenMode = () => {
     const { hcpAuthType } = this.state;
     return hcpAuthType.value === HcpAuthType.Token;
-  }
+  };
 
   isAppRoleMode = () => {
     const { hcpAuthType } = this.state;
     return hcpAuthType.value === HcpAuthType.AppRole;
-  }
+  };
 
   updateFormField = (field, value) => {
     this.props.dispatch(change('kmsProviderConfigForm', field, value));
@@ -170,15 +217,23 @@ class KeyManagementConfiguration extends Component {
       const updateConfig = (data) => {
         updateKMSConfig(values.configUUID, data).then((res) => {
           if (res) {
-            this.setState({ listView: true, mode: 'NEW', hcpAuthType: DEFAULT_HCP_AUTHENTICATION_TYPE, formData: DEFAULT_FORM_DATA }, () => {
-              this.monitorTaskStatus(res.payload.data.taskUUID, mode);
-            });
+            this.setState(
+              {
+                listView: true,
+                mode: 'NEW',
+                hcpAuthType: DEFAULT_HCP_AUTHENTICATION_TYPE,
+                formData: DEFAULT_FORM_DATA
+              },
+              () => {
+                this.monitorTaskStatus(res.payload.data.taskUUID, mode);
+              }
+            );
           }
         });
       };
 
       switch (kmsProvider.value) {
-        case 'AWS':
+        case KmsProvider.AWS:
           if (values.AWS_KMS_ENDPOINT) data['AWS_KMS_ENDPOINT'] = values.AWS_KMS_ENDPOINT;
 
           if (!this.state.enabledIAMProfile) {
@@ -198,14 +253,20 @@ class KeyManagementConfiguration extends Component {
             data['cmk_id'] = values.cmk_id;
           }
           break;
-        case 'HASHICORP':
+        case KmsProvider.HASHICORP:
           data['HC_VAULT_ADDRESS'] = values.HC_VAULT_ADDRESS;
           if (this.isTokenMode()) {
             if (isFieldModified('HC_VAULT_TOKEN')) data['HC_VAULT_TOKEN'] = values.HC_VAULT_TOKEN;
           } else if (this.isAppRoleMode()) {
-            if (isFieldModified('HC_VAULT_ROLE_ID')) data['HC_VAULT_ROLE_ID'] = values.HC_VAULT_ROLE_ID;
-            if (isFieldModified('HC_VAULT_SECRET_ID')) data['HC_VAULT_SECRET_ID'] = values.HC_VAULT_SECRET_ID;
-            if (isFieldModified('HC_VAULT_AUTH_NAMESPACE')) data['HC_VAULT_AUTH_NAMESPACE'] = values.HC_VAULT_AUTH_NAMESPACE;
+            if (isFieldModified('HC_VAULT_ROLE_ID')) {
+              data['HC_VAULT_ROLE_ID'] = values.HC_VAULT_ROLE_ID;
+            }
+            if (isFieldModified('HC_VAULT_SECRET_ID')) {
+              data['HC_VAULT_SECRET_ID'] = values.HC_VAULT_SECRET_ID;
+            }
+            if (isFieldModified('HC_VAULT_AUTH_NAMESPACE')) {
+              data['HC_VAULT_AUTH_NAMESPACE'] = values.HC_VAULT_AUTH_NAMESPACE;
+            }
           }
           break;
         default:
@@ -213,7 +274,7 @@ class KeyManagementConfiguration extends Component {
           data['base_url'] = values.base_url || 'api.amer.smartkey.io';
           if (isFieldModified('api_key')) data['api_key'] = values.api_key;
           break;
-        case 'GCP':
+        case KmsProvider.GCP:
           if (values.GCP_CONFIG) {
             readUploadedFile(values.GCP_CONFIG).then((creds) => {
               try {
@@ -227,17 +288,27 @@ class KeyManagementConfiguration extends Component {
             return;
           }
           break;
-        case 'AZU':
+        case KmsProvider.AZU:
           if (isFieldModified('CLIENT_ID')) data['CLIENT_ID'] = values.CLIENT_ID;
 
           if (!this.state.enabledMI) {
-            if (isFieldModified('CLIENT_SECRET'))
-              data['CLIENT_SECRET'] = values.CLIENT_SECRET;
+            if (isFieldModified('CLIENT_SECRET')) data['CLIENT_SECRET'] = values.CLIENT_SECRET;
           }
 
           if (isFieldModified('TENANT_ID')) data['TENANT_ID'] = values.TENANT_ID;
 
           break;
+
+        case KmsProvider.CIPHERTRUST: {
+          const ciphertrustAuthType = values.ciphertrustAuthType.value;
+          data['AUTH_TYPE'] = ciphertrustAuthType;
+          if (ciphertrustAuthType === CipherTrustAuthType.PASSWORD) {
+            data['USERNAME'] = values.cipherTrustAuthUsername;
+            data['PASSWORD'] = values.cipherTrustAuthPassword;
+          } else if (ciphertrustAuthType === CipherTrustAuthType.REFRESH_TOKEN) {
+            data['REFRESH_TOKEN'] = values.cipherTrustAuthRefreshToken;
+          }
+        }
       }
       updateConfig(data);
     }
@@ -262,7 +333,7 @@ class KeyManagementConfiguration extends Component {
       };
 
       switch (kmsProvider.value) {
-        case 'AWS':
+        case KmsProvider.AWS:
           if (values.AWS_KMS_ENDPOINT) data['AWS_KMS_ENDPOINT'] = values.AWS_KMS_ENDPOINT;
 
           if (!this.state.enabledIAMProfile) {
@@ -281,7 +352,7 @@ class KeyManagementConfiguration extends Component {
             data['cmk_id'] = values.cmk_id;
           }
           break;
-        case 'HASHICORP':
+        case KmsProvider.HASHICORP:
           data['HC_VAULT_ADDRESS'] = values.HC_VAULT_ADDRESS;
           if (this.isTokenMode()) {
             data['HC_VAULT_TOKEN'] = values.HC_VAULT_TOKEN;
@@ -303,7 +374,7 @@ class KeyManagementConfiguration extends Component {
           data['base_url'] = values.base_url || 'api.amer.smartkey.io';
           data['api_key'] = values.api_key;
           break;
-        case 'GCP':
+        case KmsProvider.GCP:
           if (values.GCP_CONFIG) {
             readUploadedFile(values.GCP_CONFIG).then((creds) => {
               try {
@@ -324,7 +395,7 @@ class KeyManagementConfiguration extends Component {
           }
 
           break;
-        case 'AZU':
+        case KmsProvider.AZU:
           data['CLIENT_ID'] = values.CLIENT_ID;
           if (!this.state.enabledMI) {
             data['CLIENT_SECRET'] = values.CLIENT_SECRET;
@@ -336,6 +407,22 @@ class KeyManagementConfiguration extends Component {
           data['AZU_KEY_SIZE'] = Number(values.AZU_KEY_SIZE.value);
 
           break;
+        case KmsProvider.CIPHERTRUST: {
+          const ciphertrustAuthType = values.ciphertrustAuthType.value;
+
+          data['CIPHERTRUST_MANAGER_URL'] = values.cipherTrustManagerUrl;
+          data['AUTH_TYPE'] = ciphertrustAuthType;
+          data['KEY_NAME'] = values.cipherTrustKeyName;
+          data['KEY_ALGORITHM'] = values.cipherTrustKeyAlgorithm;
+          data['KEY_SIZE'] = values.cipherTrustKeySize;
+
+          if (ciphertrustAuthType === CipherTrustAuthType.PASSWORD) {
+            data['USERNAME'] = values.cipherTrustAuthUsername;
+            data['PASSWORD'] = values.cipherTrustAuthPassword;
+          } else if (ciphertrustAuthType === CipherTrustAuthType.REFRESH_TOKEN) {
+            data['REFRESH_TOKEN'] = values.cipherTrustAuthRefreshToken;
+          }
+        }
       }
 
       createConfig(data);
@@ -564,7 +651,10 @@ class KeyManagementConfiguration extends Component {
             />
           </Col>
           <Col lg={1} className="config-zone-tooltip">
-            <YBInfoTip title="Authentication Type" content="The authentication type used to connect to the Hahicorp Vault." />
+            <YBInfoTip
+              title="Authentication Type"
+              content="The authentication type used to connect to the Hahicorp Vault."
+            />
           </Col>
         </Row>
         {isToken && (
@@ -1000,6 +1090,129 @@ class KeyManagementConfiguration extends Component {
     );
   };
 
+  getCipherTrustForm = (values) => {
+    const ciphertrustAuthType = values.ciphertrustAuthType.value;
+    const ciphertrustKeyAlgorithm = values.cipherTrustKeyAlgorithm.value;
+    const isEdit = this.isEditMode();
+    return (
+      <>
+        <Row className="config-provider-row">
+          <Col lg={3}>
+            <div className="form-item-custom-label">CipherTrust Manager URL</div>
+          </Col>
+          <Col lg={7}>
+            <Field name="cipherTrustManagerUrl" component={YBFormInput} disabled={isEdit} />
+          </Col>
+        </Row>
+        <Row className="config-provider-row">
+          <Col lg={3}>
+            <div className="form-item-custom-label">Authentication Type</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name="ciphertrustAuthType"
+              component={YBFormSelect}
+              options={CIPHERTRUST_AUTH_OPTIONS}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Authentication Type"
+              content="The authentication type used to connect to the CipherTrust manager."
+            />
+          </Col>
+        </Row>
+        {ciphertrustAuthType === CipherTrustAuthType.PASSWORD ? (
+          <>
+            <Row className="config-provider-row">
+              <Col lg={3}>
+                <div className="form-item-custom-label">Username</div>
+              </Col>
+              <Col lg={7}>
+                <Field name="cipherTrustAuthUsername" component={YBFormInput} />
+              </Col>
+            </Row>
+            <Row className="config-provider-row">
+              <Col lg={3}>
+                <div className="form-item-custom-label">Password</div>
+              </Col>
+              <Col lg={7}>
+                <Field name="cipherTrustAuthPassword" component={YBFormInput} />
+              </Col>
+            </Row>
+          </>
+        ) : (
+          <Row className="config-provider-row">
+            <Col lg={3}>
+              <div className="form-item-custom-label">Refresh Token</div>
+            </Col>
+            <Col lg={7}>
+              <Field name="cipherTrustAuthRefreshToken" component={YBFormInput} />
+            </Col>
+            <Col lg={1} className="config-zone-tooltip">
+              <YBInfoTip
+                title="Refresh Token"
+                content="A refresh token is a long lived token which can be used instead of user credentials. It can be generated with the `ksctl tokens create` command."
+              />
+            </Col>
+          </Row>
+        )}
+        <Row className="config-provider-row">
+          <Col lg={3}>
+            <div className="form-item-custom-label">Key Name</div>
+          </Col>
+          <Col lg={7}>
+            <Field name="cipherTrustKeyName" component={YBFormInput} disabled={isEdit} />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Key Name"
+              content="If the key name does not exist, YugabyteDB Anywhere will create a new key using the provided key name, key algorithm, and key size."
+            />
+          </Col>
+        </Row>
+        <Row className="config-provider-row">
+          <Col lg={3}>
+            <div className="form-item-custom-label">Key Algorithm</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name="cipherTrustKeyAlgorithm"
+              component={YBFormSelect}
+              options={CIPHERTRUST_KEY_ALGORITHM_OPTIONS}
+              isDisabled={isEdit}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Key Algorithm"
+              content="This field is ignored if the provided key name exists. If the key name does not exist, YugabyteDB Anywhere will create a new key using the provided key name, key algorithm, and key size."
+            />
+          </Col>
+        </Row>
+        <Row className="config-provider-row">
+          <Col lg={3}>
+            <div className="form-item-custom-label">Key Size</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name="cipherTrustKeySize"
+              component={YBFormSelect}
+              options={CIPHERTRUST_KEY_SIZE_OPTIONS[ciphertrustKeyAlgorithm]?.options ?? []}
+              isDisabled={isEdit}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Key Size"
+              content="This field is ignored if the provided key name exists. If the key name does not exist, YugabyteDB Anywhere will create a new key using the provided key name, key algorithm, and key size."
+            />
+          </Col>
+        </Row>
+      </>
+    );
+  };
+
   displayFormContent = (provider, values) => {
     if (!provider) {
       return this.getAWSForm(values);
@@ -1007,14 +1220,16 @@ class KeyManagementConfiguration extends Component {
     switch (provider.value) {
       case 'SMARTKEY':
         return this.getSmartKeyForm();
-      case 'AWS':
+      case KmsProvider.AWS:
         return this.getAWSForm(values);
-      case 'HASHICORP':
+      case KmsProvider.HASHICORP:
         return this.getHCVaultForm();
-      case 'GCP':
+      case KmsProvider.GCP:
         return this.getGCPForm();
-      case 'AZU':
+      case KmsProvider.AZU:
         return this.getAzuForm();
+      case KmsProvider.CIPHERTRUST:
+        return this.getCipherTrustForm(values);
       default:
         return this.getAWSForm(values);
     }
@@ -1034,24 +1249,49 @@ class KeyManagementConfiguration extends Component {
       AZU_KEY_ALGORITHM,
       AZU_KEY_SIZE
     } = credentials;
-    if (provider) formData.kmsProvider = kmsConfigTypes.find((config) => config.value === provider);
-    if (AWS_REGION) formData.region = awsRegionList.find((region) => region.value === AWS_REGION);
-    if (PROTECTION_LEVEL)
+    if (provider) {
+      formData.kmsProvider = kmsConfigTypes.find((config) => config.value === provider);
+    }
+    if (AWS_REGION) {
+      formData.region = awsRegionList.find((region) => region.value === AWS_REGION);
+    }
+    if (PROTECTION_LEVEL) {
       formData.PROTECTION_LEVEL = PROTECTION_LEVELS.find(
         (protection) => protection.value === PROTECTION_LEVEL
       );
-    if (LOCATION_ID)
+    }
+    if (LOCATION_ID) {
       formData.LOCATION_ID = GCP_KMS_REGIONS_FLATTENED.find(
         (region) => region.value === LOCATION_ID
       );
+    }
 
-    if (AZU_KEY_ALGORITHM)
+    if (AZU_KEY_ALGORITHM) {
       formData.AZU_KEY_ALGORITHM = AZU_PROTECTION_ALGOS.find(
         (algo) => algo.value === AZU_KEY_ALGORITHM
       );
+    }
 
-    if (AZU_KEY_SIZE)
+    if (AZU_KEY_SIZE) {
       formData.AZU_KEY_SIZE = KEY_SIZES.find((keysize) => keysize.value === AZU_KEY_SIZE);
+    }
+
+    if (provider === KmsProvider.CIPHERTRUST) {
+      formData.cipherTrustManagerUrl = credentials.CIPHERTRUST_MANAGER_URL;
+      formData.ciphertrustAuthType = CIPHERTRUST_AUTH_OPTIONS.find(
+        (authOption) => authOption.value === credentials.AUTH_TYPE
+      );
+      if (credentials.AUTH_TYPE === CipherTrustAuthType.PASSWORD) {
+        formData.cipherTrustAuthUsername = credentials.USERNAME;
+      }
+      formData.cipherTrustKeyName = credentials.KEY_NAME;
+      formData.cipherTrustKeyAlgorithm = CIPHERTRUST_KEY_ALGORITHM_OPTIONS.find(
+        (keyAlgorithmOption) => keyAlgorithmOption.value === credentials.KEY_ALGORITHM
+      );
+      formData.cipherTrustKeySize = CIPHERTRUST_KEY_SIZE_OPTIONS[
+        formData.cipherTrustKeyAlgorithm?.value
+      ]?.options.find((keySizeOption) => keySizeOption.value === credentials.KEY_SIZE);
+    }
 
     this.setState({
       listView: false,
@@ -1073,7 +1313,12 @@ class KeyManagementConfiguration extends Component {
    * Shows list view on click of cancel button by turning the listView flag ON.
    */
   showListView = () => {
-    this.setState({ listView: true, mode: 'NEW', hcpAuthType: DEFAULT_HCP_AUTHENTICATION_TYPE, formData: DEFAULT_FORM_DATA });
+    this.setState({
+      listView: true,
+      mode: 'NEW',
+      hcpAuthType: DEFAULT_HCP_AUTHENTICATION_TYPE,
+      formData: DEFAULT_FORM_DATA
+    });
   };
 
   isValidUrl = (url) => {
@@ -1106,21 +1351,23 @@ class KeyManagementConfiguration extends Component {
       if (isHCVaultEnabled || isGcpKMSEnabled || isAzuKMSEnabled) {
         kmsConfigTypes = kmsConfigTypes.filter((config) => {
           return (
-            !['HASHICORP', 'GCP', 'AZU'].includes(config.value) ||
-            (config.value === 'HASHICORP' && isHCVaultEnabled) ||
-            (config.value === 'GCP' && isGcpKMSEnabled) ||
-            (config.value === 'AZU' && isAzuKMSEnabled)
+            ![KmsProvider.HASHICORP, KmsProvider.GCP, KmsProvider.AZU].includes(config.value) ||
+            (config.value === KmsProvider.HASHICORP && isHCVaultEnabled) ||
+            (config.value === KmsProvider.GCP && isGcpKMSEnabled) ||
+            (config.value === KmsProvider.AZU && isAzuKMSEnabled)
           );
         });
         configs = configs
           ? configs.filter((config) => {
-            return (
-              !['HASHICORP', 'GCP', 'AZU'].includes(config.metadata.provider) ||
-              (config.metadata.provider === 'HASHICORP' && isHCVaultEnabled) ||
-              (config.metadata.provider === 'GCP' && isGcpKMSEnabled) ||
-              (config.metadata.provider === 'AZU' && isAzuKMSEnabled)
-            );
-          })
+              return (
+                ![KmsProvider.HASHICORP, KmsProvider.GCP, KmsProvider.AZU].includes(
+                  config.metadata.provider
+                ) ||
+                (config.metadata.provider === KmsProvider.HASHICORP && isHCVaultEnabled) ||
+                (config.metadata.provider === KmsProvider.GCP && isGcpKMSEnabled) ||
+                (config.metadata.provider === KmsProvider.AZU && isAzuKMSEnabled)
+              );
+            })
           : [];
       }
       //feature flagging
@@ -1149,17 +1396,17 @@ class KeyManagementConfiguration extends Component {
 
         //Aws KMS
         AWS_ACCESS_KEY_ID: Yup.string().when('kmsProvider', {
-          is: (provider) => provider?.value === 'AWS' && !enabledIAMProfile,
+          is: (provider) => provider?.value === KmsProvider.AWS && !enabledIAMProfile,
           then: Yup.string().required('Access Key ID is Required')
         }),
 
         AWS_SECRET_ACCESS_KEY: Yup.string().when('kmsProvider', {
-          is: (provider) => provider?.value === 'AWS' && !enabledIAMProfile,
+          is: (provider) => provider?.value === KmsProvider.AWS && !enabledIAMProfile,
           then: Yup.string().required('Secret Key ID is Required')
         }),
 
         region: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'AWS',
+          is: (provider) => provider?.value === KmsProvider.AWS,
           then: Yup.mixed().required('AWS Region is Required')
         }),
 
@@ -1168,7 +1415,7 @@ class KeyManagementConfiguration extends Component {
 
         // HC Vault
         HC_VAULT_ADDRESS: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'HASHICORP',
+          is: (provider) => provider?.value === KmsProvider.HASHICORP,
           then: Yup.string()
             .matches(/^(?:http(s)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d+/, {
               message: 'Vault Address must be a valid URL with port number'
@@ -1177,43 +1424,43 @@ class KeyManagementConfiguration extends Component {
         }),
 
         HC_VAULT_TOKEN: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'HASHICORP' && isToken,
+          is: (provider) => provider?.value === KmsProvider.HASHICORP && isToken,
           then: Yup.mixed().required('Secret Token is Required')
         }),
 
         HC_VAULT_ROLE_ID: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'HASHICORP' && isAppRole,
+          is: (provider) => provider?.value === KmsProvider.HASHICORP && isAppRole,
           then: Yup.mixed().required('Role ID is Required')
         }),
 
         HC_VAULT_SECRET_ID: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'HASHICORP' && isAppRole,
+          is: (provider) => provider?.value === KmsProvider.HASHICORP && isAppRole,
           then: Yup.mixed().required('Secret ID is Required')
         }),
 
         //GCP KMS
         GCP_CONFIG: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'GCP',
+          is: (provider) => provider?.value === KmsProvider.GCP,
           then: Yup.mixed().required('GCP Credentials are Required')
         }),
         LOCATION_ID: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'GCP',
+          is: (provider) => provider?.value === KmsProvider.GCP,
           then: Yup.object().required('Location is Required')
         }),
         PROTECTION_LEVEL: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'GCP',
+          is: (provider) => provider?.value === KmsProvider.GCP,
           then: Yup.object().required('Protection Level is Required')
         }),
         KEY_RING_ID: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'GCP',
+          is: (provider) => provider?.value === KmsProvider.GCP,
           then: Yup.string().required('Key Ring Name is Required')
         }),
         CRYPTO_KEY_ID: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'GCP',
+          is: (provider) => provider?.value === KmsProvider.GCP,
           then: Yup.string().required('Crypto Key Name is Required')
         }),
         GCP_KMS_ENDPOINT: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'GCP',
+          is: (provider) => provider?.value === KmsProvider.GCP,
           then: Yup.string().test(
             'is-url-valid',
             'GCP KMS Custom Endpoint must be a valid URL',
@@ -1223,36 +1470,76 @@ class KeyManagementConfiguration extends Component {
 
         //Azu KMS
         CLIENT_ID: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'AZU',
+          is: (provider) => provider?.value === KmsProvider.AZU,
           then: Yup.mixed().required('Client ID is required')
         }),
         CLIENT_SECRET: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'AZU' && !enabledMI,
+          is: (provider) => provider?.value === KmsProvider.AZU && !enabledMI,
           then: Yup.string().required('Client Secret is Required')
         }),
         TENANT_ID: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'AZU',
+          is: (provider) => provider?.value === KmsProvider.AZU,
           then: Yup.string().required('Tenant ID is Required')
         }),
         AZU_KEY_NAME: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'AZU',
+          is: (provider) => provider?.value === KmsProvider.AZU,
           then: Yup.string().required('Key Name is Required')
         }),
         AZU_KEY_ALGORITHM: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'AZU',
+          is: (provider) => provider?.value === KmsProvider.AZU,
           then: Yup.object().required('Key Algorithm is Required')
         }),
         AZU_KEY_SIZE: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'AZU',
+          is: (provider) => provider?.value === KmsProvider.AZU,
           then: Yup.object().required('Key Size is Required')
         }),
         AZU_VAULT_URL: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'AZU',
+          is: (provider) => provider?.value === KmsProvider.AZU,
           then: Yup.string()
             .required('Key Vault URL is Required')
             .test('is-url-valid', 'Key Vault URL must be a valid URL', (value) =>
               this.isValidUrl(value)
             )
+        }),
+
+        // CipherTrust KMS
+        cipherTrustManagerUrl: Yup.string().when('kmsProvider', {
+          is: (provider) => provider?.value === KmsProvider.CIPHERTRUST,
+          then: Yup.string().required('CipherTrust Manager URL is Required')
+        }),
+        ciphertrustAuthType: Yup.object().when('kmsProvider', {
+          is: (provider) => provider?.value === KmsProvider.CIPHERTRUST,
+          then: Yup.object().required('Authentication type is Required')
+        }),
+        cipherTrustAuthUsername: Yup.string().when(['kmsProvider', 'ciphertrustAuthType'], {
+          is: (provider, ciphertrustAuthType) =>
+            provider?.value === KmsProvider.CIPHERTRUST &&
+            ciphertrustAuthType?.value === CipherTrustAuthType.PASSWORD,
+          then: Yup.string().required('Username is required')
+        }),
+        cipherTrustAuthPassword: Yup.string().when(['kmsProvider', 'ciphertrustAuthType'], {
+          is: (provider, ciphertrustAuthType) =>
+            provider?.value === KmsProvider.CIPHERTRUST &&
+            ciphertrustAuthType?.value === CipherTrustAuthType.PASSWORD,
+          then: Yup.string().required('Password is required')
+        }),
+        cipherTrustAuthRefreshToken: Yup.string().when(['kmsProvider', 'ciphertrustAuthType'], {
+          is: (provider, ciphertrustAuthType) =>
+            provider?.value === KmsProvider.CIPHERTRUST &&
+            ciphertrustAuthType?.value === CipherTrustAuthType.REFRESH_TOKEN,
+          then: Yup.string().required('Refresh token is required')
+        }),
+        cipherTrustKeyName: Yup.string().when('kmsProvider', {
+          is: (provider) => provider?.value === KmsProvider.CIPHERTRUST,
+          then: Yup.string().required('Key name is Required')
+        }),
+        cipherTrustKeyAlgorithm: Yup.object().when('kmsProvider', {
+          is: (provider) => provider?.value === KmsProvider.CIPHERTRUST,
+          then: Yup.object().required('Key algorithm is Required')
+        }),
+        cipherTrustKeySize: Yup.object().when('kmsProvider', {
+          is: (provider) => provider?.value === KmsProvider.CIPHERTRUST,
+          then: Yup.object().required('Key size is Required')
         })
       });
 
