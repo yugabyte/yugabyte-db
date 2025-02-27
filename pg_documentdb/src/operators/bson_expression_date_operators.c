@@ -6938,7 +6938,7 @@ ValidateOffsetMinutes(char *dateString, int sizeOfDateString, int *indexOfDateSt
 	int hours = totalMins / 60;
 	int minutes = totalMins % 60;
 
-	char hoursAndMinsFmt[7];
+	char *hoursAndMinsFmt = (char *) palloc0(7 * sizeof(char));
 	sprintf(hoursAndMinsFmt, "%c%02d:%02d", sign, hours, minutes);
 
 	dateFromParts->timezone.value_type = BSON_TYPE_UTF8;
@@ -7061,7 +7061,7 @@ ValidateTimezoneOffsetForDateString(char *dateString, int sizeOfDateString,
 			 (dateString[*indexOfDateStringIter] == '-'))
 	{
 		/* for +0530 or -05:30 max len is 6 and 1 for '/0' */
-		char timezoneOffset[7];
+		char *timezoneOffset = (char *) palloc0(7 * sizeof(char));
 		int timezoneOffsetLen = 0;
 
 		/* Copying the sign */
