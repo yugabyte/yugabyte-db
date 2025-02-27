@@ -281,6 +281,12 @@ const SlowQueriesComponent = () => {
             {!universePaused && (
               <div className="slow-queries__actions">
                 <YBButtonLink
+                  btnIcon="fa fa-refresh"
+                  btnClass="btn btn-default"
+                  btnText="Refresh Stats"
+                  onClick={getSlowQueries}
+                />
+                <YBButtonLink
                   btnIcon="fa fa-undo"
                   btnClass="btn btn-default"
                   btnText="Reset Stats"
