@@ -31,7 +31,7 @@
 
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
-DECLARE_bool(TEST_xcluster_enable_ddl_replication);
+DECLARE_bool(xcluster_enable_ddl_replication);
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
@@ -164,7 +164,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   void SetUp() {
     YBTest::SetUp();
     LOG(INFO) << "Test uses automatic mode: " << UseAutomaticMode();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) = UseAutomaticMode();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_ddl_replication) = UseAutomaticMode();
   }
 
   virtual bool UseAutomaticMode() {
