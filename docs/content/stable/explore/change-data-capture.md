@@ -166,7 +166,7 @@ table public.projects: INSERT: project_id[integer]:1 name[character varying]:'Pr
 COMMIT 3
 ```
 
-YugabyteDB semantics are different from PostgreSQL when it comes to streaming added tables to a publication. Refer the [YugabyteDB semantics](../develop/change-data-capture/using-logical-replication/advanced-topic.md#yugabytedb-semantics) for more details.
+YugabyteDB semantics are different from PostgreSQL when it comes to streaming added tables to a publication. Refer to [YugabyteDB semantics](../../develop/change-data-capture/using-logical-replication/advanced-topic.md#yugabytedb-semantics) for more details.
 
 {{% explore-cleanup-local %}}
 
