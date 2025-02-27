@@ -23,6 +23,7 @@
 #include <thread>
 #include <variant>
 #include <vector>
+#include "yb/server/server_base_options.h"
 
 #ifndef __linux__
 #include <libproc.h>
@@ -1055,8 +1056,10 @@ Status PgWrapper::CleanupPgData(const std::string& data_dir) {
 }
 
 Status PgWrapper::InitDbForYSQL(
-    const string& master_addresses, const string& tmp_dir_base, int tserver_shm_fd,
-    std::vector<std::pair<string, YbcPgOid>> db_to_oid, bool is_major_upgrade) {
+    const server::ServerBaseOptions& options, FsManager& fs_manager, const string& tmp_dir_base,
+    int tserver_shm_fd, std::vector<std::pair<string, YbcPgOid>> db_to_oid, bool is_major_upgrade) {
+  const auto master_addresses = server::MasterAddressesToString(*options.GetMasterAddresses());
+
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;
@@ -1079,6 +1082,9 @@ Status PgWrapper::InitDbForYSQL(
                    << is_dir.status();
     }
   });
+
+  RETURN_NOT_OK(conf.SetSslConf(options, fs_manager));
+
   PgWrapper pg_wrapper(conf);
   auto start_time = std::chrono::steady_clock::now();
   Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid, is_major_upgrade});

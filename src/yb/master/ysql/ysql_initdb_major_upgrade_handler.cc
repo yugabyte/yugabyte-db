@@ -281,13 +281,9 @@ Status YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog(
     snapshot_writer = &catalog_manager_.AllocateAndGetInitialSysCatalogSnapshotWriter();
   }
 
-  const auto& master_opts = master_.opts();
-  const auto master_addresses_str =
-      server::MasterAddressesToString(*master_opts.GetMasterAddresses());
-
   RETURN_NOT_OK(PgWrapper::InitDbForYSQL(
-      master_addresses_str, FLAGS_tmp_dir, master_.GetSharedMemoryFd(), db_name_to_oid_list,
-      is_major_upgrade));
+      master_.options(), *master_.fs_manager(), FLAGS_tmp_dir, master_.GetSharedMemoryFd(),
+      db_name_to_oid_list, is_major_upgrade));
 
   if (!snapshot_writer) {
     return Status::OK();
