@@ -19,6 +19,12 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 14696>}}
+| DDL Atomicity Health Check Alert is Wrong
+| {{<product "yba">}}
+| {{<release "2.18.9.0, 2.20.6.0, 2.23.0.0, 2024.1.2.0">}}
+| {{<nobreak "19 February 2025">}}
+|
 | {{<ta 25193>}}
 | Logical Replication CDC may fail to stream UPDATE or DELETE changes correctly when using FULL_ROW_NEW_IMAGE, MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES, or DEFAULT Replica Identity with CDC lag
 | [CDC](/preview/develop/change-data-capture/)
