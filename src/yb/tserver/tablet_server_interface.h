@@ -63,6 +63,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;
 
+  virtual uint32_t get_oid_cache_invalidations_count() const = 0;
+
   virtual void get_ysql_catalog_version(uint64_t* current_version,
                                         uint64_t* last_breaking_version) const = 0;
   virtual void get_ysql_db_catalog_version(uint32_t db_oid,
