@@ -2411,6 +2411,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -2890,7 +2891,6 @@
         "installOtelCollector",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -3627,6 +3627,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -3720,7 +3721,6 @@
         "backupUUID",
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "storageConfigUUID",
@@ -4179,6 +4179,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "pointInTimeRestoreEnabled" : {
@@ -4337,7 +4338,6 @@
         "creatingUser",
         "fullBackup",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "storageConfigUUID",
@@ -4477,6 +4477,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -4546,7 +4547,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "s3Bucket",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
@@ -5034,6 +5034,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -5517,7 +5518,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "selfSignedClientCertRotate",
         "selfSignedServerCertRotate",
         "sleepAfterMasterRestartMillis",
@@ -5614,6 +5614,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -5665,7 +5666,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -6324,6 +6324,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -6376,7 +6377,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -7983,6 +7983,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -8463,7 +8464,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
@@ -8748,6 +8748,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -9232,7 +9233,6 @@
         "kubernetesUpgradeSupported",
         "masterGFlags",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "tserverGFlags",
@@ -10140,6 +10140,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -10621,7 +10622,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "universeOverrides",
@@ -11433,6 +11433,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "pointInTimeRestoreEnabled" : {
@@ -11591,7 +11592,6 @@
         "creatingUser",
         "fullBackup",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "storageConfigUUID",
@@ -14282,6 +14282,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -14759,7 +14760,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -15263,6 +15263,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -15748,7 +15749,6 @@
         "kubernetesUpgradeSupported",
         "masterGFlags",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "tserverGFlags",
@@ -16067,6 +16067,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -16544,7 +16545,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -16750,6 +16750,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prefixUUID" : {
@@ -16825,7 +16826,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "universeUUID"
@@ -17152,6 +17152,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -17209,7 +17210,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -17554,6 +17554,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -18031,7 +18032,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -19249,6 +19249,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -19732,7 +19733,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
@@ -20308,6 +20308,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -20785,7 +20786,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -20848,6 +20848,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -20916,7 +20917,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "tableDetails",
@@ -21569,6 +21569,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -22047,7 +22048,6 @@
         "forceAll",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -22210,6 +22210,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -22690,7 +22691,6 @@
         "enableNodeToNodeEncrypt",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -22937,6 +22937,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -22956,7 +22957,6 @@
         }
       },
       "required" : [
-        "platformVersion",
         "storageConfigUUID"
       ],
       "type" : "object"
@@ -23103,6 +23103,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -23574,7 +23575,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -23711,6 +23711,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -24179,7 +24180,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -24316,6 +24316,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -24784,7 +24785,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -25099,6 +25099,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -25151,7 +25152,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -25323,6 +25323,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -25800,7 +25801,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -26475,6 +26475,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -26964,7 +26965,6 @@
         "forceVMImageUpgrade",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",

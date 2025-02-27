@@ -19,11 +19,14 @@ public interface ContinuousBackupMapper {
     ContinuousBackup v2ContinuousBackup = new ContinuousBackup();
     ContinuousBackupInfo v2ContinuousBackupInfo = new ContinuousBackupInfo();
     ContinuousBackupSpec v2ContinuousBackupSpec = new ContinuousBackupSpec();
-    v2ContinuousBackupInfo.setUuid(cbConfig.getUuid());
+    // User provided spec
     v2ContinuousBackupSpec.setStorageConfigUuid(cbConfig.getStorageConfigUUID());
     v2ContinuousBackupSpec.setFrequency(cbConfig.getFrequency());
     v2ContinuousBackupSpec.setFrequencyTimeUnit(
         TimeUnitType.valueOf(cbConfig.getFrequencyTimeUnit().name()));
+    v2ContinuousBackupSpec.setBackupDir(cbConfig.getBackupDir());
+    // System generated info
+    v2ContinuousBackupInfo.setUuid(cbConfig.getUuid());
     v2ContinuousBackupInfo.setStorageLocation(cbConfig.getStorageLocation());
     Long lastBackup = cbConfig.getLastBackup();
     OffsetDateTime backupTime =

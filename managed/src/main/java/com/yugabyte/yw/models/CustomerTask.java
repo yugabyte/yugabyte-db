@@ -842,6 +842,7 @@ public class CustomerTask extends Model {
     return this;
   }
 
+  @JsonIgnore
   public String getFriendlyDescription() {
     StringBuilder sb = new StringBuilder();
     sb.append(type.toString(completionTime != null).trim());
@@ -988,6 +989,7 @@ public class CustomerTask extends Model {
         .orElse("Unknown");
   }
 
+  @JsonIgnore
   public boolean isDeletable() {
     if (targetType.isUniverseTarget()) {
       Optional<Universe> optional = Universe.maybeGet(targetUUID);
