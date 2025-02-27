@@ -2,15 +2,14 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -25,7 +24,6 @@ import com.yugabyte.yw.forms.filters.ScheduleApiFilter;
 import com.yugabyte.yw.forms.paging.SchedulePagedApiQuery;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.ScheduleTask;
@@ -33,7 +31,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedResponse;
@@ -48,7 +45,6 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.IOException;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -67,11 +63,14 @@ public class ScheduleController extends AuthenticatedController {
 
   private final BackupHelper backupHelper;
   private final Commissioner commissioner;
+  private final ScheduleTaskHelper scheduleTaskHelper;
 
   @Inject
-  public ScheduleController(BackupHelper backupHelper, Commissioner commissioner) {
+  public ScheduleController(
+      BackupHelper backupHelper, Commissioner commissioner, ScheduleTaskHelper scheduleTaskHelper) {
     this.backupHelper = backupHelper;
     this.commissioner = commissioner;
+    this.scheduleTaskHelper = scheduleTaskHelper;
   }
 
   @Deprecated
@@ -359,25 +358,8 @@ public class ScheduleController extends AuthenticatedController {
     taskParams.setScheduleUUID(schedule.getScheduleUUID());
     taskParams.setScheduleParams(scheduleParams);
 
-    TaskType taskType =
-        universe
-                .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(CloudType.kubernetes)
-            ? TaskType.EditBackupScheduleKubernetes
-            : TaskType.EditBackupSchedule;
-    UUID taskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
-    CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Schedule,
-        CustomerTask.TaskType.Update,
-        schedule.getScheduleName());
-    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
+    UUID taskUUID =
+        scheduleTaskHelper.createEditScheduledBackupTask(taskParams, customer, universe, schedule);
     auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
@@ -402,52 +384,9 @@ public class ScheduleController extends AuthenticatedController {
       UUID customerUUID, UUID universeUUID, UUID scheduleUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
-    if (!schedule.getOwnerUUID().equals(universeUUID)) {
-      throw new PlatformServiceException(BAD_REQUEST, "Schedule not owned by Universe.");
-    }
-    BackupRequestParams scheduleParams =
-        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-    if (schedule.isRunningState()
-        || (scheduleParams.enablePointInTimeRestore && universe.universeIsLocked())) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot delete schedule as Universe is locked.");
-    }
-    ObjectMapper mapper = new ObjectMapper();
-    BackupScheduleTaskParams taskParams = null;
-    try {
-      taskParams =
-          mapper.readValue(
-              mapper.writeValueAsString(universe.getUniverseDetails()),
-              BackupScheduleTaskParams.class);
-    } catch (IOException e) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Failed while processing delete schedule task params: " + e.getMessage());
-    }
-    taskParams.setCustomerUUID(customerUUID);
-    taskParams.setScheduleUUID(schedule.getScheduleUUID());
-    taskParams.setScheduleParams(scheduleParams);
-
-    TaskType taskType =
-        universe
-                .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(CloudType.kubernetes)
-            ? TaskType.DeleteBackupScheduleKubernetes
-            : TaskType.DeleteBackupSchedule;
-    UUID taskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
-    CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Schedule,
-        CustomerTask.TaskType.Delete,
-        schedule.getScheduleName());
-    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
-    auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
+    UUID taskUUID =
+        scheduleTaskHelper.createDeleteScheduledBackupTask(schedule, universeUUID, customer);
+    auditService().createAuditEntry(request, taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 

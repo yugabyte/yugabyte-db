@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -41,26 +42,19 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
-import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Indexer;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
-import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
-import io.yugabyte.operator.v1alpha1.YBUniverseStatus;
-import io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.Resource;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.Master;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.master.Limits;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.After;
 import org.junit.Before;
@@ -108,6 +102,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock ReleaseManager releaseManager;
   @Mock UniverseActionsHandler universeActionsHandler;
   @Mock YbcManager ybcManager;
+  @Mock ValidatingFormFactory validatingFormFactory;
 
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
@@ -138,7 +133,9 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     envVars = Mockito.mockStatic(KubernetesEnvironmentVariables.class);
     envVars.when(KubernetesEnvironmentVariables::getServiceHost).thenReturn("host");
     envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
-    operatorUtils = new OperatorUtils(confGetterForOperatorUtils, releaseManager, ybcManager);
+    operatorUtils =
+        new OperatorUtils(
+            confGetterForOperatorUtils, releaseManager, ybcManager, validatingFormFactory);
     // Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
     Mockito.when(
             confGetterForOperatorUtils.getGlobalConf(GlobalConfKeys.KubernetesOperatorCustomerUUID))
@@ -148,7 +145,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             client,
             informerFactory,
             namespace,
-            new OperatorWorkQueue(1, 5, 10),
+            new OperatorWorkQueue(1, 5, 10, "YBUniverse"),
             universeCRUDHandler,
             upgradeUniverseHandler,
             cloudProviderHandler,
@@ -176,7 +173,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   // Reconcile Tests
   @Test
   public void testReconcileDeleteAlreadyDeleted() {
-    YBUniverse universe = createYbUniverse();
+    YBUniverse universe = ModelFactory.createYbUniverse(defaultProvider);
     String univName =
         universeName
             + "-"
@@ -199,7 +196,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Test
   public void testReconcileCreate() {
     String universeName = "test-create-reconcile-universe";
-    YBUniverse universe = createYbUniverse(universeName);
+    YBUniverse universe = ModelFactory.createYbUniverse(universeName, defaultProvider);
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
 
     Mockito.verify(kubernetesStatusUpdator, Mockito.times(1))
@@ -216,7 +213,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   public void testReconcileCreateAlreadyExists() throws Exception {
     // We don't find any customer task entry for create universe.
     String universeName = "test-universe-already-exists";
-    YBUniverse ybUniverse = createYbUniverse(universeName);
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
     Universe universe = Universe.create(taskParams, defaultCustomer.getId());
@@ -228,7 +225,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Test
   public void testReconcileCreateAutoProvider() {
     String universeName = "test-universe-create-provider";
-    YBUniverse universe = createYbUniverse(universeName);
+    YBUniverse universe = ModelFactory.createYbUniverse(universeName, defaultProvider);
     String autoProviderNameSuffix =
         universeName
             + "-"
@@ -268,7 +265,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Test
   public void testCreateTaskRetryOnPlacementModificationTaskSet() throws Exception {
     String universeName = "test-retry-universe";
-    YBUniverse ybUniverseOriginal = createYbUniverse(universeName);
+    YBUniverse ybUniverseOriginal = ModelFactory.createYbUniverse(universeName, defaultProvider);
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
     Universe universe = Universe.create(taskParams, defaultCustomer.getId());
@@ -294,7 +291,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Test
   public void testEditTaskRetryOnPlacementModificationTaskSet() throws Exception {
     String universeName = "test-retry-universe";
-    YBUniverse ybUniverseOriginal = createYbUniverse(universeName);
+    YBUniverse ybUniverseOriginal = ModelFactory.createYbUniverse(universeName, defaultProvider);
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
     Universe universe = Universe.create(taskParams, defaultCustomer.getId());
@@ -320,7 +317,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Test
   public void testRequeueOnUniverseLocked() throws Exception {
     String universeName = "test-locked-universe";
-    YBUniverse ybUniverseOriginal = createYbUniverse(universeName);
+    YBUniverse ybUniverseOriginal = ModelFactory.createYbUniverse(universeName, defaultProvider);
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
     Universe universe = Universe.create(taskParams, defaultCustomer.getId());
@@ -347,7 +344,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Test
   public void testCreateOnPreviousCreateTaskFailed() throws Exception {
     String universeName = "test-previous-task-failed-universe";
-    YBUniverse ybUniverseOriginal = createYbUniverse(universeName);
+    YBUniverse ybUniverseOriginal = ModelFactory.createYbUniverse(universeName, defaultProvider);
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
     Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
@@ -396,7 +393,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Test
   public void testCreateAutoProviderFailStatusUpdate() throws Exception {
     String universeName = "test-provider-create-fail";
-    YBUniverse ybUniverse = createYbUniverse(universeName);
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
     ybUniverse.getSpec().setProviderName("");
     KubernetesProviderFormData providerData = new KubernetesProviderFormData();
     Mockito.when(cloudProviderHandler.suggestedKubernetesConfigs()).thenReturn(providerData);
@@ -417,7 +414,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Test
   public void testMultipleSpecUpdatePickOverrideBeforeEdit() throws Exception {
     String universeName = "test-multiple-spec-updates";
-    YBUniverse ybUniverse = createYbUniverse(universeName);
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
     Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
@@ -487,42 +484,5 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     overrides.setResource(resource);
 
     return overrides;
-  }
-
-  private YBUniverse createYbUniverse() {
-    return createYbUniverse(null);
-  }
-
-  private YBUniverse createYbUniverse(@Nullable String univName) {
-    YBUniverse universe = new YBUniverse();
-    ObjectMeta metadata = new ObjectMeta();
-    metadata.setName(univName == null ? universeName : univName);
-    metadata.setNamespace(namespace);
-    metadata.setUid(UUID.randomUUID().toString());
-    metadata.setGeneration((long) 123);
-    YBUniverseStatus status = new YBUniverseStatus();
-    YBUniverseSpec spec = new YBUniverseSpec();
-    List<String> zones = new ArrayList<>();
-    zones.add("one");
-    zones.add("two");
-    spec.setYbSoftwareVersion("2.21.0.0-b1");
-    spec.setNumNodes(1L);
-    spec.setZoneFilter(zones);
-    spec.setReplicationFactor((long) 1);
-    spec.setEnableYSQL(true);
-    spec.setEnableYCQL(false);
-    spec.setEnableNodeToNodeEncrypt(false);
-    spec.setEnableClientToNodeEncrypt(false);
-    spec.setYsqlPassword(null);
-    spec.setYcqlPassword(null);
-    spec.setProviderName(defaultProvider.getName());
-    DeviceInfo deviceInfo = new DeviceInfo();
-    deviceInfo.setVolumeSize(10L);
-    spec.setDeviceInfo(deviceInfo);
-
-    universe.setMetadata(metadata);
-    universe.setStatus(status);
-    universe.setSpec(spec);
-    return universe;
   }
 }

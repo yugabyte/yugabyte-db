@@ -3,6 +3,9 @@ package com.yugabyte.yw.common.operator;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -25,6 +28,9 @@ public class YBReconcilerFactory {
   @Inject private OperatorUtils operatorUtils;
   @Inject private UniverseActionsHandler universeActionsHandler;
   @Inject private YbcManager ybcManager;
+  @Inject private BackupHelper backupHelper;
+  @Inject private ValidatingFormFactory formFactory;
+  @Inject private ScheduleTaskHelper scheduleTaskHelper;
 
   public YBUniverseReconciler getYBUniverseReconciler(KubernetesClient client) {
     String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
@@ -42,5 +48,17 @@ public class YBReconcilerFactory {
         operatorUtils,
         universeActionsHandler,
         ybcManager);
+  }
+
+  public ScheduledBackupReconciler getScheduledBackupReconciler(KubernetesClient client) {
+    String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
+    return new ScheduledBackupReconciler(
+        backupHelper,
+        formFactory,
+        namespace,
+        operatorUtils,
+        client,
+        informerFactory,
+        scheduleTaskHelper);
   }
 }

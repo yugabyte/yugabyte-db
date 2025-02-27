@@ -47,6 +47,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Singleton
@@ -152,7 +153,7 @@ public class Scheduler {
         Date expectedIncrementScheduleTaskTime = schedule.getNextIncrementScheduleTaskTime();
         boolean backlogStatus = schedule.isBacklogStatus();
         boolean incrementBacklogStatus = schedule.isIncrementBacklogStatus();
-        if (cronExpression == null && frequency == 0) {
+        if (StringUtils.isBlank(cronExpression) && frequency == 0) {
           log.error(
               "Scheduled task does not have a recurrence specified {}", schedule.getScheduleUUID());
           continue;

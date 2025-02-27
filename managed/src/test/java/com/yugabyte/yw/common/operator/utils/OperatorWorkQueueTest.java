@@ -18,7 +18,7 @@ public class OperatorWorkQueueTest {
 
   @Before
   public void beforeTest() {
-    workQueue = new OperatorWorkQueue(1, 1, 2);
+    workQueue = new OperatorWorkQueue(1, 1, 2, "Resource");
   }
 
   @Test

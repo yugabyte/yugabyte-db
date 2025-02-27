@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common.backuprestore;
 
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
