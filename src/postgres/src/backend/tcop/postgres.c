@@ -3563,6 +3563,9 @@ ProcessInterrupts(void)
 	if (LogMemoryContextPending)
 		ProcessLogMemoryContextInterrupt();
 
+	if (YbLogCatcacheStatsPending)
+		YbProcessLogCatcacheStatsInterrupt();
+
 	if (LogHeapSnapshotPending)
 		ProcessLogHeapSnapshotInterrupt();
 }

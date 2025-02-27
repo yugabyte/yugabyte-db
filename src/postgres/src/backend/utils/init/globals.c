@@ -36,6 +36,7 @@ volatile sig_atomic_t IdleInTransactionSessionTimeoutPending = false;
 volatile sig_atomic_t IdleSessionTimeoutPending = false;
 volatile sig_atomic_t ProcSignalBarrierPending = false;
 volatile sig_atomic_t LogMemoryContextPending = false;
+volatile sig_atomic_t YbLogCatcacheStatsPending = false;
 volatile sig_atomic_t LogHeapSnapshotPending = false;
 volatile sig_atomic_t LogHeapSnapshotPeakHeap = false;
 volatile sig_atomic_t IdleStatsUpdateTimeoutPending = false;

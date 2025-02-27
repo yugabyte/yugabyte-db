@@ -12164,4 +12164,12 @@
   proargnames => '{pid}',
   prosrc => 'yb_log_backend_heap_snapshot_peak'},
 
+{ oid => '8089', descr => 'log the catcache stats of a given process',
+  proname => 'yb_log_catcache_stats', provolatile => 'v', proparallel => 'r',
+  prorettype => 'void', proargtypes => 'int4',
+  proallargtypes => '{int4}',
+  proargmodes => '{i}',
+  proargnames => '{pid}',
+  prosrc => 'yb_log_catcache_stats'},
+
 ]
