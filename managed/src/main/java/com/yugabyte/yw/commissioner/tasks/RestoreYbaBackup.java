@@ -19,8 +19,11 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import java.io.File;
 import java.nio.file.Paths;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -46,6 +49,9 @@ public class RestoreYbaBackup extends AbstractTaskBase {
 
   @Override
   public void run() {
+    TaskInfo taskInfo = getRunnableTask().getTaskInfo();
+    UUID taskInfoUUID = taskInfo.getUuid();
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(taskInfoUUID);
     RestoreYbaBackup.Params taskParams = taskParams();
     File backupFile = Paths.get(taskParams.localPath).toFile();
     if (!backupFile.exists()) {
@@ -55,6 +61,10 @@ public class RestoreYbaBackup extends AbstractTaskBase {
     if (!replicationManager.restoreBackup(backupFile)) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "YBA restore failed.");
     }
+
+    // Successful restore so write task info to file
+    Util.writeRestoreTaskInfo(customerTask, taskInfo);
+
     Util.shutdownYbaProcess(0);
     return;
   }

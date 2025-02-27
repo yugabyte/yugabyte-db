@@ -25,6 +25,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.io.File;
 import java.util.Map;
@@ -70,6 +72,9 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
   @Override
   public void run() {
     log.info("Exeuction of RestoreContinuousBackup");
+    TaskInfo taskInfo = getRunnableTask().getTaskInfo();
+    UUID taskInfoUUID = taskInfo.getUuid();
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(taskInfoUUID);
     RestoreContinuousBackup.Params taskParams = taskParams();
     if (taskParams.storageConfigUUID == null) {
       log.info("No storage config UUID set, skipping restore.");
@@ -111,6 +116,10 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
     if (!replicationManager.restoreBackup(backup)) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error restoring backup to YBA");
     }
+
+    // Successful restore so write task info to file
+    Util.writeRestoreTaskInfo(customerTask, taskInfo);
+
     // Restart YBA to cause changes to take effect
     // Do we want to manually insert RestoreContinuousBackup task info?
     Util.shutdownYbaProcess(0);

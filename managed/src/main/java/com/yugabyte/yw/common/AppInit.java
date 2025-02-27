@@ -276,6 +276,7 @@ public class AppInit {
         DefaultExports.initialize();
 
         // Handle incomplete tasks
+        taskManager.handleRestoreTask();
         taskManager.handleAllPendingTasks();
         taskManager.updateUniverseSoftwareUpgradeStateSet();
         taskManager.handlePendingConsistencyTasks();

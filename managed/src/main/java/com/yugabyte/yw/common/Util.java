@@ -28,10 +28,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
@@ -88,6 +90,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
@@ -104,6 +107,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import play.libs.Json;
 
+@Slf4j
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
   private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
@@ -202,6 +206,11 @@ public class Util {
   public static final String HTTP_SCHEME = "http://";
 
   public static final String HTTPS_SCHEME = "https://";
+
+  public static final String RESTORE_BACKUP_TASK_FILE = "RestoreBackupTaskInfo.json";
+
+  public static final String RESTORE_BACKUP_CUSTOMER_TASK_FILE =
+      "RestoreBackupCustomerTaskInfo.json";
 
   public static volatile String YBA_VERSION;
 
@@ -306,7 +315,7 @@ public class Util {
         mastersToAZMap.putIfAbsent(currentNode.azUuid, 0);
       }
     }
-    LOG.info("Masters to AZ :" + mastersToAZMap);
+    log.info("Masters to AZ :" + mastersToAZMap);
     return mastersToAZMap;
   }
 
@@ -359,7 +368,7 @@ public class Util {
         numStoppedMasters++;
       }
     }
-    LOG.info("Masters: numStopped {}, numToBeAdded {}", numStoppedMasters, numMastersToBeAdded);
+    log.info("Masters: numStopped {}, numToBeAdded {}", numStoppedMasters, numMastersToBeAdded);
 
     return numStoppedMasters < numMastersToBeAdded;
   }
@@ -380,7 +389,7 @@ public class Util {
             currentNode.azUuid, azToNumStoppedNodesMap.getOrDefault(currentNode.azUuid, 0) + 1);
       }
     }
-    LOG.info("AZ to stopped count {}", azToNumStoppedNodesMap);
+    log.info("AZ to stopped count {}", azToNumStoppedNodesMap);
     return azToNumStoppedNodesMap;
   }
 
@@ -401,7 +410,7 @@ public class Util {
     Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
     long numMasters = getNumMasters(nodes);
     int replFactor = universeDetails.getPrimaryCluster().userIntent.replicationFactor;
-    LOG.info("RF = {} , numMasters = {}", replFactor, numMasters);
+    log.info("RF = {} , numMasters = {}", replFactor, numMasters);
 
     return replFactor > numMasters
         && needMasterQuorumRestore(currentNode, nodes, replFactor - numMasters);
@@ -427,7 +436,7 @@ public class Util {
         keysNotPresent.add(key);
       }
     }
-    LOG.info("KeysNotPresent  = " + keysNotPresent);
+    log.info("KeysNotPresent  = " + keysNotPresent);
 
     return String.join(",", keysNotPresent);
   }
@@ -445,7 +454,7 @@ public class Util {
     try {
       return new URL("https", host, endpoint).toString();
     } catch (MalformedURLException e) {
-      LOG.error("Error building request URL", e);
+      log.error("Error building request URL", e);
 
       return null;
     }
@@ -652,7 +661,7 @@ public class Util {
                   + " suppressFormatError is set to true.",
               v1, v2);
 
-      LOG.info(msg);
+      log.info(msg);
 
       return 0;
     }
@@ -685,10 +694,10 @@ public class Util {
             () -> {
               try {
                 Thread.sleep(seconds * 1000 /* ms */);
-                LOG.info("Shutting down via system exit.");
+                log.info("Shutting down via system exit.");
                 System.exit(0);
               } catch (InterruptedException e) {
-                LOG.warn("Interrupted during system exit.");
+                log.warn("Interrupted during system exit.");
               }
             });
     // Watcher thread to forcibly halt JVM if exit hangs
@@ -697,10 +706,10 @@ public class Util {
             () -> {
               try {
                 shutdownThread.join((seconds * 1000) + 30000 /* add 30 seconds */);
-                LOG.info("Shutting down via halt.");
+                log.info("Shutting down via halt.");
                 Runtime.getRuntime().halt(0);
               } catch (InterruptedException e) {
-                LOG.warn("Interrupted during wait for exit.");
+                log.warn("Interrupted during wait for exit.");
               }
             });
     shutdownThread.start();
@@ -775,7 +784,7 @@ public class Util {
     try {
       return InetAddress.getLocalHost().getHostName();
     } catch (UnknownHostException e) {
-      LOG.error("Could not determine the hostname", e);
+      log.error("Could not determine the hostname", e);
       return "";
     }
   }
@@ -784,7 +793,7 @@ public class Util {
     try {
       return InetAddress.getLocalHost().getHostAddress().toString();
     } catch (UnknownHostException e) {
-      LOG.error("Could not determine the host IP", e);
+      log.error("Could not determine the host IP", e);
       return "";
     }
   }
@@ -877,7 +886,7 @@ public class Util {
     checkArgument(firstPartLength > 0, "Invalid suffix length");
     if (sanitizedName.length() > firstPartLength) {
       sanitizedName = sanitizedName.substring(0, firstPartLength);
-      LOG.warn("Name {} is longer than {}, truncated to {}.", name, firstPartLength, sanitizedName);
+      log.warn("Name {} is longer than {}, truncated to {}.", name, firstPartLength, sanitizedName);
     }
     return String.format("%s-%s", sanitizedName, hashString(name));
   }
@@ -886,7 +895,7 @@ public class Util {
     try {
       Json.mapper().treeToValue(jsonNode, toValueType);
     } catch (JsonProcessingException e) {
-      LOG.info(e.getMessage());
+      log.info(e.getMessage());
       return false;
     }
     return true;
@@ -945,7 +954,7 @@ public class Util {
     } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())) {
       archType = Architecture.aarch64.name();
     } else {
-      LOG.warn("Could not parse {} to x86_64 or aarch64", ybServerPackage);
+      log.warn("Could not parse {} to x86_64 or aarch64", ybServerPackage);
       throw new RuntimeException(
           "Cannot install ybc on machines of arch types other than x86_64, aarch64");
     }
@@ -1024,7 +1033,7 @@ public class Util {
    */
   public static Path zipAndDeleteDir(Path dirPath) throws Exception {
     Path gzipPath = Paths.get(dirPath.toAbsolutePath().toString().concat(".tar.gz"));
-    LOG.info(
+    log.info(
         "Compressing the following directory: {} to {}",
         dirPath.toAbsolutePath().toString(),
         gzipPath.toAbsolutePath().toString());
@@ -1036,10 +1045,10 @@ public class Util {
       tarOS.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
       tarOS.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX);
       addFilesToTarGZ(dirPath.toString(), "", tarOS);
-      LOG.info("Deleting directory: " + dirPath.toAbsolutePath().toString());
+      log.info("Deleting directory: " + dirPath.toAbsolutePath().toString());
       FileUtils.deleteDirectory(new File(dirPath.toAbsolutePath().toString()));
     } catch (Exception e) {
-      LOG.error(
+      log.error(
           "Error while compressing the following directory: {}",
           dirPath.toAbsolutePath().toString());
       throw e;
@@ -1207,7 +1216,7 @@ public class Util {
         String mountPoints = userIntent.deviceInfo.mountPoints;
         dataDirPath = mountPoints.split(",")[0];
       } catch (Exception e) {
-        LOG.error(String.format("On prem invalid mount points. Defaulting to %s", dataDirPath), e);
+        log.error(String.format("On prem invalid mount points. Defaulting to %s", dataDirPath), e);
       }
     } else if (cloudType == CloudType.kubernetes) {
       // Kubernetes universes:
@@ -1232,10 +1241,10 @@ public class Util {
         if (CollectionUtils.isNotEmpty(volumeDetailsList)) {
           dataDirPath = volumeDetailsList.get(0).mountPath;
         } else {
-          LOG.info("Mount point is not defined. Defaulting to {}", dataDirPath);
+          log.info("Mount point is not defined. Defaulting to {}", dataDirPath);
         }
       } catch (Exception e) {
-        LOG.error(String.format("Could not get mount points. Defaulting to %s", dataDirPath), e);
+        log.error(String.format("Could not get mount points. Defaulting to %s", dataDirPath), e);
       }
     }
     return dataDirPath;
@@ -1461,5 +1470,20 @@ public class Util {
     String allowedCharsInPassword =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@$^*0123456789";
     return RandomStringUtils.secureStrong().next(20, allowedCharsInPassword);
+  }
+
+  public static void writeRestoreTaskInfo(CustomerTask customerTask, TaskInfo taskInfo) {
+    try {
+      Path restoreTaskInfoPath =
+          Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_TASK_FILE);
+      Path restoreCustomerTaskPath =
+          Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_CUSTOMER_TASK_FILE);
+      Files.deleteIfExists(restoreTaskInfoPath);
+      Files.deleteIfExists(restoreCustomerTaskPath);
+      Json.mapper().writeValue(restoreTaskInfoPath.toFile(), taskInfo);
+      Json.mapper().writeValue(restoreCustomerTaskPath.toFile(), customerTask);
+    } catch (IOException e) {
+      log.warn("Could not write restore task info, will not show up in task info.");
+    }
   }
 }

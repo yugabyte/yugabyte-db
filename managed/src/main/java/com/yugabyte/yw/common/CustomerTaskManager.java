@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.RESTORE_BACKUP_CUSTOMER_TASK_FILE;
+import static com.yugabyte.yw.common.Util.RESTORE_BACKUP_TASK_FILE;
 import static io.ebean.DB.beginTransaction;
 import static io.ebean.DB.commitTransaction;
 import static io.ebean.DB.endTransaction;
@@ -24,6 +26,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
@@ -68,6 +71,10 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
 import io.ebean.DB;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -84,6 +91,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -93,6 +101,7 @@ import org.yb.client.YBClient;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class CustomerTaskManager {
 
   private final Commissioner commissioner;
@@ -100,6 +109,8 @@ public class CustomerTaskManager {
   private final YbcManager ybcManager;
   private final YsqlQueryExecutor ysqlQueryExecutor;
   private final RuntimeConfGetter confGetter;
+  private final FileDataService fileDataService;
+  private final ReleaseManager releaseManager;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
   private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
@@ -116,12 +127,16 @@ public class CustomerTaskManager {
       Commissioner commissioner,
       YbcManager ybcManager,
       YsqlQueryExecutor ysqlQueryExecutor,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      FileDataService fileDataService,
+      ReleaseManager releaseManager) {
     this.ybService = ybService;
     this.commissioner = commissioner;
     this.ybcManager = ybcManager;
     this.ysqlQueryExecutor = ysqlQueryExecutor;
     this.confGetter = confGetter;
+    this.fileDataService = fileDataService;
+    this.releaseManager = releaseManager;
   }
 
   // Invoked if the task is in incomplete state.
@@ -252,7 +267,7 @@ public class CustomerTaskManager {
                     };
 
                 Universe.saveDetails(customerTask.getTargetUUID(), updater, false);
-                LOG.debug("Unlocked universe {}.", customerTask.getTargetUUID());
+                log.debug("Unlocked universe {}.", customerTask.getTargetUUID());
               }
             });
       }
@@ -266,13 +281,13 @@ public class CustomerTaskManager {
       // Resume tasks if any
       TaskType taskType = taskInfo.getTaskType();
       UniverseTaskParams taskParams = null;
-      LOG.info("Resume Task: {}", resumeTask);
+      log.info("Resume Task: {}", resumeTask);
 
       try {
         if (resumeTask && optUniv.isPresent()) {
           Universe universe = optUniv.get();
           if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
-            LOG.debug("Invalid task state: Task {} cannot be resumed", taskUUID);
+            log.debug("Invalid task state: Task {} cannot be resumed", taskUUID);
             customerTask.markAsCompleted();
             return;
           }
@@ -289,7 +304,7 @@ public class CustomerTaskManager {
               taskParams = restoreParams;
               break;
             default:
-              LOG.error("Invalid task type: {} during platform restart", taskType);
+              log.error("Invalid task type: {} during platform restart", taskType);
               return;
           }
           taskParams.setPreviousTaskUUID(taskUUID);
@@ -332,12 +347,12 @@ public class CustomerTaskManager {
         throw ex;
       }
     } catch (Exception e) {
-      LOG.error(String.format("Error encountered failing task %s", customerTask.getTaskUUID()), e);
+      log.error(String.format("Error encountered failing task %s", customerTask.getTaskUUID()), e);
     }
   }
 
   public void handleAllPendingTasks() {
-    LOG.info("Handle the pending tasks...");
+    log.info("Handle the pending tasks...");
     try {
       String incompleteStates =
           TaskInfo.INCOMPLETE_STATES.stream()
@@ -383,7 +398,43 @@ public class CustomerTaskManager {
                 });
       }
     } catch (Exception e) {
-      LOG.error("Encountered error failing pending tasks", e);
+      log.error("Encountered error failing pending tasks", e);
+    }
+  }
+
+  public void handleRestoreTask() {
+    Path restoreFilePath = Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_TASK_FILE);
+    Path restoreCustomerTaskFilePath =
+        Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_CUSTOMER_TASK_FILE);
+    if (Files.exists(restoreCustomerTaskFilePath) && Files.exists(restoreFilePath)) {
+      try {
+        TaskInfo restoreTaskInfo =
+            Json.mapper().readValue(restoreFilePath.toFile(), TaskInfo.class);
+        Optional<TaskInfo> existingTask = TaskInfo.maybeGet(restoreTaskInfo.getUuid());
+        if (existingTask.isEmpty()) {
+          restoreTaskInfo.setTaskState(TaskInfo.State.Success);
+          restoreTaskInfo.save();
+        }
+        CustomerTask customerTask =
+            Json.mapper().readValue(restoreCustomerTaskFilePath.toFile(), CustomerTask.class);
+        Optional<CustomerTask> existingCustomerTask =
+            CustomerTask.maybeGet(customerTask.getTaskUUID());
+        if (existingCustomerTask.isEmpty()) {
+          customerTask.markAsCompleted();
+          customerTask.save();
+        }
+      } catch (IOException e) {
+        log.warn("Could not read restore customer task error {}, skipping.", e.getMessage());
+      } finally {
+        try {
+          Files.deleteIfExists(restoreCustomerTaskFilePath);
+          Files.deleteIfExists(restoreFilePath);
+        } catch (IOException e) {
+          log.warn("Failed to delete restore backup task file {}", e.getMessage());
+        }
+      }
+      fileDataService.fixUpPaths(AppConfigHelper.getStoragePath());
+      releaseManager.fixFilePaths();
     }
   }
 
@@ -405,10 +456,10 @@ public class CustomerTaskManager {
             getUniverseSoftwareUpgradeStateBasedOnTask(universe, placementModificationTask);
         if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
             universe.getUniverseDetails().softwareUpgradeState)) {
-          LOG.debug("Skipping universe upgrade state as actual task was not started.");
+          log.debug("Skipping universe upgrade state as actual task was not started.");
         } else {
           universe.updateUniverseSoftwareUpgradeState(state);
-          LOG.debug("Updated universe {} software upgrade state to  {}.", uuid, state);
+          log.debug("Updated universe {} software upgrade state to  {}.", uuid, state);
         }
       }
     }
@@ -451,14 +502,14 @@ public class CustomerTaskManager {
       client = ybService.getClient(masterHostPorts, certificate);
       resp = client.changeLoadBalancerState(true);
     } catch (Exception e) {
-      LOG.error(
+      log.error(
           "Setting load balancer to state true has failed for universe: {}",
           universe.getUniverseUUID());
     } finally {
       ybService.closeClient(client, masterHostPorts);
     }
     if (resp != null && resp.hasError()) {
-      LOG.error(
+      log.error(
           "Setting load balancer to state true has failed for universe: {}",
           universe.getUniverseUUID());
     }
@@ -466,13 +517,13 @@ public class CustomerTaskManager {
 
   public void handleAutoRetryAbortedTasks() {
     if (HighAvailabilityConfig.isFollower()) {
-      LOG.info("Skipping auto-retry of tasks because this YBA is a follower");
+      log.info("Skipping auto-retry of tasks because this YBA is a follower");
       return;
     }
     Duration timeWindow =
         confGetter.getGlobalConf(GlobalConfKeys.autoRetryTasksOnYbaRestartTimeWindow);
     if (timeWindow.isZero()) {
-      LOG.debug("Skipping auto retry of aborted tasks due to YBA shutdown");
+      log.debug("Skipping auto retry of aborted tasks due to YBA shutdown");
       return;
     }
     autoRetryAbortedTasks(
@@ -484,7 +535,7 @@ public class CustomerTaskManager {
 
   @VisibleForTesting
   void autoRetryAbortedTasks(Duration timeWindow, Consumer<CustomerTask> retryFunc) {
-    LOG.debug(
+    log.debug(
         "Auto retrying aborted tasks within time window of {} secs, due to YBA shutdown",
         timeWindow.getSeconds());
     Set<UUID> targetUuids = new HashSet<>();
@@ -504,19 +555,19 @@ public class CustomerTaskManager {
                       c -> {
                         try {
                           if (c.getCompletionTime() == null) {
-                            LOG.debug(
+                            log.debug(
                                 "Task {}({}) is already running", t.getTaskType(), t.getUuid());
                             return;
                           }
                           if (targetUuids.contains(c.getTargetUUID())) {
-                            LOG.info(
+                            log.info(
                                 "Retry already submitted for target {}({})",
                                 c.getTargetUUID(),
                                 c.getTargetType());
                             return;
                           }
                           if (!isTaskRetryable(c, t)) {
-                            LOG.debug(
+                            log.debug(
                                 "Task {}({}) is not retryable on target {}({})",
                                 t.getTaskType(),
                                 t.getUuid(),
@@ -528,7 +579,7 @@ public class CustomerTaskManager {
                           retryFunc.accept(c);
                         } catch (Exception e) {
                           // Ignore as it is best effort.
-                          LOG.warn(
+                          log.warn(
                               "Failed to retry task {}({}) on target {}({}) for customer {} - {}",
                               t.getTaskType(),
                               t.getUuid(),
@@ -598,7 +649,7 @@ public class CustomerTaskManager {
     TaskInfo taskInfo = customerTask.getTaskInfo();
     JsonNode oldTaskParams = commissioner.getTaskParams(taskUUID);
     TaskType taskType = taskInfo.getTaskType();
-    LOG.info(
+    log.info(
         "Will rollback task {}, of type {} in {} state.",
         taskUUID,
         taskType,
@@ -632,7 +683,7 @@ public class CustomerTaskManager {
                 + " You may retry the switchover task. If your intention is make the new primary"
                 + " universe the dr universe again, you can run another switchover task.");
       }
-      LOG.debug("Rolling back switchover task with old xCluster config: {}", currentXClusterConfig);
+      log.debug("Rolling back switchover task with old xCluster config: {}", currentXClusterConfig);
     } else {
       String errMsg =
           String.format(
@@ -649,7 +700,7 @@ public class CustomerTaskManager {
     taskParams.setErrorString(null);
     taskParams.setPreviousTaskUUID(taskUUID);
     UUID newTaskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info(
+    log.info(
         "Submitted rollback task for target {}:{}, task uuid = {}.",
         customerTask.getTargetUUID(),
         customerTask.getTargetName(),
@@ -669,7 +720,7 @@ public class CustomerTaskManager {
     TaskInfo taskInfo = customerTask.getTaskInfo();
     JsonNode oldTaskParams = commissioner.getTaskParams(taskUUID);
     TaskType taskType = taskInfo.getTaskType();
-    LOG.info(
+    log.info(
         "Will retry task {}, of type {} in {} state.", taskUUID, taskType, taskInfo.getTaskState());
     if (!isTaskRetryable(customerTask, taskInfo)) {
       String errMsg = String.format("Invalid task: Task %s cannot be retried", taskUUID);
@@ -906,11 +957,11 @@ public class CustomerTaskManager {
     taskParams.setPreviousTaskUUID(taskUUID);
     String errMsg = verifyTaskRetryability(customerTask, taskParams);
     if (errMsg != null) {
-      LOG.error("Task {} cannot be retried - {}", taskUUID, errMsg);
+      log.error("Task {} cannot be retried - {}", taskUUID, errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     UUID newTaskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info(
+    log.info(
         "Submitted retry task to universe for {}:{}, task uuid = {}.",
         customerTask.getTargetUUID(),
         customerTask.getTargetName(),
@@ -955,11 +1006,11 @@ public class CustomerTaskManager {
             universe.setUniverseDetails(universeDetails);
             universe.save(false);
           } else if (dbSeqNum > universe.getUniverseDetails().sequenceNumber) {
-            LOG.warn("Found pending task on a universe that appears stale.");
+            log.warn("Found pending task on a universe that appears stale.");
           }
         }
       } catch (Exception e) {
-        LOG.warn("Exception handling WAL tasks: " + e.getMessage());
+        log.warn("Exception handling WAL tasks: " + e.getMessage());
       } finally {
         pending.delete();
       }
