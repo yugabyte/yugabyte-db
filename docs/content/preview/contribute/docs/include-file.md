@@ -4,12 +4,18 @@ private = true
 +++
 -->
 
-## Included file
+### readfile
 
-This content is included from a separate file (called, in this case, `include-file.md`) using a `readfile` shortcode.
+This content is included from a separate file (called, in this case, `include-file.md`) using a `readfile` shortcode:
+
+Use readfile to add repetitive text to multiple pages.
 
 Headings in read files do _not_ appear in the right navigation.
 
-### Another heading in the included file
+However, shortcodes in the included file do render correctly:
 
-Use readfile to add repetitive text to multiple pages.
+{{<yb-version version="preview">}}
+
+#### Another heading in the readfile
+
+This heading does not appear in the right navigation.

@@ -166,6 +166,6 @@ If you increased the disk size per node for your cluster, you cannot reduce it. 
 
 If you changed the number of nodes in your cluster (horizontal scaling), the length of time that the operation takes depends on the quantity of data in your cluster, as adding or removing nodes requires moving data between nodes. For example, when you remove nodes, the data must be drained from the nodes to be removed to the other nodes in the cluster. This can take awhile (even hours) for large datasets.
 
-On the cluster **Nodes** tab, check the Memory Used column of the nodes to be removed. You should be able to see the nodes slowly draining as the data migrates.
+On the cluster [Nodes tab](../cloud-monitor/monitor-nodes/), check the Memory Used column of the nodes to be removed. You should be able to see the nodes slowly draining as the data migrates.
 
 If the condition persists, contact {{% support-cloud %}}.
