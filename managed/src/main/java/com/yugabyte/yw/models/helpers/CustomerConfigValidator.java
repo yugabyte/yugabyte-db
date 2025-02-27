@@ -78,7 +78,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
         new CustomerConfigPasswordPolicyValidator(beanValidator));
     validators.put(
         CustomerConfigAlertsPreferencesData.class,
-        new CustomerConfigAlertsPreferencesValidator(beanValidator));
+        new CustomerConfigAlertsPreferencesValidator(beanValidator, runtimeConfGetter));
   }
 
   /**
