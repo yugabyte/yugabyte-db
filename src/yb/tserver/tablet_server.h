@@ -235,6 +235,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) EXCLUDES(lock_);
   void SetYsqlDBCatalogVersions(const master::DBCatalogVersionDataPB& db_catalog_version_data)
       EXCLUDES(lock_);
+  void SetYsqlDBCatalogInvalMessages(
+      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
+      EXCLUDES(lock_);
+  void ResetCatalogVersionsFingerprint() EXCLUDES(lock_);
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const EXCLUDES(lock_) override {
@@ -462,6 +466,19 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_ GUARDED_BY(lock_);
+
+  // This map represents an extended history of pg_yb_invalidation_messages except message_time
+  // (i.e., db_oid, current_version, inval messages). For each db_oid, it stores a queue of
+  // (current_version, inval messages) pairs. If the message value is nullopt, it means a SQL
+  // null value. If it is empty string, it means there is no invalidation messages associated
+  // with this (db_oid, current_version). A PG backend needs to do a catalog cache refresh on
+  // a SQL null value, but treats an empty string as a noop because an empty string represents
+  // that there is no invalidation message. There is nothing in the PG catalog cache that can
+  // be invalidated by an empty string.
+  using InvalidationMessagesQueue = std::deque<std::pair<uint64_t, std::optional<std::string>>>;
+  using DbOidToInvalidationMessagesMap = std::unordered_map<uint32_t, InvalidationMessagesQueue>;
+  DbOidToInvalidationMessagesMap ysql_db_invalidation_messages_map_ GUARDED_BY(lock_);
+
   // See same variable comments in CatalogManager.
   std::optional<bool> catalog_version_table_in_perdb_mode_{std::nullopt};
 

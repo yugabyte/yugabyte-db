@@ -158,6 +158,9 @@ DEFINE_RUNTIME_uint64(delete_systable_rows_batch_bytes, 500_KB,
 DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
   "Reject specified percentage of sys catalog writes.");
 
+DEFINE_test_flag(double, simulate_catalog_message_read_failure, 0.0,
+                 "Inject random failure of pg_yb_invalidation_messages read from sys_catalog.");
+
 namespace yb {
 namespace master {
 
@@ -1688,6 +1691,10 @@ Result<uint32_t> SysCatalogTable::ReadPgYbTablegroupOid(const uint32_t database_
 
 Result<DbOidVersionToMessageListMap>
 SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
+  if (RandomActWithProbability(FLAGS_TEST_simulate_catalog_message_read_failure)) {
+    return STATUS(InternalError, "Injected pg_yb_invalidation_messages read failure for testing.");
+  }
+
   TRACE_EVENT0("master", "ReadYsqlCatalogInvalationMessages");
 
   auto read_data = VERIFY_RESULT(TableReadData(kTemplate1Oid, kPgYbInvalidationMessagesTableOid,
