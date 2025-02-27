@@ -37,6 +37,16 @@ class YsqlMajorUpgradeMatviewTest : public Pg15UpgradeTestBase {
     ASSERT_OK(InsertDataRefreshAndValidate());
   }
 
+  Status CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType type) {
+    auto conn = VERIFY_RESULT(CreateConnToTs(std::nullopt));
+    auto version =
+        VERIFY_RESULT(conn.FetchRow<std::string>("SHOW yb_major_version_upgrade_compatibility"));
+
+    auto expected_version = UpgradeCompatibilityGucValue(type);
+    SCHECK_EQ(version, ToString(expected_version), IllegalState, "GUC version mismatch");
+    return Status::OK();
+  }
+
   Status InsertDataRefreshAndValidate(
       std::optional<size_t> ts_id = std::nullopt, int row_count = 10) {
     auto conn = VERIFY_RESULT(CreateConnToTs(ts_id));
@@ -77,13 +87,36 @@ class YsqlMajorUpgradeMatviewTest : public Pg15UpgradeTestBase {
 };
 
 TEST_F(YsqlMajorUpgradeMatviewTest, TestMatView) {
+  ASSERT_OK(CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType::kNone));
   ASSERT_OK(UpgradeClusterToMixedMode());
 
+  ASSERT_OK(CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType::kBackwardsCompatible));
   ASSERT_OK(InsertDataRefreshAndValidate(kMixedModeTserverPg11));
   ASSERT_OK(InsertDataRefreshAndValidate(kMixedModeTserverPg15));
 
-  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+  ASSERT_OK(UpgradeAllTserversFromMixedMode());
 
+  // We should succeed even when yb_major_version_upgrade_compatibility is not set.
+  ASSERT_OK(CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType::kNone));
+  ASSERT_OK(InsertDataRefreshAndValidate());
+
+  ASSERT_OK(FinalizeUpgrade());
+
+  ASSERT_OK(CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType::kNone));
+  ASSERT_OK(InsertDataRefreshAndValidate());
+}
+
+TEST_F(YsqlMajorUpgradeMatviewTest, RollbackWithMatView) {
+  ASSERT_OK(CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType::kNone));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  ASSERT_OK(CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType::kBackwardsCompatible));
+  ASSERT_OK(InsertDataRefreshAndValidate(kMixedModeTserverPg11));
+  ASSERT_OK(InsertDataRefreshAndValidate(kMixedModeTserverPg15));
+
+  ASSERT_OK(RollbackUpgradeFromMixedMode());
+
+  ASSERT_OK(CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType::kNone));
   ASSERT_OK(InsertDataRefreshAndValidate());
 }
 

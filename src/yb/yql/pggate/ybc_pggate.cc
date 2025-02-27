@@ -3045,6 +3045,18 @@ YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode) 
   return ToYBCStatus(pgapi->AcquireObjectLock(lock_id, mode));
 }
 
+bool YBCPgYsqlMajorVersionUpgradeInProgress() {
+  /*
+   * yb_upgrade_to_pg15_completed is only available on the newer code version.
+   * So we use yb_major_version_upgrade_compatibility to determine if the YSQL major upgrade is in
+   * progress on processes running the older version.
+   * We cannot rely on yb_major_version_upgrade_compatibility only, since it will be reset in the
+   * Monitoring Phase.
+   * DevNote: Keep this in sync with IsYsqlMajorVersionUpgradeInProgress.
+   */
+  return yb_major_version_upgrade_compatibility > 0 || !yb_upgrade_to_pg15_completed;
+}
+
 } // extern "C"
 
 } // namespace yb::pggate

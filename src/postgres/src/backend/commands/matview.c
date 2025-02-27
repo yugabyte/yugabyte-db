@@ -1081,7 +1081,7 @@ static bool
 yb_needs_in_place_refresh()
 {
 	return yb_refresh_matview_in_place ||
-		   yb_major_version_upgrade_compatibility > 0;
+		   YBCPgYsqlMajorVersionUpgradeInProgress();
 }
 
 /*
