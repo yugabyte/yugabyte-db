@@ -26,15 +26,12 @@ For more information, refer to [Replication slots](https://www.postgresql.org/do
 
 #### LSN type
 
-The concept of LSN differs between YugabyteDB and PostgreSQL. In PostgreSQL, an LSN represents a specific 'location' in the WAL, while in Yugabyte, an LSN uniquely identifies a change event. It means Log Sequence Number (LSN) has a significance that spans across databases and replication slots in PG but in YugabyteDB, the LSN is valid only within the context of a specific replication slot. Due to this difference, there are inherent limitations in how LSNs can be used.
+A Log Sequence Number (LSN) in YugabyteDB differs from what you may be accustomed to in PostgreSQL. In PostgreSQL, an LSN represents a specific 'location' in the WAL, and has significance that spans databases and replication slots. In YugabyteDB, an LSN uniquely identifies a change event, and the LSN is valid only within the context of a specific replication slot. Due to these differences, there are inherent limitations in how LSNs can be used.
 
-To overcome the differences, YugabyteDB offers the users to specify the LSN type to be used while creating a replication slot with the following 2 types supported currently:
-* `SEQUENCE` - This refers to the LSN type that PostgreSQL uses and is a monotonically increasing number.
-* `HYBRID_TIME` - This refers to a hybrid time value which can be used natively with YugabyteDB.
+You can specify the type of LSN to use when you create a replication slot. YugabyteDB currently supports the following types:
 
-The default value is `SEQUENCE` and it is valid in the context of a slot. This is a monotonic increasing number that will determine the record in global order within the context of a slot. However, this LSN can’t be compared across two different slots.
-
-The value `HYBRID_TIME` means that the LSN will be denoted by the HybridTime of the transaction commit record. All the records of the transaction that is streamed will have the same LSN, including that of the commit record. The user has to ensure that the changes of a transaction are applied in totality and the acknowledgement is sent only if the commit record of a transaction is processed.
+* SEQUENCE - (Default) PostgreSQL-style LSN that is valid in the context of a slot. It is a monotonic increasing number that determines the record in global order within the context of a slot. It can't be compared across two different slots.
+* HYBRID_TIME - A hybrid time value which can be used natively with YugabyteDB. HYBRID_TIME is denoted by the HybridTime of the transaction commit record. All the records of the transaction that is streamed will have the same LSN as that of the commit record. You need to ensure that the changes of a transaction are applied in totality and the acknowledgement is sent only if the commit record of a transaction is processed.
 
 ### Publication
 
