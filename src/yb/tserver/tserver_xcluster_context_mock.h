@@ -47,7 +47,7 @@ class MockTserverXClusterContext : public TserverXClusterContextIf {
   MOCK_METHOD(
       Status, SetSourceTableInfoMappingForCreateTable,
       (const YsqlFullTableName& table_name, const PgObjectId& producer_table_id,
-       ColocationId colocation_id),
+       ColocationId colocation_id, const HybridTime& backfill_time_opt),
       (override));
   MOCK_METHOD(
       void, ClearSourceTableInfoMappingForCreateTable, (const YsqlFullTableName& table_name),

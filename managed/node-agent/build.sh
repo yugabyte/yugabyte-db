@@ -124,7 +124,8 @@ build_for_platform() {
     # Read requirements.txt and download platform-agnostic wheels
     while IFS= read -r pkg || [ -n "$pkg" ]; do
         echo "Downloading $pkg..."
-        python3 -m pip download "$pkg" --no-binary=:all: --dest "$WHEEL_DIR"
+        python3 -m pip download "$pkg" --no-binary=:all: --dest "$WHEEL_DIR" \
+        --constraint constraints.txt
     done < ynp_requirements.txt
     env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
     go build -o "$executable" "$project_dir"/cmd/cli/main.go

@@ -102,7 +102,7 @@ cat /proc/cpuinfo | grep sse4.2
   - NFS is not currently supported.
 
 YugabyteDB does not require any form of RAID, but runs optimally on a JBOD (just a bunch of disks) setup.
-YugabyteDB can also leverage multiple disks per node and has been tested beyond 10 TB of storage per node.
+YugabyteDB can also leverage multiple disks per node and has been tested beyond 20 TB of storage per node.
 
 Write-heavy applications usually require more disk IOPS (especially if the size of each record is larger), therefore in this case the total IOPS that a disk can support matters. On the read side, if the data does not fit into the cache and data needs to be read from the disk in order to satisfy queries, the disk performance (latency and IOPS) will start to matter.
 

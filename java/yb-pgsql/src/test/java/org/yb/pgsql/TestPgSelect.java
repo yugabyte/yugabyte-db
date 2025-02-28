@@ -23,6 +23,8 @@ import org.yb.minicluster.RocksDBMetrics;
 import org.yb.util.BuildTypeUtil;
 import org.yb.YBTestRunner;
 import org.yb.util.RegexMatcher;
+import org.yb.util.json.Checker;
+import org.yb.util.json.Checkers;
 import org.yb.YBTestRunner;
 
 import java.math.BigDecimal;
@@ -41,6 +43,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.yb.AssertionWrappers.*;
+import static org.yb.pgsql.ExplainAnalyzeUtils.makeTopLevelBuilder;
+import static org.yb.pgsql.ExplainAnalyzeUtils.testExplain;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgSelect extends BasePgSQLTest {
@@ -1289,6 +1293,24 @@ public class TestPgSelect extends BasePgSQLTest {
                 "SELECT DISTINCT COUNT(r1) FROM t WHERE r1 <= 10 GROUP BY r1";
         assertRowSet(statement, query, expectedRows);
       }
+    }
+  }
+
+  @Test
+  public void testDistinctWithMultipleTypes() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE multi_type_tbl(t1 text, u2 uuid, t3 text)");
+      stmt.execute("CREATE INDEX idx ON multi_type_tbl(t1 ASC, u2 ASC, t3 ASC)");
+      String distinctQuery = "SELECT DISTINCT t1, u2, t3 FROM multi_type_tbl" +
+        " WHERE u2 = '00000000-0000-0000-0000-000000000000'::uuid AND t1 = 'foo'";
+
+      // Populate catalog cache.
+      testExplain(stmt, distinctQuery, makeTopLevelBuilder().build());
+
+      // No catalog reads in the next execution of the query.
+      // Assertion fails without fix for #26058.
+      Checker noCacheMisses = makeTopLevelBuilder().catalogReadRequests(Checkers.equal(0)).build();
+      testExplain(stmt, distinctQuery, noCacheMisses);
     }
   }
 

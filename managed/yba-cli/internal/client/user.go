@@ -9,23 +9,17 @@ import (
 )
 
 // ListUsers fetches list of users associated with the customer
-func (a *AuthAPIClient) ListUsers() (
-	ybaclient.UserManagementApiApiListUsersRequest,
-) {
+func (a *AuthAPIClient) ListUsers() ybaclient.UserManagementApiApiListUsersRequest {
 	return a.APIClient.UserManagementApi.ListUsers(a.ctx, a.CustomerUUID)
 }
 
 // CreateUser creates a new user
-func (a *AuthAPIClient) CreateUser() (
-	ybaclient.UserManagementApiApiCreateUserRequest,
-) {
+func (a *AuthAPIClient) CreateUser() ybaclient.UserManagementApiApiCreateUserRequest {
 	return a.APIClient.UserManagementApi.CreateUser(a.ctx, a.CustomerUUID)
 }
 
 // DeleteUser deletes a user
-func (a *AuthAPIClient) DeleteUser(uUUID string) (
-	ybaclient.UserManagementApiApiDeleteUserRequest,
-) {
+func (a *AuthAPIClient) DeleteUser(uUUID string) ybaclient.UserManagementApiApiDeleteUserRequest {
 	return a.APIClient.UserManagementApi.DeleteUser(a.ctx, a.CustomerUUID, uUUID)
 }
 
@@ -37,9 +31,7 @@ func (a *AuthAPIClient) GetUserDetails(
 }
 
 // ResetUserPassword resets the password of the user
-func (a *AuthAPIClient) ResetUserPassword() (
-	ybaclient.UserManagementApiApiResetUserPasswordRequest,
-) {
+func (a *AuthAPIClient) ResetUserPassword() ybaclient.UserManagementApiApiResetUserPasswordRequest {
 	return a.APIClient.UserManagementApi.ResetUserPassword(a.ctx, a.CustomerUUID)
 }
 

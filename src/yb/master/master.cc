@@ -91,10 +91,11 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-DEFINE_UNKNOWN_int32(master_rpc_timeout_ms, 1500,
+DEFINE_UNKNOWN_int32(master_rpc_timeout_ms, 30000 * yb::kTimeMultiplier,
              "Timeout for retrieving master registration over RPC.");
 TAG_FLAG(master_rpc_timeout_ms, experimental);
 
@@ -323,7 +324,7 @@ Status Master::RegisterServices() {
       std::make_shared<tserver::PgClientServiceImpl>(
           *master_tablet_server_, client_future(), clock(),
           std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
-          fs_manager_->uuid(), &options())));
+          fs_manager_->uuid(), options())));
 
   return Status::OK();
 }

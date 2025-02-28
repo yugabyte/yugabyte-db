@@ -88,15 +88,12 @@ spec:
                     AWS_HOST_BASE:
                       description: |
                         Host of S3 bucket configuration. Valid for S3 compatible storages.
-                        Defaults to s3.amazonaws.com
                       type: string
-                      default: s3.amazonaws.com
                     PATH_STYLE_ACCESS:
                       description: |
                         Use path style access for S3 bucket configuration. Valid for S3 compatible
-                        storages. Defaults to false
+                        storages.
                       type: boolean
-                      default: false
                   required:
                   - BACKUP_LOCATION
                 awsSecretAccessKeySecret:

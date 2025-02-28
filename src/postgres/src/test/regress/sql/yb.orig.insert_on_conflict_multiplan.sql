@@ -615,9 +615,7 @@ CREATE TRIGGER noparttrigtrig BEFORE INSERT ON noparttrigtab FOR EACH ROW EXECUT
 --                       /          ^
 --               even, even, even, odd
 -- Note: for the following query, upstream PG 15.2 gets ERROR:  could not find trigger <oid>,
---       but upstream PG 17.1 does not.  YB gets a different error, but it
---       still emits oid.  Rather than fixing the message to hide oid, just
---       wait till we merge to a newer PG version.
+--       but upstream PG 17.1 does not.  YB gets a different error.
 WITH w AS (
     INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{44, -1000, 3}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
 ), w2 AS (

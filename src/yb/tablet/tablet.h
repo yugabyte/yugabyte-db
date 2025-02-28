@@ -175,6 +175,7 @@ class Tablet : public AbstractTablet,
       const HostPort& pgsql_proxy_bind_address,
       const std::string& database_name,
       const uint64_t postgres_auth_key,
+      bool is_xcluster_target,
       size_t* number_of_rows_processed,
       std::string* backfilled_until);
 
@@ -302,6 +303,9 @@ class Tablet : public AbstractTablet,
   // If abort_ops is specified, aborts pending RocksDB operations that are abortable.
   void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
+  // Triggered by a corresponding tablet peer when it has been moved into RUNNING state.
+  Status CompleteStartup();
+
   Status ImportData(const std::string& source_dir);
 
   docdb::ApplyTransactionState ApplyIntents(const TransactionApplyData& data) override;
@@ -334,11 +338,11 @@ class Tablet : public AbstractTablet,
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx,  // index of this batch in its transaction
-      const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers* frontiers,
+      const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers& frontiers,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time);
 
   void WriteToRocksDB(
-      const rocksdb::UserFrontiers* frontiers,
+      const rocksdb::UserFrontiers& frontiers,
       rocksdb::WriteBatch* write_batch,
       docdb::StorageDbType storage_db_type);
 
@@ -979,6 +983,11 @@ class Tablet : public AbstractTablet,
     TEST_sleep_before_apply_intents_ = value;
   }
 
+  // Reads the current value of FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and
+  // updates both regular db and intents db rate limiter speed.
+  void RefreshCompactFlushRateLimitBytesPerSec();
+  void SetCompactFlushRateLimitBytesPerSec(int64_t bytes_per_sec);
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -1001,7 +1010,7 @@ class Tablet : public AbstractTablet,
       int64_t batch_idx, // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
-      const rocksdb::UserFrontiers* frontiers);
+      const rocksdb::UserFrontiers& frontiers);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,

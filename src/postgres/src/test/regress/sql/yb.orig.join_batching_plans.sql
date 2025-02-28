@@ -245,7 +245,7 @@ insert into tab2 select i/10, i%10 from generate_series(1, 100000) i;
 create index on tab2 (c1);
 analyze tab1;
 analyze tab2;
-explain (costs off) /*+YbBatchedNL(tab1 tab2)*/ select * from tab1, tab2 where tab1.c1 = tab2.c1;
+explain (costs off) /*+ Leading((tab1 tab2)) YbBatchedNL(tab1 tab2)*/ select * from tab1, tab2 where tab1.c1 = tab2.c1;
 drop table tab1;
 drop table tab2;
 

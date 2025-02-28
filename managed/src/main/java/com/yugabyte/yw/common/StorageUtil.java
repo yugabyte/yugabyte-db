@@ -271,6 +271,10 @@ public interface StorageUtil {
     return false;
   }
 
+  public default String getStorageLocation(CustomerConfigData configData, String backupDir) {
+    return null;
+  }
+
   public default String extractReleaseVersion(String key, String backupDir) {
     String regex =
         String.format(

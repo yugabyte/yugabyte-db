@@ -254,7 +254,7 @@ class XClusterSourceManager {
   Status SetupDDLReplicationExtension(
       const NamespaceId& namespace_id, StdStatusCallback callback) const;
 
-  Status DropDDLReplicationExtension(
+  Status DropDDLReplicationExtensionIfExists(
       const NamespaceId& namespace_id,
       const xcluster::ReplicationGroupId& drop_replication_group_id) const;
 

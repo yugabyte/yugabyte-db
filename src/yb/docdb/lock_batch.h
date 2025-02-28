@@ -34,11 +34,11 @@ namespace docdb {
 
 template <typename LockManager>
 struct LockBatchEntry {
-  LockManagerTraits<LockManager>::KeyType key;
+  typename LockManagerTraits<LockManager>::KeyType key;
   dockv::IntentTypeSet intent_types;
 
   // For private use by LockManager.
-  LockManagerTraits<LockManager>::LockedBatchEntry* locked = nullptr;
+  typename LockManagerTraits<LockManager>::LockedBatchEntry* locked = nullptr;
 
   // In context of object locking, we need to ignore conflicts with self when obtaining another
   // mode of lock on an object. The field is set to the transaction's current lock state on the

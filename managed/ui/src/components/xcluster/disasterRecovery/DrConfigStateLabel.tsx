@@ -6,8 +6,10 @@ import { useTranslation } from 'react-i18next';
 import InfoIcon from '../../../redesign/assets/info-message.svg';
 import { YBTooltip } from '../../../redesign/components';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
+import { getTableCountsOfConcern } from '../ReplicationUtils';
 
 import { DrConfig, DrConfigState } from './dtos';
+import { usePillStyles } from '../../../redesign/styles/styles';
 
 interface DrConfigStateLabelProps {
   drConfig: DrConfig;
@@ -16,6 +18,11 @@ interface DrConfigStateLabelProps {
 }
 
 const useStyles = makeStyles((theme) => ({
+  stateLabelContainer: {
+    display: 'flex',
+    gap: theme.spacing(2),
+    alignItems: 'center'
+  },
   label: {
     display: 'flex',
     alignItems: 'center',
@@ -45,12 +52,14 @@ const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.status';
 export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStateLabelProps) => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
+  const pillClasses = usePillStyles();
 
+  let stateLabel = null;
   switch (drConfig.state) {
     case DrConfigState.INITIALIZING:
     case DrConfigState.SWITCHOVER_IN_PROGRESS:
     case DrConfigState.FAILOVER_IN_PROGRESS:
-      return (
+      stateLabel = (
         <Typography
           variant={variant}
           component="span"
@@ -60,8 +69,9 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
           {t(drConfig.state)}
         </Typography>
       );
+      break;
     case DrConfigState.REPLICATING:
-      return (
+      stateLabel = (
         <Typography
           variant={variant}
           component="span"
@@ -71,8 +81,9 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
           {t(drConfig.state)}
         </Typography>
       );
+      break;
     case DrConfigState.HALTED:
-      return (
+      stateLabel = (
         <Typography variant={variant} component="span" className={clsx(classes.label)}>
           <i className={clsx('fa fa-pause-circle-o', classes.warning)} />
           {t(`${drConfig.state}.label`)}
@@ -83,8 +94,9 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
           </YBTooltip>
         </Typography>
       );
+      break;
     case DrConfigState.FAILED:
-      return (
+      stateLabel = (
         <Typography
           variant={variant}
           component="span"
@@ -94,7 +106,20 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
           {t(drConfig.state)}
         </Typography>
       );
+      break;
     default:
       return assertUnreachableCase(drConfig.state);
   }
+
+  const tableCountsOfConcern = getTableCountsOfConcern(drConfig.tableDetails);
+  return (
+    <div className={classes.stateLabelContainer}>
+      {stateLabel}
+      {tableCountsOfConcern.uniqueTableCount === 0 && (
+        <Typography variant="body2" className={clsx(pillClasses.pill, pillClasses.danger)}>
+          {t('tablesOfConcernExist', { keyPrefix: 'clusterDetail.xCluster.shared' })}
+        </Typography>
+      )}
+    </div>
+  );
 };

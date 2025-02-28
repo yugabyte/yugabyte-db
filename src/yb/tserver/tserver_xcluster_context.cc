@@ -61,9 +61,11 @@ bool TserverXClusterContext::SafeTimeComputationRequired(const NamespaceId& name
 
 Status TserverXClusterContext::SetSourceTableInfoMappingForCreateTable(
     const YsqlFullTableName& table_name, const PgObjectId& source_table_id,
-    ColocationId colocation_id) {
+    ColocationId colocation_id, const HybridTime& backfill_time_opt) {
   CreateTableInfo new_create_table_info{
-      .source_table_id = source_table_id, .colocation_id = colocation_id};
+      .source_table_id = source_table_id,
+      .colocation_id = colocation_id,
+      .backfill_time_opt = backfill_time_opt};
 
   std::lock_guard l(table_map_mutex_);
   SCHECK(
@@ -99,6 +101,16 @@ void TserverXClusterContext::PrepareCreateTableHelper(
   // Set the matching source table id. Also marks the table as an automatic mode xCluster table.
   if (create_table_info->source_table_id.IsValid()) {
     helper.SetXClusterSourceTableId(create_table_info->source_table_id);
+  }
+
+  if (create_table_info->backfill_time_opt.is_valid()) {
+    auto indexed_table = PgObjectId::FromPB(req.base_table_id());
+    if (indexed_table.IsValid()) {
+      helper.SetXClusterBackfillHybridTime(create_table_info->backfill_time_opt.ToUint64());
+    } else {
+      LOG(DFATAL) << "XCluster backfill time is set for non-index create DDL "
+                  << req.ShortDebugString();
+    }
   }
 }
 

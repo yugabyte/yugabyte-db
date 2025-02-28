@@ -207,8 +207,20 @@ create_plain_partial_paths(PlannerInfo *root, RelOptInfo *rel)
 {
 	int			parallel_workers;
 
-	parallel_workers = compute_parallel_worker(rel, rel->pages, -1,
-											   max_parallel_workers_per_gather);
+	if (rel->is_yb_relation)
+	{
+		Assert(rel->relid > 0);
+		RangeTblEntry *rte = root->simple_rte_array[rel->relid];
+
+		parallel_workers =
+			yb_compute_parallel_worker(rel,
+									   YbGetTableDistribution(rte->relid),
+									   max_parallel_workers_per_gather);
+	}
+	else
+		parallel_workers =
+			compute_parallel_worker(rel, rel->pages, -1,
+									max_parallel_workers_per_gather);
 
 	/* If any limit was set to zero, the user doesn't want a parallel scan. */
 	if (parallel_workers <= 0)

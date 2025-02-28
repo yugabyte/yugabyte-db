@@ -118,12 +118,14 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       String packageName = extractPackageName(ybServerPackage);
       String versionName = extractVersionName(ybServerPackage);
       String tmpDirectory = nodeUniverseManager.getRemoteTmpDir(node, universe);
-      nodeUniverseManager.runCommand(
-          node,
-          universe,
-          ImmutableList.of(
-              "rm", "-rf", tmpDirectory + "/" + packageName, tmpDirectory + "/" + versionName),
-          ShellProcessContext.builder().logCmdOutput(true).build());
+      nodeUniverseManager
+          .runCommand(
+              node,
+              universe,
+              ImmutableList.of(
+                  "rm", "-rf", tmpDirectory + "/" + packageName, tmpDirectory + "/" + versionName),
+              ShellProcessContext.builder().logCmdOutput(true).build())
+          .processErrors();
     }
   }
 

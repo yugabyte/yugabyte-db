@@ -121,6 +121,7 @@
 #include "nodes/readfuncs.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
+#include "storage/procarray.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -259,7 +260,7 @@ YbResetCatalogCacheVersion()
 	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
-/** These values are lazily initialized based on corresponding environment variables. */
+/* These values are lazily initialized based on corresponding environment variables. */
 int			ybc_pg_double_write = -1;
 int			ybc_disable_pg_locking = -1;
 
@@ -6635,3 +6636,21 @@ YbInvalidationMessagesTableExists()
 }
 
 bool yb_is_calling_internal_function_for_ddl;
+
+char *
+YbGetPotentiallyHiddenOidText(Oid oid)
+{
+	if (*YBCGetGFlags()->TEST_hide_details_for_pg_regress)
+		return "<oid_hidden_for_pg_regress>";
+	else
+	{
+		char	   *oid_text = palloc(11 * sizeof(char));
+
+		sprintf(oid_text, "%u", oid);
+		/*
+		 * It is expected the caller uses this string in an error message, so
+		 * the palloc'd memory will get freed via memory context free.
+		 */
+		return oid_text;
+	}
+}

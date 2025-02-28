@@ -76,7 +76,8 @@ class ProvisionCommand(Command):
         return temp_file.name
 
     def _run_script(self, script_path):
-        result = subprocess.run(["/bin/bash", "-lc", script_path], capture_output=True, text=True)
+        result = subprocess.run(["/bin/bash", "-lc", script_path], stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, universal_newlines=True)
         logger.info("Output: %s", result.stdout)
         logger.info("Error: %s", result.stderr)
         logger.info("Return Code: %s", result.returncode)
@@ -191,7 +192,7 @@ class ProvisionCommand(Command):
         major_version = version.split('.')[0] if version else ""
 
         # Determine OS family
-        if distribution in {"rhel", "centos", "almalinux", "oraclelinux", "fedora"}:
+        if distribution in {"rhel", "centos", "almalinux", "ol", "fedora"}:
             os_family = OSFamily.REDHAT
         elif distribution in {"ubuntu", "debian"}:
             os_family = OSFamily.DEBIAN
@@ -327,6 +328,11 @@ class ProvisionCommand(Command):
         _, precheck_combined_script = self._generate_template()
         self._compare_ynp_version()
         self._run_script(precheck_combined_script)
+
+    def dry_run(self):
+        install_script, precheck_script = self._generate_template()
+        logger.info("Install Script: %s", install_script)
+        logger.info("Precheck Script: %s", precheck_script)
 
     def cleanup(self):
         # Cleanup tasks to clean up any tmp data to support rerun

@@ -178,7 +178,9 @@ func (c *Context) Status() string {
 		return formatter.Colorize(state, formatter.YellowColor)
 
 	// Red color for "Deleted" and "Deletion Failed" and "Failed"
-	case util.DeletedXClusterUniverseState, util.DeletionFailedXClusterState, util.FailedXClusterState:
+	case util.DeletedXClusterUniverseState,
+		util.DeletionFailedXClusterState,
+		util.FailedXClusterState:
 		return formatter.Colorize(state, formatter.RedColor)
 
 	// Default: Gray color for unknown states

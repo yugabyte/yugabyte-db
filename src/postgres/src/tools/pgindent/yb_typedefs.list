@@ -221,6 +221,7 @@ YbcCstringToTextWithLenFn
 YbcGetTableKeyRangesCallback
 YbcLsnType
 YbcMetricsInfo
+YbcObjectLockId
 YbcPallocFn
 YbcPgAshConfig
 YbcPgAttrValueDescriptor

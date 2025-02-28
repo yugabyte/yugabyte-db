@@ -126,8 +126,15 @@ message CreateTableRequestPB {
   // Set to true when the table is being re-written as part of a TRUNCATE operation.
   optional bool is_truncate = 31;
 
-  // Set by DDL Replication to link the table to the original table in the source cluster.
-  optional bytes xcluster_source_table_id = 33;
+  message XClusterTableInfo {
+    // Set by DDL Replication to link the table to the original table in the source cluster.
+    optional bytes xcluster_source_table_id = 1;
+
+    // Set by DDL Replication as a set time to perform index backfill.
+    optional fixed64 xcluster_backfill_hybrid_time = 2;
+  }
+
+  optional XClusterTableInfo xcluster_table_info = 33;
 }
 
 message CreateTableResponsePB {
@@ -763,25 +770,29 @@ message AcquireObjectLocksGlobalRequestPB {
   repeated docdb.ObjectLockPB object_locks = 4;
   // The lease epoch of the requesting tserver.
   optional uint64 lease_epoch = 5;
+  optional fixed64 ignore_after_hybrid_time = 6;
+  optional fixed64 propagated_hybrid_time = 7;
 }
 
 message AcquireObjectLocksGlobalResponsePB {
   optional MasterErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
 }
 
 message ReleaseObjectLocksGlobalRequestPB {
   optional bytes txn_id = 1;
   optional uint32 subtxn_id = 2;
   optional bytes session_host_uuid = 3;
-  repeated docdb.ObjectLockPB object_locks = 4;
-  // When set, releases locks on all objects held against the given session id.
-  optional bool release_all_locks = 5;
+
   // The lease epoch of the requesting tserver.
-  optional uint64 lease_epoch = 6;
+  optional uint64 lease_epoch = 4;
+  optional fixed64 apply_after_hybrid_time = 5;
+  optional fixed64 propagated_hybrid_time = 6;
 }
 
 message ReleaseObjectLocksGlobalResponsePB {
   optional MasterErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
 }
 
 service MasterDdl {

@@ -51,7 +51,7 @@
 #include "nodes/pg_list.h"
 #include "utils/catcache.h"
 #include "pg_yb_utils.h"
-
+#include "storage/procarray.h"
  /* #define CACHEDEBUG */	/* turns DEBUG elogs on */
 
 /*
@@ -424,13 +424,22 @@ CatCachePrintStats(int code, Datum arg)
 	long		cc_lhits = 0;
 	long		yb_cc_size = 0;
 
+
+	/*
+	 * YB change: If the user has requested a dump of the catcache stats,
+	 * set the log level to LOG so that the stats are always logged.
+	 */
+	int yb_log_level = DEBUG2;
+	if (arg == 1)
+		yb_log_level = LOG;
+
 	slist_foreach(iter, &CacheHdr->ch_caches)
 	{
 		CatCache   *cache = slist_container(CatCache, cc_next, iter.cur);
 
 		if (cache->cc_ntup == 0 && cache->cc_searches == 0)
 			continue;			/* don't print unused caches */
-		elog(DEBUG2, "catcache %s/%u: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld lsrch, %ld lhits, %ld bytes",
+		elog(yb_log_level, "catcache %s/%u: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld lsrch, %ld lhits, %ld bytes",
 			 cache->cc_relname,
 			 cache->cc_indexoid,
 			 cache->cc_ntup,
@@ -454,7 +463,7 @@ CatCachePrintStats(int code, Datum arg)
 		cc_lhits += cache->cc_lhits;
 		yb_cc_size += cache->yb_cc_size_bytes;
 	}
-	elog(DEBUG2, "catcache totals: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld lsrch, %ld lhits, %ld bytes",
+	elog(yb_log_level, "catcache totals: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld lsrch, %ld lhits, %ld bytes",
 		 CacheHdr->ch_ntup,
 		 cc_searches,
 		 cc_hits,
@@ -2726,4 +2735,88 @@ void
 YbCatCListIteratorFree(YbCatCListIterator *iterator)
 {
 	ReleaseCatCacheList(iterator->list);
+}
+
+void
+YbHandleLogCatcacheStatsInterrupt(void)
+{
+	InterruptPending = true;
+	YbLogCatcacheStatsPending = true;
+	/* latch will be set by procsignal_sigusr1_handler */
+}
+
+void
+YbProcessLogCatcacheStatsInterrupt(void)
+{
+	YbLogCatcacheStatsPending = false;
+
+	/*
+	 * Use LOG_SERVER_ONLY to prevent this message from being sent to the
+	 * connected client.
+	 */
+	ereport(LOG_SERVER_ONLY,
+			(errhidestmt(true),
+			 errhidecontext(true),
+			 errmsg("logging catcache stats of PID %d", MyProcPid)));
+
+	CatCachePrintStats(0, 1);
+}
+
+/*
+ * yb_log_catcache_stats
+ *
+ * This function is used to log the catcache stats of a given process.
+ * Based on pg_log_backend_memory_contexts().
+ *
+ */
+Datum
+yb_log_catcache_stats(PG_FUNCTION_ARGS)
+{
+	int			pid = PG_GETARG_INT32(0);
+	PGPROC	   *proc;
+	BackendId	backendId = InvalidBackendId;
+
+	proc = BackendPidGetProc(pid);
+
+	/*
+	 * See if the process with given pid is a backend or an auxiliary process.
+	 *
+	 * If the given process is a backend, use its backend id in
+	 * SendProcSignal() later to speed up the operation. Otherwise, don't do
+	 * that because auxiliary processes (except the startup process) don't
+	 * have a valid backend id.
+	 */
+	if (proc != NULL)
+		backendId = proc->backendId;
+	else
+		proc = AuxiliaryPidGetProc(pid);
+
+	/*
+	 * BackendPidGetProc() and AuxiliaryPidGetProc() return NULL if the pid
+	 * isn't valid; but by the time we reach kill(), a process for which we
+	 * get a valid proc here might have terminated on its own.  There's no way
+	 * to acquire a lock on an arbitrary process to prevent that. But since
+	 * this mechanism is usually used to debug a backend or an auxiliary
+	 * process running and consuming lots of memory, that it might end on its
+	 * own first and its memory contexts are not logged is not a problem.
+	 */
+	if (proc == NULL)
+	{
+		/*
+		 * This is just a warning so a loop-through-resultset will not abort
+		 * if one backend terminated on its own during the run.
+		 */
+		ereport(WARNING,
+				(errmsg("PID %d is not a PostgreSQL server process", pid)));
+		PG_RETURN_BOOL(false);
+	}
+
+	if (SendProcSignal(pid, YB_PROCSIG_LOG_CATCACHE_STATS, backendId) < 0)
+	{
+		ereport(WARNING,
+				(errmsg("could not send signal to process %d: %m", pid)));
+		PG_RETURN_BOOL(false);
+	}
+
+	PG_RETURN_BOOL(true);
 }

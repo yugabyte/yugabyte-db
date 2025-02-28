@@ -629,7 +629,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
 
   // Since this test constantly invokes VisitSysCatalog() which is the function
   // that runs after a new leader gets elected, during that period the leader rejects
-  // tablet server heart-beats (because it holds the leader_lock_), and this leads
+  // tablet server heart-beats (because it holds the leader_mutex_), and this leads
   // the master to mistakenly think that the tablet servers are dead. To avoid this
   // increase the TS unresponsive timeout so that the leader correctly thinks that
   // they are alive.

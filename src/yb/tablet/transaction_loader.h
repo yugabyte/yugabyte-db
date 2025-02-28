@@ -34,17 +34,8 @@ namespace tablet {
 class TransactionStatusResolver;
 struct TransactionalBatchData;
 
-struct ApplyStateWithCommitHt {
-  docdb::ApplyTransactionState state;
-  HybridTime commit_ht;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(state, commit_ht);
-  }
-};
-
 using ApplyStatesMap = std::unordered_map<
-    TransactionId, ApplyStateWithCommitHt, TransactionIdHash>;
+    TransactionId, docdb::ApplyStateWithCommitInfo, TransactionIdHash>;
 
 class TransactionLoaderContext {
  public:
@@ -56,7 +47,7 @@ class TransactionLoaderContext {
       TransactionMetadata&& metadata,
       TransactionalBatchData&& last_batch_data,
       OneWayBitmap&& replicated_batches,
-      const ApplyStateWithCommitHt* pending_apply) = 0;
+      const docdb::ApplyStateWithCommitInfo* pending_apply) = 0;
   virtual void LoadFinished(Status load_status) = 0;
   virtual HybridTime MinReplayTxnStartTime() = 0;
 };
@@ -98,7 +89,7 @@ class TransactionLoader {
   Status WaitLoaded(const TransactionId& id);
   Status WaitAllLoaded();
 
-  std::optional<ApplyStateWithCommitHt> GetPendingApply(const TransactionId& id) const
+  std::optional<docdb::ApplyStateWithCommitInfo> GetPendingApply(const TransactionId& id) const
       EXCLUDES(pending_applies_mtx_);
 
   void StartShutdown() EXCLUDES(mutex_);

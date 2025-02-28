@@ -129,6 +129,9 @@ service PgClientService {
   rpc ReleaseAdvisoryLock(PgReleaseAdvisoryLockRequestPB)
       returns (PgReleaseAdvisoryLockResponsePB);
 
+  rpc AcquireObjectLock(PgAcquireObjectLockRequestPB)
+      returns (PgAcquireObjectLockResponsePB);
+
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
 
@@ -1150,6 +1153,32 @@ message PgReleaseAdvisoryLockRequestPB {
 }
 
 message PgReleaseAdvisoryLockResponsePB {
+  AppStatusPB status = 1;
+}
+
+enum ObjectLockMode {
+  NO_LOCK = 0;
+  ACCESS_SHARE_LOCK = 1;
+  ROW_SHARE_LOCK = 2;
+  ROW_EXCLUSIVE_LOCK = 3;
+  SHARE_UPDATE_EXCLUSIVE_LOCK = 4;
+  SHARE_LOCK = 5;
+  SHARE_ROW_EXCLUSIVE_LOCK = 6;
+  EXCLUSIVE_LOCK = 7;
+  ACCESS_EXCLUSIVE_LOCK = 8;
+}
+
+message PgAcquireObjectLockRequestPB {
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+  uint64 database_oid = 3;
+  uint64 object_oid = 4;
+  // Cannot use TableLockType enum due to proto2/3 compatibility issues.
+  ObjectLockMode lock_type = 5;
+  AshMetadataPB ash_metadata = 6;
+}
+
+message PgAcquireObjectLockResponsePB {
   AppStatusPB status = 1;
 }
 

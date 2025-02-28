@@ -179,7 +179,10 @@ func BuildResourceRoleDefinition(
 				if !systemRole {
 					valueResourceGroup := value.GetResourceGroup()
 					valueResourceDefinitionSet := valueResourceGroup.GetResourceDefinitionSet()
-					valueResourceDefinitionSet = append(valueResourceDefinitionSet, resourceDefinition)
+					valueResourceDefinitionSet = append(
+						valueResourceDefinitionSet,
+						resourceDefinition,
+					)
 					valueResourceGroup.SetResourceDefinitionSet(valueResourceDefinitionSet)
 					value.SetResourceGroup(valueResourceGroup)
 				} else {

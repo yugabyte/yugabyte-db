@@ -46,7 +46,9 @@ var createCustomCAEITCmd = &cobra.Command{
 		}
 
 		if len(strings.TrimSpace(rootCertFilePath)) == 0 {
-			logrus.Fatalf(formatter.Colorize("Missing root certificate file path\n", formatter.RedColor))
+			logrus.Fatalf(
+				formatter.Colorize("Missing root certificate file path\n", formatter.RedColor),
+			)
 		}
 
 		logrus.Debug("Reading contents from root certificate file: ", rootCertFilePath)
@@ -110,7 +112,12 @@ var createCustomCAEITCmd = &cobra.Command{
 			CustomCertInfo: &customCertInfo,
 		}
 
-		eitutil.CreateEITUtil(authAPI, configName, util.CustomCertHostPathCertificateType, requestBody)
+		eitutil.CreateEITUtil(
+			authAPI,
+			configName,
+			util.CustomCertHostPathCertificateType,
+			requestBody,
+		)
 	},
 }
 

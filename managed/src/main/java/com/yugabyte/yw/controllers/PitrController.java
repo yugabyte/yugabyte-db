@@ -281,7 +281,7 @@ public class PitrController extends AuthenticatedController {
           long currentTimeMillis = System.currentTimeMillis();
           long minTimeInMillis =
               BackupUtil.getMinRecoveryTimeForSchedule(
-                  snapshotScheduleInfo.getSnapshotInfoList(), pitrConfig.getRetentionPeriod());
+                  snapshotScheduleInfo.getSnapshotInfoList(), pitrConfig);
           pitrConfig.setMinRecoverTimeInMillis(minTimeInMillis);
           pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
           pitrConfig.setState(pitrStatus ? State.COMPLETE : State.FAILED);
@@ -536,14 +536,9 @@ public class PitrController extends AuthenticatedController {
     }
 
     long currentTimeMillis = System.currentTimeMillis();
-    long minTimeInMillis =
-        Math.max(
-            currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
-            pitrConfig.getCreateTime().getTime());
     if (taskParams.cloneTimeInMillis != null
         && (taskParams.cloneTimeInMillis <= 0L
-            || taskParams.cloneTimeInMillis > currentTimeMillis
-            || taskParams.cloneTimeInMillis < minTimeInMillis)) {
+            || taskParams.cloneTimeInMillis > currentTimeMillis)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Time to clone that has been specified is incorrect");
     }

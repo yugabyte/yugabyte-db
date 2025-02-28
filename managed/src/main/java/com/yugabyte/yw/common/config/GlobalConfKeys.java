@@ -913,6 +913,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Cooldown after disk resize in aws (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> gcpHyperdiskResizeCooldownHours =
+      new ConfKeyInfo<>(
+          "yb.gcp.hyperdisk_resize_cooldown_hours",
+          ScopeType.GLOBAL,
+          "Cooldown after hyperdisk resize in gcp (in hours)",
+          "Cooldown after hyperdisk resize in gcp (in hours)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ybTmpDirectoryPath =
       new ConfKeyInfo<>(
           "yb.filepaths.tmpDirectory",
@@ -1610,8 +1618,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable node agent on provider creation by setting the internal flag in the provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-
-  // look for path in reference.conf
   public static final ConfKeyInfo<Boolean> enablePathStyleAccess =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_path_style_access",
@@ -1621,5 +1627,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " storage.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // Need to remove this toggle from UI part, since implemented here
+  public static final ConfKeyInfo<Boolean> k8sYbaRestoreSkipDumpFileDelete =
+      new ConfKeyInfo<>(
+          "yb.ha.k8s_restore_skip_dump_file_delete",
+          ScopeType.GLOBAL,
+          "Restore YBA postgres metadata during Yugaware container restart",
+          "Restore YBA postgres metadata during Yugaware container restart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

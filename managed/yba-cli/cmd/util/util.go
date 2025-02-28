@@ -19,6 +19,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"gopkg.in/yaml.v2"
@@ -479,3 +480,37 @@ func FromEpochMilli(millis int64) time.Time {
 //             shorthand, flag.Name, flag.Usage, flag.DefValue)
 //     })
 // }
+
+// MustGetFlagString returns the value of the string flag with the given name
+func MustGetFlagString(cmd *cobra.Command, name string) string {
+	value, err := cmd.Flags().GetString(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	if len(strings.TrimSpace(value)) == 0 {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Flag '%s' is required\n", name), formatter.RedColor))
+	}
+	return value
+}
+
+// MustGetFlagInt64 returns the value of the int64 flag with the given name
+func MustGetFlagInt64(cmd *cobra.Command, name string) int64 {
+	value, err := cmd.Flags().GetInt64(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
+// MustGetFlagBool returns the value of the bool flag with the given name
+func MustGetFlagBool(cmd *cobra.Command, name string) bool {
+	value, err := cmd.Flags().GetBool(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}

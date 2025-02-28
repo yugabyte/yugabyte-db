@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -52,8 +53,17 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
           getClusterConfig(client, targetUniverse.getUniverseUUID());
       XClusterConfigSyncFormData syncFormData = taskParams().getSyncFormData();
       if (syncFormData != null) {
-        syncXClusterConfig(clusterConfig, targetUniverse, syncFormData.replicationGroupName);
+        XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+        if (Objects.nonNull(xClusterConfig) && xClusterConfig.getType() == ConfigType.Db) {
+          // Only sync the replication config with the given replication group name; we cannot
+          // import such configs.
+          syncXClusterConfigDbScoped(xClusterConfig, clusterConfig);
+        } else {
+          // Import/sync the replication config with the given replication group name.
+          syncXClusterConfig(clusterConfig, targetUniverse, syncFormData.replicationGroupName);
+        }
       } else {
+        // Import all the replication configs on the target universe as xCluster configs.
         syncXClusterConfigs(clusterConfig, targetUniverse.getUniverseUUID());
       }
     } catch (Exception e) {
@@ -64,20 +74,34 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     log.info("Completed {}", getName());
   }
 
-  private void syncXClusterConfig(
-      CatalogEntityInfo.SysClusterConfigEntryPB config,
-      Universe targetUniverse,
-      String replicationGroupName) {
-    Customer customer = Customer.get(targetUniverse.getCustomerId());
+  private ProducerEntryPB getReplicationGroupEntryFromClusterConfig(
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig, String replicationGroupName) {
     Map<String, ProducerEntryPB> replicationGroups =
-        new HashMap<>(config.getConsumerRegistry().getProducerMapMap());
-
+        new HashMap<>(clusterConfig.getConsumerRegistry().getProducerMapMap());
     ProducerEntryPB replicationGroupEntry = replicationGroups.get(replicationGroupName);
     if (replicationGroupEntry == null) {
       throw new RuntimeException(
           String.format(
               "No replication group found for replication group name: %s", replicationGroupName));
     }
+    return replicationGroupEntry;
+  }
+
+  private void syncXClusterConfigDbScoped(
+      XClusterConfig xClusterConfig, CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig) {
+
+    // Todo: sync the namespace list for db-scoped configs.
+
+    syncXClusterConfigWithReplicationGroup(clusterConfig, xClusterConfig, null /* tableIds */);
+  }
+
+  private void syncXClusterConfig(
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig,
+      Universe targetUniverse,
+      String replicationGroupName) {
+    Customer customer = Customer.get(targetUniverse.getCustomerId());
+    ProducerEntryPB replicationGroupEntry =
+        getReplicationGroupEntryFromClusterConfig(clusterConfig, replicationGroupName);
 
     Set<Universe> candidateUniverses = customer.getUniverses();
     Map<String, Universe> hostUniverseMap = new HashMap<>();
@@ -113,7 +137,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
               replicationGroupName,
               sourceUniverse.getUniverseUUID(),
               targetUniverse.getUniverseUUID(),
-              config.getConsumerRegistry().getDEPRECATEDTransactional()
+              clusterConfig.getConsumerRegistry().getDEPRECATEDTransactional()
                   ? ConfigType.Txn
                   : ConfigType.Basic,
               true /* imported */);
@@ -123,7 +147,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
       // config may or not conform to the YBA naming style.
       log.info("Updating existing XClusterConfig({})", xClusterConfig);
     }
-    updateAndSyncXClusterConfig(xClusterConfig, replicationGroupEntry, config);
+    updateAndSyncXClusterConfig(xClusterConfig, replicationGroupEntry, clusterConfig);
   }
 
   private void syncXClusterConfigs(

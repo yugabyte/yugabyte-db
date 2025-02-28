@@ -23,6 +23,7 @@
 #include "yb/common/transaction.pb.h"
 #include "yb/docdb/object_lock_manager.h"
 #include "yb/dockv/value_type.h"
+#include "yb/server/clock.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/status.h"
 
@@ -49,7 +50,7 @@ YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
 // it with all exisitng DDL (global) locks.
 class TSLocalLockManager {
  public:
-  TSLocalLockManager();
+  explicit TSLocalLockManager(const server::ClockPtr& clock);
   ~TSLocalLockManager();
 
   // Tries acquiring object locks with the specified modes and registers them against the given
@@ -78,7 +79,8 @@ class TSLocalLockManager {
   //
   // There is no 1:1 mapping that exists among lock and unlock requests. A txn can acquire different
   // lock modes on a key multiple times, and will unlock them all with a single unlock rpc.
-  Status ReleaseObjectLocks(const tserver::ReleaseObjectLockRequestPB& req);
+  Status ReleaseObjectLocks(
+      const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline);
   void DumpLocksToHtml(std::ostream& out);
 
   Status BootstrapDdlObjectLocks(const tserver::DdlLockEntriesPB& resp);
@@ -86,6 +88,7 @@ class TSLocalLockManager {
   size_t TEST_GrantedLocksSize() const;
   size_t TEST_WaitingLocksSize() const;
   void TEST_MarkBootstrapped();
+  server::ClockPtr clock() const;
 
  private:
   class Impl;

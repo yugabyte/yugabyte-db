@@ -92,7 +92,11 @@ var updateAWSProviderCmd = &cobra.Command{
 		}
 
 		if len(strings.TrimSpace(provider.GetName())) == 0 {
-			errMessage := fmt.Sprintf("No provider %s in cloud type %s.", providerName, providerCode)
+			errMessage := fmt.Sprintf(
+				"No provider %s in cloud type %s.",
+				providerName,
+				providerCode,
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
 		}
 
@@ -133,7 +137,8 @@ var updateAWSProviderCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(accessKeyID)) != 0 && len(strings.TrimSpace(secretAccessKey)) != 0 {
+		if len(strings.TrimSpace(accessKeyID)) != 0 &&
+			len(strings.TrimSpace(secretAccessKey)) != 0 {
 			logrus.Debug("Updating AWS credentials\n")
 			awsCloudInfo.SetAwsAccessKeyID(accessKeyID)
 			awsCloudInfo.SetAwsAccessKeySecret(secretAccessKey)
@@ -234,7 +239,13 @@ var updateAWSProviderCmd = &cobra.Command{
 
 		providerRegions = removeAWSRegions(removeRegions, providerRegions)
 
-		providerRegions = editAWSRegions(editRegions, addZones, editZones, removeZones, providerRegions)
+		providerRegions = editAWSRegions(
+			editRegions,
+			addZones,
+			editZones,
+			removeZones,
+			providerRegions,
+		)
 
 		providerRegions = addAWSRegions(addRegions, addZones, providerRegions)
 
@@ -754,7 +765,10 @@ func editAWSImageBundleRegionOverrides(
 	}
 
 	for _, imageBundleString := range editImageBundleRegionOverrides {
-		override := providerutil.BuildImageBundleRegionOverrideMapFromString(imageBundleString, "edit")
+		override := providerutil.BuildImageBundleRegionOverrideMapFromString(
+			imageBundleString,
+			"edit",
+		)
 		if strings.Compare(override["uuid"], bundleUUID) == 0 {
 			for k, v := range override {
 				if _, ok := imageBundleRegionOverrides[k]; ok {

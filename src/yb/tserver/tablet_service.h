@@ -239,6 +239,9 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       const GetLocalPgTxnSnapshotRequestPB* req, GetLocalPgTxnSnapshotResponsePB* resp,
       rpc::RpcContext context) override;
 
+  Result<VerifyVectorIndexesResponsePB> VerifyVectorIndexes(
+      const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) override;
+
   void Shutdown() override;
 
  private:

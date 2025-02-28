@@ -78,7 +78,7 @@ class XClusterDDLQueueHandler {
   // Sets xcluster_context with the mapping of table name -> source table id.
   Status ProcessNewRelations(
       rapidjson::Document& doc, const std::string& schema,
-      std::unordered_set<YsqlFullTableName>& new_relations);
+      std::unordered_set<YsqlFullTableName>& new_relations, const HybridTime& target_safe_ht);
 
   const std::string& LogPrefix() const { return log_prefix_; }
 

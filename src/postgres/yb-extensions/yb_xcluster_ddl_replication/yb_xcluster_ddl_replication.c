@@ -54,7 +54,6 @@ static int	ReplicationRole = REPLICATION_ROLE_DISABLED;
 static bool EnableManualDDLReplication = false;
 char	   *DDLQueuePrimaryKeyDDLEndTime = NULL;
 char	   *DDLQueuePrimaryKeyQueryId = NULL;
-bool		TEST_AllowColocatedObjects = false;
 
 /* Util functions. */
 static bool IsInIgnoreList(EventTriggerData *trig_data);
@@ -117,16 +116,6 @@ _PG_init(void)
 							   PGC_SUSET,
 							   0,
 							   NULL, NULL, NULL);
-
-	/* YB_TODO(jhe): Remove this flag once colocated objects are supported. */
-	DefineCustomBoolVariable("yb_xcluster_ddl_replication.TEST_allow_colocated_objects",
-							 gettext_noop("Allow colocated objects to be replicated."),
-							 NULL,
-							 &TEST_AllowColocatedObjects,
-							 false,
-							 PGC_USERSET,
-							 0,
-							 NULL, NULL, NULL);
 }
 
 bool
@@ -176,25 +165,26 @@ InsertIntoTable(const char *table_name, int64 ddl_end_time, int64 query_id,
 }
 
 void
-InsertIntoDDLQueue(Jsonb *yb_data)
+InsertIntoReplicatedDDLs(int64 ddl_end_time, int64 query_id)
 {
-	/*
-   * Compute the current time in micros since epoch.
-   * This is the ddl_end time, which is after all the docdb schema changes for
-   * the DDL have occurred (note that the pg catalog changes are not yet visible
-   * as the txn hasn't committed yet).
-   * Current time also give us a distinct and ordered time for DDLs within a
-   * transaction, as opposed to using now(), which is the same within a txn.
-	 *
-	 * TODO (#25999): We will also use this time as the safe time to run the DDL
-	 * on the target, by waiting for other pollers to catch up to this safe time
-	 * before running the DDL. Since this time is after the docdb schema is
-	 * applied, we are fine at this point to catch up the pg catalog changes.
-   */
-	TimestampTz epoch_time = (GetCurrentTimestamp() - SetEpochTimestamp());
+	/* Create memory context for handling json creation + query execution. */
+	MemoryContext context_new,
+				context_old;
+	Oid			save_userid;
+	int			save_sec_context;
 
-	/* Use random int for the query_id. */
-	InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, random(), yb_data);
+	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.InsertIntoReplicatedDDLs context");
+
+	JsonbParseState *state = NULL;
+
+	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+	(void) AddStringJsonEntry(state, "query", debug_query_string);
+	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
+
+	InsertIntoTable(REPLICATED_DDLS_TABLE_NAME, ddl_end_time, query_id, jsonb);
+
+	CLOSE_MEM_CONTEXT_AND_SPI;
 }
 
 bool
@@ -346,7 +336,37 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 		JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 		Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
 
-		InsertIntoDDLQueue(jsonb);
+		/*
+		 * Compute the current time in micros since epoch.
+		 * This is the ddl_end time, which is after all the docdb schema changes for
+		 * the DDL have occurred (note that the pg catalog changes are not yet
+		 * visible as the txn hasn't committed yet).
+		 * Current time also give us a distinct and ordered time for DDLs within a
+		 * transaction, as opposed to using now(), which is the same within a txn.
+		 *
+		 * TODO (#25999): We will also use this time as the safe time to run the DDL
+		 * on the target, by waiting for other pollers to catch up to this safe time
+		 * before running the DDL. Since this time is after the docdb schema is
+		 * applied, we are fine at this point to catch up the pg catalog changes.
+		 */
+		TimestampTz epoch_time = (GetCurrentTimestamp() - SetEpochTimestamp());
+		int64 query_id = random();
+
+		InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, query_id, jsonb);
+
+		if (ReplicationRole == REPLICATION_ROLE_SOURCE)
+		{
+			/*
+			 * Also insert into the replicated_ddls table to handle switchovers.
+			 *
+			 * During switchover, we have a middle state with A target <-> B target.
+			 * In this state, A is polling from B, and so ddl_queue on A could try to
+			 * process its ddl_queue entries. But since we write to replicated_ddls on
+			 * A, the ddl_queue handler will see that all DDLs in the queue have been
+			 * processed.
+			 */
+			InsertIntoReplicatedDDLs(epoch_time, query_id);
+		}
 	}
 
 	CLOSE_MEM_CONTEXT_AND_SPI;
@@ -367,25 +387,7 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 	int64		pkey_query_id = GetInt64FromVariable(DDLQueuePrimaryKeyQueryId,
 													 "ddl_queue_primary_key_query_id");
 
-	/* Create memory context for handling json creation + query execution. */
-	MemoryContext context_new,
-				context_old;
-	Oid			save_userid;
-	int			save_sec_context;
-
-	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleTargetDDLEnd context");
-
-	JsonbParseState *state = NULL;
-
-	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
-	(void) AddStringJsonEntry(state, "query", debug_query_string);
-	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
-	Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
-
-	InsertIntoTable(REPLICATED_DDLS_TABLE_NAME, pkey_ddl_end_time, pkey_query_id,
-					jsonb);
-
-	CLOSE_MEM_CONTEXT_AND_SPI;
+	InsertIntoReplicatedDDLs(pkey_ddl_end_time, pkey_query_id);
 }
 
 void

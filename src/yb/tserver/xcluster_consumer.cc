@@ -224,7 +224,9 @@ void XClusterConsumer::Shutdown() {
 }
 
 void XClusterConsumer::SetRateLimiterSpeed() {
-  rate_limiter_->SetBytesPerSecond(GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB);
+  WARN_NOT_OK(ResultToStatus(rate_limiter_->SetBytesPerSecond(
+      FLAGS_apply_changes_max_send_rate_mbps * 1_MB)),
+      "Rate limiter set bytes per second failed");
 }
 
 void XClusterConsumer::RunThread() {

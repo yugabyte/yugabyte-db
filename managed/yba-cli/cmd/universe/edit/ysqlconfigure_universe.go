@@ -69,7 +69,11 @@ var editYSQLUniverseCmd = &cobra.Command{
 			}
 			if len(strings.TrimSpace(ysqlPassword)) == 0 {
 				logrus.Fatalf(
-					formatter.Colorize("YSQL password not found while enabling auth\n", formatter.RedColor))
+					formatter.Colorize(
+						"YSQL password not found while enabling auth\n",
+						formatter.RedColor,
+					),
+				)
 			}
 		}
 
@@ -188,7 +192,10 @@ var editYSQLUniverseCmd = &cobra.Command{
 				enableConnectionPooling = true
 			}
 			if enableConnectionPooling == userIntent.GetEnableConnectionPooling() {
-				logrus.Debugf("Enable connection-pooling is already set to %t\n", enableConnectionPooling)
+				logrus.Debugf(
+					"Enable connection-pooling is already set to %t\n",
+					enableConnectionPooling,
+				)
 			}
 			logrus.Debugf("Setting connection-pooling to %t\n", enableConnectionPooling)
 			req.SetEnableConnectionPooling(enableConnectionPooling)
@@ -272,9 +279,14 @@ func init() {
 	editYSQLUniverseCmd.Flags().String("ysql-auth", "",
 		"[Optional] YSQL authentication. Allowed values: enable, disable.")
 	editYSQLUniverseCmd.Flags().String("ysql-password", "",
-		fmt.Sprintf("[Optional] YSQL authentication password. Use single quotes ('') to provide "+
-			"values with special characters. %s",
-			formatter.Colorize("Required when YSQL authentication is enabled", formatter.GreenColor)))
+		fmt.Sprintf(
+			"[Optional] YSQL authentication password. Use single quotes ('') to provide "+
+				"values with special characters. %s",
+			formatter.Colorize(
+				"Required when YSQL authentication is enabled",
+				formatter.GreenColor,
+			),
+		))
 	editYSQLUniverseCmd.Flags().String("connection-pooling", "",
 		"[Optional] Connection Pooling settings. Allowed values: enable, disable.")
 	// editYSQLUniverseCmd.Flags().String("connection-pooling-gflags", "",

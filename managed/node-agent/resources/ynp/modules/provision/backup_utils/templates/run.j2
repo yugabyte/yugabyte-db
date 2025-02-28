@@ -9,7 +9,11 @@ s3cmd_package_path="/usr/local/$s3cmd_package_name"
 setuptools_scm_package_path="/usr/local/setuptools_scm-1.17.0"
 azcopy_package="azcopy_linux_amd64_10.25.0"
 gsutil_package="gsutil_4.60"
-python_interpreter="python3.11"
+# Determine the correct Python interpreter
+python_interpreter=$(command -v python3 || command -v python3.11 || \
+                     command -v python3.10 || command -v python3.9 || \
+                     command -v python3.8 || command -v python3.7 || \
+                     command -v python3.6 || echo "python3")
 prefix=""
 bin_path="/usr/local/bin"
 

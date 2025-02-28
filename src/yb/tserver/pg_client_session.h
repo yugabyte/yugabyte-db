@@ -68,6 +68,7 @@ namespace tserver {
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
+    (AcquireObjectLock) \
     /**/
 
 // These methods may respond with Status::OK() and continue async processing (including network
@@ -92,6 +93,8 @@ struct PgClientSessionContext {
   PgSequenceCache& sequence_cache;
   PgSharedMemoryPool& shared_mem_pool;
   const EventStatsPtr& stats_exchange_response_size;
+  const std::string& instance_uuid;
+  tserver::TSLocalLockManager* ts_lock_manager;
 };
 
 class PgClientSession final {

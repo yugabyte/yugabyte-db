@@ -98,6 +98,7 @@ class TserverXClusterContextIf;
     (CronGetLastMinute) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
+    (AcquireObjectLock) \
     (ExportTxnSnapshot) \
     (SetTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
@@ -121,7 +122,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
-      const std::string& permanent_uuid, const server::ServerBaseOptions* tablet_server_opts,
+      const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,
       const TserverXClusterContextIf* xcluster_context = nullptr,
       PgMutationCounter* pg_node_level_mutation_counter = nullptr);
 

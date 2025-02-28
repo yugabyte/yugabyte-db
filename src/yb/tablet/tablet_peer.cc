@@ -277,7 +277,7 @@ Status TabletPeer::InitTabletPeer(
         static const char* error_msg =
             "A memtable with no frontiers set found when deciding what memtables to "
             "flush! This should not happen.";
-        LOG(ERROR) << error_msg << " Stack trace:\n" << GetStackTrace();
+        LOG(DFATAL) << error_msg;
         return STATUS(IllegalState, error_msg);
       };
     });
@@ -476,7 +476,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   // Because we changed the tablet state, we need to re-report the tablet to the master.
   mark_dirty_clbk_.Run(context);
 
-  return tablet_->EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause */ nullptr);
+  return tablet_->CompleteStartup();
 }
 
 bool TabletPeer::StartShutdown() {
@@ -766,6 +766,7 @@ Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   if (!tablet) {
     return STATUS(IllegalState, "Tablet destroyed");
   }
+  // TODO(yyan) : we should use the last replicated op id instead of last committed op id.
   data->op_id = consensus->GetLastCommittedOpId();
   data->log_ht = tablet->mvcc_manager()->LastReplicatedHybridTime();
   return Status::OK();

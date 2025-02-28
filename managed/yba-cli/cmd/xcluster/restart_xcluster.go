@@ -35,7 +35,11 @@ var restartXClusterCmd = &cobra.Command{
 		if len(uuid) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No xcluster uuid found to restart replication\n", formatter.RedColor))
+				formatter.Colorize(
+					"No xcluster uuid found to restart replication\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		storageConfigNameFlag, err := cmd.Flags().GetString("storage-config-name")
@@ -45,7 +49,11 @@ var restartXClusterCmd = &cobra.Command{
 		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No storage config name found to take a backup\n", formatter.RedColor))
+				formatter.Colorize(
+					"No storage config name found to take a backup\n",
+					formatter.RedColor,
+				),
+			)
 		}
 		err = util.ConfirmCommand(
 			fmt.Sprintf("Are you sure you want to restart %s: %s", "xcluster", uuid),
@@ -165,7 +173,12 @@ var restartXClusterCmd = &cobra.Command{
 
 			rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "Restart - Get XCluster")
+				errMessage := util.ErrorFromHTTPResponse(
+					response,
+					err,
+					"XCluster",
+					"Restart - Get XCluster",
+				)
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 			r := make([]ybaclient.XClusterConfigGetResp, 0)

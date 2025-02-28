@@ -99,13 +99,14 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             createXClusterSourceRootCertDirPathGFlagTasks();
           }
 
-          boolean rollbackMaster = false;
+          createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID(), newVersion);
 
+          boolean rollbackMaster = false;
+          YsqlMajorCatalogUpgradeState catalogUpgradeState = null;
           if (requireAdditionalSuperUserForCatalogUpgrade) {
             if (softwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(universe, "15")) {
-              YsqlMajorCatalogUpgradeState state =
-                  softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe);
-              if (state.equals(
+              catalogUpgradeState = softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe);
+              if (catalogUpgradeState.equals(
                   YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK)) {
                 log.info(
                     "YSQL catalog upgrade is in a failed state. Rolling back catalog upgrade.");
@@ -178,9 +179,9 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           if (nodesToApply.tserversList.size() == universe.getTServers().size()) {
             // If any tservers is upgraded, then we can assume pg upgrade is completed.
             if (requireYsqlMajorVersionUpgrade) {
-              if (softwareUpgradeHelper
-                  .getYsqlMajorCatalogUpgradeState(universe)
-                  .equals(YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
+              if (catalogUpgradeState != null
+                  && catalogUpgradeState.equals(
+                      YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
                 createPGUpgradeTServerCheckTask(newVersion);
               }
 
@@ -214,8 +215,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           }
 
           createCheckSoftwareVersionTask(allNodes, newVersion);
-
-          createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID());
 
           createPromoteAutoFlagTask(
               universe.getUniverseUUID(),

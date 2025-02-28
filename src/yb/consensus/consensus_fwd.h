@@ -85,6 +85,7 @@ using ReplicateMsgs = std::vector<ReplicateMsgPtr>;
 
 YB_STRONGLY_TYPED_BOOL(TEST_SuppressVoteRequest);
 YB_STRONGLY_TYPED_BOOL(PreElection);
+YB_STRONGLY_TYPED_BOOL(HaveMoreMessages);
 
 } // namespace consensus
 

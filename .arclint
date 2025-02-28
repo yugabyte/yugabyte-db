@@ -58,7 +58,7 @@
      },
      "go-files-length": {
          "type": "text",
-         "text.max-line-length": 100,
+        "text.max-line-length": 120,
          "include": "(^managed/yba-cli/.*[.]go$)",
          "severity": {
              "2": "disabled"
@@ -173,7 +173,8 @@
     "regress_test": {
       "type": "script-and-regex",
       "include": [
-        "(^src/postgres/.+/(specs|sql|expected)/yb[^/]*$)"
+        "(^src/postgres/.+/(specs|sql|expected)/yb[^/]*$)",
+        "(^src/postgres/third-party-extensions/pg_partman/test/(.+/)*yb[^/]*$)"
       ],
       "script-and-regex.script": "src/lint/regress_test.sh",
       "script-and-regex.regex":

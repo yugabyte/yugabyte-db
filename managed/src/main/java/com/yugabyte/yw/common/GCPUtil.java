@@ -817,15 +817,27 @@ public class GCPUtil implements CloudUtil {
       try (InputStream inputStream = new FileInputStream(backup)) {
         gcsClient.create(blobInfo, inputStream);
       }
-
+      return true;
     } catch (StorageException e) {
       log.error("Error uploading YBA backup");
-      return false;
     } catch (IOException e) {
       log.error("Error creating GCS client");
-      return false;
     }
-    return true;
+    return false;
+  }
+
+  @Override
+  public String getStorageLocation(CustomerConfigData configData, String backupDir) {
+    try {
+      CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+      Storage gcsClient = getStorageService(gcsData);
+      CloudLocationInfo cLInfo =
+          getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+      return String.format("gs://%s/%s", cLInfo.bucket, backupDir);
+    } catch (Exception e) {
+      log.error("Error determining storage location: {}", e);
+    }
+    return null;
   }
 
   @Override

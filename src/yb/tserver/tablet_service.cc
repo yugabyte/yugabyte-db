@@ -88,6 +88,7 @@
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
@@ -100,6 +101,7 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
@@ -895,6 +897,12 @@ void TabletServiceAdminImpl::BackfillIndex(
           &context);
       return;
     }
+    // Check if this is an xCluster target of automatic DDL replication, if so then we need to use
+    // tablet level read consistency as the ddl_queue table is holding up xCluster safe time.
+    bool is_xcluster_automatic_mode_target =
+        server_->GetXClusterContext().IsTargetAndInAutomaticMode(
+            tablet.peer->tablet_metadata()->namespace_id());
+
     backfill_status = tablet.tablet->BackfillIndexesForYsql(
         indexes_to_backfill,
         req->start_key(),
@@ -903,6 +911,7 @@ void TabletServiceAdminImpl::BackfillIndex(
         server_->pgsql_proxy_bind_address(),
         req->namespace_name(),
         server_->GetSharedMemoryPostgresAuthKey(),
+        is_xcluster_automatic_mode_target,
         &number_rows_processed,
         &backfilled_until);
     if (backfill_status.IsIllegalState()) {
@@ -1665,7 +1674,7 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
       tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
       req->table_type(), schema, qlexpr::IndexMap(),
       req->has_index_info() ? std::optional<qlexpr::IndexInfo>(req->index_info()) : std::nullopt,
-      0 /* schema_version */, partition_schema, HybridTime{}, req->pg_table_id(),
+      0 /* schema_version */, partition_schema, OpId{}, HybridTime{}, req->pg_table_id(),
       tablet::SkipTableTombstoneCheck(FLAGS_ysql_yb_enable_alter_table_rewrite));
 
   if (req->has_wal_retention_secs()) {
@@ -3438,6 +3447,7 @@ void TabletServiceImpl::AcquireObjectLocks(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
   }
   auto s = ts_local_lock_manager->AcquireObjectLocks(*req, context.GetClientDeadline());
+  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   if (!s.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
   } else {
@@ -3458,10 +3468,13 @@ void TabletServiceImpl::ReleaseObjectLocks(
 
   auto* ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
+    resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
     SetupErrorAndRespond(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
+    return;
   }
-  auto s = ts_local_lock_manager->ReleaseObjectLocks(*req);
+  auto s = ts_local_lock_manager->ReleaseObjectLocks(*req, context.GetClientDeadline());
+  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   if (!s.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
   } else {
@@ -3521,6 +3534,19 @@ void TabletServiceAdminImpl::TestRetry(
 }
 
 void TabletServiceImpl::Shutdown() {
+}
+
+Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
+    const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) {
+  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  for (auto& peer : tablet_peers) {
+    auto tablet = peer->shared_tablet();
+    if (!tablet) {
+      continue;
+    }
+    RETURN_NOT_OK(tablet->vector_indexes().Verify());
+  }
+  return VerifyVectorIndexesResponsePB();
 }
 
 }  // namespace yb::tserver

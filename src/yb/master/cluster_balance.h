@@ -27,6 +27,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/cluster_balance_util.h"
+#include "yb/master/cluster_balance_warnings.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/util/random.h"
@@ -101,7 +102,19 @@ class ClusterLoadBalancer {
 
   MonoTime LastRunTime() const;
 
+  // Information representing activity of load balancer.
+  struct ActivityInfo {
+    uint32_t table_tasks = 0;
+    ClusterBalancerWarnings warnings;
+
+    bool IsIdle() const {
+      return table_tasks == 0 && warnings.size() == 0;
+    }
+  };
+
+  // Activity buffer functions.
   Status IsIdle() const;
+  ActivityInfo GetActivityInfo() const EXCLUDES(mutex_);
 
   // Returns the TableInfo of all the tables for whom load balancing is being skipped.
   // As of today, this constitutes all the system tables, colocated user tables
@@ -112,7 +125,7 @@ class ClusterLoadBalancer {
   std::vector<scoped_refptr<TableInfo>> GetAllTablesLoadBalancerSkipped();
 
   // Return the replication info for 'table'.
-  virtual Result<ReplicationInfoPB> GetTableReplicationInfo(
+  virtual ReplicationInfoPB GetTableReplicationInfo(
       const scoped_refptr<const TableInfo>& table) const;
 
   //
@@ -191,8 +204,8 @@ class ClusterLoadBalancer {
 
   // Finds all under-replicated tablets and processes them in order of priority.
   void ProcessUnderReplicatedTablets(
-      int& remaining_adds, uint32_t& master_errors, bool& task_added, TabletId& out_tablet_id,
-      TabletServerId& out_to_ts) REQUIRES_SHARED(catalog_manager_->mutex_);
+      int& remaining_adds, bool& task_added, TabletId& out_tablet_id, TabletServerId& out_to_ts)
+      REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Processes any required replica additions, as part of moving load from a highly loaded TS to
   // one that is less loaded.
@@ -371,7 +384,7 @@ class ClusterLoadBalancer {
  private:
   // Returns true if at least one member in the tablet's configuration is transitioning into a
   // VOTER, but it's not a VOTER yet.
-  Result<bool> IsConfigMemberInTransitionMode(const TabletId& tablet_id) const
+  bool IsConfigMemberInTransitionMode(const TabletId& tablet_id) const
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   std::string GetSortedLoad() const;
@@ -415,18 +428,8 @@ class ClusterLoadBalancer {
   // Controls whether to run the load balancing algorithm or not.
   std::atomic<bool> is_enabled_;
 
-  // Information representing activity of load balancer.
-  struct ActivityInfo {
-    uint32_t table_tasks = 0;
-    uint32_t master_errors = 0;
-
-    bool IsIdle() const {
-      return table_tasks == 0 && master_errors == 0;
-    }
-  };
-
   // Circular buffer of load balancer activity.
-  boost::circular_buffer<ActivityInfo> cbuf_activities_;
+  boost::circular_buffer<ActivityInfo> cbuf_activities_ GUARDED_BY(mutex_);
 
   // Summary of circular buffer of load balancer activity.
   size_t num_idle_runs_ = 0;
@@ -439,8 +442,7 @@ class ClusterLoadBalancer {
   bool can_perform_global_operations_ = false;
 
   // Record load balancer activity for tables and tservers.
-  void RecordActivity(bool tasks_added_in_this_run, uint32_t master_errors)
-      REQUIRES_SHARED(catalog_manager_->mutex_);
+  void RecordActivity(bool tasks_added_in_this_run) REQUIRES_SHARED(catalog_manager_->mutex_);
 
   typedef rw_spinlock LockType;
   mutable LockType mutex_;

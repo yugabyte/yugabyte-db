@@ -2669,7 +2669,10 @@ ReorderBufferReplay(ReorderBufferTXN *txn,
 	txn->origin_lsn = origin_lsn;
 
 	/*
-	 * YB note: Snapshot is used to read the catalog table entries at the time of
+	 * YB note:
+	 * 1. YB does not support two-phase transactions yet. So we disable the code
+	 * relating to partially streamed transactions.
+	 * 2. Snapshot is used to read the catalog table entries at the time of
 	 * transaction start. This mechanism is not yet applicable to YB. So we
 	 * disable the snapshot related code here.
 	 */
@@ -2682,10 +2685,6 @@ ReorderBufferReplay(ReorderBufferTXN *txn,
 		 *
 		 * Called after everything (origin ID, LSN, ...) is stored in the
 		 * transaction to avoid passing that information directly.
-		 */
-		/*
-		 * YB_TODO(stiwary): evaluate whether this code is applicable for
-		 * ysql.
 		 */
 		if (rbtxn_is_streamed(txn))
 		{

@@ -627,6 +627,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
       const std::string& source_addr, const std::string& debug_session_string);
 
+  void UpdateCompactFlushRateLimitBytesPerSec();
+
   rpc::ThreadPool* VectorIndexThreadPool();
 
   const CoarseTimePoint start_time_;
@@ -803,6 +805,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   simple_spinlock metadata_cache_spinlock_;
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_holder_;
   std::atomic<client::YBMetaDataCache*> metadata_cache_;
+
+  // Callback for FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec update handling.
+  FlagCallbackRegistration rate_limiter_flag_callback_;
 
   std::mutex vector_index_thread_pool_mutex_;
   AtomicUniquePtr<rpc::ThreadPool> vector_index_thread_pool_;

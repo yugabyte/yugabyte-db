@@ -276,6 +276,8 @@ class XClusterManager : public XClusterManagerIf,
   bool IsTableReplicated(const TableId& table_id) const;
 
   bool IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const;
+  bool IsNamespaceInAutomaticModeSource(const NamespaceId& namespace_id) const override;
+  bool IsNamespaceInAutomaticModeTarget(const NamespaceId& namespace_id) const override;
 
   bool IsTableReplicationConsumer(const TableId& table_id) const override;
 

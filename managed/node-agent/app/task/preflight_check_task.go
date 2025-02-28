@@ -32,11 +32,6 @@ func NewPreflightCheckHandler(param *model.PreflightCheckParam) *PreflightCheckH
 	return handler
 }
 
-// Handler implements the AsyncTask method.
-func (handler *PreflightCheckHandler) Handler() util.Handler {
-	return handler.Handle
-}
-
 // CurrentTaskStatus implements the AsyncTask method.
 func (handler *PreflightCheckHandler) CurrentTaskStatus() *TaskStatus {
 	taskStatus := handler.shellTask.CurrentTaskStatus()
@@ -49,25 +44,9 @@ func (handler *PreflightCheckHandler) String() string {
 	return handler.shellTask.String()
 }
 
-// ResponseConverter returns the response converter when the task is done.
-func (handler *PreflightCheckHandler) ResponseConverter() util.RPCResponseConverter {
-	return util.RPCResponseConverter(func(result any) (*pb.DescribeTaskResponse, error) {
-		nodeConfigs := []*pb.NodeConfig{}
-		err := util.ConvertType(result, &nodeConfigs)
-		if err != nil {
-			return nil, err
-		}
-		return &pb.DescribeTaskResponse{
-			Data: &pb.DescribeTaskResponse_PreflightCheckOutput{
-				PreflightCheckOutput: &pb.PreflightCheckOutput{
-					NodeConfigs: nodeConfigs,
-				},
-			},
-		}, nil
-	})
-}
-
-func (handler *PreflightCheckHandler) Handle(ctx context.Context) (any, error) {
+func (handler *PreflightCheckHandler) Handle(
+	ctx context.Context,
+) (*pb.DescribeTaskResponse, error) {
 	util.FileLogger().Debug(ctx, "Starting Preflight checks handler.")
 	output, err := handler.shellTask.Process(ctx)
 	if err != nil {
@@ -83,7 +62,18 @@ func (handler *PreflightCheckHandler) Handle(ctx context.Context) (any, error) {
 		return nil, err
 	}
 	handler.result = getNodeConfig(outputMap)
-	return handler.result, nil
+	nodeConfigs := []*pb.NodeConfig{}
+	err = util.ConvertType(handler.result, &nodeConfigs)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.DescribeTaskResponse{
+		Data: &pb.DescribeTaskResponse_PreflightCheckOutput{
+			PreflightCheckOutput: &pb.PreflightCheckOutput{
+				NodeConfigs: nodeConfigs,
+			},
+		},
+	}, nil
 }
 
 func (handler *PreflightCheckHandler) Result() *[]model.NodeConfig {

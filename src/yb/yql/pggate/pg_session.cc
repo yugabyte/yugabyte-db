@@ -55,8 +55,6 @@ DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
 DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
-DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
-                 "Don't fill YSQL's internal cache for FK check to force read row from a table");
 DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
                  "For new tables without PK, make the ybrowid column ASC and generated using a"
                  " naive per-node sequential counter. This can fail with collisions for a"
@@ -443,15 +441,14 @@ PgSession::PgSession(
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YbcPgCallbacks& pg_callbacks,
     YbcPgExecStatsState& stats_state,
-    YbctidReader&& ybctid_reader,
     bool is_pg_binary_upgrade,
-    std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
+    std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
+    BufferingSettings& buffering_settings)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
-      ybctid_reader_(std::move(ybctid_reader)),
-      explicit_row_lock_buffer_(aux_ybctid_container_provider_, ybctid_reader_),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
+      buffering_settings_(buffering_settings),
       buffer_(
           [this](BufferableOperations&& ops, bool transactional)
               -> Result<PgOperationBuffer::PerformFutureEx> {
@@ -880,72 +877,6 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
       pg_client_.PerformAsync(&options, std::move(operations)), std::move(relations));
 }
 
-Result<bool> PgSession::ForeignKeyReferenceExists(
-    PgOid database_id, const LightweightTableYbctid& key) {
-  if (fk_reference_cache_.find(key) != fk_reference_cache_.end()) {
-    return true;
-  }
-
-  // Check existence of required FK intent.
-  // Absence means the key was checked by previous batched request and was not found.
-  // We don't need to call the reader in this case.
-  auto it = fk_reference_intent_.find(key);
-  if (it == fk_reference_intent_.end()) {
-    return false;
-  }
-
-  auto ybctids_accessor = aux_ybctid_container_provider_.Get();
-  auto& ybctids = *ybctids_accessor;
-  const auto max_count = std::min<size_t>(
-      fk_reference_intent_.size(), buffering_settings_.max_batch_size);
-  ybctids.reserve(max_count);
-
-  // If the reader fails to get the result, we fail the whole operation (and transaction).
-  // Hence it's ok to extract (erase) the keys from intent before calling reader.
-  auto node = fk_reference_intent_.extract(it);
-  ybctids.push_back(std::move(node.value()));
-
-  // Read up to session max batch size keys.
-  for (auto it = fk_reference_intent_.begin();
-       it != fk_reference_intent_.end() && ybctids.size() < max_count; ) {
-    node = fk_reference_intent_.extract(it++);
-    ybctids.push_back(std::move(node.value()));
-  }
-
-  // Add the keys found in docdb to the FK cache.
-  RETURN_NOT_OK(ybctid_reader_(
-      database_id, ybctids, fk_intent_region_local_tables_,
-      make_lw_function([](YbcPgExecParameters& params) {
-        params.rowmark = ROW_MARK_KEYSHARE;
-      })));
-  for (const auto& ybctid : ybctids) {
-    fk_reference_cache_.emplace(ybctid.table_id, ybctid.ybctid);
-  }
-  return fk_reference_cache_.find(key) != fk_reference_cache_.end();
-}
-
-void PgSession::AddForeignKeyReferenceIntent(
-    const LightweightTableYbctid& key, bool is_region_local) {
-  if (fk_reference_cache_.find(key) == fk_reference_cache_.end()) {
-    if (is_region_local) {
-      fk_intent_region_local_tables_.insert(key.table_id);
-    }
-    DCHECK(is_region_local || !fk_intent_region_local_tables_.contains(key.table_id));
-    fk_reference_intent_.emplace(key.table_id, std::string(key.ybctid));
-  }
-}
-
-void PgSession::AddForeignKeyReference(const LightweightTableYbctid& key) {
-  if (fk_reference_cache_.find(key) == fk_reference_cache_.end() &&
-      PREDICT_TRUE(!FLAGS_TEST_ysql_ignore_add_fk_reference)) {
-    fk_reference_cache_.emplace(key.table_id, key.ybctid);
-  }
-}
-
-void PgSession::DeleteForeignKeyReference(const LightweightTableYbctid& key) {
-  Erase(&fk_reference_cache_, key);
-}
-
 InsertOnConflictBuffer& PgSession::GetInsertOnConflictBuffer(void* plan) {
   auto iter = std::find_if(
       insert_on_conflict_buffers_.begin(), insert_on_conflict_buffers_.end(),
@@ -1042,11 +973,6 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
 }
 
 Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
-  if (pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL) {
-    VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
-    return Status::OK();
-  }
-
   // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
   // SubTransactionMetadata.
   // TODO(read committed): performance improvement -
@@ -1054,9 +980,7 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // rpc layer and beyond. For such ops, rely on aborted sub txn list in status tablet to invalidate
   // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
-  tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options));
-  auto status = pg_client_.RollbackToSubTransaction(id, &options);
+  const auto status = pg_txn_manager_->RollbackToSubTransaction(id);
   VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
   return status;
 }

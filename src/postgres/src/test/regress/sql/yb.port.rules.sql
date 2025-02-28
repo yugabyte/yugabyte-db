@@ -820,3 +820,31 @@ update rules_base set f2 = f2 + 1;
 create or replace rule r1 as on update to rules_base do instead
   select * from rules_base where f1 = 11 for update of old; -- error
 drop table rules_base;
+
+--
+-- Test non-SELECT rule on security invoker view.
+-- Should use view owner's permissions.
+--
+CREATE USER regress_rule_user1;
+
+CREATE TABLE ruletest_t1 (x int);
+CREATE TABLE ruletest_t2 (x int);
+CREATE VIEW ruletest_v1 WITH (security_invoker=true) AS
+    SELECT * FROM ruletest_t1;
+GRANT INSERT ON ruletest_v1 TO regress_rule_user1;
+
+CREATE RULE rule1 AS ON INSERT TO ruletest_v1
+    DO INSTEAD INSERT INTO ruletest_t2 VALUES (NEW.*);
+
+SET SESSION AUTHORIZATION regress_rule_user1;
+INSERT INTO ruletest_v1 VALUES (1);
+
+RESET SESSION AUTHORIZATION;
+SELECT * FROM ruletest_t1;
+SELECT * FROM ruletest_t2;
+
+DROP VIEW ruletest_v1;
+DROP TABLE ruletest_t2;
+DROP TABLE ruletest_t1;
+
+DROP USER regress_rule_user1;

@@ -13,15 +13,24 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.12 - February 25, 2025
+
+### Enhancements
+
+- Added support for installing yb-voyager on RHEL 9.
+- Installer script now installs the postgres-17-client package on Ubuntu instead of postgresql-17.
+- Improved import-data snapshot performance by importing multiple tables at the same time.
+- Enhanced the grant permissions script for PostgreSQL 15 and later to grant the SET permission on `session_replication_role` to source-db-user. This eliminates the need for you to disable Foreign Keys and triggers on the source database before running import-data-to-source.
+
 ## v1.8.11 - February 11, 2025
 
 ### ​​Enhancements
 
 - Updated the Assessment and Schema Analysis reports to detect the following unsupported PostgreSQL features:
-    - Listen / Notify events
-    - Two-Phase Commit
-    - Setting compression method with COMPRESSION clause in CREATE / ALTER TABLE
-    - Create Database options for locale, collation, strategy, and OID-related settings
+  - Listen / Notify events
+  - Two-Phase Commit
+  - Setting compression method with COMPRESSION clause in CREATE / ALTER TABLE
+  - Create Database options for locale, collation, strategy, and OID-related settings
 - Enhanced the JSON assessment report to include only the new assessment issue format, removing the old format that used separate fields for each issue category.
 - The import data status command now reports tables where the import has not yet started, improving visibility for bulk imports (import data file).
 - The assess-migration command now checks the source database IOPS and issues a warning if it is zero.

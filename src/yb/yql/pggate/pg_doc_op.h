@@ -478,9 +478,6 @@ class PgDocReadOp : public PgDocOp {
 
   Status ExecuteInit(const YbcPgExecParameters *exec_params) override;
 
-  // Row sampler collects number of live and dead rows it sees.
-  EstimatedRowCount GetEstimatedRowCount() const;
-
   bool IsWrite() const override {
     return false;
   }
@@ -488,6 +485,36 @@ class PgDocReadOp : public PgDocOp {
   Status DoPopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) override;
 
   Status ResetPgsqlOps();
+
+ protected:
+  Status CompleteProcessResponse() override;
+
+  // Set bounds on the request so it only affect specified partition
+  // Returns false if current bounds fully exclude the partition
+  Result<bool> SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition);
+
+  // Get the read_op for a specific operation index from pgsql_ops_.
+  PgsqlReadOp& GetReadOp(size_t op_index);
+
+  // Get the read_req for a specific operation index from pgsql_ops_.
+  LWPgsqlReadRequestPB& GetReadReq(size_t op_index);
+
+  // Create operators.
+  // - Each operator is used for one request.
+  // - When parallelism by partition is applied, each operator is associated with one partition,
+  //   and each operator has a batch of arguments that belong to that partition.
+  //   * The higher the number of partition_count, the higher the parallelism level.
+  //   * If (partition_count == 1), only one operator is needed for the entire partition range.
+  //   * If (partition_count > 1), each operator is used for a specific partition range.
+  //   * This optimization is used by
+  //       PopulateByYbctidOps()
+  //       PopulateParallelSelectOps()
+  // - When parallelism by arguments is applied, each operator has only one argument.
+  //   When tablet server will run the requests in parallel as it assigned one thread per request.
+  //       PopulateNextHashPermutationOps()
+  void ClonePgsqlOps(size_t op_count);
+
+  const PgsqlReadOp& GetTemplateReadOp() { return *read_op_; }
 
  private:
   // Create protobuf requests using template_op_.
@@ -570,15 +597,10 @@ class PgDocReadOp : public PgDocOp {
   // - Optimization for aggregating or filtering requests.
   Result<bool> PopulateParallelSelectOps();
 
-  // Create one sampling operator per partition and arrange their execution in random order
-  Result<bool> PopulateSamplingOps();
-
   // Set partition boundaries to a given partition. Return true if new boundaries combined with
   // old boundaries, if any, are non-empty range. Obviously, there's no need to send request with
   // empty range boundaries, because the result will be empty.
   Result<bool> SetScanPartitionBoundary();
-
-  Status CompleteProcessResponse() override;
 
   // Process response read state from DocDB.
   Status ProcessResponseReadStates();
@@ -598,33 +620,8 @@ class PgDocReadOp : public PgDocOp {
   // Set the read_time for our backfill's read request based on our exec control parameter.
   void SetReadTimeForBackfill();
 
-  // Set bounds on the request so it only affect specified partition
-  // Returns false if current bounds fully exclude the partition
-  Result<bool> SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition);
-
-  // Get the read_op for a specific operation index from pgsql_ops_.
-  PgsqlReadOp& GetReadOp(size_t op_index);
-
-  // Get the read_req for a specific operation index from pgsql_ops_.
-  LWPgsqlReadRequestPB& GetReadReq(size_t op_index);
-
   // Re-format the request when connecting to older server during rolling upgrade.
   void FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_req);
-
-  // Create operators.
-  // - Each operator is used for one request.
-  // - When parallelism by partition is applied, each operator is associated with one partition,
-  //   and each operator has a batch of arguments that belong to that partition.
-  //   * The higher the number of partition_count, the higher the parallelism level.
-  //   * If (partition_count == 1), only one operator is needed for the entire partition range.
-  //   * If (partition_count > 1), each operator is used for a specific partition range.
-  //   * This optimization is used by
-  //       PopulateByYbctidOps()
-  //       PopulateParallelSelectOps()
-  // - When parallelism by arguments is applied, each operator has only one argument.
-  //   When tablet server will run the requests in parallel as it assigned one thread per request.
-  //       PopulateNextHashPermutationOps()
-  void ClonePgsqlOps(size_t op_count);
 
   //----------------------------------- Data Members -----------------------------------------------
 
@@ -663,8 +660,6 @@ class PgDocReadOp : public PgDocOp {
 
   // Template operation, used to fill in pgsql_ops_ by either assigning or cloning.
   PgsqlReadOpPtr read_op_;
-
-  double estimated_total_rows_ = 0;
 
   // Used internally for PopulateNextHashPermutationOps to keep track of which permutation should
   // be used to construct the next read_op.

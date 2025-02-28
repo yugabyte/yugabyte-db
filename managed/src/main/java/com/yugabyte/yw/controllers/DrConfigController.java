@@ -1,6 +1,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase.getRequestedTableInfoList;
+import static org.apache.commons.validator.routines.UrlValidator.ALLOW_LOCAL_URLS;
 
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
@@ -88,6 +89,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.validator.routines.UrlValidator;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetUniverseReplicationInfoResponse;
 import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
@@ -380,7 +382,8 @@ public class DrConfigController extends AuthenticatedController {
     validateEditForm(editForm, customer.getUuid(), drConfig);
 
     DrConfigTaskParams taskParams =
-        new DrConfigTaskParams(drConfig, editForm.bootstrapParams, editForm.pitrParams);
+        new DrConfigTaskParams(
+            drConfig, editForm.bootstrapParams, editForm.pitrParams, editForm.webhookUrls);
 
     UUID taskUUID = commissioner.submit(TaskType.EditDrConfigParams, taskParams);
     CustomerTask.create(
@@ -1349,12 +1352,14 @@ public class DrConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
     verifyTaskAllowed(drConfig, TaskType.SyncDrConfig);
+    // This api will not work for the importing dr config. The config must already exist
+    // in the yba db and we can sync the fields of the config.
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
 
     XClusterConfigSyncFormData formData = new XClusterConfigSyncFormData();
     formData.targetUniverseUUID = xClusterConfig.getTargetUniverseUUID();
     formData.replicationGroupName = xClusterConfig.getReplicationGroupName();
-    XClusterConfigTaskParams params = new XClusterConfigTaskParams(formData);
+    XClusterConfigTaskParams params = new XClusterConfigTaskParams(xClusterConfig, formData);
 
     UUID taskUUID = commissioner.submit(TaskType.SyncDrConfig, params);
     CustomerTask.create(
@@ -1945,6 +1950,22 @@ public class DrConfigController extends AuthenticatedController {
                 "No changes were made to drConfig. Current retentionPeriodSec: %d and"
                     + " snapshotIntervalSec: %d for drConfig: %s",
                 oldRetentionPeriodSec, oldSnapshotIntervalSec, drConfig.getName()));
+      }
+    }
+
+    if (formData.webhookUrls != null) {
+      changeInParams = true;
+      List<String> invalidUrls = new ArrayList<>();
+      UrlValidator urlValidator = new UrlValidator(ALLOW_LOCAL_URLS);
+      for (String webhookUrl : formData.webhookUrls) {
+        if (!urlValidator.isValid(webhookUrl)) {
+          invalidUrls.add(webhookUrl);
+        }
+      }
+      if (!invalidUrls.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format("Invalid webhook urls were passed in. Invalid urls: %s", invalidUrls));
       }
     }
 

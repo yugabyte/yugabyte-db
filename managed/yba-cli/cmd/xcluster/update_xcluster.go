@@ -185,7 +185,8 @@ var updateXClusterCmd = &cobra.Command{
 					logrus.Fatalf(
 						formatter.Colorize(
 							"Storage configuration must be provided since a tables need bootstrap\n",
-							formatter.RedColor),
+							formatter.RedColor,
+						),
 					)
 				}
 

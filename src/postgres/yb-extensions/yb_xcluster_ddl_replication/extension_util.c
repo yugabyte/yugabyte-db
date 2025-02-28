@@ -51,11 +51,11 @@ GetInt64FromVariable(const char *var, const char *var_name)
 	return ret;
 }
 
-static Oid	CachedExtensionOwnerOid = 0;	/* Cached for a pg connection. */
+static Oid	CachedExtensionOwnerOid = InvalidOid;	/* Cached for a pg connection. */
 Oid
 XClusterExtensionOwner(void)
 {
-	if (CachedExtensionOwnerOid > 0)
+	if (CachedExtensionOwnerOid > InvalidOid)
 		return CachedExtensionOwnerOid;
 
 	Relation	extensionRelation = table_open(ExtensionRelationId,
@@ -99,6 +99,17 @@ SPI_GetOid(HeapTuple spi_tuple, int column_id)
 
 	if (is_null)
 		elog(ERROR, "Found NULL value when parsing oid (column %d)", column_id);
+	return oid;
+}
+
+Oid
+SPI_GetOidIfExists(HeapTuple spi_tuple, int column_id)
+{
+	bool		is_null;
+	Oid			oid = DatumGetObjectId(SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc,
+													 column_id, &is_null));
+	if (is_null)
+		return InvalidOid;
 	return oid;
 }
 
@@ -168,7 +179,7 @@ SPI_TextArrayGetElement(HeapTuple spi_tuple, int column_id, int element_index)
 
 	get_typlenbyvalalign(element_type, &typlen, &typbyval, &typalign);
 	deconstruct_array(array, element_type, typlen, typbyval, typalign,
-					  &elements, /*elog on NULL values*/ NULL,
+					  &elements, /* elog on NULL values */ NULL,
 					  &num_elements);
 
 	if (element_index >= 0 && element_index < num_elements)
@@ -184,4 +195,14 @@ bool
 IsTempSchema(const char *schema_name)
 {
 	return schema_name && !strcmp(schema_name, "pg_temp");
+}
+
+Oid
+GetColocationIdFromRelation(Relation *rel)
+{
+  YbcTableProperties table_props = YbTryGetTableProperties(*rel);
+	if (!table_props || !table_props->is_colocated)
+		return InvalidOid;
+
+	return table_props->colocation_id;
 }

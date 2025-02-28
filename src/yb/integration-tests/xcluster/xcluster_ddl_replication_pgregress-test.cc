@@ -143,7 +143,7 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     const auto sub_dir = "test_xcluster_ddl_replication_sql";
     const auto test_sql_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir, "sql");
 
-    RETURN_NOT_OK(SetUpClusters());
+    RETURN_NOT_OK(SetUpClusters(is_colocated_));
 
     // Perturb OIDs on producer side to make sure we don't accidentally preserve OIDs.
     auto conn = VERIFY_RESULT(producer_cluster_.ConnectToDB(namespace_name));
@@ -202,14 +202,31 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
 
     return Status::OK();
   }
+
+  bool is_colocated_ = false;
 };
 
-TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTable) {
+YB_STRONGLY_TYPED_BOOL(UseColocated);
+
+class XClusterPgRegressDDLReplicationParamTest : public XClusterPgRegressDDLReplicationTest,
+                                                 public testing::WithParamInterface<UseColocated> {
+  void SetUp() override {
+    is_colocated_ = GetParam();
+    XClusterPgRegressDDLReplicationTest::SetUp();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , XClusterPgRegressDDLReplicationParamTest, ::testing::Values(UseColocated::kFalse));
+INSTANTIATE_TEST_SUITE_P(
+    UseColocated, XClusterPgRegressDDLReplicationParamTest, ::testing::Values(UseColocated::kTrue));
+
+TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressCreateDropTable) {
   // Tests basic create table commands and table with many columns.
   ASSERT_OK(TestPgRegress("create_table_basic.sql", "drop_table_basic.sql"));
 }
 
-TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTable2) {
+TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressCreateDropTable2) {
   // Tests basic create table with different types and if not exists.
   ASSERT_OK(TestPgRegress("create_table_basic2.sql", "drop_table_basic2.sql"));
 }
@@ -245,7 +262,7 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTablePartitions2)
   ASSERT_OK(TestPgRegress("create_table_partitions2.sql", "drop_table_partitions2.sql"));
 }
 
-TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterTable) {
+TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressAlterTable) {
   // Tests various add column types, alter index columns, renames and partitioned tables.
   ASSERT_OK(TestPgRegress("alter_table.sql", "alter_table2.sql"));
 }
@@ -260,7 +277,7 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterPgOnlyDdls) {
   ASSERT_OK(TestPgRegress("pgonly_ddls_create.sql", "pgonly_ddls_alter.sql"));
 }
 
-TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressTableRewrite) {
+TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressTableRewrite) {
   ASSERT_OK(TestPgRegress("table_rewrite.sql", "table_rewrite2.sql"));
 }
 

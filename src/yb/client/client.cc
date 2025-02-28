@@ -3047,6 +3047,7 @@ Status YBClient::AcquireObjectLocksGlobal(const tserver::AcquireObjectLockReques
   req.set_txn_id(lock_req.txn_id());
   req.set_subtxn_id(lock_req.subtxn_id());
   req.set_session_host_uuid(lock_req.session_host_uuid());
+  req.set_lease_epoch(lock_req.lease_epoch());
   req.mutable_object_locks()->CopyFrom(lock_req.object_locks());
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, AcquireObjectLocksGlobal);
   if (resp.has_error()) {
@@ -3062,8 +3063,7 @@ Status YBClient::ReleaseObjectLocksGlobal(const tserver::ReleaseObjectLockReques
   req.set_txn_id(release_req.txn_id());
   req.set_subtxn_id(release_req.subtxn_id());
   req.set_session_host_uuid(release_req.session_host_uuid());
-  req.mutable_object_locks()->CopyFrom(release_req.object_locks());
-  req.set_release_all_locks(release_req.release_all_locks());
+  req.set_lease_epoch(release_req.lease_epoch());
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ReleaseObjectLocksGlobal);
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());

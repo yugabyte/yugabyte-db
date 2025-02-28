@@ -320,9 +320,12 @@ public class UniverseTaskParams extends AbstractTaskParams {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
   public Boolean runOnlyPrechecks = false;
 
-  @JsonIgnore
   public boolean isRunOnlyPrechecks() {
     return runOnlyPrechecks;
+  }
+
+  public void setRunOnlyPrechecks(Boolean runOnlyPrechecks) {
+    this.runOnlyPrechecks = runOnlyPrechecks;
   }
 
   @JsonIgnore

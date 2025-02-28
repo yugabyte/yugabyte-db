@@ -243,7 +243,7 @@ struct WebserverWrapper *webserver = NULL;
 int			port = 0;
 static bool log_accesses = false;
 static bool log_tcmalloc_stats = false;
-static int	webserver_profiler_sample_freq_bytes = 0;
+static int	webserver_profiler_sample_period_bytes = 0;
 static int	num_backends = 0;
 static YbcRpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
@@ -709,7 +709,7 @@ webserver_worker_main(Datum unused)
 	pqsignal(SIGTERM, ws_sigterm_handler);
 
 	SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
-					   webserver_profiler_sample_freq_bytes);
+					   webserver_profiler_sample_period_bytes);
 
 	int			rc;
 
@@ -726,7 +726,7 @@ webserver_worker_main(Datum unused)
 			got_SIGHUP = false;
 			ProcessConfigFile(PGC_SIGHUP);
 			SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
-							   webserver_profiler_sample_freq_bytes);
+							   webserver_profiler_sample_period_bytes);
 		}
 	}
 
@@ -802,12 +802,12 @@ _PG_init(void)
 							 0,
 							 NULL, NULL, NULL);
 
-	DefineCustomIntVariable("yb_pg_metrics.webserver_profiler_sample_freq_bytes",
-							"The frequency at which Google TCMalloc should "
+	DefineCustomIntVariable("yb_pg_metrics.webserver_profiler_sample_period_bytes",
+							"The interval at which Google TCMalloc should "
 							"sample allocations in the YSQL webserver. If this"
 							" is 0, sampling is disabled. ",
 							NULL,
-							&webserver_profiler_sample_freq_bytes,
+							&webserver_profiler_sample_period_bytes,
 							1024 * 1024, 0, INT_MAX,
 							PGC_SUSET,
 							0,

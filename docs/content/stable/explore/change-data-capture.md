@@ -57,7 +57,7 @@ To set up pg_recvlogical, create and start the local cluster by running the foll
 ./bin/yugabyted start \
   --advertise_address=127.0.0.1 \
   --base_dir="${HOME}/var/node1" \
-  --tserver_flags="cdcsdk_publication_list_refresh_interval_secs=2"
+  --tserver_flags="cdcsdk_publication_list_refresh_interval_secs=120"
 ```
 
 ### Create tables
@@ -165,6 +165,8 @@ BEGIN 3
 table public.projects: INSERT: project_id[integer]:1 name[character varying]:'Project A' description[text]:'Description of Project A'
 COMMIT 3
 ```
+
+YugabyteDB semantics are different from PostgreSQL when it comes to streaming added tables to a publication. Refer to [YugabyteDB semantics](../../develop/change-data-capture/using-logical-replication/advanced-topic.md#yugabytedb-semantics) for more details.
 
 ## Try it out with LSN type HYBRID_TIME
 

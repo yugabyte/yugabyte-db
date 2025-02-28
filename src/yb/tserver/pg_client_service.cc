@@ -75,6 +75,7 @@
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
@@ -140,7 +141,7 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
-
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 DEFINE_RUNTIME_int32(
     check_pg_object_id_allocators_interval_secs, 3600 * 3,
     "Interval at which pg object id allocators are checked for dropped databases.");
@@ -431,7 +432,7 @@ class PgClientServiceImpl::Impl {
       rpc::Messenger* messenger, const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, MetricEntity* metric_entity,
       const MemTrackerPtr& parent_mem_tracker, const std::string& permanent_uuid,
-      const server::ServerBaseOptions* tablet_server_opts)
+      const server::ServerBaseOptions& tablet_server_opts)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
         clock_(clock),
@@ -458,7 +459,14 @@ class PgClientServiceImpl::Impl {
             .response_cache = response_cache_,
             .sequence_cache = sequence_cache_,
             .shared_mem_pool = shared_mem_pool_,
-            .stats_exchange_response_size = stats_exchange_response_size_},
+            .stats_exchange_response_size = stats_exchange_response_size_,
+            .instance_uuid = instance_id_,
+            .ts_lock_manager =
+                tablet_server_opts.server_type == TabletServerOptions::kServerType &&
+                FLAGS_TEST_enable_object_locking_for_table_locks
+                    ? tablet_server_.ts_local_lock_manager()
+                    : nullptr
+        },
         cdc_state_table_(client_future_),
         txn_snapshot_manager_(
             instance_id_,
@@ -2276,7 +2284,7 @@ PgClientServiceImpl::PgClientServiceImpl(
     const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
-    const std::string& permanent_uuid, const server::ServerBaseOptions* tablet_server_opts,
+    const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,
     const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),

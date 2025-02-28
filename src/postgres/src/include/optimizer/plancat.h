@@ -75,6 +75,7 @@ extern bool has_row_triggers(PlannerInfo *root, Index rti, CmdType event);
 extern bool has_stored_generated_columns(PlannerInfo *root, Index rti);
 
 extern Bitmapset *get_dependent_generated_columns(PlannerInfo *root, Index rti,
-												  Bitmapset *target_cols);
+												  Bitmapset *target_cols,
+												  Bitmapset **yb_generated_cols_source);
 
 #endif							/* PLANCAT_H */

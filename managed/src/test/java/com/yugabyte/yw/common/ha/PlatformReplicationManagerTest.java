@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.FileDataService;
@@ -79,6 +80,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
   public void setUp() {
     MockitoAnnotations.initMocks(this);
     when(mockConfig.getString(STORAGE_PATH)).thenReturn("/tmp");
+    when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.k8sYbaRestoreSkipDumpFileDelete))
+        .thenReturn(true);
   }
 
   private void setupConfig(
@@ -144,6 +147,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
         expectedCommandArgs.add(BASE_INSTALL);
         expectedCommandArgs.add("--destination");
         expectedCommandArgs.add(BASE_INSTALL);
+      } else {
+        expectedCommandArgs.add("--skip_dump_file_delete");
       }
     }
 
@@ -208,7 +213,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
             mockReplicationUtil,
             mockFileDataService,
             mockPrometheusConfigHelper,
-            mockConfigHelper);
+            mockConfigHelper,
+            runtimeConfGetter);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -261,7 +267,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
                   mockReplicationUtil,
                   mockFileDataService,
                   mockPrometheusConfigHelper,
-                  mockConfigHelper));
+                  mockConfigHelper,
+                  runtimeConfGetter));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());

@@ -328,9 +328,8 @@ DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
-
 DECLARE_int32(retryable_request_timeout_secs);
-
+DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
 namespace yb::tserver {
@@ -628,6 +627,11 @@ Status TSTabletManager::Init() {
   if (docdb::GetRocksDBRateLimiterSharingMode() == docdb::RateLimiterSharingMode::TSERVER) {
     tablet_options_.rate_limiter = docdb::CreateRocksDBRateLimiter();
   }
+
+  rate_limiter_flag_callback_ = CHECK_RESULT(RegisterFlagUpdateCallback(
+      &FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec,
+      "RocksDBCompactFlushRateLimiter",
+      [this] { UpdateCompactFlushRateLimitBytesPerSec(); }));
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
@@ -1382,6 +1386,7 @@ Status TSTabletManager::DoApplyCloneTablet(
       std::move(target_table_index_info),
       source_table->schema_version, /* fixed by restore */
       target_partition_schema,
+      operation->op_id(),
       operation->hybrid_time(),
       target_pg_table_id,
       tablet::SkipTableTombstoneCheck(target_skip_table_tombstone_check));
@@ -2242,6 +2247,8 @@ void TSTabletManager::StartShutdown() {
       }
     }
   }
+
+  rate_limiter_flag_callback_.Deregister();
 
   {
     std::lock_guard lock(service_registration_mutex_);
@@ -3456,6 +3463,54 @@ client::YBMetaDataCache* TSTabletManager::CreateYBMetaDataCache() {
 // lock.
 client::YBMetaDataCache* TSTabletManager::YBMetaDataCache() const {
   return metadata_cache_.load(std::memory_order_acquire);
+}
+
+void TSTabletManager::UpdateCompactFlushRateLimitBytesPerSec() {
+  const auto sharing_mode = docdb::GetRocksDBRateLimiterSharingMode();
+  const auto rate_limit_bps = FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec;
+  LOG_WITH_PREFIX_AND_FUNC(INFO) << "Compact flush rate limiter: "
+      "sharing mode = " << sharing_mode << ", rate limit bytes per second = " << rate_limit_bps;
+
+  if (tablet_options_.rate_limiter) {
+    // Sanity check to make sure sharing_mode has expected value. That should not happen, but
+    // even if that happens, it has no effect on the system and the system is in the stable state
+    // as the sharing mode is used only during startup.
+    LOG_IF_WITH_PREFIX(WARNING, (sharing_mode != docdb::RateLimiterSharingMode::TSERVER))
+        << "Shared compact flush rate limiter should not exist in non-sharing mode";
+
+    auto ret = tablet_options_.rate_limiter->SetBytesPerSecond(rate_limit_bps);
+    if (!ret.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Shared rate compact flush limiter: set bytes_per_second failed: " << ret.status();
+    } else if (*ret) {
+      LOG_WITH_PREFIX(INFO) << "Shared compact flush rate limiter: "
+                            << "set bytes_per_second to " << rate_limit_bps;
+    }
+  } else {
+    // Sanity check to make sure sharing_mode has expected value. That should not happen, but
+    // even if that happens, it has no effect on the system and the system is in the stable state
+    // as the sharing mode is used only during startup.
+    LOG_IF_WITH_PREFIX(WARNING, (sharing_mode != docdb::RateLimiterSharingMode::NONE))
+        << "Shared compact flush rate limiter should exist in sharing mode";
+
+    for (const TabletPeerPtr& peer : GetTabletPeers()) {
+      if (peer->state() != RUNNING) {
+        // It is not safe to access tablet's rocksdb while the tablet is not yet running.
+        // In this case we skip rate limiter update here, but it is covered by the tablet
+        // startup, when the one is being changed into running state.
+        continue;
+      }
+
+      auto tablet_result = peer->shared_tablet_safe();
+      if (!tablet_result.ok()) {
+        LOG(WARNING) << peer->LogPrefix()
+                     << "Compact flush rate limiter update failed: " << tablet_result.status();
+        continue;
+      }
+
+      (*tablet_result)->SetCompactFlushRateLimitBytesPerSec(rate_limit_bps);
+    }
+  }
 }
 
 rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool() {

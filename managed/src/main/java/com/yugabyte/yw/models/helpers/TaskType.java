@@ -481,6 +481,11 @@ public enum TaskType {
       CustomerTask.TaskType.ModifyAuditLoggingConfig,
       CustomerTask.TargetType.Universe),
 
+  ModifyKubernetesAuditLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyKubernetesAuditLoggingConfig.class,
+      CustomerTask.TaskType.ModifyAuditLoggingConfig,
+      CustomerTask.TargetType.Universe),
+
   InstallYbcSoftware(
       com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class,
       CustomerTask.TaskType.InstallYbcSoftware,
@@ -921,6 +926,9 @@ public enum TaskType {
   AddExistingPitrToXClusterConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddExistingPitrToXClusterConfig.class),
 
+  DrConfigWebhookCall(
+      com.yugabyte.yw.commissioner.tasks.subtasks.webhook.DrConfigWebhookCall.class),
+
   SetRestoreState(com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreState.class),
 
   // Tasks belonging to subtasks.cloud classpath
@@ -1048,8 +1056,14 @@ public enum TaskType {
 
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
 
+  CheckOpentelemetryOperator(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator.class),
+
   PGUpgradeTServerCheck(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.PGUpgradeTServerCheck.class),
+
+  CleanUpPGUpgradeDataDir(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CleanUpPGUpgradeDataDir.class),
 
   RunYsqlMajorVersionCatalogUpgrade(
       com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlMajorVersionCatalogUpgrade.class),
@@ -1209,6 +1223,7 @@ public enum TaskType {
           .put(SoftwareKubernetesUpgradeYB, 53)
           .put(RollbackKubernetesUpgrade, 54)
           .put(ModifyAuditLoggingConfig, 55)
+          .put(ModifyKubernetesAuditLoggingConfig, 56)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

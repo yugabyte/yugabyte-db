@@ -46,6 +46,7 @@ class PgSequenceCache;
 class PgSharedMemoryPool;
 class SharedExchange;
 class SharedMemorySegmentHandle;
+class TSLocalLockManager;
 class TSTabletManager;
 class TableMutationCountSender;
 class TabletPeerLookupIf;

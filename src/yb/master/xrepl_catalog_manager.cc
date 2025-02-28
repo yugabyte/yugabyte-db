@@ -12,19 +12,19 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
-#include "yb/common/xcluster_util.h"
 
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
-
 #include "yb/client/xcluster_client.h"
+
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema_pbutil.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/docdb/docdb_pgapi.h"
 
@@ -229,7 +229,8 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
         return Status::OK();
       }
     } else {
-      table = catalog_manager_->tables_->FindTableOrNull(metadata.table_id(0));
+      table = catalog_manager_->tables_->FindTableOrNull(
+          xcluster::StripSequencesDataAliasIfPresent(metadata.table_id(0)));
       if (!table) {
         LOG(ERROR) << "Invalid table ID " << metadata.table_id(0) << " for stream " << stream_id;
         // TODO (#2059): Potentially signals a race condition that table got deleted while stream

@@ -1497,30 +1497,80 @@ TEST_F(Pg15UpgradeSequenceTest, IdentityColumn) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, BasicTablespace) {
-  const auto tablespace_name = "ts1";
-  const auto table_name = "tbl1";
+TEST_F(Pg15UpgradeTest, Tablespaces) {
+  const auto simple_spc = "ts_invalid";
+  const auto pg11_spc = "ts11";
+  const auto pg15_spc = "ts15";
+  const auto simple_tbl = "tbl_invalid";
+  const auto pg11_tbl = "tbl11";
+  const auto pg15_tbl = "tbl15";
+  const auto create_table = "CREATE TABLE $0 (a int) TABLESPACE $1";
+  const auto create_tablespace = R"#(
+    CREATE TABLESPACE $0 WITH (replica_placement='{
+      "num_replicas" : 1,
+      "placement_blocks": [{
+        "cloud"            : "cloud1",
+        "region"           : "datacenter1",
+        "zone"             : "rack1",
+        "min_num_replicas" : 1
+      }]
+    }')
+  )#";
+
+  std::map<std::string, int> expected_rows = {
+    {simple_tbl, 0},
+    {pg11_tbl, 0},
+    {pg15_tbl, 0}
+  };
+
+  std::map<std::string, std::string> expected_tablespaces = {
+    {simple_tbl, simple_spc},
+    {pg11_tbl, pg11_spc},
+  };
+
   {
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-    ASSERT_OK(conn.ExecuteFormat("CREATE TABLESPACE $0 LOCATION '/invalid'", tablespace_name));
-    ASSERT_OK(
-        conn.ExecuteFormat("CREATE TABLE $0 (a int) TABLESPACE $1", table_name, tablespace_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLESPACE $0 LOCATION '/invalid'", simple_spc));
+    ASSERT_OK(conn.ExecuteFormat(create_tablespace, pg11_spc));
+    ASSERT_OK(conn.ExecuteFormat(create_table, pg11_tbl, pg11_spc));
+    ASSERT_OK(conn.ExecuteFormat(create_table, simple_tbl, simple_spc));
   }
-  const auto check_tablespace = [&]() -> Status {
+
+  const auto check_tablespace = [this, &expected_tablespaces, &expected_rows]() -> Status {
     auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
-    auto tblspace_name_result = VERIFY_RESULT(conn.FetchRow<std::string>(Format(
+    for (const auto &[tbl, spc] : expected_tablespaces) {
+      auto tblspace_name_result = VERIFY_RESULT(conn.FetchRow<std::string>(Format(
         "SELECT spcname FROM pg_tablespace ts "
         "INNER JOIN pg_class pg_c ON pg_c.reltablespace = ts.oid "
         "WHERE pg_c.relname = '$0'",
-        table_name)));
-    SCHECK_EQ(tblspace_name_result, tablespace_name, IllegalState, "Tablespace name mismatch");
+        tbl)));
+      SCHECK_EQ(tblspace_name_result, spc, IllegalState, "Tablespace name mismatch");
 
+      // Insert and validate row count
+      RETURN_NOT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", tbl));
+      SCHECK_EQ(
+          ++expected_rows[tbl],
+          VERIFY_RESULT(conn.FetchRow<pgwrapper::PGUint64>(Format("SELECT COUNT(*) FROM $0", tbl))),
+          IllegalState,
+          Format("Row count mismatch for table $0", tbl));
+    }
     return Status::OK();
   };
 
   ASSERT_OK(check_tablespace());
 
-  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  ASSERT_OK(check_tablespace());
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.ExecuteFormat(create_tablespace, pg15_spc));
+    ASSERT_OK(conn.ExecuteFormat(create_table, pg15_tbl, pg15_spc));
+    expected_tablespaces[pg15_tbl] = pg15_spc;
+  }
 
   ASSERT_OK(check_tablespace());
 }

@@ -101,6 +101,7 @@
 #include "replication/walsender_private.h"
 #include "utils/guc_tables.h"
 #include "yb_ysql_conn_mgr_helper.h"
+#include "yb_tcmalloc_utils.h"
 
 /* ----------------
  *		global variables
@@ -3561,6 +3562,12 @@ ProcessInterrupts(void)
 
 	if (LogMemoryContextPending)
 		ProcessLogMemoryContextInterrupt();
+
+	if (YbLogCatcacheStatsPending)
+		YbProcessLogCatcacheStatsInterrupt();
+
+	if (LogHeapSnapshotPending)
+		ProcessLogHeapSnapshotInterrupt();
 }
 
 
@@ -5143,7 +5150,7 @@ yb_restart_current_stmt(int attempt, bool is_read_restart)
 			 GetCurrentSubTransactionId(), GetCurrentSubTransactionId() + 1);
 
 	/*
-	 * TODO(Piyush): Perform pg_session_->InvalidateForeignKeyReferenceCache()
+	 * TODO(Piyush): Perform foreign key reference cacahe cleanup
 	 * and create tests that would fail without this.
 	 */
 

@@ -126,8 +126,7 @@ class InstallNodeAgent(BaseYnpModule):
                     "ip": context.get('node_external_fqdn'),
                     "region": context.get('provider_region_name'),
                     "zone": context.get('provider_region_zone_name'),
-                    "nodeName": context.get("node_name"),
-                    "instanceName": context.get('instance_type_name')
+                    "instanceName": context.get('node_name')
                 }
             ]
         }

@@ -50,10 +50,16 @@ var addInstanceTypesCmd = &cobra.Command{
 		}
 
 		providerListRequest := authAPI.GetListOfProviders()
-		providerListRequest = providerListRequest.Name(providerName).ProviderCode(util.OnpremProviderType)
+		providerListRequest = providerListRequest.Name(providerName).
+			ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Instance Type", "Add - Get Provider")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Instance Type",
+				"Add - Get Provider",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {

@@ -105,19 +105,15 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
     }
   }, [provider?.uuid]);
 
-  const getKubernetesInstanceElement = (instanceLabel: string, isMasterField: boolean) => {
+  const getKubernetesInstanceElement = (instanceLabel: string, isMaster: boolean) => {
     return (
       <Box className={helperClasses.settingsContainer}>
         <Box m={2}>
           <Typography className={classes.subsectionHeaderFont}>{t(instanceLabel)}</Typography>
           <Box width={'100%'}>
-            <K8NodeSpecField
-              isMasterField={isMasterField}
-              isEditMode={!isCreateMode}
-              disabled={isViewMode}
-            />
+            <K8NodeSpecField isMaster={isMaster} isEditMode={!isCreateMode} disabled={isViewMode} />
             <K8VolumeInfoField
-              isMasterField={isMasterField}
+              isMaster={isMaster}
               isEditMode={!isCreateMode}
               disableVolumeSize={isViewMode}
               maxVolumeCount={maxVolumeCount}
@@ -129,19 +125,15 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   };
 
   // Wrapper elements to get instance metadata and dedicated container element
-  const getInstanceMetadataElement = (isMasterField: boolean) => {
+  const getInstanceMetadataElement = (isMaster: boolean) => {
     return (
       <Box width={masterPlacement === MasterPlacementMode.DEDICATED ? '100%' : CONTAINER_WIDTH}>
-        <InstanceTypeField
-          isEditMode={!isCreateMode}
-          isMasterField={isMasterField}
-          disabled={isViewMode}
-        />
+        <InstanceTypeField isEditMode={!isCreateMode} isMaster={isMaster} disabled={isViewMode} />
         <VolumeInfoField
           isEditMode={!isCreateMode}
           isPrimary={isPrimary}
           isViewMode={isViewMode}
-          isMasterField={isMasterField}
+          isMaster={isMaster}
           maxVolumeCount={maxVolumeCount}
           updateOptions={updateOptions}
           diffInHours={diffInHours}
@@ -150,12 +142,12 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
       </Box>
     );
   };
-  const getDedicatedContainerElement = (instanceLabel: string, isMasterField: boolean) => {
+  const getDedicatedContainerElement = (instanceLabel: string, isMaster: boolean) => {
     return (
       <Box className={helperClasses.settingsContainer}>
         <Box m={2}>
           <Typography className={classes.subsectionHeaderFont}>{t(instanceLabel)}</Typography>
-          {getInstanceMetadataElement(isMasterField)}
+          {getInstanceMetadataElement(isMaster)}
         </Box>
       </Box>
     );

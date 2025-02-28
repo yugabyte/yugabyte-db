@@ -86,6 +86,9 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
           createUpdateUniverseSoftwareUpgradeStateTask(
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
               true /* isSoftwareRollbackAllowed */);
+
+          createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID(), newVersion);
+
           String password = null;
           boolean catalogUpgradeCompleted = false;
 
@@ -169,8 +172,6 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
               getSoftwareUpgradeContext(
                   newVersion,
                   ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
-
-          createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID());
 
           createPromoteAutoFlagTask(
               taskParams().getUniverseUUID(),

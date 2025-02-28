@@ -754,15 +754,29 @@ public class AZUtil implements CloudUtil {
       try (InputStream inputStream = new FileInputStream(backup)) {
         blobClient.upload(BinaryData.fromStream(inputStream));
       }
-
+      return true;
     } catch (BlobStorageException e) {
       log.error("Azure exception uploading backups: {}", e.getServiceMessage(), e);
-      return false;
     } catch (Exception e) {
       log.error("Unexpected exception while uploading YBA backup: {}", e.getMessage());
-      return false;
     }
-    return true;
+    return false;
+  }
+
+  public String getStorageLocation(CustomerConfigData configData, String backupDir) {
+    try {
+      CloudLocationInfoAzure cLInfo =
+          (CloudLocationInfoAzure)
+              getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+      String azureUrl = cLInfo.azureUrl;
+      String container = cLInfo.bucket;
+      return Stream.of(cLInfo.azureUrl, cLInfo.bucket, backupDir)
+          .filter(s -> !s.isEmpty())
+          .collect(Collectors.joining("/"));
+    } catch (Exception e) {
+      log.error("Exception determining storage location: {}", e);
+    }
+    return null;
   }
 
   @Override
