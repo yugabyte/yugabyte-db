@@ -218,6 +218,9 @@ typedef struct ParseAggregationExpressionContext
 
 	/* Only $redact is allowed to use the $$KEEP,$$PRUNE, and $$DESCEND system variables. Use this boolean to prevent other operators from using these three variables.*/
 	bool allowRedactVariables;
+
+	/* collationString to be used by comparison operators */
+	const char *collationString;
 } ParseAggregationExpressionContext;
 
 

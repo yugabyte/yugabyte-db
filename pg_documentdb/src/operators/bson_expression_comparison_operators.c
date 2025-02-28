@@ -14,6 +14,7 @@
 #include "query/bson_compare.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
+#include "collation/collation.h"
 
 /* --------------------------------------------------------- */
 /* Type declaration */
@@ -35,10 +36,9 @@ typedef enum ComparisonType
 /* State for comparison operators. */
 typedef struct ComparisonOperatorState
 {
-	DualArgumentExpressionState baseState; /* Must be first element */
-
-	/* The type of comparison to perform. */
-	ComparisonType comparisonType;
+	AggregationExpressionData *firstArg;
+	AggregationExpressionData *secondArg;
+	char *collationString;
 } ComparisonOperatorState;
 
 
@@ -64,6 +64,7 @@ static void ParseComparisonOperator(const bson_value_t *argument,
 
 static void CompareExpressionBsonValues(const bson_value_t *firstValue,
 										const bson_value_t *secondValue,
+										const char *collationString,
 										bson_value_t *result,
 										ComparisonType comparisonType);
 
@@ -77,10 +78,11 @@ HandlePreParsedComparisonOperator(pgbson *doc,
 								  ExpressionResult *expressionResult,
 								  ComparisonType comparisonType)
 {
-	List *argList = arguments;
+	ComparisonOperatorState *state = arguments;
 
-	AggregationExpressionData *first = list_nth(argList, 0);
-	AggregationExpressionData *second = list_nth(argList, 1);
+	AggregationExpressionData *first = state->firstArg;
+	AggregationExpressionData *second = state->secondArg;
+	char *collationString = state->collationString;
 
 	bool isNullOnEmpty = false;
 	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
@@ -96,6 +98,7 @@ HandlePreParsedComparisonOperator(pgbson *doc,
 	bson_value_t result = { 0 };
 	CompareExpressionBsonValues(&firstValue,
 								&secondValue,
+								collationString,
 								&result,
 								comparisonType);
 
@@ -131,6 +134,7 @@ ParseComparisonOperator(const bson_value_t *argument,
 	{
 		CompareExpressionBsonValues(&first->value,
 									&second->value,
+									parseContext->collationString,
 									&data->value,
 									comparisonType);
 		data->kind = AggregationExpressionKind_Constant;
@@ -140,7 +144,18 @@ ParseComparisonOperator(const bson_value_t *argument,
 	}
 	else
 	{
-		data->operator.arguments = arguments;
+		ComparisonOperatorState *state = palloc0(sizeof(ComparisonOperatorState));
+		state->firstArg = first;
+		state->secondArg = second;
+
+		const char *collationString = parseContext->collationString;
+		if (IsCollationApplicable(collationString))
+		{
+			state->collationString = pstrdup(collationString);
+		}
+
+		data->operator.arguments = state;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 	}
 }
 
@@ -152,12 +167,14 @@ ParseComparisonOperator(const bson_value_t *argument,
 static void
 CompareExpressionBsonValues(const bson_value_t *firstValue,
 							const bson_value_t *secondValue,
+							const char *collationString,
 							bson_value_t *result,
 							ComparisonType comparisonType)
 {
 	bool boolValue = false;
 	bool isComparisonValid = false;
-	int cmp = CompareBsonValueAndType(firstValue, secondValue, &isComparisonValid);
+	int cmp = CompareBsonValueAndTypeWithCollation(firstValue, secondValue,
+												   &isComparisonValid, collationString);
 
 	switch (comparisonType)
 	{

@@ -3292,9 +3292,15 @@ PopulateExprStateFromQuery(BsonDollarExprQueryState *state,
 						   const pgbson *filter, const pgbson *variableSpec)
 {
 	pgbsonelement element;
-	PgbsonToSinglePgbsonElement(filter, &element);
+	const char *collationString = PgbsonToSinglePgbsonElementWithCollation(filter,
+																		   &element);
 
 	ParseAggregationExpressionContext parseContext = { 0 };
+
+	if (IsCollationApplicable(collationString))
+	{
+		parseContext.collationString = collationString;
+	}
 
 	if (variableSpec != NULL)
 	{
