@@ -202,13 +202,9 @@ START_REPLICATION SLOT rs LOGICAL 62D63025/5462E000;
 
 The replication slot being used must be created with LSN type `HYBRID_TIME`.
 
+The `yb_get_current_hybrid_time_lsn()` function only works with LSN type `HYBRID_TIME`, and will not work with `SEQUENCE`.
+
 {{< /note >}}
-
-{{< warn title="To be used strictly with HYBRID_TIME" >}}
-
-Note that the method `yb_get_current_hybrid_time_lsn()` is only supposed to be used with LSN type `HYBRID_TIME` and it will not work with `SEQUENCE`.
-
-{{< /warn >}}
 
 ### Permissions
 
