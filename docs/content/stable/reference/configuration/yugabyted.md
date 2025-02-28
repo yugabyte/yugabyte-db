@@ -844,7 +844,7 @@ You can set advanced flags using a configuration file, specified using the `--co
     }
     ```
 
-1. Start the node using the config flag.
+1. Start the node using the `--config` flag.
 
     ```sh
     ./bin/yugabyted start --config ~/yugabyted.conf
