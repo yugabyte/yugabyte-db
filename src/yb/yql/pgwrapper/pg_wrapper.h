@@ -89,7 +89,8 @@ class PgWrapper : public ProcessWrapper {
   // only once after the cluster has started up. tmp_dir_base is used as a base directory to
   // create a temporary PostgreSQL directory that is later deleted.
   static Status InitDbForYSQL(
-      const std::string& master_addresses, const std::string& tmp_dir_base, int tserver_shm_fd,
+      const server::ServerBaseOptions& options, FsManager& fs_manager,
+      const std::string& tmp_dir_base, int tserver_shm_fd,
       std::vector<std::pair<std::string, YbcPgOid>> db_to_oid, bool is_major_upgrade);
 
   Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
