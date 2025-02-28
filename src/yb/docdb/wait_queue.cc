@@ -509,7 +509,7 @@ struct WaitingTxn : public std::enable_shared_from_this<WaitingTxn> {
     return waiters_;
   }
 
-  const TabletId& GetStatusTablet() EXCLUDES(mutex_) {
+  TabletId GetStatusTablet() EXCLUDES(mutex_) {
     SharedLock l(mutex_);
     return status_tablet_;
   }
@@ -685,7 +685,7 @@ class BlockerData {
 
   const TransactionId& id() const { return id_; }
 
-  const TabletId& status_tablet() EXCLUDES(mutex_) {
+  TabletId status_tablet() EXCLUDES(mutex_) {
     SharedLock r_lock(mutex_);
     return status_tablet_;
   }

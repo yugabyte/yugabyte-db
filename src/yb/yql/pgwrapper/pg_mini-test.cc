@@ -1671,7 +1671,7 @@ class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
 
 template <class T>
 T* GetMetricOpt(const MetricEntity& metric_entity, const MetricPrototype& prototype) {
-  const auto& map = metric_entity.UnsafeMetricsMapForTests();
+  const auto& map = metric_entity.TEST_UsageMetricsMap();
   auto it = map.find(&prototype);
   if (it == map.end()) {
     return nullptr;
