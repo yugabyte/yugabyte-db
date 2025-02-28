@@ -23,6 +23,7 @@
 #include <thread>
 #include <variant>
 #include <vector>
+#include "yb/server/server_base_options.h"
 
 #ifndef __linux__
 #include <libproc.h>
@@ -335,11 +336,6 @@ DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
 DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
     "Enables the collection of query diagnostics data for YSQL queries, "
     "facilitating the creation of diagnostic bundles.");
-
-DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
-    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and "
-    "11.");
-DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11));
 
 DECLARE_bool(enable_pg_cron);
 
@@ -1055,8 +1051,10 @@ Status PgWrapper::CleanupPgData(const std::string& data_dir) {
 }
 
 Status PgWrapper::InitDbForYSQL(
-    const string& master_addresses, const string& tmp_dir_base, int tserver_shm_fd,
-    std::vector<std::pair<string, YbcPgOid>> db_to_oid, bool is_major_upgrade) {
+    const server::ServerBaseOptions& options, FsManager& fs_manager, const string& tmp_dir_base,
+    int tserver_shm_fd, std::vector<std::pair<string, YbcPgOid>> db_to_oid, bool is_major_upgrade) {
+  const auto master_addresses = server::MasterAddressesToString(*options.GetMasterAddresses());
+
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;
@@ -1079,6 +1077,9 @@ Status PgWrapper::InitDbForYSQL(
                    << is_dir.status();
     }
   });
+
+  RETURN_NOT_OK(conf.SetSslConf(options, fs_manager));
+
   PgWrapper pg_wrapper(conf);
   auto start_time = std::chrono::steady_clock::now();
   Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid, is_major_upgrade});

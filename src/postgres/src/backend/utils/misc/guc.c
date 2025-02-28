@@ -3181,6 +3181,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_upgrade_to_pg15_completed", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Indicates the state of YSQL major upgrade to PostgreSQL version 15. Do not modify this manually."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_upgrade_to_pg15_completed,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

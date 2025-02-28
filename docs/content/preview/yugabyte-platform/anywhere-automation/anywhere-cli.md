@@ -5,7 +5,7 @@ linkTitle: yba CLI
 description: Use YugabyteDB Anywhere CLI to create and manage resources in YBA.
 headcontent: Install the CLI, configure default settings, and set up autocompletion
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   preview_yugabyte-platform:
     parent: anywhere-automation
@@ -16,11 +16,13 @@ rightNav:
   hideH4: true
 ---
 
-The [YugabyteDB Anywhere (YBA) Command Line Interface](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba.md) (CLI) is an open source tool that enables you to interact with YBA using commands from your shell. With minimal configuration, you can start running commands from the command line that implement functionality equivalent to that provided by the browser-based YBA interface.
+The [YugabyteDB Anywhere Command Line Interface](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/) (CLI) is an open source tool that enables you to interact with YugabyteDB Anywhere using commands from your shell. With minimal configuration, you can start running commands from the command line that implement functionality equivalent to that provided by the browser-based YugabyteDB Anywhere interface.
+
+Reference documentation for yba CLI commands and their flags is available in the [Docs folder](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba.md) of the GitHub repository.
 
 The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
-The CLI is in [Tech Preview](/preview/releases/versioning/#feature-maturity). Commands and options may change before {{<tags/feature/ga>}}.
+The CLI is {{<tags/feature/ea>}}. Commands and options may change before {{<tags/feature/ga>}}.
 
 ## Install CLI
 
@@ -84,6 +86,7 @@ You can set the following CLI environment variables.
 | :--- | :--- |
 | YBA_APITOKEN | The API token to use to authenticate to your YugabyteDB Aeon account. |
 | YBA_CI | Set to `true` to avoid outputting unnecessary log lines. |
+| YBA_FF_PREVIEW | Set to `true` to access commands and flags that are considered {{<tags/feature/tp>}}. |
 | YBA_HOST | The host address of the universe you are managing. By default, https is added to the host if no scheme is provided. |
 
 ## Syntax
@@ -127,27 +130,6 @@ Print the version of the CLI:
 ```sh
 yba --version
 ```
-
-## Commands
-
-You can manage the following resources:
-
-| Resource | Description |
-| :--- | :--- |
-| [provider](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_provider.md) | Manage provider configurations. |
-| [storage-config](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_storage-config.md) | Manage storage configurations. |
-| [task](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_task.md) | Manage tasks. |
-| [universe](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_universe.md) | Manage universes. |
-| [yb-db-version](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_yb-db-version.md) | Manage YugabyteDB releases. |
-
-Use the following commands to configure the CLI:
-
-| Resource | Description |
-| :--- | :--- |
-| [auth](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_auth.md) | Write API token to a configuration file. |
-| [completion](#autocompletion) | Configure autocompletion for Bash, Fish, PowerShell, and Zsh |
-| [login](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_login.md) | Connect to YugabyteDB Anywhere host machine using email and password. |
-| [register](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba_register.md) | Register a YugabyteDB Anywhere customer. |
 
 ### Global flags
 

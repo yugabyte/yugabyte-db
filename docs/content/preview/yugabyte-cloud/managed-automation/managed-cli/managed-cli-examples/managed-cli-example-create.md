@@ -213,6 +213,201 @@ Name              Tier        Version        State     Health    Regions        
 my-multi-region   Dedicated   2.14.7.0-b51   ACTIVE    💚        us-central1,+2   3         6 / 24GB / 600GB
 ```
 
+## Encryption at rest
+
+YugabyteDB Aeon supports [encryption at rest](../../../../cloud-secure-clusters/managed-ear) (EAR). Before you can create a cluster with EAR, you need to create a customer managed key (CMK) in a cloud provider Key Management Service (KMS). See [Prerequisites](../../../../cloud-secure-clusters/managed-ear/#prerequisites).
+
+### Create a cluster with EAR
+
+Use the following commands to create a new cluster with EAR in AWS, GCP, or Azure.
+
+{{< tabpane text=true >}}
+
+{{% tab header="AWS" %}}
+
+```sh
+ybm cluster create \
+  --cluster-name my-sandbox \
+  --cloud-provider AWS \ 
+  --cluster-tier Dedicated \
+  --cluster-type SYNCHRONOUS \
+  --encryption-spec cloud-provider=AWS,aws-secret-key=<your-secret-key>,aws-access-key=<your-access-key>,aws-arn=<your-aws-arn-key> \
+  --credentials username=admin,password=password \
+  --fault-tolerance ZONE \
+  --region-info region=us-east-2,num-nodes=3,num-cores=4
+```
+
+```output
+The cluster my-sandbox has been created
+Name           Tier        Version           State     Health    Provider   Regions     Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
+my-sandbox   Dedicated   {{< yb-version version="preview" format="build">}}       ACTIVE    💚        AWS        us-east-2   3         4 / 16GB / 200GB / 3000
+```
+
+You can list the EAR details using the encryption list command.
+
+```sh
+ybm cluster encryption list --cluster-name my-sandbox
+```
+
+```output
+Provider   Key Alias                              Last Rotated   Security Principals                                                           CMK Status
+AWS        XXXXXXXX-e690-42fc-b209-baf969930b2c   -              arn:aws:kms:us-east-1:712345678912:key/db272c8d-1592-4c73-bfa3-420d05822933   ACTIVE
+```
+
+EAR details are also shown when you use the `cluster describe` command.
+
+{{% /tab %}}
+
+{{% tab header="GCP" %}}
+
+```sh
+ybm cluster create \
+  --cluster-name my-sandbox \
+  --cloud-provider GCP \
+  --cluster-tier Dedicated \
+  --cluster-type SYNCHRONOUS \
+  --encryption-spec cloud-provider=GCP,gcp-resource-id=projects/<your-project>/locations/<your-location>/keyRings/<your-key-ring-name>/cryptoKeys/<your-key-name>,gcp-service-account-path=creds.json \ 
+  --credentials username=admin,password=password \
+  --fault-tolerance ZONE \
+  --region-info region=us-central1,num-nodes=3,num-cores=4
+```
+
+```output
+The cluster my-sandbox has been created
+Name           Tier        Version           State     Health    Provider   Regions     Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
+my-sandbox   Dedicated   {{< yb-version version="preview" format="build">}}       ACTIVE    💚        GCP        us-central1   3         4 / 16GB / 200GB / 3000
+```
+
+You can list the EAR details using the encryption list command.
+
+```sh
+ybm cluster encryption list --cluster-name my-sandbox
+```
+
+```output
+Provider   Key Alias      Last Rotated               Security Principals                                                                              CMK Status
+GCP        <your-key-name>   2023-11-03T07:37:26.351Z   projects/<your-project-id>/<your-location>/global/keyRings/<your-key-ring-name>/cryptoKeys/<your-key-name>   ACTIVE
+```
+
+EAR details are also shown when you use the `cluster describe` command.
+
+{{% /tab %}}
+
+{{% tab header="Azure" %}}
+
+```sh
+ybm cluster create \
+  --cluster-name my-sandbox \
+  --cloud-provider AZURE \
+  --cluster-tier Dedicated \
+  --cluster-type SYNCHRONOUS \
+  --encryption-spec cloud-provider=AZURE,azu-client-id=<your-client-id>,azu-client-secret=<your-client-secret>,azu-tenant-id=<your-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<your-key-vault-uri> \ 
+  --credentials username=admin,password=password \
+  --fault-tolerance ZONE \
+  --region-info region=eastus,num-nodes=3,num-cores=4 \
+```
+
+```output
+The cluster my-sandbox has been created
+Name           Tier        Version           State     Health    Provider   Regions     Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
+my-sandbox   Dedicated   {{< yb-version version="preview" format="build">}}       ACTIVE    💚        AZURE      eastus   3         4 / 16GB / 200GB / 3000
+```
+
+You can list the EAR details using the encryption list command.
+
+```sh
+ybm cluster encryption list --cluster-name my-sandbox
+```
+
+```output
+Provider   Key Alias                              Last Rotated               Security Principals                      CMK Status
+AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   <your-key-vault-uri>   ACTIVE
+```
+
+EAR details are also shown when you use the `cluster describe` command.
+
+{{% /tab %}}
+
+{{< /tabpane >}}
+
+### Rotate your CMK
+
+Use the `encryption update` command to rotate your CMK. You can also use this command to encrypt a cluster that does not already have EAR.
+
+When encrypting an existing cluster, YugabyteDB Aeon uses lazy encryption.
+
+{{< tabpane text=true >}}
+
+{{% tab header="AWS" %}}
+
+```sh
+ybm cluster encryption update \
+  --cluster-name my-sandbox \
+  --encryption-spec cloud-provider=AWS,aws-secret-key=<new-secret-key>,aws-access-key=<new-access-key>
+```
+
+{{% /tab %}}
+
+{{% tab header="GCP" %}}
+
+```sh
+ybm cluster encryption update \
+  --cluster-name my-sandbox \
+  --encryption-spec cloud-provider=GCP,gcp-resource-id=projects/yugabyte/locations/global/keyRings/test-byok/cryptoKeys/key1,gcp-service-account-path=<path-to-service-account-file> 
+```
+
+{{% /tab %}}
+
+{{% tab header="Azure" %}}
+
+```sh
+ybm cluster encryption update \
+  --cluster-name my-sandbox \
+  --encryption-spec cloud-provider=AZURE,azu-client-id=<new-client-id>,azu-client-secret=<new-client-secret>,azu-tenant-id=<new-tenant-id>,azu-key-name=test-key,azu-key-vault-uri=<new-key-vault-uri>
+```
+
+{{% /tab %}}
+
+{{< /tabpane >}}
+
+### Enable and disable EAR
+
+To disable EAR on a cluster, use the following command:
+
+```sh
+ybm cluster encryption update-state \
+  --cluster-name my-sandbox \
+  --disable
+```
+
+```output
+Successfully DISABLED encryption at rest for cluster my-sandbox
+```
+
+After you disable EAR, YugabyteDB Aeon uses lazy decryption to decrypt the cluster.
+
+You can check the status of the EAR using the encryption list command.
+
+```sh
+ybm cluster encryption list --cluster-name my-sandbox
+```
+
+```output
+Provider   Key Alias                              Last Rotated               Security Principals                      CMK Status
+AZURE      8aXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5b   2023-11-03T07:37:26.351Z   <your-key-vault-uri>   DISABLED
+
+To re-enable EAR on a cluster, use the following command:
+
+```sh
+ybm cluster encryption update-state \
+  --cluster-name my-sandbox \
+  --enable
+```
+
+```output
+Successfully ENABLED encryption at rest for cluster my-sandbox
+```
+
 ## Pause, resume, and terminate
 
 To list your clusters, enter the following command:

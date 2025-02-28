@@ -48,6 +48,7 @@
 #include <cassert>
 #include <deque>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <set>
 #include <string>

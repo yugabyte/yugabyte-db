@@ -859,13 +859,13 @@ TEST_F(RpcStubTest, TrafficMetrics) {
     }
     return down_cast<Counter*>(it->second.get());
   };
-  auto server_metrics = server_messenger()->metric_entity()->UnsafeMetricsMapForTests();
+  auto server_metrics = server_messenger()->metric_entity()->TEST_UsageMetricsMap();
   auto* service_request_bytes = ASSERT_RESULT(find_metric_by_name(
       server_metrics, "service_request_bytes_yb_rpc_test_CalculatorService_RepeatedEcho"));
   auto* service_response_bytes = ASSERT_RESULT(find_metric_by_name(
       server_metrics, "service_response_bytes_yb_rpc_test_CalculatorService_RepeatedEcho"));
 
-  auto client_metrics = client_messenger_->metric_entity()->UnsafeMetricsMapForTests();
+  auto client_metrics = client_messenger_->metric_entity()->TEST_UsageMetricsMap();
   auto* proxy_request_bytes = ASSERT_RESULT(find_metric_by_name(
       client_metrics, "proxy_request_bytes_yb_rpc_test_CalculatorService_RepeatedEcho"));
   auto* proxy_response_bytes = ASSERT_RESULT(find_metric_by_name(

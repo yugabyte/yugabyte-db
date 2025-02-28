@@ -128,7 +128,7 @@ TEST_F(MultiThreadedMetricsTest, AddCounterToRegistryTest) {
   int num_counters = 1000;
   std::function<void()> f = std::bind(RegisterCounters, entity, "prefix", num_counters);
   RunWithManyThreads(&f, num_threads);
-  ASSERT_EQ(num_threads * num_counters, entity->UnsafeMetricsMapForTests().size());
+  ASSERT_EQ(num_threads * num_counters, entity->TEST_UsageMetricsMap().size());
 }
 
 } // namespace yb

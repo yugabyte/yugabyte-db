@@ -107,6 +107,11 @@ TEST_F(YsqlMajorUpgradeCheckTest, PgUpgradeChecks) {
     ASSERT_OK(ValidateUpgradeCompatibility());
   }
 
+// Disabled the re-upgrade step on debug builds because it times out.
+#ifndef NDEBUG
+  return;
+#endif
+
   // Setup all failures at once.
   std::vector<std::string> all_errors;
   for (const auto& check : kCheckList) {
@@ -139,17 +144,24 @@ TEST_F(YsqlMajorUpgradeCheckTest, PgUpgradeChecks) {
 TEST_F(YsqlMajorUpgradeCheckTest, CheckUpgradeCompatibilityGuc) {
   // Whether or not yb_major_version_upgrade_compatibility is enabled, pg_upgrade --check will not
   // error.
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "11"));
+
+  ASSERT_OK(
+      SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kBackwardsCompatible));
   ASSERT_OK(ValidateUpgradeCompatibility());
 
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "0"));
+  ASSERT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
   ASSERT_OK(ValidateUpgradeCompatibility());
 
   // However, when we actually run the YSQL upgrade, pg_upgrade will error since now
   // ysql_yb_major_version_upgrade_compatibility is not set.
+  for (auto* master : cluster_->master_daemons()) {
+    ASSERT_OK(RestartMasterInCurrentVersion(*master, /*wait_for_cluster_to_stabilize=*/false));
+  }
+  ASSERT_OK(WaitForClusterToStabilize());
+
   auto log_waiter =
       cluster_->GetMasterLogWaiter("yb_major_version_upgrade_compatibility must be set to 11");
-  ASSERT_NOK_STR_CONTAINS(UpgradeClusterToMixedMode(), kPgUpgradeFailedError);
+  ASSERT_NOK_STR_CONTAINS(PerformYsqlMajorCatalogUpgrade(), kPgUpgradeFailedError);
   ASSERT_TRUE(log_waiter.IsEventOccurred());
 }
 
