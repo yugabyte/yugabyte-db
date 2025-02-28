@@ -731,9 +731,7 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
 #else
   const int kTimeMultiplier = 1;
 #endif
-  const MonoDelta kMaxLimit = MonoDelta::FromMilliseconds(50 * kTimeMultiplier);
   const MonoDelta kReplyAverageLimit = MonoDelta::FromMilliseconds(10 * kTimeMultiplier);
-  const MonoDelta kHandleAverageLimit = MonoDelta::FromMilliseconds(5 * kTimeMultiplier);
 
   MonoDelta min_processing = MonoDelta::kMax;
   MonoDelta max_processing = MonoDelta::kMin;
@@ -768,10 +766,18 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
             << "calls per second: " << measured_calls * 1000000 / passed_us
             << " (" << us_per_call << "us per call, NOT latency), "
             << " slow calls: " << slow_calls * 100.0 / measured_calls << "%";
+  // There are lot of tests running in Jenkins on a single Mac in parallel.
+  // Quite hard to use for performance measurements.
+  // So just ignore perf numbers.
+#if !defined(__APPLE__)
+  const MonoDelta kMaxLimit = MonoDelta::FromMilliseconds(50 * kTimeMultiplier);
+  const MonoDelta kHandleAverageLimit = MonoDelta::FromMilliseconds(5 * kTimeMultiplier);
+
   EXPECT_PERF_LE(slow_calls * 200, measured_calls);
   EXPECT_PERF_LE(max_processing, kMaxLimit);
   EXPECT_PERF_LE(reply_average, kReplyAverageLimit);
   EXPECT_PERF_LE(handle_average, kHandleAverageLimit);
+#endif
 }
 
 TEST_F(RpcStubTest, IPv6) {
