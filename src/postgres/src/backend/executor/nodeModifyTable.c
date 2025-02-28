@@ -168,6 +168,11 @@ static TupleTableSlot *YbExecInsertAct(ModifyTableContext *context,
 static void YbFreeInsertOnConflictBatchState(YbInsertOnConflictBatchState *state);
 static void YbDropInsertOnConflictReadSlots(YbInsertOnConflictBatchState *state);
 
+static Bitmapset *YbFetchColumnsMarkedForUpdate(ModifyTableState *mtstate,
+												EState *estate,
+												ResultRelInfo *resultRelInfo,
+												TupleTableSlot *slot);
+
 /*
  * Verify that the tuples to be produced by INSERT or UPDATE match the
  * target relation's rowtype
@@ -1633,9 +1638,6 @@ ExecUpdate(ModifyTableState *mtstate,
 			return inserted_tuple;
  		}
 
-		RangeTblEntry *rte = rt_fetch(resultRelInfo->ri_RangeTableIndex,
-									  estate->es_range_table);
-
 		bool row_found = false;
 
 		/*
@@ -1651,7 +1653,8 @@ ExecUpdate(ModifyTableState *mtstate,
 		 * This guardrail may be removed in the future. This also helps avoid
 		 * having a dependency on row locking.
 		 */
-		Bitmapset *cols_marked_for_update = bms_copy(rte->updatedCols);
+		Bitmapset *cols_marked_for_update = YbFetchColumnsMarkedForUpdate(
+			mtstate, estate, resultRelInfo, planSlot);
 
 		ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
 		YbCopySkippableEntities(&estate->yb_skip_entities,
@@ -1685,12 +1688,6 @@ ExecUpdate(ModifyTableState *mtstate,
 		bool is_pk_updated = YbIsPrimaryKeyUpdated(resultRelationDesc,
 												   cols_marked_for_update);
 
-		/*
-		 * TODO(alex): It probably makes more sense to pass a
-		 *             transformed slot instead of a plan slot? Note though
-		 *             that it can have tuple materialized already.
-		 */
-
 		if (is_pk_updated)
 		{
 			slot->tts_tuple->t_ybctid = YBCGetYBTupleIdFromSlot(planSlot);
@@ -1703,6 +1700,7 @@ ExecUpdate(ModifyTableState *mtstate,
 										 planSlot,
 										 oldtuple,
 										 tuple,
+										 slot->tts_tupleDescriptor,
 										 estate,
 										 plan,
 										 mtstate->yb_fetch_target_tuple,
@@ -4241,4 +4239,63 @@ yb_check_constr_cleanup:;
 
 	list_free(descriptors);
 	return retval;
+}
+
+/*
+ * Function to return a bitmapset of columns that are marked for update by the
+ * planner.
+ */
+Bitmapset *
+YbFetchColumnsMarkedForUpdate(ModifyTableState *mtstate,
+							  EState *estate,
+							  ResultRelInfo *partitionRelInfo,
+							  TupleTableSlot *slot)
+{
+	RangeTblEntry *rte = rt_fetch(partitionRelInfo->ri_RangeTableIndex,
+								  estate->es_range_table);
+	ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
+	Bitmapset  *cols_marked_for_update = bms_copy(rte->updatedCols);
+	Bitmapset  *partition_cols = NULL;
+
+	if (!(plan->onConflictAction == ONCONFLICT_UPDATE &&
+		  mtstate->mt_partition_tuple_routing))
+
+		return cols_marked_for_update;
+
+	/*
+	 * The given query is an ON CONFLICT .. DO UPDATE query on a partitioned
+	 * table. In such cases, the plan state may not hold details of the correct
+	 * partition whose tuple is to be updated, as the tuple may not have been
+	 * routed at planning time. Moreover, the partition has defined its columns
+	 * in an order that is different to that of the root table. In such cases,
+	 * it is essential to re-map the attribute numbers in the updated columns
+	 * bitmapset to that of the partition's.
+	 * For example:
+	 * A parent table 'base' has columns in the order [a, b, c] while one of its
+	 * partitions 'p1' has columns in the order [b, c, a].
+	 * Suppose columns 'a' and 'b' are marked for update.
+	 * The planner will produce the following bitmapset: {a -> 10, b -> 11}
+	 * based on 'base' while the correct mapping for 'p1' is as follows:
+	 * {b -> 10, a -> 12}.
+	 */
+	TupleConversionMap *tup_conv_map = NULL;
+	PartitionTupleRouting *proute = mtstate->mt_partition_tuple_routing;
+
+	int partidx = ExecFindPartition(mtstate->resultRelInfo,
+									proute->partition_dispatch_info,
+									slot,
+									estate);
+
+	Assert(partidx >= 0 && partidx < proute->num_partitions);
+
+	tup_conv_map = proute->parent_child_tupconv_maps[partidx];
+
+	if (!tup_conv_map)
+		return cols_marked_for_update;
+
+	partition_cols = execute_attr_map_cols(cols_marked_for_update, tup_conv_map,
+										   partitionRelInfo->ri_RelationDesc);
+
+	bms_free(cols_marked_for_update);
+	return partition_cols;
 }
