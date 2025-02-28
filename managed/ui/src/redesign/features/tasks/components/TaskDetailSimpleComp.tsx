@@ -8,11 +8,11 @@
  */
 
 import { FC } from 'react';
-import { useToggle } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { Typography, makeStyles } from '@material-ui/core';
-import { TaskDetailDrawer } from './TaskDetailDrawer';
 import { useIsTaskNewUIEnabled } from '../TaskUtils';
+import { hideTaskInDrawer, showTaskInDrawer } from '../../../../actions/tasks';
+import { useDispatch } from 'react-redux';
 
 interface TaskDetailSimpleCompProps {
   taskUUID: string;
@@ -36,10 +36,21 @@ export const TaskDetailSimpleComp: FC<TaskDetailSimpleCompProps> = ({ taskUUID, 
   const { t } = useTranslation('translation', {
     keyPrefix: 'taskDetails.simple'
   });
-  const [showTaskDetailsDrawer, toggleTaskDetailsDrawer] = useToggle(false);
+
+  const dispatch = useDispatch();
+
   const classes = useStyles();
 
   const isTaskNewUIEnabled = useIsTaskNewUIEnabled();
+
+  const toggleTaskDetailsDrawer = (flag: boolean) => {
+    if (flag) {
+      dispatch(showTaskInDrawer(taskUUID));
+    } else {
+      dispatch(hideTaskInDrawer());
+    }
+  };
+
   if (!isTaskNewUIEnabled) return null;
 
   return (
@@ -55,13 +66,6 @@ export const TaskDetailSimpleComp: FC<TaskDetailSimpleCompProps> = ({ taskUUID, 
       >
         <Typography variant="body2">{t('viewDetails')}</Typography>
       </div>
-      <TaskDetailDrawer
-        visible={showTaskDetailsDrawer}
-        onClose={() => {
-          toggleTaskDetailsDrawer(false);
-        }}
-        taskUUID={taskUUID}
-      />
     </>
   );
 };

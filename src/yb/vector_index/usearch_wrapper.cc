@@ -164,7 +164,8 @@ class UsearchIndex :
   Status DoInsert(VectorId vector_id, const Vector& v) {
     auto add_result = index_.add(vector_id, v.data());
     RSTATUS_DCHECK(
-        add_result, RuntimeError, "Failed to add a vector: $0", add_result.error.release());
+        add_result, RuntimeError, "Failed to add a vector $0: $1", vector_id,
+        add_result.error.release());
     return Status::OK();
   }
 
@@ -218,7 +219,7 @@ class UsearchIndex :
     // TODO(vector_index) do it in more efficient way
     Vector result(dimensions_);
     SCHECK_EQ(
-        index_.get(vector_id, result.data()), 1, InvalidArgument,
+        index_.get(vector_id, result.data()), 1, NotFound,
         Format("Vector $0 is missing in index", vector_id));
     return result;
   }

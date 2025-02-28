@@ -63,12 +63,6 @@ namespace yb {
 
 class NodeInstancePB;
 
-namespace server {
-
-class Clock;
-
-}
-
 namespace master {
 
 struct LeaderEpoch;
@@ -110,7 +104,7 @@ struct HeartbeatResult {
 //   It may be safe to violate but think carefully when doing so.
 class TSManager {
  public:
-  explicit TSManager(SysCatalogTable& sys_catalog, server::Clock& clock) noexcept;
+  explicit TSManager(SysCatalogTable& sys_catalog) noexcept;
   virtual ~TSManager() noexcept {}
 
   // Lookup the tablet server descriptor for the given instance identifier.
@@ -249,7 +243,6 @@ class TSManager {
   size_t NumDescriptorsUnlocked() const REQUIRES_SHARED(map_lock_);
 
   SysCatalogTable& sys_catalog_;
-  server::Clock& clock_;
 
   // These two locks are used as in an ad-hoc implementation of a ternary read-write-commit pattern
   // to protect servers_by_id_. We use this model because we may have to do a lot of IO when

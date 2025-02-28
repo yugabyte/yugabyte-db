@@ -82,45 +82,44 @@ DEFINE_UNKNOWN_bool(rocksdb_disable_compactions, false, "Disable rocksdb compact
 DEFINE_UNKNOWN_bool(rocksdb_compaction_measure_io_stats, false,
     "Measure stats for rocksdb compactions.");
 DEFINE_UNKNOWN_int32(rocksdb_base_background_compactions, -1,
-             "Number threads to do background compactions.");
+    "Number threads to do background compactions.");
 DEFINE_UNKNOWN_int32(rocksdb_max_background_compactions, -1,
-             "Increased number of threads to do background compactions (used when compactions need "
-             "to catch up.) Unless rocksdb_disable_compactions=true, this cannot be set to zero.");
+    "Increased number of threads to do background compactions (used when compactions need "
+    "to catch up.) Unless rocksdb_disable_compactions=true, this cannot be set to zero.");
 DEFINE_UNKNOWN_int32(rocksdb_level0_file_num_compaction_trigger, 5,
-             "Number of files to trigger level-0 compaction. -1 if compaction should not be "
-             "triggered by number of files at all.");
+    "Number of files to trigger level-0 compaction. -1 if compaction should not be "
+    "triggered by number of files at all.");
 
 DEFINE_UNKNOWN_int32(rocksdb_level0_slowdown_writes_trigger, -1,
-             "The number of files above which writes are slowed down.");
+    "The number of files above which writes are slowed down.");
 DEFINE_UNKNOWN_int32(rocksdb_level0_stop_writes_trigger, -1,
-             "The number of files above which compactions are stopped.");
+    "The number of files above which compactions are stopped.");
 DEFINE_UNKNOWN_int32(rocksdb_universal_compaction_size_ratio, 20,
-             "The percentage upto which files that are larger are include in a compaction.");
+    "The percentage upto which files that are larger are include in a compaction.");
 DEFINE_UNKNOWN_uint64(rocksdb_universal_compaction_always_include_size_threshold, 64_MB,
-             "Always include files of smaller or equal size in a compaction.");
+    "Always include files of smaller or equal size in a compaction.");
 DEFINE_UNKNOWN_int32(rocksdb_universal_compaction_min_merge_width, 4,
-             "The minimum number of files in a single compaction run.");
-DEFINE_UNKNOWN_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
-             "Use to control write rate of flush and compaction.");
-DEFINE_UNKNOWN_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
-              "Allows to control rate limit sharing/calculation across RocksDB instances\n"
-              "  tserver - rate limit is shared across all RocksDB instances"
-              " at tabset server level\n"
-              "  none - rate limit is calculated independently for every RocksDB instance");
+    "The minimum number of files in a single compaction run.");
+DEFINE_RUNTIME_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
+    "Use to control write rate of flush and compaction.");
+DEFINE_NON_RUNTIME_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
+    "Allows to control rate limit sharing/calculation across RocksDB instances\n"
+    "  tserver - rate limit is shared across all RocksDB instances at tabset server level\n"
+    "  none - rate limit is calculated independently for every RocksDB instance");
 DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
-             "Threshold beyond which compaction is considered large.");
+    "Threshold beyond which compaction is considered large.");
 DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
-             "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
+    "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
 
 // Use big enough default value for rocksdb_max_write_buffer_number, so behavior defined by
 // db_max_flushing_bytes will be actual default.
 DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
-             "Maximum number of write buffers that are built up in memory.");
+    "Maximum number of write buffers that are built up in memory.");
 
 // The manifest file persists min/max schema versions in flushed frontiers. A default 10MB limit
 // enables us to support a ~200k colocated tables/1500 databases in the syscatalog tablet
 DEFINE_NON_RUNTIME_uint64(rocksdb_max_manifest_file_size, 10_MB,
-             "Maximum size of manifest file before which it is consolidated");
+    "Maximum size of manifest file before which it is consolidated");
 
 DEFINE_RUNTIME_bool(
     rocksdb_advise_random_on_open, true,
@@ -130,19 +129,19 @@ DEFINE_RUNTIME_bool(
 DECLARE_int64(db_block_size_bytes);
 
 DEFINE_UNKNOWN_int64(db_filter_block_size_bytes, 64_KB,
-             "Size of RocksDB filter block (in bytes).");
+    "Size of RocksDB filter block (in bytes).");
 
 DEFINE_UNKNOWN_int64(db_index_block_size_bytes, 32_KB,
-             "Size of RocksDB index block (in bytes).");
+    "Size of RocksDB index block (in bytes).");
 
 DEFINE_UNKNOWN_int64(db_min_keys_per_index_block, 100,
-             "Minimum number of keys per index block.");
+    "Minimum number of keys per index block.");
 
 DEFINE_UNKNOWN_int64(db_write_buffer_size, -1,
-             "Size of RocksDB write buffer (in bytes). -1 to use default.");
+    "Size of RocksDB write buffer (in bytes). -1 to use default.");
 
 DEFINE_UNKNOWN_int32(memstore_size_mb, 128,
-             "Max size (in mb) of the memstore, before needing to flush.");
+    "Max size (in mb) of the memstore, before needing to flush.");
 
 // Use a value slightly less than 2 default mem store sizes.
 DEFINE_NON_RUNTIME_uint64(db_max_flushing_bytes, 250_MB,
@@ -150,7 +149,7 @@ DEFINE_NON_RUNTIME_uint64(db_max_flushing_bytes, 250_MB,
     "After reaching this limit new writes are blocked. 0 - unlimited.");
 
 DEFINE_UNKNOWN_bool(use_docdb_aware_bloom_filter, true,
-            "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
+    "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
 
 DEFINE_UNKNOWN_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
@@ -168,25 +167,25 @@ DEFINE_UNKNOWN_int32(num_reserved_small_compaction_threads, -1,
     "threads. It allows splitting small vs. large compactions.");
 
 DEFINE_UNKNOWN_bool(enable_ondisk_compression, true,
-            "Determines whether SSTable compression is enabled or not.");
+    "Determines whether SSTable compression is enabled or not.");
 
 DEFINE_UNKNOWN_int32(priority_thread_pool_size, -1,
-             "Max running workers in compaction thread pool. "
-             "If -1 and max_background_compactions is specified - use max_background_compactions. "
-             "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
+    "Max running workers in compaction thread pool. "
+    "If -1 and max_background_compactions is specified - use max_background_compactions. "
+    "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
 
 DEFINE_UNKNOWN_string(compression_type, "Snappy",
-              "On-disk compression type to use in RocksDB."
-              "By default, Snappy is used if supported.");
+    "On-disk compression type to use in RocksDB."
+    "By default, Snappy is used if supported.");
 
 DEFINE_UNKNOWN_int32(block_restart_interval, kDefaultDataBlockRestartInterval,
-             "Controls the number of keys to look at for computing the diff encoding.");
+    "Controls the number of keys to look at for computing the diff encoding.");
 
 DEFINE_UNKNOWN_int32(index_block_restart_interval, kDefaultIndexBlockRestartInterval,
-             "Controls the number of data blocks to be indexed inside an index block.");
+    "Controls the number of data blocks to be indexed inside an index block.");
 
 DEFINE_UNKNOWN_bool(prioritize_tasks_by_disk, false,
-            "Consider disk load when considering compaction and flush priorities.");
+    "Consider disk load when considering compaction and flush priorities.");
 
 namespace yb {
 

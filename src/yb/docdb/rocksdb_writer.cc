@@ -553,6 +553,7 @@ ApplyIntentsContext::ApplyIntentsContext(
     HybridTime commit_ht,
     HybridTime log_ht,
     HybridTime file_filter_ht,
+    const OpId& apply_op_id,
     const KeyBounds* key_bounds,
     SchemaPackingProvider* schema_packing_provider,
     rocksdb::DB* intents_db,
@@ -567,9 +568,10 @@ ApplyIntentsContext::ApplyIntentsContext(
       // set at commit time. Rather then copy that set upstream so it is passed in as aborted, we
       // simply grab a reference to it here, if it is defined, to use in this method.
       aborted_(apply_state ? apply_state->aborted : aborted),
+      write_id_(apply_state ? apply_state->write_id : 0),
       commit_ht_(commit_ht),
       log_ht_(log_ht),
-      write_id_(apply_state ? apply_state->write_id : 0),
+      apply_op_id_(apply_op_id),
       key_bounds_(key_bounds),
       vector_indexes_(vector_indexes),
       apply_to_storages_(apply_to_storages),
@@ -588,6 +590,7 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   ApplyTransactionStatePB pb;
   apply_state().ToPB(&pb);
   pb.set_commit_ht(commit_ht_.ToUint64());
+  apply_op_id_.ToPB(pb.mutable_apply_op_id());
   faststring encoded_pb;
   RETURN_NOT_OK(pb_util::SerializeToString(pb, &encoded_pb));
   char string_value_type = ValueEntryTypeAsChar::kString;
@@ -595,6 +598,8 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
     Slice(&string_value_type, 1),
     Slice(encoded_pb.data(), encoded_pb.size())
   }};
+  VLOG_WITH_FUNC(4)
+      << "TXN: " << transaction_id() << ", commit_ht: " << commit_ht_ << ", pb: " << AsString(pb);
   PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
   return true;
 }
@@ -716,21 +721,21 @@ Status ApplyIntentsContext::ProcessVectorIndexes(
       auto column_id = VERIFY_RESULT(ColumnId::FullyDecode(
           key.WithoutPrefix(sizes.doc_key_size + 1)));
       // We expect small amount of vector indexes, usually 1. So it is faster to iterate over them.
-      bool added_to_vector_index = false;
+      bool need_reverse_entry = apply_to_storages_.TestRegularDB();
       for (size_t i = 0; i != vector_indexes_->size(); ++i) {
-        if (!ApplyToVectorIndex(i)) {
-          continue;
-        }
         const auto& vector_index = *(*vector_indexes_)[i];
         auto table_key_prefix = vector_index.indexed_table_key_prefix();
-        if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id) {
-          vector_index_batches_[i].push_back(VectorIndexInsertEntry {
-            .value = ValueBuffer(value.WithoutPrefix(1)),
-          });
-          if (!added_to_vector_index) {
+        if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id &&
+            commit_ht_ > vector_index.hybrid_time()) {
+          if (ApplyToVectorIndex(i)) {
+            vector_index_batches_[i].push_back(VectorIndexInsertEntry {
+              .value = ValueBuffer(value.WithoutPrefix(1)),
+            });
+          }
+          if (need_reverse_entry) {
             auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
             AddVectorIndexReverseEntry(handler, ybctid, value, commit_ht_);
-            added_to_vector_index = true;
+            need_reverse_entry = false;
           }
         }
       }
@@ -782,12 +787,10 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
 
   boost::dynamic_bitset<> columns_added_to_vector_index;
   for (size_t i = 0; i != vector_indexes_->size(); ++i) {
-    if (!ApplyToVectorIndex(i)) {
-      continue;
-    }
     const auto& vector_index = *(*vector_indexes_)[i];
     auto vector_index_table_key_prefix = vector_index.indexed_table_key_prefix();
-    if (table_key_prefix != vector_index_table_key_prefix) {
+    if (table_key_prefix != vector_index_table_key_prefix ||
+        commit_ht_ <= vector_index.hybrid_time()) {
       continue;
     }
     auto column_value = decoder.FetchValue(vector_index.column_id());
@@ -797,15 +800,19 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
     }
 
     auto ybctid = key.WithoutPrefix(table_key_prefix.size());
-    vector_index_batches_[i].push_back(VectorIndexInsertEntry {
-      .value = ValueBuffer(column_value->WithoutPrefix(1)),
-    });
+    if (ApplyToVectorIndex(i)) {
+      vector_index_batches_[i].push_back(VectorIndexInsertEntry {
+        .value = ValueBuffer(column_value->WithoutPrefix(1)),
+      });
+    }
 
-    size_t column_index = schema_packing_->GetIndex(vector_index.column_id());
-    columns_added_to_vector_index.resize(
-        std::max(columns_added_to_vector_index.size(), column_index + 1));
-    if (!columns_added_to_vector_index.test_set(column_index)) {
-      AddVectorIndexReverseEntry(handler, ybctid, *column_value, commit_ht_);
+    if (apply_to_storages_.TestRegularDB()) {
+      size_t column_index = schema_packing_->GetIndex(vector_index.column_id());
+      columns_added_to_vector_index.resize(
+          std::max(columns_added_to_vector_index.size(), column_index + 1));
+      if (!columns_added_to_vector_index.test_set(column_index)) {
+        AddVectorIndexReverseEntry(handler, ybctid, *column_value, commit_ht_);
+      }
     }
   }
   return Status::OK();

@@ -279,13 +279,30 @@ public class AWSUtil implements CloudUtil {
 
       PutObjectRequest request = new PutObjectRequest(cLInfo.bucket, keyName, backup);
       client.putObject(request);
+      return true;
     } catch (Exception e) {
       log.error("Error uploading backup: {}", e);
-      return false;
     } finally {
       maybeEnableCertVerification();
     }
-    return true;
+    return false;
+  }
+
+  @Override
+  public String getStorageLocation(CustomerConfigData configData, String backupDir) {
+    try {
+      maybeDisableCertVerification();
+      CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+      AmazonS3 client = createS3Client(s3Data);
+      CloudLocationInfo cLInfo =
+          getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
+      return String.format("s3://%s/%s", cLInfo.cloudPath, backupDir);
+    } catch (Exception e) {
+      log.error("Error determining storage location: {}", e);
+    } finally {
+      maybeEnableCertVerification();
+    }
+    return null;
   }
 
   @Override

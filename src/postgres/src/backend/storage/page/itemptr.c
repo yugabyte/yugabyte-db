@@ -18,6 +18,13 @@
 
 #include "pg_yb_utils.h"
 
+
+/*
+ * We really want ItemPointerData to be exactly 6 bytes.
+ */
+StaticAssertDecl(sizeof(ItemPointerData) == 3 * sizeof(uint16),
+				 "ItemPointerData struct is improperly padded");
+
 /*
  * ItemPointerEquals
  *	Returns true if both item pointers point to the same item,
@@ -29,21 +36,6 @@
 bool
 ItemPointerEquals(ItemPointer pointer1, ItemPointer pointer2)
 {
-#ifdef YB_TODO
-	/*
-	 * Verify the following.
-	 * - Yugabyte does not need this requirement to have optimal performance.
-	 * - If "3*size(uint16)" requirement is needed, we can eliminate postgres
-	 *   fields because we don't use them.
-	 */
-	/*
-	 * We really want ItemPointerData to be exactly 6 bytes.  This is rather a
-	 * random place to check, but there is no better place.
-	 */
-	StaticAssertStmt(sizeof(ItemPointerData) == 3 * sizeof(uint16),
-					 "ItemPointerData struct is improperly padded");
-#endif
-
 	if (ItemPointerGetBlockNumber(pointer1) ==
 		ItemPointerGetBlockNumber(pointer2) &&
 		ItemPointerGetOffsetNumber(pointer1) ==

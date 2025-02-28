@@ -834,7 +834,7 @@ public abstract class KubernetesManager {
       String srcFilePath,
       String destFilePath);
 
-  public abstract String performYbcAction(
+  public abstract String executeCommandInPodContainer(
       Map<String, String> config,
       String namespace,
       String podName,

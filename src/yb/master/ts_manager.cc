@@ -67,10 +67,6 @@ DEFINE_RUNTIME_AUTO_bool(persist_tserver_registry, kLocalPersisted, false, true,
     "controls whether to reload the map of registered tservers from the sys catalog when reloading "
     "the sys catalog.");
 
-DEFINE_test_flag(bool, enable_ysql_operation_lease, false,
-    "Enables the client operation lease. The client operation lease must be held by a tserver to "
-    "host pg sessions. It is refreshed by the master leader.");
-
 DEFINE_RUNTIME_bool(skip_tserver_version_checks, false, "Skip all tserver version checks");
 
 namespace yb::master {
@@ -99,9 +95,10 @@ std::function<bool(const ServerRegistrationPB&)> GetHostPortCheckerFunction(
 class TSDescriptorLoader : public Visitor<PersistentTServerInfo> {
  public:
   explicit TSDescriptorLoader(
-      const CloudInfoPB& local_cloud_info, rpc::ProxyCache* proxy_cache,
-      HybridTime load_time) noexcept
-      : local_cloud_info_(local_cloud_info), proxy_cache_(proxy_cache), load_time_(load_time) {}
+      const CloudInfoPB& local_cloud_info, rpc::ProxyCache* proxy_cache) noexcept
+      : local_cloud_info_(local_cloud_info),
+        proxy_cache_(proxy_cache),
+        load_time_(MonoTime::Now()) {}
 
   TSDescriptorMap&& TakeMap();
 
@@ -112,7 +109,7 @@ class TSDescriptorLoader : public Visitor<PersistentTServerInfo> {
   TSDescriptorMap map_;
   const CloudInfoPB& local_cloud_info_;
   rpc::ProxyCache* proxy_cache_;
-  HybridTime load_time_;
+  MonoTime load_time_;
 };
 
 template <typename... Items>
@@ -120,8 +117,7 @@ Status UpsertIfRequired(const LeaderEpoch& epoch, SysCatalogTable& sys_catalog, 
 
 }  // namespace
 
-TSManager::TSManager(SysCatalogTable& sys_catalog, server::Clock& clock) noexcept
-    : sys_catalog_(sys_catalog), clock_(clock) {}
+TSManager::TSManager(SysCatalogTable& sys_catalog) noexcept : sys_catalog_(sys_catalog) {}
 
 Result<TSDescriptorPtr> TSManager::LookupTS(const NodeInstancePB& instance) const {
   SharedLock<decltype(map_lock_)> l(map_lock_);
@@ -239,8 +235,7 @@ TSManager::LookupAndUpdateTSFromHeartbeat(
     const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch) const {
   auto desc = VERIFY_RESULT(LookupTS(heartbeat_request.common().ts_instance()));
   auto lock = desc->LockForWrite();
-  auto lease_delta = VERIFY_RESULT(
-      desc->UpdateFromHeartbeat(heartbeat_request, lock, clock_.Now()));
+  auto lease_delta = VERIFY_RESULT(desc->UpdateFromHeartbeat(heartbeat_request, lock));
   RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, desc));
   lock.Commit();
   return HeartbeatResult(std::move(desc), std::move(lease_delta));
@@ -267,8 +262,8 @@ Result<HeartbeatResult> TSManager::RegisterInternal(
         instance, registration, std::move(local_cloud_info), proxy_cache,
         registered_through_heartbeat));
     if (request.has_value()) {
-      result.lease_update = VERIFY_RESULT(reg_data.desc->UpdateFromHeartbeat(
-          *request, reg_data.registered_desc_lock, clock_.Now()));
+      result.lease_update = VERIFY_RESULT(
+          reg_data.desc->UpdateFromHeartbeat(*request, reg_data.registered_desc_lock));
     }
     std::tie(result.desc, callback) =
         VERIFY_RESULT(DoRegistrationMutation(instance, registration, std::move(reg_data), epoch));
@@ -428,15 +423,14 @@ size_t TSManager::NumLiveDescriptors() const {
 
 Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
   std::unordered_map<std::string, uint64_t> uuid_to_expired_lease_epoch;
+  auto current_time = MonoTime::Now();
   {
     SharedLock<decltype(map_lock_)> l(map_lock_);
-    auto mono_time = MonoTime::Now();
-    auto hybrid_time = clock_.Now();
     std::vector<TSDescriptor*> updated_descs;
     std::vector<TSDescriptor::WriteLock> cow_locks;
     for (const auto& [id, desc] : servers_by_id_) {
-      auto update_opt = desc->MaybeUpdateLiveness(mono_time, hybrid_time);
-      if (update_opt)  {
+      auto update_opt = desc->MaybeUpdateLiveness(current_time);
+      if (update_opt) {
         auto [lock, expired_lease_opt] = std::move(update_opt).value();
         updated_descs.push_back(desc.get());
         cow_locks.push_back(std::move(lock));
@@ -470,7 +464,7 @@ Status TSManager::RunLoader(
   if (!GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
     return Status::OK();
   }
-  auto loader = std::make_unique<TSDescriptorLoader>(cloud_info, proxy_cache, clock_.Now());
+  auto loader = std::make_unique<TSDescriptorLoader>(cloud_info, proxy_cache);
   RETURN_NOT_OK(sys_catalog_.Visit(loader.get()));
   MutexLock l_reg(registration_lock_);
   std::lock_guard l_map(map_lock_);

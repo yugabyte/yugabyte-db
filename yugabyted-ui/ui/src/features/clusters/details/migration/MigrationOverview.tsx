@@ -208,39 +208,38 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
         )}
       </Box>
 
-      {isLoadingMigrationTasks && (
-        <Box textAlign="center" pt={4} pb={4} width="100%">
-          <LinearProgress />
-        </Box>
-      )}
-
-      {!isLoadingMigrationTasks && (
-        <>
-          {(!selectedMigration && !isNewMigration) ? (
-            <MigrationList
-              migrationData={migrationData}
-              onSelectMigration={({ migration_uuid }) => setQueryParams({
-                migration_uuid,
-                new_migration: undefined,
-            })}
-              hasError={isErrorMigrationTasks}
-              onRefresh={refetch}
-              onNewMigration={() => setQueryParams({
-                migration_uuid: undefined,
-                new_migration: null
-            })}
-            />
-          ) : (
-            <MigrationDetails
-              steps={migrationSteps}
-              migration={selectedMigration}
-              onRefetch={refetch}
-              isFetching={isFetchingMigrationTasks}
-              isNewMigration={isNewMigration}
-            />
-          )}
-        </>
-      )}
+      {(isLoadingMigrationTasks || isFetchingMigrationTasks) ? (
+          <Box textAlign="center" pt={4} pb={4} width="100%">
+            <LinearProgress />
+          </Box>
+        ) : (
+          <>
+            {(!selectedMigration && !isNewMigration) ? (
+              <MigrationList
+                migrationData={migrationData}
+                onSelectMigration={({ migration_uuid }) => setQueryParams({
+                  migration_uuid,
+                  new_migration: undefined,
+                })}
+                hasError={isErrorMigrationTasks}
+                onRefresh={refetch}
+                onNewMigration={() => setQueryParams({
+                  migration_uuid: undefined,
+                  new_migration: null,
+                })}
+              />
+            ) : (
+              <MigrationDetails
+                steps={migrationSteps}
+                migration={selectedMigration}
+                onRefetch={refetch}
+                isFetching={isFetchingMigrationTasks}
+                isNewMigration={isNewMigration}
+              />
+            )}
+          </>
+        )
+      }
     </Box>
   );
 };

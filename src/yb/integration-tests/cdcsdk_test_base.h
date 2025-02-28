@@ -166,10 +166,6 @@ class CDCSDKTestBase : public YBTest {
       PostgresMiniCluster* cluster, const std::string& namespace_name = kNamespaceName,
       bool colocated = false);
 
-  Status InitPostgres(PostgresMiniCluster* cluster);
-
-  Status InitPostgres(PostgresMiniCluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
-
   Status SetUpWithParams(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
       bool cdc_populate_safepoint_record = false, bool set_pgsql_proxy_bind_address = false);

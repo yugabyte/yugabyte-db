@@ -63,7 +63,7 @@ TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
 
 DECLARE_uint64(max_clock_skew_usec);
-
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 namespace {
 
 // Local copies that can be modified.
@@ -199,7 +199,8 @@ PgTxnManager::PgTxnManager(
     YbcPgCallbacks pg_callbacks)
     : client_(client),
       clock_(std::move(clock)),
-      pg_callbacks_(pg_callbacks) {
+      pg_callbacks_(pg_callbacks),
+      enable_table_locking_(FLAGS_TEST_enable_object_locking_for_table_locks) {
 }
 
 PgTxnManager::~PgTxnManager() {
@@ -332,6 +333,15 @@ Status PgTxnManager::CalculateIsolation(
     return RecreateTransaction(SavePriority::kFalse);
   }
 
+  // Force use of a docdb distributed txn for YSQL read only transactions involving savepoints when
+  // object locking feature is enabled (only for isolation != read committed case).
+  //
+  // TODO(table-locks): Need to explicitly handle READ_COMMITTED case since YSQL internally bumps up
+  // subtxn id for every statement. Else, every RC read-only txn would burn a docdb txn.
+  if (PREDICT_FALSE(enable_table_locking_) && active_sub_transaction_id_ > kMinSubTransactionId &&
+      pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
+    read_only_op = false;
+  }
   // Using pg_isolation_level_, read_only_, and deferrable_, determine the effective isolation level
   // to use at the DocDB layer, and the "deferrable" flag.
   //
@@ -449,7 +459,8 @@ Status PgTxnManager::FinishPlainTransaction(Commit commit) {
     return Status::OK();
   }
 
-  if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
+  const auto is_read_only = isolation_level_ == IsolationLevel::NON_TRANSACTIONAL;
+  if (is_read_only && !PREDICT_FALSE(enable_table_locking_)) {
     VLOG_TXN_STATE(2) << "This was a read-only transaction, nothing to commit.";
     ResetTxnAndSession();
     return Status::OK();
@@ -459,7 +470,9 @@ Status PgTxnManager::FinishPlainTransaction(Commit commit) {
   // tserver fails, we simply reset the transaction state here and return any error back to the
   // caller. In the event that the tserver recovers, it will eventually expire the transaction due
   // to inactivity.
-  VLOG_TXN_STATE(2) << (commit ? "Committing" : "Aborting") << " transaction.";
+  VLOG_TXN_STATE(2)
+      << (commit ? "Committing" : "Aborting")
+      << (is_read_only ? " read only" : "") << " transaction.";
   Status status = client_->FinishTransaction(commit);
   VLOG_TXN_STATE(2) << "Transaction " << (commit ? "commit" : "abort") << " status: " << status;
   ResetTxnAndSession();
@@ -673,7 +686,8 @@ Status PgTxnManager::RestoreReadTimePoint(uint64_t read_time_point_handle) {
   return serial_no_.RestoreReadTime(read_time_point_handle);
 }
 
-Result<std::string> PgTxnManager::ExportSnapshot(const YbcPgTxnSnapshot& snapshot) {
+Result<std::string> PgTxnManager::ExportSnapshot(
+    const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time) {
   tserver::PgExportTxnSnapshotRequestPB req;
   auto& snapshot_pb = *req.mutable_snapshot();
   snapshot_pb.set_db_oid(snapshot.db_id);
@@ -682,6 +696,9 @@ Result<std::string> PgTxnManager::ExportSnapshot(const YbcPgTxnSnapshot& snapsho
   auto& options = *req.mutable_options();
   RETURN_NOT_OK(SetupPerformOptions(&options, EnsureReadTimeIsSet::kTrue));
   RETURN_NOT_OK(CheckTxnSnapshotOptions(options));
+  if (explicit_read_time.has_value()) {
+    ReadHybridTime::FromUint64(explicit_read_time.value()).ToPB(req.mutable_explicit_read_time());
+  }
   auto res = client_->ExportTxnSnapshot(&req);
   if (res.ok()) {
     has_exported_snapshots_ = true;
@@ -689,14 +706,20 @@ Result<std::string> PgTxnManager::ExportSnapshot(const YbcPgTxnSnapshot& snapsho
   return res;
 }
 
-Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(std::string_view snapshot_id) {
+Result<std::optional<YbcPgTxnSnapshot>> PgTxnManager::SetTxnSnapshot(
+    PgTxnSnapshotDescriptor snapshot_descriptor) {
   RETURN_NOT_OK(CheckSnapshotTimeConflict());
   tserver::PgPerformOptionsPB options;
   RETURN_NOT_OK(SetupPerformOptions(&options));
   RETURN_NOT_OK(CheckTxnSnapshotOptions(options));
-  const auto resp = VERIFY_RESULT(client_->ImportTxnSnapshot(snapshot_id, std::move(options)));
+  const auto resp = VERIFY_RESULT(client_->SetTxnSnapshot(snapshot_descriptor, std::move(options)));
   snapshot_read_time_is_set_ = true;
   const auto& snapshot = resp.snapshot();
+
+  if (std::holds_alternative<PgTxnSnapshotReadTime>(snapshot_descriptor)) {
+    return std::nullopt;
+  }
+
   return YbcPgTxnSnapshot{
       .db_id = snapshot.db_oid(),
       .iso_level = implicit_cast<int>(snapshot.isolation_level()),
@@ -738,6 +761,37 @@ void PgTxnManager::ClearExportedTxnSnapshots() {
   has_exported_snapshots_ = false;
   const auto s = client_->ClearExportedTxnSnapshots();
   LOG_IF(DFATAL, !s.ok()) << "Faced error while deleting exported snapshots. Error Details: " << s;
+}
+
+Status PgTxnManager::RollbackToSubTransaction(SubTransactionId id) {
+  if (!txn_in_progress_) {
+    VLOG_TXN_STATE(2) << "No transaction in progress, nothing to rollback.";
+    return Status::OK();
+  }
+  if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL &&
+      !PREDICT_FALSE(enable_table_locking_)) {
+    VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
+    return Status::OK();
+  }
+  tserver::PgPerformOptionsPB options;
+  RETURN_NOT_OK(SetupPerformOptions(&options));
+  return client_->RollbackToSubTransaction(id, &options);
+}
+
+Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
+  if (!PREDICT_FALSE(enable_table_locking_)) {
+    // Locking is handled separately by YugaByte.
+    return Status::OK();
+  }
+  RETURN_NOT_OK(CalculateIsolation(
+      true /* read_only */,
+      isolation_level_ == IsolationLevel::READ_COMMITTED ? kHighestPriority : kLowerPriorityRange));
+  tserver::PgAcquireObjectLockRequestPB req;
+  RETURN_NOT_OK(SetupPerformOptions(req.mutable_options()));
+  req.set_database_oid(lock_id.db_oid);
+  req.set_object_oid(lock_id.object_oid);
+  req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
+  return client_->AcquireObjectLock(&req, CoarseTimePoint());
 }
 
 }  // namespace yb::pggate

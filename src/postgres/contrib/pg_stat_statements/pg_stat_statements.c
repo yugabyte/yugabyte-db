@@ -540,7 +540,7 @@ _PG_init(void)
 							 "Selects whether planning duration is tracked by pg_stat_statements.",
 							 NULL,
 							 &pgss_track_planning,
-							 false,
+							 true,
 							 PGC_SUSET,
 							 0,
 							 NULL,
@@ -742,9 +742,7 @@ getYsqlStatementStats(void *cb_arg)
 			WriteIntToJson(cb_arg, "dbid", entry->key.dbid);
 			WriteIntToJson(cb_arg, "query_id", entry->key.queryid);
 			WriteStringToJson(cb_arg, "query", qry);
-			WriteIntToJson(cb_arg, "calls",
-						   entry->counters.calls[PGSS_PLAN] +
-						   entry->counters.calls[PGSS_EXEC]);
+			WriteIntToJson(cb_arg, "calls", entry->counters.calls[PGSS_EXEC]);
 
 			WriteDoubleToJson(cb_arg, "total_plan_time", entry->counters.total_time[PGSS_PLAN]);
 			WriteDoubleToJson(cb_arg, "total_exec_time", entry->counters.total_time[PGSS_EXEC]);
@@ -1746,6 +1744,9 @@ pgss_store(const char *query, uint64 queryId,
 	if (!pgss || !pgss_hash)
 		return;
 
+	if (yb_is_calling_internal_function_for_ddl)
+		return;
+
 	/*
 	 * Nothing to do if compute_query_id isn't enabled and no other module
 	 * computed a query identifier.
@@ -1766,6 +1767,10 @@ pgss_store(const char *query, uint64 queryId,
 	/* TODO(devansh): Enable password redaction. Workaround for DB-11332. */
 	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
 #endif
+
+	if (yb_enable_query_diagnostics && !jstate)
+		YbQueryDiagnosticsAccumulatePgss(queryId, (YbQdPgssStoreKind) kind,
+										 total_time, rows, bufusage, walusage, jitusage);
 
 	/* Set up key for hashtable search */
 

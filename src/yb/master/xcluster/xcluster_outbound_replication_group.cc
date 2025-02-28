@@ -26,8 +26,6 @@
 DEFINE_RUNTIME_uint32(max_xcluster_streams_to_checkpoint_in_parallel, 200,
     "Maximum number of xCluster streams to checkpoint in parallel");
 
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
-
 using namespace std::placeholders;
 
 namespace yb::master {
@@ -266,8 +264,7 @@ Result<bool> XClusterOutboundReplicationGroup::MarkBootstrapTablesAsCheckpointed
 
   if (table_ids.empty()) {
     auto table_designators = VERIFY_RESULT(helper_functions_.get_tables_func(
-        namespace_id, /*include_sequences_data=*/(
-            AutomaticDDLMode() && FLAGS_TEST_xcluster_enable_sequence_replication)));
+        namespace_id, /*include_sequences_data=*/AutomaticDDLMode()));
     std::set<TableId> tables;
     std::transform(
         table_designators.begin(), table_designators.end(), std::inserter(tables, tables.begin()),
@@ -347,8 +344,8 @@ Result<XClusterOutboundReplicationGroup::NamespaceInfoPB>
 XClusterOutboundReplicationGroup::CreateNamespaceInfo(
     const NamespaceId& namespace_id, const LeaderEpoch& epoch) {
   auto table_designators = VERIFY_RESULT(helper_functions_.get_tables_func(
-      namespace_id, /*include_sequences_data=*/(
-          AutomaticDDLMode() && FLAGS_TEST_xcluster_enable_sequence_replication)));
+      namespace_id, /*include_sequences_data=*/
+      AutomaticDDLMode()));
   VLOG_WITH_PREFIX_AND_FUNC(1) << "Tables: " << yb::ToString(table_designators);
 
   // In automatic DDL mode the DDL queue table and sequences tables will be created automatically.
@@ -633,8 +630,7 @@ XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
     const NamespaceId& namespace_id,
     const std::vector<std::pair<TableName, PgSchemaName>>& table_names) const {
   auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(
-      namespace_id, /*include_sequences_data=*/(
-          AutomaticDDLMode() && FLAGS_TEST_xcluster_enable_sequence_replication)));
+      namespace_id, /*include_sequences_data=*/AutomaticDDLMode()));
 
   SharedLock mutex_lock(mutex_);
   auto l = VERIFY_RESULT(LockForRead());

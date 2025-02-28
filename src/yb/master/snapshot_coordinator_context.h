@@ -58,7 +58,7 @@ class SnapshotCoordinatorContext {
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
 
   virtual Status RestoreSysCatalog(
-      SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
+      SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, bool leader_mode,
       Status* complete_status) = 0;
   virtual Status VerifyRestoredObjects(
       const std::unordered_map<std::string, SysRowEntryType>& objects,

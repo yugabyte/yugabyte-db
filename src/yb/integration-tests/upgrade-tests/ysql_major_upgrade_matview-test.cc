@@ -24,10 +24,7 @@ static constexpr auto kIndexedMatViewName = "mv2";
 class YsqlMajorUpgradeMatviewTest : public Pg15UpgradeTestBase {
  public:
   void SetUp() override {
-    Pg15UpgradeTestBase::SetUp();
-    if (Test::IsSkipped()) {
-      return;
-    }
+    TEST_SETUP_SUPER(Pg15UpgradeTestBase);
 
     auto conn = ASSERT_RESULT(CreateConnToTs(std::nullopt));
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(a int, b int)", kTableName));

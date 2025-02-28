@@ -54,7 +54,7 @@ class CDCSDKReplicaIdentityTest : public CDCSDKYsqlTest {
     RETURN_NOT_OK(test_cluster()->WaitForTabletServerCount(replication_factor));
     RETURN_NOT_OK(WaitForInitDb(test_cluster()));
     test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
-    RETURN_NOT_OK(InitPostgres(&test_cluster_));
+    RETURN_NOT_OK(test_cluster_.InitPostgres());
     RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
 
     cdc_proxy_ = GetCdcProxy();

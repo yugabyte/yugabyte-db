@@ -132,6 +132,11 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 				strerror(errno));
 			goto error;
 		}
+
+		for (int i = 0;i < YSQL_CONN_MGR_MAX_POOLS; ++i) {
+			instance->yb_stats[i].database_oid = -1;
+			instance->yb_stats[i].user_oid = -1;
+		}
 	}
 
 	char *od_max_query_size = getenv("YB_YSQL_CONN_MGR_MAX_QUERY_SIZE");
@@ -166,7 +171,6 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 	od_hba_init(&hba);
 	od_global_init(&global, instance, &system, &router, &cron, &worker_pool,
 		       &extentions, &hba);
-	yb_oid_list_init(instance);
 
 	/* read config file */
 	od_error_t error;
@@ -180,6 +184,9 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 			 error.error);
 		goto error;
 	}
+	rc = yb_oid_list_init(instance);
+	if (rc == -1)
+		goto error;
 
 	yb_read_conf_from_env_var(&router.rules, &instance->config,
 				 &instance->logger);

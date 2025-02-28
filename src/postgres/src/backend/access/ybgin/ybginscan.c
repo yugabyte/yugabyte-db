@@ -77,42 +77,22 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 			ScanKey orderbys, int norderbys)
 {
 	YbginScanOpaque ybso = (YbginScanOpaque) scan->opaque;
-	YbcTableProperties yb_table_properties_relation =
-	YbGetTableProperties(scan->heapRelation);
-	YbcTableProperties yb_table_properties_index =
-	YbGetTableProperties(scan->indexRelation);
-	bool		querying_colocated_table = false;
-	bool		is_colocated = yb_table_properties_relation->is_colocated;
-	bool		is_colocated_tables_with_tablespace_enabled =
-	*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+	YbcPgPrepareParameters prepare_params = {
+		.index_relfilenode_oid = YbGetRelfileNodeId(scan->indexRelation),
+		.index_only_scan = scan->xs_want_itup,
+		.embedded_idx = YbIsScanningEmbeddedIdx(scan->heapRelation,
+												scan->indexRelation),
+	};
 
 	/* Initialize non-yb gin scan opaque fields. */
 	ginrescan(scan, scankey, nscankeys, orderbys, norderbys);
 
-	if (!is_colocated_tables_with_tablespace_enabled)
-	{
-		querying_colocated_table = is_colocated;
-	}
-	else
-	{
-		querying_colocated_table =
-			is_colocated && yb_table_properties_index->tablegroup_oid ==
-			yb_table_properties_relation->tablegroup_oid;
-	}
-
 	/* Initialize ybgin scan opaque handle. */
-	YbcPgPrepareParameters prepare_params = {
-		.index_relfilenode_oid = YbGetRelfileNodeId(scan->indexRelation),
-		.index_only_scan = scan->xs_want_itup,
-		.querying_colocated_table = querying_colocated_table,
-	};
-
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(scan->heapRelation),
 								  YbGetRelfileNodeId(scan->heapRelation),
 								  &prepare_params,
 								  YBCIsRegionLocal(scan->heapRelation),
 								  &ybso->handle));
-
 	YbApplyPrimaryPushdown(ybso->handle, scan->yb_rel_pushdown);
 	YbApplySecondaryIndexPushdown(ybso->handle, scan->yb_idx_pushdown);
 

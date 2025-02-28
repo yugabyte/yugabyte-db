@@ -1123,14 +1123,15 @@ Status YBClient::ListClones(master::ListClonesResponsePB* ret) {
   return Status::OK();
 }
 
-Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
-                                  const uint32_t next_oid, const uint32_t count,
-                                  uint32_t* begin_oid, uint32_t* end_oid) {
+Status YBClient::ReservePgsqlOids(
+    const std::string& namespace_id, uint32_t next_oid, uint32_t count, uint32_t* begin_oid,
+    uint32_t* end_oid, bool use_secondary_space) {
   ReservePgsqlOidsRequestPB req;
   ReservePgsqlOidsResponsePB resp;
   req.set_namespace_id(namespace_id);
   req.set_next_oid(next_oid);
   req.set_count(count);
+  req.set_use_secondary_space(use_secondary_space);
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, ReservePgsqlOids);
   *begin_oid = resp.begin_oid();
   *end_oid = resp.end_oid();
@@ -3046,6 +3047,7 @@ Status YBClient::AcquireObjectLocksGlobal(const tserver::AcquireObjectLockReques
   req.set_txn_id(lock_req.txn_id());
   req.set_subtxn_id(lock_req.subtxn_id());
   req.set_session_host_uuid(lock_req.session_host_uuid());
+  req.set_lease_epoch(lock_req.lease_epoch());
   req.mutable_object_locks()->CopyFrom(lock_req.object_locks());
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, AcquireObjectLocksGlobal);
   if (resp.has_error()) {
@@ -3061,8 +3063,7 @@ Status YBClient::ReleaseObjectLocksGlobal(const tserver::ReleaseObjectLockReques
   req.set_txn_id(release_req.txn_id());
   req.set_subtxn_id(release_req.subtxn_id());
   req.set_session_host_uuid(release_req.session_host_uuid());
-  req.mutable_object_locks()->CopyFrom(release_req.object_locks());
-  req.set_release_all_locks(release_req.release_all_locks());
+  req.set_lease_epoch(release_req.lease_epoch());
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ReleaseObjectLocksGlobal);
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());

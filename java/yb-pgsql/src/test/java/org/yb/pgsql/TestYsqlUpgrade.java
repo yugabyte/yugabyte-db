@@ -18,12 +18,16 @@ import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertLessThanOrEqualTo;
 import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
+
+import com.yugabyte.jdbc.PgArray;
 
 import java.io.File;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
@@ -190,6 +194,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private static final String CATALOG_VERSION_TABLE        = "pg_yb_catalog_version";
   private static final String MIGRATIONS_TABLE             = "pg_yb_migration";
   private static final String LOGICAL_CLIENT_VERSION_TABLE = "pg_yb_logical_client_version";
+  private static final String INVALIDATION_MESSAGES_TABLE  = "pg_yb_invalidation_messages";
 
   /** Guaranteed to be greated than any real OID, needed for sorted entities to appear at the end */
   private static final long PLACEHOLDER_OID = 1234567890L;
@@ -1245,6 +1250,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       postSnapshot.catalog.remove(MIGRATIONS_TABLE);
       postSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
 
+      // Some migration script contains a DDL such as CREATE OR REPLACE VIEW, which is
+      // not skipped when the migration script is run again (In contrast, CREATE TABLE
+      // IF NOT EXISTS will skip re-executing CREATE TABLE when run again). Re-executing
+      // the DDL will leave different rows in pg_yb_invalidation_messages.
+      preSnapshot.catalog.remove(INVALIDATION_MESSAGES_TABLE);
+      postSnapshot.catalog.remove(INVALIDATION_MESSAGES_TABLE);
+
       assertSysCatalogSnapshotsEquals(preSnapshot, postSnapshot);
     }
   }
@@ -1582,6 +1594,22 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     return row2;
   }
 
+  /** Returns a new row with certain column retained. */
+  private Row retained(Row row, String colNameToRetain) {
+    Row row2 = row.clone();
+    ListIterator<String> colNamesIter = row2.columnNames.listIterator();
+    ListIterator<Object> elemsIter = row2.elems.listIterator();
+    while (colNamesIter.hasNext()) {
+      String currColName = colNamesIter.next();
+      elemsIter.next();
+      if (!currColName.equals(colNameToRetain)) {
+        colNamesIter.remove();
+        elemsIter.remove();
+      }
+    }
+    return row2;
+  }
+
   /** Returns a new row with all occurrences of one value replaced with another. */
   private <T> Row replaced(Row row, T from, T to) {
     Row row2 = row.clone();
@@ -1769,6 +1797,38 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         .max().orElse(0L);
   }
 
+  private void assertSameAcl(Row reinitdbRow, Row migratedRow) {
+    assertEquals(reinitdbRow.elems.size(), 1);
+    assertEquals(migratedRow.elems.size(), 1);
+    Object re = reinitdbRow.elems.get(0);
+    Object me = migratedRow.elems.get(0);
+    if (re != null && me != null) {
+      assertTrue(re instanceof PgArray);
+      assertTrue(me instanceof PgArray);
+      PgArray rpa = (PgArray)re;
+      PgArray mpa = (PgArray)me;
+      try {
+        Object[] ra = (Object[]) rpa.getArray();
+        Object[] ma = (Object[]) mpa.getArray();
+        // Build an array of string representations
+        String[] ras = Arrays.stream(ra).map(Object::toString).toArray(String[]::new);
+        String[] mas = Arrays.stream(ma).map(Object::toString).toArray(String[]::new);
+        Arrays.sort(ras);
+        Arrays.sort(mas);
+        if (!Arrays.equals(ras, mas)) {
+          LOG.error("ras {} {}", ras, ras.length);
+          LOG.error("mas {} {}", mas, ras.length);
+          fail();
+        }
+      } catch (Exception e) {
+        fail("Test failed because of exception " + e);
+      }
+    } else {
+      assertNull(re);
+      assertNull(me);
+    }
+  }
+
   /**
    * Given two system catalog snapshots (fresh one created by reinitdb, and an older one migrated to
    * the latest), verify that they are equivalent for all practical purposes (e.g. OIDs from
@@ -1896,8 +1956,15 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
       List<Row> reinitdbRows = simplifiedFreshSnapshot.catalog.get(tableName);
 
-      assertCollectionSizes("Table '" + tableName + "' has different size after migration!",
-          reinitdbRows, migratedRows);
+      // The table pg_yb_invalidation_messages isn't empty in reinitdbRows because of DDLs
+      // executed in test setup code. Also it may not be empty after running migration scripts
+      // that contain DDLs if they are executed after the table pg_yb_invalidation_messages is
+      // created, so we are not expected to see pg_yb_invalidation_messages has same size or
+      // contents between reinitdbRows and migratedRows.
+      if (!tableName.equals(INVALIDATION_MESSAGES_TABLE)) {
+        assertCollectionSizes("Table '" + tableName + "' has different size after migration!",
+            reinitdbRows, migratedRows);
+      }
 
       for (int i = 0; i < migratedRows.size(); ++i) {
         Row reinitdbRow = reinitdbRows.get(i);
@@ -1913,7 +1980,24 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           reinitdbRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
           migratedRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
         }
-        assertRow("Table '" + tableName + "': ", reinitdbRow, migratedRow);
+        // PG15 and PG11 initdb generate different default privileges for relacl of pg_class:
+        // PG11: {=r/postgres,postgres=arwdDxt/postgres}
+        // PG15: {postgres=arwdDxt/postgres,=r/postgres}
+        // So we cannot simply compare the as strings.
+        // Similar changes happen for initprivs column of table pg_init_privs.
+        if (tableName.equals("pg_class")) {
+          assertRow("Table '" + tableName + "': ",
+                    excluded(reinitdbRow, "relacl"),
+                    excluded(migratedRow, "relacl"));
+          assertSameAcl(retained(reinitdbRow, "relacl"), retained(migratedRow, "relacl"));
+        } else if (tableName.equals("pg_init_privs")) {
+          assertRow("Table '" + tableName + "': ",
+                    excluded(reinitdbRow, "initprivs"),
+                    excluded(migratedRow, "initprivs"));
+          assertSameAcl(retained(reinitdbRow, "initprivs"), retained(migratedRow, "initprivs"));
+        } else {
+          assertRow("Table '" + tableName + "': ", reinitdbRow, migratedRow);
+        }
       }
     });
   }

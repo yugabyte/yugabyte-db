@@ -51,7 +51,8 @@ extern void quoteAclUserName(PQExpBuffer output, const char *input);
 extern void buildShSecLabelQuery(const char *catalog_name,
 								 Oid objectId, PQExpBuffer sql);
 extern void emitShSecLabels(PGconn *conn, PGresult *res,
-							PQExpBuffer buffer, const char *objtype, const char *objname);
+							PQExpBuffer buffer, const char *objtype,
+							const char *objname, const char *yb_indent);
 
 extern bool variable_is_guc_list_quote(const char *name);
 

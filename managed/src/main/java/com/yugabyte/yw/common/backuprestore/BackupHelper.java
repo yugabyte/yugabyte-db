@@ -918,13 +918,6 @@ public class BackupHelper {
       }
       // Assign this backup for all further uses.
       restorableBackup = optBackupClosestToRestoreTimestamp.get();
-      if (!restorableBackup.getBackupInfo().isPointInTimeRestoreEnabled()) {
-        throw new PlatformServiceException(
-            PRECONDITION_FAILED,
-            String.format(
-                "Point in time restore not enabled for the backup %s",
-                restorableBackup.getBackupUUID()));
-      }
     }
 
     RestorePreflightResponse.RestorePreflightResponseBuilder preflightResponseBuilder =
@@ -1377,10 +1370,6 @@ public class BackupHelper {
             PRECONDITION_FAILED, "No backup available for Point in restore to target timestamp");
       }
       restorableBackup = optBackupClosestToRestoreTimestamp.get();
-      if (!restorableBackup.getBackupInfo().isPointInTimeRestoreEnabled()) {
-        throw new PlatformServiceException(
-            PRECONDITION_FAILED, "Point in time restore not enabled for the backup");
-      }
     }
 
     boolean success = true;

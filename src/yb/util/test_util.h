@@ -55,6 +55,15 @@
   NO_PENDING_FATALS(); \
 } while (0)
 
+// Invokes super setup, and returns if the test was marked as skipped.
+#define TEST_SETUP_SUPER(super) \
+  do { \
+    super::SetUp(); \
+    if (Test::IsSkipped()) { \
+      return; \
+    } \
+  } while (false)
+
 namespace yb {
 
 class CurlGlobalInitializer;

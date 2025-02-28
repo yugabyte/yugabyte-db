@@ -8,6 +8,7 @@ import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.Rota
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
@@ -34,9 +35,11 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
@@ -61,7 +64,9 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -1165,9 +1170,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createPodDisruptionBudgetPolicyTask(false /* deletePDB */)
           .setSubTaskGroupType(SubTaskGroupType.CreatePodDisruptionBudgetPolicy);
     }
-
-    // Marks the update of this universe as a success only if all the tasks before it succeeded.
-    createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**
@@ -2355,32 +2357,32 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
     Customer customer = Customer.get(universe.getCustomerId());
-    filterNodesForInstallNodeAgent(universe, nodes)
-        .forEach(
-            n -> {
-              SetupYNP.Params params = new SetupYNP.Params();
-              Provider provider =
-                  nodeUuidProviderMap.computeIfAbsent(
-                      n.placementUuid,
-                      k -> {
-                        Cluster cluster = universe.getCluster(n.placementUuid);
-                        System.out.println(cluster.userIntent.provider);
-                        return Provider.getOrBadRequest(
-                            UUID.fromString(cluster.userIntent.provider));
-                      });
-              params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
-              params.nodeName = n.nodeName;
-              params.customerUuid = customer.getUuid();
-              params.setUniverseUUID(universe.getUniverseUUID());
-              params.nodeAgentInstallDir = installPath;
-              params.nodeAgentPort = serverPort;
-              if (StringUtils.isNotEmpty(n.sshUserOverride)) {
-                params.sshUser = n.sshUserOverride;
-              }
-              SetupYNP task = createTask(SetupYNP.class);
-              task.initialize(params);
-              subTaskGroup.addSubTask(task);
-            });
+    nodes.forEach(
+        n -> {
+          SetupYNP.Params params = new SetupYNP.Params();
+          Provider provider =
+              nodeUuidProviderMap.computeIfAbsent(
+                  n.placementUuid,
+                  k -> {
+                    Cluster cluster = universe.getCluster(n.placementUuid);
+                    return Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+                  });
+          if (imageBundleUtil != null) {
+            params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
+          }
+          params.nodeName = n.nodeName;
+          params.customerUuid = customer.getUuid();
+          params.setUniverseUUID(universe.getUniverseUUID());
+          params.nodeAgentInstallDir = installPath;
+          params.nodeAgentPort = serverPort;
+          params.sudoAccess = true;
+          if (StringUtils.isNotEmpty(n.sshUserOverride)) {
+            params.sshUser = n.sshUserOverride;
+          }
+          SetupYNP task = createTask(SetupYNP.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
@@ -2401,36 +2403,35 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.error(errMsg);
       throw new IllegalArgumentException(errMsg);
     }
-    int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
     Customer customer = Customer.get(universe.getCustomerId());
-    filterNodesForInstallNodeAgent(universe, nodes)
-        .forEach(
-            n -> {
-              UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
-              YNPProvisioning.Params params = new YNPProvisioning.Params();
-              params.deviceInfo = userIntent.getDeviceInfoForNode(n);
-              Provider provider =
-                  nodeUuidProviderMap.computeIfAbsent(
-                      n.placementUuid,
-                      k -> {
-                        Cluster cluster = universe.getCluster(n.placementUuid);
-                        return Provider.getOrBadRequest(
-                            UUID.fromString(cluster.userIntent.provider));
-                      });
-              params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
-              params.deviceInfo = userIntent.getDeviceInfoForNode(n);
-              params.nodeName = n.nodeName;
-              params.customerUuid = customer.getUuid();
-              params.setUniverseUUID(universe.getUniverseUUID());
-              params.remotePackagePath = taskParams().remotePackagePath;
-              if (StringUtils.isNotEmpty(n.sshUserOverride)) {
-                params.sshUser = n.sshUserOverride;
-              }
-              YNPProvisioning task = createTask(YNPProvisioning.class);
-              task.initialize(params);
-              subTaskGroup.addSubTask(task);
-            });
+    nodes.forEach(
+        n -> {
+          UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
+          YNPProvisioning.Params params = new YNPProvisioning.Params();
+          params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+          Provider provider =
+              nodeUuidProviderMap.computeIfAbsent(
+                  n.placementUuid,
+                  k -> {
+                    Cluster cluster = universe.getCluster(n.placementUuid);
+                    return Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+                  });
+          if (imageBundleUtil != null) {
+            params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
+          }
+          params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+          params.nodeName = n.nodeName;
+          params.customerUuid = customer.getUuid();
+          params.setUniverseUUID(universe.getUniverseUUID());
+          params.remotePackagePath = taskParams().remotePackagePath;
+          if (StringUtils.isNotEmpty(n.sshUserOverride)) {
+            params.sshUser = n.sshUserOverride;
+          }
+          YNPProvisioning task = createTask(YNPProvisioning.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
@@ -2454,7 +2455,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean ignoreNodeStatus,
       @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
 
-    boolean useYNPProvisioning = confGetter.getGlobalConf(GlobalConfKeys.enableYNPProvisioning);
+    boolean useAnsibleProvisioning =
+        confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning);
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
     boolean isNextFallThrough =
@@ -2502,19 +2506,26 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
             filteredNodes -> {
-              if (useYNPProvisioning) {
+              if (userIntent.providerType != CloudType.local && !isUniverseManuallyProvisioned) {
                 createSetupYNPTask(filteredNodes)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-                createYNPProvisioningTask(filteredNodes)
-                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                if (!useAnsibleProvisioning) {
+                  createYNPProvisioningTask(filteredNodes)
+                      .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                }
               }
               createInstallNodeAgentTasks(filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createWaitForNodeAgentTasks(nodesToBeCreated)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createHookProvisionTask(filteredNodes, TriggerType.PreNodeProvision);
-              if (!useYNPProvisioning) {
+              if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
                 createSetupServerTasks(filteredNodes, setupParamsCustomizer)
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              } else {
+                createSetNodeStatusTasks(
+                        filteredNodes,
+                        NodeStatus.builder().nodeState(NodeState.ServerSetup).build())
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               }
             });
@@ -3250,7 +3261,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean enableYSQL,
       boolean enableYSQLAuth,
       boolean enableConnectionPooling,
-      Map<String, String> connectionPoolingGflags,
+      Map<UUID, SpecificGFlags> connectionPoolingGflags,
       boolean enableYCQL,
       boolean enableYCQLAuth) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterAPIDetails");
@@ -3829,5 +3840,59 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           details.universePaused = false;
           u.setUniverseDetails(details);
         });
+  }
+
+  protected void createCommonFinalizeUpgradeTasks(
+      boolean upgradeSystemCatalog,
+      boolean finalizeCatalogUpgrade,
+      boolean requireAdditionalSuperUserForCatalogUpgrade) {
+    Universe universe = getUniverse();
+    String version = universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
+    if (finalizeCatalogUpgrade) {
+      createFinalizeYsqlMajorCatalogUpgradeTask();
+    }
+
+    // Promote all auto flags upto class External.
+    createPromoteAutoFlagTask(
+        universe.getUniverseUUID(),
+        true /* ignoreErrors */,
+        AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
+
+    if (upgradeSystemCatalog) {
+      // Run YSQL upgrade on the universe.
+      createRunYsqlUpgradeTask(version);
+    }
+
+    if (requireAdditionalSuperUserForCatalogUpgrade) {
+      // Delete the superuser created for catalog upgrade.
+      createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
+    }
+  }
+
+  protected void createSetYBMajorVersionUpgradeCompatibility(
+      Universe universe, List<NodeDetails> nodes, String flagValue) {
+    if (nodes.isEmpty()) {
+      return;
+    }
+    createSetFlagInMemoryTasks(
+            nodes,
+            ServerType.TSERVER,
+            (node, params) -> {
+              params.force = true;
+              // Override only expression pushdown flag.
+              params.gflags =
+                  ImmutableMap.of(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
+            })
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+  }
+
+  public void updateAndPersistAuditLoggingConfigTask() {
+    TaskExecutor.SubTaskGroup subTaskGroup =
+        createSubTaskGroup("UpdateAndPersistAuditLoggingConfig");
+    UpdateAndPersistAuditLoggingConfig task = createTask(UpdateAndPersistAuditLoggingConfig.class);
+    task.initialize(taskParams());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

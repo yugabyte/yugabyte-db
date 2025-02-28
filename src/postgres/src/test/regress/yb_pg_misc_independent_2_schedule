@@ -5,11 +5,11 @@
 # This includes miscellaneous tests that are not yet characterized to a proper testsuite.  Unlike
 # yb_pg_misc_serial_schedule, the tests in this schedule have no dependencies.
 ####################################################################################################
-test: yb_pg_identity
-test: yb_pg_alter_generic
-test: yb_pg_alter_operator
-test: yb_pg_dbsize
-test: yb_pg_indirect_toast
-test: yb_pg_conversion
-test: yb_pg_truncate
-test: yb_pg_sequence
+test: yb.port.identity
+test: yb.port.alter_generic
+test: yb.port.alter_operator
+test: yb.port.dbsize
+test: yb.port.indirect_toast
+test: yb.port.conversion
+test: yb.port.truncate
+test: yb.port.sequence

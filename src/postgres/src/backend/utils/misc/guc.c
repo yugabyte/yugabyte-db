@@ -164,6 +164,7 @@ extern bool optimize_bounded_sort;
 static double yb_transaction_priority_lower_bound = 0.0;
 static double yb_transaction_priority_upper_bound = 1.0;
 static double yb_transaction_priority = 0.0;
+static int yb_tcmalloc_sample_period = 1024 * 1024; /* 1MB */
 
 static int	GUC_check_errcode_value;
 
@@ -280,6 +281,9 @@ static bool check_min_backoff(int *min_backoff_msecs, void **extra, GucSource so
 static bool check_backoff_multiplier(double *multiplier, void **extra, GucSource source);
 static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
 static void check_reserved_prefixes(const char *varName);
+
+static const char *show_tcmalloc_sample_period(void);
+static void assign_tcmalloc_sample_period(int newval, void *extra);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -2545,6 +2549,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_consistent_replication_from_hash_range", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable replication slot consumption of consistent changes "
+			"from a hash range of table."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_consistent_replication_from_hash_range,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -2691,6 +2707,18 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_collation,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_inval_message_portability", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, fill padding bytes with zeros when creating a "
+						 "shared invalidation message."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_inval_message_portability,
 		false,
 		NULL, NULL, NULL
 	},
@@ -4790,7 +4818,7 @@ static struct config_int ConfigureNamesInt[] =
 			0
 		},
 		&yb_insert_on_conflict_read_batch_size,
-		0, 0, INT_MAX,
+		1024, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -5017,6 +5045,30 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
+
+	{
+		{"yb_major_version_upgrade_compatibility", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("The compatibility level to use during a YSQL Major version upgrade. "
+						 "Allowed values are 0 and 11."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_major_version_upgrade_compatibility,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{{"yb_tcmalloc_sample_period", PGC_SUSET, STATS_MONITORING,
+	  gettext_noop("TCMalloc sample interval in bytes, i.e. approximately "
+				   "how many bytes between sampling allocation call stacks"), NULL,
+	  GUC_UNIT_BYTE},
+	 &yb_tcmalloc_sample_period,
+	 1024 * 1024, /* 1MB */
+	 0,
+	 INT_MAX,
+	 NULL,
+	 assign_tcmalloc_sample_period,
+	 show_tcmalloc_sample_period},
 
 	/* End-of-list marker */
 	{
@@ -5915,8 +5967,7 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("User should set this variable with caution. Currently, it can"
 						 " only read old data without schema changes. In other words, it should not be"
 						 " set to a timestamp before a DDL operation has been performed."
-						 " Potential corruption can happen in case (1) the variable is set to a timestamp"
-						 " before most recent DDL. (2) DDL is performed while it is set to nonzero.")
+						 " Write-DML or DDL queries are not allowed while this variable is set.")
 		},
 		&yb_read_time_string,
 		"0",
@@ -6773,6 +6824,7 @@ static const char *const YbDbAdminVariables[] = {
 	"session_replication_role",
 	"yb_make_next_ddl_statement_nonbreaking",
 	"yb_make_next_ddl_statement_nonincrementing",
+	"yb_tcmalloc_sample_period",
 };
 
 
@@ -15385,6 +15437,20 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 	return true;
+}
+
+static const char *
+show_tcmalloc_sample_period(void)
+{
+	static char nbuf[32];
+	snprintf(nbuf, sizeof(nbuf), "%" PRId64, YBCGetTCMallocSamplingPeriod());
+	return nbuf;
+}
+
+static void
+assign_tcmalloc_sample_period(int newval, void *extra)
+{
+	YBCSetTCMallocSamplingPeriod(newval);
 }
 
 

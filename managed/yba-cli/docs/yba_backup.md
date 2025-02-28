@@ -38,6 +38,7 @@ yba backup [flags]
 * [yba backup describe](yba_backup_describe.md)	 - Describe a YugabyteDB Anywhere universe backup
 * [yba backup list](yba_backup_list.md)	 - List YugabyteDB Anywhere backups
 * [yba backup list-increments](yba_backup_list-increments.md)	 - List the incremental backups of a backup
+* [yba backup pitr](yba_backup_pitr.md)	 - Manage YugabyteDB Anywhere universe PITR configs
 * [yba backup restore](yba_backup_restore.md)	 - Manage YugabyteDB Anywhere universe backup restores
 * [yba backup schedule](yba_backup_schedule.md)	 - Manage YugabyteDB Anywhere universe backup schedules
 * [yba backup update](yba_backup_update.md)	 - Edit a YugabyteDB Anywhere universe backup

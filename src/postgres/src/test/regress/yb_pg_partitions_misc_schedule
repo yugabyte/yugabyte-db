@@ -4,5 +4,5 @@
 # This testsuite contains testcases ported from postgres partitioning
 # regression tests, namely update and partition_aggregate.
 #####################################################################
-test: yb_pg_update
-test: yb_pg_partition_aggregate
+test: yb.port.update
+test: yb.port.partition_aggregate

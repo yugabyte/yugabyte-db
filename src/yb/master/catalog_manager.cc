@@ -928,8 +928,6 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
       sys_catalog_(DCHECK_NOTNULL(sys_catalog)),
       tablet_exists_(false),
       state_(kConstructed),
-      leader_ready_term_(-1),
-      leader_lock_(RWMutex::Priority::PREFER_WRITING),
       load_balance_policy_(std::make_unique<ClusterLoadBalancer>(this)),
       tablegroup_manager_(std::make_unique<YsqlTablegroupManager>()),
       object_lock_info_manager_(std::make_unique<ObjectLockInfoManager>(master_, this)),
@@ -1132,12 +1130,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
     }
   }
 
-  {
-    std::lock_guard l(state_lock_);
-    leader_ready_term_ = term;
-    is_catalog_loaded_ = true;
-    LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
-  }
+  LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
 
   // Finalize state and do post loading work.
   SysCatalogLoaded(std::move(state));
@@ -1292,14 +1285,14 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
   // Block new catalog operations, and wait for existing operations to finish.
   int64_t term = state->epoch.leader_term;
   LOG_WITH_PREFIX_AND_FUNC(INFO)
-    << "Wait on leader_lock_ for any existing operations to finish. Term: " << term;
+    << "Wait on leader_mutex_ for any existing operations to finish. Term: " << term;
   auto start = std::chrono::steady_clock::now();
-  std::lock_guard leader_lock_guard(leader_lock_);
+  std::lock_guard leader_lock_guard(leader_mutex_);
   auto finish = std::chrono::steady_clock::now();
 
   static const auto kLongLockAcquisitionLimit = RegularBuildVsSanitizers(100ms, 750ms);
   if (finish > start + kLongLockAcquisitionLimit) {
-    LOG_WITH_PREFIX(WARNING) << "Long wait on leader_lock_: " << yb::ToString(finish - start);
+    LOG_WITH_PREFIX(WARNING) << "Long wait on leader_mutex_: " << yb::ToString(finish - start);
   }
 
   // Exclusive mutex_ scope.
@@ -1395,6 +1388,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
           tables_->GetAllTables(), sys_catalog_, *ysql_manager_.get(), state->epoch));
     }
   }  // Exclusive mutex_ scope.
+  leader_ready_term_ = term;
   return Status::OK();
 }
 
@@ -2078,11 +2072,11 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
   }
 
   {
-    std::lock_guard l(state_lock_);
-    if (PREDICT_FALSE(leader_ready_term_ != cstate.current_term())) {
+    auto leader_ready_term = leader_ready_term_.load();
+    if (PREDICT_FALSE(leader_ready_term != cstate.current_term())) {
       return STATUS_SUBSTITUTE(ServiceUnavailable,
           "Leader not yet ready to serve requests: ready term $0 vs cstate term $1",
-          leader_ready_term_, cstate.current_term());
+          leader_ready_term, cstate.current_term());
     }
   }
   return Status::OK();
@@ -3509,6 +3503,7 @@ Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
                                         ReservePgsqlOidsResponsePB* resp,
                                         rpc::RpcContext* rpc) {
   VLOG(1) << "ReservePgsqlOids request: " << req->ShortDebugString();
+  bool use_secondary_space = req->use_secondary_space();
 
   // Lookup namespace
   scoped_refptr<NamespaceInfo> ns;
@@ -3524,25 +3519,43 @@ Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
   // Reserve oids.
   auto l = ns->LockForWrite();
 
-  uint32_t begin_oid = l->pb.next_pg_oid();
+  uint32_t begin_oid, oid_upper_limit;
+  if (use_secondary_space) {
+    // If the field next_secondary_pg_oid is not present, then we use
+    // kPgFirstSecondarySpaceObjectId.
+    begin_oid = std::max(l->pb.next_secondary_pg_oid(), kPgFirstSecondarySpaceObjectId);
+    oid_upper_limit = kPgUpperBoundSecondarySpaceObjectId;
+  } else {
+    begin_oid = l->pb.next_normal_pg_oid();
+    oid_upper_limit = kPgUpperBoundNormalObjectId;
+  }
+  // Remaining available OIDs in this space are [begin_oid, oid_upper_limit).
+
   if (begin_oid < req->next_oid()) {
     begin_oid = req->next_oid();
   }
-  if (begin_oid == std::numeric_limits<uint32_t>::max()) {
-    LOG(WARNING) << Format("No more object identifier is available for Postgres database $0 ($1)",
-                           l->pb.name(), req->namespace_id());
-    return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR,
-                      STATUS(InvalidArgument, "No more object identifier is available"));
+  if (begin_oid >= oid_upper_limit) {
+    LOG(WARNING) << Format(
+        "No more $0 object identifiers are available for Postgres database $1 ($2)",
+        use_secondary_space ? "secondary" : "normal", l->pb.name(), req->namespace_id());
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR,
+        STATUS(InvalidArgument, "No more object identifiers are available"));
   }
 
   uint32_t end_oid = begin_oid + req->count();
   if (end_oid < begin_oid) {
     end_oid = std::numeric_limits<uint32_t>::max(); // Handle wraparound.
   }
+  end_oid = std::min(end_oid, oid_upper_limit);
 
   resp->set_begin_oid(begin_oid);
   resp->set_end_oid(end_oid);
-  l.mutable_data()->pb.set_next_pg_oid(end_oid);
+  if (use_secondary_space) {
+    l.mutable_data()->pb.set_next_secondary_pg_oid(end_oid);
+  } else {
+    l.mutable_data()->pb.set_next_normal_pg_oid(end_oid);
+  }
 
   // Update the on-disk state.
   const Status s = sys_catalog_->Upsert(leader_ready_term(), ns);
@@ -4205,7 +4218,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       } else {
         // Adding a table to an existing colocation tablet.
         if (is_vector_index) {
-          tablets = VERIFY_RESULT(indexed_table->GetTablets());
+          tablets = VERIFY_RESULT(indexed_table->GetTablets(GetTabletsMode::kOrderByTabletId));
         } else {
           auto tablet = tablegroup ?
               tablegroup->tablet() :
@@ -4273,10 +4286,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  if (!req.xcluster_source_table_id().empty()) {
-    table->mutable_metadata()->mutable_dirty()->pb.set_xcluster_source_table_id(
-        req.xcluster_source_table_id());
-  }
+  RETURN_NOT_OK(xcluster_manager_->ProcessCreateTableReq(
+      req, table->mutable_metadata()->mutable_dirty()->pb, table->id(), namespace_id));
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_table_create_secs > 0) &&
       req.table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
@@ -5625,6 +5636,11 @@ Result<scoped_refptr<TableInfo>> CatalogManager::FindTableByIdUnlocked(
 Result<TableId> CatalogManager::GetColocatedTableId(
     const TablegroupId& tablegroup_id, ColocationId colocation_id) const {
   SharedLock lock(mutex_);
+  return GetColocatedTableIdUnlocked(tablegroup_id, colocation_id);
+}
+
+Result<TableId> CatalogManager::GetColocatedTableIdUnlocked(
+    const TablegroupId& tablegroup_id, ColocationId colocation_id) const {
   const auto* tablegroup = tablegroup_manager_->Find(tablegroup_id);
   SCHECK(tablegroup, NotFound, Substitute("Tablegroup with ID $0 not found", tablegroup_id));
   return tablegroup->GetChildTableId(colocation_id);
@@ -6290,7 +6306,6 @@ Status CatalogManager::DeleteIndexInfoFromTable(
 void CatalogManager::AcquireObjectLocksGlobal(
     const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
-  VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
         rpc::ErrorStatusPB::ERROR_APPLICATION,
@@ -6303,7 +6318,6 @@ void CatalogManager::AcquireObjectLocksGlobal(
 void CatalogManager::ReleaseObjectLocksGlobal(
     const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
-  VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
         rpc::ErrorStatusPB::ERROR_APPLICATION,
@@ -6715,12 +6729,20 @@ Status CatalogManager::DeleteTableInMemoryAcquireLocks(
     } else {
       // For regular table, we need to lock all of its indexes.
       TableIdentifierPB index_identifier;
-      for (const auto& index : table->LockForRead()->pb.indexes()) {
-        index_identifier.set_table_id(index.table_id());
+      std::vector<TableId> index_table_ids;
+      {
+        auto lock = table->LockForRead();
+        index_table_ids.reserve(lock->pb.indexes().size());
+        for (const auto& index : lock->pb.indexes()) {
+          index_table_ids.push_back(index.table_id());
+        }
+      }
+      for (const auto& table_id : index_table_ids) {
+        index_identifier.set_table_id(table_id);
         auto index_result = FindTable(index_identifier);
         if (VERIFY_RESULT(DoesTableExist(index_result))) {
           auto index_table = std::move(*index_result);
-          data_map->emplace(index.table_id(), DeletingTableData(index_table));
+          data_map->emplace(table_id, DeletingTableData(index_table));
         }
       }
     }
@@ -8551,7 +8573,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // for the database that need to be copied.
     if (db_type == YQL_DATABASE_PGSQL) {
       if (req->source_namespace_id().empty()) {
-        metadata->set_next_pg_oid(req->next_pg_oid());
+        metadata->set_next_normal_pg_oid(req->next_pg_oid());
       } else {
         const auto source_oid = GetPgsqlDatabaseOid(req->source_namespace_id());
         if (!source_oid.ok()) {
@@ -8595,10 +8617,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                    req->source_namespace_id()));
         }
         if (FLAGS_ysql_enable_pg_per_database_oid_allocator) {
-          metadata->set_next_pg_oid(kPgFirstNormalObjectId);
+          metadata->set_next_normal_pg_oid(kPgFirstNormalObjectId);
         } else {
           auto source_ns_lock = source_ns->LockForRead();
-          metadata->set_next_pg_oid(source_ns_lock->pb.next_pg_oid());
+          metadata->set_next_normal_pg_oid(source_ns_lock->pb.next_normal_pg_oid());
         }
       }
     }
@@ -9164,16 +9186,13 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     if (metadata.state() == SysNamespaceEntryPB::DELETED) {
       Status s = sys_catalog_->Delete(leader_ready_term(), database);
       WARN_NOT_OK(s, "SysCatalog DeleteItem for Namespace");
-      if (!s.ok()) {
-        return;
-      }
+      return;
     }
 
     if (is_ysql_major_upgrade) {
       if (metadata.state() != SysNamespaceEntryPB::RUNNING) {
-        // YB_TODO: Switch this to DFATAL once #25594 is fixed.
-        LOG(WARNING) << "Namespace (" << database->name() << ") has invalid state "
-                     << SysNamespaceEntryPB::State_Name(metadata.state());
+        LOG(DFATAL) << "Namespace (" << database->name() << ") has invalid state "
+                    << SysNamespaceEntryPB::State_Name(metadata.state());
         return;
       }
       if (metadata.ysql_next_major_version_state() != SysNamespaceEntryPB::NEXT_VER_DELETING) {
@@ -10077,6 +10096,33 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
     master_->shared_object().SetCatalogVersionTableInPerdbMode(true);
   }
   return Status::OK();
+}
+
+Result<DbOidVersionToMessageListMap>
+CatalogManager::GetYsqlCatalogInvalationMessagesImpl() {
+  return sys_catalog_->ReadYsqlCatalogInvalationMessages();
+}
+
+Result<DbOidVersionToMessageListMap> CatalogManager::GetYsqlCatalogInvalationMessages(
+    bool use_cache) {
+  if (!FLAGS_TEST_yb_enable_invalidation_messages ||
+      !FLAGS_ysql_enable_db_catalog_version_mode ||
+      !catalog_version_table_in_perdb_mode_) {
+    return DbOidVersionToMessageListMap();
+  }
+  if (use_cache) {
+    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+    // We expect that the only caller uses this cache is the heartbeat service.
+    // Note that if the periodic background refresh task has not populated
+    // heartbeat_pg_inval_messages_cache_ yet after the master leader starts, or
+    // when the last periodic reading of pg_yb_invalidation_messages has failed, it will
+    // be std::nullopt. Returning empty map is fine, as invalidation messages are only
+    // used as an optimization and if not there PG simply falls back to full catalog
+    // refresh.
+    return heartbeat_pg_inval_messages_cache_.has_value() ? *heartbeat_pg_inval_messages_cache_
+                                                          : DbOidVersionToMessageListMap();
+  }
+  return GetYsqlCatalogInvalationMessagesImpl();
 }
 
 // When a cluster is running in per-database catalog version mode, normally
@@ -12891,6 +12937,18 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   StartPostLoadTasks(std::move(state.post_load_tasks));
   StartWriteTableToSysCatalogTasks(std::move(state.write_to_disk_tables));
 
+  ysql_manager_->SysCatalogLoaded(state.epoch);
+
+  master_->snapshot_coordinator().SysCatalogLoaded(state.epoch.leader_term);
+
+  xcluster_manager_->SysCatalogLoaded(state.epoch);
+  SchedulePostTabletCreationTasksForPendingTables(state.epoch);
+
+  {
+    std::lock_guard lock(leader_mutex_);
+    restoring_sys_catalog_ = false;
+  }
+
   if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql) {
     // Initialize the catalog version cache.
     // This is needed for cases like major YSQL upgrade where master runs a postgres process.
@@ -12899,13 +12957,6 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
         GetYsqlAllDBCatalogVersions(false /* use_cache */, &versions, nullptr /* fingerprint */),
         "Failed to read all DB catalog versions");
   }
-
-  ysql_manager_->SysCatalogLoaded(state.epoch);
-
-  master_->snapshot_coordinator().SysCatalogLoaded(state.epoch.leader_term);
-
-  xcluster_manager_->SysCatalogLoaded(state.epoch);
-  SchedulePostTabletCreationTasksForPendingTables(state.epoch);
 }
 
 Status CatalogManager::UpdateLastFullCompactionRequestTime(
@@ -13139,6 +13190,9 @@ void CatalogManager::ResetCachedCatalogVersions() {
   if (heartbeat_pg_catalog_versions_cache_) {
     heartbeat_pg_catalog_versions_cache_->clear();
   }
+  // Reset to empty map to distinguish it from std::nullopt which means last periodic reading
+  // of pg_yb_invalidation_messages has failed.
+  heartbeat_pg_inval_messages_cache_ = DbOidVersionToMessageListMap();
 }
 
 void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
@@ -13160,6 +13214,7 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
   VLOG(2) << "Running " << __func__ << " task";
   DbOidToCatalogVersionMap versions;
   Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
+  bool changed = false;
   if (!s.ok()) {
     LOG(WARNING) << "Catalog versions refresh task failed: " << s.ToString();
     ResetCachedCatalogVersions();
@@ -13173,7 +13228,38 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
     } else {
       heartbeat_pg_catalog_versions_cache_ = std::move(versions);
     }
+    changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
     heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
+  }
+  if (FLAGS_TEST_yb_enable_invalidation_messages) {
+    // Maybe last time invalidation messages refresh failed, read it again.
+    if (!changed) {
+      SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+      // nullopt means the previous refresh has failed.
+      changed = !heartbeat_pg_inval_messages_cache_.has_value();
+    }
+    if (changed) {
+      // Cache invalidation messages are considered as an optimization extension of
+      // the catalog versions. If we cannot read the messages successfully, it means
+      // we will skip the optimization this time but it will not affect correctness
+      // because PG backends will fall back to do catalog cache refreshes.
+      auto messages = GetYsqlCatalogInvalationMessagesImpl();
+      if (!messages.ok()) {
+        LOG(WARNING) << "Catalog invalidation messages refresh failed: " << s;
+        LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+        // Reset to std::nullopt to indicate next time we want to read again.
+        heartbeat_pg_inval_messages_cache_ = std::nullopt;
+      } else {
+        VLOG_WITH_FUNC(2) << "Refreshed " << messages->size()
+                          << " catalog inval messages in memory";
+        LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+        if (heartbeat_pg_inval_messages_cache_) {
+          heartbeat_pg_inval_messages_cache_->swap(*messages);
+        } else {
+          heartbeat_pg_inval_messages_cache_ = std::move(*messages);
+        }
+      }
+    }
   }
   ScheduleRefreshPgCatalogVersionsTask();
 }

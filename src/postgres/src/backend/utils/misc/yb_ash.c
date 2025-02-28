@@ -184,8 +184,9 @@ YbAshInit(void)
 	YbAshInstallHooks();
 	/* Keep the default query id in the stack */
 	query_id_stack.top_index = 0;
-	query_id_stack.query_ids[0] =
-		YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
+	query_id_stack.query_ids[0] = MyProc->isBackgroundWorker
+		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
+		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
 	query_id_stack.num_query_ids_not_pushed = 0;
 }
 

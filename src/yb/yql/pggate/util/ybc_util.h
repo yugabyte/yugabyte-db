@@ -154,7 +154,7 @@ int YBCAshRemoveComponentFromWaitStateCode(uint32_t code);
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 
-bool YBCIsNonColocatedYbctidsOnlyFetch(const YbcPgPrepareParameters *params);
+bool YBCIsNonembeddedYbctidsOnlyFetch(const YbcPgPrepareParameters *params);
 
 bool YBIsMajorUpgradeInitDb();
 

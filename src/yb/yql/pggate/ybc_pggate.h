@@ -72,7 +72,7 @@ YbcStatus YBCPgResetMemctx(YbcPgMemctx memctx);
 void YBCPgDeleteStatement(YbcPgStatement handle);
 
 // Invalidate the sessions table cache.
-YbcStatus YBCPgInvalidateCache();
+YbcStatus YBCPgInvalidateCache(uint64_t min_ysql_catalog_version);
 
 // Check if initdb has been already run.
 YbcStatus YBCPgIsInitDbDone(bool* initdb_done);
@@ -120,6 +120,14 @@ bool YBCTryMemRelease(int64_t bytes);
 
 YbcStatus YBCGetHeapConsumption(YbcTcmallocStats *desc);
 
+int64_t YBCGetTCMallocSamplingPeriod();
+void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes);
+YbcStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,
+                             int64_t* num_samples,
+                             bool peak_heap);
+
+void YBCDumpTcMallocHeapProfile(bool peak_heap, size_t max_call_stacks);
+
 // Validate the JWT based on the options including the identity matching based on the identity map.
 YbcStatus YBCValidateJWT(const char *token, const YbcPgJwtAuthOptions *options);
 YbcStatus YBCFetchFromUrl(const char *url, char **buf);
@@ -155,7 +163,9 @@ YbcConstSliceVector YBCBitmapCopySetToVector(YbcConstSliceSet set, size_t *size)
 
 // Returns a vector representing a chunk of the given vector. ybctids are
 // shallow copied - their underlying allocations are shared.
-YbcConstSliceVector YBCBitmapGetVectorRange(YbcConstSliceVector vec, size_t start, size_t length);
+YbcConstSliceVector YBCBitmapGetVectorRange(YbcConstSliceVector vec,
+                                            size_t start,
+                                            size_t length);
 
 void YBCBitmapShallowDeleteVector(YbcConstSliceVector vec);
 void YBCBitmapShallowDeleteSet(YbcConstSliceSet set);
@@ -577,6 +587,7 @@ YbcStatus YBCPgStartOperationsBuffering();
 YbcStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
 YbcStatus YBCPgFlushBufferedOperations();
+YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
@@ -913,7 +924,7 @@ YbcStatus YBCPgExecDropReplicationSlot(YbcPgStatement handle);
 
 YbcStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
-    size_t num_relations);
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range);
 
 YbcStatus YBCPgUpdatePublicationTableList(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
@@ -957,11 +968,15 @@ YbcStatus YBCAcquireAdvisoryLock(
 YbcStatus YBCReleaseAdvisoryLock(YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode mode);
 YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid);
 
-YbcStatus YBCPgExportSnapshot(const YbcPgTxnSnapshot *snapshot, char** snapshot_id);
-YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot *snapshot);
+YbcStatus YBCPgExportSnapshot(
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const uint64_t* explicit_read_time);
+YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot);
+YbcStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time);
 
 bool YBCPgHasExportedSnapshots();
 void YBCPgClearExportedTxnSnapshots();
+
+YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -170,6 +170,9 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr, false,
     "Enable Ysql Connection Manager for the cluster. Tablet Server will start a "
     "Ysql Connection Manager process as a child process.");
 
+DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_pools, 10000,
+    "Max total pools supported in YSQL Connection Manager.");
+
 DEFINE_UNKNOWN_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
 DEFINE_UNKNOWN_bool(tserver_enable_metrics_snapshotter, false,
@@ -352,7 +355,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     ysql_db_catalog_version_index_used_->fill(false);
   }
   if (PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
-    ts_local_lock_manager_ = std::make_unique<tablet::TSLocalLockManager>();
+    ts_local_lock_manager_ = std::make_unique<tserver::TSLocalLockManager>(clock_);
   }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
@@ -646,7 +649,7 @@ Status TabletServer::RegisterServices() {
   auto pg_client_service_holder = std::make_shared<PgClientServiceHolder>(
         *this, tablet_manager_->client_future(), clock(),
         std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
-        messenger(), permanent_uuid(), &options(), xcluster_context_.get(),
+        messenger(), permanent_uuid(), options(), xcluster_context_.get(),
         &pg_node_level_mutation_counter_);
   PgClientServiceIf* pg_client_service_if = &pg_client_service_holder->impl;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service_if;
@@ -762,15 +765,21 @@ void TabletServer::Shutdown() {
   LOG(INFO) << "TabletServer shut down complete. Bye!";
 }
 
-Status TabletServer::BootstrapDdlObjectLocks(
-    const master::ClientOperationLeaseUpdatePB& lease_update) {
+Status TabletServer::ProcessLeaseUpdate(
+    const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time) {
   VLOG(2) << __func__;
-  // todo(zdrudi):
-  // Need to track the lease. Process the other fields of ClientOperationLeaseUpdatePB.
-  if (!lease_update.has_ddl_lock_entries() || !ts_local_lock_manager_) {
-    return Status::OK();
+  if (lease_update.has_ddl_lock_entries() && ts_local_lock_manager_) {
+    // todo(amit):
+    // BootstrapDdlObjectLocks must release all locks held and acquire all locks passed in,
+    // regardless of whether it has been called in the past or not. Currently this method does
+    // nothing when called after the first time on the same object.
+    RETURN_NOT_OK(ts_local_lock_manager_->BootstrapDdlObjectLocks(lease_update.ddl_lock_entries()));
   }
-  return ts_local_lock_manager_->BootstrapDdlObjectLocks(lease_update.ddl_lock_entries());
+  auto pg_client_service = pg_client_service_.lock();
+  if (pg_client_service) {
+    pg_client_service->impl.ProcessLeaseUpdate(lease_update, time);
+  }
+  return Status::OK();
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
@@ -979,7 +988,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
 
   bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
-  std::unordered_set<uint32_t> db_oids_updated;
+  std::unordered_map<uint32_t, uint64_t> db_oids_updated;
   std::unordered_set<uint32_t> db_oids_deleted;
   for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
     const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
@@ -1034,7 +1043,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
         existing_entry.last_breaking_version = new_breaking_version;
         existing_entry.new_version_ignored_count = 0;
         row_updated = true;
-        db_oids_updated.insert(db_oid);
+        db_oids_updated.insert({db_oid, new_version});
         shm_index = existing_entry.shm_index;
         CHECK(
             shm_index >= 0 &&
@@ -1296,7 +1305,7 @@ void TabletServer::InvalidatePgTableCache() {
 }
 
 void TabletServer::InvalidatePgTableCache(
-    const std::unordered_set<uint32_t>& db_oids_updated,
+    const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
     const std::unordered_set<uint32_t>& db_oids_deleted) {
   auto pg_client_service = pg_client_service_.lock();
   if (pg_client_service) {

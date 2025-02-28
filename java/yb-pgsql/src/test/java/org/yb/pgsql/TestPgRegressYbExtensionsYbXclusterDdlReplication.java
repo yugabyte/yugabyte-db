@@ -18,9 +18,19 @@ import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
 import java.io.File;
+import java.util.Map;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressYbExtensionsYbXclusterDdlReplication extends BasePgRegressTest {
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    // Required to ensure that we always generate the same colocation ids to match with the
+    // expected output.
+    flagMap.put("TEST_sequential_colocation_ids", "true");
+    return flagMap;
+  }
+
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;

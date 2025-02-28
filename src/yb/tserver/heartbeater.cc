@@ -472,8 +472,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
     }
     if (resp.has_op_lease_update()) {
       WARN_NOT_OK(
-          server_->BootstrapDdlObjectLocks(resp.op_lease_update()),
-          "Error bootstrapping object locks. Not expected.");
+          server_->ProcessLeaseUpdate(resp.op_lease_update(), start_time),
+          "Error processing lease update. Not expected.");
     }
 
     if (resp.has_error()) {
@@ -559,7 +559,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
     if (last_hb_response_.has_db_catalog_version_data()) {
       if (FLAGS_log_ysql_catalog_versions) {
         VLOG_WITH_FUNC(1) << "got master db catalog version data: "
-                          << last_hb_response_.db_catalog_version_data().ShortDebugString();
+                          << last_hb_response_.db_catalog_version_data().ShortDebugString()
+                          << " db inval messages: "
+                          << last_hb_response_.db_catalog_inval_messages_data().ShortDebugString();
       }
       server_->SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
     } else {
@@ -606,7 +608,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
       // versions from last_hb_response_.db_catalog_version_data().
       if (FLAGS_log_ysql_catalog_versions) {
         VLOG_WITH_FUNC(1) << "got master db catalog version data: "
-                          << last_hb_response_.db_catalog_version_data().ShortDebugString();
+                          << last_hb_response_.db_catalog_version_data().ShortDebugString()
+                          << " db inval messages: "
+                          << last_hb_response_.db_catalog_inval_messages_data().ShortDebugString();
       }
       const auto& version_data = last_hb_response_.db_catalog_version_data();
 

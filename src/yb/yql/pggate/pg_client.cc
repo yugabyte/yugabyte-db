@@ -68,6 +68,7 @@ DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
 DECLARE_bool(TEST_export_wait_state_names);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_int32(ysql_yb_ash_sample_size);
+DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -477,13 +478,13 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<PgTableDescPtr> OpenTable(
-      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+      const PgObjectId& table_id, bool reopen, uint64_t min_ysql_catalog_version,
       master::IncludeHidden include_hidden) {
     tserver::PgOpenTableRequestPB req;
     req.set_table_id(table_id.GetYbTableId());
     req.set_reopen(reopen);
-    if (invalidate_cache_time != CoarseTimePoint()) {
-      req.set_invalidate_cache_time_us(ToMicroseconds(invalidate_cache_time.time_since_epoch()));
+    if (min_ysql_catalog_version > 0) {
+      req.set_ysql_catalog_version(min_ysql_catalog_version);
     }
     req.set_include_hidden(include_hidden);
     tserver::PgOpenTableResponsePB resp;
@@ -572,21 +573,6 @@ class PgClient::Impl : public BigDataFetcher {
     RETURN_NOT_OK(proxy_->PollVectorIndexReady(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.ready();
-  }
-
-  Status SetActiveSubTransaction(
-      SubTransactionId id, tserver::PgPerformOptionsPB* options) {
-    tserver::PgSetActiveSubTransactionRequestPB req;
-    req.set_session_id(session_id_);
-    if (options) {
-      options->Swap(req.mutable_options());
-    }
-    req.set_sub_transaction_id(id);
-
-    tserver::PgSetActiveSubTransactionResponsePB resp;
-
-    RETURN_NOT_OK(proxy_->SetActiveSubTransaction(req, &resp, PrepareController()));
-    return ResponseStatus(resp);
   }
 
   Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options) {
@@ -698,17 +684,19 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(
-      int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
+      int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
       bool is_db_catalog_version_mode, std::optional<uint64_t> read_time) {
     tserver::PgReadSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
-    if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-      req.set_ysql_db_catalog_version(ysql_catalog_version);
-    } else {
-      req.set_ysql_catalog_version(ysql_catalog_version);
+    if (ysql_catalog_version) {
+      if (is_db_catalog_version_mode) {
+        DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
+        req.set_ysql_db_catalog_version(*ysql_catalog_version);
+      } else {
+        req.set_ysql_catalog_version(*ysql_catalog_version);
+      }
     }
 
     if (read_time) {
@@ -1213,17 +1201,23 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.snapshot_id();
   }
 
-  Result<tserver::PgImportTxnSnapshotResponsePB> ImportTxnSnapshot(
-      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
-    tserver::PgImportTxnSnapshotRequestPB req;
+  Result<tserver::PgSetTxnSnapshotResponsePB> SetTxnSnapshot(
+      PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options) {
+    tserver::PgSetTxnSnapshotRequestPB req;
     req.set_session_id(session_id_);
-    req.set_snapshot_id(snapshot_id.data(), snapshot_id.length());
     *req.mutable_options() = std::move(options);
 
-    tserver::PgImportTxnSnapshotResponsePB resp;
+    if (std::holds_alternative<PgTxnSnapshotReadTime>(snapshot_descriptor)) {
+      ReadHybridTime::FromUint64(std::get<uint64_t>(snapshot_descriptor))
+          .ToPB(req.mutable_explicit_read_time());
+    } else {
+      req.set_snapshot_id(std::get<PgTxnSnapshotId>(snapshot_descriptor));
+    }
+
+    tserver::PgSetTxnSnapshotResponsePB resp;
     RETURN_NOT_OK(DoSyncRPC(
-        &tserver::PgClientServiceProxy::ImportTxnSnapshot, req, resp,
-        ash::PggateRPC::kImportTxnSnapshot));
+        &tserver::PgClientServiceProxy::SetTxnSnapshot, req, resp,
+        ash::PggateRPC::kSetTxnSnapshot));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1264,13 +1258,26 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
-      const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const YbcReplicationSlotHashRange* slot_hash_range) {
     cdc::InitVirtualWALForCDCRequestPB req;
 
     req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
     for (const auto& table_id : table_ids) {
       *req.add_table_id() = table_id.GetYbTableId();
+    }
+
+    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) {
+      if (slot_hash_range != NULL) {
+        VLOG(1) << "Setting hash ranges in InitVirtualVWAL request - start_range: "
+                << slot_hash_range->start_range << ", end_range: " << slot_hash_range->end_range;
+        auto req_slot_range = req.mutable_slot_hash_range();
+        req_slot_range->set_start_range(slot_hash_range->start_range);
+        req_slot_range->set_end_range(slot_hash_range->end_range);
+      } else {
+        VLOG(1) << "No hash range constraints to be set in InitVirtualVWAL request";
+      }
     }
 
     cdc::InitVirtualWALForCDCResponsePB resp;
@@ -1500,9 +1507,9 @@ void PgClient::SetTimeout(MonoDelta timeout) {
 uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
 
 Result<PgTableDescPtr> PgClient::OpenTable(
-    const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+    const PgObjectId& table_id, bool reopen, uint64_t min_ysql_catalog_version,
     master::IncludeHidden include_hidden) {
-  return impl_->OpenTable(table_id, reopen, invalidate_cache_time, include_hidden);
+  return impl_->OpenTable(table_id, reopen, min_ysql_catalog_version, include_hidden);
 }
 
 Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(
@@ -1581,11 +1588,6 @@ Result<client::TabletServersInfo> PgClient::ListLiveTabletServers(bool primary_o
   return impl_->ListLiveTabletServers(primary_only);
 }
 
-Status PgClient::SetActiveSubTransaction(
-    SubTransactionId id, tserver::PgPerformOptionsPB* options) {
-  return impl_->SetActiveSubTransaction(id, options);
-}
-
 Status PgClient::RollbackToSubTransaction(
     SubTransactionId id, tserver::PgPerformOptionsPB* options) {
   return impl_->RollbackToSubTransaction(id, options);
@@ -1638,8 +1640,8 @@ Result<std::pair<int64_t, int64_t>> PgClient::FetchSequenceTuple(int64_t db_oid,
 }
 
 Result<std::pair<int64_t, bool>> PgClient::ReadSequenceTuple(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
-    std::optional<uint64_t> read_time) {
+    int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
+    bool is_db_catalog_version_mode, std::optional<uint64_t> read_time) {
   return impl_->ReadSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, read_time);
 }
@@ -1714,9 +1716,9 @@ Result<std::string> PgClient::ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequ
   return impl_->ExportTxnSnapshot(req);
 }
 
-Result<tserver::PgImportTxnSnapshotResponsePB> PgClient::ImportTxnSnapshot(
-    std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
-  return impl_->ImportTxnSnapshot(snapshot_id, std::move(options));
+Result<tserver::PgSetTxnSnapshotResponsePB> PgClient::SetTxnSnapshot(
+    PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options) {
+  return impl_->SetTxnSnapshot(snapshot_descriptor, std::move(options));
 }
 
 Status PgClient::ClearExportedTxnSnapshots() { return impl_->ClearExportedTxnSnapshots(); }
@@ -1730,8 +1732,9 @@ Result<tserver::PgYCQLStatementStatsResponsePB> PgClient::YCQLStatementStats() {
 }
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
-  return impl_->InitVirtualWALForCDC(stream_id, table_ids);
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const YbcReplicationSlotHashRange* slot_hash_range) {
+  return impl_->InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range);
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgClient::UpdatePublicationTableList(

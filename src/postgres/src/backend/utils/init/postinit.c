@@ -117,6 +117,7 @@ static void InitPostgresImpl(const char *in_dbname, Oid dboid,
 							 uint64_t *yb_session_id,
 							 bool *yb_sys_table_prefetching_started);
 static void YbEnsureSysTablePrefetchingStopped();
+static void YbPresetDatabaseCollation(HeapTuple tuple);
 
 /*** InitPostgres support ***/
 
@@ -452,6 +453,16 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 				 errdetail("The database was initialized with LC_CTYPE \"%s\", "
 						   " which is not recognized by setlocale().", ctype),
 				 errhint("Recreate the database with another locale or install the missing locale.")));
+
+	/* YbPresetDatabaseCollation may have already populated default_locale */
+	if (IsYugaByteEnabled())
+	{
+		if (default_locale.info.icu.locale)
+			pfree((void *) default_locale.info.icu.locale);
+		if (default_locale.info.icu.ucol)
+			ucol_close(default_locale.info.icu.ucol);
+		default_locale = (struct pg_locale_struct){0};
+	}
 
 	if (dbform->datlocprovider == COLLPROVIDER_ICU)
 	{
@@ -1076,7 +1087,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		/* take database name from the caller, just for paranoia */
 		strlcpy(dbname, in_dbname, sizeof(dbname));
 		if (IsYugaByteEnabled())
+		{
 			SetDatabaseEncoding(dbform->encoding);
+			YbPresetDatabaseCollation(tuple);
+		}
 	}
 	else if (OidIsValid(dboid))
 	{
@@ -1098,7 +1112,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		if (out_dbname)
 			strcpy(out_dbname, dbname);
 		if (IsYugaByteEnabled())
+		{
 			SetDatabaseEncoding(dbform->encoding);
+			YbPresetDatabaseCollation(tuple);
+		}
 	}
 	else
 	{
@@ -1373,6 +1390,49 @@ YbEnsureSysTablePrefetchingStopped()
 {
 	if (IsYugaByteEnabled() && YBCIsSysTablePrefetchingStarted())
 		YBCStopSysTablePrefetching();
+}
+
+/*
+ * Check and set database collation once MyDatabaseId is resolved. In YB we
+ * need to do this earlier because of prefetching where we may need to
+ * compare text values with DEFAULT_COLLATION_OID. For example,
+ * CREATE TABLE t1 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region))
+ * PARTITION BY LIST (region), the column region has default collation,
+ * which is the collation of the database of t1. During prefetching
+ * partition_bounds_create is invoked on t1 to build a list of sorted
+ * regions which does text comparisons.
+ * This function is adapted from CheckMyDatabase and should be kept in sync.
+ */
+static void
+YbPresetDatabaseCollation(HeapTuple tuple)
+{
+	Form_pg_database dbform = (Form_pg_database) GETSTRUCT(tuple);
+	Datum		datum;
+	bool		isnull;
+	char	   *collate;
+
+	/* There is no dbform->datcollate, must get it from tuple */
+	datum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_datcollate, &isnull);
+	Assert(!isnull);
+	collate = TextDatumGetCString(datum);
+	if (pg_perm_setlocale(LC_COLLATE, collate) == NULL)
+		ereport(FATAL,
+				(errmsg("database locale is incompatible with operating system"),
+				 errdetail("The database was initialized with LC_COLLATE \"%s\", "
+						   " which is not recognized by setlocale().", collate),
+				 errhint("Recreate the database with another locale or install the missing locale.")));
+	elog(DEBUG1, "LC_COLLATE of %u is set to %s", MyDatabaseId, collate);
+	if (dbform->datlocprovider == COLLPROVIDER_ICU)
+	{
+		datum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_daticulocale, &isnull);
+		Assert(!isnull);
+		char	   *iculocale = TextDatumGetCString(datum);
+		make_icu_collator(iculocale, &default_locale);
+		elog(DEBUG1, "iculocale of %u is set to %s", MyDatabaseId, iculocale);
+	}
+	default_locale.provider = dbform->datlocprovider;
+	default_locale.deterministic = true;
+	yb_default_collation_resolved = true;
 }
 
 /*

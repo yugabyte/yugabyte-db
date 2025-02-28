@@ -179,7 +179,7 @@ Default: `true`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
 
@@ -809,7 +809,7 @@ The unique identifier for the cluster.
 
 Default: `""`
 
-##### -- use_private_ip
+##### --use_private_ip
 
 Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` configuration flags.
 

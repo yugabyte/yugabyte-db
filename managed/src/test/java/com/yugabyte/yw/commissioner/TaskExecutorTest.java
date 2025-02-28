@@ -115,6 +115,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.SoftwareKubernetesUpgrade,
           TaskType.SoftwareKubernetesUpgradeYB,
           TaskType.FinalizeUpgrade,
+          TaskType.FinalizeKubernetesUpgrade,
           TaskType.RollbackUpgrade,
           TaskType.RollbackKubernetesUpgrade,
           TaskType.SoftwareUpgrade,
@@ -125,7 +126,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.RestartUniverse,
           TaskType.RestartUniverseKubernetesUpgrade,
           TaskType.ThirdpartySoftwareUpgrade,
-          TaskType.FinalizeUpgrade,
           TaskType.CertsRotate,
           TaskType.SystemdUpgrade,
           TaskType.ModifyAuditLoggingConfig,
@@ -140,6 +140,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ResumeKubernetesUniverse,
           TaskType.PauseKubernetesUniverse,
           TaskType.FailoverDrConfig,
+          TaskType.DeleteDrConfig,
+          TaskType.DeleteXClusterConfig,
           TaskType.DecommissionNode);
 
   @Override

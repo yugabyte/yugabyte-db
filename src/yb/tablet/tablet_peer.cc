@@ -81,6 +81,7 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
@@ -276,7 +277,7 @@ Status TabletPeer::InitTabletPeer(
         static const char* error_msg =
             "A memtable with no frontiers set found when deciding what memtables to "
             "flush! This should not happen.";
-        LOG(ERROR) << error_msg << " Stack trace:\n" << GetStackTrace();
+        LOG(DFATAL) << error_msg;
         return STATUS(IllegalState, error_msg);
       };
     });
@@ -475,7 +476,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   // Because we changed the tablet state, we need to re-report the tablet to the master.
   mark_dirty_clbk_.Run(context);
 
-  return tablet_->EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause */ nullptr);
+  return tablet_->CompleteStartup();
 }
 
 bool TabletPeer::StartShutdown() {
@@ -614,7 +615,7 @@ Status TabletPeer::Shutdown(
     // Once raft group state enters QUIESCING state,
     // new queries cannot be processed from then onwards.
     // Aborting any remaining active transactions in the tablet.
-    AbortSQLTransactions();
+    AbortActiveTransactions();
   }
 
   if (is_shutdown_initiated) {
@@ -625,14 +626,14 @@ Status TabletPeer::Shutdown(
   return Status::OK();
 }
 
-void TabletPeer::AbortSQLTransactions() const {
+void TabletPeer::AbortActiveTransactions() const {
   if (!tablet_) {
     return;
   }
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
   WARN_NOT_OK(
-      tablet_->AbortSQLTransactions(deadline),
+      tablet_->AbortActiveTransactions(deadline),
       "Cannot abort transactions for tablet " + tablet_->tablet_id());
 }
 
@@ -765,6 +766,7 @@ Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   if (!tablet) {
     return STATUS(IllegalState, "Tablet destroyed");
   }
+  // TODO(yyan) : we should use the last replicated op id instead of last committed op id.
   data->op_id = consensus->GetLastCommittedOpId();
   data->log_ht = tablet->mvcc_manager()->LastReplicatedHybridTime();
   return Status::OK();
@@ -798,7 +800,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   auto tablet = tablet_;
   if (tablet) {
     status_pb_out->set_table_type(tablet->table_type());
-    auto vector_index_finished_backfills = tablet->VectorIndexFinishedBackfills();
+    auto vector_index_finished_backfills = tablet->vector_indexes().FinishedBackfills();
     if (vector_index_finished_backfills) {
       *status_pb_out->mutable_vector_index_finished_backfills() =
           std::move(*vector_index_finished_backfills);
@@ -1101,7 +1103,7 @@ Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootst
   auto op_id = GetLatestLogEntryOpId();
 
   // The bootstrap_time is the minium time from which the provided OpId will be transactionally
-  // consistent. It is important to call AbortSQLTransactions, which resolves the pending
+  // consistent. It is important to call AbortActiveTransactions, which resolves the pending
   // transactions and aborts the active ones. This step synchronizes our clock with the
   // transaction status tablet clock, ensuring that the bootstrap_time we compute later is correct.
   // Ex: Our safe time is 100, and we have a pending intent for which the log got GCed. So this
@@ -1109,7 +1111,7 @@ Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootst
   // If, the coordinator is at 110 and the transaction was committed at 105. We need to move our
   // clock to 110 and pick a higher bootstrap_time so that the commit is not part of the bootstrap.
   if (GetAtomicFlag(&FLAGS_abort_active_txns_during_xrepl_bootstrap)) {
-    AbortSQLTransactions();
+    AbortActiveTransactions();
   }
   auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
   return std::make_pair(std::move(op_id), std::move(bootstrap_time));

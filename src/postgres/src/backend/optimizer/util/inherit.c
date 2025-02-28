@@ -696,7 +696,8 @@ get_rel_all_updated_cols(PlannerInfo *root, RelOptInfo *rel)
 	 * on the updatedCols, and add them to the result.
 	 */
 	extraUpdatedCols = get_dependent_generated_columns(root, rel->relid,
-													   updatedCols);
+													   updatedCols,
+													   NULL /* yb_generated_cols_source */ );
 
 	return bms_union(updatedCols, extraUpdatedCols);
 }

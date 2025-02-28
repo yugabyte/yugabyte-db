@@ -16,6 +16,7 @@ import { BaseDiff } from './diffComp/diffs/BaseDiff';
 import GFlagsDiff from './diffComp/diffs/GFlagsDiff';
 import SoftwareUpgradeDiff from './diffComp/diffs/SoftwareUpgradeDiff';
 import UniverseDiff from './diffComp/diffs/UniverseDiff';
+import { getSubTaskDetails } from './drawerComp/api';
 import { getAuditLog } from './diffComp/api';
 import { mapAuditLogToTaskDiffApiResp } from '../TaskUtils';
 import { TargetType, Task, TaskType } from '../dtos';
@@ -34,12 +35,27 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
 
   // Differ to be used for the current task.
   const [differ, setDiffer] = useState<BaseDiff<DiffComponentProps, any> | null>(null);
-
-  const { data: auditData } = useQuery(
-    ['auditData', currentTask?.id],
-    () => getAuditLog(currentTask!.id),
+  // we need to check if this task is a retried tasks
+  // if it is, we need to get the previous task details
+  const { data: taskDetails, isSuccess } = useQuery(
+    ['subTasks', currentTask!.id!],
+    () => getSubTaskDetails(currentTask!.id!),
     {
-      enabled: !!currentTask && visible,
+      select: (data) => data.data,
+      enabled: !!currentTask && visible
+    }
+  );
+  const { data: auditData } = useQuery(
+    ['auditData', currentTask?.id, isSuccess],
+    // if it is a retried task, get the parent task uuid and get it's Audit log
+    () =>
+      getAuditLog(
+        (taskDetails &&
+          taskDetails[currentTask!.targetUUID!]?.[0]?.taskInfo.taskParams.previousTaskUUID) ??
+          currentTask!.id!
+      ),
+    {
+      enabled: !!currentTask && visible && isSuccess,
       select: (data) => data.data,
       onError: () => {
         toast.error(t('diffDetailsNotFound'));
@@ -76,11 +92,11 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
   // Get the diff component to be rendered.
   // memoize to avoid re-rendering on every state change.
   const diffComponents = useMemo(() => {
-    if (!differ) {
+    if (!differ || !visible) {
       return null;
     }
     return differ.getDiffComponent();
-  }, [differ]);
+  }, [differ, visible]);
 
   if (!currentTask || !visible || !taskDiffDetails) {
     return null;

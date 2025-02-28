@@ -229,6 +229,23 @@ make_restrictinfo_internal(PlannerInfo *root,
 }
 
 /*
+ * Returns whether the given rinfo can be used as a hashed clause during a
+ * hashed BNL join. This operates similar to the check hash joins do to
+ * determine if a clause can be hashed as in hash_inner_and_outer in
+ * joinpath.c.
+ */
+bool
+yb_can_hash_batched_rinfo(RestrictInfo *batched_rinfo,
+						 Relids outer_relids,
+						 Relids inner_relids)
+{
+	if (bms_is_subset(batched_rinfo->right_relids, outer_relids) &&
+		bms_is_subset(batched_rinfo->left_relids, inner_relids))
+		return true;
+	return false;
+}
+
+/*
  *	Returns whether the given rinfo has a batched representation with
  *	an inner variable from inner_relids and its outer batched variables from
  *	outer_batched_relids.

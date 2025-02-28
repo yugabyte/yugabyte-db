@@ -13,7 +13,6 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CloneNamespaceParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
@@ -282,7 +281,7 @@ public class PitrController extends AuthenticatedController {
           long currentTimeMillis = System.currentTimeMillis();
           long minTimeInMillis =
               BackupUtil.getMinRecoveryTimeForSchedule(
-                  snapshotScheduleInfo.getSnapshotInfoList(), pitrConfig.getRetentionPeriod());
+                  snapshotScheduleInfo.getSnapshotInfoList(), pitrConfig);
           pitrConfig.setMinRecoverTimeInMillis(minTimeInMillis);
           pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
           pitrConfig.setState(pitrStatus ? State.COMPLETE : State.FAILED);
@@ -379,7 +378,7 @@ public class PitrController extends AuthenticatedController {
   @ApiOperation(
       value = "Delete pitr config on a universe",
       nickname = "deletePitrConfig",
-      response = YBPSuccess.class)
+      response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -537,14 +536,9 @@ public class PitrController extends AuthenticatedController {
     }
 
     long currentTimeMillis = System.currentTimeMillis();
-    long minTimeInMillis =
-        Math.max(
-            currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
-            pitrConfig.getCreateTime().getTime());
     if (taskParams.cloneTimeInMillis != null
         && (taskParams.cloneTimeInMillis <= 0L
-            || taskParams.cloneTimeInMillis > currentTimeMillis
-            || taskParams.cloneTimeInMillis < minTimeInMillis)) {
+            || taskParams.cloneTimeInMillis > currentTimeMillis)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Time to clone that has been specified is incorrect");
     }

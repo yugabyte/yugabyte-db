@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
@@ -129,10 +130,10 @@ public class GcpEARServiceTest extends FakeDBApplication {
     // Creating the crypto key after a key ring has been created
     // Using the crypto key, it creates and encrpyts the generated random universe key
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
-    byte[] keyRef =
+    EncryptionKey keyRef =
         mockGcpEARService.createKeyWithService(
             universe.getUniverseUUID(), configUUID, encryptionAtRestConfig);
-    assertEquals(keyRef, randomBytes);
+    assertEquals(keyRef.getKeyBytes(), randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).generateRandomBytes(fakeAuthConfig, numBytes);
     verify(mockGcpEARServiceUtil, times(1)).encryptBytes(fakeAuthConfig, randomBytes);
   }
@@ -141,10 +142,10 @@ public class GcpEARServiceTest extends FakeDBApplication {
   public void testRotateKeyWithService() throws IOException {
     // Generating a new universe key and using the existing crypto key to encrypt and store
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
-    byte[] keyRef =
+    EncryptionKey keyRef =
         mockGcpEARService.rotateKeyWithService(
             universe.getUniverseUUID(), configUUID, encryptionAtRestConfig);
-    assertEquals(keyRef, randomBytes);
+    assertEquals(keyRef.getKeyBytes(), randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).generateRandomBytes(fakeAuthConfig, numBytes);
     verify(mockGcpEARServiceUtil, times(1)).encryptBytes(fakeAuthConfig, randomBytes);
   }
@@ -152,7 +153,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
   @Test
   public void testRetrieveKeyWithService() throws IOException {
     // Decrypting the stored encrypted universe key known as keyRef
-    byte[] keyRef = mockGcpEARService.retrieveKeyWithService(configUUID, randomBytes);
+    byte[] keyRef = mockGcpEARService.retrieveKeyWithService(configUUID, randomBytes, null);
     assertEquals(keyRef, randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).decryptBytes(fakeAuthConfig, randomBytes);
   }
@@ -162,7 +163,8 @@ public class GcpEARServiceTest extends FakeDBApplication {
     // Decrypting the stored encrypted universe key known as keyRef using a new auth config
     // Used for KMS  edit operation
     byte[] keyRef =
-        mockGcpEARService.validateRetrieveKeyWithService(configUUID, randomBytes, fakeAuthConfig);
+        mockGcpEARService.validateRetrieveKeyWithService(
+            configUUID, randomBytes, null, fakeAuthConfig);
     assertEquals(keyRef, randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).decryptBytes(fakeAuthConfig, randomBytes);
   }

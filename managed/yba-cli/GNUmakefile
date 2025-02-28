@@ -1,5 +1,6 @@
 TOP_BUILDDIR ?= .
 DEVOPS_HOME=$(CURDIR)/../devops
+GOLINES := ./bin/golines
 
 
 VERSION_NUMBER ?= $(shell cat $(CURDIR)/version_metadata.json | jq '.version_number')
@@ -49,7 +50,7 @@ ${BIN_DIR}/${OS_ARCH}/${BIN_NAME}: ${GO_SOURCE_FILES}
 
 .PHONY: doc
 doc:
-	YBA_FF_TOOLS=true  go run main.go tools gen-doc --format markdown
+	YBA_FF_TOOLS=true YBA_FF_PREVIEW=true go run main.go tools gen-doc --format markdown
 	sed -i 's/\x1B\[32m//g' docs/*
 	sed -i 's/\x1B\[0m//g' docs/*
 
@@ -91,3 +92,9 @@ build:
 .PHONY: license
 license:
 	./licenses/generate-license-file.sh
+
+.PHONY: fmt
+fmt:
+	go clean -modcache
+	GOBIN=$(PWD)/bin go install github.com/segmentio/golines@latest
+	$(GOLINES) --max-len=100 -w .

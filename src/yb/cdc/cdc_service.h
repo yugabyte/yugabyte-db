@@ -97,6 +97,16 @@ struct TabletCDCCheckpointInfo {
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
 };
 
+struct ReplicationSlotHashRange {
+  ReplicationSlotHashRange() = delete;
+  explicit ReplicationSlotHashRange(uint32_t start, uint32_t end)
+      : start_range(start), end_range(end) {}
+
+  // Hash range can be between [0,65536).
+  uint32_t start_range;
+  uint32_t end_range;
+};
+
 using TabletIdCDCCheckpointMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
 using TabletIdStreamIdSet = std::set<std::pair<TabletId, xrepl::StreamId>>;
 using StreamIdSet = std::set<xrepl::StreamId>;
@@ -273,12 +283,13 @@ class CDCServiceImpl : public CDCServiceIf {
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
       const StreamMetadata& stream_metadata, int64_t last_readable_index,
+      HaveMoreMessages have_more_messages,
       const CDCThroughputMetrics& throughput_metrics);
 
   void UpdateTabletXClusterMetrics(
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
-      int64_t last_readable_index);
+      int64_t last_readable_index, HaveMoreMessages have_more_messages);
 
   void UpdateTabletCDCSDKMetrics(
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,

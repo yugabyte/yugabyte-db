@@ -208,29 +208,6 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
   const TestMode test_mode_;
 };
 
-TEST_F(WaitStateITest, UniqueRpcRequestId) {
-  const int NumKeys = 1000;
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE bankaccounts (id INT PRIMARY KEY, balance INT)"));
-  ASSERT_OK(conn.Execute("CREATE INDEX bankaccountsidx ON bankaccounts (id, balance)"));
-  for (size_t i = 0; i < NumKeys; ++i) {
-    ASSERT_OK(conn.Execute(Format(
-        "INSERT INTO bankaccounts VALUES ($0, $1)", i, i)));
-  }
-  for (size_t i = 0; i < NumKeys; ++i) {
-    ASSERT_OK(conn.Execute(Format("DELETE FROM bankaccounts WHERE id = $0", i)));
-  }
-  const std::string query =
-      "SELECT count(*) "
-      "FROM yb_active_session_history "
-      "WHERE rpc_request_id IS NOT NULL "
-      "GROUP BY sample_time, rpc_request_id "
-      "ORDER BY count DESC "
-      "LIMIT 1";
-  auto count = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(query));
-  ASSERT_EQ(count, 1);
-}
-
 class WaitStateTestCheckMethodCounts : public WaitStateITest {
  protected:
   explicit WaitStateTestCheckMethodCounts(TestMode test_mode)

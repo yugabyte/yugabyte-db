@@ -5,6 +5,7 @@ else
     # Creating the yb_user
     useradd -u {{ yb_user_id }} -s /bin/bash --create-home --home-dir {{ yb_home_dir }} {{ yb_user }}
     chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}
+    chmod -R 711 {{ yb_home_dir }}
     echo "User {{ yb_user }} created"
 fi
 
@@ -58,10 +59,10 @@ fi
         if [ ! -d "$mount_point" ]; then
             echo "Creating mount point: $mount_point"
             mkdir -p "$mount_point"
-            chown -R {{ yb_user }}:{{ yb_user }} "$mount_point"
         else
             echo "Mount point already exists: $mount_point"
         fi
+        chown -R {{ yb_user }}:{{ yb_user }} "$mount_point"
     done
 
     # Set up the ssh key access for yugabyte
@@ -88,12 +89,17 @@ fi
     fi
 {% endif %}
 
+{% if is_install_node_agent == 'True' %}
 installer_dir="{{ ynp_dir }}/../../bin"
+{% if cloud_type is defined and cloud_type != '' %}
+    installer_dir="{{ ynp_dir }}/../"
+{% endif %}
 # Copy node-agent binary to yugabyte home directory. This is needed so that yugabyte user
 # can read the binary in restricted environment.
 mkdir -p {{ yb_home_dir }}/.install
 cp "$installer_dir/node-agent-installer.sh" {{ yb_home_dir }}/.install
 chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/.install
+{% endif %}
 
 # Ensure the permissions for yb_home_dir are 750
 chmod 750 "{{ yb_home_dir }}"

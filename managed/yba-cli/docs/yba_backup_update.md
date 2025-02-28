@@ -21,7 +21,7 @@ yba backup update --uuid <backup-uuid> \
 ### Options
 
 ```
-      --uuid string                    [Required] The UUID of the backup to be edited.
+  -u, --uuid string                    [Required] The UUID of the backup to be edited.
       --time-before-delete-in-ms int   [Optional] Time before delete from the current time in ms.
       --storage-config-name string     [Optional] Change the storage configuration assigned to the backup.
   -h, --help                           help for update

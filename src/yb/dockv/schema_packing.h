@@ -171,11 +171,12 @@ class SchemaPackingStorage {
 
   bool operator==(const SchemaPackingStorage&) const = default;
 
- private:
   // Set could_present to true when schemas could contain the same packings as already present.
   Status InsertSchemas(
       const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present,
       OverwriteSchemaPacking overwrite);
+
+ private:
   static Status InsertSchemas(
       const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present,
       OverwriteSchemaPacking overwrite, std::unordered_map<SchemaVersion, SchemaPacking>* out);

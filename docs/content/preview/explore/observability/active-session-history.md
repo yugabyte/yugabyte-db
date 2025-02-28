@@ -127,6 +127,7 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 | TServerWait | TableWrite  | Network |  | A YSQL backend is waiting for a table write from DocDB. |
 | TServerWait | CatalogWrite  | Network |  | A YSQL backend is waiting for a catalog write from master. |
 | TServerWait | IndexWrite | Network |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
+| TServerWait | WaitingOnTServer | Network| \<RPC-name> | A YSQL backend is waiting for on tserver for an RPC. The RPC name is present on the wait event aux column.|
 | YSQLQuery | QueryProcessing| CPU |  | A YSQL backend is doing CPU work.|
 | YSQLQuery | yb_ash_metadata | LWLock |  | A YSQL backend is waiting to update ASH metadata for a query. |
 | YSQLQuery | YBParallelScanEmpty| IPC |  | A YSQL backend is waiting on an empty queue while fetching parallel range keys. |

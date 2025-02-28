@@ -48,7 +48,7 @@ $ ./bin/yb-tserver \
 
 Provide all of the master addresses using the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `--placement_zone` flag.
 
-{{<tags/feature/tp>}} Highly accurate clocks can be configured by specifying `--time_source=clockbound`. Requires [system configuration](../system-config#set-up-time-synchronization).
+{{<tags/feature/tp idea="1807">}} Highly accurate clocks can be configured by specifying `--time_source=clockbound`. Requires [system configuration](../system-config#set-up-time-synchronization).
 
 For the full list of configuration flags, see the [YB-TServer reference](../../../reference/configuration/yb-tserver/).
 

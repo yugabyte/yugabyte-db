@@ -144,7 +144,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   public void testSoftwareUpgrade() throws IOException {
     updateDefaultUniverseTo5Nodes(true);
 
-    when(mockAutoFlagUtil.upgradeRequireFinalize(anyString(), anyString())).thenReturn(true);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.21.0.0-b2";
@@ -165,6 +166,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addTasks(TaskType.XClusterInfoPersist)
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
@@ -178,7 +180,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .task(TaskType.AnsibleConfigureServers)
         .applyRound()
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
-        .addTasks(TaskType.StoreAutoFlagConfigVersion)
         .addTasks(TaskType.PromoteAutoFlags)
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)
@@ -232,6 +233,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addTasks(TaskType.XClusterInfoPersist)
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
@@ -245,7 +247,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .task(TaskType.AnsibleConfigureServers)
         .applyRound()
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
-        .addTasks(TaskType.StoreAutoFlagConfigVersion)
         .addTasks(TaskType.PromoteAutoFlags)
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)
@@ -313,6 +314,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServersInPrimaryCluster().size())
         .addTasks(TaskType.XClusterInfoPersist)
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
@@ -326,7 +328,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .task(TaskType.AnsibleConfigureServers)
         .applyRound()
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
-        .addTasks(TaskType.StoreAutoFlagConfigVersion)
         .addTasks(TaskType.PromoteAutoFlags)
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)
@@ -368,6 +369,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addTasks(TaskType.XClusterInfoPersist)
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
@@ -381,7 +383,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .task(TaskType.AnsibleConfigureServers)
         .applyRound()
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
-        .addTasks(TaskType.StoreAutoFlagConfigVersion)
         .addTasks(TaskType.PromoteAutoFlags)
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)
@@ -548,6 +549,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addTasks(TaskType.XClusterInfoPersist)
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, tserverNames.size())
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE)
         .withContext(
@@ -560,7 +562,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .task(TaskType.AnsibleConfigureServers)
         .applyToNodes(masterNames, tserverNames)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
-        .addTasks(TaskType.StoreAutoFlagConfigVersion)
         .addTasks(TaskType.PromoteAutoFlags)
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)

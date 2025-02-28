@@ -913,10 +913,10 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 			if (have_outer_tuple)
 			{
 				elog(DEBUG2, "saving new outer tuple information");
-				if (TTS_IS_MINIMALTUPLE(outerTupleSlot))
-					econtext->ecxt_outertuple = outerTupleSlot;
-				else
+				if (bnlstate->js.ps.outeropsset)
 					ExecCopySlot(econtext->ecxt_outertuple, outerTupleSlot);
+				else
+					econtext->ecxt_outertuple = outerTupleSlot;
 				LOCAL_JOIN_FN(AddTupleToOuterBatch, bnlstate, econtext->ecxt_outertuple);
 			}
 		}

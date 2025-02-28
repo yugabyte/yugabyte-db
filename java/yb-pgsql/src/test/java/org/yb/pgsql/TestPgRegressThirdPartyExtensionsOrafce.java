@@ -30,7 +30,7 @@ public class TestPgRegressThirdPartyExtensionsOrafce extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
-    assumeFalse(BasePgSQLTest.EXTENSION_NOT_SUPPORTED, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.EXTENSION_NOT_SUPPORTED, isTestRunningWithConnectionManager());
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/orafce"),
                      "yb_schedule");

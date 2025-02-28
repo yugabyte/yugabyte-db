@@ -333,15 +333,10 @@ public class PitrControllerTest extends FakeDBApplication {
             State.COMPLETE);
     snapshotList1.add(snapshot11);
     UUID snapshotUUID12 = UUID.randomUUID();
-    long schedule1minRecoveryTime = currentTime11;
     SnapshotInfo snapshot12 =
-        new SnapshotInfo(snapshotUUID12, currentTime11, currentTime11, State.COMPLETE);
-    snapshotList1.add(snapshot12);
-    UUID snapshotUUID13 = UUID.randomUUID();
-    SnapshotInfo snapshot13 =
         new SnapshotInfo(
-            snapshotUUID13, currentTime11 + 1000 * 100L, currentTime11, State.COMPLETE);
-    snapshotList1.add(snapshot13);
+            snapshotUUID12, currentTime11 + 1000 * 100L, currentTime11, State.COMPLETE);
+    snapshotList1.add(snapshot12);
     SnapshotScheduleInfo schedule1 =
         new SnapshotScheduleInfo(scheduleUUID1, 86400L, 7L * 86400L, snapshotList1);
     scheduleInfoList.add(schedule1);
@@ -367,7 +362,6 @@ public class PitrControllerTest extends FakeDBApplication {
             State.FAILED);
     snapshotList2.add(snapshot21);
     UUID snapshotUUID22 = UUID.randomUUID();
-    long schedule2minRecoveryTime = currentTime21 + 1000 * 100L;
     SnapshotInfo snapshot22 =
         new SnapshotInfo(
             snapshotUUID22, currentTime21 + 1000 * 100L, currentTime21, State.COMPLETE);
@@ -389,44 +383,55 @@ public class PitrControllerTest extends FakeDBApplication {
     PitrConfig pitr3 = PitrConfig.create(scheduleUUID3, params3);
     List<SnapshotInfo> snapshotList3 = new ArrayList<>();
     UUID snapshotUUID31 = UUID.randomUUID();
-    long schedule3minRecoveryTime = currentTime3 + 1000 * 100L;
+    // First ever snapshot
     SnapshotInfo snapshot31 =
-        new SnapshotInfo(snapshotUUID31, currentTime3 + 1000 * 100L, currentTime3, State.COMPLETE);
+        new SnapshotInfo(snapshotUUID31, currentTime3 + 1000 * 100L, 0L, State.COMPLETE);
     snapshotList3.add(snapshot31);
     SnapshotScheduleInfo schedule3 =
         new SnapshotScheduleInfo(scheduleUUID3, 86400L, 7L * 86400L, snapshotList3);
     scheduleInfoList.add(schedule3);
     scheduleInfoMap.put(scheduleUUID3, schedule3);
 
-    long currentTime41 = System.currentTimeMillis();
+    long currentTime4 = System.currentTimeMillis();
     UUID scheduleUUID4 = UUID.randomUUID();
     CreatePitrConfigParams params4 = new CreatePitrConfigParams();
-    params4.retentionPeriodInSeconds = 7 * 86400L;
+    params4.retentionPeriodInSeconds = 1 * 86400L;
     params4.intervalInSeconds = 86400L;
     params4.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params4.customerUUID = defaultCustomer.getUuid();
-    params4.keyspaceName = "fail";
-    params4.tableType = TableType.PGSQL_TABLE_TYPE;
+    params4.keyspaceName = "test_update";
+    params4.tableType = TableType.YQL_TABLE_TYPE;
     PitrConfig pitr4 = PitrConfig.create(scheduleUUID4, params4);
     List<SnapshotInfo> snapshotList4 = new ArrayList<>();
-    // All snapshots have failed for this schedule.
-    long schedule4minRecoveryTime = 0L;
     UUID snapshotUUID41 = UUID.randomUUID();
     SnapshotInfo snapshot41 =
         new SnapshotInfo(
             snapshotUUID41,
-            currentTime41 + 1000 * 86500L,
-            currentTime41 + 1000 * 100L,
-            State.FAILED);
+            currentTime4 + 2000 * 86500L,
+            currentTime4 + 1000 * 100L,
+            State.COMPLETE);
     snapshotList4.add(snapshot41);
     UUID snapshotUUID42 = UUID.randomUUID();
     SnapshotInfo snapshot42 =
-        new SnapshotInfo(snapshotUUID42, currentTime41 + 1000 * 100L, currentTime41, State.FAILED);
+        new SnapshotInfo(
+            snapshotUUID42,
+            currentTime4 + 1000 * 86500L,
+            currentTime4 + 1000 * 100L,
+            State.COMPLETE);
     snapshotList4.add(snapshot42);
+    UUID snapshotUUID43 = UUID.randomUUID();
+    SnapshotInfo snapshot43 =
+        new SnapshotInfo(snapshotUUID43, currentTime4 + 1000 * 100L, currentTime4, State.COMPLETE);
+    snapshotList4.add(snapshot43);
     SnapshotScheduleInfo schedule4 =
-        new SnapshotScheduleInfo(scheduleUUID4, 86400L, 7L * 86400L, snapshotList4);
+        new SnapshotScheduleInfo(scheduleUUID4, 86400L, 2L * 86400L, snapshotList4);
     scheduleInfoList.add(schedule4);
     scheduleInfoMap.put(scheduleUUID4, schedule4);
+    // PITR config is updated to have a longer retention period.
+    pitr4.setRetentionPeriod(4 * 86400L);
+    // ERT is frozen at the ERT at the time of update.
+    pitr4.setIntermittentMinRecoverTimeInMillis(currentTime4 + 1800 * 86500L);
+    pitr4.save();
 
     when(mockListSnapshotSchedulesResponse.getSnapshotScheduleInfoList())
         .thenReturn(scheduleInfoList);
@@ -445,7 +450,6 @@ public class PitrControllerTest extends FakeDBApplication {
       long intervalInSecs = schedule.get("scheduleInterval").asLong();
       long retentionDurationInSecs = schedule.get("retentionPeriod").asLong();
       assertEquals(86400L, intervalInSecs);
-      assertEquals(7 * 86400L, retentionDurationInSecs);
       UUID scheduleUUID = UUID.fromString(schedule.get("uuid").asText());
       if (!scheduleInfoMap.containsKey(scheduleUUID)) {
         Assert.fail();
@@ -454,20 +458,23 @@ public class PitrControllerTest extends FakeDBApplication {
       long maxTime = schedule.get("maxRecoverTimeInMillis").asLong();
       String state = schedule.get("state").asText();
       if (scheduleUUID.equals(scheduleUUID1)) {
+        assertEquals(7 * 86400L, retentionDurationInSecs);
         assertTrue(System.currentTimeMillis() > minTime);
         assertTrue(currentTime3 < maxTime);
         assertEquals("COMPLETE", state);
-        assertEquals(schedule1minRecoveryTime, minTime);
       } else if (scheduleUUID.equals(scheduleUUID2)) {
+        assertEquals(7 * 86400L, retentionDurationInSecs);
+        assertTrue(System.currentTimeMillis() > minTime);
         assertTrue(currentTime3 < maxTime);
         assertEquals("FAILED", state);
-        assertEquals(schedule2minRecoveryTime, minTime);
       } else if (scheduleUUID.equals(scheduleUUID3)) {
+        assertEquals(7 * 86400L, retentionDurationInSecs);
+        assertTrue(System.currentTimeMillis() > minTime);
         assertEquals("COMPLETE", state);
-        assertEquals(schedule3minRecoveryTime, minTime);
       } else if (scheduleUUID.equals(scheduleUUID4)) {
-        assertEquals("FAILED", state);
-        assertEquals(schedule4minRecoveryTime, minTime);
+        assertEquals(4 * 86400L, retentionDurationInSecs);
+        assertEquals(currentTime4 + 1800 * 86500L, minTime);
+        assertEquals("COMPLETE", state);
       } else {
         Assert.fail();
       }

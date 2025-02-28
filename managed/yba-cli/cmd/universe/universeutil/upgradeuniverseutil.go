@@ -51,7 +51,12 @@ func WaitForUpgradeUniverseTask(
 
 		universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Upgrade - Fetch Universe")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Universe",
+				"Upgrade - Fetch Universe",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		universesCtx := formatter.Context{
@@ -80,7 +85,12 @@ func Validations(cmd *cobra.Command, operation string) (
 	error,
 ) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
-	universeName, err := cmd.Flags().GetString("name")
+
+	universeNameFlag := "name"
+	if strings.EqualFold(operation, util.PITROperation) {
+		universeNameFlag = "universe-name"
+	}
+	universeName, err := cmd.Flags().GetString(universeNameFlag)
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
@@ -156,27 +166,27 @@ func FetchTServerGFlags(
 	return tserverGFlagsList
 }
 
-// ProcessMasterGflagsJSONString takes in a JSON string and returns it as a map
-func ProcessMasterGflagsJSONString(jsonData string) map[string]string {
+// ProcessGFlagsJSONString takes in a JSON string and returns it as a map
+func ProcessGFlagsJSONString(jsonData string, serverType string) map[string]string {
 	// Parse the JSON input into a map
 	var singleMap map[string]string
 	if err := json.Unmarshal([]byte(jsonData), &singleMap); err != nil {
 		logrus.Fatalf(formatter.Colorize(
 			fmt.Sprintln("Error parsing JSON:", err), formatter.RedColor))
 	}
-	logrus.Debug("Master GFlags from JSON string: ", singleMap)
+	logrus.Debug(serverType+" GFlags from JSON string: ", singleMap)
 	return singleMap
 }
 
-// ProcessMasterGflagsYAMLString takes in a YAML string and returns it as a map
-func ProcessMasterGflagsYAMLString(yamlData string) map[string]string {
+// ProcessGFlagsYAMLString takes in a YAML string and returns it as a map
+func ProcessGFlagsYAMLString(yamlData string, serverType string) map[string]string {
 	// Parse the YAML input into a map
 	var singleMap map[string]string
 	if err := yaml.Unmarshal([]byte(yamlData), &singleMap); err != nil {
 		logrus.Fatalf(formatter.Colorize(
 			fmt.Sprintln("Error parsing YAML:", err), formatter.RedColor))
 	}
-	logrus.Debug("Master GFlags from YAML string: ", singleMap)
+	logrus.Debug(serverType+" GFlags from YAML string: ", singleMap)
 	return singleMap
 }
 

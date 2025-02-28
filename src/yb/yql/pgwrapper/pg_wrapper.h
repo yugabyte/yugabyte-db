@@ -85,6 +85,9 @@ class PgWrapper : public ProcessWrapper {
   // version.) This function is intended to be used during tablet server initialization.
   Status InitDbLocalOnlyIfNeeded();
 
+  // Cleanup the data directory, and any associated symlinks.
+  static Status CleanupPgData(const std::string& data_dir);
+
   // Run initdb in a mode that sets up the required metadata in the YB cluster. This is done
   // only once after the cluster has started up. tmp_dir_base is used as a base directory to
   // create a temporary PostgreSQL directory that is later deleted.

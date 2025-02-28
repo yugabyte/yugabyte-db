@@ -1095,7 +1095,9 @@ public class XClusterConfigController extends AuthenticatedController {
           formData.targetUniverseUUID,
           formData.replicationGroupName);
       targetUniverse = Universe.getOrBadRequest(formData.targetUniverseUUID, customer);
-      params = new XClusterConfigTaskParams(formData);
+      // We pass xClusterConfig as null, because the task itself will create it in the yba db or use
+      // the existing one.
+      params = new XClusterConfigTaskParams(null /* xClusterConfig */, formData);
     }
 
     UUID taskUUID = commissioner.submit(TaskType.SyncXClusterConfig, params);
@@ -1167,7 +1169,11 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfigSyncFormData syncFormData = new XClusterConfigSyncFormData();
     syncFormData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     syncFormData.replicationGroupName = xClusterConfig.getReplicationGroupName();
-    XClusterConfigTaskParams params = new XClusterConfigTaskParams(syncFormData);
+    // We pass xClusterConfig as null, becuase the task itself will create it in the yba db or use
+    // the existing one.
+    XClusterConfigTaskParams params =
+        new XClusterConfigTaskParams(null /* xClusterConfig */, syncFormData);
+
     UUID taskUUID = commissioner.submit(TaskType.SyncXClusterConfig, params);
     CustomerTask.create(
         customer,

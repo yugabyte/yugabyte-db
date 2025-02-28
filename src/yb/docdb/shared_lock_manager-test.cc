@@ -17,6 +17,7 @@
 #include <thread>
 
 #include "yb/docdb/lock_batch.h"
+#include "yb/docdb/lock_util.h"
 #include "yb/docdb/shared_lock_manager.h"
 
 #include "yb/rpc/thread_pool.h"

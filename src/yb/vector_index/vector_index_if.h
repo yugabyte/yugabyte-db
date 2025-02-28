@@ -44,6 +44,9 @@ class VectorIndexReaderIf {
   virtual Result<SearchResult> Search(
       const Vector& query_vector, const SearchOptions& options) const = 0;
 
+  // Returns the vector with the given id or NotFound error when vector is not found.
+  virtual Result<Vector> GetVector(VectorId vector_id) const = 0;
+
   virtual std::unique_ptr<AbstractIterator<IteratorValue>> BeginImpl() const = 0;
   virtual std::unique_ptr<AbstractIterator<IteratorValue>> EndImpl()   const = 0;
   virtual std::string IndexStatsStr() const { return "N/A"; }
@@ -65,10 +68,6 @@ class VectorIndexWriterIf {
   virtual size_t MaxVectors() const = 0;
 
   virtual Status Insert(VectorId vertex_id, const Vector& vector) = 0;
-
-  // Returns the vector with the given id, an empty vector if such VectorId does not exist, or
-  // a non-OK status if an error occurred.
-  virtual Result<Vector> GetVector(VectorId vertex_id) const = 0;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

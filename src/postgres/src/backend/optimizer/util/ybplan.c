@@ -290,7 +290,7 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 }
 
 /*
- * extract_pushdown_clauses
+ * yb_extract_pushdown_clauses
  *	  Extract actual clauses from RestrictInfo list and distribute them
  * 	  between three groups:
  *	  - local_quals - conditions not eligible for pushdown. They are evaluated
@@ -309,58 +309,48 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
  *	  idx_colrefs may be NULL if the indexinfo is NULL.
  */
 void
-extract_pushdown_clauses(List *restrictinfo_list,
-						 IndexOptInfo *indexinfo,
-						 bool bitmapindex,
-						 List **local_quals,
-						 List **rel_remote_quals,
-						 List **rel_colrefs,
-						 List **idx_remote_quals,
-						 List **idx_colrefs)
+yb_extract_pushdown_clauses(List *restrictinfo_list,
+							IndexOptInfo *indexinfo, bool bitmapindex,
+							List **local_quals, List **rel_remote_quals,
+							List **rel_colrefs, List **idx_remote_quals,
+							List **idx_colrefs)
 {
 	ListCell   *lc;
 
 	foreach(lc, restrictinfo_list)
 	{
 		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
+		List *colrefs = NIL;
 
 		/* ignore pseudoconstants */
 		if (ri->pseudoconstant)
 			continue;
 
-		if (ri->yb_pushable)
+		bool pushable = YbCanPushdownExpr(ri->clause, &colrefs);
+		/*
+		 * If clause was found pushable before, that shouldn't change.
+		 * Opposite is possible, join condition may be moved to inner and have
+		 * outer references replaced with Params.
+		 */
+		Assert(!ri->yb_pushable || pushable);
+		if (!pushable)
+			*local_quals = lappend(*local_quals, ri->clause);
+		/*
+		 * If there are both main and secondary (index) relations,
+		 * determine one to pushdown the condition. It is more efficient
+		 * to apply filter earlier, so prefer index, if it has all the
+		 * necessary columns.
+		 */
+		else if (indexinfo == NULL ||
+				 !is_index_only_attribute_nums(colrefs, indexinfo, bitmapindex))
 		{
-			List	   *colrefs = NIL;
-			bool		pushable PG_USED_FOR_ASSERTS_ONLY;
-
-			/*
-			 * Find column references. It has already been determined that
-			 * the expression is pushable.
-			 */
-			pushable = YbCanPushdownExpr(ri->clause, &colrefs);
-			Assert(pushable);
-
-			/*
-			 * If there are both main and secondary (index) relations,
-			 * determine one to pushdown the condition. It is more efficient
-			 * to apply filter earlier, so prefer index, if it has all the
-			 * necessary columns.
-			 */
-			if (indexinfo == NULL ||
-				!is_index_only_attribute_nums(colrefs, indexinfo, bitmapindex))
-			{
-				*rel_colrefs = list_concat(*rel_colrefs, colrefs);
-				*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
-			}
-			else
-			{
-				*idx_colrefs = list_concat(*idx_colrefs, colrefs);
-				*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
-			}
+			*rel_colrefs = list_concat(*rel_colrefs, colrefs);
+			*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
 		}
 		else
 		{
-			*local_quals = lappend(*local_quals, ri->clause);
+			*idx_colrefs = list_concat(*idx_colrefs, colrefs);
+			*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
 		}
 	}
 }

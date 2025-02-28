@@ -179,7 +179,7 @@ Default: `true`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
 
@@ -376,7 +376,7 @@ Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-def
 
 ## Raft flags
 
-For a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-master configurations should match the values in [yb-tserver](../yb-tserver/#raft-flags) configurations.
+With the exception of flags that have different defaults for yb-master vs yb-tserver (for example, --evict_failed_followers), for a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-master configurations should match the values in [yb-tserver](../yb-tserver/#raft-flags) configurations.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -470,7 +470,7 @@ Default: `64`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
-Default: The default value in `2.18.1` is `-1` - feature is disabled by default. The default value starting from `2.19.1` is `524288` (0.5 MB) - feature is enabled by default.
+Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
 
 ## Load balancing flags
 
@@ -801,7 +801,7 @@ The unique identifier for the cluster.
 
 Default: `""`
 
-##### -- use_private_ip
+##### --use_private_ip
 
 Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` configuration flags.
 

@@ -92,12 +92,14 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
                     msg.contains("schema version mismatch") ||
                     msg.contains("marked for deletion in table")) {
                     expectedExceptionsCount.incrementAndGet();
-                } else if (msg.contains("Invalid column number")) {
+                } else if (msg.contains("Invalid column number") ||
+                           msg.matches(".*Column with id \\d+ marked for deletion in table.*")) {
                   // TODO(dmitry): In spite of the fact system catalog is being read in consistent
                   // manner PgSession::table_cache_ may have outdated YBTable object. As a result
-                  // an error like 'Invalid argument: Invalid column number 8' might be raised by
-                  // the next statement. Github issue #8096 is created for the problem.
-                  LOG.warn("Invalid column number error detected", e);
+                  // an error like 'Invalid argument: Invalid column number 8' or
+                  // 'Column with id 3 marked for deletion in table' might be raised by the next
+                  // statement. Github issue #8096 is created for the problem.
+                  LOG.warn("Inconsistent table cache error detected", e);
                   expectedExceptionsCount.incrementAndGet();
                 } else {
                   LOG.error("Unexpected exception", e);

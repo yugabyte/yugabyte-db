@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	defaultPITRListing = "table {{.Name}}\t{{.UUID}}\t{{.DbName}}\t" +
-		"{{.ScheduleInterval}}\t{{.State}}\t{{.TableType}}"
+	defaultPITRListing = "table {{.UUID}}\t{{.Name}}\t{{.DbName}}\t" +
+		"{{.ScheduleInterval}}\t{{.State}}\t{{.TableType}}\t{{.RetentionPeriod}}"
 
 	pitrListing1 = "table {{.RetentionPeriod}}\t{{.MaxRecoverTime}}\t{{.MinRecoverTime}}"
 	pitrListing2 = "table {{.CreateTime}}\t{{.UpdateTime}}"
@@ -27,7 +27,7 @@ const (
 	retentionPeriodHeader  = "Retention Period (In seconds)"
 	maxRecoverTimeHeader   = "Maximum Recover Time (In milliseconds)"
 	minRecoverTimeHeader   = "Minimum Recover Time (In milliseconds)"
-	scheduleIntervalHeader = "Schedule Interval (In milliseconds)"
+	scheduleIntervalHeader = "Schedule Interval (In seconds)"
 	stateHeader            = "State"
 	tableTypeHeader        = "Table Type"
 	createTimeHeader       = "Create Time"

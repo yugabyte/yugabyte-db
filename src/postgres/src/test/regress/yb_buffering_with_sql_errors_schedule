@@ -3,4 +3,4 @@
 ####################################################################################################
 # This includes tests related to buffering in PL/pgSQL.
 ####################################################################################################
-test: yb_buffering_with_sql_errors
+test: yb.orig.buffering_with_sql_errors

@@ -146,9 +146,9 @@ class VectorIndexImpl : public VectorIndex {
  public:
   VectorIndexImpl(
       const TableId& table_id, Slice indexed_table_key_prefix, ColumnId column_id,
-      const DocDB& doc_db)
+      HybridTime hybrid_time, const DocDB& doc_db)
       : table_id_(table_id), indexed_table_key_prefix_(indexed_table_key_prefix),
-        column_id_(column_id), doc_db_(doc_db) {
+        column_id_(column_id), hybrid_time_(hybrid_time), doc_db_(doc_db) {
   }
 
   const TableId& table_id() const override {
@@ -167,10 +167,15 @@ class VectorIndexImpl : public VectorIndex {
     return column_id_;
   }
 
+  HybridTime hybrid_time() const override {
+    return hybrid_time_;
+  }
+
   Status Open(const std::string& log_prefix,
               const std::string& data_root_dir,
               rpc::ThreadPool& thread_pool,
               const PgVectorIdxOptionsPB& idx_options) {
+    name_ = RemoveLogPrefixColon(log_prefix);
     typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
@@ -255,7 +260,11 @@ class VectorIndexImpl : public VectorIndex {
   }
 
   const std::string& ToString() const override {
-    return lsm_.options().log_prefix;
+    return name_;
+  }
+
+  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const override {
+    return lsm_.HasVectorId(vector_id);
   }
 
  private:
@@ -263,31 +272,19 @@ class VectorIndexImpl : public VectorIndex {
     return kVectorIndexDirPrefix + table_id_;
   }
 
-  TableId table_id_;
+  const TableId table_id_;
   const KeyBuffer indexed_table_key_prefix_;
   const ColumnId column_id_;
+  const HybridTime hybrid_time_;
+  const DocDB doc_db_;
 
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
-  LSM lsm_;
 
-  const DocDB doc_db_;
+  std::string name_;
+  LSM lsm_;
 };
 
 } // namespace
-
-Result<VectorIndexPtr> CreateVectorIndex(
-    const std::string& log_prefix,
-    const std::string& data_root_dir,
-    rpc::ThreadPool& thread_pool,
-    Slice indexed_table_key_prefix,
-    const qlexpr::IndexInfo& index_info,
-    const DocDB& doc_db) {
-  auto& options = index_info.vector_idx_options();
-  auto result = std::make_shared<VectorIndexImpl<std::vector<float>, float>>(
-      index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), doc_db);
-  RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool, options));
-  return result;
-}
 
 bool VectorIndex::BackfillDone() {
   if (backfill_done_cache_.load()) {
@@ -299,6 +296,22 @@ bool VectorIndex::BackfillDone() {
     return true;
   }
   return false;
+}
+
+Result<VectorIndexPtr> CreateVectorIndex(
+    const std::string& log_prefix,
+    const std::string& data_root_dir,
+    rpc::ThreadPool& thread_pool,
+    Slice indexed_table_key_prefix,
+    HybridTime hybrid_time,
+    const qlexpr::IndexInfo& index_info,
+    const DocDB& doc_db) {
+  auto& options = index_info.vector_idx_options();
+  auto result = std::make_shared<VectorIndexImpl<std::vector<float>, float>>(
+      index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), hybrid_time,
+      doc_db);
+  RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool, options));
+  return result;
 }
 
 void AddVectorIndexReverseEntry(

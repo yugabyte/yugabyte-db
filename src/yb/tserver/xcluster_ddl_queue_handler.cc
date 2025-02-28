@@ -20,6 +20,7 @@
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
+#include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
 #include "yb/common/pg_types.h"
@@ -44,6 +45,9 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_at_start, false,
     "Whether the ddl_queue handler should fail at the start of processing (this will cause it "
     "to reprocess the current batch in a loop).");
 
+DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_ddl, false,
+    "Whether the ddl_queue handler should fail the ddl command that it executes.");
+
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
   SCHECK( \
       doc.HasMember(member_name), NotFound, \
@@ -63,8 +67,8 @@ const std::string kDDLQueueFullTableName =
     Format("$0.$1", xcluster::kDDLQueuePgSchemaName, xcluster::kDDLQueueTableName);
 const std::string kReplicatedDDLsFullTableName =
     Format("$0.$1", xcluster::kDDLQueuePgSchemaName, xcluster::kDDLReplicatedTableName);
-const std::string kLocalVariableStartTime =
-    Format("$0.$1", xcluster::kDDLQueuePgSchemaName, "ddl_queue_primary_key_start_time");
+const std::string kLocalVariableDDLEndTime =
+    Format("$0.$1", xcluster::kDDLQueuePgSchemaName, "ddl_queue_primary_key_ddl_end_time");
 const std::string kLocalVariableQueryId =
     Format("$0.$1", xcluster::kDDLQueuePgSchemaName, "ddl_queue_primary_key_query_id");
 
@@ -77,7 +81,10 @@ const char* kDDLJsonUser = "user";
 const char* kDDLJsonNewRelMap = "new_rel_map";
 const char* kDDLJsonRelName = "rel_name";
 const char* kDDLJsonRelFileOid = "relfile_oid";
+const char* kDDLJsonColocationId = "colocation_id";
+const char* kDDLJsonIsIndex = "is_index";
 const char* kDDLJsonEnumLabelInfo = "enum_label_info";
+const char* kDDLJsonSequenceInfo = "sequence_info";
 const char* kDDLJsonManualReplication = "manual_replication";
 const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
@@ -87,12 +94,15 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "CREATE TABLE",
     "CREATE INDEX",
     "CREATE TYPE",
+    "CREATE SEQUENCE",
     "DROP TABLE",
     "DROP INDEX",
     "DROP TYPE",
+    "DROP SEQUENCE",
     "ALTER TABLE",
     "ALTER INDEX",
     "ALTER TYPE",
+    "ALTER SEQUENCE",
     // Pass thru DDLs
     "CREATE ACCESS METHOD",
     "CREATE AGGREGATE",
@@ -239,9 +249,9 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
 
   // TODO(#20928): Make these calls async.
   auto rows = VERIFY_RESULT(GetRowsToProcess(target_safe_ht));
-  for (const auto& [start_time, query_id, raw_json_data] : rows) {
+  for (const auto& [ddl_end_time, query_id, raw_json_data] : rows) {
     rapidjson::Document doc = VERIFY_RESULT(ParseSerializedJson(raw_json_data));
-    const auto query_info = VERIFY_RESULT(GetDDLQueryInfo(doc, start_time, query_id));
+    const auto query_info = VERIFY_RESULT(GetDDLQueryInfo(doc, ddl_end_time, query_id));
 
     // Need to reverify replicated_ddls if this DDL has already been processed.
     if (VERIFY_RESULT(CheckIfAlreadyProcessed(query_info))) {
@@ -260,15 +270,15 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
         kSupportedCommandTags.contains(query_info.command_tag), InvalidArgument,
         "Found unsupported command tag $0", query_info.command_tag);
 
-    std::vector<YsqlFullTableName> new_relations;
+    std::unordered_set<YsqlFullTableName> new_relations;
     auto se = ScopeExit([this, &new_relations]() {
       // Ensure that we always clear the xcluster_context.
       for (const auto& new_rel : new_relations) {
-        xcluster_context_.ClearSourceTableMappingForCreateTable(new_rel);
+        xcluster_context_.ClearSourceTableInfoMappingForCreateTable(new_rel);
       }
     });
 
-    RETURN_NOT_OK(ProcessNewRelations(doc, query_info.schema, new_relations));
+    RETURN_NOT_OK(ProcessNewRelations(doc, query_info.schema, new_relations, target_safe_ht));
     RETURN_NOT_OK(ProcessDDLQuery(query_info));
 
     VLOG_WITH_PREFIX(2) << "ProcessDDLQueueTable: Successfully processed entry "
@@ -283,14 +293,14 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
 }
 
 Result<XClusterDDLQueueHandler::DDLQueryInfo> XClusterDDLQueueHandler::GetDDLQueryInfo(
-    rapidjson::Document& doc, int64 start_time, int64 query_id) {
+    rapidjson::Document& doc, int64 ddl_end_time, int64 query_id) {
   DDLQueryInfo query_info;
 
   VALIDATE_MEMBER(doc, kDDLJsonVersion, Int);
   query_info.version = doc[kDDLJsonVersion].GetInt();
   SCHECK_EQ(query_info.version, kDDLQueueJsonVersion, InvalidArgument, "Invalid JSON version");
 
-  query_info.start_time = start_time;
+  query_info.ddl_end_time = ddl_end_time;
   query_info.query_id = query_id;
 
   VALIDATE_MEMBER(doc, kDDLJsonCommandTag, String);
@@ -310,6 +320,10 @@ Result<XClusterDDLQueueHandler::DDLQueryInfo> XClusterDDLQueueHandler::GetDDLQue
     writer.Key(kDDLJsonEnumLabelInfo);
     doc[kDDLJsonEnumLabelInfo].Accept(writer);
   }
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonSequenceInfo, IsArray)) {
+    writer.Key(kDDLJsonSequenceInfo);
+    doc[kDDLJsonSequenceInfo].Accept(writer);
+  }
   writer.EndObject();
   query_info.json_for_oid_assignment = assignment_buffer.GetString();
   return query_info;
@@ -317,25 +331,38 @@ Result<XClusterDDLQueueHandler::DDLQueryInfo> XClusterDDLQueueHandler::GetDDLQue
 
 Status XClusterDDLQueueHandler::ProcessNewRelations(
     rapidjson::Document& doc, const std::string& schema,
-    std::vector<YsqlFullTableName>& new_relations) {
-  const auto& new_rel_map = HAS_MEMBER_OF_TYPE(doc, kDDLJsonNewRelMap, IsArray)
-                                ? std::optional(doc[kDDLJsonNewRelMap].GetArray())
-                                : std::nullopt;
-  if (new_rel_map) {
-    // If there are new relations, need to update the context with the table name -> source
-    // table id mapping. This will be passed to CreateTable and will be used in
-    // add_table_to_xcluster_target task to find the matching source table.
-    for (const auto& new_rel : *new_rel_map) {
-      VALIDATE_MEMBER(new_rel, kDDLJsonRelFileOid, Int);
-      VALIDATE_MEMBER(new_rel, kDDLJsonRelName, String);
-      const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id_));
-      const auto relfile_oid = new_rel[kDDLJsonRelFileOid].GetInt();
-      const auto rel_name = new_rel[kDDLJsonRelName].GetString();
-      RETURN_NOT_OK(xcluster_context_.SetSourceTableMappingForCreateTable(
-          {namespace_name_, schema, rel_name}, PgObjectId(db_oid, relfile_oid)));
-      new_relations.push_back({namespace_name_, schema, rel_name});
+    std::unordered_set<YsqlFullTableName>& new_relations, const HybridTime& target_safe_ht) {
+  const auto source_db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id_));
+  // If there are new relations, need to update the context with the table name -> source
+  // table id mapping. This will be passed to CreateTable and will be used in
+  // add_table_to_xcluster_target task to find the matching source table.
+  const auto& rel_map = HAS_MEMBER_OF_TYPE(doc, kDDLJsonNewRelMap, IsArray)
+                            ? std::optional(doc[kDDLJsonNewRelMap].GetArray())
+                            : std::nullopt;
+  if (rel_map) {
+    for (const auto& rel : *rel_map) {
+      VALIDATE_MEMBER(rel, kDDLJsonRelFileOid, Uint);
+      VALIDATE_MEMBER(rel, kDDLJsonRelName, String);
+      const auto relfile_oid = rel[kDDLJsonRelFileOid].GetUint();
+      const auto rel_name = rel[kDDLJsonRelName].GetString();
+
+      // Only need to set the backfill time for colocated indexes.
+      const auto is_index =
+          HAS_MEMBER_OF_TYPE(rel, kDDLJsonIsIndex, IsBool) ? rel[kDDLJsonIsIndex].GetBool() : false;
+      const auto colocation_id = HAS_MEMBER_OF_TYPE(rel, kDDLJsonColocationId, IsUint)
+                                     ? rel[kDDLJsonColocationId].GetUint()
+                                     : kColocationIdNotSet;
+      const auto& backfill_time_opt = (is_index && colocation_id != kColocationIdNotSet)
+                                          ? target_safe_ht
+                                          : HybridTime::kInvalid;
+
+      RETURN_NOT_OK(xcluster_context_.SetSourceTableInfoMappingForCreateTable(
+          {namespace_name_, schema, rel_name}, PgObjectId(source_db_oid, relfile_oid),
+          colocation_id, backfill_time_opt));
+      new_relations.insert({namespace_name_, schema, rel_name});
     }
   }
+
   return Status::OK();
 }
 
@@ -344,7 +371,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
   setup_query << "SET ROLE NONE;";
 
   // Set session variables in order to pass the key to the replicated_ddls table.
-  setup_query << Format("SET $0 TO $1;", kLocalVariableStartTime, query_info.start_time);
+  setup_query << Format("SET $0 TO $1;", kLocalVariableDDLEndTime, query_info.ddl_end_time);
   setup_query << Format("SET $0 TO $1;", kLocalVariableQueryId, query_info.query_id);
 
   // Set schema and role after setting the superuser extension variables.
@@ -361,6 +388,10 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
       query_info.json_for_oid_assignment);
 
   setup_query << "SET yb_skip_data_insert_for_table_rewrite=true;";
+
+  if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {
+    setup_query << "SET yb_test_fail_next_ddl TO true;";
+  }
 
   RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
   RETURN_NOT_OK(RunAndLogQuery(query_info.query));
@@ -380,7 +411,7 @@ Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(const DDLQueryInfo& 
   doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
 
   RETURN_NOT_OK(RunAndLogQuery(Format(
-      "EXECUTE $0($1, $2, '$3')", kDDLPrepStmtManualInsert, query_info.start_time,
+      "EXECUTE $0($1, $2, '$3')", kDDLPrepStmtManualInsert, query_info.ddl_end_time,
       query_info.query_id, common::WriteRapidJsonToString(doc))));
   return Status::OK();
 }
@@ -393,7 +424,7 @@ Status XClusterDDLQueueHandler::RunAndLogQuery(const std::string& query) {
 
 Result<bool> XClusterDDLQueueHandler::CheckIfAlreadyProcessed(const DDLQueryInfo& query_info) {
   return pg_conn_->FetchRow<bool>(Format(
-      "EXECUTE $0($1, $2)", kDDLPrepStmtAlreadyProcessed, query_info.start_time,
+      "EXECUTE $0($1, $2)", kDDLPrepStmtAlreadyProcessed, query_info.ddl_end_time,
       query_info.query_id));
 }
 
@@ -419,7 +450,7 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   // Prepare replicated_ddls select query.
   query << "PREPARE " << kDDLPrepStmtAlreadyProcessed << "(bigint, bigint) AS "
         << "SELECT EXISTS(SELECT 1 FROM " << xcluster::kDDLQueuePgSchemaName << "."
-        << xcluster::kDDLReplicatedTableName << " WHERE " << xcluster::kDDLQueueStartTimeColumn
+        << xcluster::kDDLReplicatedTableName << " WHERE " << xcluster::kDDLQueueDDLEndTimeColumn
         << " = $1 AND " << xcluster::kDDLQueueQueryIdColumn << " = $2);";
   RETURN_NOT_OK(pg_conn_->Execute(query.str()));
 
@@ -443,7 +474,7 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
       "SELECT $0, $1, $2 FROM $3 "
       "WHERE ($0, $1) NOT IN (SELECT $0, $1 FROM $4) "
       "ORDER BY $0 ASC",
-      xcluster::kDDLQueueStartTimeColumn, xcluster::kDDLQueueQueryIdColumn,
+      xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn, kDDLQueueFullTableName, kReplicatedDDLsFullTableName))));
   // DDLs are blocked when yb_read_time is non-zero, so reset.
   RETURN_NOT_OK(pg_conn_->Execute("SET yb_read_time = 0"));

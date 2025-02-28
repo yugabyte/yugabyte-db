@@ -149,7 +149,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
-  tablet::TSLocalLockManager* ts_local_lock_manager() const override {
+  tserver::TSLocalLockManager* ts_local_lock_manager() const override {
     return ts_local_lock_manager_.get();
   }
 
@@ -185,15 +185,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   const scoped_refptr<MetricEntity>& MetricEnt() const override { return metric_entity(); }
 
-  tserver::TServerSharedData& SharedObject() override {
-    return shared_object();
-  }
+  tserver::TServerSharedData& SharedObject() override { return shared_object(); }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
-  Status BootstrapDdlObjectLocks(const master::ClientOperationLeaseUpdatePB& lease_update);
+  Status ProcessLeaseUpdate(
+      const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time);
 
-  Status GetLiveTServers(
-      std::vector<master::TSInformationPB> *live_tservers) const EXCLUDES(lock_) override;
+  Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
+      EXCLUDES(lock_) override;
 
   // Returns connection info of all live tservers available at this tserver. The information about
   // live tservers is refreshed by the master heartbeat.
@@ -500,7 +499,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void AutoInitServiceFlags();
 
   void InvalidatePgTableCache();
-  void InvalidatePgTableCache(const std::unordered_set<uint32_t>& db_oids_updated,
+  void InvalidatePgTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
                               const std::unordered_set<uint32_t>& db_oids_deleted);
 
   std::string log_prefix_;
@@ -533,7 +532,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
 
   // Lock Manager to maintain table/object locking activity in memory.
-  std::unique_ptr<tablet::TSLocalLockManager> ts_local_lock_manager_;
+  std::unique_ptr<tserver::TSLocalLockManager> ts_local_lock_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

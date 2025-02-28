@@ -28,7 +28,6 @@ import org.yb.master.MasterTypes.MasterErrorPB;
 @Slf4j
 public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
 
-  private static final int MAX_ATTEMPTS = 20;
   private static final int DELAY_BETWEEN_ATTEMPTS_SEC = 60; // 1 minute
 
   public static class Params extends ServerSubTaskParams {}
@@ -71,17 +70,16 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
     }
   }
 
-  protected void waitForCatalogUpgradeToFinish() throws Exception {
-    try (YBClient client = getClient()) {
-      int attempts = 0;
-      while (attempts < MAX_ATTEMPTS) {
-        attempts++;
-        log.debug(
-            "Waiting for YSQL major version catalog upgrade to finish. Attempt {} of {}",
-            attempts,
-            MAX_ATTEMPTS);
-        waitFor(Duration.ofSeconds(DELAY_BETWEEN_ATTEMPTS_SEC));
-
+  protected void waitForCatalogUpgradeToFinish(int maxAttempts) throws Exception {
+    int attempts = 0;
+    while (attempts < maxAttempts) {
+      attempts++;
+      log.debug(
+          "Waiting for YSQL major version catalog upgrade to finish. Attempt {} of {}",
+          attempts,
+          maxAttempts);
+      waitFor(Duration.ofSeconds(DELAY_BETWEEN_ATTEMPTS_SEC));
+      try (YBClient client = getClient()) {
         IsYsqlMajorCatalogUpgradeDoneResponse resp = client.isYsqlMajorCatalogUpgradeDone();
         if (resp.hasError()) {
           MasterErrorPB errorPB = resp.getServerError();
@@ -96,6 +94,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
         }
       }
     }
+    throw new RuntimeException("YSQL major version catalog upgrade did not finish in time");
   }
 
   protected YsqlMajorCatalogUpgradeState getYsqlMajorCatalogUpgradeState() throws Exception {

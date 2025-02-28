@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V67__25503__wait_event_code_in_yb_ash.sql
-{ major => '67', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V71__26023__yb_log_catcache_stats.sql
+{ major => '71', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

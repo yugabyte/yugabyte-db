@@ -218,6 +218,9 @@ class UniverseDetail extends Component {
         this.props.fetchUniverseTables(currentUniverse.data.universeUUID);
       }
     }
+    if (currentUniverse?.data?.universeDetails?.updatingTaskUUID !== undefined && currentUniverse?.data?.universeDetails?.updatingTaskUUID !== prevProps.universe.currentUniverse.data?.universeDetails?.updatingTaskUUID) {
+      this.props.showUniverseTaskBanner(currentUniverse.data.universeDetails.updatingTaskUUID, currentUniverse.data.universeUUID);
+    }
   }
 
   onResize(dimensions) {
@@ -734,7 +737,7 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-            !isKubernetesUniverse && isAuditLogEnabled && isYSQLEnabledInUniverse && (
+            isAuditLogEnabled && isYSQLEnabledInUniverse && (
               <Tab.Pane
                 eventKey={'db-audit-log'}
                 tabtitle="Logs"

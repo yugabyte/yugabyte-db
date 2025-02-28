@@ -9,9 +9,14 @@ import {
   RESET_CUSTOMER_TASKS,
   FETCH_FAILED_TASK_DETAIL,
   FETCH_FAILED_TASK_DETAIL_RESPONSE,
-  PATCH_TASKS_FOR_CUSTOMER
+  PATCH_TASKS_FOR_CUSTOMER,
+  SHOW_TASK_IN_DRAWER,
+  HIDE_TASK_IN_DRAWER,
+  SHOW_TASK_BANNER,
+  HIDE_TASK_BANNER
 } from '../actions/tasks';
 import moment from 'moment';
+import { get, set } from 'lodash';
 
 import {
   getInitialState,
@@ -23,7 +28,9 @@ import {
 const INITIAL_STATE = {
   taskProgressData: getInitialState({}),
   customerTaskList: [],
-  failedTasks: getInitialState([])
+  failedTasks: getInitialState([]),
+  showTaskInDrawer: '',
+  taskBannerInfo: {}
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -74,9 +81,32 @@ export default function (state = INITIAL_STATE, action) {
       return {
         ...state,
         customerTaskList: state.customerTaskList
-        .filter((task) => task.targetUUID !== action.payload.universeUUID)
-        .concat(action.payload.tasks)
-        .sort((a, b) => moment(b.createTime).isBefore(a.createTime) ? -1 : 1)
+          .filter((task) => task.targetUUID !== action.payload.universeUUID)
+          .concat(action.payload.tasks)
+          .sort((a, b) => moment(b.createTime).isBefore(a.createTime) ? -1 : 1)
+      };
+    case SHOW_TASK_IN_DRAWER:
+      return { ...state, showTaskInDrawer: action.payload };
+    case HIDE_TASK_IN_DRAWER:
+      return { ...state, showTaskInDrawer: '' };
+    case SHOW_TASK_BANNER: {
+      const bannerInfos = {
+        ...state.taskBannerInfo,
+      };
+      const alreadyExists = get(bannerInfos, [action.payload.universeUUID, action.payload.taskUUID]);
+      if (!alreadyExists || alreadyExists.visible !== false) {
+        set(bannerInfos, [action.payload.universeUUID, action.payload.taskUUID], {
+          visible: true,
+          timestamp: Date.now(),
+          taskUUID: action.payload.taskUUID,
+        });
+      }
+      return { ...state, taskBannerInfo: bannerInfos };
+    }
+    case HIDE_TASK_BANNER:
+      set(state.taskBannerInfo, [action.payload.universeUUID, action.payload.taskUUID, 'visible'], false);
+      return {
+        ...state,
       };
     default:
       return state;

@@ -50,10 +50,16 @@ var addInstanceTypesCmd = &cobra.Command{
 		}
 
 		providerListRequest := authAPI.GetListOfProviders()
-		providerListRequest = providerListRequest.Name(providerName).ProviderCode(util.OnpremProviderType)
+		providerListRequest = providerListRequest.Name(providerName).
+			ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Instance Type", "Add - Get Provider")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Instance Type",
+				"Add - Get Provider",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
@@ -202,7 +208,12 @@ func buildVolumeDetails(volumeStrings []string) *[]ybaclient.VolumeDetails {
 		}
 		volumeSize, err := strconv.ParseInt(volume["size"], 10, 64)
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'size'. Setting it to '100'.\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			volumeSize = 100
 		}
 		r := ybaclient.VolumeDetails{
 			MountPath:    volume["mount-points"],

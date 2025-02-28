@@ -29,7 +29,8 @@ SUBDIRS = \
 	makefiles \
 	test/regress \
 	test/isolation \
-	test/perl
+	test/perl \
+	test/modules/dummy_seclabel # YB TODO (#25892): Figure out another way to run these tests
 
 ifeq ($(with_llvm), yes)
 SUBDIRS += backend/jit/llvm

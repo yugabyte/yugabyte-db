@@ -16,6 +16,7 @@
 #include <sys/wait.h>
 
 #include <atomic>
+#include <algorithm>
 #include <mutex>
 #include <queue>
 #include <regex>
@@ -40,10 +41,12 @@
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/dockv/partition.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/pg_types.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_operation_lease.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
@@ -54,15 +57,17 @@
 #include "yb/rocksdb/db/db_impl.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/poller.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/tasks_pool.h"
-#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/server/server_base.h"
 
 #include "yb/tserver/pg_client.proxy.h"
+#include "yb/tserver/pg_client_service_util.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
@@ -70,8 +75,11 @@
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/debug.h"
@@ -92,6 +100,7 @@
 #include "yb/util/yb_pg_errcodes.h"
 
 using namespace std::literals;
+using namespace std::placeholders;
 
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
@@ -131,17 +140,16 @@ TAG_FLAG(ysql_cdc_active_replication_slot_window_ms, advanced);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
-
+DECLARE_bool(ysql_yb_enable_advisory_locks);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 DEFINE_RUNTIME_int32(
     check_pg_object_id_allocators_interval_secs, 3600 * 3,
     "Interval at which pg object id allocators are checked for dropped databases.");
 TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 
-
 METRIC_DEFINE_event_stats(
-    server, pg_client_exchange_response_size,
-    "The size of PgClient exchange response in bytes", yb::MetricUnit::kBytes,
-    "The size of PgClient exchange response in bytes");
+    server, pg_client_exchange_response_size, "The size of PgClient exchange response in bytes",
+    yb::MetricUnit::kBytes, "The size of PgClient exchange response in bytes");
 
 namespace yb::tserver {
 
@@ -385,7 +393,21 @@ auto MakeSharedOldTxnMetadataVariant(OldTxnMetadataVariant&& txn_meta_variant) {
   return shared_txn_meta;
 }
 
-} // namespace
+bool ShouldUseSecondarySpace(
+    const TserverXClusterContextIf* xcluster_context, const NamespaceId& namespace_id) {
+  // We use the secondary space when allocating on the target universe under xCluster automatic
+  // mode.  We only care at the moment about allocations done by TServers on the behalf of Postgres
+  // because the only allocations done by masters on behalf of Postgres processes are part of the
+  // YSQL major upgrade, which currently does not allocate any OIDs of kinds that can cause
+  // collisions for xCluster preserved OIDs.
+  //
+  // TODO(#26018): Make allocations done by master (that is, when this function is running in a
+  // master process) also use the secondary space when allocating on the target universe under
+  // xCluster automatic mode.
+  return xcluster_context && xcluster_context->IsTargetAndInAutomaticMode(namespace_id);
+}
+
+}  // namespace
 
 template <class Extractor>
 class ApplyToValue {
@@ -410,7 +432,7 @@ class PgClientServiceImpl::Impl {
       rpc::Messenger* messenger, const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, MetricEntity* metric_entity,
       const MemTrackerPtr& parent_mem_tracker, const std::string& permanent_uuid,
-      const server::ServerBaseOptions* tablet_server_opts)
+      const server::ServerBaseOptions& tablet_server_opts)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
         clock_(clock),
@@ -437,7 +459,13 @@ class PgClientServiceImpl::Impl {
             .response_cache = response_cache_,
             .sequence_cache = sequence_cache_,
             .shared_mem_pool = shared_mem_pool_,
-            .stats_exchange_response_size = stats_exchange_response_size_
+            .stats_exchange_response_size = stats_exchange_response_size_,
+            .instance_uuid = instance_id_,
+            .ts_lock_manager =
+                tablet_server_opts.server_type == TabletServerOptions::kServerType &&
+                FLAGS_TEST_enable_object_locking_for_table_locks
+                    ? tablet_server_.ts_local_lock_manager()
+                    : nullptr
         },
         cdc_state_table_(client_future_),
         txn_snapshot_manager_(
@@ -539,19 +567,14 @@ class PgClientServiceImpl::Impl {
 
   Status OpenTable(
       const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext* context) {
-    if (req.invalidate_cache_time_us()) {
-      const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(req.table_id()));
-      std::unordered_set<uint32_t> db_oids_updated = { db_oid };
-      table_cache_.InvalidateDbTables(db_oids_updated, {} /* db_oids_deleted */,
-          CoarseTimePoint() + req.invalidate_cache_time_us() * 1us);
-    }
-    if (req.reopen()) {
-      table_cache_.Invalidate(req.table_id());
-    }
-
     client::YBTablePtr table;
+    PgTableCacheGetOptions options = {
+      req.reopen(),
+      req.ysql_catalog_version(),
+      master::IncludeHidden(req.include_hidden())
+    };
     RETURN_NOT_OK(table_cache_.GetInfo(
-        req.table_id(), master::IncludeHidden(req.include_hidden()), &table,
+        req.table_id(), options, &table,
         resp->mutable_info()));
     tserver::GetTablePartitionList(table, resp->mutable_partitions());
     return Status::OK();
@@ -597,7 +620,12 @@ class PgClientServiceImpl::Impl {
         status_req.set_tablet_id(tablet->tablet_id());
         rpc::RpcController controller;
         controller.set_deadline(deadline);
-        RETURN_NOT_OK(leader->proxy()->GetTabletStatus(status_req, &status_resp, &controller));
+        auto status = leader->proxy()->GetTabletStatus(status_req, &status_resp, &controller);
+        if (!status.ok()) {
+          LOG_WITH_FUNC(INFO) << "Failed to query tablet " << tablet->tablet_id() << ": " << status;
+          ready = false;
+          break;
+        }
         bool tablet_ready = false;
         VLOG_WITH_FUNC(4)
             << "Finished on " << tablet->tablet_id() << ": "
@@ -656,10 +684,21 @@ class PgClientServiceImpl::Impl {
 
   Status ReserveOids(
       const PgReserveOidsRequestPB& req, PgReserveOidsResponsePB* resp, rpc::RpcContext* context) {
+    // This function is only called in initdb mode or when
+    // --ysql_enable_pg_per_database_oid_allocator is false.
+
+    auto db_oid = req.database_oid();
+    auto namespace_id = GetPgsqlNamespaceId(db_oid);
+    bool need_secondary_space =
+        ShouldUseSecondarySpace(session_context_.xcluster_context, namespace_id);
+    SCHECK(
+        !need_secondary_space, NotSupported,
+        "--ysql_enable_pg_per_database_oid_allocator cannot be false in universes that are the "
+        "target of xCluster automatic-mode replication");
+
     uint32_t begin_oid, end_oid;
     RETURN_NOT_OK(client().ReservePgsqlOids(
-        GetPgsqlNamespaceId(req.database_oid()), req.next_oid(), req.count(), &begin_oid,
-        &end_oid));
+        namespace_id, req.next_oid(), req.count(), &begin_oid, &end_oid, false));
     resp->set_begin_oid(begin_oid);
     resp->set_end_oid(end_oid);
 
@@ -667,22 +706,31 @@ class PgClientServiceImpl::Impl {
   }
 
   Status GetNewObjectId(
-      const PgGetNewObjectIdRequestPB& req,
-      PgGetNewObjectIdResponsePB* resp,
+      const PgGetNewObjectIdRequestPB& req, PgGetNewObjectIdResponsePB* resp,
       rpc::RpcContext* context) {
+    auto db_oid = req.db_oid();
+    auto namespace_id = GetPgsqlNamespaceId(db_oid);
+    bool use_secondary_space =
+        ShouldUseSecondarySpace(session_context_.xcluster_context, namespace_id);
     // Number of OIDs to prefetch (preallocate) in YugabyteDB setup.
     // Given there are multiple Postgres nodes, each node should prefetch
     // in smaller chunks.
     constexpr int32_t kYbOidPrefetch = 256;
-    auto db_oid = req.db_oid();
     std::lock_guard lock(mutex_);
     auto& oid_chunk = reserved_oids_map_[db_oid];
+    if (oid_chunk.allocated_from_secondary_space != use_secondary_space) {
+      // Flush any previous OIDs we have cached when we switch spaces.
+      oid_chunk.oid_count = 0;
+      oid_chunk.next_oid =
+          use_secondary_space ? kPgFirstSecondarySpaceObjectId : kPgFirstNormalObjectId;
+      oid_chunk.allocated_from_secondary_space = use_secondary_space;
+    }
     if (oid_chunk.oid_count == 0) {
-      const uint32_t next_oid = oid_chunk.next_oid +
-          static_cast<uint32_t>(FLAGS_TEST_ysql_oid_prefetch_adjustment);
+      const uint32_t next_oid =
+          oid_chunk.next_oid + static_cast<uint32_t>(FLAGS_TEST_ysql_oid_prefetch_adjustment);
       uint32_t begin_oid, end_oid;
       RETURN_NOT_OK(client().ReservePgsqlOids(
-          GetPgsqlNamespaceId(db_oid), next_oid, kYbOidPrefetch, &begin_oid, &end_oid));
+          namespace_id, next_oid, kYbOidPrefetch, &begin_oid, &end_oid, use_secondary_space));
       oid_chunk.next_oid = begin_oid;
       oid_chunk.oid_count = end_oid - begin_oid;
       VLOG(1) << "Reserved oids in database: " << db_oid << ", next_oid: " << next_oid
@@ -1022,6 +1070,7 @@ class PgClientServiceImpl::Impl {
     VLOG(4) << "Request to DoGetLockStatus: " << req->ShortDebugString()
             << ", with existing response state " << resp->ShortDebugString();
     if (req->transactions_by_tablet().empty() && req->transaction_ids().empty()) {
+      StatusToPB(Status::OK(), resp->mutable_status());
       return Status::OK();
     }
 
@@ -1062,31 +1111,26 @@ class PgClientServiceImpl::Impl {
               << node_locks->ShortDebugString();
     }
 
-    auto s = RefineAccumulatedLockStatusResp(req, resp);
-    if (!s.ok()) {
-      s = s.CloneAndPrepend("Error refining accumulated LockStatus responses.");
-    } else if (!req->transactions_by_tablet().empty()) {
+    RETURN_NOT_OK_PREPEND(RefineAccumulatedLockStatusResp(req, resp),
+                          "Error refining accumulated LockStatus responses.");
+    if (!req->transactions_by_tablet().empty()) {
       // We haven't heard back from all involved tablets, retry GetLockStatusRequest on the
       // tablets missing in the response if we haven't maxed out on the retry attempts.
       if (retry_attempt > FLAGS_get_locks_status_max_retry_attempts) {
-        s = STATUS_FORMAT(IllegalState,
-                          "Expected to see involved tablet(s) $0 in PgGetLockStatusResponsePB",
-                          req->ShortDebugString());
-      } else {
-        PgGetLockStatusResponsePB sub_resp;
-        for (const auto& node_txn_pair : resp->transactions_by_node()) {
-          sub_resp.mutable_transactions_by_node()->insert(node_txn_pair);
-        }
-        RETURN_NOT_OK(DoGetLockStatus(
-            req, &sub_resp, context, VERIFY_RESULT(ReplaceSplitTabletsAndGetLocations(req)),
-            ++retry_attempt));
-        s = MergeLockStatusResponse(resp, &sub_resp);
+        return STATUS_FORMAT(
+            IllegalState, "Expected to see involved tablet(s) $0 in PgGetLockStatusResponsePB",
+            req->ShortDebugString());
       }
+      PgGetLockStatusResponsePB sub_resp;
+      for (const auto& node_txn_pair : resp->transactions_by_node()) {
+        sub_resp.mutable_transactions_by_node()->insert(node_txn_pair);
+      }
+      RETURN_NOT_OK(DoGetLockStatus(
+          req, &sub_resp, context, VERIFY_RESULT(ReplaceSplitTabletsAndGetLocations(req)),
+          ++retry_attempt));
+      RETURN_NOT_OK(MergeLockStatusResponse(resp, &sub_resp));
     }
-    if (!s.ok()) {
-      resp->Clear();
-    }
-    StatusToPB(s, resp->mutable_status());
+    StatusToPB(Status::OK(), resp->mutable_status());
     return Status::OK();
   }
 
@@ -1339,30 +1383,6 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  // DEPRECATED: GetReplicationSlot RPC is a superset of this GetReplicationSlotStatus.
-  // So GetReplicationSlot should be used everywhere.
-  Status GetReplicationSlotStatus(
-      const PgGetReplicationSlotStatusRequestPB& req, PgGetReplicationSlotStatusResponsePB* resp,
-      rpc::RpcContext* context) {
-    // Get the stream_id for the replication slot.
-    auto stream = VERIFY_RESULT(client().GetCDCStream(
-        ReplicationSlotName(req.replication_slot_name()), /* replica_identities */ nullptr));
-    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id));
-
-    bool is_slot_active;
-    uint64_t confirmed_flush_lsn;
-    uint64_t restart_lsn;
-    uint32_t xmin;
-    uint64_t record_id_commit_time_ht;
-    uint64_t last_pub_refresh_time;
-    RETURN_NOT_OK(GetReplicationSlotInfoFromCDCState(
-        stream_id, &is_slot_active, &confirmed_flush_lsn, &restart_lsn, &xmin,
-        &record_id_commit_time_ht, &last_pub_refresh_time));
-    resp->set_replication_slot_status(
-        (is_slot_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
-    return Status::OK();
-  }
-
   Status GetReplicationSlotInfoFromCDCState(
       const xrepl::StreamId& stream_id, bool* active, uint64_t* confirmed_flush_lsn,
       uint64_t* restart_lsn, uint32_t* xmin, uint64_t* record_id_commit_time_ht,
@@ -1430,9 +1450,11 @@ class PgClientServiceImpl::Impl {
       rpc::RpcContext* context) {
     VLOG(1) << "ExportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
     auto session = VERIFY_RESULT(GetSession(req.session_id()));
-    const auto snapshot = PgTxnSnapshot::Make(
-        req.snapshot(), VERIFY_RESULT(session->GetTxnSnapshotReadTime(
-                            req.options(), context->GetClientDeadline())));
+    const auto read_time = req.has_explicit_read_time()
+        ? ReadHybridTime::FromPB(req.explicit_read_time())
+        : VERIFY_RESULT(session->GetTxnSnapshotReadTime(req.options(),
+                                                        context->GetClientDeadline()));
+    const auto snapshot = PgTxnSnapshot::Make(req.snapshot(), read_time);
     resp->set_snapshot_id(VERIFY_RESULT(txn_snapshot_manager_.Register(session->id(), snapshot)));
     return Status::OK();
   }
@@ -1441,17 +1463,21 @@ class PgClientServiceImpl::Impl {
     return txn_snapshot_manager_.Get(snapshot_id);
   }
 
-  Status ImportTxnSnapshot(
-      const PgImportTxnSnapshotRequestPB& req, PgImportTxnSnapshotResponsePB* resp,
+  Status SetTxnSnapshot(
+      const PgSetTxnSnapshotRequestPB& req, PgSetTxnSnapshotResponsePB* resp,
       rpc::RpcContext* context) {
-    VLOG(1) << "ImportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
-    auto snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
+    VLOG(1) << "SetTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
+    PgTxnSnapshot snapshot;
     auto options = req.options();
-    snapshot.read_time.ToPB(options.mutable_read_time());
-    RETURN_NOT_OK(VERIFY_RESULT(GetSession(req.session_id()))->SetTxnSnapshotReadTime(
-        options, context->GetClientDeadline()));
-    snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
-    return Status::OK();
+    if (!req.has_explicit_read_time()) {
+      snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
+      snapshot.read_time.ToPB(options.mutable_read_time());
+      snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
+    } else {
+      *options.mutable_read_time() = req.explicit_read_time();
+    }
+    return VERIFY_RESULT(GetSession(req.session_id()))
+        ->SetTxnSnapshotReadTime(options, context->GetClientDeadline());
   }
 
   Status ClearExportedTxnSnapshots(
@@ -1688,15 +1714,74 @@ class PgClientServiceImpl::Impl {
   }
 
   void InvalidateTableCache(
-      const std::unordered_set<uint32_t>& db_oids_updated,
+      const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
       const std::unordered_set<uint32_t>& db_oids_deleted) {
-    table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted, CoarseMonoClock::Now());
+    table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted);
+  }
+
+  void ProcessLeaseUpdate(const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time) {
+    if (!GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) {
+      return;
+    }
+    std::vector<SessionInfoPtr> sessions;
+    {
+      std::lock_guard lock(mutex_);
+      last_lease_refresh_time_ = time;
+      if (lease_update.new_lease()) {
+        lease_epoch_ = lease_update.lease_epoch();
+        sessions.assign(sessions_.begin(), sessions_.end());
+        sessions_.clear();
+      }
+    }
+    CleanupSessions(std::move(sessions), CoarseMonoClock::now());
+  }
+
+  void CleanupSessions(
+      std::vector<SessionInfoPtr>&& expired_sessions, CoarseTimePoint time) {
+    if (expired_sessions.empty()) {
+      return;
+    }
+    std::vector<SessionInfoPtr> not_ready_sessions;
+    for (const auto& session : expired_sessions) {
+      session->session().StartShutdown();
+      txn_snapshot_manager_.UnregisterAll(session->id());
+    }
+    for (const auto& session : expired_sessions) {
+      if (session->session().ReadyToShutdown()) {
+        session->session().CompleteShutdown();
+      } else {
+        not_ready_sessions.push_back(session);
+      }
+    }
+    {
+      std::lock_guard lock(mutex_);
+      stopping_sessions_.insert(
+          stopping_sessions_.end(), not_ready_sessions.begin(), not_ready_sessions.end());
+      ScheduleCheckExpiredSessions(time);
+    }
+    auto cdc_service = tablet_server_.GetCDCService();
+    // We only want to call this on tablet servers. On master, cdc_service will be null.
+    if (cdc_service) {
+      std::vector<uint64_t> expired_session_ids;
+      expired_session_ids.reserve(expired_sessions.size());
+      for (auto& session : expired_sessions) {
+        expired_session_ids.push_back(session->id());
+      }
+      expired_sessions.clear();
+      std::vector<uint64_t> cdc_expired_session_ids =
+          cdc_service->FilterVirtualWalSessions(expired_session_ids);
+      if (cdc_expired_session_ids.empty()) {
+        // Return early as we do not have any CDC session to destroy here.
+        return;
+      }
+
+      cdc_service->DestroyVirtualWALBatchForCDC(cdc_expired_session_ids);
+    }
   }
 
   // Return the TabletServer hosting the specified status tablet.
   std::future<Result<RemoteTabletServerPtr>> GetTServerHostingStatusTablet(
       const TabletId& status_tablet_id, CoarseTimePoint deadline) {
-
     return MakeFuture<Result<RemoteTabletServerPtr>>([&](auto callback) {
       client().LookupTabletById(
           status_tablet_id, /* table =*/ nullptr, master::IncludeHidden::kFalse,
@@ -2058,46 +2143,10 @@ class PgClientServiceImpl::Impl {
         return;
       }
     }
-    for (const auto& session : expired_sessions) {
-      session->session().StartShutdown();
-      txn_snapshot_manager_.UnregisterAll(session->id());
-    }
-    std::vector<SessionInfoPtr> not_ready_sessions;
     for (const auto& session : ready_sessions) {
       session->session().CompleteShutdown();
     }
-    for (const auto& session : expired_sessions) {
-      if (session->session().ReadyToShutdown()) {
-        session->session().CompleteShutdown();
-      } else {
-        not_ready_sessions.push_back(session);
-      }
-    }
-    {
-      std::lock_guard lock(mutex_);
-      stopping_sessions_.insert(
-          stopping_sessions_.end(), not_ready_sessions.begin(), not_ready_sessions.end());
-      ScheduleCheckExpiredSessions(now);
-    }
-    auto cdc_service = tablet_server_.GetCDCService();
-    // We only want to call this on tablet servers. On master, cdc_service will be null.
-    if (cdc_service) {
-      std::vector<uint64_t> expired_session_ids;
-      expired_session_ids.reserve(expired_sessions.size());
-      for (auto& session : expired_sessions) {
-        expired_session_ids.push_back(session->id());
-      }
-      expired_sessions.clear();
-
-      std::vector<uint64_t> cdc_expired_session_ids =
-          cdc_service->FilterVirtualWalSessions(expired_session_ids);
-      if (cdc_expired_session_ids.empty()) {
-        // Return early as we do not have any CDC session to destroy here.
-        return;
-      }
-
-      cdc_service->DestroyVirtualWALBatchForCDC(cdc_expired_session_ids);
-    }
+    CleanupSessions(std::move(expired_sessions), now);
   }
 
   Status DoPerform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
@@ -2170,7 +2219,9 @@ class PgClientServiceImpl::Impl {
   struct OidPrefetchChunk {
     uint32_t next_oid = kPgFirstNormalObjectId;
     uint32_t oid_count = 0;
+    bool allocated_from_secondary_space = false;
   };
+  // Domain here is db_oid of namespace we are allocating OIDs for.
   std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);
 
   using ExpirationEntry = std::pair<CoarseTimePoint, uint64_t>;
@@ -2222,6 +2273,9 @@ class PgClientServiceImpl::Impl {
 
   std::optional<cdc::CDCStateTable> cdc_state_table_;
   PgTxnSnapshotManager txn_snapshot_manager_;
+
+  MonoTime last_lease_refresh_time_ GUARDED_BY(mutex_);
+  uint64_t lease_epoch_ GUARDED_BY(mutex_);
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
@@ -2230,7 +2284,7 @@ PgClientServiceImpl::PgClientServiceImpl(
     const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
-    const std::string& permanent_uuid, const server::ServerBaseOptions* tablet_server_opts,
+    const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,
     const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
@@ -2251,7 +2305,7 @@ void PgClientServiceImpl::InvalidateTableCache() {
 }
 
 void PgClientServiceImpl::InvalidateTableCache(
-    const std::unordered_set<uint32_t>& db_oids_updated,
+    const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
     const std::unordered_set<uint32_t>& db_oids_deleted) {
   impl_->InvalidateTableCache(db_oids_updated, db_oids_deleted);
 }
@@ -2261,9 +2315,12 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
   return impl_->GetLocalPgTxnSnapshot(snapshot_id);
 }
 
-size_t PgClientServiceImpl::TEST_SessionsCount() {
-  return impl_->TEST_SessionsCount();
+void PgClientServiceImpl::ProcessLeaseUpdate(
+    const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time) {
+  impl_->ProcessLeaseUpdate(lease_update, time);
 }
+
+size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
 
 #define YB_PG_CLIENT_METHOD_DEFINE(r, data, method) \
 void PgClientServiceImpl::method( \

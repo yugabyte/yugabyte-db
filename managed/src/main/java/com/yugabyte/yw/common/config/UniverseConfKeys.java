@@ -1482,4 +1482,28 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If true, YBA will add commonName to the CertificateRequest sent to cert manager.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipOpentelemetryOperatorCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.skip_otel_operator_check",
+          ScopeType.UNIVERSE,
+          "Skip OpenTelemetry Operator Check",
+          "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
+      new ConfKeyInfo<>(
+          "yb.upgrade.wait_attempts_for_major_catalog_upgrade",
+          ScopeType.UNIVERSE,
+          "Wait Attempts for major catalog upgrade",
+          "Wait Attempts for major catalog upgrade",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowDisableDBApis =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.allow_disable",
+          ScopeType.UNIVERSE,
+          "Allow users to disable DB APIs",
+          "Allow users to disable DB APIs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -60,6 +60,24 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     return std::regex_replace(output, pattern, "\n<binary_upgrade_set_next>");
   }
 
+  void ExpectEqModuloSequenceValues(
+      const std::string& producer_dump, const std::string& consumer_dump) {
+    const std::regex pattern("\n.*SELECT pg_catalog.setval.*(?=\n)");
+
+    auto producer = std::regex_replace(producer_dump, pattern, "\n<setval>");
+    auto consumer = std::regex_replace(consumer_dump, pattern, "\n<setval>");
+
+    if (producer == consumer) {
+      return;
+    }
+
+    ADD_FAILURE()
+        << "Expected the ysql_dump's of both sides to be the same ignoring sequence states and "
+           "OIDs";
+    LOG(INFO) << "producer side dump: " << producer;
+    LOG(INFO) << "consumer side dump: " << consumer;
+  }
+
   Result<std::string> ReadEnumLabelInfo(Cluster& cluster) {
     return ReadEnumLabelInfo(cluster, namespace_name);
   }
@@ -68,8 +86,34 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     auto conn = VERIFY_RESULT(cluster.ConnectToDB(database_name));
     return VERIFY_RESULT(conn.FetchAllAsString(
         "SELECT typname, enumlabel, pg_enum.oid, enumsortorder FROM pg_enum "
-        "JOIN pg_type ON pg_enum.enumtypid = pg_type.oid;",
+        "JOIN pg_type ON pg_enum.enumtypid = pg_type.oid ORDER BY typname, enumlabel ASC;",
         ", ", "\n"));
+  }
+
+  Result<std::string> ReadSequenceOidInfo(Cluster& cluster) {
+    auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
+    return VERIFY_RESULT(conn.FetchAllAsString(
+        "SELECT pg_namespace.nspname, pg_class.relname, pg_class.oid "
+        "FROM pg_class "
+        "JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid "
+        "WHERE pg_class.relkind = 'S' "
+        "ORDER BY pg_namespace.nspname ASC, pg_class.relname ASC;",
+        ", ", "\n"));
+  }
+
+  void ExpectEqOidsNeedingPreservation(Cluster& consumer_cluster, Cluster& producer_cluster) {
+    // Enums pg_enum OIDs.
+    auto producer_enum_label_info = ASSERT_RESULT(ReadEnumLabelInfo(producer_cluster));
+    auto consumer_enum_label_info = ASSERT_RESULT(ReadEnumLabelInfo(consumer_cluster));
+    ASSERT_EQ(producer_enum_label_info, consumer_enum_label_info)
+        << "enum label OID information does not match";
+
+    // Sequence pg_class OIDs.
+    auto producer_sequence_info = ASSERT_RESULT(ReadSequenceOidInfo(producer_cluster));
+    auto consumer_sequence_info = ASSERT_RESULT(ReadSequenceOidInfo(consumer_cluster));
+    ASSERT_EQ(producer_sequence_info, consumer_sequence_info)
+        << "sequence OID information does not match";
+    LOG(INFO) << "Sequence pg_class OIDs on both sides are:\n" << producer_sequence_info;
   }
 
   void ExecutePgFile(const std::string& file_path) { ExecutePgFile(file_path, namespace_name); }
@@ -99,10 +143,10 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     const auto sub_dir = "test_xcluster_ddl_replication_sql";
     const auto test_sql_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir, "sql");
 
-    RETURN_NOT_OK(SetUpClusters());
+    RETURN_NOT_OK(SetUpClusters(is_colocated_));
 
-    // Perturb OIDs on consumer side to make sure we don't accidentally preserve OIDs.
-    auto conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    // Perturb OIDs on producer side to make sure we don't accidentally preserve OIDs.
+    auto conn = VERIFY_RESULT(producer_cluster_.ConnectToDB(namespace_name));
     RETURN_NOT_OK(
         conn.Execute("CREATE TYPE gratuitous_enum AS ENUM ('red', 'orange', 'yellow', 'green', "
                      "'blue', 'purple');"));
@@ -130,7 +174,22 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
 
       auto producer_dump = VERIFY_RESULT(RunYSQLDump(producer_cluster_));
       auto consumer_dump = VERIFY_RESULT(RunYSQLDump(consumer_cluster_));
-      SCHECK_EQ(producer_dump, consumer_dump, IllegalState, "Ysqldumps do not match");
+
+      //
+      // Check for equivalence of the two sides in steps of increasing strictness
+      //
+
+      // First, do we just have the same objects in the two sides?
+      ExpectEqModuloSequenceValues(producer_dump, consumer_dump);
+
+      // Second, are the OIDs that we need to match the same on both sides?
+      ExpectEqOidsNeedingPreservation(producer_cluster_, consumer_cluster_);
+
+      // Finally, do the sequence states (e.g., current values) match as well?
+      SCHECK_EQ(
+          producer_dump, consumer_dump, IllegalState,
+          "Ysqldumps including sequence state do not match");
+
       // Ensure that the dump is not empty, should at least contain the extension.
       if (initial_dump.empty()) {
         initial_dump = producer_dump;
@@ -139,24 +198,35 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
         SCHECK_NE(
             initial_dump, producer_dump, IllegalState, "Ysqldumps after drops should not match");
       }
-
-      auto producer_enum_label_info = VERIFY_RESULT(ReadEnumLabelInfo(producer_cluster_));
-      auto consumer_enum_label_info = VERIFY_RESULT(ReadEnumLabelInfo(consumer_cluster_));
-      SCHECK_EQ(
-          producer_enum_label_info, consumer_enum_label_info, IllegalState,
-          "enum label information does not match");
     }
 
     return Status::OK();
   }
+
+  bool is_colocated_ = false;
 };
 
-TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTable) {
+YB_STRONGLY_TYPED_BOOL(UseColocated);
+
+class XClusterPgRegressDDLReplicationParamTest : public XClusterPgRegressDDLReplicationTest,
+                                                 public testing::WithParamInterface<UseColocated> {
+  void SetUp() override {
+    is_colocated_ = GetParam();
+    XClusterPgRegressDDLReplicationTest::SetUp();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , XClusterPgRegressDDLReplicationParamTest, ::testing::Values(UseColocated::kFalse));
+INSTANTIATE_TEST_SUITE_P(
+    UseColocated, XClusterPgRegressDDLReplicationParamTest, ::testing::Values(UseColocated::kTrue));
+
+TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressCreateDropTable) {
   // Tests basic create table commands and table with many columns.
   ASSERT_OK(TestPgRegress("create_table_basic.sql", "drop_table_basic.sql"));
 }
 
-TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTable2) {
+TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressCreateDropTable2) {
   // Tests basic create table with different types and if not exists.
   ASSERT_OK(TestPgRegress("create_table_basic2.sql", "drop_table_basic2.sql"));
 }
@@ -192,7 +262,7 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTablePartitions2)
   ASSERT_OK(TestPgRegress("create_table_partitions2.sql", "drop_table_partitions2.sql"));
 }
 
-TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterTable) {
+TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressAlterTable) {
   // Tests various add column types, alter index columns, renames and partitioned tables.
   ASSERT_OK(TestPgRegress("alter_table.sql", "alter_table2.sql"));
 }
@@ -207,7 +277,7 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterPgOnlyDdls) {
   ASSERT_OK(TestPgRegress("pgonly_ddls_create.sql", "pgonly_ddls_alter.sql"));
 }
 
-TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressTableRewrite) {
+TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressTableRewrite) {
   ASSERT_OK(TestPgRegress("table_rewrite.sql", "table_rewrite2.sql"));
 }
 
@@ -218,6 +288,24 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropExtensions) {
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropEnum) {
   ASSERT_OK(TestPgRegress("create_enum.sql", "drop_enum.sql"));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTemp) {
+  ASSERT_OK(TestPgRegress("temporary_objects.sql", ""));
+
+  // Ensure no DDLs on temporary objects got replicated.  For this test, there should be no DDLs on
+  // non-temporary objects so it suffices to check that the count of replicated DDLs is 0.
+  //
+  // TODO(#25885): When triggers are working and uncommented in the test, this will have to be
+  // adjusted to exclude DDLs for creating functions as they are non-temporary objects.
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto num_replicated_ddls = ASSERT_RESULT(
+      conn.FetchRowAsString("SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue;", ","));
+  ASSERT_EQ(num_replicated_ddls, "0");
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropSequence) {
+  ASSERT_OK(TestPgRegress("create_sequence.sql", "drop_sequence.sql"));
 }
 
 }  // namespace yb

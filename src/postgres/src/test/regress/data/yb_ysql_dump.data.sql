@@ -365,6 +365,7 @@ SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16590'::pg_catalog.
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
 SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16589'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16589'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes

@@ -249,14 +249,15 @@ typedef struct {
 //       index_relfilenode_oid = TableRelfileNodeOid
 //       index_only_scan = true if ROWID is wanted. Otherwise, regular rowset is wanted.
 //
-// Attribute "querying_colocated_table"
-//   - If 'true', SELECT from colocated tables (of any type - database, tablegroup, system).
-//   - Note that the system catalogs are specifically for Postgres API and not Yugabyte
-//     system-tables.
+// embedded_idx: true when secondary index and table are sharded together.  This is the case when
+// they are colocated together (by database, tablegroup, syscatalog) or copartitioned (certain
+// indexes such as pgvector).  Note that this should be false in case of primary key index scan
+// since the pk index and the table are same in DocDB.
+// TODO(#25940): it is currently not always false for primary key index.
 typedef struct {
   YbcPgOid index_relfilenode_oid;
   bool index_only_scan;
-  bool querying_colocated_table;
+  bool embedded_idx;
   bool fetch_ybctids_only;
 } YbcPgPrepareParameters;
 
@@ -402,7 +403,7 @@ typedef struct {
   const bool*     ysql_use_optimized_relcache_update;
   const bool*     ysql_enable_pg_per_database_oid_allocator;
   const bool*     ysql_enable_db_catalog_version_mode;
-  const bool*     TEST_ysql_hide_catalog_version_increment_log;
+  const bool*     TEST_hide_details_for_pg_regress;
   const bool*     TEST_generate_ybrowid_sequentially;
   const bool*     ysql_use_fast_backward_scan;
   const char*     TEST_ysql_conn_mgr_dowarmup_all_pools_mode;
@@ -417,6 +418,9 @@ typedef struct {
   const int32_t*  ysql_conn_mgr_max_query_size;
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
   const bool*     ysql_enable_pg_export_snapshot;
+  const bool*     TEST_yb_enable_invalidation_messages;
+  const int32_t*  TEST_yb_invalidation_message_expiration_secs;
+  const int32_t*  TEST_yb_max_num_invalidation_messages;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -573,6 +577,21 @@ typedef struct {
   // "tcmalloc.pageheap_unmapped_bytes"
   int64_t pageheap_unmapped_bytes;
 } YbcTcmallocStats;
+
+typedef struct {
+  int64_t estimated_bytes;
+  int64_t estimated_count;
+  int64_t avg_bytes_per_allocation;
+  int64_t sampled_bytes;
+  int64_t sampled_count;
+  char* call_stack;
+  bool estimated_bytes_is_null;
+  bool estimated_count_is_null;
+  bool avg_bytes_per_allocation_is_null;
+  bool sampled_bytes_is_null;
+  bool sampled_count_is_null;
+  bool call_stack_is_null;
+} YbcHeapSnapshotSample;
 
 // In per database catalog version mode, this puts a limit on the maximum
 // number of databases that can exist in a cluster.
@@ -791,7 +810,8 @@ typedef struct {
 // It does not include EXPORT_SNAPSHOT since it isn't supported yet.
 typedef enum {
   YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT,
-  YB_REPLICATION_SLOT_USE_SNAPSHOT
+  YB_REPLICATION_SLOT_USE_SNAPSHOT,
+  YB_REPLICATION_SLOT_EXPORT_SNAPSHOT
 } YbcPgReplicationSlotSnapshotAction;
 
 typedef enum {
@@ -909,6 +929,28 @@ typedef struct {
   int iso_level;
   bool read_only;
 } YbcPgTxnSnapshot;
+
+typedef struct {
+  uint32_t start_range;
+  uint32_t end_range;
+} YbcReplicationSlotHashRange;
+
+typedef struct {
+  uint32_t db_oid;
+  uint32_t object_oid;
+} YbcObjectLockId;
+
+typedef enum {
+  YB_OBJECT_NO_LOCK,
+  YB_OBJECT_ACCESS_SHARE_LOCK,
+  YB_OBJECT_ROW_SHARE_LOCK,
+  YB_OBJECT_ROW_EXCLUSIVE_LOCK,
+  YB_OBJECT_SHARE_UPDATE_EXCLUSIVE_LOCK,
+  YB_OBJECT_SHARE_LOCK,
+  YB_OBJECT_SHARE_ROW_EXCLUSIVE_LOCK,
+  YB_OBJECT_EXCLUSIVE_LOCK,
+  YB_OBJECT_ACCESS_EXCLUSIVE_LOCK
+} YbcObjectLockMode;
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -62,6 +62,15 @@ Result<PGConn> LibPqTestBase::ConnectToTs(const ExternalTabletServer& pg_ts) {
   }).Connect();
 }
 
+Result<PGConn> LibPqTestBase::ConnectToTsAsUser(
+    const ExternalTabletServer& pg_ts, const string& user) {
+  return PGConnBuilder({
+    .host = pg_ts.bind_host(),
+    .port = pg_ts.pgsql_rpc_port(),
+    .user = user
+  }).Connect(true);
+}
+
 Result<PGConn> LibPqTestBase::ConnectUsingString(
     const string& conn_str, CoarseTimePoint deadline, bool simple_query_protocol) {
   return PGConn::Connect(

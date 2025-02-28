@@ -66,6 +66,8 @@ static const char* const kCDCSDKRecordIdCommitTime = "record_id_commit_time";
 static const char* const kCDCSDKLastPubRefreshTime = "last_pub_refresh_time";
 static const char* const kCDCSDKPubRefreshTimes = "pub_refresh_times";
 static const char* const kCDCSDKLastDecidedPubRefreshTime = "last_decided_pub_refresh_time";
+static const char* const kCDCSDKStartHashRange = "start_hash_range";
+static const char* const kCDCSDKEndHashRange = "end_hash_range";
 
 namespace {
 const client::YBTableName kCdcStateYBTableName(
@@ -180,6 +182,15 @@ void SerializeEntry(
           AsString(*entry.last_decided_pub_refresh_time));
     }
 
+    if (entry.start_hash_range) {
+      client::AddMapEntryToColumn(
+          get_map_value_pb(), kCDCSDKStartHashRange, AsString(*entry.start_hash_range));
+    }
+
+    if (entry.end_hash_range) {
+      client::AddMapEntryToColumn(
+          get_map_value_pb(), kCDCSDKEndHashRange, AsString(*entry.end_hash_range));
+    }
   } else {
     if (entry.active_time) {
       client::UpdateMapUpsertKeyValue(
@@ -234,6 +245,17 @@ void SerializeEntry(
       client::UpdateMapUpsertKeyValue(
           req, cdc_table->ColumnId(kCdcData), kCDCSDKLastDecidedPubRefreshTime,
           AsString(*entry.last_decided_pub_refresh_time));
+    }
+
+    if (entry.start_hash_range) {
+      client::UpdateMapUpsertKeyValue(
+          req, cdc_table->ColumnId(kCdcData), kCDCSDKStartHashRange,
+          AsString(*entry.start_hash_range));
+    }
+
+    if (entry.end_hash_range) {
+      client::UpdateMapUpsertKeyValue(
+          req, cdc_table->ColumnId(kCdcData), kCDCSDKEndHashRange, AsString(*entry.end_hash_range));
     }
   }
 }
@@ -298,6 +320,18 @@ Status DeserializeColumn(
 
     entry->last_decided_pub_refresh_time =
         GetValueFromMap(map_value, kCDCSDKLastDecidedPubRefreshTime);
+
+    auto start_hash_range_result =
+        VERIFY_PARSE_COLUMN(GetUInt32ValueFromMap(map_value, kCDCSDKStartHashRange));
+    if (start_hash_range_result) {
+      entry->start_hash_range = *start_hash_range_result;
+    }
+
+    auto end_hash_range_result =
+        VERIFY_PARSE_COLUMN(GetUInt32ValueFromMap(map_value, kCDCSDKEndHashRange));
+    if (end_hash_range_result) {
+      entry->end_hash_range = *end_hash_range_result;
+    }
   }
 
   return Status::OK();
@@ -393,6 +427,14 @@ std::string CDCStateTableEntry::ToString() const {
 
   if (last_decided_pub_refresh_time) {
     result += Format(", LastDecidedPubRefreshTime: $0", *last_decided_pub_refresh_time);
+  }
+
+  if (start_hash_range) {
+    result += Format(", StartHashRange: $0", *start_hash_range);
+  }
+
+  if (end_hash_range) {
+    result += Format(", EndHashRange: $0", *end_hash_range);
   }
 
   return result;
@@ -713,6 +755,14 @@ CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludePubRefreshTimes(
 }
 
 CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeLastDecidedPubRefreshTime() {
+  return std::move(IncludeData());
+}
+
+CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeStartHashRange() {
+  return std::move(IncludeData());
+}
+
+CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeEndHashRange() {
   return std::move(IncludeData());
 }
 

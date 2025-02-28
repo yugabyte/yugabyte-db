@@ -913,6 +913,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Cooldown after disk resize in aws (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> gcpHyperdiskResizeCooldownHours =
+      new ConfKeyInfo<>(
+          "yb.gcp.hyperdisk_resize_cooldown_hours",
+          ScopeType.GLOBAL,
+          "Cooldown after hyperdisk resize in gcp (in hours)",
+          "Cooldown after hyperdisk resize in gcp (in hours)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ybTmpDirectoryPath =
       new ConfKeyInfo<>(
           "yb.filepaths.tmpDirectory",
@@ -1577,12 +1585,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait for GFlag Sync in K8s universe",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> enableYNPProvisioning =
+  public static final ConfKeyInfo<Boolean> useAnsibleProvisioning =
       new ConfKeyInfo<>(
-          "yb.node_agent.use_ynp_provisioning",
+          "yb.node_agent.use_ansible_provisioning",
           ScopeType.GLOBAL,
-          "Use YNP for provisioning",
-          "If enabled use YNP for provisioning",
+          "Use Ansible for provisioning",
+          "If enabled use Ansible for provisioning",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableMetricsTimezone =
@@ -1610,4 +1618,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable node agent on provider creation by setting the internal flag in the provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enablePathStyleAccess =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_path_style_access",
+          ScopeType.GLOBAL,
+          "Enable Path Access Style for Amazon S3",
+          "Enable Path Access Style for Amazon S3, mainly used when configuring S3 compatible"
+              + " storage.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> k8sYbaRestoreSkipDumpFileDelete =
+      new ConfKeyInfo<>(
+          "yb.ha.k8s_restore_skip_dump_file_delete",
+          ScopeType.GLOBAL,
+          "Restore YBA postgres metadata during Yugaware container restart",
+          "Restore YBA postgres metadata during Yugaware container restart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

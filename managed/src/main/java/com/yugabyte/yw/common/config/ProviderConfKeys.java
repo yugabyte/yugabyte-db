@@ -471,4 +471,13 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
               + " service per Namespace",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> showHyperdiskStorageType =
+      new ConfKeyInfo<>(
+          "yb.gcp.show_hyperdisks_storage_type",
+          ScopeType.PROVIDER,
+          "Show Hyperdisk storage types",
+          "Show Hyperdisk storage types during create/edit universe flow.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

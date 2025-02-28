@@ -140,6 +140,12 @@ extern bool yb_allow_replication_slot_lsn_types;
 extern char* yb_default_replica_identity;
 
 /*
+ * GUC variable that enable replication slot consumption of consistent changes from a hash range
+ * of table.
+ */
+extern bool yb_enable_consistent_replication_from_hash_range;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -160,6 +166,7 @@ extern int yb_xcluster_consistency_level;
  */
 extern uint64_t yb_read_time;
 extern bool yb_is_read_time_ht;
+extern bool yb_disable_catalog_version_check;
 
 /*
  * Allows for customizing the number of rows to be prefetched.

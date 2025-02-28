@@ -77,6 +77,7 @@
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "catalog/pg_yb_invalidation_messages.h"
 #include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
@@ -100,6 +101,7 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
+#include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
@@ -119,6 +121,7 @@
 #include "nodes/readfuncs.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
+#include "storage/procarray.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -126,6 +129,7 @@
 
 static uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static uint64_t yb_last_known_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+static uint64_t yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
@@ -143,6 +147,12 @@ uint64_t
 YbGetCatalogCacheVersion()
 {
 	return yb_catalog_cache_version;
+}
+
+uint64_t
+YbGetNewCatalogVersion()
+{
+	return yb_new_catalog_version;
 }
 
 uint64_t
@@ -213,6 +223,23 @@ SendLogicalClientCacheVersionToFrontend()
 }
 
 void
+YbResetNewCatalogVersion()
+{
+	yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+}
+
+void
+YbSetNewCatalogVersion(uint64_t new_version)
+{
+	Assert(yb_new_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED);
+	yb_new_catalog_version = new_version;
+	if (*YBCGetGFlags()->log_ysql_catalog_versions)
+		ereport(LOG,
+				(errmsg("set new catalog version: %" PRIu64,
+						yb_new_catalog_version)));
+}
+
+void
 YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version)
 {
 	if (yb_logical_client_cache_version == YB_CATCACHE_VERSION_UNINITIALIZED)
@@ -233,7 +260,7 @@ YbResetCatalogCacheVersion()
 	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
-/** These values are lazily initialized based on corresponding environment variables. */
+/* These values are lazily initialized based on corresponding environment variables. */
 int			ybc_pg_double_write = -1;
 int			ybc_disable_pg_locking = -1;
 
@@ -245,6 +272,7 @@ bool		yb_enable_docdb_tracing = false;
 bool		yb_read_from_followers = false;
 bool		yb_follower_reads_behavior_before_fixing_20482 = false;
 int32_t		yb_follower_read_staleness_ms = 0;
+bool 		yb_default_collation_resolved = false;
 
 bool
 IsYugaByteEnabled()
@@ -1891,7 +1919,6 @@ bool		yb_enable_inplace_index_update = true;
 bool		yb_enable_advisory_locks = false;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
-bool		yb_disable_catalog_version_check = false;
 
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
@@ -1936,6 +1963,7 @@ bool		yb_test_stay_in_global_catalog_version_mode = false;
 
 bool		yb_test_table_rewrite_keep_old_table = false;
 bool		yb_test_collation = false;
+bool		yb_test_inval_message_portability = false;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity
@@ -2090,6 +2118,7 @@ typedef struct YbDdlTransactionState
 	NodeTag		original_node_tag;
 	const char *original_ddl_command_tag;
 	Oid			database_oid;
+	int			num_committed_pg_txns;
 } YbDdlTransactionState;
 
 static YbDdlTransactionState ddl_transaction_state = {0};
@@ -2189,6 +2218,12 @@ YBGetDdlNestingLevel()
 	return ddl_transaction_state.nesting_level;
 }
 
+NodeTag
+YBGetDdlOriginalNodeTag()
+{
+	return ddl_transaction_state.original_node_tag;
+}
+
 void
 YbSetIsGlobalDDL()
 {
@@ -2196,10 +2231,29 @@ YbSetIsGlobalDDL()
 }
 
 void
+YbIncrementPgTxnsCommitted()
+{
+	/*
+	 * In some cases, PG can commit when the outer DDL statement isn't complete yet.
+	 * PG commits implies the invalidation messages are disposed of and at the end
+	 * of the DDL statement when YB tries to fetch the invalidation messages that
+	 * are regarded as associated with this DDL statement, we will not get the full
+	 * list of messages because those that are already disposed off due to embedded
+	 * PG commits.
+	 */
+	++ddl_transaction_state.num_committed_pg_txns;
+}
+
+void
 YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
 	if (ddl_transaction_state.nesting_level == 0)
 	{
+		/*
+		 * Restart couting the number of committed PG transactions during
+		 * this YB DDL transaction.
+		 */
+		ddl_transaction_state.num_committed_pg_txns = 0;
 		ddl_transaction_state.mem_context =
 			AllocSetContextCreate(GetCurrentMemoryContext(),
 								  "aux ddl memory context",
@@ -2279,18 +2333,134 @@ YBDecrementDdlNestingLevel()
 		YBResetEnableSpecialDDLMode();
 		bool		increment_done = false;
 		bool		is_silent_altering = false;
-
+		int			nmsgs = 0;
+		int			numCatCacheMsgs = 0;
+		int			numRelCacheMsgs = 0;
 		if (has_write)
 		{
 			const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(ddl_transaction_state.catalog_modification_aspects.applied);
 
+			/* accumulated invalidation messages in the transaction block */
+			SharedInvalidationMessage *catCacheInvalMessages = NULL;
+			SharedInvalidationMessage *relCacheInvalMessages = NULL;
+			/* messages from the current DDL */
+			SharedInvalidationMessage *currentInvalMessages = NULL;
+			SharedInvalidationMessage *currentCatCacheInvalMessages = NULL;
+			SharedInvalidationMessage *currentRelCacheInvalMessages = NULL;
+			/*
+			 * If one or more PG transactions have already been committed, then
+			 * we may have missed some invalidation messages associated with them.
+			 */
+			bool enable_inval_msgs =
+				*YBCGetGFlags()->TEST_yb_enable_invalidation_messages &&
+				ddl_transaction_state.num_committed_pg_txns == 0;
+			if (enable_inval_msgs)
+			{
+				/*
+				 * TODO (myang) pg_yb_catalog_version itself has a catalog cache, do
+				 * we need to invalidate all of its entries via a call such as
+				 * CacheInvalidateCatalog(YBCatalogVersionRelationId)?
+				 */
+				numCatCacheMsgs = YbGetSubGroupInvalMessages(&catCacheInvalMessages,
+															 YB_CATCACHE_MSGS);
+				numRelCacheMsgs = YbGetSubGroupInvalMessages(&relCacheInvalMessages,
+															 YB_RELCACHE_MSGS);
+
+				currentCatCacheInvalMessages = catCacheInvalMessages;
+				if (numCatCacheMsgs > 0)
+					Assert(catCacheInvalMessages);
+				currentRelCacheInvalMessages = relCacheInvalMessages;
+				if (numRelCacheMsgs > 0)
+					Assert(relCacheInvalMessages);
+
+				int numExistingCatCacheMsgs = YbGetNumInvalMessagesInTxn(YB_CATCACHE_MSGS);
+				int numExistingRelCacheMsgs = YbGetNumInvalMessagesInTxn(YB_RELCACHE_MSGS);
+				Assert(numCatCacheMsgs >= numExistingCatCacheMsgs);
+				Assert(numRelCacheMsgs >= numExistingRelCacheMsgs);
+				/*
+				 * Adjust currentCatCacheInvalMessages pointers to the catcache messages
+				 * generated by the current DDL. E.g., if numExistingCatCacheMsgs == 20,
+				 * it means that we have accumulated 20 catcache messages before the
+				 * current DDL. If numCatCacheMsgs == 25, it means the current DDL has
+				 * generated 5 messages not 25. We want to skip the first 20 messages to
+				 * avoid re-applying them. After that we also need to adjust numCatCacheMsgs
+				 * to 5 and numExistingCatCacheMsgs to 25 for the next possible DDL in the
+				 * current PG transaction (represented by transInvalInfo).
+				 */
+				currentCatCacheInvalMessages += numExistingCatCacheMsgs;
+				numCatCacheMsgs -= numExistingCatCacheMsgs;
+				YbAddNumInvalMessagesInTxn(YB_CATCACHE_MSGS, numCatCacheMsgs);
+
+				/* Same adjustment for relcache messages. */
+				currentRelCacheInvalMessages += numExistingRelCacheMsgs;
+				numRelCacheMsgs -= numExistingRelCacheMsgs;
+				YbAddNumInvalMessagesInTxn(YB_RELCACHE_MSGS, numRelCacheMsgs);
+
+				nmsgs = numCatCacheMsgs + numRelCacheMsgs;
+				if (nmsgs > 0)
+				{
+					int max_allowed = *YBCGetGFlags()->TEST_yb_max_num_invalidation_messages;
+					if (nmsgs > max_allowed)
+					{
+						elog(LOG, "too many messages: %d, max allowed %d", nmsgs, max_allowed);
+						/*
+						 * If we have too many invalidation messages, write PG null into
+						 * messages so that we fall back to do catalog cache refresh.
+						 */
+						currentInvalMessages = NULL;
+					}
+					else
+					{
+						currentInvalMessages = (SharedInvalidationMessage *)
+							MemoryContextAlloc(CurTransactionContext,
+											   nmsgs * sizeof(SharedInvalidationMessage));
+						if (numCatCacheMsgs > 0)
+							memcpy(currentInvalMessages,
+								   currentCatCacheInvalMessages,
+								   numCatCacheMsgs * sizeof(SharedInvalidationMessage));
+						if (numRelCacheMsgs > 0)
+							memcpy(currentInvalMessages + numCatCacheMsgs,
+								   currentRelCacheInvalMessages,
+								   numRelCacheMsgs * sizeof(SharedInvalidationMessage));
+					}
+				}
+				else
+					Assert(nmsgs == 0);
+				if (catCacheInvalMessages)
+					pfree(catCacheInvalMessages);
+				if (relCacheInvalMessages)
+					pfree(relCacheInvalMessages);
+				YBC_LOG_INFO("currentInvalMessages=%p, nmsgs=%d", currentInvalMessages, nmsgs);
+			}
+			else if (ddl_transaction_state.num_committed_pg_txns > 0)
+				YBC_LOG_INFO("num_committed_pg_txns: %d",
+							 ddl_transaction_state.num_committed_pg_txns);
+
+			/* Clear sender_pid for unit test to have a stable result. */
+			if (yb_test_inval_message_portability && currentInvalMessages)
+				for (int i = 0; i < nmsgs; ++i)
+				{
+					SharedInvalidationMessage *msg = &currentInvalMessages[i];
+					msg->yb_header.sender_pid = 0;
+				}
+			if (currentInvalMessages && log_min_messages <= DEBUG1)
+				YbLogInvalidationMessages(currentInvalMessages, nmsgs);
+
+			/*
+			 * We can skip incrementing catalog version if nmsgs is 0.
+			 */
 			increment_done =
 				(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
+				(!enable_inval_msgs || nmsgs > 0) &&
 				YbIncrementMasterCatalogVersionTableEntry(mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE,
 														  ddl_transaction_state.is_global_ddl,
-														  ddl_transaction_state.original_ddl_command_tag);
+														  ddl_transaction_state.original_ddl_command_tag,
+														  currentInvalMessages, nmsgs);
 
 			is_silent_altering = (mode == YB_DDL_MODE_SILENT_ALTERING);
+
+			if (currentInvalMessages)
+				pfree(currentInvalMessages);
 		}
 
 		Oid			database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
@@ -2311,10 +2481,39 @@ YBDecrementDdlNestingLevel()
 		 */
 		if (increment_done)
 		{
-			if (database_oid == MyDatabaseId || !YBIsDBCatalogVersionMode())
+			if (*YBCGetGFlags()->TEST_yb_enable_invalidation_messages &&
+				database_oid == MyDatabaseId && YBIsDBCatalogVersionMode())
+			{
+				/*
+				 * If local version is x and this DDL incremented catalog version to x + 1,
+				 * then we can do this optimization because the invalidation messages
+				 * of x + 1 have been applied by this DDL and incrementing local version to
+				 * x + 1 will not miss any messages that should be applied. However, if this
+				 * DDL incremented catalog version to x + 2, it means there is one concurrent
+				 * DDL that has incremented catalog version to x + 1. In this case if we do
+				 * this optimization we will miss the messages of x + 1 and then reapply the
+				 * messages of x + 2. Missing messages of x + 1 will affect correctness. We
+				 * will leave local version as x which will allow us to apply messages of
+				 * x + 1, and then reapply messages of x + 2. We assume reapplying messages
+				 * of x + 2 is fine because it only causes some redundant on-demand loading
+				 * of cache entries that are removed again by reapplying messages of x + 2.
+				 */
+				if (YbGetCatalogCacheVersion() + 1 == YbGetNewCatalogVersion())
+					YbUpdateCatalogCacheVersion(YbGetNewCatalogVersion());
+				else
+					elog(LOG,
+						 "skipped optimization, "
+						 "local catalog version of db %u "
+						 "kept at %" PRIu64, MyDatabaseId, YbGetCatalogCacheVersion());
+			}
+			else if (database_oid == MyDatabaseId || !YBIsDBCatalogVersionMode())
 				YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
 			else
-				elog(LOG, "skipped optimization %u %u", database_oid, MyDatabaseId);
+				elog(LOG,
+					 "skipped optimization, "
+					 "database_oid: %u, "
+					 "local catalog version of db %u "
+					 "kept at %" PRIu64, database_oid, MyDatabaseId, YbGetCatalogCacheVersion());
 
 			if (YbIsClientYsqlConnMgr())
 			{
@@ -2354,6 +2553,9 @@ YBDecrementDdlNestingLevel()
 			}
 		}
 		YBClearDdlHandles();
+		if (increment_done)
+			YBC_LOG_INFO("%s: got %d messages, local catalog version %" PRIu64,
+				 __func__, nmsgs, yb_catalog_cache_version);
 	}
 }
 
@@ -2534,7 +2736,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				YbIsCatalogNamespaceByName(castNode(ViewStmt, parsetree)->view->schemaname))
 				break;
 
-			is_version_increment = false;
+			/* Create or replace view needs to increment catalog version. */
+			if (!castNode(ViewStmt, parsetree)->replace)
+				is_version_increment = false;
 			break;
 
 		case T_CompositeTypeStmt:	/* Create (composite) type */
@@ -2745,6 +2949,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 
 			/* All T_Alter... tags from nodes.h: */
 		case T_AlterCollationStmt:
+		case T_AlterDatabaseRefreshCollStmt:
 		case T_AlterDatabaseSetStmt:
 		case T_AlterDatabaseStmt:
 		case T_AlterDefaultPrivilegesStmt:
@@ -2924,6 +3129,13 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			is_breaking_change = false;
 			break;
 
+		case T_SecLabelStmt:
+			/*
+			 * This is related to defining or updating a security label on a
+			 * database object, so this is a breaking change.
+			 */
+			break;
+
 		default:
 			/* Not a DDL operation. */
 			is_ddl = false;
@@ -2931,9 +3143,13 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	}
 
 	if (!is_ddl)
-		return (YbDdlModeOptional)
 	{
-	};
+		if (ddl_transaction_state.nesting_level == 0)
+			ddl_transaction_state = (struct YbDdlTransactionState){0};
+		return (YbDdlModeOptional)
+		{
+		};
+	}
 
 	/*
 	 * If yb_make_next_ddl_statement_nonbreaking is true, then no DDL statement
@@ -2994,9 +3210,14 @@ CheckAlterDatabaseDdl(PlannedStmt *pstmt)
 		case T_RenameStmt:
 			{
 				const RenameStmt *const stmt = castNode(RenameStmt, parsetree);
-				/* ALTER DATABASE RENAME needs to have global impact. */
+				/*
+				 * ALTER DATABASE RENAME needs to have global impact. In global
+				 * catalog version mode is_global_ddl does not apply so it is
+				 * not turned on.
+				 */
 				if (stmt->renameType == OBJECT_DATABASE)
-					Assert(ddl_transaction_state.is_global_ddl);
+					Assert(ddl_transaction_state.is_global_ddl ||
+						   !YBIsDBCatalogVersionMode());
 				break;
 			}
 		case T_AlterOwnerStmt:
@@ -3007,11 +3228,13 @@ CheckAlterDatabaseDdl(PlannedStmt *pstmt)
 				 * ALTER DATABASE OWNER needs to have global impact, however we
 				 * may have a no-op ALTER DATABASE OWNER when the new owner is the
 				 * same as the old owner and there is no write made to pg_database
-				 * to turn on is_global_ddl is not set.
+				 * to turn on is_global_ddl. Also in global catalog version mode
+				 * is_global_ddl does not apply so it is not turned on either.
 				 */
 				if (stmt->objectType == OBJECT_DATABASE)
 					Assert(ddl_transaction_state.is_global_ddl ||
-						   !YBCPgHasWriteOperationsInDdlTxnMode());
+						   !YBCPgHasWriteOperationsInDdlTxnMode() ||
+						   !YBIsDBCatalogVersionMode());
 				break;
 			}
 		default:
@@ -3159,6 +3382,12 @@ bool
 YBEnableTracing()
 {
 	return yb_enable_docdb_tracing;
+}
+
+void
+YBAdjustOperationsBuffering(int multiple)
+{
+	HandleYBStatus(YBCPgAdjustOperationsBuffering(multiple));
 }
 
 bool
@@ -4939,26 +5168,19 @@ bool
 YBIsCollationValidNonC(Oid collation_id)
 {
 	/*
-	 * For now we only allow database to have C collation. Therefore for
-	 * DEFAULT_COLLATION_OID it cannot be a valid non-C collation. This
-	 * special case for DEFAULT_COLLATION_OID is made here because YB
-	 * PgExpr code is called before Postgres has properly setup the default
-	 * collation to that of the database connected. So lc_collate_is_c can
-	 * return false for DEFAULT_COLLATION_OID which isn't correct.
-	 * We stop support non-C collation if collation support is disabled.
+	 * Before Postgres has properly setup the default collation as the database
+	 * connection during connection time, we can only be doing catalog table
+	 * accesses and PG15 has made collation aware columns to have explicit C
+	 * collation.
 	 */
+	Assert(yb_default_collation_resolved ||
+		   !OidIsValid(collation_id) ||
+		   collation_id == C_COLLATION_OID);
+
 	bool		is_valid_non_c = (YBIsCollationEnabled() &&
 								  OidIsValid(collation_id) &&
-								  collation_id != DEFAULT_COLLATION_OID &&
 								  !lc_collate_is_c(collation_id));
 
-	/*
-	 * For testing only, we use en_US.UTF-8 for default collation and
-	 * this is a valid non-C collation.
-	 */
-	Assert(!kTestOnlyUseOSDefaultCollation || YBIsCollationEnabled());
-	if (kTestOnlyUseOSDefaultCollation && collation_id == DEFAULT_COLLATION_OID)
-		is_valid_non_c = true;
 	return is_valid_non_c;
 }
 
@@ -5400,14 +5622,12 @@ assign_yb_read_time(const char *newval, void *extra)
 	if (needs_syscaches_refresh)
 		YbResetCatalogCacheVersion();
 
-	if (!am_walsender)
+	if (!am_walsender && yb_read_time)
 	{
 		ereport(NOTICE,
-				(errmsg("yb_read_time should be set with caution."),
-				 errdetail("No DDL operations should be performed while it is set and "
-						   "it should not be set to a timestamp before a DDL "
-						   "operation has been performed. It doesn't have well defined semantics"
-						   " for normal transactions and is only to be used after consultation")));
+				(errmsg("yb_read_time should only be set for read-only queries. "
+				"Write-DML or DDL queries are not allowed when yb_read_time is "
+				"set.")));
 	}
 }
 
@@ -5641,7 +5861,7 @@ YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version)
 	 * tserver. Used in time-traveling queries as they might read old data
 	 * with old catalog version.
 	 */
-	if (yb_disable_catalog_version_check)
+	if (yb_disable_catalog_version_check || yb_is_calling_internal_function_for_ddl)
 		return;
 	HandleYBStatus(YBIsDBCatalogVersionMode()
 				   ? YBCPgSetDBCatalogCacheVersion(handle, MyDatabaseId, version)
@@ -6401,4 +6621,36 @@ YbGetDatabaseOidToIncrementCatalogVersion()
 	if (OidIsValid(ddl_transaction_state.database_oid))
 		return ddl_transaction_state.database_oid;
 	return MyDatabaseId;
+}
+
+bool
+YbInvalidationMessagesTableExists()
+{
+	static bool cached_invalidation_messages_table_exists = false;
+	if (cached_invalidation_messages_table_exists)
+		return true;
+	HandleYBStatus(YBCPgTableExists(Template1DbOid,
+									YbInvalidationMessagesRelationId,
+									&cached_invalidation_messages_table_exists));
+	return cached_invalidation_messages_table_exists;
+}
+
+bool yb_is_calling_internal_function_for_ddl;
+
+char *
+YbGetPotentiallyHiddenOidText(Oid oid)
+{
+	if (*YBCGetGFlags()->TEST_hide_details_for_pg_regress)
+		return "<oid_hidden_for_pg_regress>";
+	else
+	{
+		char	   *oid_text = palloc(11 * sizeof(char));
+
+		sprintf(oid_text, "%u", oid);
+		/*
+		 * It is expected the caller uses this string in an error message, so
+		 * the palloc'd memory will get freed via memory context free.
+		 */
+		return oid_text;
+	}
 }

@@ -13,6 +13,8 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/common/ysql_operation_lease.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.service.h"
@@ -152,6 +154,11 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       }
       entry->set_alive(desc->IsLive());
       desc->GetMetrics(entry->mutable_metrics());
+      if (FLAGS_TEST_enable_ysql_operation_lease) {
+        auto& lease_info = *entry->mutable_lease_info();
+        lease_info.set_is_live(l->pb.live_client_operation_lease());
+        lease_info.set_lease_epoch(l->pb.lease_epoch());
+      }
     }
     rpc.RespondSuccess();
   }

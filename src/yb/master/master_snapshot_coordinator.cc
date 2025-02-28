@@ -586,7 +586,8 @@ class MasterSnapshotCoordinator::Impl {
     auto tablet = VERIFY_RESULT(operation.tablet_safe());
     LOG_SLOW_EXECUTION(INFO, 1000, "Restore sys catalog took") {
       RETURN_NOT_OK_PREPEND(
-          context_.RestoreSysCatalog(restoration.get(), tablet.get(), complete_status),
+          context_.RestoreSysCatalog(
+              restoration.get(), tablet.get(), leader_term >= 0, complete_status),
           "Restore sys catalog failed");
     }
     return Status::OK();
@@ -985,7 +986,7 @@ class MasterSnapshotCoordinator::Impl {
             // with restore. Especially with tablet splitting. In Retail mode just log an error and
             // proceed.
             auto error_msg = Format(
-                "PITR: Master metadata verified failed for restoration $0, status: $1",
+                "PITR: Master metadata verification failed for restoration $0, status: $1",
                 restoration->restoration_id(), status);
             if (FLAGS_TEST_fatal_on_snapshot_verify) {
               LOG(DFATAL) << error_msg;
@@ -1454,8 +1455,11 @@ class MasterSnapshotCoordinator::Impl {
             LOG(DFATAL) << "Cleanup of snapshot " << p->id() << " was already started.";
           }
           cleanup_snapshots.push_back(p->id());
-        } else if (p->HasExpired(context_.Clock()->Now())) {
-          LOG(INFO) << "Snapshot " << p->id() << " has expired";
+        } else if (p->HasExpired(context_.Clock()->Now()) &&
+                   p->initial_state() != SysSnapshotEntryPB::DELETING) {
+          // For expired snapshots that we have not already tried to delete, start the deletion
+          // workflow.
+          LOG(INFO) << "Snapshot " << p->id() << " has expired. Trying to delete it.";
           TryDeleteSnapshot(p.get(), &schedules_data);
         } else {
           p->PrepareOperations(&operations);
@@ -1602,6 +1606,7 @@ class MasterSnapshotCoordinator::Impl {
     (**it).CleanupTracker().Abort();
   }
 
+  // Clean up the sys_catalog information for the given object (after it is deleted).
   template <typename Map, typename Id>
   void CleanupObject(int64_t leader_term, Id id, const Map& map,
                      const Result<dockv::KeyBytes>& encoded_key) {

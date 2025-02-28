@@ -28,10 +28,7 @@ class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
   YsqlMajorUpgradeRpcsTest() = default;
 
   void SetUp() override {
-    Pg15UpgradeTestBase::SetUp();
-    if (Test::IsSkipped()) {
-      return;
-    }
+    TEST_SETUP_SUPER(Pg15UpgradeTestBase);
 
     CHECK_OK(CreateSimpleTable());
   }

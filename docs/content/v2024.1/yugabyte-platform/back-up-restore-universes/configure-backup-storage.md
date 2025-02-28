@@ -65,6 +65,7 @@ The following S3 IAM permissions are required:
 "s3:PutObject",
 "s3:GetObject",
 "s3:ListBucket",
+"s3:ListAllMyBuckets",
 "s3:GetBucketLocation"
 ```
 

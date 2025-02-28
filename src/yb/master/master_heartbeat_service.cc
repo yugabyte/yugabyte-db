@@ -243,6 +243,9 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
   Status FillHeartbeatResponseOrRespond(
       const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp, rpc::RpcContext* rpc);
+
+  void PopulatePgCatalogVersionInfo(const TSHeartbeatRequestPB& req,
+                                    TSHeartbeatResponsePB& resp);
 };
 
 Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
@@ -271,25 +274,106 @@ Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
   return Status::OK();
 }
 
+void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
+    const TSHeartbeatRequestPB& req,
+    TSHeartbeatResponsePB& resp) {
+  // Retrieve the ysql catalog schema version. We only check --enable_ysql
+  // when --ysql_enable_db_catalog_version_mode=true to keep the logic
+  // backward compatible.
+  if (!FLAGS_ysql_enable_db_catalog_version_mode || !FLAGS_enable_ysql) {
+    uint64_t last_breaking_version = 0;
+    uint64_t catalog_version = 0;
+    auto s = catalog_manager_->GetYsqlCatalogVersion(
+        &catalog_version, &last_breaking_version);
+    if (s.ok()) {
+      resp.set_ysql_catalog_version(catalog_version);
+      resp.set_ysql_last_breaking_catalog_version(last_breaking_version);
+      VLOG_IF(1, FLAGS_log_ysql_catalog_versions)
+        << "responding (to ts " << req.common().ts_instance().permanent_uuid()
+        << ") catalog version: " << catalog_version
+        << ", breaking version: " << last_breaking_version;
+    } else {
+      LOG(WARNING) << "Could not get YSQL catalog version for heartbeat response: "
+                    << s.ToUserMessage();
+    }
+    return;
+  }
+
+  DbOidToCatalogVersionMap versions;
+  uint64_t fingerprint; // can only be used when versions is not empty.
+  auto s = catalog_manager_->GetYsqlAllDBCatalogVersions(
+      FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */,
+      &versions, &fingerprint);
+  if (!s.ok() || versions.empty()) {
+    LOG(WARNING) << "Could not get YSQL db catalog versions for heartbeat response: "
+                 << s.ToUserMessage();
+    return;
+  }
+
+  // Return versions back via heartbeat response if the tserver does not provide
+  // a fingerprint or the tserver's fingerprint does not match the master's
+  // fingerprint. The tserver does not provide a fingerprint when it has
+  // not received any catalog versions yet after it starts.
+  if (req.has_ysql_db_catalog_versions_fingerprint() &&
+      req.ysql_db_catalog_versions_fingerprint() == fingerprint) {
+    VLOG_IF(2, FLAGS_log_ysql_catalog_versions)
+        << "Responding (to ts "
+        << req.common().ts_instance().permanent_uuid()
+        << ") without db catalog versions: fingerprints matched";
+    return;
+  }
+
+  auto* const mutable_version_data = resp.mutable_db_catalog_version_data();
+  for (const auto& it : versions) {
+    auto* const catalog_version = mutable_version_data->add_db_catalog_versions();
+    catalog_version->set_db_oid(it.first);
+    catalog_version->set_current_version(it.second.current_version);
+    catalog_version->set_last_breaking_version(it.second.last_breaking_version);
+  }
+
+  if (FLAGS_TEST_yb_enable_invalidation_messages) {
+    // We only read pg_yb_invalidation_messages when there is any catalog version
+    // change. This reduces the number of reading pg_yb_invalidation_messages which
+    // may be bulky if there are many databases and/or large invalidation messages.
+    // The risk is that if this read fails, we end up only having catalog version
+    // updates but not the associated invalidation messages updates which can cause
+    // catalog cache refreshes on those nodes that have got the new catalog
+    // version but missed the messages.
+    auto messages = catalog_manager_->GetYsqlCatalogInvalationMessages(
+        FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */);
+    if (messages.ok()) {
+      // The table pg_yb_invalidation_messages is empty.
+      VLOG_IF(2, messages->empty()) << "No YSQL invalidation messages for heartbeat response: "
+                                    << ResultToStatus(messages);
+      auto* const mutable_messages_data = resp.mutable_db_catalog_inval_messages_data();
+      for (auto& [db_oid_version, message_list] : *messages) {
+        auto* const inval_messages = mutable_messages_data->add_db_catalog_inval_messages();
+        inval_messages->set_db_oid(db_oid_version.first);
+        inval_messages->set_current_version(db_oid_version.second);
+        if (message_list.has_value()) {
+          inval_messages->set_message_list(std::move(*message_list));
+        }
+      }
+    } else {
+      LOG(WARNING) << "Could not get YSQL invalidation messages for heartbeat response: "
+                   << ResultToStatus(messages);
+    }
+  }
+
+  VLOG_IF(2, FLAGS_log_ysql_catalog_versions)
+    << "responding (to ts "
+    << req.common().ts_instance().permanent_uuid()
+    << ") db catalog versions: "
+    << resp.db_catalog_version_data().ShortDebugString()
+    << ") db inval messages: "
+    << resp.db_catalog_inval_messages_data().ShortDebugString();
+}
+
 void MasterHeartbeatServiceImpl::TSHeartbeat(
     const TSHeartbeatRequestPB* req,
     TSHeartbeatResponsePB* resp,
     rpc::RpcContext rpc) {
   LongOperationTracker long_operation_tracker("TSHeartbeat", 1s);
-
-  // If CatalogManager is not initialized don't even know whether or not we will
-  // be a leader (so we can't tell whether or not we can accept tablet reports).
-  SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
-
-  if (req->common().ts_instance().permanent_uuid().empty()) {
-    // In FSManager, we have already added empty UUID protection so that TServer will
-    // crash before even sending heartbeat to Master. Here is only for the case that
-    // new updated Master might received empty UUID from old version of TServer that
-    // doesn't have the crash code in FSManager.
-    rpc.RespondFailure(STATUS(InvalidArgument, "Recevied Empty UUID from instance: ",
-                              req->common().ts_instance().ShortDebugString()));
-    return;
-  }
 
   consensus::ConsensusStatePB cpb;
   Status s = catalog_manager_->GetCurrentConfig(&cpb);
@@ -304,6 +388,21 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
                 << req->common().ts_instance().permanent_uuid();
     }
   } // Do nothing if config not ready.
+
+
+  // If CatalogManager is not initialized don't even know whether or not we will
+  // be a leader (so we can't tell whether or not we can accept tablet reports).
+  SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
+
+  if (req->common().ts_instance().permanent_uuid().empty()) {
+    // In FSManager, we have already added empty UUID protection so that TServer will
+    // crash before even sending heartbeat to Master. Here is only for the case that
+    // new updated Master might received empty UUID from old version of TServer that
+    // doesn't have the crash code in FSManager.
+    rpc.RespondFailure(STATUS(InvalidArgument, "Recevied Empty UUID from instance: ",
+                              req->common().ts_instance().ShortDebugString()));
+    return;
+  }
 
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     resp->set_leader_master(false);
@@ -400,62 +499,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     *resp->add_tservers() = desc->GetTSInformationPB();
   }
 
-  // Retrieve the ysql catalog schema version. We only check --enable_ysql
-  // when --ysql_enable_db_catalog_version_mode=true to keep the logic
-  // backward compatible.
-  if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql) {
-    DbOidToCatalogVersionMap versions;
-    uint64_t fingerprint; // can only be used when versions is not empty.
-    s = catalog_manager_->GetYsqlAllDBCatalogVersions(
-        FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */,
-        &versions, &fingerprint);
-    if (s.ok() && !versions.empty()) {
-      // Return versions back via heartbeat response if the tserver does not provide
-      // a fingerprint or the tserver's fingerprint does not match the master's
-      // fingerprint. The tserver does not provide a fingerprint when it has
-      // not received any catalog versions yet after it starts.
-      if (!req->has_ysql_db_catalog_versions_fingerprint() ||
-          req->ysql_db_catalog_versions_fingerprint() != fingerprint) {
-        auto* const mutable_version_data = resp->mutable_db_catalog_version_data();
-        for (const auto& it : versions) {
-          auto* const catalog_version = mutable_version_data->add_db_catalog_versions();
-          catalog_version->set_db_oid(it.first);
-          catalog_version->set_current_version(it.second.current_version);
-          catalog_version->set_last_breaking_version(it.second.last_breaking_version);
-        }
-        if (FLAGS_log_ysql_catalog_versions) {
-          VLOG_WITH_FUNC(2) << "responding (to ts "
-                            << req->common().ts_instance().permanent_uuid()
-                            << ") db catalog versions: "
-                            << resp->db_catalog_version_data().ShortDebugString();
-        }
-      } else if (FLAGS_log_ysql_catalog_versions) {
-        VLOG_WITH_FUNC(2) << "responding (to ts "
-                          << req->common().ts_instance().permanent_uuid()
-                          << ") without db catalog versions: fingerprints matched";
-      }
-    } else {
-      LOG(WARNING) << "Could not get YSQL db catalog versions for heartbeat response: "
-                    << s.ToUserMessage();
-    }
-  } else {
-    uint64_t last_breaking_version = 0;
-    uint64_t catalog_version = 0;
-    s = catalog_manager_->GetYsqlCatalogVersion(
-        &catalog_version, &last_breaking_version);
-    if (s.ok()) {
-      resp->set_ysql_catalog_version(catalog_version);
-      resp->set_ysql_last_breaking_catalog_version(last_breaking_version);
-      if (FLAGS_log_ysql_catalog_versions) {
-        VLOG_WITH_FUNC(1) << "responding (to ts " << req->common().ts_instance().permanent_uuid()
-                          << ") catalog version: " << catalog_version
-                          << ", breaking version: " << last_breaking_version;
-      }
-    } else {
-      LOG(WARNING) << "Could not get YSQL catalog version for heartbeat response: "
-                    << s.ToUserMessage();
-    }
-  }
+  PopulatePgCatalogVersionInfo(*req, *resp);
 
   uint64_t transaction_tables_version = catalog_manager_->GetTransactionTablesVersion();
   resp->set_transaction_tables_version(transaction_tables_version);

@@ -142,7 +142,7 @@ void GenerateTable(std::stringstream* output, const std::vector<Sample>& samples
   (*output) << Format("<b>Ordering call stacks by:</b> $0<br>\n", order);
   (*output) << Format(
       "<b>Current sampling frequency:</b> $0 bytes (on average)<br>\n",
-      GetTCMallocSamplingFrequency());
+      GetTCMallocSamplingPeriod());
   (*output) << Format("Values shown below are for allocations still in use "
       "(i.e., objects that have been deallocated are not included)<br>\n");
   (*output) << "<p>\n";

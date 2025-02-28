@@ -63,8 +63,8 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
           createUpgradeTask(
               universe,
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-              true /* isMasterChanged */,
-              true /* isTserverChanged */,
+              true /* upgradeMasters */,
+              true /* upgradeTservers */,
               universe.isYbcEnabled(),
               confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion));
 

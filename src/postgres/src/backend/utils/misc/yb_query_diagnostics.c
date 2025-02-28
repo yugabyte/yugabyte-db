@@ -130,6 +130,12 @@ static YbQueryConstantsMetadata query_constants = {
 	.locations = {{0, 0}}
 };
 
+typedef struct BackgroundWorkerHandle
+{
+	int slot;
+	uint64 generation;
+} BackgroundWorkerHandle;
+
 /* shared variables */
 static HTAB *bundles_in_progress = NULL;
 static LWLock *bundles_in_progress_lock;	/* protects bundles_in_progress
@@ -137,6 +143,7 @@ static LWLock *bundles_in_progress_lock;	/* protects bundles_in_progress
 static YbQueryDiagnosticsBundles *bundles_completed = NULL;
 static const char *status_msg[] = {"Success", "In Progress", "Error", "Cancelled"};
 static bool current_query_sampled = false;
+static BackgroundWorkerHandle *bg_worker_handle = NULL;
 
 static void YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query,
 												  JumbleState *jstate);
@@ -178,9 +185,6 @@ static void AccumulateBindVariablesOrConstants(YbQueryDiagnosticsEntry *entry, S
 /* Functions used in gathering pg_stat_statements */
 static void PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss,
 						 const char *queryString);
-static void AccumulatePgss(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *result);
-
-/* Functions used in gathering schema details */
 static void FetchSchemaOids(List *rtable, Oid *schema_oids);
 static bool ExecuteQuery(StringInfo schema_details, const char *query,
 						 const char *title, char *description);
@@ -229,6 +233,7 @@ YbQueryDiagnosticsShmemSize(void)
 											 sizeof(YbQueryDiagnosticsEntry)));
 	size = add_size(size, YbQueryDiagnosticsBundlesShmemSize());
 	size = add_size(size, sizeof(TimestampTz));
+	size = add_size(size, sizeof(BackgroundWorkerHandle)); /* bg_worker_handle */
 
 	return size;
 }
@@ -287,6 +292,11 @@ YbQueryDiagnosticsShmemInit(void)
 
 	yb_pgss_last_reset_time = (TimestampTz *) ShmemAlloc(sizeof(TimestampTz));
 	(*yb_pgss_last_reset_time) = 0;
+
+	/* Initialize the background worker handle */
+	bg_worker_handle = (BackgroundWorkerHandle *) ShmemAlloc(sizeof(BackgroundWorkerHandle));
+	bg_worker_handle->slot = -1;
+	bg_worker_handle->generation = -1;
 }
 
 static inline int
@@ -509,33 +519,58 @@ ProcessCompletedBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 }
 
 /*
- * YbQueryDiagnosticsBgWorkerRegister
- *		Register the background worker for yb_query_diagnostics
+ * BgWorkerRegister
+ *		Dynamically register the background worker.
  *
  * Background worker is required to periodically check for expired entries
  * within the shared hash table and stop the query diagnostics for them.
  */
-void
-YbQueryDiagnosticsBgWorkerRegister(void)
+static void
+BgWorkerRegister(void)
 {
+	pid_t		pid;
 	BackgroundWorker worker;
+	BackgroundWorkerHandle *handle;
+	BgwHandleStatus status;
 
 	MemSet(&worker, 0, sizeof(worker));
 	sprintf(worker.bgw_name, "yb_query_diagnostics bgworker");
 	sprintf(worker.bgw_type, "yb_query_diagnostics bgworker");
-	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
+	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
+					   BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
-
-	/*
-	 * Value of 1 allows the background worker for yb_query_diagnostics to
-	 * restart
-	 */
-	worker.bgw_restart_time = 1;
+	worker.bgw_restart_time = BGW_DEFAULT_RESTART_INTERVAL;
 	sprintf(worker.bgw_library_name, "postgres");
 	sprintf(worker.bgw_function_name, "YbQueryDiagnosticsMain");
 	worker.bgw_main_arg = (Datum) 0;
-	worker.bgw_notify_pid = 0;
-	RegisterBackgroundWorker(&worker);
+	/* set bgw_notify_pid so that we can use WaitForBackgroundWorkerStartup */
+	worker.bgw_notify_pid = MyProcPid;
+	if (!RegisterDynamicBackgroundWorker(&worker, &handle))
+		ereport(WARNING,
+				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+				 errmsg("due to being out of background worker slots, "
+						"yb_query_diagnostics bgworker cannot be started"),
+				 errhint("You might need to increase max_worker_processes")));
+
+	status = WaitForBackgroundWorkerStartup(handle, &pid);
+
+	if (status == BGWH_STOPPED)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("yb_query_diagnostics bgworker cannot be started"),
+				 errhint("More details may be available in the server log")));
+
+	if (status == BGWH_POSTMASTER_DIED)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("yb_query_diagnostics bgworker cannot be started without postmaster"),
+				 errhint("Kill all remaining database processes and restart the database")));
+
+	Assert(status == BGWH_STARTED);
+
+	/* Save the handle for future use */
+	bg_worker_handle->slot = handle->slot;
+	bg_worker_handle->generation = handle->generation;
 }
 
 /*
@@ -743,9 +778,12 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 
 	if (entry)
 	{
-		double		totaltime_ms;
-
-		totaltime_ms = INSTR_TIME_GET_MILLISEC(queryDesc->totaltime->counter);
+		/*
+		 * Make sure stats accumulation is done.  (Note: it's okay if several
+		 * levels of hook all do this.)
+		 */
+		InstrEndLoop(queryDesc->totaltime);
+		double		totaltime_ms = queryDesc->totaltime->total * 1000.0;
 
 		if (entry->metadata.params.bind_var_query_min_duration_ms <= totaltime_ms &&
 			(queryDesc->params || query_constants.count > 0))
@@ -780,8 +818,6 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 
 			pfree(buf.data);
 		}
-
-		AccumulatePgss(queryDesc, entry);
 
 		if (current_query_sampled)
 			AccumulateExplain(queryDesc, entry,
@@ -823,57 +859,101 @@ AccumulateBindVariablesOrConstants(YbQueryDiagnosticsEntry *entry, StringInfo pa
 	SpinLockRelease(&entry->mutex);
 }
 
-static void
-AccumulatePgss(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry)
+void
+YbQueryDiagnosticsAccumulatePgss(int64 query_id, YbQdPgssStoreKind kind,
+								 double total_time, uint64 rows,
+								 const BufferUsage *bufusage,
+								 const WalUsage *walusage,
+								 const struct JitInstrumentation *jitusage)
 {
-	double		totaltime_ms = INSTR_TIME_GET_DOUBLE(queryDesc->totaltime->counter) * 1000;
-	int64		rows = queryDesc->estate->es_processed;
-	BufferUsage *bufusage = &queryDesc->totaltime->bufusage;
+	YbQueryDiagnosticsEntry *entry;
 
-	SpinLockAcquire(&entry->mutex);
-	entry->pgss.counters.calls++;
-	entry->pgss.counters.total_time += totaltime_ms;
-	entry->pgss.counters.rows += queryDesc->estate->es_processed;
+	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+	/*
+	 * This can slow down the query execution, even if the query is not being bundled.
+	 * Worst case : O(QUERY_DIAGNOSTICS_HASH_MAX_SIZE)
+	 */
+	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress,
+													&query_id, HASH_FIND,
+													NULL);
 
-	if (entry->pgss.counters.calls == 1)
+	if (entry)
 	{
-		entry->pgss.counters.min_time = totaltime_ms;
-		entry->pgss.counters.max_time = totaltime_ms;
-		entry->pgss.counters.mean_time = totaltime_ms;
-	}
-	else
-	{
-		double		old_mean = entry->pgss.counters.mean_time;
+		SpinLockAcquire(&entry->mutex);
+		entry->pgss.counters.calls[kind] += 1;
+		entry->pgss.counters.total_time[kind] += total_time;
+		entry->pgss.counters.rows += rows;
 
-		/*
-		 * 'calls' cannot be 0 here because
-		 * it is initialized to 0 and incremented by calls++ above
-		 */
-		entry->pgss.counters.mean_time += (totaltime_ms - old_mean) / entry->pgss.counters.calls;
-		entry->pgss.counters.sum_var_time +=
-			((totaltime_ms - old_mean) *
-			 (totaltime_ms - entry->pgss.counters.mean_time));
-		if (entry->pgss.counters.min_time > totaltime_ms)
-			entry->pgss.counters.min_time = totaltime_ms;
-		if (entry->pgss.counters.max_time < totaltime_ms)
-			entry->pgss.counters.max_time = totaltime_ms;
+		if (entry->pgss.counters.calls[kind] == 1)
+		{
+			entry->pgss.counters.min_time[kind] = total_time;
+			entry->pgss.counters.max_time[kind] = total_time;
+			entry->pgss.counters.mean_time[kind] = total_time;
+		}
+		else
+		{
+			double		old_mean = entry->pgss.counters.mean_time[kind];
+			/*
+			 * 'calls' cannot be 0 here because
+			 * it is initialized to 0 and incremented by calls++ above
+			 */
+			entry->pgss.counters.mean_time[kind] +=
+				(total_time - old_mean) / entry->pgss.counters.calls[kind];
+			entry->pgss.counters.sum_var_time[kind] +=
+				(total_time - old_mean) * (total_time - entry->pgss.counters.mean_time[kind]);
+			if (entry->pgss.counters.min_time[kind] > total_time)
+				entry->pgss.counters.min_time[kind] = total_time;
+			if (entry->pgss.counters.max_time[kind] < total_time)
+				entry->pgss.counters.max_time[kind] = total_time;
+		}
+
+		entry->pgss.counters.rows += rows;
+		entry->pgss.counters.shared_blks_hit += bufusage->shared_blks_hit;
+		entry->pgss.counters.shared_blks_read += bufusage->shared_blks_read;
+		entry->pgss.counters.shared_blks_dirtied += bufusage->shared_blks_dirtied;
+		entry->pgss.counters.shared_blks_written += bufusage->shared_blks_written;
+		entry->pgss.counters.local_blks_hit += bufusage->local_blks_hit;
+		entry->pgss.counters.local_blks_read += bufusage->local_blks_read;
+		entry->pgss.counters.local_blks_dirtied += bufusage->local_blks_dirtied;
+		entry->pgss.counters.local_blks_written += bufusage->local_blks_written;
+		entry->pgss.counters.temp_blks_read += bufusage->temp_blks_read;
+		entry->pgss.counters.temp_blks_written += bufusage->temp_blks_written;
+		entry->pgss.counters.blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
+		entry->pgss.counters.blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
+		entry->pgss.counters.wal_records += walusage->wal_records;
+		entry->pgss.counters.wal_fpi += walusage->wal_fpi;
+		entry->pgss.counters.wal_bytes += walusage->wal_bytes;
+
+		if (jitusage)
+		{
+			entry->pgss.counters.jit_functions += jitusage->created_functions;
+			entry->pgss.counters.jit_generation_time += INSTR_TIME_GET_MILLISEC(jitusage->generation_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->inlining_counter))
+				entry->pgss.counters.jit_inlining_count++;
+			entry->pgss.counters.jit_inlining_time += INSTR_TIME_GET_MILLISEC(jitusage->inlining_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->optimization_counter))
+				entry->pgss.counters.jit_optimization_count++;
+			entry->pgss.counters.jit_optimization_time += INSTR_TIME_GET_MILLISEC(jitusage->optimization_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->emission_counter))
+				entry->pgss.counters.jit_emission_count++;
+			entry->pgss.counters.jit_emission_time += INSTR_TIME_GET_MILLISEC(jitusage->emission_counter);
+		}
+
+		SpinLockRelease(&entry->mutex);
 	}
 
-	entry->pgss.counters.rows += rows;
-	entry->pgss.counters.shared_blks_hit += bufusage->shared_blks_hit;
-	entry->pgss.counters.shared_blks_read += bufusage->shared_blks_read;
-	entry->pgss.counters.shared_blks_dirtied += bufusage->shared_blks_dirtied;
-	entry->pgss.counters.shared_blks_written += bufusage->shared_blks_written;
-	entry->pgss.counters.local_blks_hit += bufusage->local_blks_hit;
-	entry->pgss.counters.local_blks_read += bufusage->local_blks_read;
-	entry->pgss.counters.local_blks_dirtied += bufusage->local_blks_dirtied;
-	entry->pgss.counters.local_blks_written += bufusage->local_blks_written;
-	entry->pgss.counters.temp_blks_read += bufusage->temp_blks_read;
-	entry->pgss.counters.temp_blks_written += bufusage->temp_blks_written;
-	entry->pgss.counters.blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
-	entry->pgss.counters.blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
-	SpinLockRelease(&entry->mutex);
+	LWLockRelease(bundles_in_progress_lock);
 }
+
+static double
+CalculateStandardDeviation(int64 calls, double sum_var_time)
+{
+	return (calls > 1) ? (sqrt(sum_var_time / calls)) : 0.0;
+}
+
 
 /*
  * PgssToString
@@ -886,21 +966,63 @@ PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss, const 
 		query_str = "";
 
 	snprintf(pgss_str, YB_QD_MAX_PGSS_LEN,
-			 "queryid,query,calls,total_time,min_time,max_time,mean_time,stddev_time,rows,"
-			 "shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,"
-			 "local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,"
-			 "temp_blks_read,temp_blks_written,blk_read_time,blk_write_time\n"
-			 "%ld,\"%s\",%ld,%lf,%lf,%lf,%lf,%lf,%ld,%ld,%ld,%ld,"
-			 "%ld,%ld,%ld,%ld,%ld,%ld,%ld,%lf,%lf\n",
-			 query_id, query_str, pgss.counters.calls,
-			 pgss.counters.total_time, pgss.counters.min_time, pgss.counters.max_time,
-			 pgss.counters.mean_time, sqrt(pgss.counters.sum_var_time / pgss.counters.calls),
-			 pgss.counters.rows, pgss.counters.shared_blks_hit, pgss.counters.shared_blks_read,
-			 pgss.counters.shared_blks_dirtied, pgss.counters.shared_blks_written,
-			 pgss.counters.local_blks_hit, pgss.counters.local_blks_read,
-			 pgss.counters.local_blks_dirtied, pgss.counters.local_blks_written,
-			 pgss.counters.temp_blks_read, pgss.counters.temp_blks_written,
-			 pgss.counters.blk_read_time, pgss.counters.blk_write_time);
+			"query_id,query,calls,total_plan_time,total_exec_time,"
+			"min_plan_time,min_exec_time,max_plan_time,max_exec_time,"
+			"mean_plan_time,mean_exec_time,stddev_plan_time,stddev_exec_time,"
+			"rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,"
+			"local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,"
+			"temp_blks_read,temp_blks_written,blk_read_time,blk_write_time,"
+			"temp_blk_read_time,temp_blk_write_time,wal_records,wal_fpi,wal_bytes,"
+			"jit_functions,jit_generation_time,jit_inlining_count,jit_inlining_time,"
+			"jit_optimization_count,jit_optimization_time,jit_emission_count,jit_emission_time\n"
+			"%ld,\"%s\",%ld,%lf,%lf,%lf,%lf,"
+			"%lf,%lf,%lf,%lf,%lf,%lf,"
+			"%ld,%ld,%ld,%ld,%ld,"
+			"%ld,%ld,%ld,%ld,"
+			"%ld,%ld,%lf,%lf,"
+			"%lf,%lf,%ld,%ld,%ld,"
+			"%ld,%lf,%ld,%lf,"
+			"%ld,%lf,%ld,%lf\n",
+			query_id, query_str,
+			pgss.counters.calls[YB_QD_PGSS_EXEC],
+			pgss.counters.total_time[YB_QD_PGSS_PLAN],
+			pgss.counters.total_time[YB_QD_PGSS_EXEC],
+			pgss.counters.min_time[YB_QD_PGSS_PLAN],
+			pgss.counters.min_time[YB_QD_PGSS_EXEC],
+			pgss.counters.max_time[YB_QD_PGSS_PLAN],
+			pgss.counters.max_time[YB_QD_PGSS_EXEC],
+			pgss.counters.mean_time[YB_QD_PGSS_PLAN],
+			pgss.counters.mean_time[YB_QD_PGSS_EXEC],
+			CalculateStandardDeviation(pgss.counters.calls[YB_QD_PGSS_PLAN],
+			pgss.counters.sum_var_time[YB_QD_PGSS_PLAN]),
+			CalculateStandardDeviation(pgss.counters.calls[YB_QD_PGSS_EXEC],
+			pgss.counters.sum_var_time[YB_QD_PGSS_EXEC]),
+			pgss.counters.rows,
+			pgss.counters.shared_blks_hit,
+			pgss.counters.shared_blks_read,
+			pgss.counters.shared_blks_dirtied,
+			pgss.counters.shared_blks_written,
+			pgss.counters.local_blks_hit,
+			pgss.counters.local_blks_read,
+			pgss.counters.local_blks_dirtied,
+			pgss.counters.local_blks_written,
+			pgss.counters.temp_blks_read,
+			pgss.counters.temp_blks_written,
+			pgss.counters.blk_read_time,
+			pgss.counters.blk_write_time,
+			pgss.counters.temp_blk_read_time,
+			pgss.counters.temp_blk_write_time,
+			pgss.counters.wal_records,
+			pgss.counters.wal_fpi,
+			pgss.counters.wal_bytes,
+			pgss.counters.jit_functions,
+			pgss.counters.jit_generation_time,
+			pgss.counters.jit_inlining_count,
+			pgss.counters.jit_inlining_time,
+			pgss.counters.jit_optimization_count,
+			pgss.counters.jit_optimization_time,
+			pgss.counters.jit_emission_count,
+			pgss.counters.jit_emission_time);
 }
 
 static void
@@ -958,6 +1080,7 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 {
 	int64		key = metadata->params.query_id;
 	bool		found;
+	pid_t		pid;
 	YbQueryDiagnosticsEntry *entry;
 
 	LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
@@ -976,11 +1099,24 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 		{
 			.counters =
 			{
-				0
+				{ 0 }
 			},
 				.query_offset = 0,
 				.query_len = 0,
 		};
+
+		/*
+		 * Note that we need not worry about concurrent registration attempts
+		 * from different sessions as we are within an EXCLUSIVE lock.
+		 */
+
+		/* Worker was never initialized (invalid slot and generation) */
+		if (bg_worker_handle->slot == -1 && bg_worker_handle->generation == -1)
+			BgWorkerRegister();
+
+		/* Worker was initialized but not currently running */
+		else if (GetBackgroundWorkerPid(bg_worker_handle, &pid) != BGWH_STARTED)
+			BgWorkerRegister();
 	}
 
 	LWLockRelease(bundles_in_progress_lock);
@@ -1976,10 +2112,6 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 void
 YbQueryDiagnosticsMain(Datum main_arg)
 {
-	/*
-	 * TODO(GH#22612): Add support to switch off and on the bgworker as per the need,
-	 *			       thereby saving resources
-	 */
 	ereport(LOG,
 			(errmsg("starting bgworker for yb_query_diagnostics with time interval of %dms",
 					yb_query_diagnostics_bg_worker_interval_ms)));
@@ -2017,9 +2149,33 @@ YbQueryDiagnosticsMain(Datum main_arg)
 
 		/* Check for expired entries within the shared hash table */
 		FlushAndCleanBundles();
-	}
 
-	proc_exit(0);
+		/* Kill bgworker if there are no active bundles */
+		bool should_terminate = false;
+
+		/*
+		 * Acquire the exclusive lock on the bundles_in_progress hash table.
+		 * This is necessary to prevent other sessions from
+		 * removing entries while we are checking.
+		 */
+		LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
+
+		/* If there are no bundles being diagnosed, switch off the bgworker */
+		if (hash_get_num_entries(bundles_in_progress) == 0)
+			should_terminate = true;
+
+		LWLockRelease(bundles_in_progress_lock);
+
+		/* Do this outside the lock to ensure we release the lock before exiting. */
+		if (should_terminate)
+		{
+			/* Kill the bgworker */
+			ereport(LOG,
+					(errmsg("stopping query diagnostics background worker "
+								 "- no active bundles")));
+			proc_exit(0);
+		}
+	}
 }
 
 /*

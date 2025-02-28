@@ -29,3 +29,7 @@
 extern bool YbUsingEnumLabelOidAssignment(void);
 
 extern Oid YbLookupOidAssignmentForEnumLabel(Oid enum_oid, const char *label);
+
+extern bool YbUsingSequenceOidAssignment(void);
+
+extern Oid YbLookupOidAssignmentForSequence(const char *schema, const char *name);

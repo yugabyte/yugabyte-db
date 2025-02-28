@@ -49,7 +49,10 @@ std::string GetRelevantUrl(const BuildInfo& info) {
   return kIsDebug ? info.darwin_debug_arm64_url : info.darwin_release_arm64_url;
 #elif defined(__linux__) && defined(__x86_64__)
   return kIsDebug ? info.linux_debug_x86_url : info.linux_release_x86_url;
+#elif defined(__linux__) && defined(__aarch64__)
+  return kIsDebug ? "" : info.linux_release_aarch64_url;
 #endif
+
   return "";
 }
 
@@ -84,6 +87,7 @@ Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
         build_info.build_number = GetXmlPathAsString(node, "build_number");
         build_info.linux_debug_x86_url = GetXmlPathAsString(node, "linux_debug_x86");
         build_info.linux_release_x86_url = GetXmlPathAsString(node, "linux_release_x86");
+        build_info.linux_release_aarch64_url = GetXmlPathAsString(node, "linux_release_aarch64");
         build_info.darwin_debug_arm64_url = GetXmlPathAsString(node, "darwin_debug_arm64");
         build_info.darwin_release_arm64_url = GetXmlPathAsString(node, "darwin_release_arm64");
         return build_info;
@@ -307,16 +311,18 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   current_version_tserver_bin_path_ = cluster_->GetTServerBinaryPath();
   cluster_->SetDaemonBinPath(old_version_bin_path_);
 
-  server::GetStatusRequestPB req;
-  server::GetStatusResponsePB resp;
-  rpc::RpcController rpc;
-  rpc.set_timeout(kRpcTimeout);
-  RETURN_NOT_OK(
-      cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
-  LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
+  if (cluster_->opts_.enable_ysql) {
+    server::GetStatusRequestPB req;
+    server::GetStatusResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(kRpcTimeout);
+    RETURN_NOT_OK(
+        cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
+    LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
 
-  is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
-                                   current_version_info_.ysql_major_version();
+    is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
+                                     current_version_info_.ysql_major_version();
+  }
 
   if (IsYsqlMajorVersionUpgrade()) {
     RETURN_NOT_OK(
@@ -453,7 +459,8 @@ Status UpgradeTestBase::WaitForYsqlMajorCatalogUpgradeToFinish() {
   };
 
   return LoggedWaitFor(
-      is_upgrade_done, 10min, "Waiting for ysql major catalog upgrade to complete");
+      is_upgrade_done, 10min, "Waiting for ysql major catalog upgrade to complete",
+      /*initial_delay*/ 1s);
 }
 
 Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
@@ -516,6 +523,10 @@ Status UpgradeTestBase::FinalizeYsqlMajorCatalogUpgrade() {
 }
 
 Status UpgradeTestBase::PerformYsqlUpgrade() {
+  if (!cluster_->opts_.enable_ysql) {
+    return Status::OK();
+  }
+
   LOG(INFO) << "Running ysql upgrade";
 
   tserver::UpgradeYsqlRequestPB req;

@@ -245,7 +245,8 @@ public class BackupUtilTest extends FakeDBApplication {
     SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
     String backupLocationTS = tsFormat.format(new Date());
     String formattedLocation =
-        BackupUtil.formatStorageLocation(tableParams, isYbc, BackupVersion.V2, backupLocationTS);
+        BackupUtil.formatStorageLocation(
+            tableParams, isYbc, BackupVersion.V2, backupLocationTS, "foo");
     if (isYbc) {
       assertTrue(formattedLocation.contains("/ybc_backup"));
       if (emptyTableList) {
@@ -314,7 +315,7 @@ public class BackupUtilTest extends FakeDBApplication {
     tableParams.backupParamsIdentifier = UUID.randomUUID();
     tableParams.setUniverseUUID(UUID.randomUUID());
     tableParams.setKeyspace("foo");
-    String backupIdentifier = "univ-" + tableParams.getUniverseUUID().toString() + "/";
+    String backupIdentifier = "univ-bar-" + tableParams.getUniverseUUID().toString() + "/";
     SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
     String backupLocationTS = tsFormat.format(new Date());
     BackupUtil.updateDefaultStorageLocation(
@@ -322,7 +323,8 @@ public class BackupUtilTest extends FakeDBApplication {
         testCustomer.getUuid(),
         BackupCategory.YB_BACKUP_SCRIPT,
         BackupVersion.V2,
-        backupLocationTS);
+        backupLocationTS,
+        "bar");
     String expectedStorageLocation = formData.get("data").get("BACKUP_LOCATION").asText();
     expectedStorageLocation =
         expectedStorageLocation.endsWith("/")
@@ -348,7 +350,7 @@ public class BackupUtilTest extends FakeDBApplication {
     tableParams.backupParamsIdentifier = UUID.randomUUID();
     tableParams.setUniverseUUID(UUID.randomUUID());
     tableParams.setKeyspace("foo");
-    String backupIdentifier = "univ-" + tableParams.getUniverseUUID().toString() + "/";
+    String backupIdentifier = "univ-bar-" + tableParams.getUniverseUUID().toString() + "/";
     SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
     String backupLocationTS = tsFormat.format(new Date());
     BackupUtil.updateDefaultStorageLocation(
@@ -356,7 +358,8 @@ public class BackupUtilTest extends FakeDBApplication {
         testCustomer.getUuid(),
         BackupCategory.YB_CONTROLLER,
         BackupVersion.V2,
-        backupLocationTS);
+        backupLocationTS,
+        "bar");
     String expectedStorageLocation = formData.get("data").get("BACKUP_LOCATION").asText();
     if (testConfig.getName().equals("NFS")) {
       backupIdentifier = "yugabyte_backup/" + backupIdentifier;

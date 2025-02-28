@@ -7,7 +7,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.endsWith;
@@ -46,6 +48,7 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
+import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -58,6 +61,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
@@ -91,12 +95,14 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -179,6 +185,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected OperatorStatusUpdater mockOperatorStatusUpdater;
   protected CloudUtilFactory mockCloudUtilFactory;
   protected ReleasesUtils mockReleasesUtils;
+  protected NodeAgentManager mockNodeAgentManager;
+  protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -256,6 +264,24 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     releaseContainer =
         new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
     lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseContainer);
+    ShellResponse response = ShellResponse.create(0, "Command output: Linux x86_64");
+    lenient()
+        .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenReturn(response);
+    lenient().when(mockNodeAgentManager.getSoftwareVersion()).thenReturn("2.25.1.0-PRE_RELEASE");
+    NodeAgentManager.InstallerFiles.InstallerFilesBuilder builder =
+        NodeAgentManager.InstallerFiles.builder();
+    builder.packagePath(Paths.get("/opt/yugabyte"));
+    builder.certDir("/opt/yugabyte/certs");
+    lenient()
+        .when(mockNodeAgentManager.getInstallerFiles(any(), any()))
+        .thenReturn(builder.build());
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setIp("127.0.0.1");
+    nodeAgent.setName("nodeAgent");
+    nodeAgent.setHome("/opt/yugabyte");
+    nodeAgent.setUuid(UUID.randomUUID());
+    lenient().when(mockNodeAgentManager.create(any(), anyBoolean())).thenReturn(nodeAgent);
   }
 
   @Override
@@ -295,6 +321,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
     mockOperatorStatusUpdaterFactory = mock(OperatorStatusUpdaterFactory.class);
     mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
+    mockNodeAgentManager = mock(NodeAgentManager.class);
+    mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -336,6 +364,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(NodeUIApiHelper.class).toInstance(mockNodeUIApiHelper))
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
+                .overrides(bind(NodeAgentManager.class).toInstance(mockNodeAgentManager))
+                .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))

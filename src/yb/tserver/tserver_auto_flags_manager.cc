@@ -46,7 +46,7 @@ void TserverAutoFlagsManager::HandleMasterHeartbeatResponse(
   if (new_config) {
     std::lock_guard l(mutex_);
     // We cannot fail to load a new config that was provided by the master.
-    CHECK_OK(LoadFromConfigUnlocked(std::move(*new_config), ApplyNonRuntimeAutoFlags::kFalse));
+    CHECK_OK(LoadFromConfigUnlocked(std::move(*new_config)));
   }
   last_config_sync_time_.store(heartbeat_sent_time, std::memory_order_release);
 }

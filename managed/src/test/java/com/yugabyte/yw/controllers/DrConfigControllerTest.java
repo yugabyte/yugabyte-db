@@ -1,8 +1,6 @@
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeDBApplication.buildTaskInfo;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
@@ -18,6 +16,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -64,7 +63,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -576,10 +574,10 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             Json.toJson(form));
 
     assertOk(result);
-    verify(mockYBClient)
+    verify(mockYBClient, times(2))
         .getUniverseReplicationInfo(
             eq(drConfig.getActiveXClusterConfig().getReplicationGroupName()));
-    verify(mockYBClient)
+    verify(mockYBClient, times(2))
         .getXClusterOutboundReplicationGroupInfo(
             eq(drConfig.getActiveXClusterConfig().getReplicationGroupName()));
     ArgumentCaptor<DrConfigTaskParams> paramsArgumentCaptor =
@@ -608,44 +606,6 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(targetNamespace, namespaceConfig.getSourceNamespaceId());
     assertEquals(XClusterNamespaceConfig.Status.Validated, namespaceConfig.getStatus());
     assertTrue(switchoverConfig.getTableDetails().isEmpty());
-  }
-
-  @Test
-  public void testDbScopedFailoverFailsWithSafetimeMissing() throws Exception {
-    String sourceNamespace = "sourceNamespace";
-    DrConfig drConfig =
-        DrConfig.create(
-            "test",
-            sourceUniverse.getUniverseUUID(),
-            targetUniverse.getUniverseUUID(),
-            new BootstrapBackupParams(),
-            new PitrParams(),
-            Set.of(sourceNamespace));
-    drConfig.setState(State.Replicating);
-    drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
-    drConfig.update();
-
-    String targetNamespace = "targetNamespace";
-    setupMockGetUniverseReplicationInfo(drConfig, sourceNamespace, targetNamespace);
-
-    DrConfigFailoverForm form = new DrConfigFailoverForm();
-    form.primaryUniverseUuid = sourceUniverse.getUniverseUUID();
-    form.drReplicaUniverseUuid = targetUniverse.getUniverseUUID();
-    form.namespaceIdSafetimeEpochUsMap = new HashMap<>();
-
-    Result result =
-        assertPlatformException(
-            () ->
-                doRequestWithAuthTokenAndBody(
-                    "POST",
-                    String.format(
-                        "/api/customers/%s/dr_configs/%s/failover",
-                        defaultCustomer.getUuid(), drConfig.getUuid()),
-                    authToken,
-                    Json.toJson(form)));
-
-    assertBadRequest(result, "Safetime must be specified for all the databases");
-    assertEquals(1, drConfig.getXClusterConfigs().size());
   }
 
   @Test

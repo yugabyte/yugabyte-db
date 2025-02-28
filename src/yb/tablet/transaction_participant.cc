@@ -1593,17 +1593,19 @@ class TransactionParticipant::Impl
       std::lock_guard lock(mutex_);
       if (!pending_applies.empty()) {
         size_t idx = 0;
-        for (const auto& p : pending_applies) {
-          auto it = transactions_.find(p.first);
+        for (const auto& [txn_id, pending_apply] : pending_applies) {
+          auto it = transactions_.find(txn_id);
           if (it == transactions_.end()) {
-            LOG_WITH_PREFIX(INFO) << "Unknown transaction for pending apply: " << AsString(p.first);
+            LOG_WITH_PREFIX(INFO) << "Unknown transaction for pending apply: " << AsString(txn_id);
             continue;
           }
 
-          TransactionApplyData apply_data;
-          apply_data.transaction_id = p.first;
-          apply_data.commit_ht = p.second.commit_ht;
-          (**it).SetApplyData(p.second.state, &apply_data, &operations[idx]);
+          auto apply_data = TransactionApplyData {
+            .transaction_id = txn_id,
+            .op_id = pending_apply.apply_op_id,
+            .commit_ht = pending_apply.commit_ht,
+          };
+          (**it).SetApplyData(pending_apply.state, &apply_data, &operations[idx]);
           ++idx;
         }
       }
@@ -1912,7 +1914,7 @@ class TransactionParticipant::Impl
       TransactionMetadata&& metadata,
       TransactionalBatchData&& last_batch_data,
       OneWayBitmap&& replicated_batches,
-      const ApplyStateWithCommitHt* pending_apply) override {
+      const docdb::ApplyStateWithCommitInfo* pending_apply) override {
     auto start_time = metadata.start_time;
     auto replay_start_time = MinReplayTxnStartTime();
     if (start_time && replay_start_time && start_time < replay_start_time) {

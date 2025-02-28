@@ -1,4 +1,7 @@
 thirdparty_dir="{{ ynp_dir }}/../../thirdparty"
+{% if cloud_type is defined and cloud_type != '' %}
+    thirdparty_dir="{{ ynp_dir }}/../thirdparty"
+{% endif %}
 
 # Setup the directories & permissions for prometheus user
 mkdir -p /opt/prometheus
@@ -7,8 +10,27 @@ mkdir -p /var/log/prometheus
 mkdir -p /var/run/prometheus
 mkdir -p /tmp/yugabyte/metrics
 
-if [ -f "$thirdparty_dir/node_exporter-1.7.0.linux-amd64.tar.gz" ]; then
-    cp "$thirdparty_dir/node_exporter-1.7.0.linux-amd64.tar.gz" /opt/prometheus
+# Detect system architecture
+arch=$(uname -m)
+
+# Set the appropriate file name based on architecture
+if [[ "$arch" == "x86_64" ]]; then
+    node_exporter_package="node_exporter-1.7.0.linux-amd64.tar.gz"
+    node_exported_package_name="node_exporter-1.7.0.linux-amd64"
+elif [[ "$arch" == "aarch64" ]]; then
+    node_exporter_package="node_exporter-1.7.0.linux-arm64.tar.gz"
+    node_exported_package_name="node_exporter-1.7.0.linux-arm64"
+else
+    echo "Unsupported architecture: $arch"
+    exit 1
+fi
+
+# Copy the appropriate package if it exists
+if [ -f "$thirdparty_dir/$node_exporter_package" ]; then
+    cp "$thirdparty_dir/$node_exporter_package" /opt/prometheus
+else
+    echo "Error: $node_exporter_package not found in $thirdparty_dir"
+    exit 1
 fi
 
 # Check if the user "prometheus" already exists
@@ -19,7 +41,7 @@ if ! id -u prometheus >/dev/null 2>&1; then
             adduser --no-create-home --disabled-password --shell /bin/bash --ingroup {{ yb_user }} \
             --gecos "" prometheus
             ;;
-        rhel|centos|fedora|rocky|almalinux)
+        rhel|centos|fedora|rocky|almalinux|amzn|ol)
             useradd --shell /bin/bash --no-create-home -g {{ yb_user }} prometheus
             ;;
         *)
@@ -39,11 +61,11 @@ chown -R prometheus:{{ yb_user }} /var/run/prometheus
 chown -R yugabyte:yugabyte /tmp/yugabyte/metrics
 chmod -R 755 /tmp/yugabyte/metrics
 
-if [ -f /opt/prometheus/node_exporter-1.7.0.linux-amd64.tar.gz ]; then
-    chmod +r /opt/prometheus/node_exporter-1.7.0.linux-amd64.tar.gz
+if [ -f "/opt/prometheus/$node_exporter_package" ]; then
+    chmod +r /opt/prometheus/$node_exporter_package
 
     # Extract the node_exporter tarball
-    su - {{ prometheus_user }} -c "cd /opt/prometheus && tar zxf node_exporter-1.7.0.linux-amd64.tar.gz"
+    su - {{ prometheus_user }} -c "cd /opt/prometheus && tar zxf $node_exporter_package"
 fi
 
 # Configure Systemd Unit
@@ -66,7 +88,7 @@ Restart=on-failure
 User=prometheus
 Group={{ yb_user }}
 
-ExecStart=/opt/prometheus/node_exporter-1.7.0.linux-amd64/node_exporter  \
+ExecStart=/opt/prometheus/$node_exported_package_name/node_exporter  \
 --web.listen-address=:{{ node_exporter_port }} \
 --collector.textfile.directory={{ yb_home_dir }}/metrics
 EOL

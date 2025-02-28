@@ -45,23 +45,24 @@
 DEFINE_test_flag(int32, scan_tests_num_rows, 0,
                  "Number of rows to load for various scanning tests, or 0 for default.");
 
-DECLARE_uint64(max_clock_skew_usec);
-DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
-DECLARE_uint64(sst_files_soft_limit);
-DECLARE_uint64(sst_files_hard_limit);
+DECLARE_bool(TEST_skip_applying_truncate);
 DECLARE_bool(rocksdb_use_logging_iterator);
+DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
-DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(ysql_use_packed_row_v2);
-DECLARE_int64(global_memstore_size_mb_max);
-DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
+DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_max_write_buffer_number);
-DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_int32(txn_max_apply_batch_records);
-DECLARE_bool(TEST_skip_applying_truncate);
-DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(global_memstore_size_mb_max);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(max_clock_skew_usec);
+DECLARE_uint64(sst_files_hard_limit);
+DECLARE_uint64(sst_files_soft_limit);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
@@ -1842,6 +1843,27 @@ TEST_F(PgSingleTServerTest, BoundedBackwardScanWithLargeTransaction) {
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO test (key, k2, value) SELECT i, i, -i FROM generate_series(1, $0) AS i",
       kNumRows));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT key FROM test WHERE key >= 1 AND value >= -1 ORDER BY k2 DESC"));
+  ASSERT_EQ(result, "1");
+}
+
+TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 10;
+  constexpr int kNumRows = 20;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key BIGINT, k2 BIGINT, value BIGINT, PRIMARY KEY (k2 ASC, key ASC))"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 10;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test (key, k2, value) SELECT i, i, -i FROM generate_series(1, $0) AS i",
+      kNumRows));
+  std::this_thread::sleep_for(1s);
+  ASSERT_OK(cluster_->RestartSync());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 0;
+  std::this_thread::sleep_for(1s);
+  ASSERT_OK(cluster_->FlushTablets());
+  conn = ASSERT_RESULT(Connect());
   auto result = ASSERT_RESULT(conn.FetchAllAsString(
       "SELECT key FROM test WHERE key >= 1 AND value >= -1 ORDER BY k2 DESC"));
   ASSERT_EQ(result, "1");

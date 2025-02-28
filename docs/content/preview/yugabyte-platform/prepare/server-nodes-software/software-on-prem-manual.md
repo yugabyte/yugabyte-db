@@ -80,7 +80,7 @@ The following instructions use user-level systemd to provide the necessary acces
 
 ## Verify the python version installed on the node
 
-Verify that Python 3.5-3.8 is installed on the node. v3.6 is recommended.
+Verify that Python 3.5-3.9 is installed on the node. v3.6 is recommended.
 
 In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one. For example:
 

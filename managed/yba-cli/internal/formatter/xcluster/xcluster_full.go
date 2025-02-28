@@ -23,7 +23,6 @@ const (
 		"\t{{.CreateTime}}\t{{.ModifyTime}}"
 	xClusterDetails1 = "table {{.SourceActive}}\t{{.SourceState}}\t{{.TargetActive}}" +
 		"\t{{.TargetState}}\t{{.UsedForDR}}"
-	xClusterDetails3 = "table {{.Tables}}"
 	xClusterDetails4 = "table {{.Dbs}}"
 	xClusterDetails5 = "table {{.Lag}}"
 )
@@ -105,7 +104,7 @@ func (fx *FullXClusterContext) Write() error {
 	fx.PostFormat(tmpl, NewXClusterContext())
 	fx.Output.Write([]byte("\n"))
 
-	tmpl, err = fx.startSubsection(xClusterDetails3)
+	tmpl, err = fx.startSubsection(xClusterDetails5)
 	if err != nil {
 		logrus.Errorf("%s", err.Error())
 		return err
@@ -129,17 +128,16 @@ func (fx *FullXClusterContext) Write() error {
 	fx.PostFormat(tmpl, NewXClusterContext())
 	fx.Output.Write([]byte("\n"))
 
-	tmpl, err = fx.startSubsection(xClusterDetails5)
-	if err != nil {
-		logrus.Errorf("%s", err.Error())
-		return err
+	// TableDetailss subSection
+	logrus.Debugf("Number of Tables: %d", len(fx.x.GetTableDetails()))
+	fx.subSection("Tables")
+	for i, v := range fx.x.GetTableDetails() {
+		tableDetailsContext := *NewTableDetailContext()
+		tableDetailsContext.Output = os.Stdout
+		tableDetailsContext.Format = NewFullXClusterFormat(viper.GetString("output"))
+		tableDetailsContext.SetTableDetail(v)
+		tableDetailsContext.Write(i)
 	}
-	if err := fx.ContextFormat(tmpl, fxc.XCluster); err != nil {
-		logrus.Errorf("%s", err.Error())
-		return err
-	}
-	fx.PostFormat(tmpl, NewXClusterContext())
-	fx.Output.Write([]byte("\n"))
 
 	// PITR Configurations
 	logrus.Debugf("Number of PITR Configs: %d", len(fx.x.GetPitrConfigs()))

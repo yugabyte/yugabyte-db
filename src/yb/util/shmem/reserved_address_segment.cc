@@ -26,19 +26,19 @@
 #include "yb/util/crash_point.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
-#include "yb/util/interprocess_semaphore.h"
 #include "yb/util/math_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_mem.h"
+#include "yb/util/shmem/interprocess_semaphore.h"
 #include "yb/util/tsan_util.h"
 
 DEFINE_test_flag(uint64, address_segment_negotiator_initial_address, 0,
                  "Used for initial address for AddressSegmentNegotiator negotiation if nonzero.");
 
-// TSan address space is very constrained and hard to pick a good address range that is effectively
+// Sanitizer address space is constrained and hard to pick a good address range that is effectively
 // never used, so just allow it to search randomly without DFATAL.
-DEFINE_test_flag(bool, address_segment_negotiator_dfatal_map_failure, !yb::IsTsan(),
+DEFINE_test_flag(bool, address_segment_negotiator_dfatal_map_failure, !yb::IsSanitizer(),
                  "Whether to LOG(DFATAL) when picked address is already taken on either process.");
 
 namespace yb {
@@ -83,6 +83,9 @@ class NegotiatorSharedState {
   Result<NegotiatorState> Propose(void* addr) {
     auto expected = NegotiatorState::kReject;
     if (!state_.compare_exchange_strong(expected, NegotiatorState::kPropose)) {
+      if (expected == NegotiatorState::kShutdown) {
+        return STATUS(ShutdownInProgress, "Shutting down");
+      }
       return STATUS_FORMAT(IllegalState, "Bad state: $0", AsString(expected));
     }
     address_ = addr;
@@ -179,6 +182,16 @@ class AddressSegmentNegotiator::Impl {
       return std::move(*old_address_segment_);
     }
 
+    std::vector<void*> unused_addresses;
+    auto scope = ScopeExit([this, &unused_addresses] {
+      for (void* address : unused_addresses) {
+        if (munmap(address, region_size_) == -1) {
+          LOG(DFATAL) << "Failed to munmap() " << region_size_ << " bytes at " << address
+                      << ": " << strerror(errno);
+        }
+      }
+    });
+
     for (void* probe_address = InitialProbeAddress(); ; probe_address = GenerateProbeAddress()) {
       void* result =
           mmap(probe_address, region_size_, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE,
@@ -188,13 +201,7 @@ class AddressSegmentNegotiator::Impl {
             IOError, "mmap() failed to reserve $0 byte block of virtual memory: $1",
             region_size_, strerror(errno));
       }
-
-      auto scope = ScopeExit([this, result, probe_address] {
-        if (munmap(result, region_size_) == -1) {
-          LOG(DFATAL) << "Failed to munmap() " << region_size_ << " bytes at " << probe_address
-                      << ": " << strerror(errno);
-        }
-      });
+      unused_addresses.push_back(result);
 
       if (result != probe_address) {
         // We handle this case fine, but hitting this is an indicator that InitialProbeAddress()
@@ -218,7 +225,7 @@ class AddressSegmentNegotiator::Impl {
           LOG(FATAL) << "Invalid state kPropose in response";
           break;
         case NegotiatorState::kAccept:
-          scope.Cancel();
+          unused_addresses.pop_back();
           return ReservedAddressSegment(probe_address, region_size_);
         case NegotiatorState::kReject:
           // We handle this case fine, but hitting this is an indicator that InitialProbeAddress()
@@ -292,26 +299,7 @@ class AddressSegmentNegotiator::Impl {
     if (PREDICT_FALSE(addr != nullptr)) {
       return addr;
     }
-
-#ifdef THREAD_SANITIZER
     return GenerateProbeAddress();
-#else
-    // Postmaster and TServer typically have addresses reserved near the following:
-    // 0x010000000000, 0x020000000000
-    // 0x250000000000
-    // 0x370000000000
-    // 0x550000000000 executable, heap
-    // 0x7f0000000000 dynamic libraries, stack
-    //
-    // We start by probing something in 0x600000000000-0x700000000000, which is likely unused,
-    // so that in the event of a postmaster restart, it is likely we can reuse the existing mapping.
-    //
-    // This range is also in kHighMem for ASAN on x86_64, so we can use it without issue.
-    constexpr uintptr_t kStartRange = 0x600000000000;
-    constexpr uintptr_t kEndRange = 0x700000000000;
-
-    return RandomProbeAddress(kStartRange, kEndRange);
-#endif
   }
 
   void* GenerateProbeAddress() {
@@ -327,12 +315,25 @@ class AddressSegmentNegotiator::Impl {
     constexpr uintptr_t kMaxAddress = 0x7f6000000000;
 #endif
 #else
-    // Both OS X and Linux uses addresses in lower half of 48-bit range for userspace.
-    // OS X reserves the bottom 4GB.
-    // This may conflict with the shadow region for TSAN/ASAN, but the shadow region is already
-    // mapped to, so we just end up trying a different address.
-    constexpr uintptr_t kMinAddress = 0x000100000000;
-    constexpr uintptr_t kMaxAddress = 0x800000000000;
+    // Postmaster and TServer typically have addresses reserved near the following:
+    // 0x010000000000, 0x020000000000
+    // 0x250000000000
+    // 0x370000000000
+    // 0x550000000000-0x660000000000 executable, heap
+    // 0x7f0000000000 dynamic libraries, stack
+    //
+    // Additionally, tcmalloc mappings randomly use up many other ranges.
+    //
+    // We try probing something in 0x350000000000-0x3f0000000000, which appeared to be unused when
+    // tested over 300x YB process instaces for both GCC and clang builds, so that in the event of
+    // postmaster restart, it is likely we can reuse the existing mapping.
+    //
+    // This range is also in kHighMem for ASAN on x86_64, so we can use it without issue.
+    //
+    // In the event this range is actually not available, mmap will return something elsewhere and
+    // we use that instead.
+    constexpr uintptr_t kMinAddress = 0x350000000000;
+    constexpr uintptr_t kMaxAddress = 0x3f0000000000;
 #endif
     return RandomProbeAddress(kMinAddress, kMaxAddress);
   }

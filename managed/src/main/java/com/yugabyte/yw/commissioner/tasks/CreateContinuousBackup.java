@@ -26,12 +26,15 @@ import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
+import com.yugabyte.yw.models.ContinuousBackupConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Gauge;
 import java.io.File;
 import java.util.Map;
 import java.util.Optional;
@@ -48,6 +51,15 @@ public class CreateContinuousBackup extends AbstractTaskBase {
   private final PlatformReplicationManager replicationManager;
   private final ReleaseManager releaseManager;
 
+  private static Gauge CONT_BACKUP_FAILING_GAUGE =
+      Gauge.build("yba_cont_backup_status", "Continuous backups failing")
+          .labelNames("storage_loc")
+          .register(CollectorRegistry.defaultRegistry);
+
+  public static void clearGauge() {
+    CONT_BACKUP_FAILING_GAUGE.clear();
+  }
+
   @Inject
   protected CreateContinuousBackup(
       BaseTaskDependencies baseTaskDependencies,
@@ -63,8 +75,7 @@ public class CreateContinuousBackup extends AbstractTaskBase {
   }
 
   public static class Params extends AbstractTaskParams {
-    public UUID storageConfigUUID;
-    public String dirName;
+    public ContinuousBackupConfig cbConfig;
   }
 
   @Override
@@ -105,7 +116,11 @@ public class CreateContinuousBackup extends AbstractTaskBase {
   public void run() {
     log.info("Execution of CreateContinuousBackup");
     CreateContinuousBackup.Params taskParams = taskParams();
-    if (taskParams.storageConfigUUID == null) {
+    ContinuousBackupConfig cbConfig = taskParams.cbConfig;
+    UUID storageConfigUUID = cbConfig.getStorageConfigUUID();
+    String dirName = cbConfig.getBackupDir();
+
+    if (storageConfigUUID == null) {
       log.info("No storage config UUID set, skipping creation of YBA backup.");
       return;
     }
@@ -115,34 +130,42 @@ public class CreateContinuousBackup extends AbstractTaskBase {
 
     if (response.code != 0) {
       log.error("Backup failed: " + response.message);
+      CONT_BACKUP_FAILING_GAUGE.labels(cbConfig.getStorageLocation()).set(0);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Backup failed: " + response.message);
     }
     Optional<File> backupOpt = replicationHelper.getMostRecentBackup();
     if (!backupOpt.isPresent()) {
+      CONT_BACKUP_FAILING_GAUGE.labels(cbConfig.getStorageLocation()).set(0);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "could not find backup file");
     }
     File backup = backupOpt.get();
-    CustomerConfig customerConfig = CustomerConfig.get(taskParams.storageConfigUUID);
+    CustomerConfig customerConfig = CustomerConfig.get(storageConfigUUID);
     if (customerConfig == null) {
+      CONT_BACKUP_FAILING_GAUGE.labels(cbConfig.getStorageLocation()).set(0);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           "Could not find customer config with provided storage config UUID during create.");
     }
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(customerConfig.getName());
-    if (!storageUtil.uploadYbaBackup(customerConfig.getDataObject(), backup, taskParams.dirName)) {
+    if (!storageUtil.uploadYbaBackup(customerConfig.getDataObject(), backup, dirName)) {
+      CONT_BACKUP_FAILING_GAUGE.labels(cbConfig.getStorageLocation()).set(0);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Could not upload YBA backup to cloud storage.");
     }
 
-    if (!storageUtil.cleanupUploadedBackups(customerConfig.getDataObject(), taskParams.dirName)) {
+    // Mark success as rest of work is best effort anyways
+    cbConfig.updateLastBackup();
+    CONT_BACKUP_FAILING_GAUGE.labels(cbConfig.getStorageLocation()).set(1);
+
+    if (!storageUtil.cleanupUploadedBackups(customerConfig.getDataObject(), dirName)) {
       log.warn(
           "Error cleaning up uploaded backups to cloud storage, please delete manually to avoid"
               + " incurring unexpected costs.");
     }
 
     Set<String> remoteReleases =
-        storageUtil.getRemoteReleaseVersions(customerConfig.getDataObject(), taskParams.dirName);
+        storageUtil.getRemoteReleaseVersions(customerConfig.getDataObject(), dirName);
     // Get all local full paths
     Map<String, ReleaseContainer> localReleaseContainers =
         releaseManager.getAllLocalReleaseContainersByVersion();
@@ -159,7 +182,7 @@ public class CreateContinuousBackup extends AbstractTaskBase {
                     storageUtil.uploadYBDBRelease(
                         customerConfig.getDataObject(),
                         new File(release),
-                        taskParams.dirName,
+                        dirName,
                         container.getVersion());
                   });
         });

@@ -163,7 +163,7 @@ To install YugabyteDB Anywhere and a universe using the Yugabyte Kubernetes Oper
     # Modify the fields kubernetesOperatorNamespace and defaultUser.password fields as required
     helm install yugabytedb/yugaware \
       --version 2024.1.0 \
-      --set kubernetesOperatorEnabled=true,kubernetesOperatorNamespace="yb-platform-test",defaultUser.enabled=true,defaultUser.password="Password#Test123"–generate-name
+      --set kubernetesOperatorEnabled=true,kubernetesOperatorNamespace="yb-platform-test",defaultUser.enabled=true,defaultUser.password="Password#Test123"-generate-name
     ```
 
 1. Verify that YBA is up, and the Kubernetes Operator is installed successfully using the following commands:

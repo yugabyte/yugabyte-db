@@ -65,8 +65,8 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           createUpgradeTask(
               getUniverse(),
               userIntent.ybSoftwareVersion,
-              true /* isMasterChanged */,
-              true /* isTserverChanged */,
+              true /* upgradeMasters */,
+              true /* upgradeTservers */,
               getUniverse().isYbcEnabled(),
               stableYbcVersion);
 
@@ -79,8 +79,8 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           createUpgradeTask(
               getUniverse(),
               userIntent.ybSoftwareVersion,
-              true /* isMasterChanged */,
-              true /* isTserverChanged */,
+              true /* upgradeMasters */,
+              true /* upgradeTservers */,
               getUniverse().isYbcEnabled(),
               stableYbcVersion);
 
@@ -91,8 +91,8 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           createUpgradeTask(
               getUniverse(),
               userIntent.ybSoftwareVersion,
-              true /* isMasterChanged */,
-              true /* isTserverChanged */,
+              true /* upgradeMasters */,
+              true /* upgradeTservers */,
               getUniverse().isYbcEnabled(),
               stableYbcVersion);
         });

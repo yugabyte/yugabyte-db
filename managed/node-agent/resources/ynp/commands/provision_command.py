@@ -76,7 +76,8 @@ class ProvisionCommand(Command):
         return temp_file.name
 
     def _run_script(self, script_path):
-        result = subprocess.run(["/bin/bash", "-lc", script_path], capture_output=True, text=True)
+        result = subprocess.run(["/bin/bash", "-lc", script_path], stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, universal_newlines=True)
         logger.info("Output: %s", result.stdout)
         logger.info("Error: %s", result.stderr)
         logger.info("Return Code: %s", result.returncode)
@@ -191,7 +192,7 @@ class ProvisionCommand(Command):
         major_version = version.split('.')[0] if version else ""
 
         # Determine OS family
-        if distribution in {"rhel", "centos", "almalinux", "oraclelinux", "fedora"}:
+        if distribution in {"rhel", "centos", "almalinux", "ol", "fedora"}:
             os_family = OSFamily.REDHAT
         elif distribution in {"ubuntu", "debian"}:
             os_family = OSFamily.DEBIAN
@@ -254,40 +255,7 @@ class ProvisionCommand(Command):
             for package in cloud_only_packages:
                 self._check_package(package_manager, package)
 
-    def _install_python(self):
-        package_manager = self._get_package_manager()
-        try:
-            # Check if Python 3.11 is already installed
-            subprocess.run(['python3.11', '--version'], check=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            logger.info("Python 3.11 is already installed.")
-        except FileNotFoundError:
-            logger.info("Python 3.11 not found. Installing...")
-            if package_manager == 'rpm':
-                # Install Python 3.11 on RPM-based systems
-                subprocess.run(['sudo', 'dnf', 'install', '-y', 'python3.11'], check=True)
-            elif package_manager == 'deb':
-                # Update repositories and install Python 3.11 on DEB-based systems
-                subprocess.run(['sudo', 'apt-get', 'update'], check=True)
-                subprocess.run(['sudo', 'apt-get', 'install', '-y', 'python3.11'], check=True)
-            else:
-                logger.error("Unsupported package manager. Cannot install Python 3.11.")
-                sys.exit(1)
-
-            # Verify installation
-            try:
-                subprocess.run(['python3.11', '--version'], check=True,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                logger.info("Python 3.11 installed successfully.")
-            except FileNotFoundError:
-                logger.error("Failed to install Python 3.11.")
-                sys.exit(1)
-
     def execute(self):
-        for key in self.config:
-            if self.config[key].get('is_cloud') == 'True':
-                # Install the desired python version in case of CSP's
-                self._install_python()
         run_combined_script, precheck_combined_script = self._generate_template()
         self._run_script(run_combined_script)
         self._run_script(precheck_combined_script)
@@ -360,6 +328,11 @@ class ProvisionCommand(Command):
         _, precheck_combined_script = self._generate_template()
         self._compare_ynp_version()
         self._run_script(precheck_combined_script)
+
+    def dry_run(self):
+        install_script, precheck_script = self._generate_template()
+        logger.info("Install Script: %s", install_script)
+        logger.info("Precheck Script: %s", precheck_script)
 
     def cleanup(self):
         # Cleanup tasks to clean up any tmp data to support rerun

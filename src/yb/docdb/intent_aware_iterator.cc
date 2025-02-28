@@ -745,8 +745,9 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
     DCHECK_ONLY_NOTNULL(entry_source_);
     VLOG(4) << "Fetched key " << DebugDumpKeyToStr(result.key)
             << ", kind: " << (result.same_transaction ? 'S' : (IsEntryRegular() ? 'R' : 'I'))
-            << ", with time: " << result.write_time.ToString()
-            << ", while read bounds are: " << read_time_;
+            << ", with time: " << result.write_time
+            << ", while read bounds are: " << read_time_
+            << ", value: " << result.value.ToDebugHexString();
 
     YB_TRANSACTION_DUMP(
         Read, txn_op_context_ ? txn_op_context_.txn_status_manager->tablet_id() : TabletId(),
@@ -847,7 +848,7 @@ void IntentAwareIterator::ProcessIntent() {
 
   // Ignore intent past read limit.
   if (decoded.value_time > decoded.MaxAllowedValueTime(encoded_read_time_)) {
-    VLOG_WITH_FUNC(4) << "Returnin as decoded.value_time > "
+    VLOG_WITH_FUNC(4) << "Returning as decoded.value_time > "
                          "decoded.MaxAllowedValueTime(encoded_read_time_)";
     return;
   }

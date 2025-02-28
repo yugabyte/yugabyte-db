@@ -116,7 +116,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
 
   const submitEditUniverse = async (finalPayload: UniverseConfigure) => {
     try {
-      let response = await api.editUniverse(finalPayload, uuid);
+      const response = await api.editUniverse(finalPayload, uuid);
       response && transitToUniverse(uuid);
     } catch (error) {
       toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });

@@ -260,6 +260,8 @@ extern void pgstat_reset_wait_event_storage(void);
 extern void yb_pgstat_set_wait_event_storage(PGPROC *proc);
 extern void yb_pgstat_reset_wait_event_storage(void);
 
+extern bool YbIsIdleWaitEvent(uint32 wait_event_info);
+
 extern PGDLLIMPORT uint32 *my_wait_event_info;
 extern PGDLLIMPORT YbcWaitEventInfoPtr yb_my_wait_event_info;
 

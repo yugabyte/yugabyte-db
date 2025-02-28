@@ -89,7 +89,6 @@ const AutoFlagInfo* FindOrNullptr(
 // indicates if any non-runtime flags were added.
 PromoteAutoFlagsOutcome InsertFlagsToConfig(
     const AutoFlagsInfoMap& flags_to_insert, AutoFlagsConfigPB& config, bool force_version_change) {
-  auto non_runtime_flags_added = false;
   bool config_changed = false;
   // Initial config or forced version bump.
   if (config.config_version() == kInvalidAutoFlagsConfigVersion || force_version_change) {
@@ -135,7 +134,6 @@ PromoteAutoFlagsOutcome InsertFlagsToConfig(
           if (!FLAGS_TEST_disable_versioned_auto_flags) {
             process_flag_info_pb->Add()->set_promoted_version(new_config_version);
           }
-          non_runtime_flags_added |= !flags_to_promote.is_runtime;
           config_changed = true;
         }
       }
@@ -147,8 +145,7 @@ PromoteAutoFlagsOutcome InsertFlagsToConfig(
   }
 
   config.set_config_version(new_config_version);
-  return non_runtime_flags_added ? PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted
-                                 : PromoteAutoFlagsOutcome::kNewFlagsPromoted;
+  return PromoteAutoFlagsOutcome::kNewFlagsPromoted;
 }
 
 // Remove flags from the config if they were promoted on a version higher than rollback_version.
@@ -275,7 +272,7 @@ Status MasterAutoFlagsManager::LoadFromMasterLeader(
 
 Status MasterAutoFlagsManager::LoadNewConfig(const AutoFlagsConfigPB new_config) {
   std::lock_guard l(mutex_);
-  return LoadFromConfigUnlocked(std::move(new_config), ApplyNonRuntimeAutoFlags::kTrue);
+  return LoadFromConfigUnlocked(std::move(new_config));
 }
 
 Status MasterAutoFlagsManager::CreateEmptyConfig() {
@@ -292,18 +289,16 @@ Status MasterAutoFlagsManager::CreateConfigForNewCluster() {
   if (FLAGS_limit_auto_flag_promote_for_new_universe != 0) {
     const auto max_flag_class = VERIFY_RESULT(yb::UnderlyingToEnumSlow<yb::AutoFlagClass>(
         FLAGS_limit_auto_flag_promote_for_new_universe));
-    const auto promote_non_runtime = PromoteNonRuntimeAutoFlags::kTrue;
 
     if (FLAGS_disable_auto_flags_management) {
       LOG(WARNING) << "AutoFlags management is disabled.";
       return Status::OK();
     }
 
-    LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class)
-              << ", promote_non_runtime: " << promote_non_runtime;
+    LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class);
 
-    const auto eligible_flags = VERIFY_RESULT(
-        AutoFlagsUtil::GetFlagsEligibleForPromotion(max_flag_class, promote_non_runtime));
+    const auto eligible_flags =
+        VERIFY_RESULT(AutoFlagsUtil::GetFlagsEligibleForPromotion(max_flag_class));
 
     auto new_config = GetConfig();
     InsertFlagsToConfig(eligible_flags, new_config, true /* force */);
@@ -395,12 +390,11 @@ Status MasterAutoFlagsManager::ProcessAutoFlagsConfigOperation(const AutoFlagsCo
     unlock_needed = true;
   }
 
-  return LoadFromConfigUnlocked(std::move(new_config), ApplyNonRuntimeAutoFlags::kFalse);
+  return LoadFromConfigUnlocked(std::move(new_config));
 }
 
 Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> MasterAutoFlagsManager::PromoteAutoFlags(
-    const AutoFlagClass max_flag_class, const PromoteNonRuntimeAutoFlags promote_non_runtime_flags,
-    const bool force_version_change) {
+    const AutoFlagClass max_flag_class, const bool force_version_change) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
 
   SCHECK(
@@ -414,11 +408,10 @@ Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> MasterAutoFlagsManager::Pro
       "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current version");
 
   LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class)
-            << ", promote_non_runtime: " << promote_non_runtime_flags
             << ", force: " << force_version_change;
 
-  const auto eligible_flags = VERIFY_RESULT(
-      AutoFlagsUtil::GetFlagsEligibleForPromotion(max_flag_class, promote_non_runtime_flags));
+  const auto eligible_flags =
+      VERIFY_RESULT(AutoFlagsUtil::GetFlagsEligibleForPromotion(max_flag_class));
 
   auto new_config = GetConfig();
   auto outcome = InsertFlagsToConfig(eligible_flags, new_config, force_version_change);
@@ -526,13 +519,10 @@ Status MasterAutoFlagsManager::PromoteAutoFlags(
       ParseEnumInsensitive<AutoFlagClass>(req->max_flag_class()),
       "Invalid value provided for flag class");
 
-  auto [new_config_version, outcome] = VERIFY_RESULT(PromoteAutoFlags(
-      max_class, PromoteNonRuntimeAutoFlags(req->promote_non_runtime_flags()), req->force()));
+  auto [new_config_version, outcome] = VERIFY_RESULT(PromoteAutoFlags(max_class, req->force()));
 
   resp->set_new_config_version(new_config_version);
   resp->set_flags_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
-  resp->set_non_runtime_flags_promoted(
-      outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
   return Status::OK();
 }
 
@@ -552,7 +542,6 @@ Status MasterAutoFlagsManager::PromoteSingleAutoFlag(
 
   resp->set_new_config_version(new_config_version);
   resp->set_flag_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
-  resp->set_non_runtime_flag_promoted(outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
   return Status::OK();
 }
 

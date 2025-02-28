@@ -90,6 +90,12 @@ public class PitrConfig extends Model {
   private long retentionPeriod = 86400L * 7L;
 
   @ApiModelProperty(
+      value = "Intermittent min recovery time in millis if retention period is increased",
+      accessMode = READ_WRITE)
+  @Column(nullable = false)
+  private long intermittentMinRecoverTimeInMillis = 0L;
+
+  @ApiModelProperty(
       value = "Create time of the PITR config",
       accessMode = READ_ONLY,
       example = "2022-12-12T13:07:18Z")

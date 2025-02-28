@@ -42,7 +42,7 @@ DEPRECATE_FLAG(bool, enable_process_lifetime_heap_sampling, "12_2023");
 DEFINE_NON_RUNTIME_bool(enable_process_lifetime_heap_profiling,
     false,
     "WARNING: This flag will cause tcmalloc to sample every allocation. This can significantly "
-    "impact performance. For a lighter approach, use sampling (profiler_sample_freq_bytes). "
+    "impact performance. For a lighter approach, use sampling (profile_sample_period_bytes). "
     "This option is only supported with gperftools tcmalloc. "
     "Enables heap profiling for the lifetime of the process. Profile output will be stored in the "
     "directory specified by -heap_profile_path, and enabling this option will disable the "
@@ -59,8 +59,10 @@ TAG_FLAG(heap_profile_path, advanced);
 // Assuming 30 lines per stack trace line * 20 bytes for the stack ptr, each sample costs 600 bytes.
 // With 1 MB sampling, a 64 GB server would have ~65536 samples, so the samples take ~39 MB, which
 // is a reasonable amount of overhead.
-DEFINE_NON_RUNTIME_int64(profiler_sample_freq_bytes, 1_MB, "The frequency at which "
-    "TCMalloc should sample allocations. Sampling is disabled if this is set to <= 0.");
+DEFINE_NON_RUNTIME_int64(profile_sample_period_bytes, 1_MB, "The interval at which "
+    "TCMalloc should sample allocations. Sampling is disabled if this is set to <= 0. "
+    "Does not apply to Postgres processes; see ysql_yb_tcmalloc_sample_period instead.");
+DEPRECATE_FLAG(int64, profiler_sample_freq_bytes, "02_2025");
 
 DEFINE_RUNTIME_bool(mem_tracker_include_pageheap_free_in_root_consumption, false,
     "Whether to include tcmalloc.pageheap_free_bytes from the consumption of the root memtracker. "
@@ -241,7 +243,7 @@ void ConfigureTCMalloc(int64_t mem_limit) {
         "$0/$1.$2", FLAGS_tmp_dir, google::ProgramInvocationShortName(), getpid());
     CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(heap_profile_path, path));
   }
-  SetTCMallocSamplingFrequency(FLAGS_profiler_sample_freq_bytes);
+  SetTCMallocSamplingPeriod(FLAGS_profile_sample_period_bytes);
 
 #if YB_GPERFTOOLS_TCMALLOC
   if (FLAGS_enable_process_lifetime_heap_profiling) {
@@ -250,7 +252,7 @@ void ConfigureTCMalloc(int64_t mem_limit) {
 #endif
 }
 
-int64_t GetTCMallocSamplingFrequency() {
+int64_t GetTCMallocSamplingPeriod() {
 #if YB_GOOGLE_TCMALLOC
   return tcmalloc::MallocExtension::GetProfileSamplingRate();
 #elif YB_GPERFTOOLS_TCMALLOC
@@ -259,14 +261,14 @@ int64_t GetTCMallocSamplingFrequency() {
   return 0;
 }
 
-void SetTCMallocSamplingFrequency(int64_t sample_freq_bytes) {
-  bool disabled = sample_freq_bytes <= 0;
-  LOG(INFO) << Format("Setting TCMalloc profiler sampling frequency to $0 bytes", sample_freq_bytes)
+void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
+  bool disabled = sample_period_bytes <= 0;
+  LOG(INFO) << Format("Setting TCMalloc profiler sampling period to $0 bytes", sample_period_bytes)
             << (disabled ? " (disabled)" : "");
 #if YB_GOOGLE_TCMALLOC
-  tcmalloc::MallocExtension::SetProfileSamplingRate(sample_freq_bytes);
+  tcmalloc::MallocExtension::SetProfileSamplingRate(sample_period_bytes);
 #elif YB_GPERFTOOLS_TCMALLOC
-  MallocExtension::instance()->SetProfileSamplingRate(sample_freq_bytes);
+  MallocExtension::instance()->SetProfileSamplingRate(sample_period_bytes);
 #endif
 }
 

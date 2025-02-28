@@ -51,6 +51,8 @@ bool yb_enable_alter_table_rewrite = true;
 
 bool yb_enable_replica_identity = true;
 
+bool yb_enable_consistent_replication_from_hash_range = false;
+
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
 int ysql_session_max_batch_size = 0;
@@ -79,6 +81,7 @@ int yb_explicit_row_locking_batch_size = 1;
 
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
+bool yb_disable_catalog_version_check = false;
 
 int yb_read_after_commit_visibility = 0;
 

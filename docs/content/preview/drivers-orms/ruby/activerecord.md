@@ -247,5 +247,5 @@ $ curl http://localhost:8080/orders
 
 ## Learn more
 
-- Build Ruby applications using [Pg Gem Driver](../ysql-pg/)
+- Build Ruby applications using [YugabyteDB ruby-pg Driver](../yb-ruby-pg/)
 - Build Ruby applications using [YugabyteDB Ruby Driver for YCQL](../ycql/)

@@ -11,25 +11,30 @@ menu:
 type: indexpage
 ---
 
-Keep YugabyteDB Anywhere (YBA) up to date for the latest fixes and improvements, and to be able to [upgrade your universes](../manage-deployments/upgrade-software/) to the latest version of YugabyteDB. You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.
+Keep YugabyteDB Anywhere up to date for the latest fixes and improvements, and to be able to [upgrade your universes](../manage-deployments/upgrade-software/) to the latest version of YugabyteDB. You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.
 
-For information on which versions of YugabyteDB are compatible with your version of YBA, see [YugabyteDB Anywhere releases](/preview/releases/yba-releases/).
+For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, see [YugabyteDB Anywhere releases](/preview/releases/yba-releases/).
 
 You can upgrade YBA using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
 | [YBA&nbsp;Installer](./upgrade-yp-installer/) | yba-ctl CLI | Your installation already uses YBA Installer. |
-| [Replicated](./upgrade-yp-replicated/) | Replicated Admin Console | Your installation already uses Replicated.<br>Before you can migrate from a Replicated installation, upgrade to v2.20.1.3 or later using Replicated.<br> Note that you must migrate from Replicated to YBA Installer if you are upgrading YBA to v2024.1 or later. |
+| [Replicated](./upgrade-yp-replicated/) | Replicated Admin Console | Your installation already uses Replicated.<br>Before you can migrate from a Replicated installation, upgrade to v2.20.1.3 or later using Replicated.<br> Note that you must migrate from Replicated to YBA Installer if you are upgrading YugabyteDB Anywhere to v2024.1 or later. |
 | [Kubernetes](./upgrade-yp-kubernetes/) | Helm chart | You're deploying in Kubernetes. |
 
-If you are upgrading a YBA installation with high availability enabled, follow the instructions provided in [Upgrade instances](../administer-yugabyte-platform/high-availability/#upgrade-instances).
+If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../administer-yugabyte-platform/high-availability/#upgrade-instances).
 
-If you have upgraded YBA to version 2.12 or later and [xCluster replication](../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](upgrade-yp-xcluster-ybadmin/).
+If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](upgrade-yp-xcluster-ybadmin/).
 
-{{< note title="Upgrading YBA on deprecated operating systems" >}}
+{{< note title="Upgrading YugabyteDB Anywhere on deprecated operating systems" >}}
 
-If you are running YBA on a [deprecated OS](../../reference/configuration/operating-systems/), you will need to update your OS before you can upgrade YBA to the next major release.
+If you are running YugabyteDB Anywhere on a [deprecated OS](../../reference/configuration/operating-systems/), you will need to update your OS before you can upgrade YugabyteDB Anywhere to the next major release.
+
+{{< /note >}}
+{{< note title="Upgrading YugabyteDB Anywhere on systems that have older versions of Python" >}}
+
+YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.12. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later.
 
 {{< /note >}}
 

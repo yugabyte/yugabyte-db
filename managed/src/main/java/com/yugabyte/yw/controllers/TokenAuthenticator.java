@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigCache;
@@ -169,14 +170,12 @@ public class TokenAuthenticator extends Action.Simple {
       Pattern pattern = Pattern.compile(".*/customers/([a-zA-Z0-9-]+)(/.*)?");
       Matcher matcher = pattern.matcher(path);
       UUID custUUID = null;
-      String patternForUUID =
-          "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
-      String patternForHost = ".+:[0-9]{4,5}";
 
       // Allow for disabling authentication on proxy endpoint so that
       // Prometheus can scrape database nodes.
       if (Pattern.matches(
-              String.format("^.*/universes/%s/proxy/%s/(.*)$", patternForUUID, patternForHost),
+              String.format(
+                  "^.*/universes/%s/proxy/%s/(.*)$", Util.PATTERN_FOR_UUID, Util.PATTERN_FOR_HOST),
               path)
           && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
         return delegate.call(request);

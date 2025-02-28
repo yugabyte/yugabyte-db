@@ -23,7 +23,7 @@ namespace yb::xcluster {
 static const char* const kDDLQueuePgSchemaName = "yb_xcluster_ddl_replication";
 static const char* const kDDLQueueTableName = "ddl_queue";
 static const char* const kDDLReplicatedTableName = "replicated_ddls";
-static const char* const kDDLQueueStartTimeColumn = "start_time";
+static const char* const kDDLQueueDDLEndTimeColumn = "ddl_end_time";
 static const char* const kDDLQueueQueryIdColumn = "query_id";
 static const char* const kDDLQueueYbDataColumn = "yb_data";
 

@@ -161,7 +161,7 @@ const AbortConfirmModal: FC<ConfirmationModalProps> = ({ visible, onClose, onSub
   );
 };
 
-const RetryConfirmModal: FC<ConfirmationModalProps> = ({ visible, onClose, onSubmit }) => {
+export const RetryConfirmModal: FC<ConfirmationModalProps> = ({ visible, onClose, onSubmit }) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'taskDetails.actions'
   });

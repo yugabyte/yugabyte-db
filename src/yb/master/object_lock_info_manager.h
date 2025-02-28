@@ -24,7 +24,7 @@ namespace yb::rpc {
 class RpcContext;
 }
 
-namespace yb::tablet {
+namespace yb::tserver {
 class TSLocalLockManager;
 }
 namespace yb::tserver {
@@ -60,8 +60,8 @@ class ObjectLockInfoManager {
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info);
   void UpdateTabletServerLeaseEpoch(const std::string& tserver_uuid, uint64_t current_lease_epoch);
   void Clear();
-  std::shared_ptr<tablet::TSLocalLockManager> TEST_ts_local_lock_manager();
-  std::shared_ptr<tablet::TSLocalLockManager> ts_local_lock_manager();
+  std::shared_ptr<tserver::TSLocalLockManager> TEST_ts_local_lock_manager();
+  std::shared_ptr<tserver::TSLocalLockManager> ts_local_lock_manager();
 
   // Releases any object locks that may have been taken by the specified tservers's previous
   // incarnations.

@@ -1,9 +1,11 @@
 package org.yb.pgsql;
 
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_AGGREGATE;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_APPEND;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_RESULT;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.testExplainDebug;
 
 import java.sql.Connection;
@@ -32,6 +34,31 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
 
   private static PlanCheckerBuilder makePlanBuilder() {
     return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
+  }
+
+  private void testDocdbResultWidhEstimationHelperAppendPlans(
+      Statement stmt, String query, String table_name,
+      Integer expected_docdb_result_width) throws Exception {
+    try {
+      testExplainDebug(stmt, query,
+          makeTopLevelBuilder()
+              .plan(makePlanBuilder()
+                  .nodeType(NODE_APPEND)
+                      .plans(makePlanBuilder()
+                      .relationName(table_name)
+                      .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
+                      .build(),
+                      makePlanBuilder()
+                      .nodeType(NODE_RESULT)
+                      .build())
+                  .build())
+              .build());
+    }
+    catch (AssertionError e) {
+      LOG.info("Failed Query: " + query);
+      LOG.info(e.toString());
+      throw e;
+    }
   }
 
   private void testDocdbResultWidhEstimationHelper(
@@ -506,6 +533,12 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
   @Test
   public void testDocdbResultWidthEstimationSystemTablesYbctid() throws Exception {
     try (Statement stmt = connection.createStatement()) {
+      /*
+       * When no columns are projected from the table, DocDB returns ybctid of
+       * each row. In case a sequantial scan or scan of primary index, it
+       * returns ybctid of the base table. In case of secondary index only scan,
+       * it returns the ybctid of the index.
+       */
       testDocdbResultWidhEstimationHelper(stmt, "SELECT 0 FROM pg_class",
         "pg_class", 15);
       testDocdbResultWidhEstimationHelper(stmt,
@@ -514,6 +547,32 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
       testDocdbResultWidhEstimationHelper(stmt,
         "/*+ IndexOnlyScan(pg_class pg_class_tblspc_relfilenode_index) */ SELECT 0 FROM pg_class",
         "pg_class", 33);
+
+      /*
+       * #21828: Result width was estimated to be 0 in queries where no column
+       *         is projected.
+       * Apart from the queries covered above, no column is projected in the
+       * following queries either and DocDB returns ybctid. This was missed
+       * earlier due to the corner case with UNION ALL.
+       */
+      testDocdbResultWidhEstimationHelperAppendPlans(stmt, "SELECT 0 FROM pg_class" +
+        " UNION ALL SELECT 0",
+        "pg_class", 15);
+      testDocdbResultWidhEstimationHelperAppendPlans(stmt,
+        "/*+ IndexOnlyScan(pg_class pg_class_relname_nsp_index) */ SELECT 0 FROM pg_class" +
+        " UNION ALL SELECT 0",
+        "pg_class", 93);
+      testDocdbResultWidhEstimationHelperAppendPlans(stmt,
+        "/*+ IndexOnlyScan(pg_class pg_class_tblspc_relfilenode_index) */ SELECT 0 FROM pg_class" +
+        " UNION ALL SELECT 0",
+        "pg_class", 33);
+
+      /*
+       * count(*) is pushed down to DocDB and DocDB returns the result of type
+       * INT which is 8 bytes and 1 byte for null indicator.
+       */
+      testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt, "SELECT count(*) FROM pg_class",
+        "pg_class", 9);
     }
   }
 

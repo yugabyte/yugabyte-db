@@ -63,8 +63,6 @@ DEFINE_test_flag(bool, exit_unfinished_merging, false,
 
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
-
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 
 using namespace std::placeholders;
@@ -259,14 +257,13 @@ Status XClusterInboundReplicationGroupSetupTask::FirstStep() {
     RETURN_NOT_OK(GetAutoFlagConfigVersionIfCompatible());
   }
 
-  if (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication &&
-      !is_alter_replication_) {
+  if (data_.automatic_ddl_mode && !is_alter_replication_) {
     // Ensure sequences_data table has been created.
     // Skip for alter replication as the table should already have been created on initial setup.
     auto local_client = master_.client_future();
     RETURN_NOT_OK(tserver::CreateSequencesDataTable(
         local_client.get(), CoarseMonoClock::now() +
-        MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
+                                MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
   }
 
   ScheduleNextStep(
@@ -282,20 +279,28 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
   if (data_.automatic_ddl_mode) {
     for (const auto& namespace_id : data_.target_namespace_ids) {
       auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
-      Synchronizer sync;
+      bool is_switchover = xcluster_manager_.IsNamespaceInAutomaticModeSource(namespace_id);
+
       LOG_WITH_PREFIX(INFO) << "Setting up DDL replication extension for namespace " << namespace_id
-                            << " (" << namespace_name << ")";
+                            << " (" << namespace_name << ")"
+                            << (is_switchover ? " as part of a switchover" : "");
+      if (!is_switchover) {
+        // For regular setup cases, we want to clean up any existing state.
+        Synchronizer sync;
+        RETURN_NOT_OK(master::DropDDLReplicationExtensionIfExists(
+            catalog_manager_, namespace_id, sync.AsStdStatusCallback()));
+        RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to drop xCluster DDL replication extension");
+      }
+      // Set up the extension and set our role as a target to prevent writes.
+      Synchronizer sync;
       RETURN_NOT_OK(master::SetupDDLReplicationExtension(
           catalog_manager_, namespace_name, XClusterDDLReplicationRole::kTarget,
-          CoarseMonoClock::now() +
-              MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
           sync.AsStdStatusCallback()));
       RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to setup xCluster DDL replication extension");
     }
   }
 
-  if (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication &&
-      !is_alter_replication_) {
+  if (data_.automatic_ddl_mode && !is_alter_replication_) {
     ScheduleNextStep(
         std::bind(
             &XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData, shared_from(this)),
@@ -607,7 +612,7 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateTableListForDbScoped() 
     auto table_designators = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(
         catalog_manager_, namespace_id,
         /*include_sequences_data=*/
-        (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication)));
+        data_.automatic_ddl_mode));
 
     std::vector<TableId> missing_tables;
 

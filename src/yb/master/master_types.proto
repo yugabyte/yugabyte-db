@@ -231,3 +231,8 @@ message TServerMetricsPB {
   repeated PathMetrics path_metrics = 8;
   optional bool disable_tablet_split_if_default_ttl = 9;
 }
+
+message YSQLLeaseInfoPB {
+  optional bool is_live = 1;
+  optional uint64 lease_epoch = 2;
+}

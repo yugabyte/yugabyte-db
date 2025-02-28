@@ -48,6 +48,9 @@ DEFINE_RUNTIME_uint64(vector_index_task_pool_size, 1000,
                       "Pool is just used to avoid memory allocations and does not limit the total "
                       "number of tasks.");
 
+DEFINE_RUNTIME_bool(vector_index_dump_stats, false,
+                    "Whether to dump stats related to vector index search.");
+
 DEFINE_test_flag(bool, vector_index_skip_update_metadata_during_shutdown, false,
                  "Whether VectorLSM metadata update should be skipped after shutdown has been "
                  "initiated");
@@ -606,6 +609,27 @@ void MergeChunkResults(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+auto VectorLSM<Vector, DistanceResult>::AllIndexes() const -> Result<std::vector<VectorIndexPtr>> {
+  // TODO(vector_index) Optimize memory allocation.
+  std::vector<VectorIndexPtr> result;
+  {
+    SharedLock lock(mutex_);
+    RETURN_NOT_OK(failed_status_);
+
+    result.reserve(1 + immutable_chunks_.size());
+    if (mutable_chunk_) {
+      result.push_back(mutable_chunk_->index);
+    }
+    for (const auto& chunk : immutable_chunks_) {
+      if (chunk->index) {
+        result.push_back(chunk->index);
+      }
+    }
+  }
+  return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 auto VectorLSM<Vector, DistanceResult>::Search(
     const Vector& query_vector, const SearchOptions& options) const ->
     Result<typename VectorLSM<Vector, DistanceResult>::SearchResults> {
@@ -613,34 +637,54 @@ auto VectorLSM<Vector, DistanceResult>::Search(
     return SearchResults();
   }
 
-  // TODO(vector_index) Optimize memory allocation.
-  std::vector<VectorIndexPtr> indexes;
-  {
-    SharedLock lock(mutex_);
-    RETURN_NOT_OK(failed_status_);
+  auto indexes = VERIFY_RESULT(AllIndexes());
+  bool dump_stats = FLAGS_vector_index_dump_stats;
 
-    indexes.reserve(1 + immutable_chunks_.size());
-    if (mutable_chunk_) {
-      indexes.push_back(mutable_chunk_->index);
-    }
-    for (const auto& chunk : immutable_chunks_) {
-      if (chunk->index) {
-        indexes.push_back(chunk->index);
-      }
-    }
-  }
-
+  auto start_registry_search = dump_stats ? MonoTime::Now() : MonoTime();
   auto intermediate_results = insert_registry_->Search(query_vector, options);
   VLOG_WITH_PREFIX_AND_FUNC(4)
       << "Results from registry: " << AsString(intermediate_results);
+  size_t num_results_from_insert_registry = intermediate_results.size();
 
+  size_t sum_num_found_entries = 0;
+  auto start_chunks_search = dump_stats ? MonoTime::Now() : MonoTime();
   for (const auto& index : indexes) {
     auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options));
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Chunk results: " << AsString(chunk_results);
+    sum_num_found_entries += chunk_results.size();
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
+  auto stop_search = dump_stats ? MonoTime::Now() : MonoTime();
+
+  LOG_IF_WITH_PREFIX_AND_FUNC(INFO, dump_stats)
+      << "VI_STATS: Number of chunks: " << indexes.size() << ", entries found in all chunks: "
+      << sum_num_found_entries << ", entries found in insert registry: "
+      << num_results_from_insert_registry << ", time to search insert registry: "
+      << (start_chunks_search - start_registry_search).ToMicroseconds()
+      << "us, time to search index chunks: " << (stop_search - start_chunks_search).ToMicroseconds()
+      << "us";
 
   return intermediate_results;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Result<bool> VectorLSM<Vector, DistanceResult>::HasVectorId(
+    const vector_index::VectorId& vector_id) const {
+  // Search in insert registry is not implemented, so just wait until all entries are inserted.
+  while (insert_registry_->HasRunningTasks()) {
+    std::this_thread::sleep_for(10ms);
+  }
+  auto indexes = VERIFY_RESULT(AllIndexes());
+  for (const auto& index : indexes) {
+    auto vector_res = index->GetVector(vector_id);
+    if (vector_res.ok()) {
+      return true;
+    }
+    if (!vector_res.status().IsNotFound()) {
+      return vector_res.status();
+    }
+  }
+  return false;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

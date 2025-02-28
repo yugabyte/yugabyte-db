@@ -34,7 +34,6 @@ class MasterBackupServiceImpl : public MasterBackupIf, public MasterServiceBase 
       (CreateSnapshot)
       (ListSnapshots)
       (ListSnapshotRestorations)
-      (RestoreSnapshot)
       (DeleteSnapshot)
       (AbortSnapshotRestore)
       (ImportSnapshotMeta)
@@ -42,6 +41,11 @@ class MasterBackupServiceImpl : public MasterBackupIf, public MasterServiceBase 
       (ListSnapshotSchedules)
       (DeleteSnapshotSchedule)
       (EditSnapshotSchedule)
+  )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(
+      CatalogManager,
+      (RestoreSnapshot)
       (RestoreSnapshotSchedule)
   )
 

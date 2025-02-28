@@ -536,7 +536,7 @@ export const MigrationList: FC<MigrationListProps> = ({
                     value={sourceEngine}
                     onChange={(e) => setSourceEngine(e.target.value)}
                   >
-                    <MenuItem value="">All</MenuItem>
+                    <MenuItem value="">{t("common.all")}</MenuItem>
                     <Divider className={classes.divider} />
                     <MenuItem value="PostgreSQL">PostgreSQL</MenuItem>
                     <MenuItem value="MySQL">MySQL</MenuItem>

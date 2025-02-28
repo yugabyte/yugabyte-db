@@ -85,7 +85,6 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | enable_ysql_conn_mgr_stats | Enable statistics collection from YSQL Connection Manager. These statistics are displayed at the endpoint `<ip_address_of_cluster>:13000/connections`. | true |
 | ysql_conn_mgr_idle_time | Specifies the maximum idle time (in seconds) allowed for database connections created by YSQL Connection Manager. If a database connection remains idle without serving a client connection for a duration equal to, or exceeding this value, it is automatically closed by YSQL Connection Manager. | 60 |
 | ysql_conn_mgr_max_client_connections | Maximum number of concurrent client connections allowed. | 10000 |
-| ysql_conn_mgr_max_conns_per_db | Maximum number of concurrent database connections YSQL Connection Manager can create per pool. If set to zero, get maximum connections from the `pgconf` file. 10% of connections are allocated for control connections, and 90% for global connections. | 0 |
 | ysql_conn_mgr_min_conns_per_db | Minimum number of physical connections that is present in the pool. This limit is not considered while closing a broken physical connection. | 1 |
 | ysql_conn_mgr_num_workers | Number of worker threads used by YSQL Connection Manager. If set to 0, the number of worker threads will be half of the number of CPU cores. | 0 |
 | ysql_conn_mgr_stats_interval | Interval (in seconds) for updating the YSQL Connection Manager statistics. | 1 |
@@ -102,9 +101,9 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_tcp_keepalive_keep_interval | TCP keepalive interval (in seconds) in YSQL Connection Manager. Only applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled. | 75 |
 | ysql_conn_mgr_tcp_keepalive_probes | Number of TCP keepalive probes in YSQL Connection Manager. Only applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled. | 9 |
 | ysql_conn_mgr_tcp_keepalive_usr_timeout | TCP user timeout (in milliseconds) in YSQL Connection Manager. Only applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled. | 9 |
-| ysql_conn_mgr_control_connection_pool_size | Maximum number of concurrent control connections in YSQL Connection Manager. If set to zero, calculated as 0.1 * ysql_max_connections. | 0 |
 | ysql_conn_mgr_pool_timeout | Server pool wait timeout (in milliseconds) in YSQL Connection Manager. This is the time clients wait for an available server, after which they are disconnected. If set to zero, clients wait for server connections indefinitely. | 0 |
 | ysql_conn_mgr_sequence_support_mode | Sequence support mode when YSQL connection manager is enabled. When set to  'pooled_without_curval_lastval', the currval() and lastval() functions are not supported. When set to 'pooled_with_curval_lastval', the currval() and lastval() functions are supported. For both settings, monotonic sequence order is not guaranteed if `ysql_sequence_cache_method` is set to `connection`. To also support monotonic order, set this flag to `session`. | pooled_without_curval_lastval |
+| ysql_conn_mgr_optimized_extended_query_protocol | Enables optimization of [extended-query protocol](https://www.postgresql.org/docs/current/protocol-overview.html#PROTOCOL-QUERY-CONCEPTS) to provide better performance; note that while optimization is enabled, you may have correctness issues if you alter the schema of objects used in prepared statements. If set to false, extended-query protocol handling is always fully correct but unoptimized. | true |
 
 ## Limitations
 
@@ -115,7 +114,6 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 - Currently, you can't apply custom configurations to individual pools. The YSQL Connection Manager configuration applies to all pools.
 - When YSQL Connection Manager is enabled, the backend PID stored using JDBC drivers may not be accurate. This does not affect backend-specific functionalities (for example, cancel queries), but this PID should not be used to identify the backend process.
 - By default, `currval` and `nextval` functions do not work when YSQL Connection Manager is enabled. They can be supported with the help of the `ysql_conn_mgr_sequence_support_mode` flag.
-- Queries using the extended query protocol may exhibit unexpected behavior with certain drivers (including libpq (C), Npgsql (C#), lib/pq (Go)), though extensive testing shows compatibility with the JDBC and psycopg/psycopg2 drivers. [#24898](https://github.com/yugabyte/yugabyte-db/issues/24898)
 - YSQL Connection Manager does not yet support IPv6 connections. [#24765](https://github.com/yugabyte/yugabyte-db/issues/24765)
 - Currently, [auth-method](https://docs.yugabyte.com/preview/secure/authentication/host-based-authentication/#auth-method) `cert` is not supported for host-based authentication. [#20658](https://github.com/yugabyte/yugabyte-db/issues/20658)
 - Although the use of auth-backends (`ysql_conn_mgr_use_auth_backend=true`) to authenticate logical connections can result in higher connection acquisition latencies, using auth-passthrough (`ysql_conn_mgr_use_auth_backend=false`) may not be suitable depending on your workload. Contact the YSQL Connection Manager Development team before setting ysql_conn_mgr_use_auth_backend to false. [#25313](https://github.com/yugabyte/yugabyte-db/issues/25313)

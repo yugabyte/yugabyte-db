@@ -177,7 +177,7 @@ Default: `""`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
 
@@ -332,7 +332,7 @@ Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-def
 
 ## Raft flags
 
-For a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
+With the exception of flags that have different defaults for yb-master vs yb-tserver (for example, --evict_failed_followers), for a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -430,7 +430,7 @@ Default: `64`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
-Default: The default value in `2.18.1` is `-1` - feature is disabled by default. The default value starting from `2.19.1` is `524288` (0.5 MB) - feature is enabled by default.
+Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
 
 ## Sharding flags
 
@@ -1847,6 +1847,19 @@ Default: 1024
 {{<tags/feature/ea>}} When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
 
 Default: true
+
+##### yb_insert_on_conflict_read_batch_size
+
+{{<tags/feature/ea idea="1455">}} Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+
+- temporary relations
+- foreign relations
+- system relations
+- relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
+
+The higher the number, the more batching is done. 1024 is recommended.
+
+Default: 0 (disabled)
 
 ##### yb_read_from_followers
 

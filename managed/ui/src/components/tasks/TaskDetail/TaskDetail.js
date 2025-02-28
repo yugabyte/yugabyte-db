@@ -13,13 +13,14 @@ import _ from 'lodash';
 import { Highlighter } from '../../../helpers/Highlighter';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'highlight.js/styles/github.css';
-import { toast } from 'react-toastify';
 import { timeFormatter } from '../../../utils/TableFormatters';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { calculateDuration } from '../../backupv2/common/BackupUtils';
 import { SoftwareUpgradeTaskType } from '../../universes/helpers/universeHelpers';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { handleServerError } from '../../../utils/errorHandlingUtils';
+import { api } from '../../../redesign/helpers/api';
 
 class TaskDetail extends Component {
   constructor(props) {
@@ -36,33 +37,25 @@ class TaskDetail extends Component {
   };
 
   retryTaskClicked = (currentTaskUUID) => {
-    this.props.retryCurrentTask(currentTaskUUID).then((response) => {
-      const status = response?.payload?.response?.status || response?.payload?.status;
-      if (status === 200 || status === 201) {
+    api
+      .retryTask(currentTaskUUID)
+      .then(() => {
         browserHistory.push('/tasks');
-      } else {
-        const taskResponse = response?.payload?.response;
-        const toastMessage = taskResponse?.data?.error
-          ? taskResponse?.data?.error
-          : taskResponse?.statusText;
-        toast.error(toastMessage);
-      }
-    });
+      })
+      .catch((error) => {
+        handleServerError(error, { customErrorLabel: 'Retry Task Failed' });
+      });
   };
 
   rollbackTaskClicked = (currentTaskUUID) => {
-    this.props.rollbackCurrentTask(currentTaskUUID).then((response) => {
-      const status = response?.payload?.response?.status || response?.payload?.status;
-      if (status === 200 || status === 201) {
+    api
+      .rollbackTask(currentTaskUUID)
+      .then(() => {
         browserHistory.push('/tasks');
-      } else {
-        const taskResponse = response?.payload?.response;
-        const toastMessage = taskResponse?.data?.error
-          ? taskResponse?.data?.error
-          : taskResponse?.statusText;
-        toast.error(toastMessage);
-      }
-    });
+      })
+      .catch((error) => {
+        handleServerError(error, { customErrorLabel: 'Rollback Task Failed' });
+      });
   };
 
   componentDidMount() {

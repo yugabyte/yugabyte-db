@@ -68,6 +68,8 @@ DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint32(default_snapshot_retention_hours);
 DECLARE_bool(TEST_tablet_verify_flushed_frontier_after_modifying);
 DECLARE_bool(TEST_treat_hours_as_milliseconds_for_snapshot_expiry);
+DECLARE_bool(TEST_fail_tserver_snapshot_op);
+DECLARE_int32(unresponsive_ts_rpc_retry_limit);
 
 namespace yb {
 
@@ -165,30 +167,32 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     return &controller_;
   }
 
-  void CheckAllSnapshots(
+  Status CheckAllSnapshots(
       const std::map<TxnSnapshotId, SysSnapshotEntryPB::State>& snapshot_info) {
     ListSnapshotsRequestPB list_req;
     ListSnapshotsResponsePB list_resp;
 
     LOG(INFO) << "Requested available snapshots.";
-    const Status s = proxy_backup_->ListSnapshots(
-        list_req, &list_resp, ResetAndGetController());
+    RETURN_NOT_OK(proxy_backup_->ListSnapshots(list_req, &list_resp, ResetAndGetController()));
 
-    ASSERT_TRUE(s.ok());
     SCOPED_TRACE(list_resp.DebugString());
-    ASSERT_FALSE(list_resp.has_error());
+    SCHECK(!list_resp.has_error(), IllegalState, "Expected response without error");
 
     LOG(INFO) << "Number of snapshots: " << list_resp.snapshots_size();
-    ASSERT_EQ(list_resp.snapshots_size(), snapshot_info.size());
+    SCHECK_EQ(list_resp.snapshots_size(), snapshot_info.size(), IllegalState,
+              "Wrong number of snapshots");
 
     for (int i = 0; i < list_resp.snapshots_size(); ++i) {
       LOG(INFO) << "Snapshot " << i << ": " << list_resp.snapshots(i).DebugString();
-      auto id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(list_resp.snapshots(i).id()));
+      auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(list_resp.snapshots(i).id()));
 
       auto it = snapshot_info.find(id);
-      ASSERT_NE(it, snapshot_info.end()) << "Unknown snapshot: " << id;
-      ASSERT_EQ(list_resp.snapshots(i).entry().state(), it->second);
+      SCHECK(it != snapshot_info.end(), IllegalState,
+          Format("Found unexpected snapshot $0 in response", id.ToString()));
+      SCHECK_EQ(list_resp.snapshots(i).entry().state(), it->second, IllegalState,
+          Format("Wrong state for snapshot $0", id));
     }
+    return Status::OK();
   }
 
   template <typename THandler>
@@ -292,10 +296,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     // Check the snapshot creation is complete.
     EXPECT_OK(WaitForSnapshotOpDone("IsCreateSnapshotDone", snapshot_id));
 
-    CheckAllSnapshots(
-        {
-            { snapshot_id, SysSnapshotEntryPB::COMPLETE }
-        });
+    EXPECT_OK(CheckAllSnapshots({{ snapshot_id, SysSnapshotEntryPB::COMPLETE }}));
 
     return snapshot_id;
   }
@@ -516,7 +517,7 @@ TEST_F(SnapshotTest, CreateSnapshot) {
     }
   }
 
-  CheckAllSnapshots({});
+  ASSERT_OK(CheckAllSnapshots({}));
 
   // Check CreateSnapshot().
   const auto snapshot_id = CreateSnapshot();
@@ -700,7 +701,7 @@ TEST_F(SnapshotTest, RestoreSnapshot) {
 
   workload.WaitInserted(100);
 
-  CheckAllSnapshots({});
+  ASSERT_OK(CheckAllSnapshots({}));
 
   int64_t min_inserted = workload.rows_inserted();
   // Check CreateSnapshot().
@@ -733,10 +734,7 @@ TEST_F(SnapshotTest, RestoreSnapshot) {
   // Check the snapshot restoring is complete.
   ASSERT_OK(WaitForSnapshotRestorationDone(restoration_id));
 
-  CheckAllSnapshots(
-      {
-          { snapshot_id, SysSnapshotEntryPB::COMPLETE }
-      });
+  ASSERT_OK(CheckAllSnapshots({{ snapshot_id, SysSnapshotEntryPB::COMPLETE }}));
 
   client::TableHandle table;
   ASSERT_OK(table.Open(kTableName, client_.get()));
@@ -812,7 +810,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   workload.Start();
   workload.WaitInserted(100);
 
-  CheckAllSnapshots({});
+  ASSERT_OK(CheckAllSnapshots({}));
 
   Result<bool> result_exist = client_->TableExists(kTableName);
   ASSERT_OK(result_exist);
@@ -826,10 +824,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   // Check the snapshot creating is complete.
   ASSERT_OK(WaitForSnapshotOpDone("IsCreateSnapshotDone", snapshot_id));
 
-  CheckAllSnapshots(
-      {
-          { snapshot_id, SysSnapshotEntryPB::COMPLETE }
-      });
+  ASSERT_OK(CheckAllSnapshots({{ snapshot_id, SysSnapshotEntryPB::COMPLETE }}));
 
   ListSnapshotsRequestPB list_req;
   ListSnapshotsResponsePB list_resp;
@@ -946,6 +941,28 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   ASSERT_TRUE(result_exist.get());
 
   LOG(INFO) << "Test ImportSnapshotMeta finished.";
+}
+
+TEST_F(SnapshotTest, RescheduleOperationsForExpiredSnapshot) {
+  // Regression test for GitHub issue #25628. Checks that we resend delete snapshot RPCs for expired
+  // snapshots, even if they are already marked as DELETING.
+
+  const auto kSnapshotRetentionMs = 2000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_unresponsive_ts_rpc_retry_limit) = 1; // speed up test
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_treat_hours_as_milliseconds_for_snapshot_expiry) = true;
+  SetupWorkload(); // Used to create table
+
+  const auto snapshot_id = CreateSnapshot(kSnapshotRetentionMs);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tserver_snapshot_op) = true;
+  ASSERT_OK(WaitFor([&]() {
+    return CheckAllSnapshots({{snapshot_id, SysSnapshotEntryPB::DELETING}}).ok();
+  }, 30s * kTimeMultiplier, "Wait for snapshot to be marked as DELETING"));
+  LOG(INFO) << "Sleeping until snapshot deletion task has a chance to run and fail";
+  SleepFor(1s * kTimeMultiplier);
+
+  // Wait for the snapshot to be DELETED.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tserver_snapshot_op) = false;
+  ASSERT_OK(WaitForSnapshotOpDone("IsSnapshotDeleted", snapshot_id));
 }
 
 class RestoreAndDeleteValidationTest : public SnapshotTest {

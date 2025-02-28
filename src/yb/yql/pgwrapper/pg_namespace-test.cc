@@ -171,7 +171,7 @@ TEST_F(PgNamespaceTest, CreateNamespaceFromTemplateLeaderFailover) {
   ASSERT_OK(StepDown(
       new_leader->tablet_peer(), old_leader->permanent_uuid(), ForceStepDown::kFalse));
 
-  // Wait for the sys catalog load to start. It should get blocked on the leader_lock_ that is held
+  // Wait for the sys catalog load to start. It should get blocked on the leader_mutex_ that is held
   // by ProcessPendingNamespace.
   SleepFor(2s);
   ASSERT_OK(SET_FLAG(TEST_pause_before_upsert_ysql_sys_table, false));

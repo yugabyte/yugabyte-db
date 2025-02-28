@@ -15,6 +15,7 @@
 
 #include <optional>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/util/status_fwd.h"
 
@@ -24,6 +25,9 @@ struct PgObjectId;
 struct YsqlFullTableName;
 
 namespace tserver {
+class PgCreateTable;
+class PgCreateTableRequestPB;
+
 class TserverXClusterContextIf {
  public:
   TserverXClusterContextIf() = default;
@@ -32,14 +36,21 @@ class TserverXClusterContextIf {
   virtual Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const = 0;
 
   virtual bool IsReadOnlyMode(const NamespaceId& namespace_id) const = 0;
+  virtual bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const = 0;
 
   virtual bool SafeTimeComputationRequired() const = 0;
   virtual bool SafeTimeComputationRequired(const NamespaceId& namespace_id) const = 0;
 
-  virtual Status SetSourceTableMappingForCreateTable(
-      const YsqlFullTableName& table_name, const PgObjectId& producer_table_id) = 0;
-  virtual void ClearSourceTableMappingForCreateTable(const YsqlFullTableName& table_name) = 0;
-  virtual PgObjectId GetXClusterSourceTableId(const YsqlFullTableName& table_name) const = 0;
+  virtual void UpdateTargetNamespacesInAutomaticModeSet(
+      const std::unordered_set<NamespaceId>& target_namespaces_in_automatic_mode) = 0;
+
+  virtual Status SetSourceTableInfoMappingForCreateTable(
+      const YsqlFullTableName& table_name, const PgObjectId& source_table_id,
+      ColocationId colocation_id, const HybridTime& backfill_time_opt) = 0;
+  virtual void ClearSourceTableInfoMappingForCreateTable(const YsqlFullTableName& table_name) = 0;
+
+  virtual void PrepareCreateTableHelper(
+      const PgCreateTableRequestPB& req, PgCreateTable& helper) const = 0;
 };
 
 }  // namespace tserver

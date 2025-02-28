@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "yb/common/common.pb.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
@@ -122,10 +123,6 @@ DEFINE_UNKNOWN_uint64(
     ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
 
-DEFINE_test_flag(bool, ysql_suppress_ybctid_corruption_details, false,
-                 "Whether to show less details on ybctid corruption error status message.  Useful "
-                 "during tests that require consistent output.");
-
 DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
                     "Whether to enable packed row for full row update.");
 
@@ -141,6 +138,7 @@ DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
                     "Whether to skip filter check during vector index search.");
 
 DECLARE_uint64(rpc_max_message_size);
+DECLARE_bool(vector_index_dump_stats);
 
 namespace yb::docdb {
 
@@ -683,7 +681,7 @@ Result<FetchResult> FetchTableRow(
   switch(fetch_result) {
     case FetchResult::NotFound: {
       if (index && index->delayed_failure.ok()) {
-        const auto* fmt = FLAGS_TEST_ysql_suppress_ybctid_corruption_details
+        const auto* fmt = FLAGS_TEST_hide_details_for_pg_regress
             ? "ybctid not found in indexed table"
             : "$0 not found in indexed table. Index table id is $1, row $2";
         index->delayed_failure = STATUS_FORMAT(
@@ -901,6 +899,12 @@ class PgsqlVectorFilter {
       : iter_(table_iter) {
   }
 
+  ~PgsqlVectorFilter() {
+    LOG_IF(INFO, FLAGS_vector_index_dump_stats && row_)
+        << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", found: "
+        << num_found_entries_ << ", accepted: " << num_accepted_entries_;
+  }
+
   Status Init(const PgsqlReadOperationData& data) {
     if (FLAGS_vector_index_skip_filter_check) {
       return Status::OK();
@@ -927,6 +931,7 @@ class PgsqlVectorFilter {
     if (!row_) {
       return true;
     }
+    ++num_checked_entries_;
     auto key = dockv::VectorIdKey(vector_id);
     // TODO(vector_index) handle failure
     auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key.AsSlice()));
@@ -945,12 +950,17 @@ class PgsqlVectorFilter {
     if (fetch_result != FetchResult::Found) {
       return false;
     }
+    ++num_found_entries_;
     auto vector_value = row_->GetValueByIndex(index_column_index_);
     if (!vector_value) {
       return false;
     }
     auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
-    return vector_id.AsSlice() == encoded_value.id;
+    if (vector_id.AsSlice() != encoded_value.id) {
+      return false;
+    }
+    ++num_accepted_entries_;
+    return true;
   }
  private:
   FilteringIterator iter_;
@@ -958,6 +968,9 @@ class PgsqlVectorFilter {
   size_t index_column_index_ = std::numeric_limits<size_t>::max();
   std::optional<dockv::PgTableRow> row_;
   bool need_refresh_ = false;
+  size_t num_checked_entries_ = 0;
+  size_t num_found_entries_ = 0;
+  size_t num_accepted_entries_ = 0;
 };
 
 std::string DebugKeySliceToString(Slice key) {

@@ -38,6 +38,7 @@
 #include "utils/guc.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
+#include "utils/tuplestore.h"
 #include "utils/typcache.h"
 
 #include "yb/yql/pggate/util/ybc_util.h"
@@ -73,6 +74,13 @@
 #define IS_NON_EMPTY_STR_FLAG(flag) (flag != NULL && flag[0] != '\0')
 
 /*
+ * Must be kept the same as CatCacheMsgs and RelCacheMsgs in inval.c. YB has
+ * added static_assert to ensure that.
+ */
+#define YB_CATCACHE_MSGS (0)
+#define YB_RELCACHE_MSGS (1)
+
+/*
  * Utility to get the current cache version that accounts for the fact that
  * during a DDL we automatically apply the pending syscatalog changes to
  * the local cache (of the current session).
@@ -84,8 +92,11 @@
 extern uint64_t YBGetActiveCatalogCacheVersion();
 
 extern uint64_t YbGetCatalogCacheVersion();
+extern uint64_t YbGetNewCatalogVersion();
 
 extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
+extern void YbResetNewCatalogVersion();
+extern void YbSetNewCatalogVersion(uint64_t new_version);
 
 extern void YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version);
 
@@ -368,14 +379,6 @@ extern void YBReportTypeNotSupported(Oid type_id);
  */
 extern void YBReportIfYugaByteEnabled();
 
-#define YB_REPORT_TYPE_NOT_SUPPORTED(type_id) do { \
-		Oid computed_type_id = type_id; \
-		ereport(ERROR, \
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED), \
-					errmsg("type not yet supported in Yugabyte: %d (%s)", \
-						computed_type_id, YBPgTypeOidToStr(computed_type_id)))); \
-	} while (0)
-
 /*
  * Determines if PostgreSQL should restart all child processes if one of them
  * crashes. This behavior usually shows up in the log like so:
@@ -598,7 +601,6 @@ extern bool yb_enable_nop_alter_role_optimization;
  * Compatibility option to ignore FREEZE with COPY FROM.
  */
 extern bool yb_ignore_freeze_with_copy;
-extern bool yb_disable_catalog_version_check;
 
 /* ------------------------------------------------------------------------------ */
 /* GUC variables needed by YB via their YB pointers. */
@@ -699,6 +701,12 @@ extern bool yb_test_table_rewrite_keep_old_table;
 extern bool yb_test_collation;
 
 /*
+ * If set to true, fill padding bytes with zeros when creating a shared
+ * invalidation message.
+ */
+extern bool yb_test_inval_message_portability;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -788,8 +796,10 @@ extern const char *YbBitmapsetToString(Bitmapset *bms);
  */
 bool		YBIsInitDbAlreadyDone();
 
-int			YBGetDdlNestingLevel();
-void		YbSetIsGlobalDDL();
+extern int YBGetDdlNestingLevel();
+extern NodeTag YBGetDdlOriginalNodeTag();
+extern void YbSetIsGlobalDDL();
+extern void YbIncrementPgTxnsCommitted();
 
 typedef enum YbSysCatalogModificationAspect
 {
@@ -829,6 +839,7 @@ extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations();
+extern void YBAdjustOperationsBuffering(int multiple);
 
 bool		YBEnableTracing();
 bool		YBReadFromFollowersEnabled();
@@ -1279,5 +1290,13 @@ extern AttrNumber YbGetIndexAttnum(Relation index, AttrNumber table_attno);
 extern bool yb_ysql_conn_mgr_superuser_existed;
 
 extern Oid	YbGetDatabaseOidToIncrementCatalogVersion();
+
+extern bool yb_default_collation_resolved;
+
+extern bool YbInvalidationMessagesTableExists();
+
+extern bool yb_is_calling_internal_function_for_ddl;
+
+extern char *YbGetPotentiallyHiddenOidText(Oid oid);
 
 #endif							/* PG_YB_UTILS_H */

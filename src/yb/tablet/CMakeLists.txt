@@ -1,4 +1,4 @@
-  # Licensed to the Apache Software Foundation (ASF) under one
+# Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
 # regarding copyright ownership.  The ASF licenses this file
@@ -40,7 +40,6 @@ set(TABLET_SRCS
   remove_intents_task.cc
   restore_util.cc
   running_transaction.cc
-  tablet_snapshots.cc
   tablet.cc
   tablet_bootstrap.cc
   tablet_bootstrap_if.cc
@@ -50,6 +49,8 @@ set(TABLET_SRCS
   tablet_metrics.cc
   tablet_peer_mm_ops.cc
   tablet_peer.cc
+  tablet_snapshots.cc
+  tablet_vector_indexes.cc
   transaction_coordinator.cc
   transaction_loader.cc
   transaction_participant.cc

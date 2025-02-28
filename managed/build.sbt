@@ -222,11 +222,12 @@ libraryDependencies ++= Seq(
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
+  "com.google.protobuf" % "protobuf-java-util" % "3.20.3",
   "io.kamon" %% "kamon-bundle" % "2.5.9",
   "io.kamon" %% "kamon-prometheus" % "2.5.9",
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
-  "org.apache.directory.api" % "api-all" % "2.1.6",
+  "org.apache.directory.api" % "api-all" % "2.1.7",
   "io.fabric8" % "crd-generator-apt" % "6.8.0",
   "io.fabric8" % "kubernetes-client" % "6.8.0",
   "io.fabric8" % "kubernetes-client-api" % "6.8.0",
@@ -928,7 +929,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.98-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.99-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b1"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 

@@ -234,7 +234,21 @@ static const FormData_pg_attribute a6 = {
 	.attislocal = true,
 };
 
-static const FormData_pg_attribute *SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6};
+static const FormData_pg_attribute a7 = {
+	.attname = {"ybctid"},
+	.atttypid = BYTEAOID,
+	.attlen = -1,
+	.attnum = YBTupleIdAttributeNumber,
+	.attcacheoff = -1,
+	.atttypmod = -1,
+	.attbyval = false,
+	.attalign = TYPALIGN_INT,
+	.attstorage = TYPSTORAGE_EXTENDED,
+	.attnotnull = true,
+	.attislocal = true,
+};
+
+static const FormData_pg_attribute *SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7};
 
 /*
  * This function returns a Form_pg_attribute pointer for a system attribute.
@@ -1375,7 +1389,13 @@ heap_create_with_catalog(const char *relname,
 				relid = binary_upgrade_next_heap_pg_class_oid;
 				binary_upgrade_next_heap_pg_class_oid = InvalidOid;
 
-				if (RELKIND_HAS_STORAGE(relkind) && !yb_binary_restore)
+				/*
+				 * YB: The parent partition has DocDB storage, so we preserve
+				 * its relfilenode when upgrading.
+				 */
+				if ((RELKIND_HAS_STORAGE(relkind) ||
+					 (IsYugaByteEnabled() && relkind == RELKIND_PARTITIONED_TABLE))
+					&& !yb_binary_restore)
 				{
 					if (!OidIsValid(binary_upgrade_next_heap_pg_class_relfilenode))
 						ereport(ERROR,

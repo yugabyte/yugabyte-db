@@ -50,7 +50,9 @@
 #include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_fk_reference_cache.h"
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
@@ -123,7 +125,7 @@ class PgApiImpl {
   void ResetCatalogReadTime();
 
   // Initialize a session to process statements that come from the same client connection.
-  Status InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
+  void InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
 
   uint64_t GetSessionID() const;
 
@@ -145,7 +147,7 @@ class PgApiImpl {
   Status GetTabledescFromCurrentPgMemctx(size_t table_desc_id, PgTableDesc **handle);
 
   // Invalidate the sessions table cache.
-  Status InvalidateCache();
+  Status InvalidateCache(uint64_t min_ysql_catalog_version);
 
   // Get the gflag TEST_ysql_disable_transparent_cache_refresh_retry.
   bool GetDisableTransparentCacheRefreshRetry();
@@ -519,6 +521,7 @@ class PgApiImpl {
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
   Status FlushBufferedOperations();
+  Status AdjustOperationsBuffering(int multiple = 1);
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -784,7 +787,8 @@ class PgApiImpl {
       const ReplicationSlotName& slot_name);
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
-      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const YbcReplicationSlotHashRange* slot_hash_range);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
@@ -802,8 +806,10 @@ class PgApiImpl {
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
 
-  Result<std::string> ExportSnapshot(const YbcPgTxnSnapshot& snapshot);
-  Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
+  Result<std::string> ExportSnapshot(
+      const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time);
+  Result<std::optional<YbcPgTxnSnapshot>> SetTxnSnapshot(
+      PgTxnSnapshotDescriptor snapshot_descriptor);
 
   bool HasExportedSnapshots() const;
   void ClearExportedTxnSnapshots();
@@ -832,6 +838,11 @@ class PgApiImpl {
       const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);
   Status ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode);
   Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
+
+  //----------------------------------------------------------------------------------------------
+  // Table Locks.
+  //----------------------------------------------------------------------------------------------
+  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
 
  private:
   class Interrupter;
@@ -883,6 +894,10 @@ class PgApiImpl {
   // Used as a snapshot of the tserver catalog version map prior to MyDatabaseId is resolved.
   std::unique_ptr<tserver::PgGetTserverCatalogVersionInfoResponsePB> catalog_version_info_;
   TupleIdBuilder tuple_id_builder_;
+  BufferingSettings buffering_settings_;
+  YbctidReaderProvider ybctid_reader_provider_;
+  PgFKReferenceCache fk_reference_cache_;
+  ExplicitRowLockBuffer explicit_row_lock_buffer_;
 };
 
 }  // namespace yb::pggate

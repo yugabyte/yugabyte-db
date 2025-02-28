@@ -13,7 +13,9 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
@@ -37,6 +39,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
@@ -55,9 +58,11 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
@@ -101,6 +106,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final RuntimeConfGetter confGetter;
   private final CustomerTaskManager customerTaskManager;
   private final UniverseActionsHandler universeActionsHandler;
+  private final YbcManager ybcManager;
   private final Set<UUID> universeReadySet;
   private final Map<String, String> universeDeletionReferenceMap;
   private final Map<String, UUID> universeTaskMap;
@@ -122,7 +128,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       RuntimeConfGetter confGetter,
       CustomerTaskManager customerTaskManager,
       OperatorUtils operatorUtils,
-      UniverseActionsHandler universeActionsHandler) {
+      UniverseActionsHandler universeActionsHandler,
+      YbcManager ybcManager) {
     this(
         client,
         informerFactory,
@@ -136,7 +143,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         confGetter,
         customerTaskManager,
         operatorUtils,
-        universeActionsHandler);
+        universeActionsHandler,
+        ybcManager);
   }
 
   @VisibleForTesting
@@ -153,7 +161,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       RuntimeConfGetter confGetter,
       CustomerTaskManager customerTaskManager,
       OperatorUtils operatorUtils,
-      UniverseActionsHandler universeActionsHandler) {
+      UniverseActionsHandler universeActionsHandler,
+      YbcManager ybcManager) {
 
     super(client, informerFactory);
     this.ybUniverseClient = client.resources(YBUniverse.class);
@@ -175,6 +184,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     this.universeTaskMap = new HashMap<>();
     this.operatorUtils = operatorUtils;
     this.universeActionsHandler = universeActionsHandler;
+    this.ybcManager = ybcManager;
   }
 
   private static String getWorkQueueKey(YBUniverse ybUniverse) {
@@ -802,6 +812,18 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                 getWorkQueueKey(ybUniverse), OperatorWorkQueue.ResourceAction.NO_OP, false);
             return;
           }
+          // Handle updating throttle params.
+        } else if (operatorUtils.isThrottleParamUpdate(universe, ybUniverse)) {
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          // TODO: We should probably update the universe status better here, but the
+          // KubernetesOperatorStatusUpdater currently doesn't have a good way to do this - all
+          // action updates are task based right now
+          updateThrottleParams(universe, ybUniverse);
+          kubernetesStatusUpdater.updateUniverseState(
+              KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.READY);
           // Case with new edits
         } else if (!StringUtils.equals(
             incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
@@ -1099,6 +1121,174 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           KubernetesResourceDetails.fromResource(ybUniverse),
           isCreate ? UniverseState.ERROR_CREATING : UniverseState.ERROR_UPDATING);
       throw e;
+    }
+  }
+
+  private void updateThrottleParams(Universe universe, YBUniverse ybUniverse) {
+    YbcThrottleParameters specParams = ybUniverse.getSpec().getYbcThrottleParameters();
+    Map<String, ThrottleParamValue> currentParamsMap =
+        ybcManager.getThrottleParams(universe.getUniverseUUID()).getThrottleParamsMap();
+    if (specParams == null) {
+      // create default spec params
+      specParams = new YbcThrottleParameters();
+    }
+    if (specParams.getMaxConcurrentDownloads() == null)
+      specParams.setMaxConcurrentDownloads(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    if (specParams.getMaxConcurrentUploads() == null)
+      specParams.setMaxConcurrentUploads(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    if (specParams.getPerDownloadNumObjects() == null)
+      specParams.setPerDownloadNumObjects(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    if (specParams.getPerUploadNumObjects() == null)
+      specParams.setPerUploadNumObjects(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    validateThrottleParams(specParams, currentParamsMap);
+    com.yugabyte.yw.forms.YbcThrottleParameters newParams =
+        new com.yugabyte.yw.forms.YbcThrottleParameters();
+    // We are casting a Long to an int, but this is only because the java code generated from the
+    // CRD uses Longs.
+    newParams.maxConcurrentDownloads = specParams.getMaxConcurrentDownloads().intValue();
+    newParams.maxConcurrentUploads = specParams.getMaxConcurrentUploads().intValue();
+    newParams.perDownloadNumObjects = specParams.getPerDownloadNumObjects().intValue();
+    newParams.perUploadNumObjects = specParams.getPerUploadNumObjects().intValue();
+    ybcManager.setThrottleParams(universe.getUniverseUUID(), newParams);
+  }
+
+  /**
+   * Validate the throttle parameters.
+   *
+   * <p>This method will validate the throttle parameters with the preset values from YBC. If any of
+   * the throttle parameters are out of the preset range, an error message will be added to the
+   * errors list.
+   *
+   * @param specParams the throttle parameters to validate
+   * @param currentParamsMap the map of current throttle parameters and their preset values
+   * @return a list of error messages
+   */
+  private void validateThrottleParams(
+      YbcThrottleParameters specParams, Map<String, ThrottleParamValue> currentParamsMap) {
+    List<String> errors = new ArrayList<>();
+    if (specParams.getMaxConcurrentDownloads() != null
+        && specParams.getMaxConcurrentDownloads()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Max concurrent downloads cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getMaxConcurrentDownloads() != null
+        && specParams.getMaxConcurrentDownloads()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Max concurrent downloads cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (specParams.getMaxConcurrentUploads() != null
+        && specParams.getMaxConcurrentUploads()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Max concurrent uploads cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getMaxConcurrentUploads() != null
+        && specParams.getMaxConcurrentUploads()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Max concurrent uploads cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (specParams.getPerDownloadNumObjects() != null
+        && specParams.getPerDownloadNumObjects()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Per download objects cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getPerDownloadNumObjects() != null
+        && specParams.getPerDownloadNumObjects()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Per download objects cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (specParams.getPerUploadNumObjects() != null
+        && specParams.getPerUploadNumObjects()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Per upload objects cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getPerUploadNumObjects() != null
+        && specParams.getPerUploadNumObjects()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Per upload objects cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (!errors.isEmpty()) {
+      log.error("found errors: {}", errors);
+      throw new IllegalArgumentException(String.join("\n", errors));
     }
   }
 

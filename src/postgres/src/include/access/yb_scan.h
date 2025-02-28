@@ -317,6 +317,8 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 /* Returns whether the given populated ybScan needs PG recheck. */
 extern bool YbNeedsPgRecheck(YbScanDesc ybScan);
 
+extern bool YbIsScanningEmbeddedIdx(Relation table, Relation index);
+
 /*
  * Used in Agg node init phase to determine whether YB preliminary check or PG
  * recheck may be needed.

@@ -187,6 +187,8 @@ message ReservePgsqlOidsRequestPB {
   optional bytes namespace_id = 1; // The namespace id of the Postgres database.
   optional uint32 next_oid = 2;    // The next oid to reserve.
   optional uint32 count = 3;       // The number of oids to reserve.
+  // use_secondary_space is used by xCluster when a database is a target.
+  optional bool use_secondary_space = 4;
 }
 
 message ReservePgsqlOidsResponsePB {

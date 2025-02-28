@@ -167,7 +167,7 @@ main(int argc, char **argv)
 	/*
 	 * YB: If this is run as a preflight check, the new cluster is not yet started.
 	 */
-	if (!is_yugabyte_enabled() || !user_opts.check)
+	if (!is_yugabyte_enabled())
 		check_new_cluster();
 
 	report_clusters_compatible();

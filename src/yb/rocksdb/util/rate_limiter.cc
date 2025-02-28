@@ -93,21 +93,28 @@ GenericRateLimiter::~GenericRateLimiter() {
   }
 }
 
-// This API allows user to dynamically change rate limiter's bytes per second. Returns early if the
-// new bytes_per_second matches the existing rate.
-void GenericRateLimiter::SetBytesPerSecond(int64_t bytes_per_second) {
-  DCHECK_GT(bytes_per_second, 0);
+// This API allows user to dynamically change rate limiter's bytes per second. Returns early
+// with false if the new bytes_per_second matches the existing rate, otherwise returns true.
+yb::Result<bool> GenericRateLimiter::SetBytesPerSecond(int64_t bytes_per_second) {
+  SCHECK_GT(bytes_per_second, 0, InvalidArgument,
+            yb::Format("bytes_per_second ($0) must be greater than 0", bytes_per_second));
   auto refill_bytes_per_period_new = CalculateRefillBytesPerPeriod(bytes_per_second);
   if (refill_bytes_per_period_new == refill_bytes_per_period_) {
-    return;
+    return false;
   }
+  SCHECK_GT(refill_bytes_per_period_new, 0, InvalidArgument,
+            yb::Format("bytes_per_second ($0) is too small", bytes_per_second));
+
   refill_bytes_per_period_.store(refill_bytes_per_period_new, std::memory_order_relaxed);
-  MutexLock g(&request_mutex_);
-  if (!description_for_logging_.empty()) {
-    LOG(INFO) << yb::Format("$0 rate limiter: Setting bytes_per_second to $1",
-                            description_for_logging_, bytes_per_second);
+  {
+    MutexLock g(&request_mutex_);
+    if (!description_for_logging_.empty()) {
+      LOG(INFO) << yb::Format("$0 rate limiter: Setting bytes_per_second to $1",
+                              description_for_logging_, bytes_per_second);
+    }
+    available_bytes_ = 0;
   }
-  available_bytes_ = 0;
+  return true;
 }
 
 void GenericRateLimiter::Request(int64_t bytes, const yb::IOPriority priority) {

@@ -12,19 +12,19 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
-#include "yb/common/xcluster_util.h"
 
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
-
 #include "yb/client/xcluster_client.h"
+
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema_pbutil.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/docdb/docdb_pgapi.h"
 
@@ -229,7 +229,8 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
         return Status::OK();
       }
     } else {
-      table = catalog_manager_->tables_->FindTableOrNull(metadata.table_id(0));
+      table = catalog_manager_->tables_->FindTableOrNull(
+          xcluster::StripSequencesDataAliasIfPresent(metadata.table_id(0)));
       if (!table) {
         LOG(ERROR) << "Invalid table ID " << metadata.table_id(0) << " for stream " << stream_id;
         // TODO (#2059): Potentially signals a race condition that table got deleted while stream
@@ -954,7 +955,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
   if (req.has_cdcsdk_consistent_snapshot_option()) {
     has_consistent_snapshot_option = true;
     consistent_snapshot_option_use =
-        req.cdcsdk_consistent_snapshot_option() == CDCSDKSnapshotOption::USE_SNAPSHOT;
+        req.cdcsdk_consistent_snapshot_option() == CDCSDKSnapshotOption::USE_SNAPSHOT ||
+        req.cdcsdk_consistent_snapshot_option() == CDCSDKSnapshotOption::EXPORT_SNAPSHOT;
   }
   has_consistent_snapshot_option =
       has_consistent_snapshot_option && FLAGS_yb_enable_cdc_consistent_snapshot_streams;
@@ -3905,6 +3907,26 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
       current_consumer_schema_version, old_producer_schema_version, old_consumer_schema_version,
       replication_group_id);
   return Status::OK();
+}
+
+Status CatalogManager::InsertHistoricalColocatedSchemaPacking(
+    const xcluster::ReplicationGroupId& replication_group_id, const TablegroupId& tablegroup_id,
+    const ColocationId colocation_id,
+    const std::function<Status(UniverseReplicationInfo&)>& add_historical_schema_fn) {
+  LockGuard lock(mutex_);
+  // First check if this table has been created yet. If so, then we don't need to add historical
+  // schemas and can just add schemas in the regular way (via InsertPackedSchemaForXClusterTarget).
+  auto table_res = GetColocatedTableIdUnlocked(tablegroup_id, colocation_id);
+  SCHECK(!table_res.ok(), AlreadyPresent, "Table is already created, not adding historical schema");
+  SCHECK(
+      table_res.status().IsNotFound(), IllegalState,
+      "Unexpected error finding colocated table: ", table_res.status());
+
+  // Get the replication group.
+  auto universe = FindPtrOrNull(universe_replication_map_, replication_group_id);
+  SCHECK(universe, NotFound, "Universe not found: ", replication_group_id);
+
+  return add_historical_schema_fn(*universe);
 }
 
 Status CatalogManager::WaitForReplicationDrain(

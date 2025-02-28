@@ -109,7 +109,7 @@ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
 
 If you have a YugabyteDB Managed cluster, do the following:
 
-1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/#download-your-cluster-certificate).
+1. Download your [cluster certificate](/preview/tutorials/build-apps/cloud-add-ip/#download-your-cluster-certificate).
 
 1. Install OpenSSL, if not present.
 

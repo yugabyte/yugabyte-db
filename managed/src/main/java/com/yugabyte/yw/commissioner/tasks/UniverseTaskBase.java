@@ -43,6 +43,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeSafeToDelete;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CleanUpPGUpgradeDataDir;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
@@ -355,6 +356,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.SoftwareUpgrade,
           TaskType.SoftwareUpgradeYB,
           TaskType.FinalizeUpgrade,
+          TaskType.FinalizeKubernetesUpgrade,
           TaskType.RollbackUpgrade,
           TaskType.RollbackKubernetesUpgrade,
           TaskType.RestartUniverse,
@@ -810,6 +812,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         (taskType == TaskType.ResumeUniverse
             || taskType == TaskType.ResumeKubernetesUniverse
             || taskType == TaskType.DestroyUniverse
+            || taskType == TaskType.DestroyKubernetesUniverse
             || taskType == TaskType.ResumeXClusterUniverses);
     if (universeDetails.universePaused && !isResumeOrDelete) {
       String msg = "Universe " + universe.getUniverseUUID() + " is currently paused";
@@ -902,6 +905,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             (owner == TaskType.ResumeUniverse
                 || owner == TaskType.ResumeKubernetesUniverse
                 || owner == TaskType.DestroyUniverse
+                || owner == TaskType.DestroyKubernetesUniverse
                 || owner == TaskType.ResumeXClusterUniverses);
         if (universeDetails.universePaused && !isResumeOrDelete) {
           String msg = "Universe " + universe.getUniverseUUID() + " is currently paused";
@@ -1676,13 +1680,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Create a task to store auto flags version of current software version.
    *
    * @param universeUUID
+   * @param targetUpgradeSoftwareVersion
    * @return
    */
-  public SubTaskGroup createStoreAutoFlagConfigVersionTask(UUID universeUUID) {
+  public SubTaskGroup createStoreAutoFlagConfigVersionTask(
+      UUID universeUUID, String targetUpgradeSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("StoreAutoFlagConfig");
     StoreAutoFlagConfigVersion task = createTask(StoreAutoFlagConfigVersion.class);
     StoreAutoFlagConfigVersion.Params params = new StoreAutoFlagConfigVersion.Params();
     params.setUniverseUUID(universeUUID);
+    params.targetUpgradeSoftwareVersion = targetUpgradeSoftwareVersion;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1719,14 +1726,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createCleanUpPGUpgradeDataDirTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("CleanUpPGUpgradeDataDir", SubTaskGroupType.ConfigureUniverse);
+    CleanUpPGUpgradeDataDir task = createTask(CleanUpPGUpgradeDataDir.class);
+    CleanUpPGUpgradeDataDir.Params params = new CleanUpPGUpgradeDataDir.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public SubTaskGroup createManageCatalogUpgradeSuperUserTask(
       ManageCatalogUpgradeSuperUser.Action action) {
+    return createManageCatalogUpgradeSuperUserTask(action, null);
+  }
+
+  public SubTaskGroup createManageCatalogUpgradeSuperUserTask(
+      ManageCatalogUpgradeSuperUser.Action action, String password) {
     SubTaskGroup subTaskGroup =
         createSubTaskGroup("ManageCatalogUpgradeSuperUser", SubTaskGroupType.ConfigureUniverse);
     ManageCatalogUpgradeSuperUser task = createTask(ManageCatalogUpgradeSuperUser.class);
     ManageCatalogUpgradeSuperUser.Params params = new ManageCatalogUpgradeSuperUser.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.action = action;
+    params.password = password;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1852,11 +1877,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to persist changes by ResizeNode task for specific clusters */
   public SubTaskGroup createPersistResizeNodeTask(UserIntent newUserIntent, UUID clusterUUID) {
+    return createPersistResizeNodeTask(
+        newUserIntent, clusterUUID, false /* onlyPersistDeviceInfo */);
+  }
+
+  public SubTaskGroup createPersistResizeNodeTask(
+      UserIntent newUserIntent, UUID clusterUUID, boolean onlyPersistDeviceInfo) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PersistResizeNode");
     PersistResizeNode.Params params = new PersistResizeNode.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.newUserIntent = newUserIntent;
     params.clusterUUID = clusterUUID;
+    params.onlyPersistDeviceInfo = onlyPersistDeviceInfo;
     PersistResizeNode task = createTask(PersistResizeNode.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
@@ -2659,7 +2691,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             30000 /* maxDelaysMs */,
             timeout.toMillis(),
             () -> {
-              Set<String> tabletsOnServer = getTserverTablets(universe, currentNode);
+              Set<String> tabletsOnServer;
+              try {
+                tabletsOnServer = getTserverTablets(universe, currentNode);
+              } catch (Exception e) {
+                log.error(
+                    "Error fetching tablets for node {}: {}",
+                    currentNode.getNodeName(),
+                    e.getMessage());
+                return false;
+              }
               log.debug(
                   "Number of tablets on node {}'s tserver is {} tablets",
                   currentNode.getNodeName(),
@@ -5886,13 +5927,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected SubTaskGroup createUpdateDrConfigParamsTask(
       UUID drConfigUUID,
-      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
-      DrConfigCreateForm.PitrParams pitrParams) {
+      @Nullable XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams,
+      @Nullable List<String> webhookUrls) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateDrConfigParams");
     UpdateDrConfigParams.Params params = new UpdateDrConfigParams.Params();
     params.drConfigUUID = drConfigUUID;
     params.setBootstrapParams(bootstrapParams);
     params.setPitrParams(pitrParams);
+    params.setWebhookUrls(webhookUrls);
     UpdateDrConfigParams task = createTask(UpdateDrConfigParams.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -6332,58 +6375,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       } else {
         log.debug("Error ignored");
       }
-    }
-  }
-
-  protected void createFinalizeUpgradeTasks(boolean upgradeSystemCatalog) {
-    createFinalizeUpgradeTasks(upgradeSystemCatalog, null);
-  }
-
-  protected void createFinalizeUpgradeTasks(
-      boolean upgradeSystemCatalog, Runnable ysqlUpgradeFinalizeTask) {
-    Universe universe = getUniverse();
-    String version = universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
-        false /* isSoftwareRollbackAllowed */,
-        true /* retainPrevYBSoftwareConfig */);
-
-    if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
-      if (universe.getUniverseDetails().prevYBSoftwareConfig != null) {
-        UniverseDefinitionTaskParams.Cluster primaryCluster =
-            universe.getUniverseDetails().getPrimaryCluster();
-        String oldVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
-        String currentVersion = primaryCluster.userIntent.ybSoftwareVersion;
-        if (this.gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, currentVersion)
-            && primaryCluster.userIntent.enableYSQL) {
-          createFinalizeYsqlMajorCatalogUpgradeTask();
-        }
-      }
-
-      // Promote all auto flags upto class External.
-      createPromoteAutoFlagTask(
-          universe.getUniverseUUID(),
-          true /* ignoreErrors */,
-          AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
-
-      if (upgradeSystemCatalog) {
-        // Run YSQL upgrade on the universe.
-        createRunYsqlUpgradeTask(version);
-      }
-
-      if (ysqlUpgradeFinalizeTask != null) {
-        // Run YSQL upgrade finalize task on the universe.
-        // This is a temp step as we need to remove flags set during upgrade.
-        ysqlUpgradeFinalizeTask.run();
-      }
-
-      createUpdateUniverseSoftwareUpgradeStateTask(
-          UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-          false /* isSoftwareRollbackAllowed */);
-
-    } else {
-      log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
     }
   }
 

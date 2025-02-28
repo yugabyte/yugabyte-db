@@ -26,6 +26,7 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
   protected DrConfig drConfig;
   protected XClusterConfig oldXClusterConfig;
   protected Map<String, Long> namespaceIdSafetimeEpochUsMap;
+  protected List<String> webhookUrls;
 
   /** It is used in the create method. */
   public DrConfigTaskParams(
@@ -120,7 +121,8 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
   public DrConfigTaskParams(
       DrConfig drConfig,
       RestartBootstrapParams bootstrapParams,
-      DrConfigCreateForm.PitrParams pitrParams) {
+      DrConfigCreateForm.PitrParams pitrParams,
+      List<String> webhookUrls) {
     super(drConfig.getActiveXClusterConfig());
     this.drConfig = drConfig;
     if (bootstrapParams != null) {
@@ -128,6 +130,7 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
       this.bootstrapParams.backupRequestParams = bootstrapParams.backupRequestParams;
     }
     this.pitrParams = pitrParams;
+    this.webhookUrls = webhookUrls;
   }
 
   @Override

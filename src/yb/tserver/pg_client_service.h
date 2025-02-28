@@ -24,6 +24,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/master/master_heartbeat.fwd.h"
+
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_base_options.h"
@@ -69,7 +71,6 @@ class TserverXClusterContextIf;
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
     (GetReplicationSlot) \
-    (GetReplicationSlotStatus) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \
     (GetTserverCatalogVersionInfo) \
@@ -86,7 +87,6 @@ class TserverXClusterContextIf;
     (GetNewObjectId) \
     (RollbackToSubTransaction) \
     (ServersMetrics) \
-    (SetActiveSubTransaction) \
     (TabletsMetadata) \
     (TabletServerCount) \
     (TruncateTable) \
@@ -98,8 +98,9 @@ class TserverXClusterContextIf;
     (CronGetLastMinute) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
+    (AcquireObjectLock) \
     (ExportTxnSnapshot) \
-    (ImportTxnSnapshot) \
+    (SetTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
     /**/
 
@@ -121,7 +122,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
-      const std::string& permanent_uuid, const server::ServerBaseOptions* tablet_server_opts,
+      const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,
       const TserverXClusterContextIf* xcluster_context = nullptr,
       PgMutationCounter* pg_node_level_mutation_counter = nullptr);
 
@@ -131,9 +132,11 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
 
   void InvalidateTableCache();
-  void InvalidateTableCache(const std::unordered_set<uint32_t>& db_oids_updated,
+  void InvalidateTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
                             const std::unordered_set<uint32_t>& db_oids_deleted);
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
+
+  void ProcessLeaseUpdate(const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time);
 
   size_t TEST_SessionsCount();
 

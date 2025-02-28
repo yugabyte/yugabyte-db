@@ -883,7 +883,8 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
@@ -1050,7 +1051,8 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
@@ -1331,7 +1333,8 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
@@ -2583,6 +2586,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -2599,6 +2603,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -2609,6 +2614,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -2721,6 +2727,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -2777,7 +2784,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -4539,8 +4548,10 @@
               "ConsensusMeta",
               "TabletMeta",
               "YbcLogs",
-              "K8sInfo",
               "NodeAgent",
+              "SystemLogs",
+              "TabletReport",
+              "K8sInfo",
               "YbaMetadata",
               "PrometheusMetrics",
               "ApplicationLogs"
@@ -5181,6 +5192,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -5197,6 +5209,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -5207,6 +5220,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -5319,6 +5333,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -5375,7 +5390,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -7175,6 +7192,8 @@
             "GP3",
             "Scratch",
             "Persistent",
+            "Hyperdisk_Balanced",
+            "Hyperdisk_Extreme",
             "StandardSSD_LRS",
             "Premium_LRS",
             "PremiumV2_LRS",
@@ -7254,6 +7273,13 @@
         "pitrParams" : {
           "$ref" : "#/definitions/PitrParams",
           "description" : "Parameters used to do PITR"
+        },
+        "webhookUrls" : {
+          "description" : "List of urls for webhook",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
         }
       },
       "type" : "object"
@@ -7456,12 +7482,21 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "webhooks" : {
+          "items" : {
+            "$ref" : "#/definitions/GetWebhookResponse"
+          },
+          "type" : "array"
+        },
         "xclusterConfigUuid" : {
           "description" : "UUID of the underlying xCluster config that is managing the replication",
           "format" : "uuid",
           "type" : "string"
         }
       },
+      "required" : [
+        "webhooks"
+      ],
       "type" : "object"
     },
     "DrConfigReplaceReplicaForm" : {
@@ -8100,6 +8135,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -8116,6 +8152,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -8126,6 +8163,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -8238,6 +8276,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -8294,7 +8333,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -8861,6 +8902,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -8877,6 +8919,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -8887,6 +8930,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -8999,6 +9043,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -9055,7 +9100,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -9193,6 +9240,21 @@
         "TSERVER" : {
           "$ref" : "#/definitions/GFlagValidationDetails",
           "description" : "WARNING: This is a preview API that could change. Validation details for tserver"
+        }
+      },
+      "type" : "object"
+    },
+    "GetWebhookResponse" : {
+      "description" : "Webhook get response",
+      "properties" : {
+        "url" : {
+          "description" : "Webhook url",
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Webhook UUID",
+          "format" : "uuid",
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -10225,6 +10287,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -10241,6 +10304,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -10251,6 +10315,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -10363,6 +10428,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -10419,7 +10485,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -13751,25 +13819,6 @@
       ],
       "type" : "object"
     },
-    "PreUpgradeValidationResponse" : {
-      "description" : "Upgrade Validation Response",
-      "properties" : {
-        "errors" : {
-          "description" : "WARNING: This is a preview API that could change. List of errors that occurred during validation",
-          "items" : {
-            "type" : "string"
-          },
-          "readOnly" : true,
-          "type" : "array"
-        },
-        "success" : {
-          "description" : "WARNING: This is a preview API that could change. Indicates whether all the checks passed",
-          "readOnly" : true,
-          "type" : "boolean"
-        }
-      },
-      "type" : "object"
-    },
     "PresetThrottleValues" : {
       "properties" : {
         "defaultValue" : {
@@ -13799,6 +13848,9 @@
           "type" : "integer"
         },
         "softwareVersion" : {
+          "type" : "string"
+        },
+        "targetUpgradeSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -14308,6 +14360,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -14324,6 +14377,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -14334,6 +14388,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -14446,6 +14501,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -14502,7 +14558,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -15276,6 +15334,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -15292,6 +15351,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -15302,6 +15362,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -15414,6 +15475,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -15470,7 +15532,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -16068,6 +16132,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -16084,6 +16149,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -16094,6 +16160,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -16206,6 +16273,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -16262,7 +16330,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -16481,13 +16551,6 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
-        "currentIdx" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "currentYbcTaskId" : {
-          "type" : "string"
-        },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
@@ -16550,6 +16613,7 @@
           "type" : "string"
         },
         "nodeIp" : {
+          "description" : "Node IP",
           "type" : "string"
         },
         "parallelism" : {
@@ -16564,6 +16628,7 @@
           "type" : "string"
         },
         "prefixUUID" : {
+          "description" : "Prefix UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -16626,12 +16691,8 @@
       },
       "required" : [
         "creatingUser",
-        "currentIdx",
-        "currentYbcTaskId",
-        "nodeIp",
         "platformUrl",
         "platformVersion",
-        "prefixUUID",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "universeUUID"
@@ -17550,6 +17611,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -17566,6 +17628,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -17576,6 +17639,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -17688,6 +17752,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -17744,7 +17809,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -18075,6 +18142,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -18091,6 +18159,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -18101,6 +18170,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -18213,6 +18283,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -18269,7 +18340,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -18441,6 +18514,7 @@
               "CreateTableSpacesInUniverse",
               "ThirdpartySoftwareUpgrade",
               "ModifyAuditLoggingConfig",
+              "ModifyKubernetesAuditLoggingConfig",
               "InstallYbcSoftware",
               "UpgradeUniverseYbc",
               "UpgradeYbcGFlags",
@@ -18457,6 +18531,7 @@
               "SoftwareUpgradeYB",
               "SoftwareKubernetesUpgradeYB",
               "FinalizeUpgrade",
+              "FinalizeKubernetesUpgrade",
               "RollbackUpgrade",
               "RollbackKubernetesUpgrade",
               "LdapUniverseSync",
@@ -18467,6 +18542,7 @@
               "DecommissionNodeInstance",
               "MasterFailover",
               "SyncMasterAddresses",
+              "CreateContinuousBackup",
               "CreateYbaBackup",
               "RestoreYbaBackup",
               "RestoreContinuousBackup",
@@ -18579,6 +18655,7 @@
               "DeleteReplicationOnSource",
               "DeleteXClusterBackupRestoreEntries",
               "AddExistingPitrToXClusterConfig",
+              "DrConfigWebhookCall",
               "SetRestoreState",
               "CloudAccessKeyCleanup",
               "CloudAccessKeySetup",
@@ -18635,7 +18712,9 @@
               "CheckMemory",
               "CheckLocale",
               "CheckGlibc",
+              "CheckOpentelemetryOperator",
               "PGUpgradeTServerCheck",
+              "CleanUpPGUpgradeDataDir",
               "RunYsqlMajorVersionCatalogUpgrade",
               "RollbackYsqlMajorVersionCatalogUpgrade",
               "FinalizeYsqlMajorCatalogUpgrade",
@@ -19222,6 +19301,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -19238,6 +19318,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -19248,6 +19329,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -19360,6 +19442,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -19416,7 +19499,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -19840,8 +19925,10 @@
               "ConsensusMeta",
               "TabletMeta",
               "YbcLogs",
-              "K8sInfo",
               "NodeAgent",
+              "SystemLogs",
+              "TabletReport",
+              "K8sInfo",
               "YbaMetadata",
               "PrometheusMetrics",
               "ApplicationLogs"
@@ -19877,6 +19964,13 @@
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
+        },
+        "promQueries" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Map of query names to custom PromQL queries to collect in promdump",
+          "type" : "object"
         },
         "prometheusMetricsTypes" : {
           "description" : "List of exports to be included in the prometheus dump",
@@ -20266,6 +20360,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -20282,6 +20377,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -20292,6 +20388,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -20404,6 +20501,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -20460,7 +20558,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -21521,6 +21621,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -21537,6 +21638,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -21547,6 +21649,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -21659,6 +21762,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -21715,7 +21819,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -22156,6 +22262,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -22172,6 +22279,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -22182,6 +22290,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -22294,6 +22403,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -22350,7 +22460,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -23046,6 +23158,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -23062,6 +23175,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -23072,6 +23186,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -23184,6 +23299,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -23240,7 +23356,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -23645,6 +23763,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -23661,6 +23780,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -23671,6 +23791,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -23783,6 +23904,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -23839,7 +23961,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -24244,6 +24368,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -24260,6 +24385,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -24270,6 +24396,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -24382,6 +24509,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -24438,7 +24566,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -25245,6 +25375,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -25261,6 +25392,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -25271,6 +25403,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -25383,6 +25516,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -25439,7 +25573,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -26352,6 +26488,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -26368,6 +26505,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -26378,6 +26516,7 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
@@ -26490,6 +26629,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -26546,7 +26686,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -26816,6 +26958,7 @@
         },
         "replicationGroupName" : {
           "description" : "Replication group name in the target universe cluster config",
+          "readOnly" : true,
           "type" : "string"
         },
         "secondary" : {
@@ -27109,6 +27252,7 @@
         },
         "replicationGroupName" : {
           "description" : "Replication group name in the target universe cluster config",
+          "readOnly" : true,
           "type" : "string"
         },
         "secondary" : {
@@ -36965,8 +37109,10 @@
                   "ConsensusMeta",
                   "TabletMeta",
                   "YbcLogs",
-                  "K8sInfo",
                   "NodeAgent",
+                  "SystemLogs",
+                  "TabletReport",
+                  "K8sInfo",
                   "YbaMetadata",
                   "PrometheusMetrics",
                   "ApplicationLogs"
@@ -36992,8 +37138,10 @@
                   "ConsensusMeta",
                   "TabletMeta",
                   "YbcLogs",
-                  "K8sInfo",
                   "NodeAgent",
+                  "SystemLogs",
+                  "TabletReport",
+                  "K8sInfo",
                   "YbaMetadata",
                   "PrometheusMetrics",
                   "ApplicationLogs"
@@ -38874,7 +39022,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -38882,7 +39030,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -40691,73 +40839,6 @@
           }
         ],
         "summary" : "Upgrade KubernetesOverrides",
-        "tags" : [
-          "Universe Upgrades Management"
-        ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/pre_upgrade_validation" : {
-      "post" : {
-        "description" : "WARNING: This is a preview API that could change. Runs all the prechecks and validations for specific upgrade",
-        "operationId" : "preUpgradeValidation",
-        "parameters" : [
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "cUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "uniUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "in" : "query",
-            "name" : "upgradeType",
-            "required" : false,
-            "type" : "string"
-          },
-          {
-            "in" : "query",
-            "name" : "request",
-            "required" : false
-          },
-          {
-            "description" : "Upgrade Params",
-            "in" : "body",
-            "name" : "upgrade params",
-            "required" : true,
-            "schema" : {
-              "$ref" : "#/definitions/UpgradeTaskParams"
-            }
-          }
-        ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/PreUpgradeValidationResponse"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/PreUpgradeValidationResponse"
-            }
-          }
-        },
-        "security" : [
-          {
-            "apiKeyAuth" : [ ]
-          }
-        ],
-        "summary" : "Run validation for upgrade",
         "tags" : [
           "Universe Upgrades Management"
         ]
@@ -43660,6 +43741,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",
@@ -43683,6 +43766,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",
@@ -43722,6 +43807,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",
@@ -43745,6 +43832,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",
@@ -43784,6 +43873,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",
@@ -43807,6 +43898,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",

@@ -19,6 +19,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/util/env_util.h"
 
@@ -27,10 +28,8 @@ using namespace std::chrono_literals;
 namespace yb {
 
 void Pg15UpgradeTestBase::SetUp() {
-  UpgradeTestBase::SetUp();
-  if (Test::IsSkipped()) {
-    return;
-  }
+  TEST_SETUP_SUPER(UpgradeTestBase);
+
   CHECK_OK_PREPEND(StartClusterInOldVersion(), "Failed to start cluster in old version");
   CHECK(IsYsqlMajorVersionUpgrade());
   CHECK_GT(cluster_->num_tablet_servers(), 1);
@@ -56,7 +55,35 @@ Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user
 
   LOG(INFO) << "Running " << AsString(args);
 
-  return Subprocess::Call(args);
+  return Subprocess::Call(args, /*log_stdout_and_stderr=*/true);
+}
+
+Status Pg15UpgradeTestBase::ValidateUpgradeCompatibilityFailure(
+    const std::vector<std::string>& expected_errors, const std::string& user_name) {
+  std::vector<std::unique_ptr<StringWaiterLogSink>> log_waiters;
+  for (const auto& expected_error : expected_errors) {
+    log_waiters.emplace_back(std::make_unique<StringWaiterLogSink>(expected_error));
+  }
+  auto status = ValidateUpgradeCompatibility(user_name);
+  SCHECK(
+      !status.ok(), IllegalState,
+      Format("Expected pg_upgrade to fail with error(s): $0", ToString(expected_errors)));
+  SCHECK(
+      status.message().Contains(kPgUpgradeFailedError), IllegalState, "Unexpected status: $0",
+      status);
+
+  for (size_t i = 0; i < expected_errors.size(); ++i) {
+    SCHECK_FORMAT(
+        log_waiters[i]->IsEventOccurred(), IllegalState,
+        "Expected pg_upgrade to fail with error: $0", expected_errors[i]);
+  }
+
+  return Status::OK();
+}
+
+Status Pg15UpgradeTestBase::ValidateUpgradeCompatibilityFailure(
+    const std::string& expected_error, const std::string& user_name) {
+  return ValidateUpgradeCompatibilityFailure(std::vector<std::string>{expected_error}, user_name);
 }
 
 Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {

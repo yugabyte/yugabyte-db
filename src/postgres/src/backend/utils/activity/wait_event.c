@@ -1363,3 +1363,14 @@ yb_wait_event_desc(PG_FUNCTION_ARGS)
 
 	return (Datum) 0;
 }
+
+bool
+YbIsIdleWaitEvent(uint32 wait_event_info)
+{
+	uint32		classId = wait_event_info & 0xFF000000;
+
+	if (classId == PG_WAIT_ACTIVITY || classId == PG_WAIT_EXTENSION)
+		return true;
+
+	return false;
+}

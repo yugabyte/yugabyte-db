@@ -111,9 +111,9 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dump.sql" /* inputFileRelativePath */,
+        "sql/yb.orig.ysql_dump.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dump.data.sql" /* expectedDumpRelativePath */,
-        "results/yb_ysql_dump.out" /* outputFileRelativePath */,
+        "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
 
@@ -124,10 +124,10 @@ public class TestYsqlDump extends BasePgSQLTest {
     verifyYsqlDump(
       true /* importDump */,
       "import_db" /* verifyDbName */,
-      "results/yb_ysql_dump.out" /* outputFileRelativePath */,
-      "sql/yb_ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb_ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
-      "results/yb_ysql_dump_describe.out" /* outputDescribeFileRelativePath */);
+      "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dump_describe.out" /* outputDescribeFileRelativePath */);
   }
 
   @Test
@@ -136,9 +136,9 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dumpall.sql" /* inputFileRelativePath */,
+        "sql/yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dumpall.data.sql" /* expectedDumpRelativePath */,
-        "results/yb_ysql_dumpall.out" /* outputFileRelativePath */,
+        "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
 
@@ -147,10 +147,10 @@ public class TestYsqlDump extends BasePgSQLTest {
     verifyYsqlDump(
       false /* importDump*/,
       "" /* verifyDbName */,
-      "results/yb_ysql_dumpall.out" /* outputFileRelativePath */,
-      "sql/yb_ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb_ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
-      "results/yb_ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */
+      "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */
     );
   }
 
@@ -160,9 +160,9 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dump_without_ybmetadata.sql" /* inputFileRelativePath */,
+        "sql/yb.orig.ysql_dump_without_ybmetadata.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dump_without_ybmetadata.data.sql" /* expectedDumpRelativePath */,
-        "results/yb_ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
+        "results/yb.orig.ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
         IncludeYbMetadata.OFF,
         NoTableSpaces.OFF);
 
@@ -175,11 +175,11 @@ public class TestYsqlDump extends BasePgSQLTest {
     verifyYsqlDump(
       true /* importDump */,
       "import_db" /* verifyDbName */,
-      "results/yb_ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
-      "sql/yb_ysql_dump_without_ybmetadata_describe.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb_ysql_dump_without_ybmetadata_describe.out"
+      "results/yb.orig.ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_without_ybmetadata_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dump_without_ybmetadata_describe.out"
       /* expectedDescribeFileRelativePath */,
-      "results/yb_ysql_dump_without_ybmetadata_describe.out"
+      "results/yb.orig.ysql_dump_without_ybmetadata_describe.out"
       /* outputDescribeFileRelativePath */);
   }
 
@@ -189,9 +189,9 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dumpall.sql" /* inputFileRelativePath */,
+        "sql/yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dumpall_without_ybmetadata.data.sql" /* expectedDumpRelativePath */,
-        "results/yb_ysql_dumpall_without_ybmetadata.out" /* outputFileRelativePath */,
+        "results/yb.orig.ysql_dumpall_without_ybmetadata.out" /* outputFileRelativePath */,
         IncludeYbMetadata.OFF,
         NoTableSpaces.OFF);
 
@@ -200,10 +200,10 @@ public class TestYsqlDump extends BasePgSQLTest {
     verifyYsqlDump(
       false /*importDump*/,
       "" /* verifyDbName */,
-      "results/yb_ysql_dumpall_without_ybmetadata.out" /* outputFileRelativePath */,
-      "sql/yb_ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb_ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
-      "results/yb_ysql_dumpall_without_ybmetadata_describe.out"
+      "results/yb.orig.ysql_dumpall_without_ybmetadata.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dumpall_without_ybmetadata_describe.out"
       /* outputDescribeFileRelativePath */);
   }
 
@@ -212,9 +212,9 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "colocated_db" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
+        "sql/yb.orig.ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dump_colocated_database.data.sql" /* expectedDumpRelativePath */,
-        "results/yb_ysql_dump_colocated_database.out" /* outputFileRelativePath */,
+        "results/yb.orig.ysql_dump_colocated_database.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
 
@@ -228,11 +228,11 @@ public class TestYsqlDump extends BasePgSQLTest {
     verifyYsqlDump(
       true /*importDump*/,
       "colocated_db" /*verifyDbName*/,
-      "results/yb_ysql_dump_colocated_database.out" /* outputFileRelativePath */,
-      "sql/yb_ysql_dump_describe_colocated_database.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb_ysql_dump_describe_colocated_database.out"
+      "results/yb.orig.ysql_dump_colocated_database.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe_colocated_database.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dump_describe_colocated_database.out"
       /* expectedDescribeFileRelativePath */,
-      "results/yb_ysql_dump_describe_colocated_database.out"
+      "results/yb.orig.ysql_dump_describe_colocated_database.out"
       /* outputDescribeFileRelativePath */);
   }
 
@@ -253,11 +253,11 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "colo_tables" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dump_colocated_tables_with_tablespaces.sql"
+        "sql/yb.orig.ysql_dump_colocated_tables_with_tablespaces.sql"
         /* inputFileRelativePath */,
         "data/yb_ysql_dump_colocated_tables_with_tablespaces.data.sql"
         /* expectedDumpRelativePath */,
-        "results/yb_ysql_dump_colocated_tables_with_tablespaces.out"
+        "results/yb.orig.ysql_dump_colocated_tables_with_tablespaces.out"
         /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.ON);
@@ -267,13 +267,13 @@ public class TestYsqlDump extends BasePgSQLTest {
     verifyYsqlDump(
       false /*importDump*/,
       "colo_tables" /* dumpedDatabaseName */,
-      "results/yb_ysql_dump_colocated_tables_with_tablespaces.out"
+      "results/yb.orig.ysql_dump_colocated_tables_with_tablespaces.out"
       /* outputFileRelativePath */,
-      "sql/yb_ysql_dump_describe_colocated_tables_with_tablespaces.sql"
+      "sql/yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.sql"
       /* inputDescribeFileRelativePath */,
-      "expected/yb_ysql_dump_describe_colocated_tables_with_tablespaces.out"
+      "expected/yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.out"
       /* expectedDescribeFileRelativePath */,
-      "results/yb_ysql_dump_describe_colocated_tables_with_tablespaces.out"
+      "results/yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.out"
       /* outputDescribeFileRelativePath */
     );
   }
@@ -289,9 +289,9 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "colocated_db" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
+        "sql/yb.orig.ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dump_legacy_colocated_database.data.sql" /* expectedDumpRelativePath */,
-        "results/yb_ysql_dump_legacy_colocated_database.out" /* outputFileRelativePath */,
+        "results/yb.orig.ysql_dump_legacy_colocated_database.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
 
@@ -308,13 +308,13 @@ public class TestYsqlDump extends BasePgSQLTest {
     verifyYsqlDump(
       true/* importDump */,
       "colocated_db" /* dumpedDatabaseName */,
-      "results/yb_ysql_dump_legacy_colocated_database.out"
+      "results/yb.orig.ysql_dump_legacy_colocated_database.out"
       /* outputFileRelativePath */,
-      "sql/yb_ysql_dump_describe_colocated_database.sql"
+      "sql/yb.orig.ysql_dump_describe_colocated_database.sql"
       /* inputDescribeFileRelativePath */,
-      "expected/yb_ysql_dump_describe_legacy_colocated_database.out"
+      "expected/yb.orig.ysql_dump_describe_legacy_colocated_database.out"
       /* expectedDescribeFileRelativePath */,
-      "results/yb_ysql_dump_describe_legacy_colocated_database.out"
+      "results/yb.orig.ysql_dump_describe_legacy_colocated_database.out"
       /* outputDescribeFileRelativePath */
     );
   }

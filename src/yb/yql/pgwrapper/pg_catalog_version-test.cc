@@ -104,6 +104,20 @@ class PgCatalogVersionTest : public LibPqTestBase {
     RestartClusterSetDBCatalogVersionMode(true, extra_tserver_flags);
   }
 
+  void RestartClusterWithInvalMessageEnabled() {
+    LOG(INFO) << "Restart the cluster with --TEST_yb_enable_invalidation_messages=true";
+    cluster_->Shutdown();
+    for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+      cluster_->master(i)->mutable_flags()->push_back(
+          "--TEST_yb_enable_invalidation_messages=true");
+    }
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      cluster_->tablet_server(i)->mutable_flags()->push_back(
+          "--TEST_yb_enable_invalidation_messages=true");
+    }
+    ASSERT_OK(cluster_->Restart());
+  }
+
   // Return a MasterCatalogVersionMap by making a query of the pg_yb_catalog_version table.
   static Result<MasterCatalogVersionMap> GetMasterCatalogVersionMap(PGConn* conn) {
     const auto rows = VERIFY_RESULT((
@@ -1884,6 +1898,123 @@ TEST_F(PgCatalogVersionTest, AlterDatabaseOwner) {
 
   // Now test_user2 owns the database, so test_user2 should be able to drop test_db.
   ASSERT_OK(conn_test_user2.Execute("DROP DATABASE test_db"));
+}
+
+// Create or replace view should increment catalog version.
+TEST_F(PgCatalogVersionTest, CreateOrReplaceView) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo(a INT, b INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO foo VALUES(1, 2)"));
+
+  auto v1 = ASSERT_RESULT(GetCatalogVersion(&conn1));
+  ASSERT_OK(conn1.Execute("CREATE VIEW v AS SELECT a, b FROM foo"));
+  auto v2 = ASSERT_RESULT(GetCatalogVersion(&conn1));
+  // Create view does not increment catalog version.
+  ASSERT_EQ(v2, v1);
+
+  auto query = "SELECT * FROM v"s;
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto expected_result1 = "1, 2";
+  auto expected_result2 = "2, 1";
+  auto result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  ASSERT_EQ(result, expected_result1);
+  ASSERT_OK(conn1.Execute("CREATE OR REPLACE VIEW v AS SELECT b AS a, a AS b FROM foo"));
+  auto v3 = ASSERT_RESULT(GetCatalogVersion(&conn1));
+  // Create or replace view increments catalog version.
+  ASSERT_EQ(v3, v2 + 1);
+
+  WaitForCatalogVersionToPropagate();
+
+  result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  ASSERT_EQ(result, expected_result2);
+}
+
+// This test does sanity check that invalidation messages are portable
+// across nodes and they are stable.
+TEST_F(PgCatalogVersionTest, InvalMessageSanityTest) {
+  RestartClusterWithInvalMessageEnabled();
+  auto ts_index = RandomUniformInt(0UL, cluster_->num_tablet_servers() - 1);
+  pg_ts = cluster_->tablet_server(ts_index);
+  LOG(INFO) << "ts_index: " << ts_index;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_test_inval_message_portability = true"));
+  ASSERT_OK(conn.Execute("SET log_min_messages = DEBUG1"));
+  auto choice = RandomUniformInt(0, 1);
+  LOG(INFO) << "choice: " << choice;
+  // We connect to a randomly selected node, and create two types of tables.
+  if (choice) {
+    ASSERT_OK(conn.Execute("CREATE TABLE foo(a INT, b INT)"));
+  } else {
+    ASSERT_OK(conn.Execute("CREATE TABLE foo(id TEXT)"));
+  }
+  ASSERT_OK(conn.Execute("DROP TABLE foo"));
+  auto query = "SELECT current_version, encode(messages, 'hex') "
+               "FROM pg_yb_invalidation_messages"s;
+  auto expected_result0 =
+      "2, 5000000000000000cb34000040c1eb0a00000000000000004f00000000000000cb340"
+      "0005ac4b85300000000000000005000000000000000cb34000047a2537b0000000000000"
+      "0004f00000000000000cb34000021e2d2ca00000000000000000700000000000000cb340"
+      "0004a34179b00000000000000000600000000000000cb3400003239589f0000000000000"
+      "0000700000000000000cb340000849f9c1300000000000000000600000000000000cb340"
+      "00002517d2400000000000000000700000000000000cb340000d519492c0000000000000"
+      "0000600000000000000cb340000532bd64f00000000000000000700000000000000cb340"
+      "0000ce84cf300000000000000000600000000000000cb340000f1f7a7e80000000000000"
+      "0000700000000000000cb340000ecbba96500000000000000000600000000000000cb340"
+      "00084a01e3000000000000000000700000000000000cb3400003f53cbc60000000000000"
+      "0000600000000000000cb3400001310debc00000000000000000700000000000000cb340"
+      "000c76e67a200000000000000000600000000000000cb340000f3cf9e8c0000000000000"
+      "0000700000000000000cb34000017e0201d00000000000000000600000000000000cb340"
+      "0004ba32d1e00000000000000003700000000000000cb340000465708530000000000000"
+      "0003600000000000000cb34000021e2d2ca0000000000000000fb00000000000000cb340"
+      "000300a00000000000000000000fb00000000000000cb340000300a00000000000000000"
+      "000fe00000000000000cb340000004000000000000000000000fb00000000000000cb340"
+      "000300a00000000000000000000";
+  auto expected_result1 =
+      "2, 5000000000000000cb34000040c1eb0a00000000000000004f00000000000000cb340"
+      "0005ac4b85300000000000000005000000000000000cb34000047a2537b0000000000000"
+      "0004f00000000000000cb34000021e2d2ca00000000000000000700000000000000cb340"
+      "0004a34179b00000000000000000600000000000000cb3400003239589f0000000000000"
+      "0000700000000000000cb340000849f9c1300000000000000000600000000000000cb340"
+      "00002517d2400000000000000000700000000000000cb340000d519492c0000000000000"
+      "0000600000000000000cb340000532bd64f00000000000000000700000000000000cb340"
+      "0000ce84cf300000000000000000600000000000000cb340000f1f7a7e80000000000000"
+      "0000700000000000000cb340000ecbba96500000000000000000600000000000000cb340"
+      "00084a01e3000000000000000000700000000000000cb3400003f53cbc60000000000000"
+      "0000600000000000000cb3400001310debc00000000000000000700000000000000cb340"
+      "000c76e67a200000000000000000600000000000000cb340000f3cf9e8c0000000000000"
+      "0000700000000000000cb34000017e0201d00000000000000000600000000000000cb340"
+      "00006e6784000000000000000000700000000000000cb3400007651cba70000000000000"
+      "0000600000000000000cb340000bdf7d7b600000000000000003700000000000000cb340"
+      "0004657085300000000000000003600000000000000cb34000021e2d2ca0000000000000"
+      "000fb00000000000000cb340000300a00000000000000000000fb00000000000000cb340"
+      "000300a00000000000000000000fe00000000000000cb340000004000000000000000000"
+      "000fb00000000000000cb340000300a00000000000000000000";
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
+  if (choice) {
+    ASSERT_EQ(result, expected_result1);
+  } else {
+    ASSERT_EQ(result, expected_result0);
+  }
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageMultiDDLTest) {
+  RestartClusterWithInvalMessageEnabled();
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET log_min_messages = DEBUG1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(id INT)"));
+  auto query = "BEGIN; "s;
+  for (int i = 1; i <= 5; i++) {
+    query += Format("ALTER TABLE foo ADD COLUMN id$0 INT; ", i);
+  }
+  query += "END";
+  LOG(INFO) << "multi-ddl query: " << query;
+  ASSERT_OK(conn.Execute(query));
+  auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn, kYugabyteDatabase));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      Format("SELECT current_version, length(messages) FROM pg_yb_invalidation_messages "
+             "WHERE db_oid = $0", yugabyte_db_oid)));
+  LOG(INFO) << "result: " << result;
+  ASSERT_EQ(result, "2, 120; 3, 144; 4, 144; 5, 144; 6, 144");
 }
 
 } // namespace pgwrapper

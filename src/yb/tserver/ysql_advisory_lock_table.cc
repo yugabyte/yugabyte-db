@@ -16,6 +16,7 @@
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/client/client.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
@@ -121,6 +122,20 @@ Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::MakeUnlockAllOp(uint32_
   auto unlock = client::YBPgsqlLockOp::NewUnlock(VERIFY_RESULT(GetTable()));
   SetLockId(*unlock, db_oid);
   return unlock;
+}
+
+Result<std::vector<TabletId>> YsqlAdvisoryLocksTable::LookupAllTablets(CoarseTimePoint deadline) {
+  auto table = VERIFY_RESULT(GetTable());
+  std::lock_guard<std::mutex> l(mutex_);
+  if (!tablet_ids_.empty()) {
+    return tablet_ids_;
+  }
+  auto tablet_ptrs = VERIFY_RESULT(
+      client_future_.get()->LookupAllTabletsFuture(table, deadline).get());
+  for (const auto& tablet_ptr : tablet_ptrs) {
+    tablet_ids_.push_back(tablet_ptr->tablet_id());
+  }
+  return tablet_ids_;
 }
 
 } // namespace yb::tserver

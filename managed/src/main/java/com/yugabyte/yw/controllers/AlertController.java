@@ -1280,6 +1280,9 @@ public class AlertController extends AuthenticatedController {
     if (alertTemplateDescription.getLabels().containsKey(AFFECTED_VOLUMES)) {
       alert.setLabel(AFFECTED_VOLUMES, "node1:/\nnode2:/\n");
     }
+    if (alertTemplateDescription.getLabels().containsKey(AFFECTED_BACKUP_LOCATIONS)) {
+      alert.setLabel(AFFECTED_BACKUP_LOCATIONS, "s3://bucket/backup_dir");
+    }
     alert.setMessage(
         buildTestAlertMessage(alertTemplateDescription, configuration, alert, testAlertPrefix));
     return alert;

@@ -473,8 +473,9 @@ InitProcess(void)
 	 * TODO(asaha): Update the query_id for catalog calls in circular buffer
 	 * once it's calculated
 	 */
-	MyProc->yb_ash_metadata.query_id =
-		YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
+	MyProc->yb_ash_metadata.query_id = IsBackgroundWorker
+		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
+		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
 	MemSet(MyProc->yb_ash_metadata.client_addr, 0,
 		   sizeof(MyProc->yb_ash_metadata.client_addr));
 	MyProc->yb_ash_metadata.client_port = 0;

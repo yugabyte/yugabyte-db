@@ -275,6 +275,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return null;
   }
 
+  protected void skipYsqlConnMgr(String reason, boolean isYsqlConnMgr) {
+    if (isYsqlConnMgr) {
+      LOG.info("Switching to postgres port:" + reason);
+      ConnectionEndpoint.DEFAULT = ConnectionEndpoint.POSTGRES;
+    }
+  }
+
   /**
    * Add ysql_pg_conf_csv flag values using this method to avoid clobbering existing values.
    * @param flagMap the map of flags to mutate
@@ -319,7 +326,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     flagMap.put("ysql_beta_features", "true");
     flagMap.put("ysql_enable_reindex", "true");
-    flagMap.put("TEST_ysql_hide_catalog_version_increment_log", "true");
     flagMap.put("ysql_conn_mgr_sequence_support_mode", "session");
 
     return flagMap;

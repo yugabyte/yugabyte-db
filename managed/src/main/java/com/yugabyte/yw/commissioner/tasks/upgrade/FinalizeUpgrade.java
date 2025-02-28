@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -18,9 +19,13 @@ import lombok.extern.slf4j.Slf4j;
 @Retryable
 public class FinalizeUpgrade extends SoftwareUpgradeTaskBase {
 
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
+
   @Inject
-  protected FinalizeUpgrade(BaseTaskDependencies baseTaskDependencies) {
+  protected FinalizeUpgrade(
+      BaseTaskDependencies baseTaskDependencies, SoftwareUpgradeHelper softwareUpgradeHelper) {
     super(baseTaskDependencies);
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @Override
@@ -59,13 +64,15 @@ public class FinalizeUpgrade extends SoftwareUpgradeTaskBase {
           String oldVersion =
               universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
           boolean finalizeYSQLMajorVersionUpgrade =
-              gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, currentVersion);
-          if (finalizeYSQLMajorVersionUpgrade) {
-            createFinalizeUpgradeTasks(
-                taskParams().upgradeSystemCatalog, getFinalizeYSQLMajorUpgradeTask(universe));
-          } else {
-            createFinalizeUpgradeTasks(taskParams().upgradeSystemCatalog);
-          }
+              softwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+                  universe, oldVersion, currentVersion);
+          boolean superUserRequiredForCatalogUpgrade =
+              softwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
+                  universe, oldVersion, currentVersion);
+          createFinalizeUpgradeTasks(
+              taskParams().upgradeSystemCatalog,
+              finalizeYSQLMajorVersionUpgrade,
+              superUserRequiredForCatalogUpgrade);
         });
   }
 }

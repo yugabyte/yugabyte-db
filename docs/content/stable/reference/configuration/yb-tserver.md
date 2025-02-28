@@ -177,7 +177,7 @@ Default: `""`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
 
@@ -1855,6 +1855,19 @@ Default: 1024
 {{<tags/feature/ea>}} When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
 
 Default: true
+
+##### yb_insert_on_conflict_read_batch_size
+
+{{<tags/feature/ea idea="1455">}} Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+
+- temporary relations
+- foreign relations
+- system relations
+- relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
+
+The higher the number, the more batching is done. 1024 is recommended.
+
+Default: 0 (disabled)
 
 ##### yb_read_from_followers
 

@@ -73,7 +73,7 @@ To view the details of a restored database, navigate to **Universes > your unive
 
 You can restore only a specific database (YSQL) or keyspace (YCQL).
 
-In addition, if you are restoring a YCQL keyspace, you can restore only selected tables in the keyspace.
+In addition, if you are restoring a YCQL keyspace, you can choose the tables in the keyspace you want to restore.
 
 For instructions on restoring a single table in YSQL, refer to [Restore a single table in YSQL](../restore-ysql-single-table).
 
@@ -84,6 +84,8 @@ To restore, do the following:
 1. In the list of databases (YSQL) or keyspaces (YCQL), click **Restore** for the database or keyspace you want to restore. If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.
 
 1. In the **Restore Backup** dialog, select the universe (target) to which you want to restore the backup.
+
+    Note that the Creation time shown in the dialog indicates the backup job start time, _not_ the time that the particular database was actually snapshotted and backed up. When multiple databases are included in a backup job, each databases is snapshotted and backed up in serial order; thus, each individual database's actual snapshot and backup time is not the same as the backup job start time. To restore a database to a specific point in time, use [Point-in-time recovery](../pitr/).
 
 1. If you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the master keys referenced in the metadata file can be retrieved.
 
@@ -218,7 +220,7 @@ If you created backups using a [scheduled backup policy with PITR](../schedule-d
 
 1. Select the **Target Universe** where you want to restore the backup. You also have the option to rename the keyspaces/databases.
 
-1. If the backup is encrypted, choose the appropriate **KMS configuration**.
+1. If the backup is encrypted, choose the appropriate [KMS configuration](../../security/create-kms-config/aws-kms/).
 
 1. If you are renaming keyspaces/databases, click **Next** and enter the new names.
 

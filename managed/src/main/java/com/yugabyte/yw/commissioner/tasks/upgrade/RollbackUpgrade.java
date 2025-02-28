@@ -2,33 +2,37 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
 @Slf4j
 @Abortable
 @Retryable
 public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
 
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
+
   @Inject
-  protected RollbackUpgrade(BaseTaskDependencies baseTaskDependencies) {
+  protected RollbackUpgrade(
+      BaseTaskDependencies baseTaskDependencies, SoftwareUpgradeHelper softwareUpgradeHelper) {
     super(baseTaskDependencies);
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @Override
@@ -64,13 +68,12 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
     Universe universe = getUniverse();
     UniverseDefinitionTaskParams.PrevYBSoftwareConfig prevYBSoftwareConfig =
         universe.getUniverseDetails().prevYBSoftwareConfig;
-    String newVersion =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    String version = universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     if (prevYBSoftwareConfig != null
-        && !newVersion.equals(prevYBSoftwareConfig.getSoftwareVersion())) {
-      newVersion = prevYBSoftwareConfig.getSoftwareVersion();
+        && !version.equals(prevYBSoftwareConfig.getSoftwareVersion())) {
+      version = prevYBSoftwareConfig.getSoftwareVersion();
     }
-    return newVersion;
+    return version;
   }
 
   @Override
@@ -83,16 +86,30 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
 
           UniverseDefinitionTaskParams.PrevYBSoftwareConfig prevYBSoftwareConfig =
               universe.getUniverseDetails().prevYBSoftwareConfig;
-          String newVersion =
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
           createUpdateUniverseSoftwareUpgradeStateTask(
               UniverseDefinitionTaskParams.SoftwareUpgradeState.RollingBack);
 
-          // Skip auto flags restore in case upgrade did not take place or succeed.
-          if (prevYBSoftwareConfig != null
-              && !newVersion.equals(prevYBSoftwareConfig.getSoftwareVersion())) {
-            newVersion = prevYBSoftwareConfig.getSoftwareVersion();
+          boolean ysqlMajorVersionUpgrade = false;
+          boolean requireAdditionalSuperUserForCatalogUpgrade = false;
+          String oldVersion =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
+          if (prevYBSoftwareConfig != null) {
+            oldVersion = prevYBSoftwareConfig.getSoftwareVersion();
+            String newVersion =
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+            if (!StringUtils.isEmpty(prevYBSoftwareConfig.getTargetUpgradeSoftwareVersion())) {
+              newVersion = prevYBSoftwareConfig.getTargetUpgradeSoftwareVersion();
+            }
+
+            ysqlMajorVersionUpgrade =
+                softwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+                    universe, oldVersion, newVersion);
+            requireAdditionalSuperUserForCatalogUpgrade =
+                softwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
+                    universe, oldVersion, newVersion);
+
             int autoFlagConfigVersion = prevYBSoftwareConfig.getAutoFlagConfigVersion();
             // Restore old auto flag Config
             createRollbackAutoFlagTask(taskParams().getUniverseUUID(), autoFlagConfigVersion);
@@ -100,27 +117,13 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
 
           // Download software to nodes which does not have either master or tserver with new
           // version.
-          createDownloadTasks(toOrderedSet(nodes.asPair()), newVersion);
-
-          boolean ysqlMajorVersionUpgrade = false;
-          boolean requireAdditionalSuperUserForCatalogUpgrade = false;
-          if (prevYBSoftwareConfig != null) {
-            ysqlMajorVersionUpgrade =
-                gFlagsValidation.ysqlMajorVersionUpgrade(
-                    prevYBSoftwareConfig.getSoftwareVersion(),
-                    universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-            requireAdditionalSuperUserForCatalogUpgrade =
-                isSuperUserRequiredForCatalogUpgrade(
-                    universe,
-                    prevYBSoftwareConfig.getSoftwareVersion(),
-                    universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-          }
+          createDownloadTasks(toOrderedSet(nodes.asPair()), oldVersion);
 
           if (nodes.tserversList.size() > 0) {
             createTServerUpgradeFlowTasks(
                 universe,
                 nodes.tserversList,
-                newVersion,
+                oldVersion,
                 getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
                 false /* reProvisionRequired */,
                 ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS : null);
@@ -131,13 +134,19 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
             // none of the masters are upgraded.
             if (ysqlMajorVersionUpgrade
                 && nodes.mastersList.size() == universe.getMasters().size()) {
-              createRollbackYsqlMajorVersionCatalogUpgradeTask();
+              if (ImmutableList.of(
+                      YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK,
+                      YsqlMajorCatalogUpgradeState
+                          .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK)
+                  .contains(softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe))) {
+                createRollbackYsqlMajorVersionCatalogUpgradeTask();
+              }
             }
 
             createMasterUpgradeFlowTasks(
                 universe,
                 getNonMasterNodes(nodes.mastersList, nodes.tserversList),
-                newVersion,
+                oldVersion,
                 getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
                 ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS : null,
                 false /* activeRole */);
@@ -145,18 +154,20 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
             createMasterUpgradeFlowTasks(
                 universe,
                 nodes.mastersList,
-                newVersion,
+                oldVersion,
                 getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
                 ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS : null,
                 true /* activeRole */);
           }
 
           if (ysqlMajorVersionUpgrade) {
-            // Un-set the flag set for ysql major version upgrade.
-            createSetExpressionPushdownFlagInMemoryTask(
-                universe, getNodesToEnableExpressionPushdown(universe), true /* flagValue */);
-            createServerConfUpdateTaskForYsqlMajorUpgrade(
-                universe, universe.getTServers(), YsqlMajorVersionUpgradeState.ROLLBACK_COMPLETE);
+            // Un-set the flag ysql_yb_major_version_upgrade_compatibility as major version upgrade
+            // is
+            // rolled back.
+            createGFlagsUpgradeTaskForYSQLMajorUpgrade(
+                universe, YsqlMajorVersionUpgradeState.ROLLBACK_COMPLETE);
+
+            createCleanUpPGUpgradeDataDirTask();
 
             if (requireAdditionalSuperUserForCatalogUpgrade) {
               createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
@@ -164,32 +175,15 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           }
 
           // Check software version on each node.
-          createCheckSoftwareVersionTask(allNodes, newVersion);
+          createCheckSoftwareVersionTask(allNodes, oldVersion);
 
           // Update Software version
-          createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
+          createUpdateSoftwareVersionTask(oldVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
 
           createUpdateUniverseSoftwareUpgradeStateTask(
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
               false /* isSoftwareRollbackAllowed */);
         });
-  }
-
-  private List<NodeDetails> getNodesToEnableExpressionPushdown(Universe universe) {
-    List<NodeDetails> nodes = new ArrayList<>();
-    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
-      for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
-        if (node.isTserver) {
-          Map<String, String> gflag =
-              GFlagsUtil.getGFlagsForNode(
-                  node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters);
-          if (!GFlagsUtil.checkExperssionPushdownValueInFlags(gflag, "false")) {
-            nodes.add(node);
-          }
-        }
-      }
-    }
-    return nodes;
   }
 }

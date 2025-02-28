@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -227,12 +228,13 @@ public class UpgradeUniverseHandler {
     // update prev software version to track version in the task details.
     requestParams.ybPrevSoftwareVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    TaskType taskType =
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.FinalizeKubernetesUpgrade
+            : TaskType.FinalizeUpgrade;
     return submitUpgradeTask(
-        TaskType.FinalizeUpgrade,
-        CustomerTask.TaskType.FinalizeUpgrade,
-        requestParams,
-        customer,
-        universe);
+        taskType, CustomerTask.TaskType.FinalizeUpgrade, requestParams, customer, universe);
   }
 
   public UUID rollbackUpgrade(
@@ -513,12 +515,30 @@ public class UpgradeUniverseHandler {
           throw new PlatformServiceException(BAD_REQUEST, errorMessage);
         }
       }
+
+      // For Kubernetes provider, verify the universe version is compatible with otel exporter.
+      if (userIntent.providerType.equals(CloudType.kubernetes)
+          && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
+        String errorMessage =
+            String.format(
+                "Audit log exporter is not supported for universe '%s' running version '%s'. Please"
+                    + " upgrade to version '%s' or '%s'. Alternatively, disable the exporter to"
+                    + " only enable audit logs on the universe.",
+                universe.getUniverseUUID(),
+                userIntent.ybSoftwareVersion,
+                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_STABLE,
+                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_PREVIEW);
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
     }
 
     requestParams.verifyParams(universe, true);
     userIntent.auditLogConfig = requestParams.auditLogConfig;
     return submitUpgradeTask(
-        TaskType.ModifyAuditLoggingConfig,
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.ModifyKubernetesAuditLoggingConfig
+            : TaskType.ModifyAuditLoggingConfig,
         CustomerTask.TaskType.ModifyAuditLoggingConfig,
         requestParams,
         customer,
@@ -731,21 +751,19 @@ public class UpgradeUniverseHandler {
         universe.getName(),
         taskUUID);
 
-    if (!upgradeTaskParams.isRunOnlyPrechecks()) {
-      CustomerTask.create(
-          customer,
-          universe.getUniverseUUID(),
-          taskUUID,
-          CustomerTask.TargetType.Universe,
-          customerTaskType,
-          universe.getName(),
-          customTaskName);
-      log.info(
-          "Saved task uuid {} in customer tasks table for universe {} : {}.",
-          taskUUID,
-          universe.getUniverseUUID(),
-          universe.getName());
-    }
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        customerTaskType,
+        universe.getName(),
+        customTaskName);
+    log.info(
+        "Saved task uuid {} in customer tasks table for universe {} : {}.",
+        taskUUID,
+        universe.getUniverseUUID(),
+        universe.getName());
     return taskUUID;
   }
 

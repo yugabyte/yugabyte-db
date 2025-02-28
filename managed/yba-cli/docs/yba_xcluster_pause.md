@@ -20,6 +20,7 @@ yba xcluster pause --uuid <xcluster-uuid>
 
 ```
   -u, --uuid string   [Required] The uuid of the xcluster to pause.
+  -f, --force         [Optional] Bypass the prompt for non-interactive usage.
   -h, --help          help for pause
 ```
 

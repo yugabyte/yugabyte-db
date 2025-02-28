@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.BackupEntry;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -41,14 +42,12 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
-import org.yb.util.Pair;
 import play.libs.Json;
 
 @Singleton
@@ -131,23 +130,27 @@ public class EncryptionAtRestManager {
     return serviceInstance;
   }
 
-  public byte[] reEncryptUniverseKey(
+  public EncryptionKey reEncryptUniverseKey(
       UUID universeUUID,
       UUID oldKmsConfigUUID,
       byte[] oldEncryptedUniverseKey,
+      ObjectNode encryptionContext,
       UUID newKmsConfigUUID) {
     // Decrypt old encrypted universe key with old KMS config.
     EncryptionAtRestService<? extends SupportedAlgorithmInterface> oldKeyService =
         getServiceInstance(KmsConfig.getOrBadRequest(oldKmsConfigUUID).getKeyProvider().name());
     byte[] universeKey =
-        oldKeyService.retrieveKey(universeUUID, oldKmsConfigUUID, oldEncryptedUniverseKey);
+        oldKeyService.retrieveKey(
+            universeUUID, oldKmsConfigUUID, oldEncryptedUniverseKey, encryptionContext);
 
     // Encrypt the old universe key with the new KMS config.
     EncryptionAtRestService<? extends SupportedAlgorithmInterface> newKeyService =
         getServiceInstance(KmsConfig.getOrBadRequest(newKmsConfigUUID).getKeyProvider().name());
-    byte[] newEncryptedUniverseKey =
+    EncryptionKey newEncryptedUniverseKey =
         newKeyService.encryptKeyWithService(newKmsConfigUUID, universeKey);
-    if (newEncryptedUniverseKey == null || newEncryptedUniverseKey.length == 0) {
+    if (newEncryptedUniverseKey == null
+        || newEncryptedUniverseKey.getKeyBytes() == null
+        || newEncryptedUniverseKey.getKeyBytes().length == 0) {
       throw new RuntimeException(
           String.format(
               "Could not re-encrypt universe key from configUUID '%s' to configUUID '%s'.",
@@ -166,11 +169,12 @@ public class EncryptionAtRestManager {
     byte[] newKeyRefToBeActive = null;
 
     for (KmsHistory kmsHistory : allActiveUniverseKeys) {
-      byte[] newEncryptedUniverseKey =
+      EncryptionKey newEncryptedUniverseKey =
           reEncryptUniverseKey(
               universeUUID,
               kmsHistory.getConfigUuid(),
               Base64.getDecoder().decode(kmsHistory.getUuid().keyRef),
+              kmsHistory.getEncryptionContext(),
               newKmsConfigUUID);
 
       // If all goes well, add records to reEncryptedKmsHistoryList.
@@ -178,9 +182,10 @@ public class EncryptionAtRestManager {
           EncryptionAtRestUtil.createKmsHistory(
               universeUUID,
               newKmsConfigUUID,
-              newEncryptedUniverseKey,
+              newEncryptedUniverseKey.getKeyBytes(),
               newReEncryptionCount,
-              kmsHistory.dbKeyId));
+              kmsHistory.dbKeyId,
+              newEncryptedUniverseKey.getEncryptionContext()));
       LOG.info(
           "Re-encrypted 1 universe key from configUUID '{}' to configUUID '{}'.",
           kmsHistory.getConfigUuid(),
@@ -188,7 +193,7 @@ public class EncryptionAtRestManager {
 
       // Find the kmsHistory to be activated, with new re-encrypted key ref.
       if (kmsHistory.isActive()) {
-        newKeyRefToBeActive = newEncryptedUniverseKey;
+        newKeyRefToBeActive = newEncryptedUniverseKey.getKeyBytes();
       }
     }
     // Save all the records in reEncryptedKmsHistoryList in a single transaction.
@@ -200,11 +205,11 @@ public class EncryptionAtRestManager {
   }
 
   public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>>
-      byte[] generateUniverseKey(
+      EncryptionKey generateUniverseKey(
           UUID configUUID, UUID universeUUID, EncryptionAtRestConfig config) {
     T keyService;
     KmsConfig kmsConfig;
-    byte[] universeKeyRef = null;
+    EncryptionKey universeKeyRef = null;
     try {
       kmsConfig = KmsConfig.getOrBadRequest(configUUID);
       keyService = getServiceInstance(kmsConfig.getKeyProvider().name());
@@ -214,16 +219,28 @@ public class EncryptionAtRestManager {
         LOG.info(
             String.format("Creating universe key for universe '%s'.", universeUUID.toString()));
         universeKeyRef = keyService.createKey(universeUUID, configUUID, config);
-        if (universeKeyRef != null && universeKeyRef.length > 0) {
-          EncryptionAtRestUtil.addKeyRef(universeUUID, configUUID, universeKeyRef);
+        if (universeKeyRef != null
+            && universeKeyRef.getKeyBytes() != null
+            && universeKeyRef.getKeyBytes().length > 0) {
+          EncryptionAtRestUtil.addKeyRef(
+              universeUUID,
+              configUUID,
+              universeKeyRef.getKeyBytes(),
+              universeKeyRef.getEncryptionContext());
         }
       } else if (configUUID != null && configUUID.equals(activeKmsHistory.getConfigUuid())) {
         // Universe key rotation if the given KMS config equals the active one.
         LOG.info(
             String.format("Rotating universe key for universe '%s'.", universeUUID.toString()));
         universeKeyRef = keyService.rotateKey(universeUUID, configUUID, config);
-        if (universeKeyRef != null && universeKeyRef.length > 0) {
-          EncryptionAtRestUtil.addKeyRef(universeUUID, configUUID, universeKeyRef);
+        if (universeKeyRef != null
+            && universeKeyRef.getKeyBytes() != null
+            && universeKeyRef.getKeyBytes().length > 0) {
+          EncryptionAtRestUtil.addKeyRef(
+              universeUUID,
+              configUUID,
+              universeKeyRef.getKeyBytes(),
+              universeKeyRef.getEncryptionContext());
         }
       }
     } catch (Exception e) {
@@ -236,12 +253,13 @@ public class EncryptionAtRestManager {
   }
 
   public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>>
-      byte[] getUniverseKey(UUID universeUUID, UUID configUUID, byte[] keyRef) {
+      byte[] getUniverseKey(
+          UUID universeUUID, UUID configUUID, byte[] keyRef, ObjectNode encryptionContext) {
     byte[] keyVal = null;
     T keyService;
     try {
       keyService = getServiceInstance(KmsConfig.get(configUUID).getKeyProvider().name());
-      keyVal = keyService.retrieveKey(universeUUID, configUUID, keyRef);
+      keyVal = keyService.retrieveKey(universeUUID, configUUID, keyRef, encryptionContext);
     } catch (Exception e) {
       String errMsg =
           String.format(
@@ -294,10 +312,10 @@ public class EncryptionAtRestManager {
       UUID universeUUID) {
     // Add all the universe key history.
     universeKeyRefs.forEach(universeKeys::add);
-    // Add the master key metadata.
-    Set<UUID> distinctKmsConfigUUIDs = KmsHistory.getDistinctKmsConfigUUIDs(universeUUID);
-    if (distinctKmsConfigUUIDs.size() == 1) {
-      KmsConfig kmsConfig = KmsConfig.get(distinctKmsConfigUUIDs.iterator().next());
+    // Add the active master key metadata.
+    KmsHistory activeKmsHistory = EncryptionAtRestUtil.getActiveKey(universeUUID);
+    if (activeKmsHistory != null) {
+      KmsConfig kmsConfig = KmsConfig.get(activeKmsHistory.getConfigUuid());
       backup.set(
           "master_key_metadata",
           kmsConfig
@@ -305,11 +323,7 @@ public class EncryptionAtRestManager {
               .getServiceInstance()
               .getKeyMetadata(kmsConfig.getConfigUUID()));
     } else {
-      LOG.debug(
-          "Found {} master keys on universe '{}''. Not adding them to backup metadata: {}.",
-          distinctKmsConfigUUIDs.size(),
-          universeUUID,
-          distinctKmsConfigUUIDs);
+      LOG.debug("Found no active master keys on universe '{}'.", universeUUID);
     }
   }
 
@@ -361,7 +375,11 @@ public class EncryptionAtRestManager {
   }
 
   public void sendKeyToMasters(
-      YBClientService ybService, UUID universeUUID, UUID kmsConfigUUID, byte[] keyRef) {
+      YBClientService ybService,
+      UUID universeUUID,
+      UUID kmsConfigUUID,
+      byte[] keyRef,
+      ObjectNode encryptionContext) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
@@ -369,7 +387,7 @@ public class EncryptionAtRestManager {
     String dbKeyId =
         EncryptionAtRestUtil.getKeyRefConfig(universeUUID, kmsConfigUUID, keyRef).dbKeyId;
     try {
-      byte[] keyVal = getUniverseKey(universeUUID, kmsConfigUUID, keyRef);
+      byte[] keyVal = getUniverseKey(universeUUID, kmsConfigUUID, keyRef, encryptionContext);
       client = ybService.getClient(hostPorts, certificate);
       List<HostAndPort> masterAddrs =
           Arrays.stream(hostPorts.split(","))
@@ -394,7 +412,7 @@ public class EncryptionAtRestManager {
       // change encryption info request, we need to temporarily enable encryption with each
       // key to ensure it is written to the registry to be used to decrypt restored files
       client.enableEncryptionAtRestInMemory(dbKeyId);
-      Pair<Boolean, String> isEncryptionEnabled = client.isEncryptionEnabled();
+      org.yb.util.Pair<Boolean, String> isEncryptionEnabled = client.isEncryptionEnabled();
       if (!isEncryptionEnabled.getFirst() || !isEncryptionEnabled.getSecond().equals(dbKeyId)) {
         throw new RuntimeException("Master did not respond that key was enabled");
       }
@@ -429,13 +447,20 @@ public class EncryptionAtRestManager {
         validDbKeyId = Base64.getEncoder().encodeToString(universeKeyRef);
       }
 
+      ObjectNode encryptionContext = Json.newObject();
+      if (backupEntry.has("encryption_context")) {
+        // New backups after adding ciphertrust KMS, have encryption context.
+        encryptionContext = (ObjectNode) backupEntry.get("encryption_context");
+      }
+
       // Get the service account object to verify 2 cases ahead.
       String keyProviderString = KmsConfig.getOrBadRequest(kmsConfigUUID).getKeyProvider().name();
       EncryptionAtRestService<? extends SupportedAlgorithmInterface> keyService =
           getServiceInstance(keyProviderString);
       UUID validKmsConfigUUID;
 
-      if (keyService.verifyKmsConfigAndKeyRef(universeUUID, kmsConfigUUID, universeKeyRef)) {
+      if (keyService.verifyKmsConfigAndKeyRef(
+          universeUUID, kmsConfigUUID, universeKeyRef, encryptionContext)) {
         // Case 1: When the given KMS config UUID matches the key ref.
         validKmsConfigUUID = kmsConfigUUID;
       } else {
@@ -445,7 +470,8 @@ public class EncryptionAtRestManager {
             findKmsConfigFromKeyRefOrNull(
                 universeUUID,
                 KeyProvider.valueOf(backupEntry.get("key_provider").asText()),
-                universeKeyRef);
+                universeKeyRef,
+                encryptionContext);
         if (validKmsConfigUUID == null) {
           // Case 3: When none of the KMS configs on the platform are able to decrypt the key ref.
           throw new PlatformServiceException(
@@ -464,25 +490,33 @@ public class EncryptionAtRestManager {
       // Case when EAR was disabled on target universe.
       if (activeKmsHistory == null) {
         keyService.restoreBackupEntry(
-            universeUUID, validKmsConfigUUID, universeKeyRef, validDbKeyId);
+            universeUUID, validKmsConfigUUID, universeKeyRef, validDbKeyId, encryptionContext);
         validKmsHistory =
             EncryptionAtRestUtil.getKeyRefConfig(universeUUID, validKmsConfigUUID, universeKeyRef);
       } else {
         // Case when EAR was ever enabled before.
         // Re-encrypt the key_ref with the active KMS config on the target universe.
         UUID activeKmsConfigUUID = activeKmsHistory.getConfigUuid();
-        byte[] newEncryptedUniverseKey =
+        EncryptionKey newEncryptedUniverseKey =
             reEncryptUniverseKey(
-                universeUUID, validKmsConfigUUID, universeKeyRef, activeKmsConfigUUID);
+                universeUUID,
+                validKmsConfigUUID,
+                universeKeyRef,
+                encryptionContext,
+                activeKmsConfigUUID);
         if (EncryptionAtRestUtil.dbKeyIdExists(universeUUID, validDbKeyId)) {
           validKmsHistory =
               EncryptionAtRestUtil.getLatestKmsHistoryWithDbKeyId(universeUUID, validDbKeyId);
         } else {
           keyService.restoreBackupEntry(
-              universeUUID, activeKmsConfigUUID, newEncryptedUniverseKey, validDbKeyId);
+              universeUUID,
+              activeKmsConfigUUID,
+              newEncryptedUniverseKey.getKeyBytes(),
+              validDbKeyId,
+              newEncryptedUniverseKey.getEncryptionContext());
           validKmsHistory =
               EncryptionAtRestUtil.getKeyRefConfig(
-                  universeUUID, activeKmsConfigUUID, newEncryptedUniverseKey);
+                  universeUUID, activeKmsConfigUUID, newEncryptedUniverseKey.getKeyBytes());
         }
       }
 
@@ -495,7 +529,8 @@ public class EncryptionAtRestManager {
           ybService,
           validKmsHistory.getUuid().targetUuid,
           validKmsHistory.getConfigUuid(),
-          Base64.getDecoder().decode(validKmsHistory.getUuid().keyRef));
+          Base64.getDecoder().decode(validKmsHistory.getUuid().keyRef),
+          validKmsHistory.getEncryptionContext());
     }
   }
 
@@ -570,13 +605,14 @@ public class EncryptionAtRestManager {
    * @return the matching KMS config UUID if any, else null.
    */
   public UUID findKmsConfigFromKeyRefOrNull(
-      UUID universeUUID, KeyProvider keyProvider, byte[] keyRef) {
+      UUID universeUUID, KeyProvider keyProvider, byte[] keyRef, ObjectNode encryptionContext) {
     UUID kmsConfigUUID = null;
     List<KmsConfig> allKmsConfigs = KmsConfig.listKMSProviderConfigs(keyProvider);
     EncryptionAtRestService<? extends SupportedAlgorithmInterface> keyService =
         getServiceInstance(keyProvider.name());
     for (KmsConfig kmsConfig : allKmsConfigs) {
-      if (keyService.verifyKmsConfigAndKeyRef(universeUUID, kmsConfig.getConfigUUID(), keyRef)) {
+      if (keyService.verifyKmsConfigAndKeyRef(
+          universeUUID, kmsConfig.getConfigUUID(), keyRef, encryptionContext)) {
         kmsConfigUUID = kmsConfig.getConfigUUID();
         break;
       }

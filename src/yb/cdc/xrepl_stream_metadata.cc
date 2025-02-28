@@ -80,7 +80,7 @@ std::vector<xrepl::StreamTabletStats> StreamMetadata::GetAllStreamTabletStats(
     stat.stream_id_str = stream_id.ToString();
     stat.producer_tablet_id = tablet_id;
     stat.producer_table_id = table_ids.size() == 1 ? table_ids[0] : yb::AsString(table_ids);
-    stat.state = SysCDCStreamEntryPB_State_Name(state_);
+    stat.state = SysCDCStreamEntryPB_State_Name(state_.load());
     metadata->PopulateStats(&stat);
 
     result.emplace_back(std::move(stat));
@@ -223,6 +223,17 @@ Result<std::optional<uint32_t>> StreamMetadata::GetDbOidToGetSequencesForUnlocke
   }
   auto namespace_id = VERIFY_RESULT(xcluster::GetReplicationNamespaceBelongsTo(table_id));
   return GetPgsqlDatabaseOid(namespace_id);
+}
+
+void StreamMetadata::StreamTabletMetadata::ResetOnTermChange(int64_t term) {
+  if (term == term_) {
+    return;
+  }
+
+  term_ = term;
+  last_apply_safe_time_ = HybridTime::kInvalid;
+  last_apply_safe_time_update_time_ = MonoTime::kUninitialized;
+  apply_safe_time_checkpoint_op_id_ = 0;
 }
 
 void StreamMetadata::StreamTabletMetadata::UpdateStats(

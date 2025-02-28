@@ -595,16 +595,12 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // Protobuf requests before sending them to DocDB. For performance reasons, requests are
   // constructed differently for different statements.
   const auto& req = read_op_->read_request();
-  if (req.has_sampling_state()) {
-    VLOG(1) << __PRETTY_FUNCTION__ << ": Preparing sampling requests ";
-    return PopulateSamplingOps();
-
   // Use partition column values to filter out partitions without possible matches.
   // If there is a query with conditions on multiple partition columns, like
   // - SELECT * FROM sql_table WHERE hash_c1 IN (1, 2, 3) AND hash_c2 IN (4, 5, 6);
   // the function creates multiple requests for possible hash permutations / keys.
   // The requests are also configured to run in parallel.
-  } else if (!req.partition_column_values().empty()) {
+  if (!req.partition_column_values().empty()) {
     return PopulateNextHashPermutationOps();
 
   // There is no key values to filter out partitions, send requests to all of them.
@@ -1212,45 +1208,6 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
   return true;
 }
 
-Result<bool> PgDocReadOp::PopulateSamplingOps() {
-  // Create one PgsqlOp per partition
-  ClonePgsqlOps(table_->GetPartitionListSize());
-  // Partitions are sampled sequentially, one at a time
-  parallelism_level_ = 1;
-  // Assign partitions to operators.
-  const auto& partition_keys = table_->GetPartitionList();
-  SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
-            "Number of partitions and number of partition keys are not the same");
-
-  // Bind requests to partitions
-  for (size_t partition = 0; partition < partition_keys.size(); ++partition) {
-    // Use partition index to setup the protobuf to identify the partition that this request
-    // is for. Batcher will use this information to send the request to correct tablet server, and
-    // server uses this information to operate on correct tablet.
-    // - Range partition uses range partition key to identify partition.
-    // - Hash partition uses "next_partition_key" and "max_hash_code" to identify partition.
-    if (VERIFY_RESULT(SetLowerUpperBound(&GetReadReq(partition), partition))) {
-      // Currently we do not set boundaries on sampling requests other than partition boundaries,
-      // so result is going to be always true, though that may change.
-      pgsql_ops_[partition]->set_active(true);
-      ++active_op_count_;
-    }
-  }
-  // Got some inactive operations, move them away
-  if (active_op_count_ < pgsql_ops_.size()) {
-    MoveInactiveOpsOutside();
-  }
-  VLOG(1) << "Number of partitions to sample: " << active_op_count_;
-
-  return true;
-}
-
-EstimatedRowCount PgDocReadOp::GetEstimatedRowCount() const {
-  VLOG(1) << "Returning liverows " << estimated_total_rows_;
-  // TODO count dead tuples while sampling
-  return EstimatedRowCount{.live = estimated_total_rows_, .dead = 0};
-}
-
 // When postgres requests to scan a specific partition, set the partition parameter accordingly.
 Result<bool> PgDocReadOp::SetScanPartitionBoundary() {
   // Boundary to scan from a given key to the end of its associated tablet.
@@ -1285,12 +1242,6 @@ Status PgDocReadOp::CompleteProcessResponse() {
   // For each read_op, set up its request for the next batch of data or make it in-active.
   bool has_more_data = false;
   auto send_count = std::min(parallelism_level_, active_op_count_);
-  ::yb::LWPgsqlSamplingStatePB* sampling_state = nullptr;
-
-  // There can be only one op at a time for sampling, since any modifications to the random sampling
-  // state need to be propagated after one op completes to the next.
-  if (read_op_->read_request().has_sampling_state())
-    DCHECK_LE(send_count, 1);
 
   for (size_t op_index = 0; op_index < send_count; op_index++) {
     auto& read_op = GetReadOp(op_index);
@@ -1320,17 +1271,6 @@ Status PgDocReadOp::CompleteProcessResponse() {
       FormulateRequestForRollingUpgrade(&req);
     }
 
-    if (res.has_sampling_state()) {
-      VLOG(1) << "Received sampling state: " << res.sampling_state().ShortDebugString();
-      estimated_total_rows_ = res.sampling_state().has_estimated_total_rows()
-                                  ? res.sampling_state().estimated_total_rows()
-                                  : res.sampling_state().samplerows();
-
-      // Copy sampling state from the response to propagate in later requests for continuing further
-      // sampling.
-      sampling_state = res.mutable_sampling_state();
-    }
-
     if (has_more_arg) {
       has_more_data = true;
     } else {
@@ -1347,13 +1287,6 @@ Status PgDocReadOp::CompleteProcessResponse() {
     // There should be no active op left in queue.
     active_op_count_ = 0;
     end_of_data_ = request_population_completed_;
-  }
-
-  if (active_op_count_ > 0 && sampling_state != nullptr) {
-    auto& read_op = down_cast<PgsqlReadOp&>(*pgsql_ops_[0]);
-    auto *req = &read_op.read_request();
-    req->ref_sampling_state(sampling_state);
-    VLOG(1) << "Continue sampling from " << sampling_state->ShortDebugString();
   }
 
   return Status::OK();

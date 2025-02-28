@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -15,7 +16,6 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.RandomStringUtils;
 
 @Slf4j
 public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
@@ -38,11 +38,14 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
   public enum Action {
     CREATE_USER,
     DELETE_USER,
+    CREATE_USER_AND_PG_PASS_FILE,
+    CREATE_PG_PASS_FILE,
     DELETE_PG_PASS_FILE
   }
 
   public static class Params extends UniverseTaskParams {
     public Action action;
+    public String password;
   }
 
   public Params taskParams() {
@@ -59,12 +62,19 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
     if (taskParams().action == Action.CREATE_USER) {
       dropUser(universe, masterLeaderNode, pgPassFilePath);
       deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
-      createUser(universe, masterLeaderNode, pgPassFilePath);
+      createUser(universe, masterLeaderNode, pgPassFilePath, taskParams().password);
     } else if (taskParams().action == Action.DELETE_USER) {
       dropUser(universe, masterLeaderNode, pgPassFilePath);
       deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
+    } else if (taskParams().action == Action.CREATE_USER_AND_PG_PASS_FILE) {
+      dropUser(universe, masterLeaderNode, pgPassFilePath);
+      deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
+      createUser(universe, masterLeaderNode, pgPassFilePath, taskParams().password);
+      createPGPassFile(universe, masterLeaderNode, pgPassFilePath, taskParams().password);
     } else if (taskParams().action == Action.DELETE_PG_PASS_FILE) {
       deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
+    } else if (taskParams().action == Action.CREATE_PG_PASS_FILE) {
+      createPGPassFile(universe, masterLeaderNode, pgPassFilePath, taskParams().password);
     }
   }
 
@@ -77,16 +87,8 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
     nodeUniverseManager.runCommand(node, universe, ImmutableList.of("rm", "-f", pgPassFilePath));
   }
 
-  private void createUser(Universe universe, NodeDetails node, String pgPassFilePath) {
-    String allowedCharsInPassword =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    for (String charString : Util.SPECIAL_CHARACTERS_STRING_LIST) {
-      // Avoid using % in the password.
-      if (!charString.equals("%")) {
-        allowedCharsInPassword += charString;
-      }
-    }
-    String password = RandomStringUtils.secureStrong().next(20, allowedCharsInPassword);
+  private void createUser(
+      Universe universe, NodeDetails node, String pgPassFilePath, String password) {
     String query =
         String.format(
             """
@@ -97,29 +99,64 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
     """,
             UPGRADE_SUPERUSER, password, "%s");
     ysqlQueryExecutor.runUserDbCommands(query, "template1", universe);
+  }
+
+  private void createPGPassFile(
+      Universe universe, NodeDetails node, String pgPassFilePath, String password) {
     String pgPassFileContent = "*:*:*:" + UPGRADE_SUPERUSER + ":" + password;
-    ShellProcessContext context =
-        ShellProcessContext.builder()
-            .logCmdOutput(false)
-            .redactedVals(
-                ImmutableMap.of(pgPassFileContent, "*:*:*:REDACTED_USERNAME:REDACTED_PASSWORD"))
-            .build();
-    nodeUniverseManager.runCommand(
-        node,
-        universe,
-        ImmutableList.of(
-            "rm",
-            "-rf",
-            pgPassFilePath,
-            ";",
-            "echo",
-            pgPassFileContent,
-            ">>",
-            pgPassFilePath,
-            ";",
-            "chmod",
-            "600",
-            pgPassFilePath),
-        context);
+    if (universe
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent
+        .providerType
+        .equals(CloudType.kubernetes)) {
+      String command =
+          "rm -rf "
+              + pgPassFilePath
+              + "; echo "
+              + pgPassFileContent
+              + " >> "
+              + pgPassFilePath
+              + "; chmod 600 "
+              + pgPassFilePath;
+      String redactedCommand =
+          "rm -rf "
+              + pgPassFilePath
+              + "; echo *:*:*:REDACTED_USERNAME:REDACTED_PASSWORD >> "
+              + pgPassFilePath
+              + "; chmod 600 "
+              + pgPassFilePath;
+      command = command.replace("$", "\\$");
+      nodeUniverseManager.runCommand(
+          node,
+          universe,
+          ImmutableList.of("/bin/bash", "-c", command),
+          ShellProcessContext.builder()
+              .logCmdOutput(false)
+              .redactedVals(ImmutableMap.of(command, redactedCommand))
+              .build());
+    } else {
+      nodeUniverseManager.runCommand(
+          node,
+          universe,
+          ImmutableList.of(
+              "rm",
+              "-rf",
+              pgPassFilePath,
+              ";",
+              "echo",
+              pgPassFileContent,
+              ">>",
+              pgPassFilePath,
+              ";",
+              "chmod",
+              "600",
+              pgPassFilePath),
+          ShellProcessContext.builder()
+              .logCmdOutput(false)
+              .redactedVals(
+                  ImmutableMap.of(pgPassFileContent, "*:*:*:REDACTED_USERNAME:REDACTED_PASSWORD"))
+              .build());
+    }
   }
 }

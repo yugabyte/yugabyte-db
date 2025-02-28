@@ -99,11 +99,14 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);
-  Result<std::string> ExportSnapshot(const YbcPgTxnSnapshot& snapshot);
-  Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
+  Result<std::string> ExportSnapshot(
+      const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time);
+  Result<std::optional<YbcPgTxnSnapshot>> SetTxnSnapshot(
+      PgTxnSnapshotDescriptor snapshot_descriptor);
   bool HasExportedSnapshots() const;
   void ClearExportedTxnSnapshots();
-
+  Status RollbackToSubTransaction(SubTransactionId id);
+  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;
@@ -197,6 +200,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool has_exported_snapshots_ = false;
 
   YbcPgCallbacks pg_callbacks_;
+
+  const bool enable_table_locking_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 };

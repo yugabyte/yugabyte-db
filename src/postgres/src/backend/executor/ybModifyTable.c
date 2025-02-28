@@ -279,9 +279,6 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 			 * Section 2 contains relations in relcache init file but
 			 * do not support sys cache. Should be kept in sync with
 			 * YbRelationIdIsInInitFileAndNotCached.
-			 * As of 2023-11-27, SECURITY LABEL command is not supported.
-			 * Add SharedSecLabelRelationId, SharedSecLabelObjectIndexId
-			 * to section 2 when SECURITY LABEL command is supported.
 			 */
 			Assert(relid == AuthIdRelationId ||
 				   relid == AuthIdRolnameIndexId ||
@@ -290,8 +287,9 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				   relid == AuthMemMemRoleIndexId ||
 				   relid == DatabaseRelationId ||
 				   relid == TableSpaceRelationId ||
-
-				   relid == DatabaseNameIndexId);
+				   relid == DatabaseNameIndexId ||
+				   relid == SharedSecLabelRelationId ||
+				   relid == SharedSecLabelObjectIndexId);
 
 			YbSetIsGlobalDDL();
 		}
@@ -1546,6 +1544,24 @@ YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 	return (resultRelInfo->ri_NumIndices > 1 ||
 			(resultRelInfo->ri_NumIndices == 1 &&
 			 !resultRelInfo->ri_IndexRelationDescs[0]->rd_index->indisprimary));
+}
+
+int
+YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo)
+{
+	int count = 0;
+	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
+	{
+		Relation index = resultRelInfo->ri_IndexRelationDescs[i];
+		if (index->rd_index->indisprimary)
+		{
+			continue;
+		}
+
+		++count;
+	}
+
+	return count;
 }
 
 /*

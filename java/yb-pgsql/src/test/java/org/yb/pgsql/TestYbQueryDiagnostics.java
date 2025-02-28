@@ -55,6 +55,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.client.TestUtils;
 
 @RunWith(value = YBTestRunner.class)
 public class TestYbQueryDiagnostics extends BasePgSQLTest {
@@ -105,6 +106,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         "pg_stat_statements was reset, query string not available;";
     private static final String permissionDeniedWarning =
         "Failed to create query diagnostics directory, Permission denied;";
+    private static final String bgWorkerType = "yb_query_diagnostics bgworker";
     private static final String preparedStmt =
         "PREPARE stmt(text, int, float) AS " +
         "SELECT * FROM test_table1 WHERE a = $1 AND b = $2 AND c = $3";
@@ -120,6 +122,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         /* Required for some of the fields within schema details */
         flagMap.put("ysql_beta_features", "true");
+        flagMap.put("ysql_yb_ash_sampling_interval_ms", "100");
 
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
@@ -137,6 +140,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         /* Required for some of the fields within schema details */
         flagMap.put("ysql_beta_features", "true");
+        flagMap.put("ysql_yb_ash_sampling_interval_ms", "50");
 
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
@@ -651,18 +655,34 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         String[] tokens = generateTokensForPgssData(pgssPath);
         validatePgssData(pgssPath, queryId, noOfCalls, tokens);
 
+        Float actualTotalPlanTime = Float.parseFloat(tokens[3]);
+        Float actualTotalExecTime = Float.parseFloat(tokens[4]);
+        Float actualTotalTime = actualTotalPlanTime + actualTotalExecTime;
+
+        Float actualMinPlanTime = Float.parseFloat(tokens[5]);
+        Float actualMinExecTime = Float.parseFloat(tokens[6]);
+        Float actualMinTime = actualMinPlanTime + actualMinExecTime;
+
+        Float actualMaxPlanTime = Float.parseFloat(tokens[7]);
+        Float actualMaxExecTime = Float.parseFloat(tokens[8]);
+        Float actualMaxTime = actualMaxPlanTime + actualMaxExecTime;
+
+        Float actualMeanPlanTime = Float.parseFloat(tokens[9]);
+        Float actualMeanExecTime = Float.parseFloat(tokens[10]);
+        Float actualMeanTime = actualMeanPlanTime + actualMeanExecTime;
+
         if (unnecessaryString != null)
             assertTrue("pg_stat_statements contains unnecessary data",
                     !tokens[1].contains(unnecessaryString));
         /* pg_stat_statements outputs data in ms */
         assertLessThan("total_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[3]) - expectedTotalTimeMs), epsilonMs);
+                       Math.abs(actualTotalTime - expectedTotalTimeMs), epsilonMs);
         assertLessThan("min_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[4]) - expectedMinTimeMs), epsilonMs);
+                       Math.abs(actualMinTime - expectedMinTimeMs), epsilonMs);
         assertLessThan("max_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[5]) - expectedMaxTimeMs), epsilonMs);
+                       Math.abs(actualMaxTime - expectedMaxTimeMs), epsilonMs);
         assertLessThan("mean_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[6]) - expectedMeanTimeMs), epsilonMs);
+                       Math.abs(actualMeanTime - expectedMeanTimeMs), epsilonMs);
     }
 
     private void validateConstantsOrBindVarData(Path bindVarPath, int noOfConstantsPerLine,
@@ -867,6 +887,16 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         longQuery.append("END AS result FROM test_table1;");
 
         return longQuery.toString();
+    }
+
+    /*
+     * Checks if yb_query_diagnostics's bgworker is switched on.
+     */
+    private boolean IsBackgroundWorkerRunning(Statement statement) throws Exception {
+        String query = "SELECT pid FROM pg_stat_activity WHERE backend_type = '" +
+                        bgWorkerType + "'";
+        ResultSet resultSet = statement.executeQuery(query);
+        return resultSet.next();
     }
 
     /*
@@ -1186,7 +1216,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
-    @Test
+    /**
+     * Disable until #25865 is done.
+     */
     public void checkAshData() throws Exception {
         int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
@@ -1615,7 +1647,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             Path bundleDataPath3 = runQueryDiagnostics(statement, queryId3, params3);
 
             /* Wait for the 1st bundle to expire */
-            Thread.sleep((bundle1Interval * 1000) + BG_WORKER_INTERVAL_MS);
+            waitForBundleCompletion(queryId1, statement, bundle1Interval);
 
             /* Cancel further processing of the 2nd bundle */
             statement.execute("SELECT yb_cancel_query_diagnostics('" + queryId2 + "')");
@@ -1648,7 +1680,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             assertQueryDiagnosticsStatus(expectedBundleViewEntry3, bundleViewEntry3);
 
             /* Wait for the 3rd bundle to expire */
-            Thread.sleep((bundle3Interval * 1000) + BG_WORKER_INTERVAL_MS);
+            waitForBundleCompletion(queryId3, statement, bundle3Interval);
 
             /* 3rd bundle must have successfully completed */
             bundleViewEntry3 = getViewData(statement, queryId3, "");
@@ -1663,8 +1695,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     /*
      * Test that yb_query_diagnostics works fine when diagnosing a query that has
      * large number of joins, subqueries, and constants.
+     * Disable until #25865 is done
      */
-    @Test
     public void testComplexQuery() throws Exception {
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
@@ -1719,8 +1751,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     /*
      * Tests a Long query(around 100000 chars).
+    * Disable until #25865 is done
      */
-    @Test
     public void testLongQueryWith5000Constants() throws Exception {
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
@@ -1910,6 +1942,60 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute("CREATE DATABASE db1");
             statement.execute("ALTER DATABASE db1 RENAME TO db2");
             statement.execute("DROP DATABASE db2");
+        }
+    }
+
+    /*
+     * Tests if bgworker is switching on and off dynamically.
+     * The test checks that ini
+     */
+    @Test
+    public void testDynamicBackgroundWorker() throws Exception {
+        int diagnosticsInterval = 10;
+        QueryDiagnosticsParams params = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            // Bgworker should be switched off initially
+            assertFalse("Background worker should not be running but it is",
+                    IsBackgroundWorkerRunning(statement));
+
+            // Run query diagnostics
+            String queryId = generateUniqueQueryId();
+            runQueryDiagnostics(statement, queryId, params);
+
+            // Ensure bundle has started
+            ResultSet resultSet = statement.executeQuery(
+                "SELECT * FROM yb_query_diagnostics_status WHERE query_id = '" + queryId + "'");
+            assertTrue("No rows found in yb_query_diagnostics_status", resultSet.next());
+
+            // Ensure that bgworker has started
+            try {
+                TestUtils.waitFor(() -> IsBackgroundWorkerRunning(statement),
+                                  10000L, 1000);
+            }
+            catch (Exception e) {
+                throw new AssertionError(
+                    "Background worker did not start after bundle creation");
+            }
+
+            // Wait for the bundle to expire
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+
+            // Background worker should stop if no bundle is processing
+            try {
+                TestUtils.waitFor(() -> !IsBackgroundWorkerRunning(statement),
+                                  10000L, 1000);
+            }
+            catch (Exception e) {
+                throw new AssertionError(
+                    "Background worker did not stop after bundle completion");
+            }
         }
     }
 }
