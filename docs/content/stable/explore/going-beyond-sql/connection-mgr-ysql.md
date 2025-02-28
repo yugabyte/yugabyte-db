@@ -109,9 +109,7 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 
 YSQL Connection Manager enables a larger number of client connections to efficiently share a smaller pool of backend processes using a many-to-one multiplexing model. However, in certain cases, a backend process may enter a state that prevents connection multiplexing between transactions. When this occurs, the backend process remains dedicated to a single logical connection (hence the term “sticky connection”) for the entire session rather than just a single transaction. This behavior deviates from the typical use case, where backend processes are reassigned after each transaction.
 
-Some other characteristics of sticky connections:
-- Backend processes corresponding to sticky connections are destroyed at the end of the session, and so, sticky connections do not return to the pool once used.
-- Currently, once formed, sticky connections remain sticky until the end of the session.
+Currently, once formed, sticky connections remain sticky until the end of the session. At the end of the session, the backend process corresponding to a sticky connection is destroyed along with the connection, and the connection does not return to the pool.
 
 When using YSQL Connection Manager, sticky connections can form in the following circumstances:
 
