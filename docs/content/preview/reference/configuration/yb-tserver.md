@@ -1368,7 +1368,7 @@ Default: `true`
 
 Interval in seconds at which the table list in the publication will be refreshed.
 
-Default: `3600`
+Default: `900`
 
 ##### --cdc_stream_records_threshold_size_bytes
 
