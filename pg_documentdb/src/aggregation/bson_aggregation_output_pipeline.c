@@ -53,6 +53,8 @@
 #include "aggregation/bson_tree_write.h"
 #include "optimizer/optimizer.h"
 #include "utils/query_utils.h"
+#include "utils/fmgr_utils.h"
+#include "schema_validation/schema_validation.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"
 
@@ -123,6 +125,9 @@ extern bool EnableMergeAcrossDB;
 /* GUC to enable $out aggregation stage */
 extern bool EnableCollation;
 
+/* GUC to enable schema validation */
+extern bool EnableSchemaValidation;
+
 static void ParseMergeStage(const bson_value_t *existingValue, const
 							char *currentNameSpace, MergeArgs *args);
 static void ParseOutStage(const bson_value_t *existingValue, const char *currentNameSpace,
@@ -144,12 +149,15 @@ static void WriteJoinConditionToQueryDollarMerge(Query *query,
 												 MergeArgs mergeArgs);
 static MergeAction * MakeActionWhenMatched(WhenMatchedAction whenMatched,
 										   Var *sourceDocVar,
-										   Var *targetDocVar);
+										   Var *targetDocVar,
+										   Const *schemaValidatorInfoConst,
+										   Const *validationLevelConst);
 static MergeAction * MakeActionWhenNotMatched(WhenNotMatchedAction whenNotMatched,
 											  Var *sourceDocVar,
 											  Var *generatedObjectIdVar,
 											  Var *sourceShardKeyVar,
-											  MongoCollection *targetCollection);
+											  MongoCollection *targetCollection,
+											  Const *SchemaValidatorInfoConst);
 static bool IsCompoundUniqueIndexPresent(const bson_value_t *onValues,
 										 bson_iter_t *indexKeyDocumentIter,
 										 const int numElementsInMap);
@@ -164,7 +172,12 @@ static HTAB * InitHashTableFromStringArray(const bson_value_t *onValues, int
 										   onValuesArraySize);
 static inline bool ValidatePreOutputStages(Query *query);
 static bool MergeQueryCTEWalker(Node *node, void *context);
-static inline void ValidateFinalPgbsonBeforeWriting(const pgbson *sourceDocument);
+static inline void ValidateFinalPgbsonBeforeWriting(const pgbson *finalBson, const
+													pgbson *targetDocument,
+													ExprEvalState *
+													stateForSchemaValidation,
+													ValidationLevels
+													validationLevel);
 static inline Expr * CreateSingleJoinExpr(const char *joinField,
 										  Var *sourceDocVar,
 										  Var *targetDocVar,
@@ -175,13 +188,13 @@ static inline TargetEntry * MakeExtractFuncExprForMergeTE(const char *onField, u
 														  length, Var *sourceDocument,
 														  const int resNum);
 static void TruncateDataTable(int collectionId);
+static inline bool CheckSchemaValidationEnabledForDollarMergeOut(void);
 
 PG_FUNCTION_INFO_V1(bson_dollar_merge_handle_when_matched);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_add_object_id);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_fail_when_not_matched);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_generate_object_id);
 PG_FUNCTION_INFO_V1(bson_dollar_extract_merge_filter);
-
 
 /*
  * This function extracts merge filter from source document to match against target document.
@@ -246,17 +259,42 @@ bson_dollar_merge_add_object_id(PG_FUNCTION_ARGS)
 	pgbson *sourceDocument = PG_GETARG_PGBSON_PACKED(0);
 	pgbson *generatedObjectID = PG_GETARG_PGBSON(1);
 
+	/* If evalStateBytea is not NULL, we need to parse it to get the schema validation state. */
+	ExprEvalState *stateForSchemaValidation = NULL;
+	if (CheckSchemaValidationEnabledForDollarMergeOut() && PG_NARGS() > 2)
+	{
+		pgbson *schemaValidatorInfo = PG_GETARG_MAYBE_NULL_PGBSON(2);
+
+		if (!IsPgbsonEmptyDocument(schemaValidatorInfo))
+		{
+			int argPositions = 2;
+			SetCachedFunctionState(
+				stateForSchemaValidation,
+				ExprEvalState,
+				argPositions,
+				AssignSchemaValidationState,
+				schemaValidatorInfo,
+				CurrentMemoryContext);
+			if (stateForSchemaValidation == NULL)
+			{
+				stateForSchemaValidation = palloc0(sizeof(ExprEvalState));
+				AssignSchemaValidationState(stateForSchemaValidation, schemaValidatorInfo,
+											CurrentMemoryContext);
+			}
+		}
+	}
+
 	/* Add and validate _id */
 	pgbson *outputBson = RewriteDocumentWithCustomObjectId(sourceDocument,
 														   generatedObjectID);
-	ValidateFinalPgbsonBeforeWriting(outputBson);
+	ValidateFinalPgbsonBeforeWriting(outputBson, NULL, stateForSchemaValidation,
+									 ValidationLevel_Strict);
 
 	/* Free only when outputBson is different from sourceDocument*/
 	if (sourceDocument != outputBson)
 	{
 		PG_FREE_IF_COPY(sourceDocument, 0);
 	}
-
 	PG_RETURN_POINTER(outputBson);
 }
 
@@ -284,6 +322,26 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 	WhenMatchedAction action = PG_GETARG_INT32(2);
 	pgbson *finalDocument = NULL;
 
+	/* If evalStateBytea is not NULL, we need to parse it to get the schema validation state and set the validation level. */
+	ExprEvalState *stateForSchemaValidation = NULL;
+	ValidationLevels validationLevel = ValidationLevel_Invalid;
+
+	/* special case - Schema validation is not performed if the source document is the same as the target document. */
+	bool performSchemaValidation = false;
+	bool needComparison = true;
+
+	if (CheckSchemaValidationEnabledForDollarMergeOut() && PG_NARGS() > 3)
+	{
+		pgbson *schemaValidatorInfo = PG_GETARG_MAYBE_NULL_PGBSON(3);
+
+		if (!IsPgbsonEmptyDocument(schemaValidatorInfo))
+		{
+			performSchemaValidation = true;
+			validationLevel = PG_ARGISNULL(4) ? ValidationLevel_Invalid : PG_GETARG_INT32(
+				4);
+		}
+	}
+
 	switch (action)
 	{
 		case WhenMatched_REPLACE:
@@ -310,6 +368,7 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 			}
 
 			finalDocument = PgbsonWriterGetPgbson(&writer);
+
 			break;
 		}
 
@@ -367,8 +426,8 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 			}
 
 			/* step 2 : let's add source document to hashmap with values and update the tail of the linked list if a new element is inserted */
-
 			PgbsonInitIterator(sourceDocument, &iter);
+
 			while (bson_iter_next(&iter))
 			{
 				/* _id is already written to writer as the first field, so ignore it here */
@@ -404,11 +463,13 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 					/* If the target document contains only the _id field, we reach here */
 					head = currNode;
 					tail = currNode;
+					needComparison = false;
 				}
 				else
 				{
 					tail->next = currNode;
 					tail = currNode;
+					needComparison = false;
 				}
 			}
 
@@ -466,8 +527,39 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 		}
 	}
 
+	/* needComparison = true means we need to compare source and target document to determine whether to skip schema validation or not. */
+	if (CheckSchemaValidationEnabledForDollarMergeOut())
+	{
+		if (needComparison && performSchemaValidation)
+		{
+			performSchemaValidation = PgbsonEquals(sourceDocument, targetDocument) ?
+									  false : true;
+		}
+
+		if (performSchemaValidation)
+		{
+			pgbson *schemaValidatorInfo = PG_GETARG_PGBSON(3);
+			int argPositions = 3;
+			SetCachedFunctionState(
+				stateForSchemaValidation,
+				ExprEvalState,
+				argPositions,
+				AssignSchemaValidationState,
+				schemaValidatorInfo,
+				CurrentMemoryContext);
+			if (stateForSchemaValidation == NULL)
+			{
+				stateForSchemaValidation = palloc0(sizeof(ExprEvalState));
+				AssignSchemaValidationState(stateForSchemaValidation, schemaValidatorInfo,
+											CurrentMemoryContext);
+			}
+		}
+	}
+
 	/* let's validate final document before writing */
-	ValidateFinalPgbsonBeforeWriting(finalDocument);
+	ValidateFinalPgbsonBeforeWriting(finalDocument, targetDocument,
+									 stateForSchemaValidation, validationLevel);
+
 	PG_RETURN_POINTER(finalDocument);
 }
 
@@ -493,6 +585,7 @@ bson_dollar_merge_fail_when_not_matched(PG_FUNCTION_ARGS)
  * Mutates the query for the $merge stage
  *
  * Example mongo command : { $merge: { into: "targetCollection", on: "_id", whenMatched: "replace", whenNotMatched: "insert" } }
+ * targetCollection with schema validation `{ "a" : { "$type" : "int" } }` and validationLevel is `strict`
  * sql query :
  *
  * MERGE INTO ONLY ApiDataSchemaName.documents_2 documents_2
@@ -507,11 +600,12 @@ bson_dollar_merge_fail_when_not_matched(PG_FUNCTION_ARGS)
  * AND bson_dollar_merge_join(documents_2.document, agg_stage_0.document, '_id'::text)
  * WHEN MATCHED
  * THEN
- *      UPDATE SET document = bson_dollar_merge_handle_when_matched(agg_stage_0.document, documents_2.document, 1)
+ *      UPDATE SET document = bson_dollar_merge_handle_when_matched(agg_stage_0.document, documents_2.document, 1, '{ "a" : { "$type" : "int" } }'::bson, 1)
  * WHEN NOT MATCHED
  * THEN
  *      INSERT (shard_key_value, object_id, document, creation_time)
- *      VALUES (agg_stage_0.target_shard_key_value, bson_get_value((agg_stage_0.document).document, '_id'::text), (agg_stage_0.document).document, '2024-05-28 04:01:26.360522+00'::timestamp with time zone);
+ *      VALUES (agg_stage_0.target_shard_key_value,
+ * COALESCE(bson_get_value(agg_stage_0.document, '_id'::text), agg_stage_0.generated_object_id), bson_dollar_merge_add_object_id(agg_stage_0.document, agg_stage_0.generated_object_id, '{ "a" : { "$type" : "int" } }'::bson), '2024-12-16 10:00:57.196789+00'::timestamp with time zone);
  *
  */
 Query *
@@ -605,16 +699,16 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 									 context->mongoCollection->collectionId);
 
 	/* constant for target collection */
-	const int targetCollectionVarNo = 1; /* In merge query target table is 1st table */
+	const int targetCollectionVarNo = 1;     /* In merge query target table is 1st table */
 	const int targetShardKeyValueAttrNo = 1; /* From Target table we are just selecting 3 columns first one is shard_key_value */
-	const int targetObjectIdAttrNo = 2; /* From Target table we are just selecting 3 columns first one is shard_key_value */
-	const int targetDocAttrNo = 3; /* From Target table we are just selecting 3 columns third one is document */
+	const int targetObjectIdAttrNo = 2;      /* From Target table we are just selecting 3 columns first one is shard_key_value */
+	const int targetDocAttrNo = 3;           /* From Target table we are just selecting 3 columns third one is document */
 
 	/* constant for source collection */
-	const int sourceCollectionVarNo = 2; /* In merge query source table is 2nd table */
-	const int sourceDocAttrNo = 1; /* In source table first projector is document */
-	const int sourceShardKeyValueAttrNo = 2; /* we will append shard_key_value in source query at 2nd position after document column */
-	const int generatedObjectIdAttrNo = 3;  /* we will append generated object_id in source query at 3rd position after shard_key_value column */
+	const int sourceCollectionVarNo = 2;            /* In merge query source table is 2nd table */
+	const int sourceDocAttrNo = 1;                  /* In source table first projector is document */
+	const int sourceShardKeyValueAttrNo = 2;        /* we will append shard_key_value in source query at 2nd position after document column */
+	const int generatedObjectIdAttrNo = 3;          /* we will append generated object_id in source query at 3rd position after shard_key_value column */
 	const int sourceExtractedOnFieldsInitIndex = 4; /* We append all extracted source TEs starting from index 4 and repeat this process for all 'on' fields. */
 
 	if (targetCollection->shardKey == NULL)
@@ -643,14 +737,32 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 										  sourceShardKeyValueAttrNo, INT8OID, -1, 0, 0);
 	Var *generatedObjectIdVar = makeVar(sourceCollectionVarNo,
 										generatedObjectIdAttrNo, BsonTypeId(), -1, 0, 0);
+	Const *schemaValidatorInfoConst = MakeBsonConst(PgbsonInitEmpty());
+	Const *validationLevelConst = makeConst(INT4OID, -1, InvalidOid, 4,
+											Int32GetDatum(ValidationLevel_Invalid),
+											false, true);
+	bool bypassDocumentValidation = false;
+	if (CheckSchemaValidationEnabled(targetCollection, bypassDocumentValidation))
+	{
+		schemaValidatorInfoConst = MakeBsonConst(
+			targetCollection->schemaValidator.validator);
+		validationLevelConst = makeConst(INT4OID, -1, InvalidOid, 4,
+										 Int32GetDatum(
+											 targetCollection->schemaValidator.
+											 validationLevel),
+										 false, true);
+	}
 
 	query->mergeActionList = list_make2(MakeActionWhenMatched(mergeArgs.whenMatched,
-															  sourceDocVar, targetDocVar),
+															  sourceDocVar, targetDocVar,
+															  schemaValidatorInfoConst,
+															  validationLevelConst),
 										MakeActionWhenNotMatched(mergeArgs.whenNotMatched,
 																 sourceDocVar,
 																 generatedObjectIdVar,
 																 sourceShardKeyValueVar,
-																 targetCollection));
+																 targetCollection,
+																 schemaValidatorInfoConst));
 	WriteJoinConditionToQueryDollarMerge(query, sourceDocVar, targetDocVar,
 										 sourceShardKeyValueVar,
 										 targetShardKeyValueVar,
@@ -666,10 +778,11 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
  * create MergeAction for `whenMatched` case.
  * This function is responsible for constructing the following segment of the merge query :
  * WHEN MATCHED THEN
- * UPDATE SET document = bson_dollar_merge_handle_when_matched(agg_stage_4.document, documents_1.document, 0)
+ * UPDATE SET document = bson_dollar_merge_handle_when_matched(agg_stage_4.document, documents_1.document, 0, '{ "a" : { "$type" : "int" } }'::bson, 1)
  */
 static MergeAction *
-MakeActionWhenMatched(WhenMatchedAction whenMatched, Var *sourceDocVar, Var *targetDocVar)
+MakeActionWhenMatched(WhenMatchedAction whenMatched, Var *sourceDocVar, Var *targetDocVar,
+					  Const *schemaValidatorInfoConst, Const *validationLevelConst)
 {
 	MergeAction *action = makeNode(MergeAction);
 #if PG_VERSION_NUM >= 170000
@@ -688,8 +801,17 @@ MakeActionWhenMatched(WhenMatchedAction whenMatched, Var *sourceDocVar, Var *tar
 	Const *inputActionForWhenMathced = makeConst(INT4OID, -1, InvalidOid, sizeof(int32),
 												 Int32GetDatum(whenMatched),
 												 false, true);
+	List *args = NIL;
+	if (IsClusterVersionAtleast(DocDB_V0, 102, 0))
+	{
+		args = list_make5(sourceDocVar, targetDocVar, inputActionForWhenMathced,
+						  schemaValidatorInfoConst, validationLevelConst);
+	}
+	else
+	{
+		args = list_make3(sourceDocVar, targetDocVar, inputActionForWhenMathced);
+	}
 
-	List *args = list_make3(sourceDocVar, targetDocVar, inputActionForWhenMathced);
 	FuncExpr *resultExpr = makeFuncExpr(
 		BsonDollarMergeHandleWhenMatchedFunctionOid(), BsonTypeId(), args, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
@@ -709,13 +831,14 @@ MakeActionWhenMatched(WhenMatchedAction whenMatched, Var *sourceDocVar, Var *tar
  * INSERT (shard_key_value, object_id, document, creation_time)
  * VALUE (source.target_shard_key_value,
  *        COALESCE(bson_get_value(source.document, '_id'::text),
- *        source.document), bson_dollar_merge_add_object_id(source.document),
+ *        source.document), bson_dollar_merge_add_object_id(source.document, generated_object_id, schema_validator_info),
  *        <current-time>)
  */
 static MergeAction *
 MakeActionWhenNotMatched(WhenNotMatchedAction whenNotMatched, Var *sourceDocVar,
 						 Var *generatedObjectIdVar,
-						 Var *sourceShardKeyVar, MongoCollection *targetCollection)
+						 Var *sourceShardKeyVar, MongoCollection *targetCollection,
+						 Const *schemaValidatorInfoConst)
 {
 	MergeAction *action = makeNode(MergeAction);
 #if PG_VERSION_NUM >= 170000
@@ -756,7 +879,17 @@ MakeActionWhenNotMatched(WhenNotMatchedAction whenNotMatched, Var *sourceDocVar,
 	coalesce->args = list_make2(bsonGetValueFuncExpr, generatedObjectIdVar);
 
 	/* let's build func expr for `document` column */
-	List *argsForAddObjecIdFunc = list_make2(sourceDocVar, generatedObjectIdVar);
+	List *argsForAddObjecIdFunc = NIL;
+	if (IsClusterVersionAtleast(DocDB_V0, 102, 0))
+	{
+		argsForAddObjecIdFunc = list_make3(sourceDocVar, generatedObjectIdVar,
+										   schemaValidatorInfoConst);
+	}
+	else
+	{
+		argsForAddObjecIdFunc = list_make2(sourceDocVar, generatedObjectIdVar);
+	}
+
 	FuncExpr *addObjecIdFuncExpr = makeFuncExpr(
 		BsonDollarMergeAddObjectIdFunctionOid(), BsonTypeId(), argsForAddObjecIdFunc,
 		InvalidOid,
@@ -776,8 +909,7 @@ MakeActionWhenNotMatched(WhenNotMatchedAction whenNotMatched, Var *sourceDocVar,
 		makeTargetEntry((Expr *) nowValue,
 						targetCollection->mongoDataCreationTimeVarAttrNumber,
 						"creation_time",
-						false)
-		);
+						false));
 
 	return action;
 }
@@ -1008,7 +1140,6 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 										value->value_type))));
 			}
 
-
 			if (strcmp(value->value.v_utf8.str, "replace") == 0)
 			{
 				args->whenMatched = WhenMatched_REPLACE;
@@ -1162,7 +1293,6 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 
 	newTargetList = lappend(newTargetList, generatedObjectIdTE);
 
-
 	/* 4. append bson_dollar_extract_merge_filter function so all on fields so that we can use extracted source in join condition.
 	 *    For the $out stage, we will have 'on' values, so this step will be skipped for $out.
 	 */
@@ -1174,8 +1304,7 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 			newTargetList = lappend(newTargetList,
 									MakeExtractFuncExprForMergeTE(
 										onValues->value.v_utf8.str,
-										onValues->value.v_utf8.
-										len,
+										onValues->value.v_utf8.len,
 										(Var *) sourceDocVar,
 										++resNumber));
 		}
@@ -1190,8 +1319,7 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 				newTargetList = lappend(newTargetList,
 										MakeExtractFuncExprForMergeTE(
 											innerValue->value.v_utf8.str,
-											innerValue->value.
-											v_utf8.len,
+											innerValue->value.v_utf8.len,
 											(Var *) sourceDocVar,
 											++resNumber));
 			}
@@ -1437,7 +1565,6 @@ VaildateMergeOnFieldValues(const bson_value_t *onValues, uint64 collectionId)
 		numKeysOnField = BsonDocumentValueCountKeys(onValues);
 	}
 
-
 	if (numKeysOnField == 1)
 	{
 		if (onValues->value_type == BSON_TYPE_ARRAY)
@@ -1629,8 +1756,7 @@ InitHashTableFromStringArray(const bson_value_t *inputKeyArray, int arraySize)
 		const bson_value_t *inputArrayElement = bson_iter_value(&inputArrayIter);
 		StringView value = CreateStringViewFromStringWithLength(
 			inputArrayElement->value.v_utf8.str,
-			inputArrayElement->value.
-			v_utf8.len);
+			inputArrayElement->value.v_utf8.len);
 
 		bool found = false;
 		hash_search(hashTable, &value, HASH_ENTER, &found);
@@ -1705,7 +1831,9 @@ MergeQueryCTEWalker(Node *node, void *context)
 
 /* let's validate final pgbson before writing to collection */
 static inline void
-ValidateFinalPgbsonBeforeWriting(const pgbson *finalBson)
+ValidateFinalPgbsonBeforeWriting(const pgbson *finalBson, const pgbson *targetDocument,
+								 ExprEvalState *stateForSchemaValidation, ValidationLevels
+								 validationLevel)
 {
 	/* let's validate final document before insert */
 	PgbsonValidateInputBson(finalBson, BSON_VALIDATE_NONE);
@@ -1718,6 +1846,15 @@ ValidateFinalPgbsonBeforeWriting(const pgbson *finalBson)
 							errmsg("Size %u is larger than MaxDocumentSize %u",
 								   size, BSON_MAX_ALLOWED_SIZE)));
 		}
+	}
+
+	/* if we have stateForSchemaValidation, we need to validate the final document; */
+	/* if validation level is moderate, final document could not match only if `targetDocument` also does not match */
+	if (EnableSchemaValidation && stateForSchemaValidation != NULL)
+	{
+		ValidateSchemaOnDocumentUpdate(validationLevel, stateForSchemaValidation,
+									   targetDocument, finalBson,
+									   FAILED_VALIDATION_PLAN_EXECUTOR_ERROR_MSG);
 	}
 }
 
@@ -1784,6 +1921,7 @@ ValidateAndAddObjectIdToWriter(pgbson_writer *writer,
  * Mutates the query for the $out stage
  *
  * Example mongo command : { $out: { "db": "targetDb", "coll" : "targetColl" } }
+ * targetDb with schema validation enabled as `'{ "a" : { "$type" : "int" } }`, we need to apply schema validation to the final document.
  * sql query :
  *
  * MERGE INTO ONLY ApiDataSchemaName.documents_3 documents_3
@@ -1795,7 +1933,7 @@ ValidateAndAddObjectIdToWriter(pgbson_writer *writer,
  *   ON documents_3.shard_key_value OPERATOR(pg_catalog.=) agg_stage_0.target_shard_key_value AND FALSE
  *   WHEN NOT MATCHED
  *    THEN INSERT (shard_key_value, object_id, document, creation_time)
- *     VALUES (agg_stage_0.target_shard_key_value, COALESCE(bson_get_value(agg_stage_0.document, '_id'::text), agg_stage_0.generated_object_id), ApiInternalSchemaName.bson_dollar_merge_add_object_id(agg_stage_0.document, agg_stage_0.generated_object_id), '2024-08-21 11:06:38.323204+00'::timestamp with time zone)
+ *     VALUES (agg_stage_0.target_shard_key_value, COALESCE(bson_get_value(agg_stage_0.document, '_id'::text), agg_stage_0.generated_object_id), ApiInternalSchemaName.bson_dollar_merge_add_object_id(agg_stage_0.document, agg_stage_0.generated_object_id, '{ "a" : { "$type" : "int" } }'::bson), '2024-08-21 11:06:38.323204+00'::timestamp with time zone)
  */
 Query *
 HandleOut(const bson_value_t *existingValue, Query *query,
@@ -1814,7 +1952,6 @@ HandleOut(const bson_value_t *existingValue, Query *query,
 											StringViewGetTextDatum(
 												&outArgs.targetCollection),
 											RowExclusiveLock);
-
 
 	if (targetCollection)
 	{
@@ -1861,12 +1998,21 @@ HandleOut(const bson_value_t *existingValue, Query *query,
 	query->commandType = CMD_MERGE;
 	AddTargetCollectionRTEDollarMerge(query, targetCollection);
 
+	/* If targetCollection enables schema validation, apply to target document*/
+	bool bypassDocumentValidation = false;
+	Const *schemaValidatorInfoConst = MakeBsonConst(PgbsonInitEmpty());
+	if (CheckSchemaValidationEnabled(targetCollection, bypassDocumentValidation))
+	{
+		schemaValidatorInfoConst = MakeBsonConst(
+			targetCollection->schemaValidator.validator);
+	}
+
 	/* constant for source collection */
-	const int sourceCollectionVarNo = 2; /* In merge query source table is 2nd table */
-	const int sourceDocAttrNo = 1; /* In source table first projector is document */
+	const int sourceCollectionVarNo = 2;     /* In merge query source table is 2nd table */
+	const int sourceDocAttrNo = 1;           /* In source table first projector is document */
 	const int sourceShardKeyValueAttrNo = 2; /* we will append shard_key_value in source query at 2nd position after document column */
-	const int generatedObjectIdAttrNo = 3;  /* we will append generated object_id in source query at 3rd position after shard_key_value column */
-	const int targetCollectionVarNo = 1; /* In merge query target table is 1st table */
+	const int generatedObjectIdAttrNo = 3;   /* we will append generated object_id in source query at 3rd position after shard_key_value column */
+	const int targetCollectionVarNo = 1;     /* In merge query target table is 1st table */
 	const int targetShardKeyValueAttrNo = 1; /* From Target table we are just selecting 3 columns first one is shard_key_value */
 
 	Var *sourceDocVar = makeVar(sourceCollectionVarNo, sourceDocAttrNo,
@@ -1884,7 +2030,8 @@ HandleOut(const bson_value_t *existingValue, Query *query,
 																 sourceDocVar,
 																 generatedObjectIdVar,
 																 sourceShardKeyValueVar,
-																 targetCollection));
+																 targetCollection,
+																 schemaValidatorInfoConst));
 
 	/* Write the join condition for $out, which will be in the form of
 	 * `ON target.shard_key_value = source.target_shard_key_value`
@@ -2020,4 +2167,12 @@ ParseOutStage(const bson_value_t *existingValue, const char *currentNameSpace,
 						errmsg(
 							"If an object is passed to $out it must have exactly 2 fields: 'db' and 'coll'")));
 	}
+}
+
+
+/* check whether to perform schema validation in stage $merge/$out */
+static inline bool
+CheckSchemaValidationEnabledForDollarMergeOut(void)
+{
+	return EnableSchemaValidation && IsClusterVersionAtleast(DocDB_V0, 102, 0);
 }

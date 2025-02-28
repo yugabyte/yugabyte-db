@@ -22,9 +22,6 @@ SELECT documentdb_api.insert('schema_validation_insertion','{"insert":"col", "do
 -- 1 document should be inserted
 SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col') ORDER BY shard_key_value, object_id;
 
-
-
-
 ---------------------------------------------Need top level operator-----------------------------------------------------
 -- $expr
 SELECT documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col1", "validator": { "$expr": {"$eq": [ "$a", "$b" ] } } }');
@@ -47,12 +44,74 @@ SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col3", "
 SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col3", "documents":[{"_id":"2", "a":"hello"}]}');
 
 --$merge
---todo - need to check
 SELECT documentdb_api.insert('schema_validation_insertion','{"insert":"col_", "documents":[{"_id":"1001","a":"world"}]}');
 SELECT documentdb_api.insert('schema_validation_insertion','{"insert":"col_", "documents":[{"_id":"1002","a":2}]}');
-SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "a": { "$type": "string" }}}, {"$merge" : { "into": "col3" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "a": { "$type": "int" }}}, {"$merge" : { "into": "col3" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+select documentdb_api.insert('schema_validation_insertion', '{"insert":"col_", "documents":[{"_id":"1003","a":11}]}');
+-- whenNotMatch is insert
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id":"1001"}}, {"$merge" : { "into": "col3" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id":"1002"}}, {"$merge" : { "into": "col3" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+-- WhenNotMatched is discard
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id":"1003"}}, {"$merge" : { "into": "col3", "whenNotMatched": "discard" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+
+-- whenMatched is merge
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":22}}}]}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+
+---- don't throw error as source and target schema is same
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"merge_same"}}}]}');
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"merge_same"}}}],"bypassDocumentValidation": true}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+
+---- throw error as source and target schema is different since key is same but value is different
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":22}}}]}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+
+
+-- whenMatched is replace
+select documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":222, "b":1}}}]}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+
+---- don't throw error as source and target schema is same
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"replace_same"}}}]}');
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"replace_same"}}}],"bypassDocumentValidation": true}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+
+---- throw error as source and target schema is different 
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":222, "b":1}}}]}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+
+
+
+-- validationLevel is moderate
+select documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"test"}}}]}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationLevel": "moderate"}');
+select documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"test_3"}}}]}');
+select documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"test_3"}}}], "bypassDocumentValidation": true}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+
+select documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"ttt"}}}]}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+
+--$out
+select documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col5"}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "a": { "$type": "string" }}}, {"$out": "col5" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col5') ORDER BY shard_key_value, object_id;
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "a": { "$type": "int" }}}, {"$out": "col5" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col5') ORDER BY shard_key_value, object_id;
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col5', '{"collMod":"col5", "validator": {"a":{"$type":"int"}}}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "a": { "$type": "string" }}}, {"$out" : "col5" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "a": { "$type": "int" }}}, {"$out" : "col5" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col5') ORDER BY shard_key_value, object_id;
 
 -- sharded collection test
 SELECT documentdb_api.shard_collection('schema_validation_insertion', 'col3', '{ "a": "hashed" }', false);
@@ -66,12 +125,13 @@ SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod
 SELECT documentdb_api.insert('schema_validation_insertion','{"insert":"col3", "documents":[{"_id":"7", "a":"hello"}]}');
 -- 6 document should be inserted
 SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationLevel": "strict"}');
 
 
 ---------------------------------------------update-----------------------------------------------------
 -- sharded collection test
 -- will succeed as validationAction is warn
-SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":1},"u":{"$set":{"a":"one"}}}]}');
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a": 1},"u":{"$set":{"a":"one"}}}]}');
 -- set validation action to error
 SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationAction": "error"}');
 -- should throw error
@@ -131,3 +191,34 @@ SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col4', '{"collMod
 SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"hello"},"u":{"$set":{"a":"ten"}}} ]}');
 
 SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col4');
+
+-------------------------------merge/out more case---------------------------------------------------------------
+-- top level operator in schema information
+SELECT documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col_merge_tar", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int", "minimum": 5}}}}}');
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col_source", "documents":[{"_id":"1", "a":5}]}');
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col_source", "documents":[{"_id":"2", "a":2}]}');
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col_source", "documents":[{"_id":"3", "a":"hello"}]}');
+
+-- $merge 
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "1" }}, {"$merge" : { "into": "col_merge_tar", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "2" }}, {"$merge" : { "into": "col_merge_tar", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "3" }}, {"$merge" : { "into": "col_merge_tar", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col_merge_tar') ORDER BY shard_key_value, object_id;
+
+-- merge with whenMatched
+select documentdb_api.update('schema_validation_insertion', '{"update":"col_source", "updates":[{"q":{"_id":"1"},"u":{"$set":{"a":11, "b":1}}}]}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "1" }}, {"$merge" : { "into": "col_merge_tar", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col_merge_tar') ORDER BY shard_key_value, object_id;
+select documentdb_api.update('schema_validation_insertion', '{"update":"col_source", "updates":[{"q":{"_id":"1"},"u":{"$set":{"a":111}, "$unset":{"b":""}}}]}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "1" }}, {"$merge" : { "into": "col_merge_tar", "whenMatched": "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col_merge_tar') ORDER BY shard_key_value, object_id;
+
+-- $out
+SELECT documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col_out_tar", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int", "maximum": 5}}}}}');
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "2" }}, {"$out" : "col_out_tar" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col_out_tar') ORDER BY shard_key_value, object_id;
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "1" }}, {"$out" : "col_out_tar" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col_out_tar') ORDER BY shard_key_value, object_id;
+set documentdb.enableBypassDocumentValidation = false;
+set documentdb.enableSchemaValidation = false;

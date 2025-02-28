@@ -53,13 +53,15 @@ command_schema_validation_against_update(PG_FUNCTION_ARGS)
 	if (!isModerate)
 	{
 		bson_value_t newDocumentValue = ConvertPgbsonToBsonValue(targetDocument);
-		ValidateSchemaOnDocumentInsert(evalState, &newDocumentValue);
+		ValidateSchemaOnDocumentInsert(evalState, &newDocumentValue,
+									   FAILED_VALIDATION_ERROR_MSG);
 	}
 	else
 	{
 		pgbson *sourceDocument = PG_GETARG_MAYBE_NULL_PGBSON(2);
 		ValidateSchemaOnDocumentUpdate(ValidationLevel_Moderate, evalState,
-									   sourceDocument, targetDocument);
+									   sourceDocument, targetDocument,
+									   FAILED_VALIDATION_ERROR_MSG);
 	}
 
 	PG_RETURN_BOOL(true);
@@ -90,20 +92,31 @@ PrepareForSchemaValidation(pgbson *schemaValidationInfo, MemoryContext memoryCon
 }
 
 
+void
+AssignSchemaValidationState(ExprEvalState *stateForSchemaValidation,
+							pgbson *schemaValidationInfo, MemoryContext memoryContext)
+{
+	ExprEvalState *state = PrepareForSchemaValidation(schemaValidationInfo,
+													  memoryContext);
+	memcpy(stateForSchemaValidation, state, sizeof(ExprEvalState));
+}
+
+
 /*
  * Validate a document against the schema validator.
  * Only if validation action is set to error, we validate document and throw an error if the document does not match the schema validator.
  * If the validation action is set to warn, we do nothing and would not call this function.
  */
 void
-ValidateSchemaOnDocumentInsert(ExprEvalState *evalState, const bson_value_t *document)
+ValidateSchemaOnDocumentInsert(ExprEvalState *evalState, const bson_value_t *document,
+							   const char *errMsg)
 {
 	bool matched = EvalBooleanExpressionAgainstBson(evalState, document);
 	if (!matched)
 	{
 		/* native mongo return additional information about the cause of the failure */
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOCUMENTFAILEDVALIDATION),
-						errmsg("Document failed validation")));
+						errmsg("%s", errMsg)));
 	}
 }
 
@@ -118,7 +131,9 @@ ValidateSchemaOnDocumentInsert(ExprEvalState *evalState, const bson_value_t *doc
 void
 ValidateSchemaOnDocumentUpdate(ValidationLevels validationLevel,
 							   ExprEvalState *evalState,
-							   pgbson *sourceDocument, pgbson *targetDocument)
+							   const pgbson *sourceDocument,
+							   const pgbson *targetDocument,
+							   const char *errMsg)
 {
 	bson_value_t targetDocumentValue = ConvertPgbsonToBsonValue(targetDocument);
 	bool matched = EvalBooleanExpressionAgainstBson(evalState, &targetDocumentValue);
@@ -127,7 +142,7 @@ ValidateSchemaOnDocumentUpdate(ValidationLevels validationLevel,
 		if (validationLevel == ValidationLevel_Strict)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOCUMENTFAILEDVALIDATION),
-							errmsg("Document failed validation")));
+							errmsg("%s", errMsg)));
 		}
 		else if (sourceDocument != NULL && validationLevel == ValidationLevel_Moderate)
 		{
@@ -137,7 +152,7 @@ ValidateSchemaOnDocumentUpdate(ValidationLevels validationLevel,
 			if (matched)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOCUMENTFAILEDVALIDATION),
-								errmsg("Document failed validation")));
+								errmsg("%s", errMsg)));
 			}
 		}
 	}

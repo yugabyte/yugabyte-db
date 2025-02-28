@@ -1315,7 +1315,7 @@ PreprocessInsertionDoc(const bson_value_t *docValue, MongoCollection *collection
 	if (evalState != NULL)
 	{
 		ValidateSchemaOnDocumentInsert(
-			evalState, docValue);
+			evalState, docValue, FAILED_VALIDATION_ERROR_MSG);
 	}
 
 	/* make sure the document has an _id and it is in the right place */

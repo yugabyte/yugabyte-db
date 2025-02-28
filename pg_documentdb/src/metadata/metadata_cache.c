@@ -3264,11 +3264,30 @@ BsonDollarMergeHandleWhenMatchedFunctionOid(void)
 		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_handle_when_matched"));
-		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), INT4OID };
+		Oid *paramOids;
+		int nargs = 3;
+		if (IsClusterVersionAtleast(DocDB_V0, 102, 0))
+		{
+			paramOids = (Oid *) palloc(sizeof(Oid) * 5);
+			paramOids[0] = BsonTypeId();
+			paramOids[1] = BsonTypeId();
+			paramOids[2] = INT4OID;
+			paramOids[3] = BsonTypeId();
+			paramOids[4] = INT4OID;
+			nargs = 5;
+		}
+		else
+		{
+			paramOids = (Oid *) palloc(sizeof(Oid) * 3);
+			paramOids[0] = BsonTypeId();
+			paramOids[1] = BsonTypeId();
+			paramOids[2] = INT4OID;
+		}
+
 		bool missingOK = false;
 
 		Cache.ApiInternalBsonDollarMergeHandleWhenMatchedFunctionId =
-			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+			LookupFuncName(functionNameList, nargs, paramOids, missingOK);
 	}
 
 	return Cache.ApiInternalBsonDollarMergeHandleWhenMatchedFunctionId;
@@ -3285,11 +3304,27 @@ BsonDollarMergeAddObjectIdFunctionOid(void)
 		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_add_object_id"));
-		Oid paramOids[2] = { BsonTypeId(), BsonTypeId() };
+		Oid *paramOids;
+		int nargs = 2;
+		if (IsClusterVersionAtleast(DocDB_V0, 102, 0))
+		{
+			paramOids = (Oid *) palloc(sizeof(Oid) * 3);
+			paramOids[0] = BsonTypeId();
+			paramOids[1] = BsonTypeId();
+			paramOids[2] = BsonTypeId();
+			nargs = 3;
+		}
+		else
+		{
+			paramOids = (Oid *) palloc(sizeof(Oid) * 2);
+			paramOids[0] = BsonTypeId();
+			paramOids[1] = BsonTypeId();
+		}
+
 		bool missingOK = false;
 
 		Cache.ApiInternalBsonDollarMergeAddObjectIdFunctionId =
-			LookupFuncName(functionNameList, 2, paramOids, missingOK);
+			LookupFuncName(functionNameList, nargs, paramOids, missingOK);
 	}
 
 	return Cache.ApiInternalBsonDollarMergeAddObjectIdFunctionId;
