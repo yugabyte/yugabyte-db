@@ -37,7 +37,15 @@ YugabyteDB supports three isolation levels in the transactional layer:
 - Snapshot
 - Read committed
 
-The default isolation level for the YSQL API is Read committed.
+The default isolation level for the YSQL API is effectively Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because, by default, Read committed, which is the YSQL API and PostgreSQL _syntactic_ default, maps to Snapshot isolation.
+
+To enable Read committed, you must set the YB-TServer flag `yb_enable_read_committed_isolation` to `true`. By default this flag is `false` and the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
+
+{{< tip title="Tip" >}}
+
+To avoid serializable errors, that is, to run applications with no retry logic, keep the default `READ COMMITTED` isolation (`--ysql_default_transaction_isolation`), and set the YB-TServer `--yb_enable_read_committed_isolation` flag to true. This enables read committed isolation.
+
+{{< /tip >}}
 
 To set the transaction isolation level of a transaction, use the command `SET TRANSACTION`.
 
@@ -241,10 +249,10 @@ Next, connect to the universe using two independent `ysqlsh` instances, referred
   <tr>
     <td>
 
-Begin a transaction in session #1:
+Begin a transaction in session #1. This is Snapshot isolation by default, meaning it will work against a snapshot of the database as of this point:
 
 ```sql
-BEGIN TRANSACTION ISOLATION LEVEL SNAPSHOT;
+BEGIN TRANSACTION;
 ```
 
   </td>
@@ -366,10 +374,62 @@ Connect to the universe using two independent `ysqlsh` instances, referred to as
   <tr>
     <td>
 
-Begin a transaction in session #1. This is Read committed isolation by default:
+By default, the YB-TServer flag `yb_enable_read_committed_isolation` is false. In this case, Read committed maps to Snapshot isolation at the transactional layer. So, `READ COMMITTED` of YSQL API in turn maps to Snapshot Isolation:
 
 ```sql
-BEGIN TRANSACTION;
+BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+SELECT * FROM test;
+```
+
+```output
+ k | v
+---+---
+ 1 | 2
+(1 row)
+```
+
+  </td>
+    <td>
+    </td>
+  </tr>
+
+  <tr>
+    <td>
+    </td>
+    <td>
+
+Insert a new row, as follows:
+
+```sql
+INSERT INTO test VALUES (2, 3);
+```
+
+  </td>
+  </tr>
+
+  <tr>
+    <td>
+
+Perform the read again in the same transaction, as follows:
+
+```sql
+SELECT * FROM test;
+COMMIT;
+```
+
+```output
+ k | v
+---+---
+ 1 | 2
+(1 row)
+```
+
+The inserted row (2, 3) is not visible because Read committed is disabled at the transactional layer and maps to Snapshot in which the whole transaction sees a consistent snapshot of the database.
+
+Set the YB-Tserver flag `yb_enable_read_committed_isolation` to `true`:
+
+```sql
+BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 SELECT * FROM test;
 ```
 

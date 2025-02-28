@@ -332,6 +332,17 @@ Read Committed isolation faces the following limitations if using [Fail-on-Confl
 
 The retries for serialization errors are done at the statement level. Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided as T1's statement and T2 would no longer be "concurrent".
 
+## Usage
+
+By setting the YB-TServer flag `yb_enable_read_committed_isolation=true`, the syntactic `Read Committed` isolation in YSQL maps to the Read Committed implementation in DocDB. If set to `false`, it has the earlier behavior of mapping syntactic `Read Committed` on YSQL to Snapshot isolation in DocDB, meaning it behaves as `Repeatable Read`.
+
+The following ways can be used to start a Read Committed transaction after setting the flag:
+
+1. `START TRANSACTION isolation level read committed [read write | read only];`
+1. `BEGIN [TRANSACTION] isolation level read committed [read write | read only];`
+1. `BEGIN [TRANSACTION]; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494) is resolved)
+1. `BEGIN [TRANSACTION]; SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494) is resolved)
+
 ## Examples
 
 Start by creating the table to be used in all of the examples, as follows:
