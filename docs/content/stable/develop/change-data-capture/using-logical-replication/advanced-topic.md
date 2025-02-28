@@ -139,7 +139,7 @@ To enable dynamic table addition, perform the following steps:
     ```
 
 {{< note title="Important" >}}
-If you lower the value of `cdcsdk_publication_list_refresh_interval_secs`, you should set the value of the flag back to its original value after you start receiving changes from the new table.
+If you lower the value of `cdcsdk_publication_list_refresh_interval_secs`, you should set the value of the flag back to its original value after you start receiving changes from the new table, as every refresh incurs overhead.
 {{< /note >}}
 
 ## Initial snapshot
