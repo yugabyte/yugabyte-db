@@ -296,6 +296,22 @@ void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
   ExternalMiniClusterITestBase::SetUpOptions(opts);
 }
 
+uint32 UpgradeTestBase::UpgradeCompatibilityGucValue(MajorUpgradeCompatibilityType type) const {
+  return type == MajorUpgradeCompatibilityType::kBackwardsCompatible ? old_ysql_major_version_ : 0;
+}
+
+Status UpgradeTestBase::SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType type) {
+  if (!IsYsqlMajorVersionUpgrade()) {
+    return Status::OK();
+  }
+
+  auto version = UpgradeCompatibilityGucValue(type);
+
+  LOG(INFO) << "Setting ysql_yb_major_version_upgrade_compatibility to " << version;
+  return cluster_->AddAndSetExtraFlag(
+      "ysql_yb_major_version_upgrade_compatibility", ToString(version));
+}
+
 Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOptions& options) {
   LOG(INFO) << "Starting cluster in version: " << old_version_info_.version;
 
@@ -320,13 +336,9 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
         cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
     LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
 
-    is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
-                                     current_version_info_.ysql_major_version();
-  }
-
-  if (IsYsqlMajorVersionUpgrade()) {
-    RETURN_NOT_OK(
-        cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "11"));
+    old_ysql_major_version_ = resp.status().version_info().ysql_major_version();
+    is_ysql_major_version_upgrade_ =
+        old_ysql_major_version_ != current_version_info_.ysql_major_version();
   }
 
   return Status::OK();
@@ -345,6 +357,8 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
   RETURN_NOT_OK_PREPEND(
       RestartAllTServersInCurrentVersion(delay_between_nodes), "Failed to restart tservers");
 
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
+
   RETURN_NOT_OK_PREPEND(
       PromoteAutoFlags(AutoFlagClass::kLocalVolatile), "Failed to promote volatile AutoFlags");
 
@@ -360,6 +374,9 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
 
 Status UpgradeTestBase::RestartAllMastersInCurrentVersion(MonoDelta delay_between_nodes) {
   LOG(INFO) << "Restarting all yb-masters in current version";
+
+  RETURN_NOT_OK(
+      SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kBackwardsCompatible));
 
   for (auto* master : cluster_->master_daemons()) {
     RETURN_NOT_OK(RestartMasterInCurrentVersion(*master, /*wait_for_cluster_to_stabilize=*/false));
@@ -515,10 +532,6 @@ Status UpgradeTestBase::FinalizeYsqlMajorCatalogUpgrade() {
     return StatusFromPB(resp.error().status());
   }
 
-  if (IsYsqlMajorVersionUpgrade()) {
-    RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "0"));
-  }
-
   return Status::OK();
 }
 
@@ -546,6 +559,8 @@ Status UpgradeTestBase::PerformYsqlUpgrade() {
 
 Status UpgradeTestBase::FinalizeUpgrade() {
   LOG(INFO) << "Finalizing upgrade";
+
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
 
   RETURN_NOT_OK_PREPEND(
       FinalizeYsqlMajorCatalogUpgrade(), "Failed to run ysql major catalog upgrade");
@@ -612,6 +627,9 @@ Status UpgradeTestBase::RollbackVolatileAutoFlags() {
 Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_nodes) {
   LOG(INFO) << "Rolling back upgrade";
 
+  RETURN_NOT_OK(
+      SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kBackwardsCompatible));
+
   RETURN_NOT_OK_PREPEND(RollbackVolatileAutoFlags(), "Failed to rollback Volatile AutoFlags");
 
   RETURN_NOT_OK_PREPEND(
@@ -622,6 +640,8 @@ Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_node
 
   RETURN_NOT_OK_PREPEND(
       RestartAllMastersInOldVersion(delay_between_nodes), "Failed to restart masters");
+
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
 
   LOG(INFO) << "Cluster rolled back to old version";
   return Status::OK();

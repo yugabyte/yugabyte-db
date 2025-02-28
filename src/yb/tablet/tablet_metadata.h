@@ -410,7 +410,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   docdb::KeyBounds MakeKeyBounds() const;
 
-  const std::string& wal_dir() const { return wal_dir_; }
+  std::string wal_dir() const {
+    std::lock_guard lock(data_mutex_);
+    return wal_dir_;
+  }
 
   Status set_namespace_id(const NamespaceId& namespace_id);
 

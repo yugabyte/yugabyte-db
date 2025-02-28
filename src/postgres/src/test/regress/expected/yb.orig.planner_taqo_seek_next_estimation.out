@@ -284,10 +284,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8);
 
 -- Query Hash: 6a8ead9b8b122eea0e5460236bc6c19b
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8, 12);
-                      QUERY PLAN
-------------------------------------------------------
- Seq Scan on t1
-   Storage Filter: (k1 = ANY ('{4,8,12}'::integer[]))
+                    QUERY PLAN
+--------------------------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: (k1 = ANY ('{4,8,12}'::integer[]))
 (2 rows)
 
 -- Query Hash: d7eedc71bffb36fa0152da8c08bf7808

@@ -48,7 +48,7 @@ void CloneStateInfo::SetEpoch(const LeaderEpoch& epoch) {
   epoch_ = epoch;
 }
 
-const TxnSnapshotId& CloneStateInfo::SourceSnapshotId() {
+TxnSnapshotId CloneStateInfo::SourceSnapshotId() {
   std::lock_guard l(mutex_);
   return source_snapshot_id_;
 }
@@ -58,7 +58,7 @@ void CloneStateInfo::SetSourceSnapshotId(const TxnSnapshotId& source_snapshot_id
   source_snapshot_id_ = source_snapshot_id;
 }
 
-const TxnSnapshotId& CloneStateInfo::TargetSnapshotId() {
+TxnSnapshotId CloneStateInfo::TargetSnapshotId() {
   std::lock_guard l(mutex_);
   return target_snapshot_id_;
 }
@@ -68,7 +68,7 @@ void CloneStateInfo::SetTargetSnapshotId(const TxnSnapshotId& target_snapshot_id
   target_snapshot_id_ = target_snapshot_id;
 }
 
-const TxnSnapshotRestorationId& CloneStateInfo::RestorationId() {
+TxnSnapshotRestorationId CloneStateInfo::RestorationId() {
   std::lock_guard l(mutex_);
   return restoration_id_;
 }
