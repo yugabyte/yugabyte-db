@@ -1,4 +1,4 @@
-package org.yb.pgsql;
+  package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -82,11 +82,26 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
                 lstmt.execute(String.format("INSERT INTO t(k) VALUES(%d), (%d)",
                                             idx * 10000000L + item_idx,
                                             idx * 10000000L + item_idx + 1));
-              } catch (Exception e) {
+              } catch (SQLException e) {
                 final String msg = e.getMessage();
-                if (!(msg.contains("Catalog Version Mismatch") ||
-                      msg.contains("Restart read required") ||
-                      msg.contains("schema version mismatch"))) {
+                if (e.getSQLState().equals(SERIALIZATION_FAILURE_PSQL_STATE) ||
+                    msg.contains("Catalog Version Mismatch") ||
+                    msg.contains("Restart read required") ||
+                    msg.contains("schema version mismatch") ||
+                    msg.contains("marked for deletion in table")) {
+                      LOG.warn("Expected error detected", e);
+                } else if (msg.contains("Invalid column number")) {
+                  // TODO(dmitry): In spite of the fact system catalog is being read in consistent
+                  // manner PgSession::table_cache_ may have outdated YBTable object. As a result
+                  // an error like 'Invalid argument: Invalid column number 8' or
+                  // 'Column with id 3 marked for deletion in table' might be raised by the next
+                  // statement. Github issue #8096 is created for the problem.
+                  LOG.warn("Inconsistent table cache error detected", e);
+                } else if (msg.matches(".*ybctid.*not found in indexed table.*")) {
+                  // This error has been fixed on newer branches but has not been
+                  // backported to 2.20. See #25072
+                  LOG.warn("ybctid not found exception encountered");
+                } else {
                   LOG.error("Unexpected exception", e);
                   errorsDetected.set(true);
                   return;
