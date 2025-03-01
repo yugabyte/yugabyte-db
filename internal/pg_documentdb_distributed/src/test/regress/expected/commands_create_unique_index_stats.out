@@ -44,7 +44,7 @@ Indexes:
     "collection_pk_11201" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_11202" documentdb_rum (document bson_rum_single_path_ops (path='x.y.z', tl='2699'))
     "documents_rum_index_11203" documentdb_rum (document bson_rum_single_path_ops (path='c.d.e', tl='2699')) WHERE document #>= '{ "a" : { "$minKey" : 1 } }'::bsonquery
-    "documents_rum_index_11204" EXCLUDE USING documentdb_rum (document bson_rum_single_path_ops (path='x.y', generatenotfoundterm='true') WITH =?=, (ROW(shard_key_value, document)::shard_key_and_document) bson_rum_exclusion_ops (path='x.y') WITH =)
+    "documents_rum_index_11204" EXCLUDE USING documentdb_rum (documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "x.y" : { "$numberInt" : "1" } }'::bson, false) documentdb_api_internal.bson_rum_unique_shard_path_ops WITH OPERATOR(documentdb_api_internal.=#=), document bson_rum_single_path_ops (path='x.y', tl='2691', generatenotfoundterm='true') WITH =?=)
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '11201'::bigint)
 
@@ -64,11 +64,11 @@ documentdb_rum, for table "documentdb_data.documents_11201", predicate (document
 
 -- stats target is 0 for the unique shard column
 \d+ documentdb_data.documents_rum_index_11204
-                              Index "documentdb_data.documents_rum_index_11204"
-  Column  | Type  | Key? |                        Definition                        | Storage  | Stats target 
+                                                                               Index "documentdb_data.documents_rum_index_11204"
+             Column             | Type  | Key? |                                                              Definition                                                              | Storage  | Stats target 
 ---------------------------------------------------------------------
- document | bytea | yes  | document                                                 | extended | 
- row      | uuid  | yes  | (ROW(shard_key_value, document)::shard_key_and_document) | plain    | 0
+ generate_unique_shard_document | uuid  | yes  | documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "x.y" : { "$numberInt" : "1" } }'::bson, false) | plain    | 0
+ document                       | bytea | yes  | document                                                                                                                             | extended | 
 documentdb_rum, for table "documentdb_data.documents_11201"
 
 -- some tests disable background index job, let's enable it to test background index build codepath
@@ -114,10 +114,10 @@ Indexes:
     "collection_pk_11201" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_11202" documentdb_rum (document documentdb_api_catalog.bson_rum_single_path_ops (path='x.y.z', tl='2699'))
     "documents_rum_index_11203" documentdb_rum (document documentdb_api_catalog.bson_rum_single_path_ops (path='c.d.e', tl='2699')) WHERE document OPERATOR(documentdb_api_catalog.#>=) '{ "a" : { "$minKey" : 1 } }'::bsonquery
-    "documents_rum_index_11204" EXCLUDE USING documentdb_rum (document documentdb_api_catalog.bson_rum_single_path_ops (path='x.y', generatenotfoundterm='true') WITH OPERATOR(documentdb_api_catalog.=?=), (ROW(shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) documentdb_api_catalog.bson_rum_exclusion_ops (path='x.y') WITH OPERATOR(documentdb_api_catalog.=))
+    "documents_rum_index_11204" EXCLUDE USING documentdb_rum (documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "x.y" : { "$numberInt" : "1" } }'::bson, false) documentdb_api_internal.bson_rum_unique_shard_path_ops WITH OPERATOR(documentdb_api_internal.=#=), document documentdb_api_catalog.bson_rum_single_path_ops (path='x.y', tl='2691', generatenotfoundterm='true') WITH OPERATOR(documentdb_api_catalog.=?=))
     "documents_rum_index_11205" documentdb_rum (document documentdb_api_catalog.bson_rum_single_path_ops (path='back.y.z', tl='2699'))
     "documents_rum_index_11206" documentdb_rum (document documentdb_api_catalog.bson_rum_single_path_ops (path='back.d.e', tl='2699')) WHERE document OPERATOR(documentdb_api_catalog.#>=) '{ "a" : { "$minKey" : 1 } }'::bsonquery
-    "documents_rum_index_11207" EXCLUDE USING documentdb_rum (document documentdb_api_catalog.bson_rum_single_path_ops (path='back.y', generatenotfoundterm='true') WITH OPERATOR(documentdb_api_catalog.=?=), (ROW(shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) documentdb_api_catalog.bson_rum_exclusion_ops (path='back.y') WITH OPERATOR(documentdb_api_catalog.=))
+    "documents_rum_index_11207" EXCLUDE USING documentdb_rum (documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "back.y" : { "$numberInt" : "1" } }'::bson, false) documentdb_api_internal.bson_rum_unique_shard_path_ops WITH OPERATOR(documentdb_api_internal.=#=), document documentdb_api_catalog.bson_rum_single_path_ops (path='back.y', tl='2691', generatenotfoundterm='true') WITH OPERATOR(documentdb_api_catalog.=?=))
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '11201'::bigint)
 
@@ -137,11 +137,11 @@ documentdb_rum, for table "documentdb_data.documents_11201", predicate (document
 
 -- stats target is 0 for the unique shard column
 \d+ documentdb_data.documents_rum_index_11207
-                                          Index "documentdb_data.documents_rum_index_11207"
-  Column  | Type  | Key? |                                   Definition                                    | Storage  | Stats target 
+                                                                                 Index "documentdb_data.documents_rum_index_11207"
+             Column             | Type  | Key? |                                                               Definition                                                                | Storage  | Stats target 
 ---------------------------------------------------------------------
- document | bytea | yes  | document                                                                        | extended | 
- row      | uuid  | yes  | (ROW(shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) | plain    | 0
+ generate_unique_shard_document | uuid  | yes  | documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "back.y" : { "$numberInt" : "1" } }'::bson, false) | plain    | 0
+ document                       | bytea | yes  | document                                                                                                                                | extended | 
 documentdb_rum, for table "documentdb_data.documents_11201"
 
 -- create a composite unique
@@ -160,19 +160,18 @@ CALL documentdb_distributed_test_helpers.create_indexes_background(
 (1 row)
 
 \d+ documentdb_data.documents_rum_index_11208
-                                          Index "documentdb_data.documents_rum_index_11208"
-  Column   | Type  | Key? |                                   Definition                                    | Storage  | Stats target 
+                                                                                                  Index "documentdb_data.documents_rum_index_11208"
+             Column             | Type  | Key? |                                                                                 Definition                                                                                 | Storage  | Stats target 
 ---------------------------------------------------------------------
- document  | bytea | yes  | document                                                                        | extended | 
- row       | uuid  | yes  | (ROW(shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) | plain    | 0
- document1 | bytea | yes  | document                                                                        | extended | 
- row1      | uuid  | yes  | (ROW(shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) | plain    | 0
+ generate_unique_shard_document | uuid  | yes  | documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "back.y" : { "$numberInt" : "1" }, "back.z" : { "$numberInt" : "1" } }'::bson, false) | plain    | 0
+ document                       | bytea | yes  | document                                                                                                                                                                   | extended | 
+ document1                      | bytea | yes  | document                                                                                                                                                                   | extended | 
 documentdb_rum, for table "documentdb_data.documents_11201"
 
 -- disable background index job
 UPDATE cron.job SET active = false WHERE jobname LIKE 'documentdb_index_%';
 -- create with the new operator class
-set documentdb.enable_large_unique_index_keys to on;
+set documentdb.enable_large_unique_index_keys to off;
 set documentdb.forceIndexTermTruncation to on;
 SELECT documentdb_api_internal.create_indexes_non_concurrently(
   p_database_name=>'ind_db',
@@ -190,12 +189,13 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
 (1 row)
 
 \d+ documentdb_data.documents_rum_index_11209
-                                                                                                  Index "documentdb_data.documents_rum_index_11209"
-             Column             | Type  | Key? |                                                                                 Definition                                                                                 | Storage  | Stats target 
+                                          Index "documentdb_data.documents_rum_index_11209"
+  Column   | Type  | Key? |                                   Definition                                    | Storage  | Stats target 
 ---------------------------------------------------------------------
- generate_unique_shard_document | uuid  | yes  | documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "fore.y" : { "$numberInt" : "1" }, "fore.z" : { "$numberInt" : "1" } }'::bson, false) | plain    | 0
- document                       | bytea | yes  | document                                                                                                                                                                   | extended | 
- document1                      | bytea | yes  | document                                                                                                                                                                   | extended | 
+ document  | bytea | yes  | document                                                                        | extended | 
+ row       | uuid  | yes  | (ROW(shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) | plain    | 0
+ document1 | bytea | yes  | document                                                                        | extended | 
+ row1      | uuid  | yes  | (ROW(shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) | plain    | 0
 documentdb_rum, for table "documentdb_data.documents_11201"
 
 -- disable the flag - and stats shouldn't be set
@@ -216,12 +216,13 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
 (1 row)
 
 \d+ documentdb_data.documents_rum_index_11210
-                                                                                                   Index "documentdb_data.documents_rum_index_11210"
-             Column             | Type  | Key? |                                                                                  Definition                                                                                  | Storage  | Stats target 
+                                          Index "documentdb_data.documents_rum_index_11210"
+  Column   | Type  | Key? |                                   Definition                                    | Storage  | Stats target 
 ---------------------------------------------------------------------
- generate_unique_shard_document | uuid  | yes  | documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "fore.yy" : { "$numberInt" : "1" }, "fore.zz" : { "$numberInt" : "1" } }'::bson, false) | plain    | 
- document                       | bytea | yes  | document                                                                                                                                                                     | extended | 
- document1                      | bytea | yes  | document                                                                                                                                                                     | extended | 
+ document  | bytea | yes  | document                                                                        | extended | 
+ row       | uuid  | yes  | (ROW(shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) | plain    | 
+ document1 | bytea | yes  | document                                                                        | extended | 
+ row1      | uuid  | yes  | (ROW(shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) | plain    | 
 documentdb_rum, for table "documentdb_data.documents_11201"
 
 set documentdb.enable_large_unique_index_keys to off;

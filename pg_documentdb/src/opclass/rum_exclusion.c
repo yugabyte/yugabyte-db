@@ -59,7 +59,6 @@
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
-extern bool ForceEnableNewUniqueOpClass;
 extern int DefaultUniqueIndexKeyhashOverride;
 
 static pgbson * GetShardKeyAndDocument(HeapTupleHeader input, int64_t *shardKey);
@@ -296,7 +295,7 @@ Datum
 bson_unique_index_term_equal(PG_FUNCTION_ARGS)
 {
 	/* In this case, we presume that the index is correct (for recheck purposes) */
-	if (ForceEnableNewUniqueOpClass || IsClusterVersionAtleast(DocDB_V0, 24, 0))
+	if (IsClusterVersionAtleast(DocDB_V0, 24, 0))
 	{
 		PG_RETURN_BOOL(true);
 	}

@@ -7,6 +7,7 @@
 * Support current_op command *[Feature]* (#59)
 * Support for list_databases command *[Feature]* (#45)
 * Disable analyze statistics for unique index uuid columns which improves resource usage *[Perf]*
+* Support unique index truncation by default with new operator class *[Feature]*
 
 ### documentdb v0.101-0 (February 12, 2025) ###
 * Push $graphlookup recursive CTE JOIN filters to index *[Perf]*

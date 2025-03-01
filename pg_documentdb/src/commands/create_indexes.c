@@ -184,7 +184,6 @@ extern int IndexTruncationLimitOverride;
 extern int MaxWildcardIndexKeySize;
 extern bool DefaultEnableLargeUniqueIndexKeys;
 extern bool SkipFailOnCollation;
-extern bool ForceEnableNewUniqueOpClass;
 extern bool DisableStatisticsForUniqueColumns;
 
 #define WILDCARD_INDEX_SUFFIX "$**"
@@ -4909,8 +4908,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 	bool enableTruncation = enableLargeIndexKeys || ForceIndexTermTruncation;
 
 	bool usingNewUniqueIndexOpClass = unique && enableLargeIndexKeys &&
-									  (ForceEnableNewUniqueOpClass ||
-									   IsClusterVersionAtleast(DocDB_V0, 24, 0));
+									  IsClusterVersionAtleast(DocDB_V0, 24, 0);
 
 	/* For unique with truncation, instead of creating a unique hash for every column, we simply create a single
 	 * value with a new operator that handles unique constraints. That way for a composite unique index, we support

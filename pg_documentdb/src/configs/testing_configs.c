@@ -32,9 +32,6 @@ bool EnableGenerateNonExistsTerm = DEFAULT_ENABLE_GENERATE_NON_EXISTS_TERM;
 #define DEFAULT_INDEX_TRUNCATION_LIMIT_OVERRIDE INT_MAX
 int IndexTruncationLimitOverride = DEFAULT_INDEX_TRUNCATION_LIMIT_OVERRIDE;
 
-#define FORCE_ENABLE_NEW_UNIQUE_OPCLASS false
-bool ForceEnableNewUniqueOpClass = FORCE_ENABLE_NEW_UNIQUE_OPCLASS;
-
 #define DEFAULT_ENABLE_CURSORS_ON_AGGREGATION_QUERY_REWRITE false
 bool EnableCursorsOnAggregationQueryRewrite =
 	DEFAULT_ENABLE_CURSORS_ON_AGGREGATION_QUERY_REWRITE;
@@ -135,14 +132,6 @@ InitializeTestConfigurations(const char *prefix, const char *newGucPrefix)
 		gettext_noop(
 			"Whether to force the feature for index term truncation"),
 		NULL, &ForceIndexTermTruncation, DEFAULT_FORCE_INDEX_TERM_TRUNCATION,
-		PGC_USERSET, 0, NULL, NULL, NULL);
-
-	/* Deprecated, test only. Do not use in prod. */
-	DefineCustomBoolVariable(
-		psprintf("%s.force_enable_new_unique_opclass", newGucPrefix),
-		gettext_noop(
-			"Testing GUC on Whether or not to enable the new opclass for large index keys on unique indexes."),
-		NULL, &ForceEnableNewUniqueOpClass, FORCE_ENABLE_NEW_UNIQUE_OPCLASS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(

@@ -196,12 +196,16 @@ ROLLBACK;
 SELECT documentdb_api.create_collection('db', 'too_many_indexes');
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "too_many_indexes", "indexes": [{"key": {"a0": 1}, "name": "a0"},{"key": {"a1": 1}, "name": "a1"},{"key": {"a2": 1}, "name": "a2"},{"key": {"a3": 1}, "name": "a3"},{"key": {"a4": 1}, "name": "a4"},{"key": {"a5": 1}, "name": "a5"},{"key": {"a6": 1}, "name": "a6"},{"key": {"a7": 1}, "name": "a7"},{"key": {"a8": 1}, "name": "a8"},{"key": {"a9": 1}, "name": "a9"},{"key": {"a10": 1}, "name": "a10"},{"key": {"a11": 1}, "name": "a11"},{"key": {"a12": 1}, "name": "a12"},{"key": {"a13": 1}, "name": "a13"},{"key": {"a14": 1}, "name": "a14"},{"key": {"a15": 1}, "name": "a15"},{"key": {"a16": 1}, "name": "a16"},{"key": {"a17": 1}, "name": "a17"},{"key": {"a18": 1}, "name": "a18"},{"key": {"a19": 1}, "name": "a19"},{"key": {"a20": 1}, "name": "a20"},{"key": {"a21": 1}, "name": "a21"},{"key": {"a22": 1}, "name": "a22"},{"key": {"a23": 1}, "name": "a23"},{"key": {"a24": 1}, "name": "a24"},{"key": {"a25": 1}, "name": "a25"},{"key": {"a26": 1}, "name": "a26"},{"key": {"a27": 1}, "name": "a27"},{"key": {"a28": 1}, "name": "a28"},{"key": {"a29": 1}, "name": "a29"},{"key": {"a30": 1}, "name": "a30"},{"key": {"a31": 1}, "name": "a31"},{"key": {"a32": 1}, "name": "a32"},{"key": {"a33": 1}, "name": "a33"},{"key": {"a34": 1}, "name": "a34"},{"key": {"a35": 1}, "name": "a35"},{"key": {"a36": 1}, "name": "a36"},{"key": {"a37": 1}, "name": "a37"},{"key": {"a38": 1}, "name": "a38"},{"key": {"a39": 1}, "name": "a39"},{"key": {"a40": 1}, "name": "a40"},{"key": {"a41": 1}, "name": "a41"},{"key": {"a42": 1}, "name": "a42"},{"key": {"a43": 1}, "name": "a43"},{"key": {"a44": 1}, "name": "a44"},{"key": {"a45": 1}, "name": "a45"},{"key": {"a46": 1}, "name": "a46"},{"key": {"a47": 1}, "name": "a47"},{"key": {"a48": 1}, "name": "a48"},{"key": {"a49": 1}, "name": "a49"},{"key": {"a50": 1}, "name": "a50"},{"key": {"a51": 1}, "name": "a51"},{"key": {"a52": 1}, "name": "a52"},{"key": {"a53": 1}, "name": "a53"},{"key": {"a54": 1}, "name": "a54"},{"key": {"a55": 1}, "name": "a55"},{"key": {"a56": 1}, "name": "a56"},{"key": {"a57": 1}, "name": "a57"},{"key": {"a58": 1}, "name": "a58"},{"key": {"a59": 1}, "name": "a59"},{"key": {"a60": 1}, "name": "a60"},{"key": {"a61": 1}, "name": "a61"},{"key": {"a62": 1}, "name": "a62"},{"key": {"a63": 1}, "name": "a63"}, {"key": {"a64": 1}, "name": "a64"}]}', true);
 
+SET documentdb.enable_large_unique_index_keys TO false;
+
 -- dropDups is ignored.
 SELECT documentdb_api.insert_one('db','dropdups_ignore','{"_id": "1", "a": "dup" }', NULL);
 SELECT documentdb_api.insert_one('db','dropdups_ignore','{"_id": "2", "a": "dup" }', NULL);
 SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "dropdups_ignore", "indexes": [{"key": {"a": 1}, "name": "dropdups_ignore_idx_1", "dropDups": true, "unique": true }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
 select documentdb_api.delete('db', '{"delete":"dropdups_ignore", "deletes":[{"q":{"_id": "2"}, "limit": 0 } ] }');
 SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "dropdups_ignore", "indexes": [{"key": {"a": 1}, "name": "dropdups_ignore_idx_1", "dropDups": true, "unique": true }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
+
+SET documentdb.enable_large_unique_index_keys TO true;
 
 -- tests with ignoreUnknownIndexOptions
 -- -- invalid values of ignoreUnknownIndexOptions
@@ -230,10 +234,14 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 WITH c1 AS (SELECT collection_id from documentdb_api_catalog.collections where collection_name = 'indexTermSizeLimit' and database_name = 'db')
 SELECT indexdef FROM pg_indexes, c1 where tablename = 'documents' || '_' || c1.collection_id and schemaname = 'documentdb_data' ORDER BY indexname ASC;
 
+SET documentdb.enable_large_unique_index_keys TO false;
+
 -- for hashed, unique and text indexes we should not see the limit as those shouldn't be truncated
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "noIndexTermSizeLimit", "indexes": [ { "key": { "a": "text" }, "name": "a_text" } ] }', true);
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "noIndexTermSizeLimit", "indexes": [ { "key": { "a": "hashed" }, "name": "a_hashed" } ] }', true);
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "noIndexTermSizeLimit", "indexes": [ { "key": { "a": 1 }, "name": "a_unique", "unique": true } ] }', true);
+
+SET documentdb.enable_large_unique_index_keys TO true;
 
 WITH c1 AS (SELECT collection_id from documentdb_api_catalog.collections where collection_name = 'noIndexTermSizeLimit' and database_name = 'db')
 SELECT indexdef FROM pg_indexes, c1 where tablename = 'documents' || '_' || c1.collection_id and schemaname = 'documentdb_data' ORDER BY indexname ASC;

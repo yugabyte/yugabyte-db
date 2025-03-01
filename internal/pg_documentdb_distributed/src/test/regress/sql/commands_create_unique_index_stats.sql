@@ -71,7 +71,7 @@ CALL documentdb_distributed_test_helpers.create_indexes_background(
 UPDATE cron.job SET active = false WHERE jobname LIKE 'documentdb_index_%';
 
 -- create with the new operator class
-set documentdb.enable_large_unique_index_keys to on;
+set documentdb.enable_large_unique_index_keys to off;
 set documentdb.forceIndexTermTruncation to on;
 SELECT documentdb_api_internal.create_indexes_non_concurrently(
   p_database_name=>'ind_db',

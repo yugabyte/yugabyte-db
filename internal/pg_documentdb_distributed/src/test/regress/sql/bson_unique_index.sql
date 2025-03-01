@@ -4,6 +4,7 @@ SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documen
 SET citus.next_shard_id TO 560000;
 SET documentdb.next_collection_id TO 5600;
 SET documentdb.next_collection_index_id TO 5600;
+SET documentdb.enable_large_unique_index_keys TO false;
 
 -- insert a document
 SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"1", "a": { "b": 1 } }', NULL);
