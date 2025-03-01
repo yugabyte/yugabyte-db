@@ -32,6 +32,8 @@ YugabyteDB Anywhere retains the root certificate and the root private key for al
 
 To view the certificate details, navigate to **Integrations > Security > Encryption in Transit** and click **Show details**.
 
+Note that automatically generated certificates must be [manually rotated](../rotate-certificates/).
+
 ## Customize the organization name in self-signed certificates
 
 YugabyteDB Anywhere automatically creates self-signed certificates when you run some workflows, such as create universe. The organization name in certificates is set to `example.com` by default.
