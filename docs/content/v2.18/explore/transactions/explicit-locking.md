@@ -36,7 +36,7 @@ The following example uses the `FOR UPDATE` row lock with the [fail-on-conflict]
 
 {{% explore-setup-single %}}
 
-Create an sample table and populate it with sample data, as follows:
+Create a sample table and populate it with sample data, as follows:
 
 ```sql
 yugabyte=# CREATE TABLE t (k VARCHAR, v VARCHAR);
