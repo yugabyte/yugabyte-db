@@ -62,7 +62,7 @@ During the upgrade phase, you deploy the binaries of the new version to the Yuga
 Before starting the upgrade process, ensure that the cluster is healthy.
 
 1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/`.
-1. Make sure there are no leaderless or under replicated tablets at `http://<any-yb-master>:7000/tablet-replication`.
+1. Make sure there are no leaderless or under-replicated tablets at `http://<any-yb-master>:7000/tablet-replication`.
 1. Make sure that all YB-TServer processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
 
 ![Tablet Servers](/images/manage/upgrade-deployment/tablet-servers.png)
