@@ -119,6 +119,13 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           // version.
           createDownloadTasks(toOrderedSet(nodes.asPair()), oldVersion);
 
+          if (ysqlMajorVersionUpgrade) {
+            // Set ysql_yb_major_version_upgrade_compatibility to `11` for tservers during ysql
+            // upgrade rollback.
+            createGFlagsUpgradeTaskForYSQLMajorUpgrade(
+                universe, YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS);
+          }
+
           if (nodes.tserversList.size() > 0) {
             createTServerUpgradeFlowTasks(
                 universe,

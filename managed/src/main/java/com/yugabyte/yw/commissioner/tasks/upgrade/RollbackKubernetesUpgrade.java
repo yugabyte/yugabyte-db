@@ -80,11 +80,10 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
           boolean ysqlMajorVersionUpgrade = false;
           boolean requireAdditionalSuperUserForCatalogUpgrade = false;
-
+          String currentVersion =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
           if (prevYBSoftwareConfig != null) {
             targetVersion = prevYBSoftwareConfig.getSoftwareVersion();
-            String currentVersion =
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
             if (!StringUtils.isEmpty(prevYBSoftwareConfig.getTargetUpgradeSoftwareVersion())) {
               currentVersion = prevYBSoftwareConfig.getTargetUpgradeSoftwareVersion();
             }
@@ -99,6 +98,13 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             int autoFlagConfigVersion = prevYBSoftwareConfig.getAutoFlagConfigVersion();
             // Restore old auto flag Config
             createRollbackAutoFlagTask(taskParams().getUniverseUUID(), autoFlagConfigVersion);
+          }
+
+          if (ysqlMajorVersionUpgrade) {
+            // Set the flag ysql_yb_major_version_upgrade_compatibility as major version upgrade is
+            // rolled back.
+            createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
+                universe, currentVersion, YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS);
           }
 
           // Create Kubernetes Upgrade Task
@@ -138,10 +144,8 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             // Un-set the flag ysql_yb_major_version_upgrade_compatibility as major version upgrade
             // is
             // rolled back.
-            createGFlagsUpgradeAndRollbackMastersTaskForYSQLMajorUpgrade(
-                universe,
-                getTargetSoftwareVersion(),
-                YsqlMajorVersionUpgradeState.ROLLBACK_COMPLETE);
+            createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
+                universe, targetVersion, YsqlMajorVersionUpgradeState.ROLLBACK_COMPLETE);
 
             createCleanUpPGUpgradeDataDirTask();
 

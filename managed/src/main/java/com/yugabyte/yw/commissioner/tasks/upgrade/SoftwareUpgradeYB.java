@@ -203,12 +203,14 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 requireYsqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null);
           }
 
+          if (requireYsqlMajorVersionUpgrade) {
+            // Un-set ysql_yb_major_version_upgrade_compatibility to 0 for tserver after upgrade.
+            createGFlagsUpgradeTaskForYSQLMajorUpgrade(
+                universe, YsqlMajorVersionUpgradeState.UPGRADE_COMPLETE);
+          }
+
           if (taskParams().installYbc) {
-            createYbcInstallTask(
-                universe,
-                new ArrayList<>(allNodes),
-                newVersion,
-                requireYsqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null);
+            createYbcInstallTask(universe, new ArrayList<>(allNodes), newVersion);
           }
 
           createCheckSoftwareVersionTask(allNodes, newVersion);

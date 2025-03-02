@@ -2933,14 +2933,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void createYbcSoftwareInstallTasks(
       List<NodeDetails> nodes, String softwareVersion, SubTaskGroupType subTaskGroupType) {
-    createYbcSoftwareInstallTasks(nodes, softwareVersion, subTaskGroupType, null);
-  }
-
-  public void createYbcSoftwareInstallTasks(
-      List<NodeDetails> nodes,
-      String softwareVersion,
-      SubTaskGroupType subTaskGroupType,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
 
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
@@ -2962,8 +2954,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               ServerType.CONTROLLER,
               UpgradeTaskSubType.YbcInstall,
               softwareVersion,
-              stableYbcVersion,
-              ysqlMajorVersionUpgradeState));
+              stableYbcVersion));
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -3842,32 +3833,45 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
   }
 
-  protected void createCommonFinalizeUpgradeTasks(
+  protected void createFinalizeUpgradeTasks(
       boolean upgradeSystemCatalog,
       boolean finalizeCatalogUpgrade,
       boolean requireAdditionalSuperUserForCatalogUpgrade) {
     Universe universe = getUniverse();
-    String version = universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
-    if (finalizeCatalogUpgrade) {
-      createFinalizeYsqlMajorCatalogUpgradeTask();
+    createUpdateUniverseSoftwareUpgradeStateTask(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
+        false /* isSoftwareRollbackAllowed */,
+        true /* retainPrevYBSoftwareConfig */);
+
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
+      if (finalizeCatalogUpgrade) {
+        createFinalizeYsqlMajorCatalogUpgradeTask();
+      }
+      // Promote all auto flags upto class External.
+      createPromoteAutoFlagTask(
+          universe.getUniverseUUID(),
+          true /* ignoreErrors */,
+          AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
+
+      if (upgradeSystemCatalog) {
+        // Run YSQL upgrade on the universe.
+        String version =
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+        createRunYsqlUpgradeTask(version);
+      }
+
+      if (requireAdditionalSuperUserForCatalogUpgrade) {
+        // Delete the superuser created for catalog upgrade.
+        createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
+      }
+    } else {
+      log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
     }
 
-    // Promote all auto flags upto class External.
-    createPromoteAutoFlagTask(
-        universe.getUniverseUUID(),
-        true /* ignoreErrors */,
-        AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
-
-    if (upgradeSystemCatalog) {
-      // Run YSQL upgrade on the universe.
-      createRunYsqlUpgradeTask(version);
-    }
-
-    if (requireAdditionalSuperUserForCatalogUpgrade) {
-      // Delete the superuser created for catalog upgrade.
-      createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
-    }
+    createUpdateUniverseSoftwareUpgradeStateTask(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+        false /* isSoftwareRollbackAllowed */);
   }
 
   protected void createSetYBMajorVersionUpgradeCompatibility(
