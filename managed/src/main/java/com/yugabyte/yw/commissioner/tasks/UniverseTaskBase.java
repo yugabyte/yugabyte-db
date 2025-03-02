@@ -182,7 +182,6 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -244,7 +243,6 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import io.ebean.Model;
 import java.io.File;
 import java.io.IOException;
@@ -1361,10 +1359,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
 
-    if (isYsqlMajorUpgradeStateInPreFinalizeState(universe, gFlagsValidation)) {
-      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
-    }
-
     params.instanceType = node.cloudInfo.instance_type;
     params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
@@ -1386,18 +1380,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     return params;
-  }
-
-  public static boolean isYsqlMajorUpgradeStateInPreFinalizeState(
-      Universe universe, GFlagsValidation gFlagsValidation) {
-    if (universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.PreFinalize)
-        || universe.getUniverseDetails().prevYBSoftwareConfig != null) {
-      String currentVersion =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-      String oldVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
-      return gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, currentVersion);
-    }
-    return false;
   }
 
   /** Create a task to mark the change on a universe as success. */

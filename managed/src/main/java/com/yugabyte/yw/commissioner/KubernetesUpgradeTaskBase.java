@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -676,39 +675,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     }
   }
 
-  protected void createFinalizeUpgradeTasks(
-      boolean upgradeSystemCatalog,
-      boolean finalizeCatalogUpgrade,
-      boolean requireAdditionalSuperUserForCatalogUpgrade) {
-    Universe universe = getUniverse();
-
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
-        false /* isSoftwareRollbackAllowed */,
-        true /* retainPrevYBSoftwareConfig */);
-
-    if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
-
-      createCommonFinalizeUpgradeTasks(
-          upgradeSystemCatalog,
-          finalizeCatalogUpgrade,
-          requireAdditionalSuperUserForCatalogUpgrade);
-      if (finalizeCatalogUpgrade) {
-        createGFlagsUpgradeAndRollbackMastersTaskForYSQLMajorUpgrade(
-            universe,
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            YsqlMajorVersionUpgradeState.FINALIZE_IN_PROGRESS);
-      }
-    } else {
-      log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
-    }
-
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-        false /* isSoftwareRollbackAllowed */);
-  }
-
-  protected void createGFlagsUpgradeAndRollbackMastersTaskForYSQLMajorUpgrade(
+  protected void createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
       Universe universe,
       String softwareVersion,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
@@ -717,11 +684,11 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         universe.getTServers(),
         UpgradeDetails.getMajorUpgradeCompatibilityFlagValue(ysqlMajorVersionUpgradeState));
 
-    createServerConfUpdateTaskAndRollbackMasterForYsqlMajorUpgrade(
+    createServerConfUpdateTaskAndUpdateMasterForYsqlMajorUpgrade(
         universe, universe.getTServers(), softwareVersion, ysqlMajorVersionUpgradeState);
   }
 
-  private void createServerConfUpdateTaskAndRollbackMasterForYsqlMajorUpgrade(
+  private void createServerConfUpdateTaskAndUpdateMasterForYsqlMajorUpgrade(
       Universe universe,
       List<NodeDetails> nodes,
       String softwareVersion,

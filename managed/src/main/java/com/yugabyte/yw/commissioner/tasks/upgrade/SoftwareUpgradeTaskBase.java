@@ -227,14 +227,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
 
   protected void createYbcInstallTask(
       Universe universe, List<NodeDetails> nodes, String newVersion) {
-    createYbcInstallTask(universe, nodes, newVersion, null /* ysqlMajorVersionUpgradeState */);
-  }
-
-  protected void createYbcInstallTask(
-      Universe universe,
-      List<NodeDetails> nodes,
-      String newVersion,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
     createYbcSoftwareInstallTasks(nodes, newVersion, getTaskSubGroupType());
     // Start yb-controller process and wait for it to get responsive.
     createStartYbcProcessTasks(
@@ -455,37 +447,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
           "Error fetching version info on node: {} port: {} ", node.cloudInfo.private_ip, port, e);
     }
     return false;
-  }
-
-  protected void createFinalizeUpgradeTasks(
-      boolean upgradeSystemCatalog,
-      boolean finalizeCatalogUpgrade,
-      boolean requireAdditionalSuperUserForCatalogUpgrade) {
-    Universe universe = getUniverse();
-
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
-        false /* isSoftwareRollbackAllowed */,
-        true /* retainPrevYBSoftwareConfig */);
-
-    if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
-
-      createCommonFinalizeUpgradeTasks(
-          upgradeSystemCatalog,
-          finalizeCatalogUpgrade,
-          requireAdditionalSuperUserForCatalogUpgrade);
-
-      if (finalizeCatalogUpgrade) {
-        createGFlagsUpgradeTaskForYSQLMajorUpgrade(
-            universe, YsqlMajorVersionUpgradeState.FINALIZE_IN_PROGRESS);
-      }
-    } else {
-      log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
-    }
-
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-        false /* isSoftwareRollbackAllowed */);
   }
 
   protected void createGFlagsUpgradeTaskForYSQLMajorUpgrade(

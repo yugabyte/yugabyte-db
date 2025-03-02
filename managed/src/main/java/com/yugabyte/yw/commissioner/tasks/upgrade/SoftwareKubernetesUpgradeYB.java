@@ -125,7 +125,7 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
             // want to revert masters to the previous version and proceed with the ysql major
             // upgrade.
             if (!catalogUpgradeCompleted) {
-              createGFlagsUpgradeAndRollbackMastersTaskForYSQLMajorUpgrade(
+              createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
                   universe, currentVersion, YsqlMajorVersionUpgradeState.IN_PROGRESS);
 
               if (requireAdditionalSuperUserForCatalogUpgrade) {
@@ -174,6 +174,13 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
               getSoftwareUpgradeContext(
                   newVersion,
                   ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
+
+          if (ysqlMajorVersionUpgrade) {
+            createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
+                universe,
+                taskParams().ybSoftwareVersion,
+                YsqlMajorVersionUpgradeState.UPGRADE_COMPLETE);
+          }
 
           createPromoteAutoFlagTask(
               taskParams().getUniverseUUID(),

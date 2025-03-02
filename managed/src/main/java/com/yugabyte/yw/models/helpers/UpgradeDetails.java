@@ -9,8 +9,7 @@ public class UpgradeDetails {
 
   public enum YsqlMajorVersionUpgradeState {
     IN_PROGRESS,
-    PRE_FINALIZE,
-    FINALIZE_IN_PROGRESS,
+    UPGRADE_COMPLETE,
     ROLLBACK_IN_PROGRESS,
     ROLLBACK_COMPLETE,
   }
@@ -18,7 +17,6 @@ public class UpgradeDetails {
   public static List<YsqlMajorVersionUpgradeState> ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG =
       ImmutableList.of(
           YsqlMajorVersionUpgradeState.IN_PROGRESS,
-          YsqlMajorVersionUpgradeState.PRE_FINALIZE,
           YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS);
 
   public static String getMajorUpgradeCompatibilityFlagValue(YsqlMajorVersionUpgradeState state) {

@@ -1370,7 +1370,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           GFlagsUtil.YSQL_PG_CONF_CSV,
           GFlagsUtil.mergeCSVs(
               tserverGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
-              GFlagsUtil.getYsqlPgConfCsv(auditLogConfig, null),
+              GFlagsUtil.getYsqlPgConfCsv(auditLogConfig),
               true));
       overrides.put(
           "otelCollector",
