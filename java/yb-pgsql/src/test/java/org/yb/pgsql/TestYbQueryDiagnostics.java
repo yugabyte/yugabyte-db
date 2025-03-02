@@ -363,10 +363,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
-    private void waitForBundleCompletion(String queryId, Statement statement) throws Exception {
-        waitForBundleCompletion(queryId, statement, 0);
-    }
-
     /*
      * Counts the number of table sections in the schema details.
      */
