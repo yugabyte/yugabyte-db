@@ -2592,8 +2592,8 @@ void CDCServiceImpl::AddTableToExpiredTablesMap(
     TableIdToStreamIdMap* expired_tables_map) {
   auto tablet_peer = context_->LookupTablet(tablet_id);
   if (!tablet_peer) {
-    LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
-                 << ". Will not remove its expired entry in this round";
+    VLOG(2) << "Could not find tablet peer for tablet_id: " << tablet_id
+            << ". Will not remove its expired entry in this round";
     return;
   }
 
@@ -2673,8 +2673,8 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
 
     auto tablet_peeer = context_->LookupTablet(tablet_id);
     if (!tablet_peeer) {
-      LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
-                   << ". Will not update its peers in this round";
+      VLOG(2) << "Could not find tablet peer for tablet_id: " << tablet_id
+              << ". Will not update its peers in this round";
       continue;
     }
 
@@ -2904,12 +2904,8 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
     bool enable_update_local_peer_min_index, bool ignore_rpc_failures) {
   auto tablet_peer_result = context_->GetTablet(tablet_id);
   if (!tablet_peer_result.ok()) {
-    if (tablet_peer_result.status().IsNotFound()) {
-      VLOG(2) << "Did not find tablet peer for tablet " << tablet_id;
-    } else {
-      LOG(WARNING) << "Error getting tablet_peer for tablet " << tablet_id << ": "
-                   << tablet_peer_result.status();
-    }
+    VLOG(2) << "Did not find tablet peer for tablet " << tablet_id << " : "
+            << tablet_peer_result.status();
     return STATUS_FORMAT(NotFound, "Tablet peer not found");
   }
 
@@ -3212,14 +3208,14 @@ Status CDCServiceImpl::DeleteCDCStateTableMetadata(
     }
     auto tablet_peer_result = GetServingTablet(tablet_id);
     if (!tablet_peer_result.ok()) {
-      LOG(WARNING) << "Could not delete the entry for stream" << stream_id << " and the tablet "
-                   << tablet_id;
+      VLOG(2) << "Could not delete the entry for stream" << stream_id << " and the tablet "
+              << tablet_id;
       continue;
     }
     if ((*tablet_peer_result)->IsLeaderAndReady()) {
       Status s = cdc_state_table_->DeleteEntries({{tablet_id, stream_id}});
       if (!s.ok()) {
-        LOG(WARNING) << "Unable to flush operations to delete cdc streams: " << s;
+        VLOG(2) << "Unable to flush operations to delete cdc streams: " << s;
         return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
       }
       LOG(INFO) << "CDC state table entry for tablet " << tablet_id << " and streamid " << stream_id
@@ -3258,9 +3254,9 @@ Status CDCServiceImpl::CleanupExpiredTables(const TableIdToStreamIdMap& expired_
 
     auto tablet_peer = context_->LookupTablet(tablet_id);
     if (!tablet_peer) {
-      LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
-                   << ", for table: " << table_id
-                   << ". Will not remove its entries from state table in this round.";
+      VLOG(2) << "Could not find tablet peer for tablet_id: " << tablet_id
+              << ", for table: " << table_id
+              << ". Will not remove its entries from state table in this round.";
       continue;
     }
 
