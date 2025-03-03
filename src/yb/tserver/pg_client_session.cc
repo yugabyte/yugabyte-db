@@ -2277,7 +2277,7 @@ class PgClientSession::Impl {
     }
     ADOPT_TRACE(context ? context->trace() : Trace::CurrentTrace());
 
-    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result);
+    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result, options);
     data->used_in_txn_limit = in_txn_limit;
     data->transaction = std::move(transaction);
     data->pg_node_level_mutation_counter = pg_node_level_mutation_counter();
@@ -3046,11 +3046,13 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
-  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {
+  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result,
+                                              const PgPerformOptionsPB& options) {
     auto* read_point = result.session_data.session->read_point();
     if (!result.is_plain ||
         result.session_data.transaction ||
-        (read_point && read_point->GetReadTime())) {
+        (read_point && read_point->GetReadTime()) ||
+        options.non_transactional_buffered_write()) {
       return {};
     }
 
