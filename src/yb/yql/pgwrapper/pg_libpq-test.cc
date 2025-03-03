@@ -4306,7 +4306,9 @@ TEST_F(PgBackendsSessionExpireTest, UnknownSessionFatal) {
   // expiry of sessions. By reducing the session expiration time to 1s and sleeping for a little
   // over 2x the duration, we can ensure that the session has indeed expired.
   SleepFor((kHeartbeatTimeout * 2) + 100ms);
-  ASSERT_NOK(conn.Execute(query));
+  auto result = conn.Fetch(query);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "server closed the connection unexpectedly");
   ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
 
   // "Unknown Session" is an InvalidArgument error.

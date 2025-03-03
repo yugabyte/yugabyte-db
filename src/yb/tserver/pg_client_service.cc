@@ -2138,9 +2138,8 @@ class PgClientServiceImpl::Impl {
       stopping_sessions_.erase(
           std::remove_if(stopping_sessions_.begin(), stopping_sessions_.end(), filter),
           stopping_sessions_.end());
-      if (expired_sessions.empty() && ready_sessions.empty()) {
+      if (expired_sessions.empty()) {
         ScheduleCheckExpiredSessions(now);
-        return;
       }
     }
     for (const auto& session : ready_sessions) {
