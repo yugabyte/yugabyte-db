@@ -23,6 +23,7 @@ import string
 import glob
 import tarfile
 import ipaddress
+import psutil
 from datetime import datetime, timedelta
 from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
@@ -158,6 +159,10 @@ PREFIX = {
     'configure_read_replica new': "",
     'configure_read_replica modify': "",
     'configure_read_replica delete': "",
+    'upgrade' : "Upgrade the YugabyteDB node.",
+    'upgrade ysql_catalog' : "",
+    'upgrade finalize_new_version'  : "",
+    "upgrade check_version_compatibility" : "",
     'xcluster' : "Setup and manage xCluster Replication.",
     'xcluster create_checkpoint': "",
     'xcluster add_to_checkpoint': "",
@@ -196,6 +201,10 @@ USAGE = {
     'configure_read_replica new': "yugabyted configure_read_replica new [flags]",
     'configure_read_replica modify': "yugabyted configure_read_replica modify [flags]",
     'configure_read_replica delete' : "yugabyted configure_read_replica delete",
+    'upgrade' : "yugabyted upgrade [command] [flags]",
+    'upgrade ysql_catalog' : "yugabyted upgrade ysql_catalog [flags]",
+    'upgrade finalize_new_version' : "yugabyted upgrade finalize [flags]",
+    'upgrade check_version_compatibility' : "yugabyted upgrade check_version_compatibility [flags]",
     'xcluster' : "yugabyted xcluster [command] [flags]",
     'xcluster create_checkpoint': "yugabyted xcluster create_checkpoint [flags]",
     'xcluster add_to_checkpoint': "yugabyted xcluster add_to_checkpoint [flags]",
@@ -300,11 +309,23 @@ EXAMPLE = {
                         "# Display point-in-time recovery status for a YugabyteDB cluster:\n" +
                         "yugabyted configure point_in_time_recovery " + \
                         "--status \n\n",
-    'finalize_upgrade': "# Finalize the cluster upgrade process:\n" +
-                         "yugabyted finalize_upgrade\n\n" +
-                        "# Finalize the cluster upgrade by specifying a timeout value for" +
-                         " the YSQL catalog upgrade:\n" +
-                         "yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>\n\n",
+    'upgrade' : "# Upgrade the YugabyteDB node:\n" +
+                "yugabyted upgrade [ysql_catalog/finalize_new_version]\n\n",
+    'upgrade_ysql_catalog' : "# yugabyted upgrade the ysql catalog: \n" +
+                "yugabyted upgrade ysql_catalog [flags]\n\n",
+    'upgrade_finalize_new_version' : "# Finalize the cluster upgrade process:\n" +
+                         "yugabyted upgrade finalize_new_version\n\n" +
+                        "# Finalize the cluster upgrade by specifying a timeout " +
+                        "value for completion:\n" +
+                         "yugabyted upgrade finalize_new_version --timeout <time_limit_ms>\n\n",
+    'upgrade_check_version_compatibility' : "# Check if the cluster is compatible " +
+                        "for upgrade to the new version\n" +
+                        "yugabyted upgrade check_version_compatibility\n\n" +
+                        "# Specifying a timeout value for completion:\n" +
+                         "yugabyted upgrade check_version_compatibility " +
+                         "--timeout <time_limit_ms>\n\n",
+    'finalize_upgrade': "****** WARNING ******\n" +
+                        "Deprecated. Please use 'upgrade finalize_new_version' command.\n\n",
     'xcluster' : "# Checkpoint a new xcluster replication:\n" +
                   "yugabyted xcluster create_checkpoint --replication_id=<replication_id> " +
                   "--databases=<comma_separated_databases_to_be_added_to_replication>\n\n" +
@@ -509,10 +530,7 @@ def find_binary_location(binary_name):
 
     # Specific path for ysqlsh in test environment
     is_test_env = os.getenv('USER') == 'jenkins'
-    if binary_name == "ysqlsh" and is_test_env:
-        return find_binary_path_in_test_env(binary_name)
-
-    if binary_name == "pg_isready" and is_test_env:
+    if binary_name in ["ysqlsh", "pg_isready", "pg_upgrade"] and is_test_env:
         return find_binary_path_in_test_env(binary_name)
 
     # Default if tar is downloaded
@@ -767,6 +785,26 @@ class ControlScript(object):
 
     # Kills currently running yugabyted process if it exists.
     def stop(self, *args):
+
+        if len(os.listdir(self.configs.saved_data.get("data_dir"))) == 0:
+            Output.print_out("{} is not running.".format(SCRIPT_NAME))
+            sys.exit(1)
+
+        upgrade_in_progress = self.configs.saved_data.get("upgrade_in_progress")
+        catalog_upgrade_completed = self.configs.saved_data.get("catalog_upgrade_completed")
+
+        if upgrade_in_progress and not catalog_upgrade_completed:
+            tserver_pidfile =  os.path.join(self.configs.saved_data.get("data_dir"),
+                                            "{}.pid".format("tserver"))
+            tserver_pid_value = self.read_pidfile(tserver_pidfile)
+            old_release_tserver_cmdline = self.get_cmdline_from_pid(tserver_pid_value)
+            self.configs.saved_data["old_release_cmd"] = old_release_tserver_cmdline
+            self.configs.save_configs()
+            master_addresses = self.configs.saved_data.get("current_masters")
+            if master_addresses == '':
+                Output.log_error_and_exit(Output.make_red("Error") +
+                                          ": cannot retreive the masters.")
+
         (err, pid) = self.kill_all_procs()
         if err:
             Output.log_error_and_exit(
@@ -1222,7 +1260,91 @@ class ControlScript(object):
             output += "-" * 70 + "\n"
             Output.print_out(output)
 
+    def upgrade_check_version_compatibility(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        if self.configs.saved_data.get("secure") and not os.path.exists(
+            os.path.expanduser("~/.pgpass")):
+                Output.log_error_and_exit(Output.make_red("ERROR") +
+                            ": .pgpass file is not present in the home directory.")
+
+        advertise_ip = self.advertise_ip()
+        ysql_port = self.configs.saved_data.get("ysql_port")
+        data_dir = self.configs.saved_data.get("data_dir")
+        Output.init_animation("Checking version compatibility...")
+
+        timeout = 60000
+        if self.configs.temp_data.get("upgrade_timeout") is not None:
+            timeout = self.configs.temp_data.get("upgrade_timeout")
+
+        upgrade_check_message, upgrade_check_status = (
+            PGUpgradeProxy.check_for_pg_upgrade_compatibility(advertise_ip,
+                                ysql_port, data_dir, timeout))
+
+        if upgrade_check_status:
+            Output.log_error_and_exit("FAILED: PG upgrade compatibility check failed. " +
+                                    "Please check the logs. \n{}".format(upgrade_check_message))
+
+
+        Output.update_animation("Clusters are compatible for upgrade.")
+
+    def upgrade_finalize_new_version(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        tserver_addresses = self.get_tserver_addresses()
+
+        # Verify if all nodes were upgraded successfully
+        Output.init_animation("Verifying version compatibility across all nodes...")
+
+        node_versions = self.get_all_nodes_version(tserver_addresses)
+        highest_version = self.get_highest_version(node_versions)
+        mismatched_nodes_version = self.verify_all_nodes_version(node_versions,
+                                                            highest_version)
+
+        if len(mismatched_nodes_version) > 0:
+            mismatched_nodes = ', '.join(mismatched_nodes_version)
+            Output.update_animation("Version compatibility verification failed.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("Error") + ": Version mismatch detected in the " +
+            "following nodes: {}. Please upgrade these".format(mismatched_nodes) +
+            " nodes to version {} and then rerun the".format(highest_version) +
+            Output.make_yellow(" yugabyted finalize_upgrade") + " command."
+        )
+
+        # All nodes match the correct version
+        # Run post-upgrade tasks
+        Output.update_animation("Verified version compatibility across all nodes.")
+        master_addresses = self.configs.saved_data.get("current_masters")
+
+        timeout = 360000
+        if self.configs.temp_data.get("upgrade_timeout") is not None:
+            timeout = self.configs.temp_data.get("upgrade_timeout")
+
+        Output.init_animation("Finalizing the upgrade to {}...".format(highest_version))
+        if not YBAdminProxy.finalize_upgrade_uber_command(master_addresses, timeout):
+            Output.log_error_and_exit(Output.update_animation("Failed to "
+                "Finalize the upgrade.",status=Output.ANIMATION_FAIL))
+        else:
+            Output.log("Upgrade finalize step was successful.")
+
+        Output.update_animation("Cluster Upgrade Successfully " +
+                                    "Completed to {}.".format(highest_version))
+        status_details = []
+        status_display_info = {}
+        final_status = "Post-upgrade tasks completed successfully."
+        status_details = [
+                    (Output.make_yellow("Status"), final_status)]
+        status_display_info[final_status] = Output.make_green
+        status_details.append((Output.make_yellow("Version"), highest_version))
+        Output.print_out(self.get_status_string_common(status_details, status_display_info))
+
     # Finalize YugabyteDB cluster upgrade
+    # to-do: Need to deprecated this method
     def finalize_upgrade(self):
         if not self.script.is_running():
             Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
@@ -2757,6 +2879,55 @@ class ControlScript(object):
 
         Output.print_out(self.get_status_string_common(status_details))
 
+    # Upgrade the ysql catalog for this node
+    def upgrade_ysql_catalog(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        if self.configs.saved_data.get("read_replica"):
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": Cannot use `yugabyted " +
+                                      "upgrade_ysql_catalog` command from a read replica node. " +
+                                      "Please use a primary cluster node to upgrade the " +
+                                      "YSQL catalog.")
+
+        master_addresses = self.configs.saved_data.get("current_masters")
+        if master_addresses == '':
+            Output.log_error_and_exit(Output.make_red("Error") + ": cannot retreive the masters.")
+
+        timeout = 300000
+        if self.configs.temp_data.get("upgrade_timeout") is not None:
+            timeout = self.configs.temp_data.get("upgrade_timeout")
+
+        # Start the YSQL catalog upgrade
+        Output.init_animation("YSQL Catalog upgrade in progress...")
+        _, ret_code = YBAdminProxy.start_ysql_catalog_upgrade(
+                master_addresses, timeout)
+        if ret_code:
+            Output.log_error_and_exit("YSQL catalog upgrade failed. Please check the logs.")
+        else:
+            Output.update_animation("YSQL catalog upgrade successful.")
+            self.configs.saved_data["catalog_upgrade_completed"] = True
+            self.configs.save_configs()
+
+        status_details = [
+            (Output.make_yellow("Status"), "YSQL catalog upgrade successful."),
+        ]
+        Output.print_out(self.get_status_string_common(status_details))
+
+    def read_pidfile(self, pidfile_path):
+        try:
+            with open(pidfile_path, 'r') as pidfile:
+                pid = int(pidfile.read().strip())
+                return pid
+        except FileNotFoundError:
+            Output.log(f"PID file {pidfile_path} not found.", logging.DEBUG)
+        except ValueError:
+            Output.log(f"PID file {pidfile_path} contains invalid PID.", logging.DEBUG)
+        except Exception as e:
+            Output.log(f"An error occurred while reading the PID file: {e}", logging.DEBUG)
+        return None
+
     # Check that `openssl` binary is in our PATH
     # This actually returns true when it is _not_ present!
     def check_openssl(self):
@@ -3054,6 +3225,7 @@ class ControlScript(object):
 
         self.update_tserver_master_addrs()
         self.processes.get("tserver").start()
+
         if was_already_setup:
             Output.log("Node was a member of some cluster before. "
                     "Skipping tserver setup")
@@ -3140,7 +3312,35 @@ class ControlScript(object):
 
         yb_master_cmd = self.get_master_cmd(common_gflags)
 
-        yb_tserver_cmd = self.get_tserver_cmd(common_gflags)
+        upgrade_in_progress = self.configs.saved_data.get("upgrade_in_progress")
+        Output.log("Value of saved_data - upgrade_in_progress. {}".format(
+            upgrade_in_progress), logging.DEBUG)
+
+        catalog_upgrade_completed = self.configs.saved_data.get("catalog_upgrade_completed")
+        Output.log("Value of saved_data - catalog_upgrade_completed. {}".format(
+            catalog_upgrade_completed), logging.DEBUG)
+
+        if upgrade_in_progress == "true" and not catalog_upgrade_completed:
+            # get the previously know current master list before running the yb-admin command
+            previously_known_masters = self.configs.saved_data.get("current_masters")
+            Output.init_animation("Verifying the current upgrade status...")
+            out, ret_code = YBAdminProxy.check_for_ysql_catalog_upgrade_state(
+                previously_known_masters, timeout=30)
+            if not ret_code:
+                catalog_upgrade_completed = True
+                self.configs.saved_data["catalog_upgrade_completed"] = True
+                self.configs.save_configs()
+                Output.log("catalog_upgrade_completed status is set to True.")
+
+            Output.update_animation("Upgrade status successfully verified")
+
+        if upgrade_in_progress == "true" and not catalog_upgrade_completed:
+            yb_tserver_cmd = self.configs.saved_data.get("old_release_cmd")
+            yb_tserver_cmd.extend(["--ysql_yb_major_version_upgrade_compatibility=11"])
+            Output.log("Catalog upgrade is in progress. " +
+                       "Starting the tserver with old release path.")
+        else:
+            yb_tserver_cmd = self.get_tserver_cmd(common_gflags)
 
         self.processes = {
             "master": YBProcessManager(
@@ -3181,7 +3381,7 @@ class ControlScript(object):
             # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
             pid_file_name = os.path.basename(self.script.pidfile)
             data_dir_files = [ x for x in os.listdir(data_dir) if x != pid_file_name ]
-            if is_first_install and data_dir_files:
+            if is_first_install and data_dir_files and upgrade_in_progress == "false":
                 Output.print_and_log(
                     ("Found files {} in data dir {} from possibly failed initialization."
                     " Removing...").format(data_dir_files, data_dir))
@@ -3228,6 +3428,16 @@ class ControlScript(object):
                         "not to be used without firewalls blocking the internet traffic."
                     warnings.append(insecure_msg)
                     warnings_for_ui.extend(["insecure"])
+
+                # reset the upgrade state variables once the catalog upgrade is complete
+                upgrade_in_progress = self.configs.saved_data.get("upgrade_in_progress")
+                catalog_upgrade_completed = self.configs.saved_data.get("catalog_upgrade_completed")
+                if upgrade_in_progress == "true" and catalog_upgrade_completed:
+                    self.configs.saved_data["upgrade_in_progress"] = "false"
+                    self.configs.saved_data["catalog_upgrade_completed"] = "false"
+                    self.configs.saved_data["old_release_cmd"] = []
+                    Output.log("YSQL Catalog Upgrade complete: Upgrade in progress is set" +
+                                "to false and old_release_cmd is reset.")
 
                 # Persist the config after successful start
                 self.configs.save_configs()
@@ -3441,9 +3651,37 @@ class ControlScript(object):
                 Output.print_and_log(prereqs_check_result['msg'])
                 sys.exit(1)
 
+
+        upgrade_in_progress = self.configs.saved_data.get("upgrade_in_progress")
+        Output.log("Value of saved_data - upgrade_in_progress. {}".format(
+            upgrade_in_progress), logging.DEBUG)
+        catalog_upgrade_completed = self.configs.saved_data.get("catalog_upgrade_completed")
+        Output.log("Value of saved_data - catalog_upgrade_completed. {}".format(
+            catalog_upgrade_completed), logging.DEBUG)
+
         common_gflags = self.get_common_flags()
 
         yb_tserver_cmd = self.get_tserver_cmd(common_gflags)
+
+        if upgrade_in_progress == "true" and not catalog_upgrade_completed:
+            # get the previously know current master list before running the yb-admin command
+            previously_known_masters = self.configs.saved_data.get("current_masters")
+            Output.init_animation("Verifying the current upgrade status...")
+            out, ret_code = YBAdminProxy.check_for_ysql_catalog_upgrade_state(
+                previously_known_masters, timeout=30)
+            if not ret_code:
+                catalog_upgrade_completed = True
+                self.configs.saved_data["catalog_upgrade_completed"] = True
+                self.configs.save_configs()
+                Output.log("catalog_upgrade_completed status is set to True.")
+
+            Output.update_animation("Upgrade status successfully verified")
+
+        if upgrade_in_progress == "true" and not catalog_upgrade_completed:
+            yb_tserver_cmd = self.configs.saved_data.get("old_release_cmd")
+            yb_tserver_cmd.extend(["--ysql_yb_major_version_upgrade_compatibility=11"])
+            Output.log("Catalog upgrade is in progress. " +
+                       "Starting the tserver with old release path.")
 
         self.processes = {
             "tserver": YBProcessManager(
@@ -3479,7 +3717,7 @@ class ControlScript(object):
             # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
             pid_file_name = os.path.basename(self.script.pidfile)
             data_dir_files = [ x for x in os.listdir(data_dir) if x != pid_file_name ]
-            if is_first_install and data_dir_files:
+            if is_first_install and data_dir_files and upgrade_in_progress == "false":
                 Output.print_and_log(
                     ("Found files {} in data dir {} from possibly failed initialization."
                     " Removing...").format(data_dir_files, data_dir))
@@ -3513,6 +3751,17 @@ class ControlScript(object):
                     warnings.append("Cluster started in an insecure mode without " +
                         "authentication and encryption enabled. For non-production use only, " +
                         "not to be used without firewalls blocking the internet traffic.")
+
+
+                # reset the upgrade state variables once the catalog upgrade is complete
+                upgrade_in_progress = self.configs.saved_data.get("upgrade_in_progress")
+                catalog_upgrade_completed = self.configs.saved_data.get("catalog_upgrade_completed")
+                if upgrade_in_progress == "true" and catalog_upgrade_completed:
+                    self.configs.saved_data["upgrade_in_progress"] = "false"
+                    self.configs.saved_data["catalog_upgrade_completed"] = "false"
+                    self.configs.saved_data["old_release_cmd"] = []
+                    Output.log("YSQL Catalog Upgrade complete: Upgrade in progress is set" +
+                                "to false and old_release_cmd is reset.")
 
                 # Persist the config after successful start
                 self.configs.save_configs()
@@ -3638,6 +3887,26 @@ class ControlScript(object):
             "--certs_for_cdc_dir={}/xcluster".format(certs_dir),])
 
         return common_gflags
+
+
+    # find the cmdline for a given pid
+    def get_cmdline_from_pid(self, pid):
+        try:
+            process = psutil.Process(pid)
+            details = {
+                'pid': process.pid,
+                'name': process.name(),
+                'cmdline': process.cmdline(),
+            }
+            Output.log("Process details for pid {}: {}".format(pid, details), logging.DEBUG)
+            return details.get("cmdline")
+        except psutil.NoSuchProcess:
+            Output.log(f"No process with PID {pid} found.", logging.ERROR)
+        except psutil.AccessDenied:
+            Output.log(f"Permission denied to access process with PID {pid}.", logging.ERROR)
+        except Exception as e:
+            Output.log(f"An error occurred: {e}", logging.ERROR)
+        return None
 
     # Returns value of flag_name in flags.
     # Returns None is none exists.
@@ -7556,6 +7825,23 @@ class ControlScript(object):
             if args.keyspace is not None:
                 self.setup_env_init.set_ycql_keyspace(args.keyspace)
 
+        if args.parser == "check_version_compatibility":
+            if args.timeout is not None:
+                self.configs.temp_data["upgrade_timeout"] = args.timeout
+
+        if args.parser == "ysql_catalog":
+            if args.timeout is not None:
+                self.configs.temp_data["upgrade_timeout"] = args.timeout
+
+        if args.parser == "finalize_new_version":
+            if args.timeout is not None:
+                self.configs.temp_data["upgrade_timeout"] = args.timeout
+
+        if args.parser == "stop":
+
+            if args.upgrade is not None:
+                self.configs.saved_data["upgrade_in_progress"] = args.upgrade
+
         if args.parser == "start":
             master_webserver_port = self.configs.saved_data.get("master_webserver_port")
             if args.master_webserver_port is not None:
@@ -8166,14 +8452,62 @@ class ControlScript(object):
                 metavar=""
             )
 
-        # Top Level command: configure_read_replica
+        # Top level command: upgrade
+        upgrade_parser = subparsers.add_parser("upgrade",
+            description="Upgrade YugabyteDB processes in this node.",
+            help="Upgrade YugabyteDB processes in this node.",
+            parents=[common_parser])
+
+        # Sub-commands for top level `xcluster` command
+        all_parsers["upgrade"] = upgrade_parser
+        upgrade_subparsers = upgrade_parser.add_subparsers(dest="parser", metavar="")
+        upgrade_subparsers.required = True
+        for cmd, description in (
+                ("ysql_catalog", "Upgrade the ysql catalog metadata to the new version."),
+                ("finalize_new_version", "Finalize the YugabyteDB upgrade to the new version."),
+                ("check_version_compatibility",
+                    "Check the version compatibility of the YugabyteDB."),
+        ):
+            parser_name = "upgrade_" + cmd
+            example  = ""
+            if EXAMPLE.get(parser_name):
+                example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[parser_name]
+            subparser = upgrade_subparsers.add_parser(cmd, help=description,
+                                description=example, parents=[common_parser])
+            func = getattr(self, parser_name, None)
+            subparser.set_defaults(func=func)
+            all_parsers[parser_name] = subparser
+
+        # Flags for sub-command: ysql_catalog
+        for cmd in ("upgrade_ysql_catalog",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--timeout", help="Custom timeout for the YSQL catalog upgrade in milliseconds.",
+                metavar=""
+            )
+
+        for cmd in ("upgrade_check_version_compatibility",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--timeout", help="Custom timeout for the YugabyteDB node upgrade " +
+                    "compatibility check in milliseconds.", metavar="",)
+
+        # Flags for sub-command: server
+        for cmd in ("upgrade_finalize_new_version",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--timeout", help="Custom timeout for the YugabyteDB node upgrade in milliseconds.",
+                metavar=""
+            )
+
+        # Top Level command: xcluster
         xcluster_example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["xcluster"]
         xcluster_parser = subparsers.add_parser("xcluster",
                                     description=xcluster_example,
                                     help="Operations for xcluster replication between 2 clusters.",
                                     parents=[common_parser])
 
-        # Sub-commands for top level `configure_read_replica` command: new, modify, delete
+        # Sub-commands for top level `xcluster` command
         all_parsers["xcluster"] = xcluster_parser
         xcluster_subparsers = xcluster_parser.add_subparsers(dest="parser", metavar="")
         xcluster_subparsers.required = True
@@ -8293,6 +8627,14 @@ class ControlScript(object):
                 metavar="")
             cur_parser.add_argument(
                 "--databases", help="Name of databases to be removed.",
+                metavar="")
+
+        # Args for stop command
+        for cmd in ("stop",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--upgrade", choices=BOOL_CHOICES,
+                help="Stop the yugabyted node for version Upgrade.",
                 metavar="")
 
         # Commands that can alter configuration file.
@@ -8422,6 +8764,9 @@ class ControlScript(object):
         # Initialize the binary path of yb-ts-cli
         YBTableServerCLIProxy.init()
 
+        # Initialize the binary path of pg_upgrade
+        PGUpgradeProxy.init()
+
         self.validate_and_set_configs(args)
 
         # Initialize the binary path of ybadmin
@@ -8546,6 +8891,9 @@ class Configs(object):
             "dns_enabled": False,
             "read_replica": False,
             "cluster_member": False,
+            "upgrade_in_progress": False,
+            "old_release_cmd": "",
+            "catalog_upgrade_completed": False,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -8584,6 +8932,7 @@ class Configs(object):
             "xcluster_bootstrap_done": "",
             "enhance_time_sync_via_clockbound": False,
             "is_clockbound_configured": False,
+            "upgrade_timeout": None,
         }
         self.config_file = config_file
 
@@ -9034,7 +9383,7 @@ class YBTableServerCLIProxy(object):
                                                 tserver_port),
                 "set_flag",
                 gflag,
-                gflag_value
+                "{}".format(gflag_value)
             ]
 
         if byForce:
@@ -9240,6 +9589,42 @@ class YBControllerCLIProxy(object):
 
         return []
 
+class PGUpgradeProxy(object):
+    cmd_args = []
+
+    @staticmethod
+    def init():
+        PGUpgradeProxy.cmd_args.append(find_binary_location("pg_upgrade"))
+
+    @staticmethod
+    def check_for_pg_upgrade_compatibility(yugabyted_advertise_address,
+                    ysql_rpc_port, data_dir, timeout=3600):
+        upgrade_error_message = ""
+        upgrade_return_code = 1
+        cmd = PGUpgradeProxy.cmd_args + \
+            [
+                "--check",
+                "-U{}".format('yugabyte'),
+                "--old-port={}".format(ysql_rpc_port),
+                "--old-host={}".format(yugabyted_advertise_address),
+                "--old-datadir={}".format(data_dir + "/pg_data_11"),
+            ]
+        out, err, ret_code = run_process(cmd, timeout, log_cmd=True)
+
+        if 0 != ret_code or len(out.splitlines()) <=1:
+            upgrade_error_message = out
+            upgrade_return_code = 1
+            return [upgrade_error_message, upgrade_return_code]
+
+        match = re.search(r"Clusters are compatible", out)
+        if match:
+            upgrade_return_code = 0
+            Output.log("Cluster is compatible for pg15 upgrade.")
+            return [upgrade_error_message, upgrade_return_code]
+        else:
+            upgrade_error_message = "Cluster is not compatible for pg15 upgrade."
+            Output.log(upgrade_error_message)
+            return [upgrade_error_message, upgrade_return_code]
 
 # Proxy for parsing output from yb-admin commands.
 class YBAdminProxy(object):
@@ -9499,6 +9884,14 @@ class YBAdminProxy(object):
         out, err, ret_code = run_process(cmd, log_cmd=True)
         return (ret_code == 0)
 
+    # Finalize the YSQL major catalog upgrade
+    @staticmethod
+    def finalize_upgrade_uber_command(master_addrs, timeout=3600):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+        "-timeout_ms", str(timeout), "finalize_upgrade"]
+        out, err, ret_code = run_process(cmd, log_cmd=True, timeout=timeout)
+        return (ret_code == 0)
+
     @staticmethod
     def create_checkpoint_xcluster(master_addrs, replication_id, databases, timeout=10):
         cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
@@ -9606,6 +9999,39 @@ class YBAdminProxy(object):
 
         _, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (err, ret_code)
+
+    @staticmethod
+    def start_ysql_catalog_upgrade(master_addrs, timeout=300000):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+                                       "upgrade_ysql_major_version_catalog"]
+        out, _, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (out, ret_code)
+
+
+    @staticmethod
+    def check_for_ysql_catalog_upgrade_state(master_addrs, timeout=60):
+
+        upgrade_error_message = ""
+        upgrade_return_code = 1
+        cmd = YBAdminProxy.cmd_args + \
+            [
+                "-master_addresses", master_addrs,
+                "get_ysql_major_version_catalog_state"
+            ]
+        out, err, ret_code = run_process(cmd, timeout, log_cmd=True)
+
+        if 0 != ret_code or len(out.splitlines()) < 1:
+            upgrade_error_message = out
+            upgrade_return_code = 1
+            return [upgrade_error_message, upgrade_return_code]
+
+        match = re.search(r"awaiting finalization", out)
+        if match:
+            upgrade_return_code = 0
+            return [upgrade_error_message, upgrade_return_code]
+
+        return [upgrade_error_message, upgrade_return_code]
+
 
     # Passthrough method for all the yb-admin commands
     # @staticmethod
