@@ -173,13 +173,13 @@ class ClusterLoadBalancer {
                                TabletToTabletServerMap* stepdown_leader_tasks)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
-  // Issue the call to CatalogManager to change the config for this particular tablet, either
-  // adding or removing the peer at ts_uuid, based on the is_add argument. Removing the peer
-  // is optional. When neither adding nor removing peer, it means just moving a leader from one
-  // tablet server to another. If new_leader_ts_uuid is empty, a server will be picked by random
-  // to be the new leader. Also takes in the role of the tablet for the creation flow.
-  virtual Status SendReplicaChanges(
-      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const bool is_add,
+  // Issue the calls to CatalogManager to change the config for this particular tablet.
+  virtual Status SendAddReplica(const TabletInfoPtr& tablet, const TabletServerId& ts_uuid);
+  virtual Status SendRemoveReplica(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid);
+  // If new_leader_ts_uuid is empty, a server will be picked by random to be the new leader.
+  virtual Status SendMoveLeader(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
       const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid = "");
 
   // If type_ is live, return PRE_VOTER, otherwise, return PRE_OBSERVER.
@@ -299,15 +299,12 @@ class ClusterLoadBalancer {
       const TabletServerId& from_ts, const TabletServerId& to_ts)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
-  // Issue the change config and modify the in-memory state for moving a replica from one tablet
-  // server to another.
-  Status MoveReplica(
+  // Issue the change config and modify the in-memory state for adding or moving a replica on the
+  // specified tablet server.
+  // from_ts may be empty for adds and is only used for logging. The remove replica for moves
+  // happens in a later cluster balancer iteration (once the tablet is over-replicated).
+  Status AddOrMoveReplica(
       const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts)
-      REQUIRES_SHARED(catalog_manager_->mutex_);
-
-  // Issue the change config and modify the in-memory state for adding a replica on the specified
-  // tablet server.
-  Status AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Issue the change config and modify the in-memory state for removing a replica on the specified
