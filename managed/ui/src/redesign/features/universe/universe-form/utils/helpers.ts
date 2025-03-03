@@ -258,11 +258,9 @@ export const getFormData = (
     data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
   }
 
-  if (
-    data.cloudConfig.provider?.code === CloudType.kubernetes &&
-    data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED
-  ) {
+  if (data.cloudConfig.provider?.code === CloudType.kubernetes) {
     data.instanceConfig.masterK8SNodeResourceSpec = userIntent.masterK8SNodeResourceSpec;
+    data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
   }
 
   return data;
@@ -353,15 +351,13 @@ export const getUserIntent = (
   if (!_.isEmpty(proxyConfig)) intent.proxyConfig = proxyConfig;
   if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
 
-  if (
-    cloudConfig.provider?.code === CloudType.kubernetes &&
-    cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED
-  ) {
-    intent.masterK8SNodeResourceSpec = instanceConfig.masterK8SNodeResourceSpec;
-  }
-
   if (cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
     intent.masterInstanceType = instanceConfig.masterInstanceType;
+    intent.masterDeviceInfo = instanceConfig.masterDeviceInfo;
+  }
+
+  if (cloudConfig.provider?.code === CloudType.kubernetes) {
+    intent.masterK8SNodeResourceSpec = instanceConfig.masterK8SNodeResourceSpec;
     intent.masterDeviceInfo = instanceConfig.masterDeviceInfo;
   }
 
