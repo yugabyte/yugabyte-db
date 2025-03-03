@@ -179,12 +179,14 @@ export const getUniverseDedicatedNodeCount = (nodeDetailsSet, cluster = null) =>
 
 export const isDedicatedNodePlacement = (currentUniverse) => {
   let isDedicatedNodes = false;
+
   if (!currentUniverse?.universeDetails) return isDedicatedNodes;
 
   const clusters = currentUniverse.universeDetails.clusters;
   const primaryCluster = clusters && getPrimaryCluster(clusters);
+  const isK8sUniverse = primaryCluster.userIntent.providerType === 'kubernetes';
   isDedicatedNodes = primaryCluster.userIntent.dedicatedNodes;
-  return isDedicatedNodes;
+  return isDedicatedNodes || isK8sUniverse;
 };
 
 export function getProviderMetadata(provider) {
