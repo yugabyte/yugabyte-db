@@ -3148,7 +3148,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	 */
 	mtstate->yb_is_update_optimization_enabled =
 		(node->yb_update_affected_entities != NULL &&
-		 operation == CMD_UPDATE && YbIsUpdateOptimizationEnabled());
+		 YbIsUpdateOptimizationEnabled());
 
 	/* If modifying a partitioned table, initialize the root table info */
 	if (node->rootResultRelIndex >= 0)

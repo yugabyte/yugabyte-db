@@ -381,6 +381,11 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
 	if (affected_entities == NULL)
 		return NULL;
 
+	bool skip_entities_initially_empty PG_USED_FOR_ASSERTS_ONLY =
+		skip_entities->index_list == NIL &&
+		skip_entities->referenced_fkey_list == NIL &&
+		skip_entities->referencing_fkey_list == NIL;
+
 	/*
 	 * Clone the update matrix to create a working copy for this tuple. We would
 	 * like to preserve a clean copy for subsequent tuples in this query/plan.
@@ -442,12 +447,12 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
 			/* Mark the primary key as updated */
 			if (entity->oid == rel->rd_pkindex)
 			{
+				Assert(skip_entities_initially_empty);
 				/*
 				 * In case the primary key is updated, the entire row must be
-				 * deleted and re-inserted. The no update index list is not
-				 * useful in such cases.
+				 * deleted and re-inserted, and all references updated.
 				 */
-				skip_entities->index_list = NIL;
+				YbClearSkippableEntities(skip_entities);
 				break;
 			}
 		}
