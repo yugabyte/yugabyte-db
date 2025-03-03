@@ -13636,6 +13636,11 @@
           "description" : "DB Name",
           "type" : "string"
         },
+        "intermittentMinRecoverTimeInMillis" : {
+          "description" : "Intermittent min recovery time in millis if retention period is increased",
+          "format" : "int64",
+          "type" : "integer"
+        },
         "maxRecoverTimeInMillis" : {
           "format" : "int64",
           "type" : "integer"
