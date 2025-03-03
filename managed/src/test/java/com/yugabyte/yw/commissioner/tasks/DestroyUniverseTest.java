@@ -24,7 +24,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
@@ -37,7 +36,6 @@ import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.MetricKey;
@@ -55,6 +53,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.jboss.logging.MDC;
@@ -94,8 +93,6 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
   @Before
   public void setUp() {
     super.setUp();
-    Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     UniverseDefinitionTaskParams.UserIntent userIntent;
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
@@ -104,7 +101,8 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;
-    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.regionList =
+        defaultProvider.getAllRegions().stream().map(Region::getUuid).collect(Collectors.toList());
 
     String caFile = createTempFile("destroy_universe_test", "ca.crt", "test content");
     certFolder = new File(caFile).getParentFile();

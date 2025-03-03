@@ -42,6 +42,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -75,6 +76,8 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+    Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
+    Region.create(onPremProvider, "region-1", "Region 1", "yb-image-1");
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultAccessKey = createAccessKeyForProvider("default-key", defaultProvider);
     defaultUniverse = createUniverseForProvider("Test Universe", defaultProvider);
@@ -161,7 +164,12 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   }
 
   protected Universe createUniverseForProvider(String universeName, Provider provider) {
-    Region region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
+    Optional<Region> optional =
+        provider.getAllRegions().stream().filter(r -> r.getCode().equals("region-1")).findFirst();
+    Region region =
+        optional.isPresent()
+            ? optional.get()
+            : Region.create(provider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone zone = AvailabilityZone.createOrThrow(region, AZ_CODE, "AZ 1", "subnet-1");
     // create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =

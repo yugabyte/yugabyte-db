@@ -331,7 +331,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
   private UserIntent getReadReplicaUserIntent(TestData t, int rf) {
     UserIntent userIntent = new UserIntent();
-    Region region = Region.create(t.provider, "region-2", "Region 2", "yb-image-1");
+    Optional<Region> optional =
+        t.provider.getAllRegions().stream().filter(r -> r.getCode().equals("region-2")).findFirst();
+    Region region =
+        optional.isPresent()
+            ? optional.get()
+            : Region.create(t.provider, "region-2", "Region 2", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-2", "AZ 2", "subnet-2");
     userIntent.numNodes = rf;
     userIntent.replicationFactor = rf;
@@ -915,7 +920,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             .findFirst()
             .get()
             .provider;
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    Optional<Region> optional =
+        p.getAllRegions().stream().filter(r -> r.getCode().equals("region-1")).findFirst();
+    Region r =
+        optional.isPresent()
+            ? optional.get()
+            : Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
@@ -955,7 +965,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             .findFirst()
             .get()
             .provider;
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    Optional<Region> optional =
+        p.getAllRegions().stream().filter(r -> r.getCode().equals("region-1")).findFirst();
+    Region r =
+        optional.isPresent()
+            ? optional.get()
+            : Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");

@@ -128,7 +128,7 @@ public class CloudProviderHandler {
     JsonNode errors = null;
     if (validate) {
       try {
-        providerValidator.validate(reqProvider);
+        providerValidator.validate(reqProvider, null /* existing provider */);
       } catch (PlatformServiceException e) {
         LOG.error(
             "Received validation error,  ignoreValidationErrors=" + ignoreValidationErrors, e);
