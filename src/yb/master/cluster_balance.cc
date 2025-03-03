@@ -121,9 +121,7 @@ DEFINE_test_flag(int32, load_balancer_wait_after_count_pending_tasks_ms, 0,
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
-DEFINE_RUNTIME_bool(load_balancer_count_move_as_add, true,
-    "Should we enable state change to count add server triggered by load move as just an "
-    "add instead of both an add and remove.");
+DEPRECATE_FLAG(bool, load_balancer_count_move_as_add, "03_2025");
 
 DEFINE_RUNTIME_bool(load_balancer_drive_aware, true,
     "When LB decides to move a tablet from server A to B, on the target LB "
@@ -960,7 +958,7 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
       if (can_choose_ts) {
         *out_to_ts = ts_uuid;
         VLOG(3) << "Found tserver " << ts_uuid << " to add a replica of tablet " << tablet_id;
-        RETURN_NOT_OK(AddReplica(tablet_id, ts_uuid));
+        RETURN_NOT_OK(AddOrMoveReplica(tablet_id, "" /* from_ts */, ts_uuid));
         state_->tablets_missing_replicas_.erase(tablet_id);
         return true;
       }
@@ -984,7 +982,7 @@ Result<bool> ClusterLoadBalancer::HandleAddIfWrongPlacement(
       *out_tablet_id = tablet_id;
       VLOG(3) << "Found destination server " << *out_to_ts << " to move tablet replica "
               << tablet_id << " from " << *out_from_ts;
-      RETURN_NOT_OK(MoveReplica(tablet_id, *out_from_ts, *out_to_ts));
+      RETURN_NOT_OK(AddOrMoveReplica(tablet_id, *out_from_ts, *out_to_ts));
       return true;
     } else {
       LOG_AND_COUNT_WARNING(
@@ -1156,7 +1154,7 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
         *moving_tablet_id = *tablet_to_move;
         VLOG(3) << "Found tablet " << *moving_tablet_id << " to move from "
                 << *from_ts << " to ts " << *to_ts;
-        RETURN_NOT_OK(MoveReplica(*moving_tablet_id, high_load_uuid, low_load_uuid));
+        RETURN_NOT_OK(AddOrMoveReplica(*moving_tablet_id, high_load_uuid, low_load_uuid));
         // Update global state if necessary.
         if (!is_global_balancing_move) {
           can_perform_global_operations_ = false;
@@ -1615,29 +1613,23 @@ Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
   return false;
 }
 
-Status ClusterLoadBalancer::MoveReplica(
-    const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
-  LOG(INFO) << Format("Moving tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
-  RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
-                                   true /* should_remove_leader */));
-  RETURN_NOT_OK(state_->AddReplica(tablet_id, to_ts));
-  return GetAtomicFlag(&FLAGS_load_balancer_count_move_as_add) ?
-      Status::OK() : state_->RemoveReplica(tablet_id, from_ts);
-}
-
-Status ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
-  LOG(INFO) << Format("Adding replica of tablet $0 to $1", tablet_id, to_ts);
-  // This is an add operation, so the "should_remove_leader" flag is irrelevant.
-  RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
-                                   true /* should_remove_leader */));
+Status ClusterLoadBalancer::AddOrMoveReplica(
+    const TabletId& tablet_id, const std::string& from_ts, const TabletServerId& to_ts) {
+  // from_ts is only used for logging, because the remove replica happens in a later load balancer
+  // iteration (once the tablet is already over-replicated).
+  if (from_ts.empty()) {
+    LOG(INFO) << Format("Adding replica of tablet $0 to $1", tablet_id, to_ts);
+  } else {
+    LOG(INFO) << Format("Moving tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
+  }
+  RETURN_NOT_OK(SendAddReplica(GetTabletMap().at(tablet_id), to_ts));
   return state_->AddReplica(tablet_id, to_ts);
 }
 
 Status ClusterLoadBalancer::RemoveReplica(
     const TabletId& tablet_id, const TabletServerId& ts_uuid) {
   LOG(INFO) << Format("Removing replica $0 from tablet $1", ts_uuid, tablet_id);
-  RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false /* is_add */,
-                                   true /* should_remove_leader */));
+  RETURN_NOT_OK(SendRemoveReplica(GetTabletMap().at(tablet_id), ts_uuid));
   return state_->RemoveReplica(tablet_id, ts_uuid);
 }
 
@@ -1646,9 +1638,8 @@ Status ClusterLoadBalancer::MoveLeader(const TabletId& tablet_id,
                                        const TabletServerId& to_ts,
                                        const std::string& to_ts_path) {
   LOG(INFO) << Format("Moving leader of $0 from TS $1 to $2", tablet_id, from_ts, to_ts);
-  RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), from_ts, false /* is_add */,
-                                   false /* should_remove_leader */, to_ts));
-
+  RETURN_NOT_OK(SendMoveLeader(
+      GetTabletMap().at(tablet_id), from_ts, false /* should_remove_leader */, to_ts));
   return state_->MoveLeader(tablet_id, from_ts, to_ts, to_ts_path);
 }
 
@@ -1789,33 +1780,48 @@ void ClusterLoadBalancer::GetPendingTasks(const TableId& table_uuid,
       table_uuid, add_replica_tasks, remove_replica_tasks, stepdown_leader_tasks);
 }
 
-Status ClusterLoadBalancer::SendReplicaChanges(
-    const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const bool is_add,
+Status ClusterLoadBalancer::SendAddReplica(
+    const TabletInfoPtr& tablet, const TabletServerId& ts_uuid) {
+  auto l = tablet->LockForRead();
+  SCHECK_EQ(
+      state_->pending_add_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()), 0U,
+      IllegalState, "Sending duplicate add replica task.");
+  catalog_manager_->SendAddServerRequest(
+      tablet, GetDefaultMemberType(), l->pb.committed_consensus_state(), ts_uuid, epoch_);
+  return Status::OK();
+}
+
+Status ClusterLoadBalancer::SendRemoveReplica(
+    const TabletInfoPtr& tablet, const TabletServerId& ts_uuid) {
+  auto l = tablet->LockForRead();
+  // If the replica is also the leader, first step it down and then remove.
+  if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
+    return SendMoveLeader(tablet, ts_uuid, true /* should_remove_leader */);
+  }
+  SCHECK_EQ(
+      state_->pending_remove_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()), 0U,
+      IllegalState, "Sending duplicate remove replica task.");
+  catalog_manager_->SendRemoveServerRequest(
+      tablet, l->pb.committed_consensus_state(), ts_uuid, epoch_);
+  return Status::OK();
+}
+
+Status ClusterLoadBalancer::SendMoveLeader(
+    const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
     const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid) {
   auto l = tablet->LockForRead();
-  if (is_add) {
-    // These checks are temporary. They will be removed once we are confident that the algorithm is
-    // always doing the right thing.
-    SCHECK_EQ(
-        state_->pending_add_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()), 0U,
-        IllegalState, "Sending duplicate add replica task.");
-    catalog_manager_->SendAddServerRequest(
-        tablet, GetDefaultMemberType(), l->pb.committed_consensus_state(), ts_uuid, epoch_);
-  } else if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
-    // If the replica is also the leader, first step it down and then remove.
-    SCHECK_EQ(
-        state_->pending_stepdown_leader_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
-        0U, IllegalState, "Sending duplicate leader stepdown task.");
-    catalog_manager_->SendLeaderStepDownRequest(
-        tablet, l->pb.committed_consensus_state(), ts_uuid, should_remove_leader, epoch_,
-        new_leader_ts_uuid);
-  } else {
-    SCHECK_EQ(
-        state_->pending_remove_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()), 0U,
-        IllegalState, "Sending duplicate remove replica task.");
-    catalog_manager_->SendRemoveServerRequest(
-        tablet, l->pb.committed_consensus_state(), ts_uuid, epoch_);
+  auto& actual_leader = state_->per_tablet_meta_[tablet->id()].leader_uuid;
+  if (ts_uuid != actual_leader) {
+    return STATUS_FORMAT(
+        IllegalState, "Cannot send leader stepdown for tablet $0 to peer $1 as it is not the "
+        "leader. Actual leader is $2", tablet->tablet_id(), ts_uuid, actual_leader);
   }
+  SCHECK_EQ(
+      state_->pending_stepdown_leader_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
+      0U, IllegalState, "Sending duplicate leader stepdown task.");
+  catalog_manager_->SendLeaderStepDownRequest(
+      tablet, l->pb.committed_consensus_state(), ts_uuid, should_remove_leader, epoch_,
+      new_leader_ts_uuid);
   return Status::OK();
 }
 
