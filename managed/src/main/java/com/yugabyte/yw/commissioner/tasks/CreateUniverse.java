@@ -166,6 +166,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       retrievePasswordsIfNeeded();
 
+      createPersistUseClockboundTask();
+
       createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), universe.getNodes());
 
       // Create preflight node check tasks for on-prem nodes.

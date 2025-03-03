@@ -293,7 +293,10 @@ public class UserTaskDetails {
     PITRRestore,
 
     // Pause replication
-    PauseReplication
+    PauseReplication,
+
+    // Persist use clockbound
+    PersistUseClockbound
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -684,6 +687,10 @@ public class UserTaskDetails {
       case PauseReplication:
         title = "Pause Replication";
         description = "Pause replication from source to target universe";
+        break;
+      case PersistUseClockbound:
+        title = "Persist useClockbound";
+        description = "Persist useClockbound true/false in userIntent";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

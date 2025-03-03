@@ -14,3 +14,5 @@ https://downloads.yugabyte.com/docker/thirdparty-deps/x86_64/xxhash.tar.gz
 https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.0/otelcol-contrib_0.90.0_linux_amd64.tar.gz
 https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.0/otelcol-contrib_0.90.0_linux_arm64.tar.gz
 https://downloads.yugabyte.com/docker/thirdparty-deps/x86_64/tectia-ssh.tar.gz
+https://downloads.yugabyte.com/docker/thirdparty-deps/clockbound-linux-x86_64.tar.gz
+https://downloads.yugabyte.com/docker/thirdparty-deps/clockbound-linux-aarch64.tar.gz

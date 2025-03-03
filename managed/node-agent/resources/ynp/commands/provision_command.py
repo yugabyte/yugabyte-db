@@ -155,6 +155,11 @@ class ProvisionCommand(Command):
                 print(f"Skipping {key} because is_install_node_agent is "
                       f"{self.config[key].get('is_install_node_agent')}")
                 continue
+            if key == 'ConfigureClockbound' and \
+                    self.config[key].get('configure_clockbound', 'False') == 'False':
+                print(f"Skipping {key} because {key}.configure_clockbound is "
+                      f"{self.config[key].get('configure_clockbound')}")
+                continue
             context = self.config[key]
 
             context["templatedir"] = os.path.join(os.path.dirname(module[1]), "templates")

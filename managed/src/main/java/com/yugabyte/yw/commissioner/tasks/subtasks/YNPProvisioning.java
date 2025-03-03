@@ -94,6 +94,9 @@ public class YNPProvisioning extends AbstractTaskBase {
       ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
+      ynpNode.put(
+          "is_configure_clockbound",
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
       rootNode.set("ynp", ynpNode);
 
       // "extra" JSON Object
