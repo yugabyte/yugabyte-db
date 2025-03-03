@@ -129,10 +129,19 @@ KeyBuffer VectorIdKey(vector_index::VectorId vector_id) {
   return key;
 }
 
-std::array<Slice, 3> VectorIndexReverseEntryKeyParts(Slice value, Slice encoded_write_time) {
+std::array<Slice, 3> VectorIndexReverseEntryKeyPartsForValue(
+    Slice value, Slice encoded_write_time) {
   return std::array<Slice, 3>{
     Slice(kVectorIdKeyPrefix),
     EncodedDocVectorValue::FromSlice(value).id,
+    encoded_write_time,
+  };
+}
+
+std::array<Slice, 3> VectorIndexReverseEntryKeyParts(Slice id, Slice encoded_write_time) {
+  return std::array<Slice, 3>{
+    Slice(kVectorIdKeyPrefix),
+    id,
     encoded_write_time,
   };
 }

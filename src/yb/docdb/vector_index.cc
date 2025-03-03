@@ -315,11 +315,11 @@ Result<VectorIndexPtr> CreateVectorIndex(
 }
 
 void AddVectorIndexReverseEntry(
-    rocksdb::DirectWriteHandler* handler, Slice ybctid, Slice value, HybridTime write_ht) {
+    rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht) {
   DocHybridTimeBuffer ht_buf;
-  auto encoded_write_time = ht_buf.EncodeWithValueType({ write_ht, 0 });
-  handler->Put(
-      dockv::VectorIndexReverseEntryKeyParts(value, encoded_write_time), {&ybctid, 1});
+  auto encoded_write_time = ht_buf.EncodeWithValueType(write_ht);
+  handler.Put(
+      dockv::VectorIndexReverseEntryKeyPartsForValue(value, encoded_write_time), {&ybctid, 1});
 }
 
 }  // namespace yb::docdb

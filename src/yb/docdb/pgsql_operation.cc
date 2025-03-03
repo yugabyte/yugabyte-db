@@ -499,7 +499,9 @@ Status VerifyNoColsMarkedForDeletion(const Schema& schema, const PgsqlWriteReque
 
 template<class PB>
 void InitProjection(const Schema& schema, const PB& request, dockv::ReaderProjection* projection) {
-  if (!request.col_refs().empty()) {
+  if (schema.has_vectors()) {
+    projection->Init(schema, request.col_refs(), schema.vector_column_ids());
+  } else if (!request.col_refs().empty()) {
     projection->Init(schema, request.col_refs());
   } else {
     // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
@@ -588,6 +590,10 @@ class FilteringIterator {
 
   YQLRowwiseIteratorIf& impl() const {
     return *iterator_holder_;
+  }
+
+  bool has_filter() const {
+    return filter_.has_value();
   }
 
  private:
@@ -935,8 +941,11 @@ class PgsqlVectorFilter {
     auto key = dockv::VectorIdKey(vector_id);
     // TODO(vector_index) handle failure
     auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key.AsSlice()));
-    if (ybctid.empty()) {
+    if (ybctid.empty() || ybctid[0] == dockv::ValueEntryTypeAsChar::kTombstone) {
       return false;
+    }
+    if (!iter_.has_filter()) {
+      return true;
     }
     if (need_refresh_) {
       iter_.Refresh();
@@ -1494,6 +1503,10 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     ExpressionHelper expression_helper;
     RETURN_NOT_OK(expression_helper.Init(schema, projection(), request_, table_row));
 
+    if (schema.has_vectors()) {
+      RETURN_NOT_OK(HandleUpdatedVectorIds(data, table_row));
+    }
+
     skipped = request_.column_new_values().empty();
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();
     if (FLAGS_ysql_enable_pack_full_row_update &&
@@ -1623,6 +1636,10 @@ Status PgsqlWriteOperation::ApplyDelete(
   // Otherwise, delete the referenced row (all columns).
   RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(
       DocPath(encoded_doc_key_.as_slice()), data.read_operation_data));
+
+  if (doc_read_context_->schema().has_vectors()) {
+    RETURN_NOT_OK(HandleDeletedVectorIds(data, table_row));
+  }
 
   RETURN_NOT_OK(PopulateResultSet(&table_row));
 
@@ -1875,6 +1892,40 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
   }
   // Add row's doc key. Caller code will create strong intent for the whole row in this case.
   paths->push_back(encoded_doc_key_);
+  return Status::OK();
+}
+
+Status PgsqlWriteOperation::HandleUpdatedVectorIds(
+    const DocOperationApplyData& data, const dockv::PgTableRow& table_row) {
+  const auto& schema = doc_read_context_->schema();
+  for (const auto& column_value : request_.column_new_values()) {
+    ColumnId column_id(column_value.column_id());
+    const auto& column = VERIFY_RESULT_REF(schema.column_by_id(column_id));
+    if (!column.is_vector()) {
+      continue;
+    }
+    RETURN_NOT_OK(FillRemovedVectorId(data, table_row, column_id));
+  }
+  return Status::OK();
+}
+
+Status PgsqlWriteOperation::HandleDeletedVectorIds(
+    const DocOperationApplyData& data, const dockv::PgTableRow& table_row) {
+  for (const auto& column_id : doc_read_context_->schema().vector_column_ids()) {
+    RETURN_NOT_OK(FillRemovedVectorId(data, table_row, column_id));
+  }
+  return Status::OK();
+}
+
+Status PgsqlWriteOperation::FillRemovedVectorId(
+    const DocOperationApplyData& data, const dockv::PgTableRow& table_row, ColumnId column_id) {
+  auto old_vector_value = table_row.GetValueByColumnId(column_id);
+  if (!old_vector_value) {
+    return Status::OK();
+  }
+  auto vector_value = dockv::EncodedDocVectorValue::FromSlice(old_vector_value->binary_value());
+  VLOG_WITH_FUNC(4) << "Old vector id: " << AsString(vector_value.DecodeId());
+  data.doc_write_batch->DeleteVectorId(VERIFY_RESULT(vector_value.DecodeId()));
   return Status::OK();
 }
 

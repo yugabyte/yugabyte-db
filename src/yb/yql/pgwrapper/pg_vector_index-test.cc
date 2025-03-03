@@ -351,6 +351,8 @@ void PgVectorIndexTest::VerifyRows(
       "SELECT * FROM test $0$1",
       add_filter ? "WHERE id + 3 <= 5" : "",
       IndexQuerySuffix("[0.0, 0.0, 0.0]", limit < 0 ? expected.size() : make_unsigned(limit))))));
+  LOG_WITH_FUNC(INFO) << "  Result: " << AsString(result);
+  LOG_WITH_FUNC(INFO) << "Expected: " << AsString(expected);
   ASSERT_EQ(result.size(), expected.size());
   for (size_t i = 0; i != std::min(result.size(), expected.size()); ++i) {
     SCOPED_TRACE(Format("Row $0", i));

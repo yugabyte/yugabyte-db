@@ -126,6 +126,16 @@ class PgsqlWriteOperation :
       const PgsqlColumnValuePB& column_value, dockv::PgTableRow* returning_table_row,
       qlexpr::QLExprResult* result, RowPackContext* pack_context);
 
+  // Handle removal of a single vector caused by any reason.
+  Status FillRemovedVectorId(
+      const DocOperationApplyData& data, const dockv::PgTableRow& table_row, ColumnId column_id);
+  // Handle removal of vectors caused by applying DELETE statement.
+  Status HandleDeletedVectorIds(
+      const DocOperationApplyData& data, const dockv::PgTableRow& table_row);
+  // Handle removal of vectors caused by applying UPDATE statement.
+  Status HandleUpdatedVectorIds(
+      const DocOperationApplyData& data, const dockv::PgTableRow& table_row);
+
   const dockv::ReaderProjection& projection() const;
 
   //------------------------------------------------------------------------------------------------
