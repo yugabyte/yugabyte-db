@@ -43,7 +43,7 @@ export const PremiumV2_LRS_DISK_THROUGHPUT_CAP = 2500;
 
 export const HB_DEFAULT_DISK_IOPS = 3600;
 export const HB_DEFAULT_DISK_THROUGHPUT = 290;
-export const HB_MIN_DISK_IOPS = 2000;
+export const HB_MIN_DISK_IOPS = 3000;
 export const HB_DISK_IOPS_MAX_PER_GB = 500;
 export const HB_MAX_DISK_IOPS = 160000;
 export const HB_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
