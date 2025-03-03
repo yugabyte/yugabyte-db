@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
@@ -3899,5 +3900,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     task.initialize(taskParams());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  // Persist in universe if we want to use clockbound as time source
+  protected void createPersistUseClockboundTask() {
+    SubTaskGroup persistClockboundSubtaskGroup =
+        createSubTaskGroup("PersistUseClockbound", SubTaskGroupType.PersistUseClockbound);
+    UniverseTaskParams params = new UniverseTaskParams();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    PersistUseClockbound subtask = createTask(PersistUseClockbound.class);
+    subtask.initialize(params);
+    persistClockboundSubtaskGroup.addSubTask(subtask);
+    getRunnableTask().addSubTaskGroup(persistClockboundSubtaskGroup);
   }
 }

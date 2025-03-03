@@ -480,4 +480,12 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Show Hyperdisk storage types during create/edit universe flow.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> configureClockboundInCloudProvisioning =
+      new ConfKeyInfo<>(
+          "yb.provider.configure_clockbound_cloud_provisioning",
+          ScopeType.PROVIDER,
+          "Configure Clockbound when using cloud providers",
+          "Configure clockbound when creating cloud provider based Universes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
