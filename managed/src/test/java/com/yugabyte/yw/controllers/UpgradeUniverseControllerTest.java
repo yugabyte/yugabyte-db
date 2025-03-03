@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -733,6 +734,39 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           "Software upgrade cannot be preformed on universe in state " + state);
       verifyNoActions();
     }
+  }
+
+  @Test
+  public void testYSQLMajorUpgradeWithInValidClientCert() {
+    SpecificGFlags gFlags =
+        SpecificGFlags.construct(
+            Map.of(GFlagsUtil.YSQL_HBA_CONF_CSV, "hostssl all all all trust clientcert=1"),
+            Map.of(GFlagsUtil.YSQL_HBA_CONF_CSV, "hostssl all all all trust clientcert=1"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = gFlags;
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                  "2024.2.2.0-b35";
+            });
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + defaultUniverse.getUniverseUUID()
+            + "/upgrade/db_version";
+    ObjectNode bodyJson = Json.newObject().put("ybSoftwareVersion", "2025.1.0.0-b1");
+    when(mockGFlagsValidation.ysqlMajorVersionUpgrade(any(), any())).thenReturn(true);
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(
+        result,
+        "YSQL major version upgrade is not supported when clientcert=1 is present in the"
+            + " ysql_hba_conf_csv. Please update the clientcert=1 entry with equivalent PG-15 value"
+            + " with before proceeding with the upgrade. Update the value to clientcert=verify-ca"
+            + " or clientcert=verify-full before proceeding.");
   }
 
   // RollBack Upgrade
