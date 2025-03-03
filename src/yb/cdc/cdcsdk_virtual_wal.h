@@ -49,7 +49,8 @@ class CDCSDKVirtualWAL {
 
   // Returns the actually persisted restart_lsn.
   Result<uint64_t> UpdateAndPersistLSNInternal(
-      const uint64_t confirmed_flush_lsn, const uint64_t restart_lsn_hint);
+      const uint64_t confirmed_flush_lsn, const uint64_t restart_lsn_hint,
+      const bool use_vwal_safe_time = false);
 
   Status UpdatePublicationTableListInternal(
       const std::unordered_set<TableId>& new_tables, const HostPort hostport,
@@ -153,7 +154,8 @@ class CDCSDKVirtualWAL {
   Status TruncateMetaMap(const uint64_t restart_lsn);
 
   Status UpdateSlotEntryInCDCState(
-      const uint64_t confirmed_flush_lsn, const CommitRecordMetadata& record_metadata);
+      const uint64_t confirmed_flush_lsn, const CommitRecordMetadata& record_metadata,
+      const bool use_vwal_safe_time = false, const uint64_t last_trimmed_pub_refresh_time = 0);
 
   void ResetCommitDecisionVariables();
 
@@ -185,6 +187,10 @@ class CDCSDKVirtualWAL {
       const std::string& tablet_id, const PartitionPB& tablet_partition_pb);
 
   Status CheckHashRangeConstraints(const CDCStateTableEntry& slot_entry);
+
+  Status ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordID& popped_record);
+
+  Status UpdateRestartTimeIfRequired();
 
   CDCServiceImpl* cdc_service_;
 
@@ -224,6 +230,10 @@ class CDCSDKVirtualWAL {
   // This will hold the restart_lsn value received in the UpdateAndPersistLSN RPC call. It will
   // initialised by the restart_lsn stores in the cdc_state's entry for slot.
   uint64_t last_received_restart_lsn;
+
+  // This will hold the confirmed_flush_lsn value received in the UpdateAndPersistLSN RPC call. It
+  // will initialised by the confirmed_flush_lsn stores in the cdc_state's entry for slot.
+  uint64_t last_received_confirmed_flush_lsn_;
 
   // Set to true when a BEGIN record is shipped. Reset to false after we ship the commit record for
   // the pg_txn.
@@ -296,6 +306,16 @@ class CDCSDKVirtualWAL {
   std::unique_ptr<ReplicationSlotHashRange> slot_hash_range_;
 
   uint64_t consistent_snapshot_time_;
+
+  // The Virtual WAL safe time is a threshold time, whereby the records having commit time lesser
+  // than this will be filtered out. LSN will not be generated for such records. It is calculated as
+  // the commit time of the last commit record or the safepoint record popped from the priority
+  // queue.
+  HybridTime virtual_wal_safe_time_ = HybridTime::kInvalid;
+
+  // The time at which slot entry was last read to compare restart lsn with the last shipped lsn.
+  HybridTime last_restart_lsn_read_time_ = HybridTime::kInvalid;
+
 };
 
 }  // namespace cdc
