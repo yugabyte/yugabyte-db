@@ -230,10 +230,10 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
     return Status::OK();
   }
 
-  Status Apply(rocksdb::DirectWriteHandler* handler) override {
+  Status Apply(rocksdb::DirectWriteHandler& handler) override {
     for (size_t i = 0; i != ybctids_.size(); ++i) {
       docdb::AddVectorIndexReverseEntry(
-          handler, ybctids_[i], entries_[i].value.AsSlice(), backfill_ht_);
+          handler, ybctids_[i], entries_[i].value.AsSlice(), DocHybridTime(backfill_ht_, 0));
     }
     return Status::OK();
   }

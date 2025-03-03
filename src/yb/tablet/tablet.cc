@@ -2362,7 +2362,7 @@ Status Tablet::RemoveIntentsImpl(
 
 Status Tablet::RemoveAdvisoryLock(
       const TransactionId& transaction_id, const Slice& key,
-      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler* handler) {
+      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler& handler) {
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Transaction " << transaction_id
       << " is going to release lock "<< key.ToDebugString()
       << " with type " << yb::ToString(intent_types);
@@ -2390,7 +2390,7 @@ Status Tablet::RemoveAdvisoryLock(
   return Status::OK();
 }
 
-Status Tablet::RemoveAdvisoryLocks(const TransactionId& id, rocksdb::DirectWriteHandler* handler) {
+Status Tablet::RemoveAdvisoryLocks(const TransactionId& id, rocksdb::DirectWriteHandler& handler) {
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
