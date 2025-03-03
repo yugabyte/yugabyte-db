@@ -2978,6 +2978,11 @@ class ControlScript(object):
         prereqs_failed_flag = False
         prereqs_warn_flag = False
 
+        if os.path.exists("/.dockerenv"):
+            Output.log("Running in a Docker container. Skipping pre-requisite checks.")
+            return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn,
+                    True, True)
+
         if not self.linux_transparent_hugepage_check():
             prereqs_warn.add('transparent_hugepages')
             prereqs_warn_flag = True
@@ -2994,7 +2999,7 @@ class ControlScript(object):
             if self.configs.temp_data["enhance_time_sync_via_clockbound"]:
                 prereqs_failed.add('clockbound_fail')
                 prereqs_failed_flag = True
-            elif using_time_sync_service():
+            elif chrony_check and using_time_sync_service():
                 prereqs_warn.add('clockbound')
                 prereqs_warn_flag = True
         else:
