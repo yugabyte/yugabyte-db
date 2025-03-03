@@ -58,7 +58,7 @@ public class JWTVerifierTest {
             .setExpiration(Date.from(Instant.now().plusSeconds(600)))
             .claim(JWTVerifier.CLIENT_ID_CLAIM.toString(), nodeAgentUuid.toString())
             .claim(JWTVerifier.USER_ID_CLAIM.toString(), userUuid.toString())
-            .signWith(SignatureAlgorithm.RS256, keyPair.getPrivate())
+            .signWith(keyPair.getPrivate(), SignatureAlgorithm.RS256)
             .compact();
     Request request = new RequestBuilder().header(TokenAuthenticator.API_JWT_HEADER, jwt).build();
     when(keyProvider.getKey(any(), eq(ClientType.NODE_AGENT), eq(nodeAgentUuid), any()))
@@ -76,7 +76,7 @@ public class JWTVerifierTest {
             .setSubject(ClientType.NODE_AGENT.name())
             .setIssuedAt(Date.from(Instant.now()))
             .setExpiration(Date.from(Instant.now().plusSeconds(600)))
-            .signWith(SignatureAlgorithm.RS256, keyPair.getPrivate())
+            .signWith(keyPair.getPrivate(), SignatureAlgorithm.RS256)
             .compact();
     Request request = new RequestBuilder().header(TokenAuthenticator.API_JWT_HEADER, jwt).build();
     Exception exception =
@@ -101,7 +101,7 @@ public class JWTVerifierTest {
             .setExpiration(Date.from(Instant.now().plusSeconds(600)))
             .claim(JWTVerifier.CLIENT_ID_CLAIM.toString(), nodeAgentUuid.toString())
             .claim(JWTVerifier.USER_ID_CLAIM.toString(), userUuid.toString())
-            .signWith(SignatureAlgorithm.RS256, newKeyPair.getPrivate())
+            .signWith(newKeyPair.getPrivate(), SignatureAlgorithm.RS256)
             .compact();
     Request request = new RequestBuilder().header(TokenAuthenticator.API_JWT_HEADER, jwt).build();
     when(keyProvider.getKey(any(), eq(ClientType.NODE_AGENT), eq(nodeAgentUuid), any()))

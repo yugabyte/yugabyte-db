@@ -12,7 +12,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler.NodeAgentInstaller;
@@ -46,6 +45,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -76,6 +76,10 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     customer2 = ModelFactory.testCustomer("customer2");
     provider1 = ModelFactory.awsProvider(customer1);
     provider2 = ModelFactory.awsProvider(customer2);
+    AvailabilityZone.createOrThrow(
+        Region.create(provider1, "region-1", "Region 1", "yb-image-1"), "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(
+        Region.create(provider2, "region-1", "Region 1", "yb-image-1"), "az-1", "AZ 1", "subnet-1");
     universeUuid1 =
         createAwsUniverse(customer1, provider1, "test-universe1", "10.10.10").getUniverseUUID();
     universeUuid01 =
@@ -141,15 +145,14 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   private Universe createAwsUniverse(
       Customer customer, Provider provider, String name, String ipPrefix) {
     CloudType providerType = Common.CloudType.valueOf(provider.getCode());
-    Region region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "default-key";
     userIntent.replicationFactor = 3;
-    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.regionList =
+        provider.getAllRegions().stream().map(Region::getUuid).collect(Collectors.toList());
     userIntent.instanceType = "c3.large";
     userIntent.providerType = providerType;
     userIntent.provider = provider.getUuid().toString();

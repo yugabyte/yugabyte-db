@@ -55,6 +55,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -595,10 +596,24 @@ public class UniverseTest extends FakeDBApplication {
 
   private UserIntent getBaseIntent() {
 
-    // Create regions
-    Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    Region r2 = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
-    Region r3 = Region.create(defaultProvider, "region-3", "Region 3", "yb-image-1");
+    // Get or create regions
+    List<Region> regions = defaultProvider.getAllRegions();
+    Optional<Region> optional =
+        regions.stream().filter(r -> r.getCode().equals("region-1")).findFirst();
+    Region r1 =
+        optional.isPresent()
+            ? optional.get()
+            : Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
+    optional = regions.stream().filter(r -> r.getCode().equals("region-2")).findFirst();
+    Region r2 =
+        optional.isPresent()
+            ? optional.get()
+            : Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
+    optional = regions.stream().filter(r -> r.getCode().equals("region-3")).findFirst();
+    Region r3 =
+        optional.isPresent()
+            ? optional.get()
+            : Region.create(defaultProvider, "region-3", "Region 3", "yb-image-1");
     List<UUID> regionList = new ArrayList<>();
     regionList.add(r1.getUuid());
     regionList.add(r2.getUuid());

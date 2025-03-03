@@ -90,8 +90,9 @@ public class JWTVerifier {
       try {
         String jwt = authTokenOp.get();
         Claims claims =
-            Jwts.parser()
+            Jwts.parserBuilder()
                 .setSigningKeyResolver(getSigningKeyResolver(request, jwt))
+                .build()
                 .parseClaimsJws(jwt)
                 .getBody();
         String userId = (String) claims.get(USER_ID_CLAIM.toString());
