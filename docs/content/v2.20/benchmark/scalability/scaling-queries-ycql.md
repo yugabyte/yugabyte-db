@@ -35,7 +35,7 @@ As a part of our efforts to push the limits of the systems you build, Yugabyte r
 ![YCQL key-value workload](/images/benchmark/scalability/key-value-workload-ycql.png)
 Writes are RF of `3` with strong consistency, reads are leader-only data strongly consistent reads.
 
-The graph above shows how you can achieve linear scalability with YugabyteDB. The read and write throughput doubles when the cluster size doubles from 25 to 50 nodes, while the latencies remain low in the order of couple milliseconds. For details about how reads and writes work, see [YugabyteDB architecture](../../../architecture/) and [YugabyteDB IO operations](../../../architecture/core-functions/).
+The graph above shows how you can achieve linear scalability with YugabyteDB. The read and write throughput doubles when the cluster size doubles from 25 to 50 nodes, while the latencies remain low in the order of couple milliseconds.
 
 This test was performed in [Google Cloud Platform (GCP)](https://cloud.google.com/gcp/). Since YugabyteDB is a cloud-native database, it can deliver similar performance results on other public clouds and on-premises data centers.
 
@@ -56,7 +56,7 @@ The workload was generated using a multi-threaded Cassandra key-value sample app
 
 ### Reads
 
-YugabyteDB performs strongly consistent reads by default. For details, see [Read IO path (single shard)](../../../architecture/core-functions/read-path/). Below is the summary of the performance metrics observed during a 100% read workload:
+YugabyteDB performs strongly consistent reads by default. For details, see [Read IO path (single shard)](../../../explore/linear-scalability/scaling-reads/). Below is the summary of the performance metrics observed during a 100% read workload:
 
 - **2.6& million read operations per second**, sum across the YugabyteDB nodes.
 - **0.2 millisecond average latency** per read on the server side.
