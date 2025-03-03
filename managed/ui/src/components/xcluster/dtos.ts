@@ -58,7 +58,8 @@ export interface XClusterConfig {
 export const XClusterReplicationStatusError = {
   MISSING_OP: 'Missing op ID',
   SCHEMA_MISMATCH: 'Schema mismatch',
-  MISSING_TABLE: 'Missing table'
+  MISSING_TABLE: 'Missing table',
+  AUTO_FLAG_CONFIG_MISMATCH: 'Auto flag config mismatch'
 } as const;
 export type XClusterReplicationStatusError = typeof XClusterReplicationStatusError[keyof typeof XClusterReplicationStatusError];
 

@@ -155,7 +155,7 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
     return;
   }
 
-  static const uint32_t num_pools = YSQL_CONN_MGR_MAX_POOLS;
+  static const int32_t num_pools = atoi(getenv("FLAGS_ysql_conn_mgr_max_pools"));
 
   struct ConnectionStats *shmp = (struct ConnectionStats *)shmat(shmid, NULL, 0);
   if (shmp == NULL) {
@@ -163,7 +163,7 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
     return;
   }
 
-  for (uint32_t itr = 0; itr < num_pools; itr++) {
+  for (int32_t itr = 0; itr < num_pools; itr++) {
     // OID as -1 means either that pool has been deleted due to no activity for a while or this
     // index is never been used to store the stats for any pool in connection manager.
     if (shmp[itr].database_oid == -1 || shmp[itr].user_oid == -1)
@@ -687,12 +687,12 @@ void DestroyWebserver(struct WebserverWrapper *webserver) {
 
 void SetWebserverConfig(
     WebserverWrapper *webserver_wrapper, bool enable_access_logging, bool enable_tcmalloc_logging,
-    int webserver_profiler_sample_freq_bytes) {
+    int webserver_profiler_sample_period_bytes) {
   Webserver *webserver = reinterpret_cast<Webserver *>(webserver_wrapper);
   webserver->SetLogging(enable_access_logging, enable_tcmalloc_logging);
 
-  if (GetTCMallocSamplingFrequency() != webserver_profiler_sample_freq_bytes) {
-    SetTCMallocSamplingFrequency(webserver_profiler_sample_freq_bytes);
+  if (GetTCMallocSamplingPeriod() != webserver_profiler_sample_period_bytes) {
+    SetTCMallocSamplingPeriod(webserver_profiler_sample_period_bytes);
   }
 }
 }  // extern "C"

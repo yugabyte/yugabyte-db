@@ -883,7 +883,8 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
@@ -1050,7 +1051,8 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
@@ -1331,7 +1333,8 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
@@ -2724,6 +2727,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -2782,6 +2786,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -5328,6 +5333,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -5386,6 +5392,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -7266,6 +7273,13 @@
         "pitrParams" : {
           "$ref" : "#/definitions/PitrParams",
           "description" : "Parameters used to do PITR"
+        },
+        "webhookUrls" : {
+          "description" : "List of urls for webhook",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
         }
       },
       "type" : "object"
@@ -7468,12 +7482,21 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "webhooks" : {
+          "items" : {
+            "$ref" : "#/definitions/GetWebhookResponse"
+          },
+          "type" : "array"
+        },
         "xclusterConfigUuid" : {
           "description" : "UUID of the underlying xCluster config that is managing the replication",
           "format" : "uuid",
           "type" : "string"
         }
       },
+      "required" : [
+        "webhooks"
+      ],
       "type" : "object"
     },
     "DrConfigReplaceReplicaForm" : {
@@ -8253,6 +8276,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -8311,6 +8335,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -9018,6 +9043,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -9076,6 +9102,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -9213,6 +9240,21 @@
         "TSERVER" : {
           "$ref" : "#/definitions/GFlagValidationDetails",
           "description" : "WARNING: This is a preview API that could change. Validation details for tserver"
+        }
+      },
+      "type" : "object"
+    },
+    "GetWebhookResponse" : {
+      "description" : "Webhook get response",
+      "properties" : {
+        "url" : {
+          "description" : "Webhook url",
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Webhook UUID",
+          "format" : "uuid",
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -10386,6 +10428,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -10444,6 +10487,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -13805,6 +13849,9 @@
         },
         "softwareVersion" : {
           "type" : "string"
+        },
+        "targetUpgradeSoftwareVersion" : {
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -14454,6 +14501,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -14512,6 +14560,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -15426,6 +15475,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -15484,6 +15534,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -16222,6 +16273,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -16280,6 +16332,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -17699,6 +17752,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -17757,6 +17811,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -18228,6 +18283,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -18286,6 +18342,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -18598,6 +18655,7 @@
               "DeleteReplicationOnSource",
               "DeleteXClusterBackupRestoreEntries",
               "AddExistingPitrToXClusterConfig",
+              "DrConfigWebhookCall",
               "SetRestoreState",
               "CloudAccessKeyCleanup",
               "CloudAccessKeySetup",
@@ -18656,6 +18714,7 @@
               "CheckGlibc",
               "CheckOpentelemetryOperator",
               "PGUpgradeTServerCheck",
+              "CleanUpPGUpgradeDataDir",
               "RunYsqlMajorVersionCatalogUpgrade",
               "RollbackYsqlMajorVersionCatalogUpgrade",
               "FinalizeYsqlMajorCatalogUpgrade",
@@ -19383,6 +19442,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -19441,6 +19501,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -20440,6 +20501,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -20498,6 +20560,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -21699,6 +21762,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -21757,6 +21821,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -22338,6 +22403,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -22396,6 +22462,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -23232,6 +23299,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -23290,6 +23358,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -23835,6 +23904,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -23893,6 +23963,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -24438,6 +24509,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -24496,6 +24568,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -25443,6 +25516,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -25501,6 +25575,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -26554,6 +26629,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -26612,6 +26688,7 @@
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",

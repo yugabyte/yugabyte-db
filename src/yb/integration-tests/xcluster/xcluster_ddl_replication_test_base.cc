@@ -151,10 +151,11 @@ Result<std::shared_ptr<client::YBTable>> XClusterDDLReplicationTestBase::GetCons
 }
 
 void XClusterDDLReplicationTestBase::InsertRowsIntoProducerTableAndVerifyConsumer(
-    const client::YBTableName& producer_table_name) {
+    const client::YBTableName& producer_table_name, uint32_t start, uint32_t end,
+    const xcluster::ReplicationGroupId replication_group) {
   std::shared_ptr<client::YBTable> producer_table =
       ASSERT_RESULT(GetProducerTable(producer_table_name));
-  ASSERT_OK(InsertRowsInProducer(0, 50, producer_table));
+  ASSERT_OK(InsertRowsInProducer(start, end, producer_table));
 
   // Once the safe time advances, the target should have the new table and its rows.
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -166,8 +167,8 @@ void XClusterDDLReplicationTestBase::InsertRowsIntoProducerTableAndVerifyConsume
     // Verify that universe was setup on consumer.
     // Skip for colocated as the table is not tracked in master replication.
     master::GetUniverseReplicationResponsePB resp;
-    ASSERT_OK(VerifyUniverseReplication(&resp));
-    ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
+    ASSERT_OK(VerifyUniverseReplication(replication_group, &resp));
+    ASSERT_EQ(resp.entry().replication_group_id(), replication_group);
     ASSERT_TRUE(std::any_of(
         resp.entry().tables().begin(), resp.entry().tables().end(),
         [&](const std::string& table) { return table == producer_table_name.table_id(); }));
@@ -228,4 +229,34 @@ Status XClusterDDLReplicationTestBase::CreateInitialColocatedTable() {
     return Status::OK();
   });
 }
+
+Result<std::string> XClusterDDLReplicationTestBase::GetReplicationRole(
+    Cluster& cluster, const NamespaceName& database) {
+  const auto& db_name = database.empty() ? namespace_name : database;
+  auto conn = VERIFY_RESULT(cluster.ConnectToDB(db_name));
+  return conn.FetchRowAsString("SHOW yb_xcluster_ddl_replication.replication_role");
+}
+
+Status XClusterDDLReplicationTestBase::ValidateReplicationRole(
+    Cluster& cluster, const std::string& expected_role, const NamespaceName& database) {
+  auto actual_role = VERIFY_RESULT(GetReplicationRole(cluster, database));
+  SCHECK_EQ(
+      actual_role, expected_role, IllegalState,
+      Format("Expected replication role $0, got $1", expected_role, actual_role));
+  return Status::OK();
+}
+
+bool XClusterDDLReplicationTestBase::SetReplicationDirection(
+    ReplicationDirection replication_direction) {
+  if (replication_direction_ == replication_direction) {
+    return false;
+  }
+  replication_direction_ = replication_direction;
+  std::swap(consumer_cluster_, producer_cluster_);
+  std::swap(consumer_table_, producer_table_);
+  LOG(INFO) << "Switched replication direction to "
+            << (replication_direction_ == ReplicationDirection::AToB ? "A -> B" : "B -> A");
+  return true;
+}
+
 }  // namespace yb

@@ -113,12 +113,12 @@ public class BackupUtil {
   public static final String SNAPSHOT_PB = "SnapshotInfoPB";
   public static final String BACKUP_KEYS_JSON = "backup_keys.json";
   public static final String YSQL_DUMP = "YSQLDump";
-  public static final String UNIVERSE_UUID_IDENTIFIER_STRING =
-      "(univ-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/)";
+  public static final String UNIVERSE_IDENTIFIER_STRING =
+      "(univ(?:|-(?:.*?))-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/)";
   public static final String BACKUP_IDENTIFIER_STRING =
-      "(.*?)(%s)?" + UNIVERSE_UUID_IDENTIFIER_STRING + "((ybc_)?backup-(.*))";
+      "(.*?)(%s)?" + UNIVERSE_IDENTIFIER_STRING + "((ybc_)?backup-(.*))";
   public static final String YBC_BACKUP_LOCATION_IDENTIFIER_STRING =
-      "(/?)" + UNIVERSE_UUID_IDENTIFIER_STRING + "(" + YBC_BACKUP_IDENTIFIER + ")";
+      "(/?)" + UNIVERSE_IDENTIFIER_STRING + "(" + YBC_BACKUP_IDENTIFIER + ")";
   public static final Pattern PATTERN_FOR_YBC_BACKUP_LOCATION =
       Pattern.compile(YBC_BACKUP_LOCATION_IDENTIFIER_STRING);
   public static final List<TaskType> BACKUP_TASK_TYPES =
@@ -171,15 +171,11 @@ public class BackupUtil {
             .sorted(Comparator.comparing(SnapshotInfo::getSnapshotTime))
             .findFirst();
     if (oldestSuccessfulSnapshotScheduleOptional.isPresent()) {
-      SnapshotInfo oldestSuccessfulSnapshot = oldestSuccessfulSnapshotScheduleOptional.get();
-      long currentTimeMillis = System.currentTimeMillis();
-      return oldestSuccessfulSnapshot.getPreviousSnapshotTime() == 0L
-          ? Math.max(
-              currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
-              pitrConfig.getCreateTime().getTime())
-          : Math.max(
-              currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
-              oldestSuccessfulSnapshot.getPreviousSnapshotTime());
+      return Math.max(
+          System.currentTimeMillis() - pitrConfig.getRetentionPeriod() * 1000L,
+          Math.max(
+              pitrConfig.getCreateTime().getTime(),
+              pitrConfig.getIntermittentMinRecoverTimeInMillis()));
     }
     return 0L;
   }
@@ -453,7 +449,11 @@ public class BackupUtil {
    * @return The suffix generated using metadata
    */
   public static String formatStorageLocation(
-      BackupTableParams params, boolean isYbc, BackupVersion version, String backupLocationTS) {
+      BackupTableParams params,
+      boolean isYbc,
+      BackupVersion version,
+      String backupLocationTS,
+      String universeName) {
     String updatedLocation;
     String backupLabel = isYbc ? YBC_BACKUP_IDENTIFIER : "backup";
     String fullOrIncrementalLabel =
@@ -465,7 +465,7 @@ public class BackupUtil {
             params.baseBackupUUID.toString().replace("-", ""),
             fullOrIncrementalLabel,
             backupLocationTS);
-    String universeSubDir = String.format("univ-%s", params.getUniverseUUID());
+    String universeSubDir = String.format("univ-%s-%s", universeName, params.getUniverseUUID());
     String prefix = String.format("%s/%s", universeSubDir, backupSubDir);
     if (params.tableUUIDList != null) {
       updatedLocation = String.format("%s/multi-table-%s", prefix, params.getKeyspace());
@@ -513,10 +513,12 @@ public class BackupUtil {
       UUID customerUUID,
       BackupCategory category,
       BackupVersion version,
-      String backupLocationTS) {
+      String backupLocationTS,
+      String universeName) {
     CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     boolean isYbc = category.equals(BackupCategory.YB_CONTROLLER);
-    params.storageLocation = formatStorageLocation(params, isYbc, version, backupLocationTS);
+    params.storageLocation =
+        formatStorageLocation(params, isYbc, version, backupLocationTS, universeName);
     if (customerConfig != null) {
       String backupLocation = null;
       if (customerConfig.getName().equals(Util.NFS)) {
@@ -577,7 +579,7 @@ public class BackupUtil {
             StringUtils.isEmpty(nfsBucket) ? "" : getPathWithPrefixSuffixJoin(nfsBucket, "/"));
     // Group 1: config prefix
     // Group 2: NFS bucket
-    // Group 3: univ-<uuid>/
+    // Group 3: univ-(|name)-<uuid>/
     // Group 4: suffix after universe
     // Group 5: ybc_ identifier
     Matcher m = Pattern.compile(pattern).matcher(defaultBackupLocation);

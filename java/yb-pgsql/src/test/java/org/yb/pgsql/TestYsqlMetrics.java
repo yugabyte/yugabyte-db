@@ -43,10 +43,11 @@ public class TestYsqlMetrics extends BasePgSQLTest {
 
     // DDL is non-txn.
     // With Ysql Connection Manager, extra SET stmts are being executed which are counted under
-    // OTHER_STMT_METRIC leading to increase in count. e.g
-    // SET extra_float_digits=E'3', SET application_name=E'PostgreSQL JDBC Driver'
+    // OTHER_STMT_METRIC leading to increase in count which are:
+    // SET datestyle=E'ISO', SET extra_float_digits=E'3',
+    // SET application_name=E'PostgreSQL JDBC Driver', CREATE TABLE test(), RESET ALL;
     verifyStatementMetric(statement, "CREATE TABLE test (k int PRIMARY KEY, v int)",
-                      OTHER_STMT_METRIC, isTestRunningWithConnectionManager() ? 6 : 1, 0, 1, true);
+                      OTHER_STMT_METRIC, isTestRunningWithConnectionManager() ? 5 : 1, 0, 1, true);
 
     // Select uses txn.
     verifyStatementMetric(statement, "SELECT * FROM test",
@@ -214,10 +215,19 @@ public class TestYsqlMetrics extends BasePgSQLTest {
 
   @Test
   public void testMetricRows() throws Exception {
-    try (Statement stmt = connection.createStatement()) {
-      skipYsqlConnMgr(CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN,
+    // Reason for skipping the test with Connection Manager is mentioned in the test below wherever
+    // it fails.
+    skipYsqlConnMgr(CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN,
           isTestRunningWithConnectionManager());
+    try (Statement stmt = getConnectionBuilder()
+                          .withConnectionEndpoint(ConnectionEndpoint.DEFAULT)
+                          .connect()
+                          .createStatement()) {
 
+      // With Ysql Connection Manager, extra SET stmts are being executed which are counted under
+      // OTHER_STMT_METRIC leading to increase in count which are:
+      // SET datestyle=E'ISO', SET extra_float_digits=E'3',
+      // SET application_name=E'PostgreSQL JDBC Driver', CREATE TABLE test(), RESET ALL;
       verifyStatementMetricRows(
         stmt,"CREATE TABLE test (k INT PRIMARY KEY, v INT)",
         OTHER_STMT_METRIC, 1, 0);
@@ -266,6 +276,10 @@ public class TestYsqlMetrics extends BasePgSQLTest {
       // Lookups done to resolve ln should've been cached.
       stmt.execute("SELECT ln(2)");
       long miss2 = getMetricCounter(CATALOG_CACHE_MISSES_METRICS);
+      // With Connection Manager, the below assertion fails if test runs in RANDOM mode as the
+      // query "SELECT ln(2)" would run or get cached on a different physical connections when ran
+      // first and second time, due to which the CATALOG_CACHE_MISSES_METRICS result would be
+      // different each time.
       assertEquals(miss1, miss2);
 
       // Invalidate the cached resolution for ln from another connection.
@@ -286,9 +300,10 @@ public class TestYsqlMetrics extends BasePgSQLTest {
         // Making sure that miss counts from two different connections
         // add onto each other.
         long misses_after_second_cxn_call = getMetricCounter(CATALOG_CACHE_MISSES_METRICS);
-        // With Connection Manager, the below assertion fails as the query "select ln(2)" has
-        // already been cached for stmt2 by stmt1 due to sharing of the same physical connection.
-        // This does not allow the number of cache misses to increase as otherwise expected.
+        // With Connection Manager, the below assertion fails if test runs in NONE mode as the
+        // query "SELECT ln(2)" has already been cached for stmt2 by stmt1 due to sharing of the
+        // same physical connection. This does not allow the number of cache misses to increase
+        // as otherwise expected.
         assertGreaterThanOrEqualTo(
             String.format("Expected misses to increase after " +
                         "second connection's first cache miss. Before: %d, After %d",

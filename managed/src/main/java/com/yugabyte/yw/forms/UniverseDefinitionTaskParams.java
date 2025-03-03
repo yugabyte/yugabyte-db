@@ -1574,6 +1574,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private String softwareVersion;
 
     @ApiModelProperty private int autoFlagConfigVersion;
+
+    @ApiModelProperty private String targetUpgradeSoftwareVersion;
   }
 
   // XCluster: All the xCluster related code resides in this section.

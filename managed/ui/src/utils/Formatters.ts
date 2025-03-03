@@ -2,11 +2,14 @@ import { XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION } from '../components/xcl
 import { TableType } from '../redesign/helpers/dtos';
 import { isDefinedNotNull } from './ObjectUtils';
 
-export const formatYbSoftwareVersionString = (ybSoftwareVersion: string) => {
+export const formatYbSoftwareVersionString = (
+  ybSoftwareVersion: string,
+  includeBuildTag = false
+) => {
   // ybSoftwareVersion is made up of a version number and a build number joined
   // by a `-`.
   // <version number>-<build>
-  return `v${ybSoftwareVersion.split('-', 1)}`;
+  return includeBuildTag ? `v${ybSoftwareVersion}` : `v${ybSoftwareVersion.split('-', 1)}`;
 };
 
 /**

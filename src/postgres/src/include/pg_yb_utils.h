@@ -38,6 +38,7 @@
 #include "utils/guc.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
+#include "utils/tuplestore.h"
 #include "utils/typcache.h"
 
 #include "yb/yql/pggate/util/ybc_util.h"
@@ -377,14 +378,6 @@ extern void YBReportTypeNotSupported(Oid type_id);
  * Log whether or not YugaByte is enabled.
  */
 extern void YBReportIfYugaByteEnabled();
-
-#define YB_REPORT_TYPE_NOT_SUPPORTED(type_id) do { \
-		Oid computed_type_id = type_id; \
-		ereport(ERROR, \
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED), \
-					errmsg("type not yet supported in Yugabyte: %d (%s)", \
-						computed_type_id, YBPgTypeOidToStr(computed_type_id)))); \
-	} while (0)
 
 /*
  * Determines if PostgreSQL should restart all child processes if one of them
@@ -1303,4 +1296,7 @@ extern bool yb_default_collation_resolved;
 extern bool YbInvalidationMessagesTableExists();
 
 extern bool yb_is_calling_internal_function_for_ddl;
+
+extern char *YbGetPotentiallyHiddenOidText(Oid oid);
+
 #endif							/* PG_YB_UTILS_H */

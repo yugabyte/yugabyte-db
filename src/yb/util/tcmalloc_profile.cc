@@ -317,4 +317,12 @@ bool DumpHeapSnapshotUnlessThrottled() {
 #endif
 }
 
+SampleOrder GetTCMallocDefaultSampleOrder() {
+#if YB_GOOGLE_TCMALLOC
+  return SampleOrder::kEstimatedBytes;
+#else
+  return SampleOrder::kSampledBytes;
+#endif
+}
+
 } // namespace yb

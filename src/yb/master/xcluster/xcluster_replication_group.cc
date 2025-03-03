@@ -204,6 +204,31 @@ Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
   return result;
 }
 
+Status HandleExtensionOnDropReplication(
+    CatalogManager& catalog_manager, const NamespaceId& namespace_id) {
+  bool is_switchover =
+      catalog_manager.GetXClusterManager()->IsNamespaceInAutomaticModeSource(namespace_id);
+  // Don't drop the extension for switchovers, instead transition to source role.
+  if (is_switchover) {
+    auto namespace_name = VERIFY_RESULT(catalog_manager.FindNamespaceById(namespace_id))->name();
+    LOG(INFO) << "Switchover detected for namespace " << namespace_name << " (" << namespace_id
+              << "), switching yb_xcluster_ddl_replication extension role to Source.";
+    Synchronizer sync;
+    RETURN_NOT_OK(master::SetupDDLReplicationExtension(
+        catalog_manager, namespace_name, XClusterDDLReplicationRole::kSource,
+        sync.AsStdStatusCallback()));
+    return sync.Wait();
+  }
+
+  // Need to drop the DDL Replication extension for automatic mode.
+  // We don't support N:1 replication or daisy-chaining, so we can safely drop on the target.
+  Synchronizer sync;
+  RETURN_NOT_OK(master::DropDDLReplicationExtensionIfExists(
+      catalog_manager, namespace_id,
+      [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
+  return sync.Wait();
+}
+
 }  // namespace
 
 Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
@@ -519,13 +544,7 @@ Status RemoveNamespaceFromReplicationGroup(
       *universe, l, producer_table_ids, catalog_manager, epoch, /*cleanup_source_streams=*/false));
 
   if (is_automatic_ddl_mode) {
-    // Need to drop the DDL Replication extension for automatic mode.
-    // We don't support N:1 replication or daisy-chaining, so we can safely drop on the target.
-    Synchronizer sync;
-    RETURN_NOT_OK(master::DropDDLReplicationExtension(
-        catalog_manager, consumer_namespace_id,
-        [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
-    RETURN_NOT_OK(sync.Wait());
+    RETURN_NOT_OK(HandleExtensionOnDropReplication(catalog_manager, consumer_namespace_id));
   }
   return Status::OK();
 }
@@ -754,11 +773,8 @@ Status DeleteUniverseReplication(
   // For each namespace, also cleanup the DDL Replication extension if needed.
   if (l->IsAutomaticDdlMode()) {
     for (const auto& namespace_info : l->pb.db_scoped_info().namespace_infos()) {
-      Synchronizer sync;
-      RETURN_NOT_OK(master::DropDDLReplicationExtension(
-          catalog_manager, namespace_info.consumer_namespace_id(),
-          [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
-      RETURN_NOT_OK(sync.Wait());
+      RETURN_NOT_OK(HandleExtensionOnDropReplication(
+          catalog_manager, namespace_info.consumer_namespace_id()));
     }
   }
 

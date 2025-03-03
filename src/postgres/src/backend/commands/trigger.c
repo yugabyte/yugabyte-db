@@ -4802,8 +4802,12 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 														 &TTSOpsMinimalTuple);
 					}
 					if (trigdesc == NULL)	/* should not happen */
-						elog(ERROR, "relation %u has no triggers",
-							 evtshared->ats_relid);
+						/*
+						 * TODO(jason): remove this workaround after merge to
+						 * PG 17+.
+						 */
+						elog(ERROR, "relation %s has no triggers",
+							 YbGetPotentiallyHiddenOidText(evtshared->ats_relid));
 				}
 
 				/*

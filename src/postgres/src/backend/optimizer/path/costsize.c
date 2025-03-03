@@ -8114,24 +8114,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		clamp_row_est(index_selectivity * index->rel->tuples);
 
 	/*
-	 * TODO (#16178) DocDB must check the index conditions on each row. This is
-	 * needed for hybrid scan, but can be avoided in cases where hybrid scan is
-	 * not used. This additional cost is modeled here. For checking the index
-	 * conditions, there is an additional overhead that is modeled using
-	 * yb_docdb_remote_filter_overhead_cycles.
-	 *
-	 * In addition, the remote index filters will be executed for each row
-	 * that matches the index conditions.
-	 */
-	cost_qual_eval(&qual_cost, index_conditions_and_filters, root);
-	Cost		per_tuple_qual_cost = (qual_cost.per_tuple +
-									   (yb_docdb_remote_filter_overhead_cycles *
-										cpu_operator_cost));
-
-	startup_cost += qual_cost.startup;
-	run_cost += per_tuple_qual_cost * num_index_tuples_matched;
-
-	/*
 	 * Disk fetch cost.
 	 *
 	 * In YB, primary index is same as the base table, so we don't need to
@@ -8178,7 +8160,16 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 													baserel_tuple_width /
 													YB_DEFAULT_DOCDB_BLOCK_SIZE);
 
-		run_cost += num_docdb_blocks_fetched * yb_random_block_cost;
+		/*
+		 * If this is a primary index scan, pages from the disk will likely be
+		 * fetched in sequential order as they are sorted by the primary key.
+		 * If this is a secondary index scan, we assume that the pages are
+		 * fetched in random order.
+		 */
+		if (is_primary_index)
+			run_cost += num_docdb_blocks_fetched * yb_seq_block_cost;
+		else
+			run_cost += num_docdb_blocks_fetched * yb_random_block_cost;
 	}
 
 	/*

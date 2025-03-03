@@ -407,19 +407,25 @@ public class Backup extends Model {
                 customerUUID,
                 backup.getCategory(),
                 backup.getVersion(),
-                backupLocationTS);
+                backupLocationTS,
+                backup.getUniverseName());
           }
         }
       } else {
         // Only for incremental backup object creation
-        populateChildParams(params, previousBackup, backupLocationTS);
+        populateChildParams(params, previousBackup, backupLocationTS, backup.getUniverseName());
       }
     } else if (params.storageLocation == null) {
       params.backupUuid = backup.getBackupUUID();
       params.baseBackupUUID = backup.getBaseBackupUUID();
       // We would derive the storage location based on the parameters
       BackupUtil.updateDefaultStorageLocation(
-          params, customerUUID, backup.getCategory(), backup.getVersion(), backupLocationTS);
+          params,
+          customerUUID,
+          backup.getCategory(),
+          backup.getVersion(),
+          backupLocationTS,
+          backup.getUniverseName());
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     if (storageConfig != null) {
@@ -434,7 +440,10 @@ public class Backup extends Model {
   // If a previous sub-param consist of a keyspace-tables match with this request, assign the
   // same params identifier to this child param.
   private static void populateChildParams(
-      BackupTableParams params, Backup previousBackup, String backupLocationTS) {
+      BackupTableParams params,
+      Backup previousBackup,
+      String backupLocationTS,
+      String universeName) {
     BackupTableParams previousBackupInfo = previousBackup.getBackupInfo();
     List<BackupTableParams> paramsCollection = previousBackup.getBackupParamsCollection();
     for (BackupTableParams childParams : params.backupList) {
@@ -466,7 +475,8 @@ public class Backup extends Model {
             params.customerUuid,
             BackupCategory.YB_CONTROLLER,
             BackupVersion.V2,
-            backupLocationTS);
+            backupLocationTS,
+            universeName);
       }
     }
     if (previousBackup != null) {

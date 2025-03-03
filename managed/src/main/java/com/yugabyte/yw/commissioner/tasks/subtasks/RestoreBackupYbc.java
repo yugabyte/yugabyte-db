@@ -337,6 +337,9 @@ public class RestoreBackupYbc extends YbcTaskBase {
         Set<String> tserverAutoFlags = backupConfig.tserverAutoFlags;
         ybcBackupUtil.validateAutoFlagCompatibility(universe, masterAutoFlags, tserverAutoFlags);
       }
+      if (backupConfig.ysqlMajorVersion != null) {
+        ybcBackupUtil.validateYsqlMajorVersion(universe, backupConfig.ysqlMajorVersion);
+      }
     } catch (IOException e) {
       log.error("Error while validating backup metadata: ", e);
       throw new PlatformServiceException(

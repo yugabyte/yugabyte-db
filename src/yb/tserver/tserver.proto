@@ -419,10 +419,13 @@ message AcquireObjectLockRequestPB {
   optional bytes session_host_uuid = 4;
   // The lease epoch of the requesting tserver.
   optional uint64 lease_epoch = 5;
+  optional fixed64 ignore_after_hybrid_time = 6;
+  optional fixed64 propagated_hybrid_time = 7;
 }
 
 message AcquireObjectLockResponsePB {
   optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
 }
 
 message ReleaseObjectLockRequestPB {
@@ -430,17 +433,22 @@ message ReleaseObjectLockRequestPB {
   // When set, only locks owned by the given subtxn id are released. If unset, releases
   // all locks held by <txn_id> irrespective of value in 'release_all_locks'.
   optional uint32 subtxn_id = 2;
-  // The lock_type in ObjectLockPB is irrelevant here.
-  repeated docdb.ObjectLockPB object_locks = 3;
-  // When set, releases locks on all objects owned by <txn_id, subtxn_id>.
-  optional bool release_all_locks = 4;
-  optional bytes session_host_uuid = 5;
+
+  optional bytes session_host_uuid = 3;
   // The lease epoch of the requesting tserver.
-  optional uint64 lease_epoch = 6;
+  optional uint64 lease_epoch = 4;
+  // If there is any Acquire request that failed, and may be pending
+  // on any of the tservers/master. apply_after should be set to the
+  // max of the deadlines used for the acquire requests. This ensures
+  // that the release will only be applied after the Acquire, to prevent
+  // out of order acquire request from leaking locks.
+  optional fixed64 apply_after_hybrid_time = 5;
+  optional fixed64 propagated_hybrid_time = 6;
 }
 
 message ReleaseObjectLockResponsePB {
   optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
 }
 
 message DdlLockEntriesPB {

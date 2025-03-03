@@ -242,7 +242,7 @@ XClusterSourceManager::InitOutboundReplicationGroup(
       .setup_ddl_replication_extension_func =
           std::bind(&XClusterSourceManager::SetupDDLReplicationExtension, this, _1, _2),
       .drop_ddl_replication_extension_func =
-          std::bind(&XClusterSourceManager::DropDDLReplicationExtension, this, _1, _2),
+          std::bind(&XClusterSourceManager::DropDDLReplicationExtensionIfExists, this, _1, _2),
   };
 
   return std::make_shared<XClusterOutboundReplicationGroup>(
@@ -1301,13 +1301,22 @@ Status XClusterSourceManager::SetupDDLReplicationExtension(
     const NamespaceId& namespace_id, StdStatusCallback callback) const {
   auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
 
+  bool is_switchover =
+      catalog_manager_.GetXClusterManager()->IsNamespaceInAutomaticModeTarget(namespace_id);
+  if (is_switchover) {
+    // We need to remain as a target in order to finish draining any remaining DDLs.
+    // We will switch to source once we drop the reverse direction replication group.
+    LOG(INFO) << "Switchover detected for namespace " << namespace_id
+              << ", keeping extension replication role as a Target.";
+    callback(Status::OK());
+    return Status::OK();
+  }
+
   return master::SetupDDLReplicationExtension(
-      catalog_manager_, namespace_name, XClusterDDLReplicationRole::kSource,
-      CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
-      std::move(callback));
+      catalog_manager_, namespace_name, XClusterDDLReplicationRole::kSource, std::move(callback));
 }
 
-Status XClusterSourceManager::DropDDLReplicationExtension(
+Status XClusterSourceManager::DropDDLReplicationExtensionIfExists(
     const NamespaceId& namespace_id,
     const xcluster::ReplicationGroupId& drop_replication_group_id) const {
   // Check that there are no other automatic mode replication groups for this namespace.
@@ -1319,8 +1328,18 @@ Status XClusterSourceManager::DropDDLReplicationExtension(
       return Status::OK();
     }
   }
+
+  // Also check if we are doing a switchover, in which case the extension should remain as a target.
+  bool is_switchover =
+      catalog_manager_.GetXClusterManager()->IsNamespaceInAutomaticModeTarget(namespace_id);
+  if (is_switchover) {
+    LOG(INFO) << "Switchover detected for namespace " << namespace_id
+              << ", not dropping yb_xcluster_ddl_replication extension.";
+    return Status::OK();
+  }
+
   Synchronizer sync;
-  RETURN_NOT_OK(master::DropDDLReplicationExtension(
+  RETURN_NOT_OK(master::DropDDLReplicationExtensionIfExists(
       catalog_manager_, namespace_id,
       [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
   return sync.Wait();

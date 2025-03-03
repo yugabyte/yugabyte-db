@@ -160,6 +160,7 @@ typedef struct YbNewRelMapEntry
 	char *name;
 	Oid			relfile_oid;
 	Oid			colocation_id;
+	bool		is_index;
 } YbNewRelMapEntry;
 
 typedef struct YbEnumLabelMapEntry
@@ -197,11 +198,16 @@ CheckAlterColumnTypeDDL(CollectedCommand *cmd)
 }
 
 bool
+IsIndex(Relation rel)
+{
+	return (rel->rd_rel->relkind == RELKIND_INDEX ||
+			rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX);
+}
+
+bool
 IsPrimaryIndex(Relation rel)
 {
-	return ((rel->rd_rel->relkind == RELKIND_INDEX ||
-			 rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
-			rel->rd_index && rel->rd_index->indisprimary);
+	return (IsIndex(rel) && rel->rd_index && rel->rd_index->indisprimary);
 }
 
 bool
@@ -237,7 +243,9 @@ IsSequence(Oid rel_oid)
 	if (!rel)
 		elog(ERROR, "Could not find relation with OID %d", rel_oid);
 
-	return rel->rd_rel->relkind == RELKIND_SEQUENCE;
+	const char relkind = rel->rd_rel->relkind;
+	RelationClose(rel);
+	return relkind == RELKIND_SEQUENCE;
 }
 
 /*
@@ -266,29 +274,13 @@ ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
 		return true;
 	}
 
-	/* Check for colocation. */
-	YbcTableProperties table_props = YbGetTableProperties(rel);
-	bool		is_colocated = table_props->is_colocated;
-	Oid			colocation_id = 0;
-
-	if (is_colocated)
-  {
-	  if (!TEST_AllowColocatedObjects)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("colocated objects are not yet supported by "
-								"yb_xcluster_ddl_replication"),
-							errdetail("%s", kManualReplicationErrorMsg)));
-
-		colocation_id = table_props->colocation_id;
-	}
-
 	/* Add the new relation to the list of relations to replicate. */
 	YbNewRelMapEntry *new_rel_entry = palloc(sizeof(struct YbNewRelMapEntry));
 
 	new_rel_entry->name = pstrdup(RelationGetRelationName(rel));
 	new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
-	new_rel_entry->colocation_id = colocation_id;
+	new_rel_entry->colocation_id = GetColocationIdFromRelation(&rel);
+	new_rel_entry->is_index = IsIndex(rel);
 
 	*new_rel_list = lappend(*new_rel_list, new_rel_entry);
 
@@ -311,8 +303,14 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 	StringInfoData query_buf;
 
 	initStringInfo(&query_buf);
+	/*
+	 * Also get colocation_id from yb_table_properties here.
+	 * Ideally we could use GetColocationIdFromRelation, but that returns stale
+	 * colocation_id for these rewritten indexes..
+	 */
 	appendStringInfo(&query_buf,
-					 "SELECT c.oid FROM pg_class c JOIN pg_indexes i ON c.relname = i.indexname "
+					 "SELECT c.oid, (yb_table_properties(c.oid)).colocation_id FROM pg_class c "
+					 "JOIN pg_indexes i ON c.relname = i.indexname "
 					 "WHERE i.tablename = '%s' AND i.schemaname = '%s';",
 					 rewritten_table_name, schema_name);
 
@@ -333,13 +331,14 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 	{
 		HeapTuple	spi_tuple = SPI_tuptable->vals[i];
 		Oid			rewritten_index_oid = SPI_GetOid(spi_tuple, 1);
+		Oid			colocation_id = SPI_GetOidIfExists(spi_tuple, 2);
 		Relation	rewritten_index = RelationIdGetRelation(rewritten_index_oid);
 
 		YbNewRelMapEntry *rewritten_index_entry = palloc(sizeof(struct YbNewRelMapEntry));
 		rewritten_index_entry->name = pstrdup(RelationGetRelationName(rewritten_index));
 		rewritten_index_entry->relfile_oid = YbGetRelfileNodeId(rewritten_index);
-		/* TODO(jhe) handle colocated case when indexes are supported #25888. */
-		rewritten_index_entry->colocation_id = 0;
+		rewritten_index_entry->colocation_id = colocation_id;
+		rewritten_index_entry->is_index = true;
 		*new_rel_list = lappend(*new_rel_list, rewritten_index_entry);
 		RelationClose(rewritten_index);
 	}
@@ -368,6 +367,8 @@ ProcessNewRelationsList(JsonbParseState *state, List **rel_list)
 		AddNumericJsonEntry(state, "relfile_oid", entry->relfile_oid);
 		if (entry->colocation_id)
 			AddNumericJsonEntry(state, "colocation_id", entry->colocation_id);
+		if (entry->is_index)
+			AddBoolJsonEntry(state, "is_index", true);
 		(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 
 		pfree(entry->name);
@@ -397,16 +398,7 @@ ShouldReplicateAlterReplication(Oid rel_oid)
 		return true;
 	}
 
-	/* Also need to disallow colocated objects until that is supported. */
-	YbcTableProperties table_props = YbGetTableProperties(rel);
-	bool		is_colocated = table_props->is_colocated;
-
 	RelationClose(rel);
-	if (is_colocated && !TEST_AllowColocatedObjects)
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("colocated objects are not yet supported by "
-							   "yb_xcluster_ddl_replication"),
-						errdetail("%s", kManualReplicationErrorMsg)));
 	return true;
 }
 
@@ -748,27 +740,6 @@ ProcessSourceEventTriggerDroppedObjects()
 
 		switch (class_id)
 		{
-			case RelationRelationId:
-				/*
-				 * Since this trigger only happens after the objects are already
-				 * deleted, there is not that much that we can validate here.
-				 * If required for certain checks, we could:
-				 * - make a call to yb-master for any docdb metadata via pggate.
-				 * - or could modify pg_event_trigger_dropped_objects / create
-				 *   yb_event_trigger_dropped_objects to provide the data we require.
-				 */
-
-				/*
-				 * TODO(#22320) - For now we aggressively block any drops of
-				 * relations in a colocated database, including non-colocated tables.
-				 */
-				if (MyDatabaseColocated && !TEST_AllowColocatedObjects)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("colocated objects are not yet supported by "
-									"yb_xcluster_ddl_replication"),
-							 errdetail("%s", kManualReplicationErrorMsg)));
-				switch_fallthrough();
 			case AccessMethodRelationId:
 			case AccessMethodOperatorRelationId:
 			case AccessMethodProcedureRelationId:
@@ -787,6 +758,7 @@ ProcessSourceEventTriggerDroppedObjects()
 			case OperatorRelationId:
 			case PolicyRelationId:
 			case ProcedureRelationId:
+			case RelationRelationId:
 			case RewriteRelationId:
 			case StatisticExtRelationId:
 			case TriggerRelationId:

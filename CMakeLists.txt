@@ -373,6 +373,11 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Wthread-safety-reference")
   ADD_CXX_FLAGS("-Wthread-safety-precise")
   ADD_CXX_FLAGS("-Wshorten-64-to-32")
+
+  # Allow variable length arrays in C++.
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "18.0.0")
+    ADD_CXX_FLAGS("-Wno-vla-cxx-extension")
+  endif()
 endif()
 
 if(USING_LINUXBREW AND IS_CLANG)
@@ -419,6 +424,10 @@ if(IS_GCC)
     # https://gist.githubusercontent.com/mbautin/de18543ea85d46db49dfa4b4b7df082a/raw
     ADD_CXX_FLAGS("-Wno-use-after-free")
   endif()
+
+  # This normally gets disabled automatically (with a warning) for some files due to size of code.
+  # Disable it explicitly to avoid the warning about it getting disabled automatically.
+  ADD_CXX_FLAGS("-Wno-misleading-indentation")
 endif()
 
 if(USING_LINUXBREW)

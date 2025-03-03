@@ -105,7 +105,7 @@ Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {
   return Status::OK();
 }
 
-Status Pg15UpgradeTestBase::FinalizeUpgradeFromMixedMode() {
+Status Pg15UpgradeTestBase::UpgradeAllTserversFromMixedMode() {
   LOG(INFO) << "Restarting all other yb-tservers in current version";
 
   auto mixed_mode_pg15_tserver = cluster_->tablet_server(kMixedModeTserverPg15);
@@ -118,6 +118,14 @@ Status Pg15UpgradeTestBase::FinalizeUpgradeFromMixedMode() {
   }
 
   RETURN_NOT_OK(WaitForClusterToStabilize());
+
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
+
+  return Status::OK();
+}
+
+Status Pg15UpgradeTestBase::FinalizeUpgradeFromMixedMode() {
+  RETURN_NOT_OK(UpgradeAllTserversFromMixedMode());
 
   RETURN_NOT_OK(UpgradeTestBase::FinalizeUpgrade());
 
@@ -136,6 +144,8 @@ Status Pg15UpgradeTestBase::RollbackUpgradeFromMixedMode() {
 
   RETURN_NOT_OK_PREPEND(
       RestartAllMastersInOldVersion(kNoDelayBetweenNodes), "Failed to restart masters");
+
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
 
   return Status::OK();
 }

@@ -51,7 +51,8 @@ var editBackupCmd = &cobra.Command{
 
 		if cmd.Flags().Changed("time-before-delete-in-ms") {
 			logrus.Debugf("Updating time-before-delete-in-ms")
-			timeBeforeDeleteFromPresentInMillis, err := cmd.Flags().GetInt64("time-before-delete-in-ms")
+			timeBeforeDeleteFromPresentInMillis, err := cmd.Flags().
+				GetInt64("time-before-delete-in-ms")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
@@ -137,7 +138,12 @@ var editBackupCmd = &cobra.Command{
 		backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 		r, response, err := backupListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Edit - Describe Backup")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Backup",
+				"Edit - Describe Backup",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 

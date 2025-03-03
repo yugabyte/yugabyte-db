@@ -10,8 +10,8 @@
 #include <odyssey.h>
 #include <time.h>
 
-static void clear_stats(struct ConnectionStats *yb_stats) {
-    for (int i = 1; i < YSQL_CONN_MGR_MAX_POOLS; i++) {
+static void clear_stats(struct ConnectionStats *yb_stats, const int yb_max_pools) {
+    for (int i = 1; i < yb_max_pools; i++) {
         yb_stats[i].active_clients = 0;
 		yb_stats[i].queued_clients = 0;
 		yb_stats[i].waiting_clients = 0;
@@ -373,7 +373,7 @@ void od_router_stat(od_router_t *router, uint64_t prev_time_us,
 {
 	od_router_lock(router);
 	od_instance_t *instance = argv[0];
-	clear_stats(instance->yb_stats);
+	clear_stats(instance->yb_stats,  instance->config.yb_max_pools);
 	/* 
 	 * TOOD: Fix data race condition. Once all the stats are cleared, if read before updating
 	 * will return stale (NULL) values.

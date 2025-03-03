@@ -171,7 +171,6 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 	od_hba_init(&hba);
 	od_global_init(&global, instance, &system, &router, &cron, &worker_pool,
 		       &extentions, &hba);
-	yb_oid_list_init(instance);
 
 	/* read config file */
 	od_error_t error;
@@ -185,6 +184,9 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 			 error.error);
 		goto error;
 	}
+	rc = yb_oid_list_init(instance);
+	if (rc == -1)
+		goto error;
 
 	yb_read_conf_from_env_var(&router.rules, &instance->config,
 				 &instance->logger);

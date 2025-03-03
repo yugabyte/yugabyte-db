@@ -34,6 +34,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -1237,7 +1238,8 @@ public class UniverseCRUDHandler {
         taskUUID,
         targetType,
         CustomerTask.TaskType.Update,
-        u.getName());
+        u.getName(),
+        CustomerTaskManager.getCustomTaskName(CustomerTask.TaskType.Update, taskParams, null));
     LOG.info(
         "Saved task uuid {} in customer tasks table for universe {} : {}.",
         taskUUID,

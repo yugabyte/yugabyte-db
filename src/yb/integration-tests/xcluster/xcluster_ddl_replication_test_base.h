@@ -33,8 +33,10 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
   Status SetUpClusters(bool is_colocated = false, bool start_yb_controller_servers = false);
 
   virtual Status CheckpointReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId) override {
-    return XClusterYsqlTestBase::CheckpointReplicationGroup(replication_group_id);
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      bool require_no_bootstrap_needed = true) override {
+    return XClusterYsqlTestBase::CheckpointReplicationGroup(
+        replication_group_id, require_no_bootstrap_needed);
   }
 
   // Unlike the previous method, this one does not fail if bootstrap is required.
@@ -58,7 +60,9 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
   Result<std::shared_ptr<client::YBTable>> GetConsumerTable(
       const client::YBTableName& producer_table_name);
 
-  void InsertRowsIntoProducerTableAndVerifyConsumer(const client::YBTableName& producer_table_name);
+  void InsertRowsIntoProducerTableAndVerifyConsumer(
+      const client::YBTableName& producer_table_name, uint32_t start = 0, uint32_t end = 50,
+      const xcluster::ReplicationGroupId replication_group = kReplicationGroupId);
 
   Status WaitForSafeTimeToAdvanceToNowWithoutDDLQueue();
 
@@ -67,10 +71,25 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
   // We require at least one colocated table to exist before setting up replication.
   Status CreateInitialColocatedTable();
 
+  Result<std::string> GetReplicationRole(Cluster& cluster, const NamespaceName& database = "");
+
+  Status ValidateReplicationRole(
+      Cluster& cluster, const std::string& expected_role, const NamespaceName& database = "");
+
+  // Swaps producer_cluster_ and consumer_cluster_ if the replication_direction is different.
+  // Returns if the direction was changed.
+  // This allows us to reuse existing test functions for switchovers.
+  //
+  // NOTE: This does not change the log prefixes, search for "Switched replication direction" in
+  // logs to determine the current direction.
+  virtual bool SetReplicationDirection(ReplicationDirection replication_direction);
+
   const std::string kInitialColocatedTableName = "initial_colocated_table";
 
  private:
   tools::TmpDirProvider tmp_dir_;
+
+  ReplicationDirection replication_direction_ = ReplicationDirection::AToB;
 };
 
 }  // namespace yb

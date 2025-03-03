@@ -306,6 +306,8 @@ const (
 	EditOperation = "Edit"
 	// SecurityOperation type
 	SecurityOperation = "Security"
+	// PITROperation type
+	PITROperation = "PITR"
 )
 
 // Different resource types that are supported in CLI

@@ -85,7 +85,11 @@ Status HandleLockAndCallFunction(
     const std::function<Status(const LeaderEpoch&)>& f,
     HoldCatalogLock hold_catalog_lock,
     ScopedLeaderSharedLock* l) {
-  return f(l->epoch());
+  auto epoch = l->epoch();
+  if (!hold_catalog_lock) {
+    l->Unlock();
+  }
+  return f(epoch);
 }
 
 } // namespace master

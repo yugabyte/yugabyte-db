@@ -1008,7 +1008,7 @@ YbGetNumYsqlConnMgrConnections(const Oid db_oid, const Oid user_oid,
 	 */
 	*num_logical_conn = 0;
 	*num_physical_conn = 0;
-	for (uint32_t itr = 0; itr < YSQL_CONN_MGR_MAX_POOLS; ++itr)
+	for (int32_t itr = 0; itr < atoi(getenv("FLAGS_ysql_conn_mgr_max_pools")); ++itr)
 	{
 		if (shmp[itr].user_oid == -1 ||
 			shmp[itr].database_oid == -1)

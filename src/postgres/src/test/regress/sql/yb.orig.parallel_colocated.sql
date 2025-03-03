@@ -17,6 +17,7 @@ INSERT INTO pctest1
     SELECT i, 1000 - i, i/3, i%50, 'Value' || i::text FROM generate_series(1, 1000) i;
 INSERT INTO pctest2
     SELECT i, 200 + i, i/5, i%10, 'Other value ' || i::text FROM generate_series(1, 200) i;
+ANALYZE pctest1, pctest2;
 
 -- set smaller parallel interval to produce more ranges
 set yb_parallel_range_size to 1024;
@@ -25,30 +26,41 @@ set yb_parallel_range_size to 1024;
 set yb_parallel_range_rows to 1;
 set yb_enable_base_scans_cost_model to true;
 
--- encourage use of parallel plans
-set parallel_setup_cost=0;
-set parallel_tuple_cost=0;
+-- parallel bitmap scan not supported yet
 set enable_bitmapscan = false;
 
 -- Parallel sequential scan
+/*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9';
+/*+ Parallel(pctest1 2 hard) */
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9';
 
 -- with aggregates
+/*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT count(*) FROM pctest1 WHERE d LIKE 'Value_9';
+/*+ Parallel(pctest1 2 hard) */
 SELECT count(*) FROM pctest1 WHERE d LIKE 'Value_9';
 
 -- with sort
+/*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY b DESC;
+/*+ Parallel(pctest1 2 hard) */
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY b DESC;
 
 -- with grouping
+/*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
+/*+ Parallel(pctest1 2 hard) */
 SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
+
+-- encourage use of parallel plans for the remaining tests by gucs
+-- since the "hard" option of Parallel hint is broken. (#26181)
+set parallel_setup_cost=0;
+set parallel_tuple_cost=0;
 
 -- Parallel index scan
 EXPLAIN (costs off)
@@ -86,9 +98,17 @@ SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 
 -- Joins
 -- Nest loop
+/*+
+  Set(enable_mergejoin off) Set(enable_hashjoin off)
+  Set(yb_bnl_batch_size 1) Set(enable_material off)
+*/
 EXPLAIN (costs off)
 SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
+/*+
+  Set(enable_mergejoin off) Set(enable_hashjoin off)
+  Set(yb_bnl_batch_size 1) Set(enable_material off)
+*/
 SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
 EXPLAIN (costs off)
@@ -98,15 +118,19 @@ EXPLAIN (costs off)
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
 
 -- Hash join
+set enable_mergejoin to false;
 EXPLAIN (costs off)
 SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
 SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
+reset enable_mergejoin;
 
 -- Merge join
 set enable_hashjoin to false;
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
 EXPLAIN (costs off)
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
 reset enable_hashjoin;
@@ -185,6 +209,7 @@ SELECT count(*) FROM pctest1;
 -- index scan with aggregates pushdown such that #atts being pushed down > #atts in relation
 CREATE TABLE pctest3(k int primary key, a int unique) WITH (colocation = true);
 INSERT INTO pctest3 SELECT i, i FROM generate_series(1, 1000) i;
+ANALYZE pctest3;
 EXPLAIN (costs off) SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
 SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
 

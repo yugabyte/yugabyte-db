@@ -26,6 +26,15 @@ In logical replication, the fundamental unit of data transmission is a transacti
 
 For more information, refer to [Replication slots](https://www.postgresql.org/docs/15/logicaldecoding-explanation.html#LOGICALDECODING-REPLICATION-SLOTS) in the PostgreSQL documentation.
 
+#### LSN type
+
+A Log Sequence Number (LSN) in YugabyteDB differs from what you may be accustomed to in PostgreSQL. In PostgreSQL, an LSN represents a specific 'location' in the WAL, and has significance that spans databases and replication slots. In YugabyteDB, an LSN uniquely identifies a change event, and the LSN is valid only within the context of a specific replication slot. Due to these differences, there are inherent limitations in how LSNs can be used.
+
+You can specify the type of LSN to use when you create a replication slot. YugabyteDB currently supports the following types:
+
+* SEQUENCE - (Default) PostgreSQL-style LSN that is valid in the context of a slot. It is a monotonic increasing number that determines the record in global order within the context of a slot. It can't be compared across two different slots.
+* HYBRID_TIME - A hybrid time value which can be used natively with YugabyteDB. HYBRID_TIME is denoted by the HybridTime of the transaction commit record. All the records of the transaction that is streamed will have the same LSN as that of the commit record. You need to ensure that the changes of a transaction are applied in totality and the acknowledgement is sent only if the commit record of a transaction is processed.
+
 ### Publication
 
 A publication is a set of changes generated from a table or a group of tables, and might also be described as a change set or replication set. Each publication exists in only one database.

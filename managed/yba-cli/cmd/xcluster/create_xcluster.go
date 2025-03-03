@@ -38,7 +38,11 @@ var createXClusterCmd = &cobra.Command{
 		if len(name) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No xcluster name found to create replication\n", formatter.RedColor))
+				formatter.Colorize(
+					"No xcluster name found to create replication\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		storageConfigNameFlag, err := cmd.Flags().GetString("storage-config-name")
@@ -48,7 +52,11 @@ var createXClusterCmd = &cobra.Command{
 		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No storage config name found to take a backup\n", formatter.RedColor))
+				formatter.Colorize(
+					"No storage config name found to take a backup\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		sourceUniName, err := cmd.Flags().GetString("source-universe-name")
@@ -59,7 +67,8 @@ var createXClusterCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(sourceUniName)) == 0 || len(strings.TrimSpace(targetUniName)) == 0 {
+		if len(strings.TrimSpace(sourceUniName)) == 0 ||
+			len(strings.TrimSpace(targetUniName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("Missing source or target universe name\n", formatter.RedColor))
@@ -265,7 +274,11 @@ var createXClusterCmd = &cobra.Command{
 			"The xcluster config %s between source universe %s (%s) "+
 				"and target universe %s (%s) is being created",
 			formatter.Colorize(name, formatter.GreenColor),
-			sourceUniverse.GetName(), sourceUniverseUUID, targetUniverse.GetName(), targetUniverseUUID)
+			sourceUniverse.GetName(),
+			sourceUniverseUUID,
+			targetUniverse.GetName(),
+			targetUniverseUUID,
+		)
 
 		if viper.GetBool("wait") {
 			if len(rTask.GetTaskUUID()) > 0 {

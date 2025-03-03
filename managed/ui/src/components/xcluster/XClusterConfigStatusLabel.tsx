@@ -1,8 +1,9 @@
 import clsx from 'clsx';
-
-import { makeStyles } from '@material-ui/core';
+import { makeStyles, Typography } from '@material-ui/core';
 import { XClusterConfigStatus } from './constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
+import { getTableCountsOfConcern } from './ReplicationUtils';
+import { useTranslation } from 'react-i18next';
 
 import { XClusterConfig } from './dtos';
 
@@ -50,34 +51,33 @@ const DRAINED_DATA_LABEL = (
   </span>
 );
 
-const useSelectStyles = makeStyles((theme) => ({
+const useStyles = makeStyles((theme) => ({
   pillContainer: {
     display: 'flex',
     gap: theme.spacing(1),
-    marginTop: theme.spacing(0.5),
-    marginLeft: 'auto',
-    flexWrap: 'wrap'
+    alignItems: 'center'
   }
 }));
 
 export const XClusterConfigStatusLabel = ({ xClusterConfig }: XClusterConfigStatusProps) => {
-  const statusLabel = [];
-  const classes = usePillStyles();
-  const selectClasses = useSelectStyles();
+  const pillClasses = usePillStyles();
+  const classes = useStyles();
+  const { t } = useTranslation('translation');
 
+  let statusLabel = null;
   switch (xClusterConfig.status) {
     case XClusterConfigStatus.INITIALIZED:
     case XClusterConfigStatus.UPDATING:
-      statusLabel.push(IN_PROGRESS_LABEL);
+      statusLabel = IN_PROGRESS_LABEL;
       break;
     case XClusterConfigStatus.RUNNING:
-      statusLabel.push(xClusterConfig.paused ? PAUSED_LABEL : ENABLED_LABEL);
+      statusLabel = xClusterConfig.paused ? PAUSED_LABEL : ENABLED_LABEL;
       break;
     case XClusterConfigStatus.FAILED:
-      statusLabel.push(FAILED_LABEL);
+      statusLabel = FAILED_LABEL;
       break;
     case XClusterConfigStatus.DELETION_FAILED:
-      statusLabel.push(DELETION_FAILED_LABEL);
+      statusLabel = DELETION_FAILED_LABEL;
       break;
     case XClusterConfigStatus.DELETED_UNIVERSE: {
       const labelText =
@@ -87,7 +87,7 @@ export const XClusterConfigStatusLabel = ({ xClusterConfig }: XClusterConfigStat
           : xClusterConfig.sourceUniverseUUID === undefined
           ? 'Source universe is deleted'
           : 'Target universe is deleted';
-      statusLabel.push(
+      statusLabel = (
         <span className={clsx(styles.label, styles.deleted)}>
           <i className="fa fa-exclamation-triangle" />
           {labelText}
@@ -96,30 +96,22 @@ export const XClusterConfigStatusLabel = ({ xClusterConfig }: XClusterConfigStat
       break;
     }
     case XClusterConfigStatus.DRAINED_DATA:
-        statusLabel.push(DRAINED_DATA_LABEL);
+      statusLabel = DRAINED_DATA_LABEL;
       break;
     default:
       return assertUnreachableCase(xClusterConfig.status);
   }
 
-  const replicationErrors: string[] = xClusterConfig.tableDetails
-    .flatMap((table) => table.replicationStatusErrors)
-    .filter((x, i, a) => a.indexOf(x) === i);
+  const tableCountsOfConcern = getTableCountsOfConcern(xClusterConfig.tableDetails);
 
-  if (replicationErrors.length !== 0) {
-    statusLabel.push(
-      <div className={selectClasses.pillContainer}>
-        {replicationErrors.map((error, _) => {
-          return (
-            <div className={clsx(classes.pill, classes.danger)}>
-              {error}
-              <i className="fa fa-exclamation-circle" />
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  return <div>{statusLabel}</div>;
+  return (
+    <div className={classes.pillContainer}>
+      {statusLabel}
+      {tableCountsOfConcern.uniqueTableCount === 0 && (
+        <Typography variant="body2" className={clsx(pillClasses.pill, pillClasses.danger)}>
+          {t('tablesOfConcernExist', { keyPrefix: 'clusterDetail.xCluster.shared' })}
+        </Typography>
+      )}
+    </div>
+  );
 };

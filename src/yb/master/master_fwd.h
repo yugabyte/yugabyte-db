@@ -164,6 +164,14 @@ using RetryingTSRpcTaskWithTablePtr = std::shared_ptr<RetryingTSRpcTaskWithTable
 struct PgCatalogVersion;
 using DbOidToCatalogVersionMap = std::map<uint32_t, PgCatalogVersion>;
 
+// This map represents pg_yb_invalidation_messages: (db_oid, current_version) => inval messages.
+// If the message value is nullopt, it means a SQL null value. If it is empty string, it means
+// there is no invalidation messages associated with this (db_oid, current_version). A PG
+// backend needs to do a catalog cache refresh on a SQL null value, but treats an empty string
+// as a noop because there is nothing in the catalog cache is invalidated.
+using DbOidVersionToMessageListMap = std::map<std::pair<uint32_t, uint64_t>,
+                                              std::optional<std::string>>;
+
 using RelIdToAttributesMap = std::unordered_map<uint32_t, std::vector<PgAttributePB>>;
 using RelTypeOIDMap = std::unordered_map<uint32_t, uint32_t>;
 class CatalogManager;

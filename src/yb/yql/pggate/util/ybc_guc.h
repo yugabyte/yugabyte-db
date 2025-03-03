@@ -243,6 +243,8 @@ extern bool yb_refresh_matview_in_place;
 
 extern int yb_major_version_upgrade_compatibility;
 
+extern bool yb_upgrade_to_pg15_completed;
+
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {
   YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN = 0,

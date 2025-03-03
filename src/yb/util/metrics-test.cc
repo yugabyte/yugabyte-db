@@ -535,11 +535,11 @@ TEST_F(MetricsTest, RetirementTest) {
 
   const string kMetricName = "foo";
   scoped_refptr<Counter> counter = METRIC_reqs_pending.Instantiate(entity_);
-  ASSERT_EQ(1, entity_->UnsafeMetricsMapForTests().size());
+  ASSERT_EQ(1, entity_->TEST_UsageMetricsMap().size());
 
   // Since we hold a reference to the counter, it should not get retired.
   entity_->RetireOldMetrics();
-  ASSERT_EQ(1, entity_->UnsafeMetricsMapForTests().size());
+  ASSERT_EQ(1, entity_->TEST_UsageMetricsMap().size());
 
   // When we de-ref it, it should not get immediately retired, either, because
   // we keep retirable metrics around for some amount of time. We try retiring
@@ -547,14 +547,14 @@ TEST_F(MetricsTest, RetirementTest) {
   counter = nullptr;
   for (int i = 0; i < 3; i++) {
     entity_->RetireOldMetrics();
-    ASSERT_EQ(1, entity_->UnsafeMetricsMapForTests().size());
+    ASSERT_EQ(1, entity_->TEST_UsageMetricsMap().size());
   }
 
   // If we wait for longer than the retirement time, and call retire again, we'll
   // actually retire it.
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_metrics_retirement_age_ms * 1.5));
   entity_->RetireOldMetrics();
-  ASSERT_EQ(0, entity_->UnsafeMetricsMapForTests().size());
+  ASSERT_EQ(0, entity_->TEST_UsageMetricsMap().size());
 }
 
 TEST_F(MetricsTest, TestRetiringEntities) {
@@ -577,7 +577,7 @@ TEST_F(MetricsTest, NeverRetireTest) {
 
   for (int i = 0; i < 3; i++) {
     entity_->RetireOldMetrics();
-    ASSERT_EQ(1, entity_->UnsafeMetricsMapForTests().size());
+    ASSERT_EQ(1, entity_->TEST_UsageMetricsMap().size());
   }
 }
 

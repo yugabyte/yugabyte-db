@@ -254,7 +254,13 @@ var updateAzureProviderCmd = &cobra.Command{
 
 		providerRegions = removeAzureRegions(removeRegions, providerRegions)
 
-		providerRegions = editAzureRegions(editRegions, addZones, editZones, removeZones, providerRegions)
+		providerRegions = editAzureRegions(
+			editRegions,
+			addZones,
+			editZones,
+			removeZones,
+			providerRegions,
+		)
 
 		providerRegions = addAzureRegions(addRegions, addZones, providerRegions)
 

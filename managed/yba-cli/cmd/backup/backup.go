@@ -6,6 +6,7 @@ package backup
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup/pitr"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup/restore"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup/schedule"
 )
@@ -29,4 +30,5 @@ func init() {
 	BackupCmd.AddCommand(listIncrementalBackupsCmd)
 	BackupCmd.AddCommand(restore.RestoreCmd)
 	BackupCmd.AddCommand(schedule.ScheduleCmd)
+	BackupCmd.AddCommand(pitr.PITRCmd)
 }

@@ -31,7 +31,7 @@ Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_rea
 
 Show the current transaction isolation level.
 
-The `TRANSACTION ISOLATION LEVEL` returned is either `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED` or `READ UNCOMMITTED`.
+The `TRANSACTION ISOLATION LEVEL` returned is either `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, or `READ UNCOMMITTED`.
 
 ## See also
 

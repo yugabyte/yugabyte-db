@@ -46,6 +46,7 @@ static const char* const kSysCatalogTableColMetadata = "metadata";
 static const char* const kDbOidColumnName = "db_oid";
 static const char* const kCurrentVersionColumnName = "current_version";
 static const char* const kLastBreakingVersionColumnName = "last_breaking_version";
+static const char* const kMessagesColumnName = "messages";
 
 static const char* const kDefaultCassandraUsername = "cassandra";
 static const char* const kDefaultCassandraPassword = "cassandra";

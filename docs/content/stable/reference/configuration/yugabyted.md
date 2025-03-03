@@ -840,11 +840,11 @@ You can set advanced flags using a configuration file, specified using the `--co
         "master_webserver_port": 7100,
         "tserver_webserver_port": 9100,
         "master_flags": "ysql_enable_packed_row=true,ysql_beta_features=true",
-        "Tserver_flags": "ysql_enable_packed_row=true,ysql_beta_features=true,yb_enable_read_committed_isolation=true,enable_deadlock_detection=true,enable_wait_queues=true"
+        "tserver_flags": "ysql_enable_packed_row=true,ysql_beta_features=true,yb_enable_read_committed_isolation=true,enable_deadlock_detection=true,enable_wait_queues=true"
     }
     ```
 
-1. Start the node using the config flag.
+1. Start the node using the `--config` flag.
 
     ```sh
     ./bin/yugabyted start --config ~/yugabyted.conf

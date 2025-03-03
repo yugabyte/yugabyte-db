@@ -49,7 +49,10 @@ var resetPasswordUserCmd = &cobra.Command{
 					"No new password found\n",
 					formatter.RedColor))
 		}
-		if strings.Compare(strings.TrimSpace(currentPassword), strings.TrimSpace(newPassword)) == 0 {
+		if strings.Compare(
+			strings.TrimSpace(currentPassword),
+			strings.TrimSpace(newPassword),
+		) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(

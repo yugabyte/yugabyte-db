@@ -689,6 +689,13 @@ The maximum number of retries on retriable errors (for example, connection error
 
 Default: 60
 
+##### slot.lsn.type
+
+The type of LSN to use for the specified replication slot:
+
+* SEQUENCE - A monotonic increasing number that determines the record in global order within the context of a slot.
+* HYBRID_TIME - A hybrid time value that can be used to compare transactions across slots.
+
 ##### streaming.mode
 
 Specified whether the connector should use a single task mode to stream changes or multi task mode.

@@ -2033,3 +2033,22 @@ templates:
         nodes(s) for universe '{{ $labels.source_name }}'.
         Affected nodes: {{ $labels.affected_node_names }}
 
+  CONTINUOUS_BACKUPS_STATUS:
+    name: Continuous Backups Status
+    description: The most recent backup uploaded to remote storage was successful
+    queryTemplate: count by (storage_loc) (last_over_time(yba_cont_backup_status[1m]) {{ query_condition }} {{ query_threshold }}) > 0
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 1.0
+    targetType: PLATFORM
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: STATUS
+    thresholdReadOnly: true
+    labels:
+      affected_backup_locations: >-
+        {{ range $index, $element := query "count by (storage_loc) (last_over_time(yba_cont_backup_status[1m]) {{ query_condition }} {{ query_threshold }}) > 0" }}
+        {{ if $index }},{{ end }}{{ $element.Labels.storage_loc }}{{ end}}
+    annotations:
+      summary: >-
+        Continuous backups to {{ $labels.affected_backup_locations }} are failing.

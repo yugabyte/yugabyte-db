@@ -59,7 +59,7 @@ YbClearEnumLabelMap(void)
 	ctl.keysize = YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE;
 	ctl.entrysize = sizeof(YbEnumLabelAssignmentMapEntry);
 	yb_enum_label_assignment_map = hash_create("YB enum label map",
-											   /*initial size*/ 20, &ctl,
+											   /* initial size */ 20, &ctl,
 											   HASH_ELEM | HASH_STRINGS);
 }
 
@@ -137,7 +137,7 @@ YbClearSequenceOidMap(void)
 	ctl.keysize = YB_SEQUENCE_OID_ASSIGNMENT_MAP_KEY_SIZE;
 	ctl.entrysize = sizeof(YbSequenceOidAssignmentMapEntry);
 	yb_sequence_oid_assignment_map = hash_create("YB sequence OIDs map",
-											   /*initial size*/ 20, &ctl,
+											   /* initial size */ 20, &ctl,
 											   HASH_ELEM | HASH_STRINGS);
 }
 

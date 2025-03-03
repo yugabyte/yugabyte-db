@@ -285,13 +285,22 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         }
         hasChanges = true;
       }
-      if (currentUserIntent.providerType == Common.CloudType.aws && nodeDiskChanged) {
+      boolean isHyperdisks =
+          currentUserIntent.providerType == Common.CloudType.gcp
+              && (curDeviceInfo.storageType == PublicCloudConstants.StorageType.Hyperdisk_Balanced
+                  || curDeviceInfo.storageType
+                      == PublicCloudConstants.StorageType.Hyperdisk_Extreme);
+      if ((currentUserIntent.providerType == Common.CloudType.aws || isHyperdisks)
+          && nodeDiskChanged) {
         int cooldownInHours =
-            runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsDiskResizeCooldownHours);
+            currentUserIntent.providerType == Common.CloudType.aws
+                ? runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsDiskResizeCooldownHours)
+                : runtimeConfGetter.getGlobalConf(GlobalConfKeys.gcpHyperdiskResizeCooldownHours);
         if (node.lastVolumeUpdateTime != null
             && DateUtils.addHours(node.lastVolumeUpdateTime, cooldownInHours).after(new Date())) {
           return String.format(
-              "Resize cooldown in aws (%d hours) is still active", cooldownInHours);
+              "Resize cooldown in %s (%d hours) is still active",
+              currentUserIntent.providerType, cooldownInHours);
         }
       }
 

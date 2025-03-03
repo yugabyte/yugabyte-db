@@ -44,6 +44,7 @@ class PgCreateTable {
   }
 
   void SetXClusterSourceTableId(const PgObjectId& xcluster_source_table_id);
+  void SetXClusterBackfillHybridTime(uint64_t xcluster_backfill_hybrid_time);
 
   void OverwriteColocationId(const ColocationId& colocation_id);
 
@@ -62,6 +63,7 @@ class PgCreateTable {
   PgObjectId indexed_table_id_;
   bool ybbasectid_added_ = false;
   PgObjectId xcluster_source_table_id_;
+  uint64_t xcluster_backfill_hybrid_time_;
   // If set, will overwrite the colocation id of the table being created.
   ColocationId overwrite_colocation_id_ = kColocationIdNotSet;
 };

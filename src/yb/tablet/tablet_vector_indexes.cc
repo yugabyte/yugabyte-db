@@ -155,7 +155,7 @@ Status TabletVectorIndexes::DoCreateIndex(
     auto read_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
     if (read_op.ok()) {
       ScheduleBackfill(
-          vector_index, index_table.hybrid_time, indexed_table,
+          vector_index, index_table.hybrid_time, index_table.op_id, indexed_table,
           std::make_shared<ScopedRWOperation>(std::move(read_op)));
     } else {
       LOG_WITH_PREFIX_AND_FUNC(WARNING)
@@ -186,8 +186,8 @@ namespace {
 
 class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
  public:
-  explicit VectorIndexBackfillHelper(HybridTime backfill_ht)
-      : backfill_ht_(backfill_ht) {}
+  explicit VectorIndexBackfillHelper(HybridTime backfill_ht, OpId op_id)
+      : backfill_ht_(backfill_ht), op_id_(op_id) {}
 
   void Add(Slice ybctid, Slice value) {
     ybctids_.push_back(arena_.DupSlice(ybctid));
@@ -207,9 +207,12 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
   Status Flush(Tablet& tablet, docdb::VectorIndex& index, Slice next_ybctid) {
     ++num_chunks_;
     {
+      docdb::ConsensusFrontiers frontiers;
+      frontiers.Smallest().set_op_id(op_id_);
+      frontiers.Largest().set_op_id(op_id_);
       rocksdb::WriteBatch write_batch;
       write_batch.SetDirectWriter(this);
-      tablet.WriteToRocksDB(nullptr, &write_batch, docdb::StorageDbType::kRegular);
+      tablet.WriteToRocksDB(frontiers, &write_batch, docdb::StorageDbType::kRegular);
     }
 
     docdb::ConsensusFrontiers frontiers;
@@ -237,6 +240,7 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
 
  private:
   const HybridTime backfill_ht_;
+  const OpId op_id_;
   docdb::VectorIndexInsertEntries entries_;
   std::vector<Slice> ybctids_;
   Arena arena_;
@@ -247,7 +251,7 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
 
 Status TabletVectorIndexes::Backfill(
     const docdb::VectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice from_key,
-    HybridTime backfill_ht) {
+    HybridTime backfill_ht, OpId op_id) {
   LOG_WITH_PREFIX_AND_FUNC(INFO)
       << "vector_index: " << AsString(*vector_index) << ", indexed_table: "
       << indexed_table.ToString() << ", from_key: " << from_key.ToDebugHexString()
@@ -261,7 +265,7 @@ Status TabletVectorIndexes::Backfill(
   RETURN_NOT_OK(reader.Init(tablet(), backfill_ht, from_key));
 
   // Expecting one row at most.
-  VectorIndexBackfillHelper helper(backfill_ht);
+  VectorIndexBackfillHelper helper(backfill_ht, op_id);
   for (;;) {
     if (tablet().IsShutdownRequested()) {
       LOG_WITH_FUNC(INFO) << "Exit: " << AsString(*vector_index);
@@ -348,16 +352,17 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
     }
 
     ScheduleBackfill(
-        vector_index, (**table_info_res).hybrid_time, *indexed_table_info_res, read_op);
+        vector_index, (**table_info_res).hybrid_time, (**table_info_res).op_id,
+        *indexed_table_info_res, read_op);
   }
 }
 
 void TabletVectorIndexes::ScheduleBackfill(
-    const docdb::VectorIndexPtr& vector_index, HybridTime backfill_ht,
+    const docdb::VectorIndexPtr& vector_index, HybridTime backfill_ht, OpId op_id,
     const TableInfoPtr& indexed_table, std::shared_ptr<ScopedRWOperation> read_op) {
   thread_pool_provider_()->EnqueueFunctor(
-      [this, vector_index, backfill_ht, indexed_table, read_op = std::move(read_op)] {
-    auto status = Backfill(vector_index, *indexed_table, Slice(), backfill_ht);
+      [this, vector_index, backfill_ht, op_id, indexed_table, read_op = std::move(read_op)] {
+    auto status = Backfill(vector_index, *indexed_table, Slice(), backfill_ht, op_id);
     LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
         << "Backfill " << AsString(vector_index) << " failed: " << status;
   });

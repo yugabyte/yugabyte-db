@@ -188,7 +188,7 @@ class PriorityThreadPoolInternalTask {
   }
 
  private:
-  const std::string& TaskToString() const {
+  const std::string& TaskToString() const NO_THREAD_SAFETY_ANALYSIS {
     if (!task_to_string_ready_.load(std::memory_order_acquire)) {
       std::lock_guard lock(task_to_string_mutex_);
       if (!task_to_string_ready_.load(std::memory_order_acquire)) {

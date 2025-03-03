@@ -48,8 +48,8 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExt
 DEFINE_RUNTIME_uint32(xcluster_ysql_statement_timeout_sec, 120,
     "Timeout for YSQL statements executed during xCluster operations.");
 
-// This flag will be converted to a PREVIEW, and then a kExternal Auto flag as the feature matures.
-DEFINE_test_flag(bool, xcluster_enable_ddl_replication, false,
+// This flag will be converted to a kExternal Auto flag as the feature matures.
+DEFINE_RUNTIME_PREVIEW_bool(xcluster_enable_ddl_replication, false,
     "Enables xCluster automatic DDL replication.");
 
 DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
@@ -330,8 +330,8 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
   bool automatic_ddl_mode =
       req->automatic_ddl_mode() || FLAGS_TEST_force_automatic_ddl_replication_mode;
   SCHECK(
-      !automatic_ddl_mode || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
-      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
+      !automatic_ddl_mode || FLAGS_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (xcluster_enable_ddl_replication) is not enabled.");
 
   std::vector<NamespaceId> namespace_ids;
   for (const auto& namespace_id : req->namespace_ids()) {
@@ -762,6 +762,13 @@ bool XClusterManager::IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace
          XClusterTargetManager::IsNamespaceInAutomaticDDLMode(namespace_id);
 }
 
+bool XClusterManager::IsNamespaceInAutomaticModeSource(const NamespaceId& namespace_id) const {
+  return XClusterSourceManager::IsNamespaceInAutomaticDDLMode(namespace_id);
+}
+
+bool XClusterManager::IsNamespaceInAutomaticModeTarget(const NamespaceId& namespace_id) const {
+  return XClusterTargetManager::IsNamespaceInAutomaticDDLMode(namespace_id);
+}
 
 bool XClusterManager::IsTableBiDirectionallyReplicated(const TableId& table_id) const {
   // In theory this would return true for B in the case of chaining A -> B -> C, but we don't
@@ -810,8 +817,8 @@ Status XClusterManager::SetupUniverseReplication(
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
   SCHECK(
-      !req->automatic_ddl_mode() || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
-      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
+      !req->automatic_ddl_mode() || FLAGS_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (xcluster_enable_ddl_replication) is not enabled.");
 
   return XClusterTargetManager::SetupUniverseReplication(req, resp, epoch);
 }
@@ -819,8 +826,8 @@ Status XClusterManager::SetupUniverseReplication(
 Status XClusterManager::SetupUniverseReplication(
     XClusterSetupUniverseReplicationData&& data, const LeaderEpoch& epoch) {
   SCHECK(
-      !data.automatic_ddl_mode || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
-      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
+      !data.automatic_ddl_mode || FLAGS_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (xcluster_enable_ddl_replication) is not enabled.");
   return XClusterTargetManager::SetupUniverseReplication(std::move(data), epoch);
 }
 

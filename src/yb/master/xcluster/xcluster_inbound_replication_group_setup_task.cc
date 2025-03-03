@@ -279,13 +279,22 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
   if (data_.automatic_ddl_mode) {
     for (const auto& namespace_id : data_.target_namespace_ids) {
       auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
-      Synchronizer sync;
+      bool is_switchover = xcluster_manager_.IsNamespaceInAutomaticModeSource(namespace_id);
+
       LOG_WITH_PREFIX(INFO) << "Setting up DDL replication extension for namespace " << namespace_id
-                            << " (" << namespace_name << ")";
+                            << " (" << namespace_name << ")"
+                            << (is_switchover ? " as part of a switchover" : "");
+      if (!is_switchover) {
+        // For regular setup cases, we want to clean up any existing state.
+        Synchronizer sync;
+        RETURN_NOT_OK(master::DropDDLReplicationExtensionIfExists(
+            catalog_manager_, namespace_id, sync.AsStdStatusCallback()));
+        RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to drop xCluster DDL replication extension");
+      }
+      // Set up the extension and set our role as a target to prevent writes.
+      Synchronizer sync;
       RETURN_NOT_OK(master::SetupDDLReplicationExtension(
           catalog_manager_, namespace_name, XClusterDDLReplicationRole::kTarget,
-          CoarseMonoClock::now() +
-              MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
           sync.AsStdStatusCallback()));
       RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to setup xCluster DDL replication extension");
     }

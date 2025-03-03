@@ -1280,6 +1280,31 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
     // than the time that was picked on the source side. Since the table is created on the source
     // universe before the target this is always guaranteed to be true.
 
+    // Special case for colocated indexes in xCluster automatic DDL replication.
+    // Here we need to use the safe time that the ddl_queue handler is going to update the safe time
+    // to. This is because we cannot wait for xCluster safe time to reach now, as the ddl_queue
+    // table is waiting for this index to complete. In this case, we pass the backfill time from the
+    // ddl_queue to here, and use that.
+
+    // Check that all indexes have the same xCluster backfill hybrid time or none at all.
+    HybridTime xcluster_backfill_hybrid_time;
+    for (const auto& index_table_id : index_table_ids) {
+      auto index_table_info = VERIFY_RESULT(catalog_manager_.GetTableById(index_table_id));
+      HybridTime ht;
+      RETURN_NOT_OK(ht.FromUint64(index_table_info->LockForRead()->pb.xcluster_table_info()
+                                      .xcluster_backfill_hybrid_time()));
+      if (!ht.is_special()) {
+        SCHECK(
+            !xcluster_backfill_hybrid_time || ht != xcluster_backfill_hybrid_time, InvalidArgument,
+            "Indexes have different xCluster backfill hybrid times");
+        xcluster_backfill_hybrid_time = ht;
+      }
+    }
+
+    if (xcluster_backfill_hybrid_time) {
+      return xcluster_backfill_hybrid_time;
+    }
+
     return std::nullopt;
   }
 
@@ -1461,13 +1486,18 @@ Status XClusterTargetManager::ProcessCreateTableReq(
     const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
     const NamespaceId& namespace_id) const {
   // Only need to process if this is the target of Automatic Mode xCluster replication.
-  if (req.xcluster_source_table_id().empty()) {
+  if (req.xcluster_table_info().xcluster_source_table_id().empty()) {
     return Status::OK();
   }
 
   // xcluster_source_table_id will be used to find the correct source table to replicate from.
   table_pb.mutable_xcluster_table_info()->set_xcluster_source_table_id(
-      req.xcluster_source_table_id());
+      req.xcluster_table_info().xcluster_source_table_id());
+
+  if (req.xcluster_table_info().xcluster_backfill_hybrid_time()) {
+    table_pb.mutable_xcluster_table_info()->set_xcluster_backfill_hybrid_time(
+        req.xcluster_table_info().xcluster_backfill_hybrid_time());
+  }
 
   // For colocated tables, we also need to fetch and update any historical packing schemas.
   // This may also bump up the initial schema version.

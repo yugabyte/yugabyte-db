@@ -17,7 +17,11 @@ var listNFSStorageConfigurationCmd = &cobra.Command{
 	Long:    "List NFS YugabyteDB Anywhere storage-configurations",
 	Example: `yba storage-config nfs list`,
 	Run: func(cmd *cobra.Command, args []string) {
-		storageconfigurationutil.ListStorageConfigurationUtil(cmd, util.NFSStorageConfigType, util.NFSStorageConfigType)
+		storageconfigurationutil.ListStorageConfigurationUtil(
+			cmd,
+			util.NFSStorageConfigType,
+			util.NFSStorageConfigType,
+		)
 
 	},
 }

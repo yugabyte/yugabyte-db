@@ -39,15 +39,19 @@ type TaskStatus struct {
 
 // AsyncTask is the interface for a async task.
 type AsyncTask interface {
-	// Handler returns the method to be executed.
-	Handler() util.Handler
+	// Handle is the method to be executed.
+	Handle(context.Context) (*pb.DescribeTaskResponse, error)
 	// CurrentTaskStatus returns the current task status.
 	CurrentTaskStatus() *TaskStatus
 	// String returns the identifier for this task.
 	String() string
-	// ResponseConverter returns the converter to convert the Handler result to the RPC response.
-	// It can return nil if the final response is not needed.
-	ResponseConverter() util.RPCResponseConverter
+}
+
+// Handler converts AsyncTask Handle to the executor handler.
+func ToHandler(handle func(context.Context) (*pb.DescribeTaskResponse, error)) util.Handler {
+	return func(ctx context.Context) (any, error) {
+		return handle(ctx)
+	}
 }
 
 // ExitStatus stores the Error (if any) and the exit code of a command.
@@ -161,7 +165,7 @@ func (m *TaskManager) Submit(
 		return fmt.Errorf("Task %s already exists", taskID)
 	}
 	tInfo := i.(*taskInfo)
-	future, err := executor.GetInstance().SubmitTask(bgCtx, asyncTask.Handler())
+	future, err := executor.GetInstance().SubmitTask(bgCtx, ToHandler(asyncTask.Handle))
 	if err != nil {
 		m.taskInfos.Delete(taskID)
 		util.FileLogger().
@@ -217,16 +221,11 @@ func (m *TaskManager) Subscribe(
 
 			size = 0
 			if taskStatus.ExitStatus.Code == 0 {
-				responseConverter := tInfo.asyncTask.ResponseConverter()
-				if responseConverter != nil {
-					result, err := tInfo.future.Get()
-					if err != nil {
-						return err
-					}
-					response, err := responseConverter(result)
-					if err != nil {
-						return err
-					}
+				result, err := tInfo.future.Get()
+				if err != nil {
+					return err
+				}
+				if response, ok := result.(*pb.DescribeTaskResponse); ok {
 					callbackData := &TaskCallbackData{State: tInfo.future.State()}
 					callbackData.RPCResponse = response
 					err = callback(callbackData)

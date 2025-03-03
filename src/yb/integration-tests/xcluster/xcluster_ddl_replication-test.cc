@@ -97,8 +97,7 @@ TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
   ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name2));
 
   // Drop replication.
-  ASSERT_OK(source_xcluster_client.DeleteOutboundReplicationGroup(
-      kReplicationGroupId, target_master_address));
+  ASSERT_OK(DeleteOutboundReplicationGroup());
 
   // Extension should no longer exist on either side.
   ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name));
@@ -632,8 +631,6 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTables) {
   const auto kNumTables = 3;
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
   for (int i = 0; i < kNumTables; i++) {
     const auto table_name = kNewTableName + std::to_string(i);
     ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int)", table_name));
@@ -663,6 +660,56 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTables) {
   }
 }
 
+TEST_F(XClusterDDLReplicationTest, CreateColocatedIndexes) {
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto kNewTableName = "new_colocated_table";
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "CREATE TABLE $0 (key int PRIMARY KEY, a int, b text)", kNewTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2, i::text FROM generate_series(1, 100) as i;", kNewTableName));
+
+  // Pause DDL replication to test that we handle the index data correctly.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+  // Create index on column a and insert some more rows.
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE INDEX ON $0(a DESC)", kNewTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2, i::text FROM generate_series(101, 200) as i;", kNewTableName));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", kNewTableName))));
+  auto consumer_table = ASSERT_RESULT(GetConsumerTable(ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", kNewTableName))));
+  ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+
+  // Ensure that the index is correctly replicated.
+  const auto kCol2CountStmt = Format("SELECT COUNT(*) FROM $0 WHERE a >= 0", kNewTableName);
+  ASSERT_TRUE(ASSERT_RESULT(producer_conn.HasIndexScan(kCol2CountStmt)));
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn.HasIndexScan(kCol2CountStmt)));
+
+  // Test unique index on column b.
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0(b)", kNewTableName));
+  // Test inserting duplicate value.
+  ASSERT_NOK(producer_conn.ExecuteFormat("INSERT INTO $0 VALUES(-1, -1, '1');", kNewTableName));
+
+  // Verify uniqueness constraint on consumer.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  // Bypass writes being blocked on target clusters.
+  ASSERT_OK(consumer_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = true"));
+  ASSERT_NOK(consumer_conn.ExecuteFormat("INSERT INTO $0 VALUES(-1, -1, '1');", kNewTableName));
+  ASSERT_OK(consumer_conn.ExecuteFormat("INSERT INTO $0 VALUES(-1, -1, '-1');", kNewTableName));
+  ASSERT_OK(consumer_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = false"));
+}
+
 TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithPause) {
   ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
   ASSERT_OK(CheckpointReplicationGroup());
@@ -675,9 +722,7 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithPause) {
   const auto kNewTableName = "new_colocated_table";
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
-  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int)", kNewTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int primary key)", kNewTableName));
   ASSERT_OK(producer_conn.ExecuteFormat(
       "INSERT INTO $0 SELECT i FROM generate_series(1, 100) as i", kNewTableName));
   ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 add column a int", kNewTableName));
@@ -736,8 +781,6 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithSourceFailures) {
 
   // First fail creating a colocated table on the source.
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
   ASSERT_OK(producer_conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(producer_conn.ExecuteFormat(
       "CREATE TABLE $0 (a text) WITH (colocation_id=$1)", kNewTableName, kColocationId));
@@ -764,10 +807,11 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithSourceFailures) {
   // Pending schemas:
   // - 0 for the failed create table
   // - 1 for the successful create table
-  // - 2 for the drop column
+  // - 2 for the drop column (second part has the same schema, so doesn't get added)
   // After the DDLs run on the target:
-  // - 4 for the create table
-  // - 5 for the drop column
+  // - 3 for the create table
+  // - 4 for the drop column
+  // - 5 for the second part of the drop column
   EXPECT_EQ(consumer_table->schema().version(), 5);
 }
 
@@ -784,9 +828,7 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithTargetFailures) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
-  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int)", kNewTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int primary key)", kNewTableName));
   ASSERT_OK(producer_conn.ExecuteFormat(
       "INSERT INTO $0 SELECT i FROM generate_series(1, 100) as i", kNewTableName));
 
@@ -806,7 +848,8 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithTargetFailures) {
   const auto kNewTableName2 = "renamed_colocated_table";
   ASSERT_OK(
       producer_conn.ExecuteFormat("ALTER TABLE $0 RENAME TO $1", kNewTableName, kNewTableName2));
-  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 add column b int", kNewTableName2));
+  // Also create an index as part of adding a unique index.
+  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 add column b int unique", kNewTableName2));
   ASSERT_OK(producer_conn.ExecuteFormat(
       "INSERT INTO $0 SELECT i, i*2 FROM generate_series(101, 200) as i", kNewTableName2));
 
@@ -836,8 +879,6 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(ColocatedHistoricalSchemasWit
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
   for (int i = 0; i < kNumTables; i++) {
     const auto table_name = kNewTableName + std::to_string(i);
     ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int)", table_name));
@@ -879,8 +920,6 @@ TEST_F(XClusterDDLReplicationTest, AlterExistingColocatedTable) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
   ASSERT_OK(
       producer_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN j int", kInitialColocatedTableName));
   ASSERT_OK(producer_conn.ExecuteFormat(
@@ -928,6 +967,194 @@ TEST_F(XClusterDDLReplicationTest, ExtraOidAllocationsOnTarget) {
 
   // Wait to see if applying the DDL on the target runs into problems.
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
+class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTest {
+ public:
+  bool SetReplicationDirection(ReplicationDirection direction) override {
+    if (XClusterDDLReplicationTest::SetReplicationDirection(direction)) {
+      std::swap(cluster_A_, cluster_B_);
+      return true;
+    }
+    return false;
+  }
+
+  Cluster* cluster_A_ = &producer_cluster_;
+  Cluster* cluster_B_ = &consumer_cluster_;
+  const xcluster::ReplicationGroupId kBackwardsReplicationGroupId =
+      xcluster::ReplicationGroupId("backwards_replication");
+};
+
+TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
+  ASSERT_OK(SetUpClusters());
+  // Set up replication from A to B.
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(ValidateReplicationRole(*cluster_A_, "source"));
+  ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+  // Create a table and write some rows, ensure that replication is setup correctly.
+  uint32_t num_rows_written = 0;
+  const auto kNumRecordsPerBatch = 10;
+  auto table_name = ASSERT_RESULT(CreateYsqlTable(/*idx=*/1, /*num_tablets=*/3, cluster_A_));
+  InsertRowsIntoProducerTableAndVerifyConsumer(
+      table_name, num_rows_written, num_rows_written + kNumRecordsPerBatch);
+  num_rows_written += kNumRecordsPerBatch;
+
+  LOG(INFO) << "===== Beginning switchover: checkpoint B";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(CheckpointReplicationGroup(
+      kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  // B should still have the target role.
+  ASSERT_OK(ValidateReplicationRole(*cluster_A_, "source"));
+  ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+  LOG(INFO) << "===== Switchover: test writes after checkpoint";
+  SetReplicationDirection(ReplicationDirection::AToB);
+  // Write to A should succeed and be replicated.
+  InsertRowsIntoProducerTableAndVerifyConsumer(
+      table_name, num_rows_written, num_rows_written + kNumRecordsPerBatch);
+  num_rows_written += kNumRecordsPerBatch;
+  // B should still disallow writes as it is still a target.
+  ASSERT_NOK_STR_CONTAINS(
+      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_B_),
+      "Data modification is forbidden");
+
+  LOG(INFO) << "===== Switchover: set up replication from B to A";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(CreateReplicationFromCheckpoint(
+      cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
+  // Both sides should now be targets and disallow writes.
+  ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
+  ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+  ASSERT_NOK_STR_CONTAINS(
+      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_A_),
+      "Data modification is forbidden");
+  ASSERT_NOK_STR_CONTAINS(
+      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_B_),
+      "Data modification is forbidden");
+
+  LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
+  SetReplicationDirection(ReplicationDirection::AToB);
+  ASSERT_OK(DeleteOutboundReplicationGroup());
+
+  LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+      ASSERT_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+
+  LOG(INFO) << "===== Switchover done";
+  // Roles should match the new switchover state.
+  ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
+  ASSERT_OK(ValidateReplicationRole(*cluster_B_, "source"));
+
+  // Ensure writes from B->A are now allowed and are replicated.
+  SetReplicationDirection(ReplicationDirection::BToA);
+  auto cluster_b_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(GetYsqlTable(
+      cluster_B_, table_name.namespace_name(), table_name.pgschema_name(),
+      table_name.table_name()))));
+  InsertRowsIntoProducerTableAndVerifyConsumer(
+      cluster_b_table->name(), num_rows_written, num_rows_written + kNumRecordsPerBatch,
+      kBackwardsReplicationGroupId);
+  // Writes on A should be blocked.
+  ASSERT_NOK_STR_CONTAINS(
+      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_A_),
+      "Data modification is forbidden");
+}
+
+TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingDDL) {
+  ASSERT_OK(SetUpClusters());
+  // Set up replication from A to B.
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(ValidateReplicationRole(*cluster_A_, "source"));
+  ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+  {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE my_table (f INT)"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    // Pause replication and perform additional DDLs to add some pending DDLs to the queue.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE my_table RENAME TO my_table2"));
+    // TODO(#26028): Also handle create/drop table here, those need additional handling of the
+    // outbound replication group state.
+  }
+
+  {
+    LOG(INFO) << "===== Beginning switchover: checkpoint B";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    ASSERT_OK(CheckpointReplicationGroup(
+        kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    // B should still have the target role.
+    ASSERT_OK(ValidateReplicationRole(*cluster_A_, "source"));
+    ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+    // This should fail since the schemas are not in sync.
+    LOG(INFO) << "===== Switchover: fail to create replication from B to A";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    ASSERT_NOK_STR_CONTAINS(
+        CreateReplicationFromCheckpoint(
+            cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId),
+        "Could not find matching table");
+    // Note that A will get marked as a target at this point.
+    // TODO(#26160): reset A back to a source on replication failure.
+    ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
+    ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+    LOG(INFO) << "===== Switchover: unpause and wait for replication to catch up";
+    SetReplicationDirection(ReplicationDirection::AToB);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    LOG(INFO) << "===== Switchover: set up replication from B to A";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    ASSERT_OK(CreateReplicationFromCheckpoint(
+        cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
+    // Both sides should be targets.
+    ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
+    ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
+
+    LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
+    SetReplicationDirection(ReplicationDirection::AToB);
+    ASSERT_OK(DeleteOutboundReplicationGroup());
+
+    LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+        ASSERT_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+
+    LOG(INFO) << "===== Switchover done";
+    // Roles should match the new switchover state.
+    ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
+    ASSERT_OK(ValidateReplicationRole(*cluster_B_, "source"));
+  }
+
+  // Create a new table on B and ensure that it is replicated to A.
+  {
+    SetReplicationDirection(ReplicationDirection::BToA);
+    auto conn = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE my_table3 (f INT)"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  }
+
+  // Verify that both sides have the same tables.
+  const auto fetch_tables_query =
+      "SELECT relname FROM pg_class WHERE relname LIKE '%my_table%' ORDER BY relname ASC;";
+  std::string a_result, b_result;
+  {
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    a_result = ASSERT_RESULT(conn.FetchAllAsString(fetch_tables_query, ", ", "\n"));
+    LOG(INFO) << "tables on A:\n" << a_result;
+  }
+  {
+    auto conn = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
+    b_result = ASSERT_RESULT(conn.FetchAllAsString(fetch_tables_query, ", ", "\n"));
+    LOG(INFO) << "tables on B:\n" << b_result;
+  }
+  ASSERT_EQ(a_result, b_result);
 }
 
 class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTest {

@@ -21,6 +21,12 @@
       1,
       "always-multiline"
     ],
+    "complexity": [
+      "error",
+      {
+        "max": 25
+      }
+    ],
     "import/no-extraneous-dependencies": 0,
     "import/prefer-default-export": 0,
     "key-spacing": [

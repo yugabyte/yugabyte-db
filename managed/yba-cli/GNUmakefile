@@ -1,5 +1,6 @@
 TOP_BUILDDIR ?= .
 DEVOPS_HOME=$(CURDIR)/../devops
+GOLINES := ./bin/golines
 
 
 VERSION_NUMBER ?= $(shell cat $(CURDIR)/version_metadata.json | jq '.version_number')
@@ -91,3 +92,9 @@ build:
 .PHONY: license
 license:
 	./licenses/generate-license-file.sh
+
+.PHONY: fmt
+fmt:
+	go clean -modcache
+	GOBIN=$(PWD)/bin go install github.com/segmentio/golines@latest
+	$(GOLINES) --max-len=100 -w .

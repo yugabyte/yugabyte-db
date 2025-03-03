@@ -35,6 +35,7 @@ import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import play.mvc.Controller;
 import play.mvc.Result;
 import play.mvc.Results;
@@ -96,7 +97,13 @@ public class MetricsController extends Controller {
       String host = config.getString(KAMON_EMBEDDED_SERVER_HOST);
       int port = config.getInt(KAMON_EMBEDDED_SERVER_PORT);
       String url = "http://" + host + ":" + port + "/metrics";
-      return apiHelper.getBody(url);
+      Pair<Integer, String> response;
+      response = apiHelper.getResponse(url);
+      if (response.getLeft() >= 200 && response.getLeft() < 300) {
+        return response.getRight();
+      } else {
+        log.error("Failed to retrieve Kamon metrics. Status code: {}", response.getLeft());
+      }
     } catch (Exception e) {
       if (lastKamonErrorPrinted == null
           || lastKamonErrorPrinted.before(CommonUtils.nowMinus(1, ChronoUnit.HOURS))) {

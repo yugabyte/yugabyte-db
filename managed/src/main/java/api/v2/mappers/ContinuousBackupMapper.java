@@ -5,7 +5,9 @@ import api.v2.models.ContinuousBackupInfo;
 import api.v2.models.ContinuousBackupSpec;
 import api.v2.models.TimeUnitType;
 import com.yugabyte.yw.models.ContinuousBackupConfig;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import org.mapstruct.Mapper;
 import org.mapstruct.factory.Mappers;
 
@@ -22,9 +24,13 @@ public interface ContinuousBackupMapper {
     v2ContinuousBackupSpec.setFrequency(cbConfig.getFrequency());
     v2ContinuousBackupSpec.setFrequencyTimeUnit(
         TimeUnitType.valueOf(cbConfig.getFrequencyTimeUnit().name()));
-    // TODO: compute from actual cbConfig
-    v2ContinuousBackupInfo.setStorageLocation("s3://backup_bucket/YBA.1.2.3.4/");
-    v2ContinuousBackupInfo.setLastBackup(OffsetDateTime.parse("2024-08-19T10:30:45-04:00"));
+    v2ContinuousBackupInfo.setStorageLocation(cbConfig.getStorageLocation());
+    Long lastBackup = cbConfig.getLastBackup();
+    OffsetDateTime backupTime =
+        (lastBackup == null || lastBackup == 0)
+            ? null
+            : Instant.ofEpochMilli(lastBackup).atOffset(ZoneOffset.UTC);
+    v2ContinuousBackupInfo.setLastBackup(backupTime);
     v2ContinuousBackup.setInfo(v2ContinuousBackupInfo);
     v2ContinuousBackup.setSpec(v2ContinuousBackupSpec);
     return v2ContinuousBackup;

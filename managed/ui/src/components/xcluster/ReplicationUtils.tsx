@@ -23,7 +23,6 @@ import {
   XClusterSchemaChangeMode,
   DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE,
   DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
-  MISMATCHED_TABLE_STATUSES,
   POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES
 } from './constants';
 import {
@@ -533,37 +532,102 @@ export const getDrConfigUuids = (universe: Universe | undefined) => ({
 });
 
 /**
- * Returns an object of counts for table groups of concern.
- * - Tables in error status
- *     - User needs to restart replication
- * - Tables with incomplete ddl operations or incorrect ddl operation order
- *     - User may need to add or remove these tables from replication to resolve the issue
- *       of mismatched tables.
+ * Returns an object of counts for table groups for which we have warning/error banners.
  */
 export const getTableCountsOfConcern = (tableDetails: XClusterTableDetails[]) =>
   tableDetails.reduce(
     (
       tableCountsOfConcern: {
-        error: number;
-        mismatchedTable: number;
+        unableToFetchStatus: number;
+        failedReplicationSetup: number;
+        unknownError: number;
+        restartRequired: number;
+        autoFlagMismatched: number;
+        dbSchemaMismatched: number;
+        // Count of tables which have at least one issue that we are concerned about.
+        uniqueTableCount: number;
       },
       xClusterTableDetails
     ) => {
-      if (
-        xClusterTableDetails.status === XClusterTableStatus.ERROR &&
-        xClusterTableDetails.replicationStatusErrors.includes(
-          XClusterReplicationStatusError.MISSING_OP
-        )
-      ) {
-        tableCountsOfConcern.error += 1;
-      } else if (MISMATCHED_TABLE_STATUSES.includes(xClusterTableDetails.status)) {
-        tableCountsOfConcern.mismatchedTable += 1;
+      switch (xClusterTableDetails.status) {
+        case XClusterTableStatus.BOOTSTRAPPING:
+        case XClusterTableStatus.RUNNING:
+        case XClusterTableStatus.UPDATING:
+        case XClusterTableStatus.VALIDATED:
+        case XClusterTableStatus.WARNING:
+        case XClusterTableStatus.TABLE_INFO_MISSING:
+        case XClusterTableStatus.DROPPED:
+          return tableCountsOfConcern;
+        case XClusterTableStatus.DROPPED_FROM_SOURCE:
+        case XClusterTableStatus.DROPPED_FROM_TARGET:
+        case XClusterTableStatus.EXTRA_TABLE_ON_SOURCE:
+        case XClusterTableStatus.EXTRA_TABLE_ON_TARGET:
+          tableCountsOfConcern.dbSchemaMismatched += 1;
+          tableCountsOfConcern.uniqueTableCount += 1;
+          return tableCountsOfConcern;
+        case XClusterTableStatus.UNABLE_TO_FETCH:
+          tableCountsOfConcern.unableToFetchStatus += 1;
+          tableCountsOfConcern.uniqueTableCount += 1;
+          return tableCountsOfConcern;
+        case XClusterTableStatus.FAILED:
+          tableCountsOfConcern.unableToFetchStatus += 1;
+          tableCountsOfConcern.uniqueTableCount += 1;
+          return tableCountsOfConcern;
+        case XClusterTableStatus.ERROR: {
+          if (xClusterTableDetails.replicationStatusErrors.length === 0) {
+            tableCountsOfConcern.unknownError += 1;
+            tableCountsOfConcern.uniqueTableCount += 1;
+            return tableCountsOfConcern;
+          }
+
+          let isTableOfConcern = false;
+          if (
+            xClusterTableDetails.replicationStatusErrors.includes(
+              XClusterReplicationStatusError.MISSING_OP
+            )
+          ) {
+            tableCountsOfConcern.restartRequired += 1;
+            isTableOfConcern = true;
+          }
+
+          if (
+            xClusterTableDetails.replicationStatusErrors.includes(
+              XClusterReplicationStatusError.AUTO_FLAG_CONFIG_MISMATCH
+            )
+          ) {
+            tableCountsOfConcern.autoFlagMismatched += 1;
+            isTableOfConcern = true;
+          }
+
+          if (
+            xClusterTableDetails.replicationStatusErrors.some((replicationStatusError) =>
+              ([
+                XClusterReplicationStatusError.MISSING_TABLE,
+                XClusterReplicationStatusError.SCHEMA_MISMATCH
+              ] as XClusterReplicationStatusError[]).includes(replicationStatusError)
+            )
+          ) {
+            tableCountsOfConcern.dbSchemaMismatched += 1;
+            isTableOfConcern = true;
+          }
+
+          if (isTableOfConcern) {
+            tableCountsOfConcern.uniqueTableCount += 1;
+          }
+          return tableCountsOfConcern;
+        }
+        default:
+          return assertUnreachableCase(xClusterTableDetails.status);
       }
-      return tableCountsOfConcern;
     },
     {
-      error: 0,
-      mismatchedTable: 0
+      unableToFetchStatus: 0,
+      restartRequired: 0,
+      unknownError: 0,
+      failedReplicationSetup: 0,
+      autoFlagMismatched: 0,
+      dbSchemaMismatched: 0,
+      uniqueTableCount: 0
     }
   );
 

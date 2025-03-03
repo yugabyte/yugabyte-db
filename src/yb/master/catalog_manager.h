@@ -779,6 +779,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetYsqlAllDBCatalogVersions(
       bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) override
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+  Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessages(bool use_cache) override
+      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+
   Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
@@ -1073,11 +1076,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       REQUIRES_SHARED(mutex_);
 
   void AssertLeaderLockAcquiredForReading() const override {
-    leader_lock_.AssertAcquiredForReading();
+    leader_mutex_.AssertAcquiredForReading();
   }
 
   void AssertLeaderLockAcquiredForWriting() const {
-    leader_lock_.AssertAcquiredForWriting();
+    leader_mutex_.AssertAcquiredForWriting();
   }
 
   std::string GenerateId() override {
@@ -2120,9 +2123,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code,
       ManualSplit is_manual_split, const LeaderEpoch& epoch);
 
-  int64_t leader_ready_term() const override EXCLUDES(state_lock_) {
-    std::lock_guard l(state_lock_);
-    return leader_ready_term_;
+  int64_t leader_ready_term() const override {
+    return leader_ready_term_.load();
   }
 
   // Delete tables from internal map by id, if it has no more active tasks and tablets.
@@ -2338,21 +2340,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // data structures. This is used to "fence" client and tablet server requests
   // that depend on the in-memory state until this master can respond
   // correctly.
-  int64_t leader_ready_term_ GUARDED_BY(state_lock_);
+  std::atomic<int64_t> leader_ready_term_ = -1;
 
-  // This field is set to true when the leader master has completed loading
-  // metadata into in-memory structures. This can happen in two cases presently:
-  // 1. When a new leader is elected
-  // 2. When an existing leader executes a restore_snapshot_schedule
-  // In case (1), the above leader_ready_term_ is sufficient to indicate
-  // the completion of this stage since the new term is only set after load.
-  // However, in case (2), since the before/after term is the same, the above
-  // check will succeed even when load is not complete i.e. there's a small
-  // window when there's a possibility that the master_service sends RPCs
-  // to the leader. This window is after the sys catalog has been restored and
-  // all records have been updated on disk and before it starts loading them
-  // into the in-memory structures.
-  bool is_catalog_loaded_ GUARDED_BY(state_lock_) = false;
+  // This field is set to true when the leader master has is restoring sys catalog.
+  // In this case ScopedLeaderSharedLock cannot be acquired on this master.
+  // So all RPCs that requires this lock will fail.
+  bool restoring_sys_catalog_ GUARDED_BY(leader_mutex_) = false;
 
   // Lock used to fence operations and leader elections. All logical operations
   // (i.e. create table, alter table, etc.) should acquire this lock for
@@ -2363,7 +2356,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // instead.
   //
   // Always acquire this lock before state_lock_.
-  RWMutex leader_lock_;
+  RWMutex leader_mutex_{RWMutex::Priority::PREFER_WRITING};
 
   // Async operations are accessing some private methods
   // (TODO: this stuff should be deferred and done in the background thread)
@@ -2693,7 +2686,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet);
 
   Status RestoreSysCatalog(
-      SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
+      SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, bool leader_mode,
       Status* complete_status) override;
 
   Status VerifyRestoredObjects(
@@ -2896,6 +2889,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void ResetCachedCatalogVersions()
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions);
+  Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessagesImpl();
 
   // Create the global transaction status table if needed (i.e. if it does not exist already).
   Status CreateGlobalTransactionStatusTableIfNeededForNewTable(
@@ -3110,6 +3104,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // a value.
   uint64_t heartbeat_pg_catalog_versions_cache_fingerprint_
     GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_) = 0;
+  // Set to nullopt when the value is stale.
+  std::optional<DbOidVersionToMessageListMap> heartbeat_pg_inval_messages_cache_
+    GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_);
 
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
 

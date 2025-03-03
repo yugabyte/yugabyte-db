@@ -105,6 +105,28 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_sequence_support_mode | Sequence support mode when YSQL connection manager is enabled. When set to  'pooled_without_curval_lastval', the currval() and lastval() functions are not supported. When set to 'pooled_with_curval_lastval', the currval() and lastval() functions are supported. For both settings, monotonic sequence order is not guaranteed if `ysql_sequence_cache_method` is set to `connection`. To also support monotonic order, set this flag to `session`. | pooled_without_curval_lastval |
 | ysql_conn_mgr_optimized_extended_query_protocol | Enables optimization of [extended-query protocol](https://www.postgresql.org/docs/current/protocol-overview.html#PROTOCOL-QUERY-CONCEPTS) to provide better performance; note that while optimization is enabled, you may have correctness issues if you alter the schema of objects used in prepared statements. If set to false, extended-query protocol handling is always fully correct but unoptimized. | true |
 
+## Sticky connections
+
+YSQL Connection Manager enables a larger number of client connections to efficiently share a smaller pool of backend processes using a many-to-one multiplexing model. However, in certain cases, a backend process may enter a state that prevents connection multiplexing between transactions. When this occurs, the backend process remains dedicated to a single logical connection (hence the term “sticky connection”) for the entire session rather than just a single transaction. This behavior deviates from the typical use case, where backend processes are reassigned after each transaction.
+
+Currently, once formed, sticky connections remain sticky until the end of the session. At the end of the session, the backend process corresponding to a sticky connection is destroyed along with the connection, and the connection does not return to the pool.
+
+When using YSQL Connection Manager, sticky connections can form in the following circumstances:
+
+- Creating TEMP tables
+- Declaring a CURSOR using the WITH HOLD attribute
+- Using a PREPARE query (not to be confused with protocol-level preparation of statements)
+- Superuser connections; if you want superuser connections to not be sticky, set the `ysql_conn_mgr_superuser_sticky` flag to false
+- Using a SEQUENCE with `ysql_conn_mgr_sequence_support_mode` set to `session`. (Other values for this flag provide lesser support without stickiness.)
+- Replication connections
+- Setting the following configuration parameters during the session:
+  - `session_authorization`
+  - `role`
+  - `default_tablespace`
+  - `temp_tablespaces`
+  - Any string-type variables of extensions
+  - `yb_read_after_commit_visibility`
+
 ## Limitations
 
 - Changes to [configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-server-options) for a user or database that are set using ALTER ROLE SET or ALTER DATABASE SET queries may reflect in other pre-existing active sessions.

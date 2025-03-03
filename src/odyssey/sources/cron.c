@@ -20,13 +20,13 @@
  * If the array is full and no matching stats are found, -1 is returned.
 */
 static int yb_get_stats_index(struct ConnectionStats *yb_stats,
-			      const int db_oid, const int user_oid)
+			      const int db_oid, const int user_oid, const int yb_max_pools)
 {
 	int first_empty_index = -1;
 	if (db_oid <= 0 || user_oid <= 0)
 		return -1;
 
-	for (int i = 1; i < YSQL_CONN_MGR_MAX_POOLS; i++) {
+	for (int i = 1; i < yb_max_pools; i++) {
 		if (yb_stats[i].database_oid == db_oid &&
 		    yb_stats[i].user_oid == user_oid)
 			return i;
@@ -66,7 +66,8 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 				route->id.yb_stats_index = yb_get_stats_index(
 					instance->yb_stats,
 					route->yb_database_entry->oid,
-					route->yb_user_entry->oid);
+					route->yb_user_entry->oid,
+					instance->config.yb_max_pools);
 				if (route->id.yb_stats_index == -1) {
 					od_error(&instance->logger, "stats", NULL, NULL,
 						 "Unable to find the index for (%s, %s) pool",

@@ -10,6 +10,7 @@ test: yb.depd.tenk1
 test: yb.port.enum
 # Range types
 test: yb.port.rangetypes
+test: yb.port.multirangetypes
 
 # Composite types
 test: yb.port.rowtypes

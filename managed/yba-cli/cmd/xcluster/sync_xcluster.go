@@ -76,7 +76,12 @@ var syncXClusterCmd = &cobra.Command{
 				formatter.Colorize(uuid, formatter.GreenColor))
 			rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "Sync - Get XCluster")
+				errMessage := util.ErrorFromHTTPResponse(
+					response,
+					err,
+					"XCluster",
+					"Sync - Get XCluster",
+				)
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 			r := make([]ybaclient.XClusterConfigGetResp, 0)

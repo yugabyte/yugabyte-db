@@ -99,6 +99,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             createXClusterSourceRootCertDirPathGFlagTasks();
           }
 
+          createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID(), newVersion);
+
           boolean rollbackMaster = false;
           YsqlMajorCatalogUpgradeState catalogUpgradeState = null;
           if (requireAdditionalSuperUserForCatalogUpgrade) {
@@ -213,8 +215,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           }
 
           createCheckSoftwareVersionTask(allNodes, newVersion);
-
-          createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID());
 
           createPromoteAutoFlagTask(
               universe.getUniverseUUID(),

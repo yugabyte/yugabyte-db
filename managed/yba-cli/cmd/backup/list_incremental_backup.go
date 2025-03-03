@@ -32,7 +32,11 @@ var listIncrementalBackupsCmd = &cobra.Command{
 		if len(backupUUID) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No backup UUID specified to list incremental backup\n", formatter.RedColor))
+				formatter.Colorize(
+					"No backup UUID specified to list incremental backup\n",
+					formatter.RedColor,
+				),
+			)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {

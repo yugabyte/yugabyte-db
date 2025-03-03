@@ -830,7 +830,8 @@ func buildDeviceInfo(
 		}
 		if i == storageTypeLen {
 			storageTypeDefault := setDefaultStorageTypes(providerType)
-			if providerType == util.AWSProviderType && util.AwsInstanceTypesWithEphemeralStorageOnly(instanceTypes[i]) {
+			if providerType == util.AWSProviderType &&
+				util.AwsInstanceTypesWithEphemeralStorageOnly(instanceTypes[i]) {
 				storageTypeDefault = ""
 			}
 			storageType = append(storageType, storageTypeDefault)
@@ -890,7 +891,8 @@ func buildMasterDeviceInfo(
 
 	if len(storageType) == 0 {
 		storageType = setDefaultStorageTypes(providerType)
-		if providerType == util.AWSProviderType && util.AwsInstanceTypesWithEphemeralStorageOnly(instanceType) {
+		if providerType == util.AWSProviderType &&
+			util.AwsInstanceTypesWithEphemeralStorageOnly(instanceType) {
 			storageType = ""
 		}
 	}

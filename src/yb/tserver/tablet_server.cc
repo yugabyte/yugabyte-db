@@ -170,6 +170,9 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr, false,
     "Enable Ysql Connection Manager for the cluster. Tablet Server will start a "
     "Ysql Connection Manager process as a child process.");
 
+DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_pools, 10000,
+    "Max total pools supported in YSQL Connection Manager.");
+
 DEFINE_UNKNOWN_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
 DEFINE_UNKNOWN_bool(tserver_enable_metrics_snapshotter, false,
@@ -352,7 +355,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     ysql_db_catalog_version_index_used_->fill(false);
   }
   if (PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
-    ts_local_lock_manager_ = std::make_unique<tserver::TSLocalLockManager>();
+    ts_local_lock_manager_ = std::make_unique<tserver::TSLocalLockManager>(clock_);
   }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
@@ -646,7 +649,7 @@ Status TabletServer::RegisterServices() {
   auto pg_client_service_holder = std::make_shared<PgClientServiceHolder>(
         *this, tablet_manager_->client_future(), clock(),
         std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
-        messenger(), permanent_uuid(), &options(), xcluster_context_.get(),
+        messenger(), permanent_uuid(), options(), xcluster_context_.get(),
         &pg_node_level_mutation_counter_);
   PgClientServiceIf* pg_client_service_if = &pg_client_service_holder->impl;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service_if;

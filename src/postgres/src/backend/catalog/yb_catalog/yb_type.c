@@ -92,6 +92,16 @@ static const YbcPgTypeEntity YBCVarLenByRefTypeEntity;
 static Datum YbDocdbToDatum(const uint8 *data, int64 bytes, const YbcPgTypeAttrs *type_attrs);
 static void YbDatumToDocdb(Datum datum, uint8 **data, int64 *bytes);
 
+static void
+yb_report_type_not_supported(Oid typid)
+{
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("type not yet supported in Yugabyte: %s (%s)",
+					YbGetPotentiallyHiddenOidText(typid),
+					YBPgTypeOidToStr(typid))));
+}
+
 /***************************************************************************************************
  * Find YugaByte storage type for each PostgreSQL datatype.
  * NOTE: Because YugaByte network buffer can be deleted after it is processed, Postgres layer must
@@ -196,7 +206,7 @@ YbDataTypeFromOidMod(int attnum, Oid type_id)
 	/* Report error if type is not supported */
 	if (yb_type == YB_YQL_DATA_TYPE_NOT_SUPPORTED)
 	{
-		YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
+		yb_report_type_not_supported(type_id);
 	}
 
 	/* Return the type-mapping entry */
@@ -226,7 +236,8 @@ YbGetPrimitiveTypeOid(Oid type_id, char typtype, Oid typbasetype)
 			primitive_type_oid = ANYRANGEOID;
 			break;
 		default:
-			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
+			yb_report_type_not_supported(type_id);
+			pg_unreachable();
 			break;
 	}
 	return primitive_type_oid;

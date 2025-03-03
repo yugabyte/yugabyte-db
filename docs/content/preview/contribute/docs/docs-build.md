@@ -17,7 +17,7 @@ To run the docs site locally and edit the docs, you'll need:
 
 * **A text editor**, such as [Visual Studio Code](https://code.visualstudio.com).
 
-* [**Node.js**](https://nodejs.org/en/download/) LTS (20) using [NVM](https://github.com/nvm-sh/nvm?tab=readme-ov-file#install--update-script) : `nvm install 20.15.1`
+* [**Node.js**](https://nodejs.org/en/download/) LTS (22) using [NVM](https://github.com/nvm-sh/nvm?tab=readme-ov-file#install--update-script) : `nvm install 22.14.0`
 
 * **A GitHub account**.
 

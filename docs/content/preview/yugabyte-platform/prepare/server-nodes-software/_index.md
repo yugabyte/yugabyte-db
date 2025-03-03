@@ -32,11 +32,19 @@ YugabyteDB Anywhere supports deploying YugabyteDB on a variety of [operating sys
 
 AlmaLinux OS 8 disk images are used by default, but you can specify a custom disk image and OS.
 
+On Red Hat Enterprise Linux 8-based systems (Red Hat Enterprise Linux 8, Oracle Enterprise Linux 8.x, Amazon Linux 2), additionally, add the following line to `/etc/systemd/system.conf` and `/etc/systemd/user.conf`:
+
+```sh
+DefaultLimitNOFILE=1048576
+```
+
+You must reboot the system for these two settings to take effect.
+
 ### Additional software
 
 YugabyteDB Anywhere requires the following additional software to be pre-installed on nodes:
 
-- OpenSSH Server. Allowing SSH is recommended but optional. Using SSH can be skipped in some on-premises deployment approaches; all other workflows require it. [Tectia SSH](../../create-deployments/connect-to-universe/#enable-tectia-ssh) is also supported.
+- OpenSSH Server. Allowing SSH is optional. Using SSH is required in some [legacy on-premises deployment](../server-nodes-software/software-on-prem-legacy/) approaches. [Tectia SSH](../../create-deployments/connect-to-universe/#enable-tectia-ssh) is also supported.
 - tar
 - unzip
 - policycoreutils-python-utils

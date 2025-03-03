@@ -256,6 +256,9 @@ class SysCatalogTable {
   Status ReadYsqlAllDBCatalogVersions(
       const TableId& ysql_catalog_table_id,
       DbOidToCatalogVersionMap* versions);
+  // Read the ysql catalog cache invalidation messages info for all databases from the
+  // pg_yb_invalidation_messages catalog table.
+  Result<DbOidVersionToMessageListMap> ReadYsqlCatalogInvalationMessages();
 
   // Read the pg_class catalog table. There is a separate pg_class table in each
   // YSQL database, read the information in the pg_class table for the database

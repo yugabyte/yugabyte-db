@@ -51,7 +51,12 @@ func WaitForUpgradeUniverseTask(
 
 		universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Upgrade - Fetch Universe")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Universe",
+				"Upgrade - Fetch Universe",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		universesCtx := formatter.Context{
@@ -80,7 +85,12 @@ func Validations(cmd *cobra.Command, operation string) (
 	error,
 ) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
-	universeName, err := cmd.Flags().GetString("name")
+
+	universeNameFlag := "name"
+	if strings.EqualFold(operation, util.PITROperation) {
+		universeNameFlag = "universe-name"
+	}
+	universeName, err := cmd.Flags().GetString(universeNameFlag)
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}

@@ -194,8 +194,8 @@ The valid *arguments* for export data from target are described in the following
 | --table&#8209;list&#8209;file&#8209;path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
 | &#8209;&#8209;exclude&#8209;table&#8209;list&#8209;file&#8209;path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
 | --target-db-password | Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
-| --target-ssl-mode | Specify the SSL mode for the target database as one of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
-| --target-ssl-root-cert | Path to a file containing the target YugabyteDB SSL Root Certificate. |
+| [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) | Value of this argument determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA. <br /> **Options**<ul><li>disable: Only try a non-SSL connection.</li><li>require: Only try an SSL connection; fail if that can’t be established</li><li> verify-ca: Only try an SSL connection; verify the server TLS certificate against the configured CA certificates, and fail if no valid matching CA certificate is found.</li></ul> |
+| [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the target YugabyteDB SSL Root Certificate. If the target cluster has SSL enabled, this flag is required. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
 ### Example
