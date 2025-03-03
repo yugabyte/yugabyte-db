@@ -689,6 +689,73 @@ The maximum number of retries on retriable errors (for example, connection error
 
 Default: 60
 
+##### streaming.mode
+
+Specified whether the connector should use a single task mode to stream changes or multi task mode.
+
+* `default` uses the single task mode and streams all the changes using it.
+* `parallel` uses a multi task mode and streams changes using the number of specified replication slots.
+
+{{< note title="Important" >}}
+
+When deploying the connector with `parallel` streaming mode, the user will need to ensure that the `table.include.list` only contains one table for which the streaming is supposed to happen in parallel.
+
+{{< /note >}}
+
+{{< note title="Usage with snapshot" >}}
+
+If `snapshot.mode` is set to `initial` or `initial_only`, the user also needs to ensure that the configuration also contains a valid value for the configuration property `primary.key.hash.columns`.
+
+{{< /note >}}
+
+##### slot.names
+
+A list of comma separated values of different slot names to be used by each task when using the `streaming.mode=parallel`.
+
+No default.
+
+{{< warn title="Warning" >}}
+
+The configuration `slot.names` is only supposed to be used when `streaming.mode` is set to `parallel`, it won't have any effect otherwise.
+
+{{< /warn >}}
+
+##### publication.names
+
+A list of comma separated values of different publication names to be used by each task when using the `streaming.mode=parallel`.
+
+No default.
+
+{{< warn title="Warning" >}}
+
+The configuration `publication.names` is only supposed to be used when `streaming.mode` is set to `parallel`, it won't have any effect otherwise.
+
+{{< /warn >}}
+
+##### publication.names
+
+A list of semi-colon separated values of different hash code ranges to be used by each task when using the `streaming.mode=parallel`.
+
+No default.
+
+{{< warn title="Warning" >}}
+
+The configuration `slot.ranges` is only supposed to be used when `streaming.mode` is set to `parallel`, it won't have any effect otherwise.
+
+{{< /warn >}}
+
+For example, suppose we have a table with 3 tablets where the tablets have hash ranges as `[0,21845)`, `[21845,43690)` and `[43690,65536)` then the value for this configuration would be `slot.ranges=0,21845;21845,43690;43690,65536`.
+
+##### primary.key.hash.columns
+
+The columns of the table which consitute the hash part of the primary key.
+
+{{< note title="Use only with parallel streaming mode" >}}
+
+This configuration is only supposed to be used when `streaming.mode` is set to `parallel`.
+
+{{< /note >}}
+
 ## Pass-through configuration properties
 
 The connector also supports pass-through configuration properties that are used when creating the Kafka producer and consumer.
