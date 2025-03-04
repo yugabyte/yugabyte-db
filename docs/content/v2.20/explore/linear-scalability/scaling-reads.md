@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Reads scale linearly in YugabyteDB as more nodes are added to the cluster. The [read I/O path](../../../architecture/core-functions/read-path/) is very straightforward. As the mapping of a row to a tablet is deterministic, the system knows exactly where to look for a row. Let's go over how reads work and see how well they scale.
+Reads scale linearly in YugabyteDB as more nodes are added to the cluster. The read I/O path is very straightforward. As the mapping of a row to a tablet is deterministic, the system knows exactly where to look for a row. Let's go over how reads work and see how well they scale.
 
 ## How reads work
 

@@ -225,7 +225,7 @@ Time: 337.154 ms
 
 Leader preference helps optimize workloads that require distribution of data over multiple zones for zone-level fault tolerance, but which have clients only in a subset of those zones. It overrides the default behavior of spreading the tablet leaders across all placement zones of the tablespace, and instead places them closer to the clients.
 
-The leaders handle all [reads](../../../../architecture/core-functions/read-path/) and [writes](../../../../architecture/core-functions/write-path/), which reduces the number of network hops, which in turn reduces latency for increased performance. Leader preference allows you to specify the zones in which to place the leaders when the system is stable, and fallback zones when an outage or maintenance occurs in the preferred zones.
+The leaders handle all [reads](../../../linear-scalability/scaling-reads/) and [writes](../../../linear-scalability/scaling-writes/), which reduces the number of network hops, which in turn reduces latency for increased performance. Leader preference allows you to specify the zones in which to place the leaders when the system is stable, and fallback zones when an outage or maintenance occurs in the preferred zones.
 
 In the following example, the tablespace is set up to have replicas in us-east-1, us-east-2, and us-west-1. This enables it to survive the loss of an entire region. The clients are located in us-east-1. By default, a third of the leaders would reside in us-west-1, which has a latency of 62ms from the clients.
 

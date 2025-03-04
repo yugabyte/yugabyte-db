@@ -7,11 +7,11 @@ menu:
   v2.20:
     identifier: architecture-single-row-transactions
     parent: architecture-acid-transactions
-    weight: 60
+    weight: 400
 type: docs
 ---
 
-YugabyteDB offers atomicity, consistency, isolation, durability (ACID) semantics for mutations involving a single row or rows that fall in the same shard (partition, tablet). These mutations incur only one network roundtrip between the distributed consensus peers.
+YugabyteDB offers [ACID](../../key-concepts/#acid) semantics for mutations involving a single row or rows that fall in the same shard (partition, tablet). These mutations incur only one network roundtrip between the distributed consensus peers.
 
 Even read-modify-write operations in a single row or single shard, such as the following, incur only one round trip in YugabyteDB:
 

@@ -23,11 +23,11 @@ YugabyteDB implements a simple rules-based optimizer (RBO) for YCQL. It operates
 
 ## Heuristics based optimizer (YSQL)
 
-YugabyteDB’s YSQL API uses a simple heuristics based optimizer to determine the most efficient execution plan for a query. It relies on basic statistics, like table sizes, and applies heuristics to estimate the cost of different plans. The cost model is based on PostgreSQL’s approach, using data such as row counts and index availability, and assigns some heuristic costs to the number of result rows depending on the type of scan. Although this works well for most queries, because this model was designed for single-node databases like PostgreSQL, it doesn’t account for YugabyteDB’s distributed architecture or take cluster topology into consideration during query planning.
+YugabyteDB's YSQL API uses a simple heuristics-based optimizer to determine the most efficient execution plan for a query. It relies on basic statistics, like table sizes, and applies heuristics to estimate the cost of different plans. The cost model is based on PostgreSQL's approach, using data such as row counts and index availability, and assigns some heuristic costs to the number of result rows depending on the type of scan. Although this works well for most queries, because this model was designed for single-node databases like PostgreSQL, it doesn't account for YugabyteDB's distributed architecture or take cluster topology into consideration during query planning.
 
 ## Cost based optimizer (YSQL)
 
-To account for the distributed nature of the data, YugabyteDB has implemented a Cost based optimizer (CBO) for YSQL that uses an advanced cost model. The model considers accurate table statistics, the cost of network round trips, operations on lower level storage layer, and the cluster toplogy.
+To account for the distributed nature of the data, YugabyteDB has implemented a Cost based optimizer (CBO) for YSQL that uses an advanced cost model. The model considers accurate table statistics, the cost of network round trips, operations on lower level storage layer, and the cluster topology.
 
 {{<tip>}}
 

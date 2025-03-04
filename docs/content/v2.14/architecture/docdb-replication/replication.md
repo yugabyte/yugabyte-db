@@ -60,7 +60,7 @@ The replicas of data can be placed across multiple fault domains. Let's look at 
 
 ### Multi-zone deployment
 
-In the case of a multi-zone deployement, the data in each of the tablets in a node is replicated across multiple zones using the Raft consensus algorithm. All the read and write queries for the rows that belong to a given tablet are handled by that tablet’s leader. This is shown in the diagram below.
+In the case of a multi-zone deployment, the data in each of the tablets in a node is replicated across multiple zones using the Raft consensus algorithm. All the read and write queries for the rows that belong to a given tablet are handled by that tablet's leader. This is shown in the diagram below.
 
 <img src="/images/architecture/replication/raft-replication-across-zones.png" style="max-width:750px;"/>
 

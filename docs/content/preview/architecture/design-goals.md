@@ -151,7 +151,7 @@ YugabyteDB supports [Row Level Geo-Partitioning](../../explore/multi-region-depl
 
 ## Cloud-ready
 
-YugabyteDB is a cloud-native database, and can be deployed out of the box in most public cloud services like [AWS, GCP, and Azure](../../deploy/public-clouds/). YugabyteDB also supports a [mult-cloud deployement](../../develop/multi-cloud/multicloud-setup/) which enables a cluster to be spread across different cloud providers.
+YugabyteDB is a cloud-native database, and can be deployed out of the box in most public cloud services like [AWS, GCP, and Azure](../../deploy/public-clouds/). YugabyteDB also supports a [mult-cloud deployment](../../develop/multi-cloud/multicloud-setup/) which enables a cluster to be spread across different cloud providers.
 
 ## Running on commodity hardware
 

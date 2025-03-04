@@ -61,8 +61,8 @@ The following table describes the types of metrics exposed by each endpoint and 
 
 | Service | Description | JSON | Prometheus |
 | :------------ | :---------- | :------- | :--- |
-| [YB-Master](../../../architecture/concepts/yb-master/) | Metrics related to the system catalog, cluster-wide metadata (such as the number of tablets and tables), and cluster-wide operations (table creations/drops, and so on). | `<node-ip>:7000/metrics` | `<node-ip>:7000/prometheus-metrics` |
-| [YB-TServer](../../../architecture/concepts/yb-tserver/) | Metrics related to end-user DML requests (such as table insert), which include tables, tablets, and storage-level metrics (such as Write-Ahead-Logging, and so on). | `<node-ip>:9000/metrics` | `<node-ip>:9000/prometheus-metrics` |
+| [YB-Master](../../../architecture/yb-master/) | Metrics related to the system catalog, cluster-wide metadata (such as the number of tablets and tables), and cluster-wide operations (table creations/drops, and so on). | `<node-ip>:7000/metrics` | `<node-ip>:7000/prometheus-metrics` |
+| [YB-TServer](../../../architecture/yb-tserver/) | Metrics related to end-user DML requests (such as table insert), which include tables, tablets, and storage-level metrics (such as Write-Ahead-Logging, and so on). | `<node-ip>:9000/metrics` | `<node-ip>:9000/prometheus-metrics` |
 | [YSQL](../../../api/ysql/) | YSQL query processing and connection metrics, such as throughput and latencies for various operations. | `<node-ip>:13000/metrics` | `<node-ip>:13000/prometheus-metrics` |
 | [YCQL](../../../api/ycql/) | YCQL query processing and connection metrics, such as throughput and latencies for various operations. | `<node-ip>:12000/metrics` | `<node-ip>:12000/prometheus-metrics` |
 

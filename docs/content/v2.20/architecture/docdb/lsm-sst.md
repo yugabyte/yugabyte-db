@@ -77,8 +77,8 @@ As data accumulates in SSTs, a process called compaction merges and sorts the SS
 
 The YB-TServer manages multiple compaction queues and enforces throttling to avoid compaction storms. Although full compactions can be scheduled, they can also be triggered manually. Full compactions are also triggered automatically if the system detects tombstones and obsolete keys affecting read performance.
 
-{{<lead link="../../concepts/yb-tserver/">}}
-To learn more about YB-TServer compaction operations, refer to [YB-TServer](../../concepts/yb-tserver/)
+{{<lead link="../../yb-tserver/">}}
+To learn more about YB-TServer compaction operations, refer to [YB-TServer](../../yb-tserver/)
 {{</lead>}}
 
 ## Learn more

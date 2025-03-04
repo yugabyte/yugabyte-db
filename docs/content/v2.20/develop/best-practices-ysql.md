@@ -27,7 +27,7 @@ For more details, see [Build global applications](../build-global-apps).
 Colocated tables optimize latency and performance for data access by reducing the need for additional trips across the network for small tables. Additionally, it reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and their storage per node.
 
 {{<tip>}}
-For more details, see [colocation](../../architecture/docdb-sharding/colocated-tables/).
+For more details, see [colocation](../../explore/colocation/).
 {{</tip>}}
 
 ## Faster reads with covering indexes
@@ -282,7 +282,7 @@ An effort to lower this overhead is currently in progress. See GitHub issue [#13
 
 You can try one of the following methods to reduce the number of tablets:
 
-- Use [colocation](../../architecture/docdb-sharding/colocated-tables/) to group small tables into 1 tablet.
+- Use [colocation](../../explore/colocation/) to group small tables into 1 tablet.
 - Reduce number of tablets-per-table using [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
 - Use [`SPLIT INTO`](../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
 - Start with few tablets and use [automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting/).

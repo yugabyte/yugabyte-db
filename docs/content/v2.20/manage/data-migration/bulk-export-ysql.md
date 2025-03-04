@@ -70,7 +70,7 @@ In many scenarios, there may be a large number of database objects (tables and i
 
 Enabling the colocation property at a database level causes all tables created in this database to be colocated by default. Tables in this database that hold a large dataset or those that are expected to grow in size over time can be opted out of the colocation group, which would cause them to be split into multiple tablets.
 
-For more information, refer to [Colocated tables](../../../architecture/docdb-sharding/colocated-tables/).
+For more information, refer to [Colocated tables](../../../explore/colocation/).
 
 ### Pre-split large tables
 

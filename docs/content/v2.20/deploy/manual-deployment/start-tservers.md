@@ -15,7 +15,7 @@ type: docs
 
 - The number of nodes in a cluster running YB-TServers **must** equal or exceed the replication factor in order for any table to get created successfully.
 - For running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to the [Multi-DC Deployments](../../../deploy/multi-dc/) section.
-- Read more about the [yb-tserver service architecture](../../../architecture/concepts/yb-tserver/).
+- Read more about the [yb-tserver service architecture](../../../architecture/yb-tserver/).
 
 {{< /note >}}
 
