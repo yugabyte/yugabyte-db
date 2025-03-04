@@ -12,7 +12,7 @@ INSERT INTO test_distinct (SELECT 2, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) A
 SET yb_enable_distinct_pushdown = true;
 SET enable_bitmapscan = false;
 
-EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
@@ -24,7 +24,7 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER
 
 RESET enable_bitmapscan;
 
-/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
 /*+ BitmapScan(test_distinct) */
 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
@@ -40,7 +40,7 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER
 SET yb_enable_distinct_pushdown TO false;
 SET enable_bitmapscan = false;
 
-EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
@@ -49,7 +49,7 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
 
 RESET enable_bitmapscan;
 
-/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
 /*+ BitmapScan(test_distinct) */
 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
