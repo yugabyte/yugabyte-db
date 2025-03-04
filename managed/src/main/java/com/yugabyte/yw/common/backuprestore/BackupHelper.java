@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
@@ -116,6 +117,7 @@ public class BackupHelper {
   private ValidateReplicationInfo validateReplicationInfo;
   private NodeUniverseManager nodeUniverseManager;
   private YbcBackupUtil ybcBackupUtil;
+  private SoftwareUpgradeHelper softwareUpgradeHelper;
   @Inject Commissioner commissioner;
 
   @Inject
@@ -128,7 +130,8 @@ public class BackupHelper {
       Commissioner commisssioner,
       ValidateReplicationInfo validateReplicationInfo,
       NodeUniverseManager nodeUniverseManager,
-      YbcBackupUtil ybcBackupUtil) {
+      YbcBackupUtil ybcBackupUtil,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.ybcManager = ybcManager;
     this.ybClientService = ybClientService;
     this.customerConfigService = customerConfigService;
@@ -137,6 +140,7 @@ public class BackupHelper {
     this.validateReplicationInfo = validateReplicationInfo;
     this.nodeUniverseManager = nodeUniverseManager;
     this.ybcBackupUtil = ybcBackupUtil;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
     // this.commissioner = commissioner;
   }
 
@@ -312,6 +316,12 @@ public class BackupHelper {
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot restore backup with major version upgrade is in progress");
+    }
+
     taskParams.backupStorageInfoList.forEach(
         bSI -> {
           if (StringUtils.isNotBlank(bSI.newOwner)

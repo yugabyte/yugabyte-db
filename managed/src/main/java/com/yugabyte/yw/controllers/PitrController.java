@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.DeletePitrConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.ApiType;
@@ -60,11 +61,16 @@ public class PitrController extends AuthenticatedController {
 
   Commissioner commissioner;
   YBClientService ybClientService;
+  private SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
-  public PitrController(Commissioner commissioner, YBClientService ybClientService) {
+  public PitrController(
+      Commissioner commissioner,
+      YBClientService ybClientService,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.commissioner = commissioner;
     this.ybClientService = ybClientService;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @ApiOperation(
@@ -108,6 +114,11 @@ public class PitrController extends AuthenticatedController {
     checkCompatibleYbVersion(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     CreatePitrConfigParams taskParams = parseJsonAndValidate(request, CreatePitrConfigParams.class);
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot enable PITR when the universe is in the middle of a major upgrade");
+    }
 
     if (taskParams.retentionPeriodInSeconds <= 0L) {
       throw new PlatformServiceException(
@@ -182,6 +193,11 @@ public class PitrController extends AuthenticatedController {
     } else if (universe.getUniverseDetails().updateInProgress) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot update PITR when the universe is in locked state");
+    }
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot update PITR when the universe is in the middle of a major upgrade");
     }
 
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(pitrConfigUUID);
@@ -325,6 +341,11 @@ public class PitrController extends AuthenticatedController {
     } else if (universe.getUniverseDetails().updateInProgress) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot perform PITR when the universe is in locked state");
+    }
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot perform PITR when the universe is in the middle of a major upgrade");
     }
 
     RestoreSnapshotScheduleParams taskParams =
@@ -507,6 +528,12 @@ public class PitrController extends AuthenticatedController {
     } else if (universe.getUniverseDetails().updateInProgress) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot clone a namespace when the universe is in locked state");
+    }
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot clone namespace when the universe is in the middle of a major upgrade");
     }
 
     checkCloneCompatibleYbVersion(

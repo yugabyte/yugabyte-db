@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
@@ -104,6 +105,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   private final XClusterUniverseService mockXClusterUniverseService =
       mock(XClusterUniverseService.class);
   private final AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
+  private final SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
   private final XClusterScheduler mockXClusterScheduler = mock(XClusterScheduler.class);
   private final YBClient mockYBClient = mock(YBClient.class);
   private final AuditService auditService = spy(new AuditService());
@@ -180,6 +182,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
         .overrides(bind(YBClientService.class).toInstance(mockYBClientService))
         .overrides(bind(XClusterScheduler.class).toInstance(mockXClusterScheduler))
         .overrides(bind(AuditService.class).toInstance(auditService))
+        .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
         .build();
   }
 
@@ -213,7 +216,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             mockXClusterUniverseService,
             mockAutoFlagUtil,
             mockXClusterScheduler,
-            null);
+            null,
+            mockSoftwareUpgradeHelper);
   }
 
   @Test

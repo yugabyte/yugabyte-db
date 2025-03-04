@@ -112,6 +112,7 @@ public class CustomerTaskManager {
   private final RuntimeConfGetter confGetter;
   private final FileDataService fileDataService;
   private final ReleaseManager releaseManager;
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
   private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
@@ -130,7 +131,8 @@ public class CustomerTaskManager {
       YsqlQueryExecutor ysqlQueryExecutor,
       RuntimeConfGetter confGetter,
       FileDataService fileDataService,
-      ReleaseManager releaseManager) {
+      ReleaseManager releaseManager,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.ybService = ybService;
     this.commissioner = commissioner;
     this.ybcManager = ybcManager;
@@ -138,6 +140,7 @@ public class CustomerTaskManager {
     this.confGetter = confGetter;
     this.fileDataService = fileDataService;
     this.releaseManager = releaseManager;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   // Invoked if the task is in incomplete state.
@@ -792,8 +795,30 @@ public class CustomerTaskManager {
       case KubernetesOverridesUpgrade:
         taskParams = Json.fromJson(oldTaskParams, KubernetesOverridesUpgradeParams.class);
         break;
+      case GFlagsUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, GFlagsUpgradeParams.class);
+        GFlagsUpgradeParams gFlagsUpgradeParams = (GFlagsUpgradeParams) taskParams;
+        if (gFlagsUpgradeParams != null && gFlagsUpgradeParams.getUniverseUUID() != null) {
+          Universe universe = Universe.getOrBadRequest(gFlagsUpgradeParams.getUniverseUUID());
+          if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cannot retry GFlags upgrade task as YSQL major upgrade is in progress.");
+          }
+        }
+        break;
       case GFlagsKubernetesUpgrade:
         taskParams = Json.fromJson(oldTaskParams, KubernetesGFlagsUpgradeParams.class);
+        KubernetesGFlagsUpgradeParams kubeGFlagsUpgradeParams =
+            (KubernetesGFlagsUpgradeParams) taskParams;
+        if (kubeGFlagsUpgradeParams != null && kubeGFlagsUpgradeParams.getUniverseUUID() != null) {
+          Universe universe = Universe.getOrBadRequest(kubeGFlagsUpgradeParams.getUniverseUUID());
+          if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cannot retry GFlags upgrade task as YSQL major upgrade is in progress.");
+          }
+        }
         break;
       case SoftwareKubernetesUpgradeYB:
       case SoftwareKubernetesUpgrade:
@@ -826,9 +851,6 @@ public class CustomerTaskManager {
         break;
       case ThirdpartySoftwareUpgrade:
         taskParams = Json.fromJson(oldTaskParams, ThirdpartySoftwareUpgradeParams.class);
-        break;
-      case GFlagsUpgrade:
-        taskParams = Json.fromJson(oldTaskParams, GFlagsUpgradeParams.class);
         break;
       case CertsRotate:
         taskParams = Json.fromJson(oldTaskParams, CertsRotateParams.class);
@@ -984,6 +1006,24 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, DrConfigTaskParams.class);
         DrConfigTaskParams drConfigTaskParams = (DrConfigTaskParams) taskParams;
         drConfigTaskParams.refreshIfExists();
+        if (taskType != TaskType.DeleteDrConfig) {
+          if (drConfigTaskParams.getSourceUniverseUuid() != null) {
+            Universe sourceUniverse =
+                Universe.getOrBadRequest(drConfigTaskParams.getSourceUniverseUuid());
+            if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(sourceUniverse)) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot retry DR config task as YSQL major upgrade is in progress.");
+            }
+          }
+          if (drConfigTaskParams.getTargetUniverseUuid() != null) {
+            Universe targetUniverse =
+                Universe.getOrBadRequest(drConfigTaskParams.getTargetUniverseUuid());
+            if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(targetUniverse)) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot retry DR config task as YSQL major upgrade is in progress.");
+            }
+          }
+        }
         // Todo: we need to recompute other task param fields here to handle changes in the database
         //  at the YBDB level, e.g., the user creates a table after the task has filed and before it
         //  is retried.
