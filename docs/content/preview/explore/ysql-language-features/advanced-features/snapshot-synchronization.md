@@ -12,13 +12,13 @@ menu:
 type: docs
 ---
 
-To maintain a consistent view of data, separate transactions can synchronize their snapshots. A snapshot determines which data is visible to the transaction that is using the snapshot. Synchronized snapshots are necessary when two or more sessions need to see identical content in the database. If two sessions start their transactions independently, there is always a possibility that some third transaction commits between the executions of the two START TRANSACTION commands, so that one session sees the effects of that transaction and the other does not.
+To maintain a consistent view of data, you can synchronize the snapshots from separate transactions. A snapshot determines which data is visible to the transaction that is using the snapshot. Synchronized snapshots are necessary when two or more sessions need to see identical content in the database.
 
-To solve this problem, PostgreSQL allows a transaction to export the snapshot it is using. As long as the exporting transaction remains open, other transactions can import its snapshot, and thereby be guaranteed that they see exactly the same view of the database that the first transaction sees.
+When two sessions start transactions independently, there is always a possibility that some third transaction commits between the execution of the two START TRANSACTION commands, so that one session sees the effects of that transaction, and the other does not. To solve this problem, you can export the snapshot a transaction is using. As long as the exporting transaction remains open, other transactions can import its snapshot, and thereby be guaranteed that they see exactly the same view of the database that the first transaction sees.
 
 Note that any database changes made by any one of these transactions remain invisible to the other transactions, as is usual for changes made by uncommitted transactions. So the transactions are synchronized with respect to pre-existing data, but act normally for changes they make themselves.
 
-You export snapshots using the pg_export_snapshot function, and import them using the SET TRANSACTION command.
+You export snapshots using the [pg_export_snapshot() function](https://www.postgresql.org/docs/15/functions-admin.html#FUNCTIONS-SNAPSHOT-SYNCHRONIZATION), and import them using the SET TRANSACTION command.
 
 This feature is currently {{<tags/feature/tp idea="1161">}} and to use it you must first set the `ysql_enable_pg_export_snapshot` YB-TServer flag to true.
 
