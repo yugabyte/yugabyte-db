@@ -10917,7 +10917,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TYPE_P any_name SET SCHEMA name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE SET SCHEMA", 1893);
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 
 					n->objectType = OBJECT_TYPE;
