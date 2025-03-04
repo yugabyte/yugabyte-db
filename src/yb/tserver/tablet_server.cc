@@ -974,6 +974,58 @@ Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
   return Status::OK();
 }
 
+Status TabletServer::GetTserverCatalogMessageLists(
+    const GetTserverCatalogMessageListsRequestPB& req,
+    GetTserverCatalogMessageListsResponsePB *resp) const {
+  SharedLock l(lock_);
+  const auto db_oid = req.db_oid();
+  const auto ysql_catalog_version = req.ysql_catalog_version();
+  const auto num_catalog_versions = req.num_catalog_versions();
+  DCHECK_GT(db_oid, 0);
+  DCHECK_GT(num_catalog_versions, 0);
+  auto it = ysql_db_invalidation_messages_map_.find(db_oid);
+  if (it == ysql_db_invalidation_messages_map_.end()) {
+    DCHECK_EQ(resp->entries_size(), 0);
+    LOG(WARNING) << "Could not find messages for database " << db_oid;
+    return Status::OK();
+  }
+  const auto& messages_vec = it->second;
+  uint64_t expected_version = ysql_catalog_version + 1;
+  std::set<uint64_t> current_versions;
+  for (const auto& info : messages_vec) {
+    DCHECK(current_versions.insert(info.first).second);
+    if (info.first <= ysql_catalog_version) {
+      continue;
+    }
+    if (info.first == expected_version) {
+      auto* entry = resp->add_entries();
+      if (info.second.has_value()) {
+        entry->set_message_list(info.second.value());
+      }
+      ++expected_version;
+    }
+    if (expected_version > ysql_catalog_version + num_catalog_versions) {
+      break;
+    }
+  }
+  // We find a consecutive list (without any holes) matching with what the client asks for.
+  if (resp->entries_size() == static_cast<int32_t>(num_catalog_versions)) {
+    return Status::OK();
+  }
+
+  if (resp->entries_size() < static_cast<int32_t>(num_catalog_versions)) {
+    LOG(INFO) << "Could not find a matching consecutive list"
+              << ", db_oid: " << db_oid
+              << ", ysql_catalog_version: " << ysql_catalog_version
+              << ", num_catalog_versions: " << num_catalog_versions
+              << ", current_versions: " << yb::ToString(current_versions);
+    // Clear any entries that might have matched and added to ensure PG backend
+    // will do a full catalog cache refresh.
+    resp->mutable_entries()->Clear();
+  }
+  return Status::OK();
+}
+
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   {
     std::lock_guard l(lock_);

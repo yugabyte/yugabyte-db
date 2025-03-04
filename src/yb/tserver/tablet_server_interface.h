@@ -77,6 +77,10 @@ class TabletServerIf : public LocalTabletServer {
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const = 0;
 
+  virtual Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB *resp) const = 0;
+
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 
   virtual client::TransactionPool& TransactionPool() = 0;

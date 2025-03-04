@@ -954,6 +954,22 @@ typedef enum {
   YB_OBJECT_ACCESS_EXCLUSIVE_LOCK
 } YbcObjectLockMode;
 
+// Catalog cache invalidation message list associated with one catalog version for
+// a given database.
+typedef struct {
+  // NULL means a PG null value, which is different from a PG empty string ''.
+  char* message_list;
+  // num_bytes will be zero for both PG null value and a PG empty string ''.
+  size_t num_bytes;
+} YbcCatalogMessageList;
+
+// A list of YbcCatalogMessageList associated with a consecutive list of catalog versions
+// for a given database.
+typedef struct {
+  YbcCatalogMessageList* message_lists;
+  int num_lists;
+} YbcCatalogMessageLists;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

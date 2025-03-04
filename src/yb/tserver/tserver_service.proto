@@ -147,6 +147,9 @@ service TabletServerService {
   rpc VerifyVectorIndexes(VerifyVectorIndexesRequestPB) returns (VerifyVectorIndexesResponsePB) {
     option (yb.rpc.trivial) = true;
   }
+
+  rpc GetTserverCatalogMessageLists(GetTserverCatalogMessageListsRequestPB)
+      returns (GetTserverCatalogMessageListsResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -525,6 +528,18 @@ message GetTserverCatalogVersionInfoResponsePB {
   optional TabletServerErrorPB error = 1;
   repeated TServerDBCatalogVersionInfo entries = 2;
   optional uint32 num_entries = 3;
+}
+
+message GetTserverCatalogMessageListsRequestPB {
+  optional uint32 db_oid = 1;
+  optional uint64 ysql_catalog_version = 2;
+  optional uint32 num_catalog_versions = 3;
+}
+
+message GetTserverCatalogMessageListsResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+  repeated TServerDBCatalogMessageListInfo entries = 2;
 }
 
 message CancelTransactionRequestPB {

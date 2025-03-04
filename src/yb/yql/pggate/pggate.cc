@@ -1793,6 +1793,13 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
   return tserver_shared_object_->catalog_version_table_in_perdb_mode().value();
 }
 
+Result<tserver::PgGetTserverCatalogMessageListsResponsePB>
+PgApiImpl::GetTserverCatalogMessageLists(
+    uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions) {
+  return pg_client_.GetTserverCatalogMessageLists(
+      db_oid, ysql_catalog_version, num_catalog_versions);
+}
+
 uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }

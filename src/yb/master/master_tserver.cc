@@ -158,6 +158,12 @@ Status MasterTabletServer::get_ysql_db_oid_to_cat_version_info_map(
   return master_->get_ysql_db_oid_to_cat_version_info_map(req, resp);
 }
 
+Status MasterTabletServer::GetTserverCatalogMessageLists(
+    const tserver::GetTserverCatalogMessageListsRequestPB& req,
+    tserver::GetTserverCatalogMessageListsResponsePB *resp) const {
+  return master_->GetTserverCatalogMessageLists(req, resp);
+}
+
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
   return master_->client_future();
 }

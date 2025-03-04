@@ -244,6 +244,8 @@ extern bool RelationHasCachedLists(Relation relation);
 extern long YbGetCatCacheMisses();
 extern long *YbGetCatCacheIdMisses();
 extern long *YbGetCatCacheTableMisses();
+extern long YbGetCatCacheRefreshes();
+extern long YbGetCatCacheDeltaRefreshes();
 
 extern YbCatCListIterator YbCatCListIteratorBegin(CatCList *list);
 extern HeapTuple YbCatCListIteratorGetNext(YbCatCListIterator *iterator);

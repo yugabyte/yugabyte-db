@@ -2152,6 +2152,39 @@ YbcStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode) {
   return ExtractValueFromResult(pgapi->CatalogVersionTableInPerdbMode(), perdb_mode);
 }
 
+YbcStatus YBCGetTserverCatalogMessageLists(
+    YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
+    YbcCatalogMessageLists* message_lists) {
+  const auto result = pgapi->GetTserverCatalogMessageLists(
+      db_oid, ysql_catalog_version, num_catalog_versions);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto &catalog_messages_lists = result.get();
+  if (catalog_messages_lists.entries_size() == 0) {
+    return YBCStatusOK();
+  }
+  message_lists->num_lists = catalog_messages_lists.entries_size();
+  message_lists->message_lists = static_cast<YbcCatalogMessageList*>(
+      YBCPAlloc(sizeof(YbcCatalogMessageList) * message_lists->num_lists));
+  for (int i = 0; i < message_lists->num_lists; ++i) {
+    YbcCatalogMessageList& current = message_lists->message_lists[i];
+    if (catalog_messages_lists.entries(i).has_message_list()) {
+      const auto& current_pb = catalog_messages_lists.entries(i).message_list();
+      current.num_bytes = current_pb.size();
+      current.message_list = static_cast<char*>(YBCPAlloc(current.num_bytes));
+      std::memcpy(static_cast<void*>(current.message_list), current_pb.data(),
+                  current_pb.size());
+    } else {
+      // This entire invalidation message list is a PG null. This will force full
+      // catalog cache refresh.
+      current.num_bytes = 0;
+      current.message_list = NULL;
+    }
+  }
+  return YBCStatusOK();
+}
+
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }

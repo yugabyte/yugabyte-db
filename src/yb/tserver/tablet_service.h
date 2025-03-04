@@ -176,6 +176,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                                     GetTserverCatalogVersionInfoResponsePB* resp,
                                     rpc::RpcContext context) override;
 
+  void GetTserverCatalogMessageLists(const GetTserverCatalogMessageListsRequestPB* req,
+                                     GetTserverCatalogMessageListsResponsePB* resp,
+                                     rpc::RpcContext context) override;
+
   void ListMasterServers(const ListMasterServersRequestPB* req,
                          ListMasterServersResponsePB* resp,
                          rpc::RpcContext context) override;

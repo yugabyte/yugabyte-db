@@ -97,6 +97,10 @@ YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 // have one row per database.
 YbcStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode);
 
+YbcStatus YBCGetTserverCatalogMessageLists(
+    YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
+    YbcCatalogMessageLists* message_lists);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
