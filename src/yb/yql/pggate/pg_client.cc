@@ -568,7 +568,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgPollVectorIndexReadyResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->PollVectorIndexReady(req, &resp, PrepareController()));
+    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::PollVectorIndexReady,
+        req, resp, ash::PggateRPC::kPollVectorIndexReady));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.ready();
   }

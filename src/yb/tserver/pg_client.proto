@@ -629,6 +629,7 @@ message PgGetTablePartitionListResponsePB {
 
 message PgPollVectorIndexReadyRequestPB {
   string table_id = 1;
+  AshMetadataPB ash_metadata = 2;
 }
 
 message PgPollVectorIndexReadyResponsePB {
