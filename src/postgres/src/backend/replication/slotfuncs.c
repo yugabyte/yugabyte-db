@@ -475,64 +475,73 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		else
 			nulls[i++] = true;
 
-		/*
-		 * If invalidated_at is valid and restart_lsn is invalid, we know for
-		 * certain that the slot has been invalidated.  Otherwise, test
-		 * availability from restart_lsn.
-		 */
-		if (XLogRecPtrIsInvalid(slot_contents.data.restart_lsn) &&
-			!XLogRecPtrIsInvalid(slot_contents.data.invalidated_at))
-			walstate = WALAVAIL_REMOVED;
-		else
-			walstate = GetWALAvailability(slot_contents.data.restart_lsn);
-
-		switch (walstate)
+		if (IsYugaByteEnabled())
 		{
-			case WALAVAIL_INVALID_LSN:
-				nulls[i++] = true;
-				break;
+			/* YB_TODO: Correctly set the walstate based on slot expiry. */
+			walstate = WALAVAIL_REMOVED;
+			values[i++] = CStringGetTextDatum("lost");
+		}
+		else
+		{
+			/*
+			 * If invalidated_at is valid and restart_lsn is invalid, we know for
+			 * certain that the slot has been invalidated.  Otherwise, test
+			 * availability from restart_lsn.
+			 */
+			if (XLogRecPtrIsInvalid(slot_contents.data.restart_lsn) &&
+				!XLogRecPtrIsInvalid(slot_contents.data.invalidated_at))
+				walstate = WALAVAIL_REMOVED;
+			else
+				walstate = GetWALAvailability(slot_contents.data.restart_lsn);
 
-			case WALAVAIL_RESERVED:
-				values[i++] = CStringGetTextDatum("reserved");
-				break;
+			switch (walstate)
+			{
+				case WALAVAIL_INVALID_LSN:
+					nulls[i++] = true;
+					break;
 
-			case WALAVAIL_EXTENDED:
-				values[i++] = CStringGetTextDatum("extended");
-				break;
+				case WALAVAIL_RESERVED:
+					values[i++] = CStringGetTextDatum("reserved");
+					break;
 
-			case WALAVAIL_UNRESERVED:
-				values[i++] = CStringGetTextDatum("unreserved");
-				break;
+				case WALAVAIL_EXTENDED:
+					values[i++] = CStringGetTextDatum("extended");
+					break;
 
-			case WALAVAIL_REMOVED:
+				case WALAVAIL_UNRESERVED:
+					values[i++] = CStringGetTextDatum("unreserved");
+					break;
 
-				/*
-				 * If we read the restart_lsn long enough ago, maybe that file
-				 * has been removed by now.  However, the walsender could have
-				 * moved forward enough that it jumped to another file after
-				 * we looked.  If checkpointer signalled the process to
-				 * termination, then it's definitely lost; but if a process is
-				 * still alive, then "unreserved" seems more appropriate.
-				 *
-				 * If we do change it, save the state for safe_wal_size below.
-				 */
-				if (!XLogRecPtrIsInvalid(slot_contents.data.restart_lsn))
-				{
-					int			pid;
+				case WALAVAIL_REMOVED:
 
-					SpinLockAcquire(&slot->mutex);
-					pid = slot->active_pid;
-					slot_contents.data.restart_lsn = slot->data.restart_lsn;
-					SpinLockRelease(&slot->mutex);
-					if (pid != 0)
+					/*
+					 * If we read the restart_lsn long enough ago, maybe that file
+					 * has been removed by now.  However, the walsender could have
+					 * moved forward enough that it jumped to another file after
+					 * we looked.  If checkpointer signalled the process to
+					 * termination, then it's definitely lost; but if a process is
+					 * still alive, then "unreserved" seems more appropriate.
+					 *
+					 * If we do change it, save the state for safe_wal_size below.
+					 */
+					if (!XLogRecPtrIsInvalid(slot_contents.data.restart_lsn))
 					{
-						values[i++] = CStringGetTextDatum("unreserved");
-						walstate = WALAVAIL_UNRESERVED;
-						break;
+						int			pid;
+
+						SpinLockAcquire(&slot->mutex);
+						pid = slot->active_pid;
+						slot_contents.data.restart_lsn = slot->data.restart_lsn;
+						SpinLockRelease(&slot->mutex);
+						if (pid != 0)
+						{
+							values[i++] = CStringGetTextDatum("unreserved");
+							walstate = WALAVAIL_UNRESERVED;
+							break;
+						}
 					}
-				}
-				values[i++] = CStringGetTextDatum("lost");
-				break;
+					values[i++] = CStringGetTextDatum("lost");
+					break;
+			}
 		}
 
 		/*
