@@ -19106,6 +19106,11 @@
           "description" : "WARNING: This is a preview API that could change. Finalize required",
           "readOnly" : true,
           "type" : "boolean"
+        },
+        "ysqlMajorVersionUpgrade" : {
+          "description" : "WARNING: This is a preview API that could change. YSQL Major version upgrade",
+          "readOnly" : true,
+          "type" : "boolean"
         }
       },
       "type" : "object"
