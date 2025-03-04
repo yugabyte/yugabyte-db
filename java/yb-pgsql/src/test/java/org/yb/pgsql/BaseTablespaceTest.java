@@ -45,6 +45,8 @@ public abstract class BaseTablespaceTest extends BasePgSQLTest {
 
   private static final int LOAD_BALANCER_MAX_CONCURRENT = 10;
 
+  protected static final int MASTER_LEADER_TIMEOUT_MS = 90000;
+
   private static String placementUuid = "";
 
   // Custom tablespace to be used commonly across tests.

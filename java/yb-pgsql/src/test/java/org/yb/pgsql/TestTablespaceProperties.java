@@ -363,6 +363,65 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
   }
 
   @Test
+  public void testTableRewrite() throws Exception {
+    markClusterNeedsRecreation();
+    final String dbname = "testdatabase";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", dbname));
+    }
+    final String nonColocatedTable = "colocation_opt_out_table";
+    final String nonColocatedIndex = "colocation_opt_out_idx";
+    final String regularTable = "testtable";
+    final String regularIndex = "testindex";
+    final String tablespaceClause = "TABLESPACE " + tablespaceName;
+
+    String[] databases = {dbname, "yugabyte"};
+    String[] tables = {nonColocatedTable, regularTable};
+    String[] indexes = {nonColocatedIndex, regularIndex};
+
+    for (int i = 0; i < databases.length; i++) {
+      try (Connection connection2 = getConnectionBuilder().withDatabase(databases[i]).connect();
+        Statement stmt = connection2.createStatement()) {
+        stmt.execute(
+          String.format(
+            "CREATE TABLE %s (h INT, a INT) WITH (colocated = false) %s",
+            tables[i], tablespaceClause));
+        stmt.execute(
+          String.format(
+            "CREATE INDEX %s ON %s (a) %s",
+            indexes[i], tables[i], tablespaceClause));
+        // Perform table rewrite.
+        stmt.execute(
+          String.format(
+            "ALTER TABLE %s ADD PRIMARY KEY (h)",
+            tables[i], tables[i]));
+      }
+      verifyTablePlacement(tables[i], customTablespace);
+      verifyTablePlacement(indexes[i], customTablespace);
+    }
+
+    findAndKillMasterLeader();
+    waitForMasterLeader(MASTER_LEADER_TIMEOUT_MS);
+
+    // Test that ALTER ... SET TABLESPACE works after table rewrite + master failover.
+    Tablespace ts2 = new Tablespace("tablespace_2", Collections.singletonList(1));
+    ts2.create(connection);
+
+    for (int i = 0; i < databases.length; i++) {
+      try (Connection connection2 = getConnectionBuilder().withDatabase(databases[i]).connect();
+        Statement stmt = connection2.createStatement()) {
+      stmt.execute(String.format("ALTER TABLE %s SET TABLESPACE %s", tables[i], ts2.name));
+      stmt.execute(String.format("ALTER INDEX %s SET TABLESPACE %s", indexes[i], ts2.name));
+      }
+      // Wait for load balancer to run.
+      waitForLoadBalancer();
+
+      verifyTablePlacement(tables[i], ts2);
+      verifyTablePlacement(indexes[i], ts2);
+    }
+  }
+
+  @Test
   public void readReplicaWithTablespaces() throws Exception {
     markClusterNeedsRecreation();
     final YBClient client = miniCluster.getClient();
