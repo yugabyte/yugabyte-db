@@ -26,6 +26,7 @@
 
 #include "planner/documentdb_planner.h"
 #include "aggregation/bson_aggregation_pipeline.h"
+#include "collation/collation.h"
 
 #define MAX_BUFFER_SIZE_DOLLAR_RANGE (64 * 1024 * 1024)
 #define EMPTY_BSON_ARRAY_SIZE_BYTES 5 /* size of empty array is fixed as 5 bytes. */
@@ -45,10 +46,17 @@ typedef void (*ProcessArrayOperatorOneOperand)(const bson_value_t *currentValue,
 											   bson_value_t *result);
 typedef void (*ProcessArrayOperatorTwoOperands)(void *state, bson_value_t *result);
 
+typedef struct DollarInArguments
+{
+	AggregationExpressionData *targetValue;
+	AggregationExpressionData *searchArray;
+	char *collationString;
+} DollarInArguments;
+
 /* State for a $arrayElemAt, $first or $last operator. */
 typedef struct ArrayElemAtArgumentState
 {
-	DualArgumentExpressionState dualState; /* Must be first element */
+	DualArgumentExpressionState dualState;  /* Must be first element */
 
 	/* Indicates if the operator $arrayElemAt operator.
 	 * If false, it means it is either $first or $last. */
@@ -201,7 +209,8 @@ static void HandlePreParsedDollarArrayElemAtCore(pgbson *doc, void *arguments,
 												 ExpressionResult *expressionResult,
 												 char *operatorName);
 
-static void ProcessDollarIn(void *state, bson_value_t *result);
+static void ProcessDollarIn(bson_value_t *targetValue, const bson_value_t *searchArray,
+							const char *collationString, bson_value_t *result);
 static void ProcessDollarSlice(void *state, bson_value_t *result);
 static void ProcessDollarArrayElemAt(void *state, bson_value_t *result);
 static void ProcessDollarIsArray(const bson_value_t *currentValue, bson_value_t *result);
@@ -462,19 +471,24 @@ ParseDollarIn(const bson_value_t *argument, AggregationExpressionData *data,
 	if (IsAggregationExpressionConstant(firstArg) && IsAggregationExpressionConstant(
 			secondArg))
 	{
-		DualArgumentExpressionState state;
-		memset(&state, 0, sizeof(DualArgumentExpressionState));
-		InitializeDualArgumentExpressionState(firstArg->value, secondArg->value, false,
-											  &state);
-
-		ProcessDollarIn(&state, &data->value);
+		ProcessDollarIn(&firstArg->value, &secondArg->value, context->collationString,
+						&data->value);
 		data->kind = AggregationExpressionKind_Constant;
 		list_free_deep(parsedArguments);
 	}
 	else
 	{
-		data->operator.arguments = parsedArguments;
-		data->operator.argumentsKind = argumentsKind;
+		DollarInArguments *state = palloc0(sizeof(DollarInArguments));
+		state->targetValue = firstArg;
+		state->searchArray = secondArg;
+
+		if (IsCollationApplicable(context->collationString))
+		{
+			state->collationString = pstrdup(context->collationString);
+		}
+
+		data->operator.arguments = state;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 	}
 }
 
@@ -485,29 +499,25 @@ ParseDollarIn(const bson_value_t *argument, AggregationExpressionData *data,
 void
 HandlePreParsedDollarIn(pgbson *doc, void *argument, ExpressionResult *expressionResult)
 {
-	List *arguments = (List *) argument;
+	DollarInArguments *state = (DollarInArguments *) argument;
 
 	bool isNullOnEmpty = false;
 	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
 
-	AggregationExpressionData *firstArg = list_nth(arguments, 0);
+	AggregationExpressionData *firstArg = state->targetValue;
 	EvaluateAggregationExpressionData(firstArg, doc, &childResult, isNullOnEmpty);
 	bson_value_t firstValue = childResult.value;
 	bool hasFieldExpression = childResult.isFieldPathExpression;
 
 	ExpressionResultReset(&childResult);
 
-	AggregationExpressionData *secondArg = list_nth(arguments, 1);
+	AggregationExpressionData *secondArg = state->searchArray;
 	EvaluateAggregationExpressionData(secondArg, doc, &childResult, isNullOnEmpty);
 	bson_value_t secondValue = childResult.value;
 	hasFieldExpression = hasFieldExpression || childResult.isFieldPathExpression;
 
-	DualArgumentExpressionState state;
-	InitializeDualArgumentExpressionState(firstValue, secondValue, hasFieldExpression,
-										  &state);
-
 	bson_value_t result;
-	ProcessDollarIn(&state, &result);
+	ProcessDollarIn(&firstValue, &secondValue, state->collationString, &result);
 	ExpressionResultSetValue(expressionResult, &result);
 }
 
@@ -2780,38 +2790,33 @@ HandlePreParsedDollarArrayElemAtCore(pgbson *doc, void *argument,
  * Process the $in operator and returns true or false if the first argument is
  * found or not in the second argument which is the array to search. */
 static void
-ProcessDollarIn(void *state, bson_value_t *result)
+ProcessDollarIn(bson_value_t *targetValue, const bson_value_t *searchArray,
+				const char *collationString, bson_value_t *result)
 {
-	DualArgumentExpressionState *dollarInState =
-		(DualArgumentExpressionState *) state;
-
-	bson_value_t array = dollarInState->secondArgument;
-
-	if (array.value_type != BSON_TYPE_ARRAY)
+	if (searchArray->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARINREQUIRESARRAY), errmsg(
 							"$in requires an array as a second argument, found: %s",
-							array.value_type == BSON_TYPE_EOD ?
+							searchArray->value_type == BSON_TYPE_EOD ?
 							MISSING_TYPE_NAME :
-							BsonTypeName(array.value_type)),
+							BsonTypeName(searchArray->value_type)),
 						errdetail_log(
 							"$in requires an array as a second argument, found: %s",
-							array.value_type == BSON_TYPE_EOD ?
+							searchArray->value_type == BSON_TYPE_EOD ?
 							MISSING_TYPE_NAME :
-							BsonTypeName(array.value_type))));
+							BsonTypeName(searchArray->value_type))));
 	}
 
 	bool found = false;
-	bson_value_t elementToFind = dollarInState->firstArgument;
 	bson_iter_t arrayIterator;
-	BsonValueInitIterator(&array, &arrayIterator);
+	BsonValueInitIterator(searchArray, &arrayIterator);
 
 	/* $in expression doesn't support matching by regex */
 	while (bson_iter_next(&arrayIterator))
 	{
 		const bson_value_t *currentValue = bson_iter_value(&arrayIterator);
 
-		if (elementToFind.value_type == BSON_TYPE_NULL &&
+		if (targetValue->value_type == BSON_TYPE_NULL &&
 			currentValue->value_type == BSON_TYPE_NULL)
 		{
 			found = true;
@@ -2819,8 +2824,10 @@ ProcessDollarIn(void *state, bson_value_t *result)
 		}
 
 		bool isComparisonValid = false;
-		int cmp = CompareBsonValueAndType(&elementToFind, currentValue,
-										  &isComparisonValid);
+		int cmp = CompareBsonValueAndTypeWithCollation(targetValue, currentValue,
+													   &isComparisonValid,
+													   collationString);
+
 		if (cmp == 0 && isComparisonValid)
 		{
 			found = true;
