@@ -186,6 +186,8 @@ extern bool DefaultEnableLargeUniqueIndexKeys;
 extern bool SkipFailOnCollation;
 extern bool DisableStatisticsForUniqueColumns;
 
+char *AlternateIndexHandler = NULL;
+
 #define WILDCARD_INDEX_SUFFIX "$**"
 #define DOT_WILDCARD_INDEX_SUFFIX "." WILDCARD_INDEX_SUFFIX
 #define DOUBLE_DOT_IN_INDEX_PATH ".."
@@ -311,7 +313,8 @@ static char * GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexD
 								   indexDefWildcardProjTree,
 								   const char *indexName, const char *defaultLanguage,
 								   const char *languageOverride,
-								   bool enableLargeIndexKeys);
+								   bool enableLargeIndexKeys,
+								   bool supportsAlternateIndexHandler);
 static char * Generate2dsphereIndexExprStr(const IndexDefKey *indexDefKey);
 static char * Generate2dsphereSparseExprStr(const IndexDefKey *indexDefKey);
 static char * GenerateIndexFilterStr(uint64 collectionId, Expr *indexDefPartFilterExpr);
@@ -381,6 +384,21 @@ ComputeIndexTermLimit(uint32_t baseIndexTermLimit)
 	}
 
 	return indexTermLimit;
+}
+
+
+/*
+ * Helper function to get the name of the index handler to use.
+ */
+inline static char *
+GetIndexAmHandlerName(bool supportsAlternateIndexHandler)
+{
+	if (supportsAlternateIndexHandler && AlternateIndexHandler != NULL)
+	{
+		return AlternateIndexHandler;
+	}
+
+	return "rum";
 }
 
 
@@ -4413,6 +4431,7 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 			enableLargeIndexKeys = true;
 		}
 
+		bool supportsAlternateIndexHandler = false;
 		appendStringInfo(cmdStr,
 						 " ADD CONSTRAINT " DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT
 						 " EXCLUDE USING %s_rum (%s) %s%s%s",
@@ -4422,7 +4441,8 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 											  indexDef->name,
 											  indexDef->defaultLanguage,
 											  indexDef->languageOverride,
-											  enableLargeIndexKeys),
+											  enableLargeIndexKeys,
+											  supportsAlternateIndexHandler),
 						 indexDef->partialFilterExpr ? "WHERE (" : "",
 						 indexDef->partialFilterExpr ?
 						 GenerateIndexFilterStr(collectionId,
@@ -4543,15 +4563,30 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 								   BoolIndexOption_False;
 		}
 
+		/* Currently alternate index handler is only supported for single path simple indexes, this will be updated as we add more support. */
+		bool supportsAlternateIndexHandler = AlternateIndexHandler != NULL &&
+											 !indexDef->unique &&
+											 indexDef->wildcardProjectionTree == NULL &&
+											 !indexDef->key->isWildcard &&
+											 list_length(indexDef->key->keyPathList) ==
+											 1 &&
+											 ((IndexDefKeyPath *) linitial(
+												  indexDef->key->keyPathList))->indexKind
+											 == MongoIndexKind_Regular;
+
+		char *indexAmSuffix = GetIndexAmHandlerName(supportsAlternateIndexHandler);
+
 		appendStringInfo(cmdStr,
-						 " USING %s_rum (%s) %s%s%s",
+						 " USING %s_%s (%s) %s%s%s",
 						 ExtensionObjectPrefix,
+						 indexAmSuffix,
 						 GenerateIndexExprStr(unique, sparse, indexDef->key,
 											  indexDef->wildcardProjectionTree,
 											  indexDef->name,
 											  indexDef->defaultLanguage,
 											  indexDef->languageOverride,
-											  enableLargeIndexKeys),
+											  enableLargeIndexKeys,
+											  supportsAlternateIndexHandler),
 						 indexDef->partialFilterExpr ? "WHERE (" : "",
 						 indexDef->partialFilterExpr ?
 						 GenerateIndexFilterStr(collectionId,
@@ -4883,9 +4918,12 @@ static char *
 GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 					 const BsonIntermediatePathNode *indexDefWildcardProjTree,
 					 const char *indexName, const char *defaultLanguage,
-					 const char *languageOverride, bool enableLargeIndexKeys)
+					 const char *languageOverride, bool enableLargeIndexKeys,
+					 bool supportsAlternateIndexHandler)
 {
 	StringInfo indexExprStr = makeStringInfo();
+
+	char *indexOpClassAmName = GetIndexAmHandlerName(supportsAlternateIndexHandler);
 
 	char *languageOptionKey = "";
 	char *languageOptionValue = "";
@@ -4954,9 +4992,10 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 		if (indexDefKey->hasTextIndexes)
 		{
 			appendStringInfo(indexExprStr,
-							 "%s document %s.bson_rum_text_path_ops(weights=%s%s%s%s%s%s)",
+							 "%s document %s.bson_%s_text_path_ops(weights=%s%s%s%s%s%s)",
 							 firstColumnWritten ? "," : "",
 							 ApiCatalogSchemaName,
+							 indexOpClassAmName,
 							 quote_literal_cstr(SerializeWeightedPaths(
 													indexDefKey->textPathList)),
 							 list_length(indexDefKey->textPathList) == 0 ?
@@ -4968,10 +5007,11 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 		else if (!indexDefWildcardProjTree)
 		{
 			appendStringInfo(indexExprStr,
-							 "%s document %s.bson_rum_single_path_ops"
+							 "%s document %s.bson_%s_single_path_ops"
 							 "(path='', iswildcard=true%s%s)",
 							 firstColumnWritten ? "," : "",
 							 ApiCatalogSchemaName,
+							 indexOpClassAmName,
 							 indexTermSizeLimitArg,
 							 wildcardIndexTruncatedPathLimit);
 
@@ -4995,10 +5035,11 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 			 */
 			bool includeId = wpPathOps->idFieldInclusion == WP_IM_INCLUDE;
 			appendStringInfo(indexExprStr,
-							 "%s document %s.bson_rum_wildcard_project_path_ops"
+							 "%s document %s.bson_%s_wildcard_project_path_ops"
 							 "(includeid=%s%s%s",
 							 firstColumnWritten ? "," : "",
 							 ApiCatalogSchemaName,
+							 indexOpClassAmName,
 							 includeId ? "true" : "false",
 							 indexTermSizeLimitArg,
 							 wildcardIndexTruncatedPathLimit);
@@ -5094,9 +5135,10 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 					}
 
 					appendStringInfo(indexExprStr,
-									 "%s document %s.bson_rum_single_path_ops(path=%s%s%s%s)",
+									 "%s document %s.bson_%s_single_path_ops(path=%s%s%s%s)",
 									 firstColumnWritten ? "," : "",
 									 ApiCatalogSchemaName,
+									 indexOpClassAmName,
 									 quote_literal_cstr(keyPath),
 									 indexKeyPath->isWildcard ? ",iswildcard=true" : "",
 									 indexTermSizeLimitArg,
@@ -5134,10 +5176,11 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 					}
 
 					appendStringInfo(indexExprStr,
-									 "%s document %s.%s_rum_hashed_ops(path=%s)",
+									 "%s document %s.%s_%s_hashed_ops(path=%s)",
 									 firstColumnWritten ? "," : "",
 									 ApiCatalogSchemaName,
 									 ExtensionObjectPrefix,
+									 indexOpClassAmName,
 									 quote_literal_cstr(keyPath));
 					break;
 				}
@@ -5152,9 +5195,10 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 					}
 
 					appendStringInfo(indexExprStr,
-									 "%s document %s.bson_rum_text_path_ops(weights=%s%s%s%s%s%s)",
+									 "%s document %s.bson_%s_text_path_ops(weights=%s%s%s%s%s%s)",
 									 firstColumnWritten ? "," : "",
 									 ApiCatalogSchemaName,
+									 indexOpClassAmName,
 									 quote_literal_cstr(SerializeWeightedPaths(
 															indexDefKey->textPathList)),
 									 indexKeyPath->isWildcard ? ", iswildcard=true" : "",
@@ -5201,9 +5245,10 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 		if (indexDefKey->hasTextIndexes && !textOptionsIndexWritten)
 		{
 			appendStringInfo(indexExprStr,
-							 "%s document %s.bson_rum_text_path_ops(weights=%s%s%s%s%s%s)",
+							 "%s document %s.bson_%s_text_path_ops(weights=%s%s%s%s%s%s)",
 							 firstColumnWritten ? "," : "",
 							 ApiCatalogSchemaName,
+							 indexOpClassAmName,
 							 quote_literal_cstr(SerializeWeightedPaths(
 													indexDefKey->textPathList)),
 							 indexDefKey->isWildcard ? ", iswildcard=true" : "",
