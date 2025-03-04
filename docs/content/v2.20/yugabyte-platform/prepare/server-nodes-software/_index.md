@@ -88,26 +88,6 @@ In your certificate authority UI (for example, Venafi), generate the following:
 
 In addition, you add the certificates to YugabyteDB Anywhere.
 
-For more information, refer to [CA certificates](../../security/enable-encryption-in-transit/add-certificate-ca/).
-
-#### CA certificates
-
-By default, YugabyteDB Anywhere can automatically generate and copy self-signed TLS certificates used for node-to-node encryption in transit to universe nodes when the universe is created.
-
-However, if you want to use your own CA certificates, you must manually copy them to universe nodes. (CA certificates can only be used with on-premises universes.)
-
-In your certificate authority UI (for example, Venafi), generate the following:
-
-- Server certificates to use for node-to-node encryption; that is, for the VMs to be used for universes.
-
-    These certificates must be copied to each of the VMs you will use in your universes.
-
-- A certificate to use for client-to-node encryption; that is, for encrypting traffic between the database cluster and applications and clients.
-
-    This certificate must also be copied to your application client.
-
-In addition, you add the certificates to YugabyteDB Anywhere.
-
 For more information, refer to [CA certificates](../../security/enable-encryption-in-transit/#use-custom-ca-signed-certificates-to-enable-tls).
 
 ### Additional software for airgapped deployment
