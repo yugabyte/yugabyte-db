@@ -202,15 +202,13 @@ execute_python() {
 
 # Function for importing the GPG key if required.
 import_gpg_key_if_required() {
-    if [[ "$cloud_type" == "gcp" ]]; then
-        # Check if the OS is Red Hat-based (RHEL, Rocky, Alma)
-        if grep -qiE "rhel|rocky|almalinux" /etc/os-release; then
-            echo "Importing RPM keys for Red Hat-based OS"
-            rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux
-            echo "Successfully imported GPG keys"
-        else
-            echo "Skipping GPG key import as the OS is not Red Hat-based."
-        fi
+    # Check if the OS is Red Hat-based (RHEL, Rocky, Alma)
+    if grep -qiE "rhel|rocky|almalinux" /etc/os-release; then
+        echo "Importing RPM keys for Red Hat-based OS"
+        rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux
+        echo "Successfully imported GPG keys"
+    else
+        echo "Skipping GPG key import as the OS is not Red Hat-based."
     fi
 }
 
