@@ -49,6 +49,8 @@ SELECT age('3'::xid);
 (1 row)
 
 BEGIN ISOLATION LEVEL READ COMMITTED;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 REFRESH MATERIALIZED VIEW mv_xid_test;
 INSERT INTO t_simple VALUES (13), (14);
@@ -66,7 +68,7 @@ COMMIT;
 SELECT age('3'::xid);
  age
 -----
-   4
+   3
 (1 row)
 
 CREATE TABLE test_yb (col int);
@@ -108,7 +110,7 @@ ERROR:  relation "mtest_yb" does not exist
 LINE 1: SELECT * FROM mtest_yb;
                       ^
 SELECT * from mtest_yb1; -- ok
- id | type | val 
+ id | type | val
 ----+------+-----
   1 | xyz  |   2
 (1 row)
@@ -117,7 +119,7 @@ REFRESH MATERIALIZED VIEW mtest_yb1;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb1;
 ALTER MATERIALIZED VIEW mtest_yb1 RENAME TO mtest_yb2;
 SELECT * from mtest_yb2;
- id | type | val 
+ id | type | val
 ----+------+-----
   1 | xyz  |   2
 (1 row)
@@ -126,7 +128,7 @@ REFRESH MATERIALIZED VIEW mtest_yb2;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb2;
 ALTER MATERIALIZED VIEW mtest_yb2 RENAME val TO total; -- test Alter Rename Column
 SELECT * FROM mtest_yb2;
- id | type | total 
+ id | type | total
 ----+------+-------
   1 | xyz  |     2
 (1 row)
@@ -393,7 +395,7 @@ CREATE TABLE base (col int);
 CREATE MATERIALIZED VIEW mv AS SELECT * FROM base;
 CREATE UNIQUE INDEX mv_idx ON mv(col);
 SELECT * FROM mv;
- col 
+ col
 -----
 (0 rows)
 
@@ -401,20 +403,20 @@ INSERT INTO base VALUES (1);
 REFRESH MATERIALIZED VIEW mv;
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
     yb_table_properties('mv'::regclass);
- num_tablets | num_hash_key_columns | is_colocated 
+ num_tablets | num_hash_key_columns | is_colocated
 -------------+----------------------+--------------
            1 |                    0 | t
 (1 row)
 
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
     yb_table_properties('mv_idx'::regclass);
- num_tablets | num_hash_key_columns | is_colocated 
+ num_tablets | num_hash_key_columns | is_colocated
 -------------+----------------------+--------------
            1 |                    0 | t
 (1 row)
 
 SELECT * FROM mv;
- col 
+ col
 -----
    1
 (1 row)
@@ -422,7 +424,7 @@ SELECT * FROM mv;
 INSERT INTO base VALUES (2);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 SELECT * FROM mv ORDER BY col;
- col 
+ col
 -----
    1
    2
@@ -436,7 +438,7 @@ LINE 1: SELECT * FROM mv;
 CREATE MATERIALIZED VIEW mv WITH (COLOCATION=false) AS SELECT * FROM base;
 CREATE UNIQUE INDEX mv_idx ON mv(col);
 SELECT * FROM mv ORDER BY col;
- col 
+ col
 -----
    1
    2
@@ -446,20 +448,20 @@ INSERT INTO base VALUES (3);
 REFRESH MATERIALIZED VIEW mv;
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
     yb_table_properties('mv'::regclass);
- num_tablets | num_hash_key_columns | is_colocated 
+ num_tablets | num_hash_key_columns | is_colocated
 -------------+----------------------+--------------
            3 |                    1 | f
 (1 row)
 
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
     yb_table_properties('mv_idx'::regclass);
- num_tablets | num_hash_key_columns | is_colocated 
+ num_tablets | num_hash_key_columns | is_colocated
 -------------+----------------------+--------------
            3 |                    1 | f
 (1 row)
 
 SELECT * FROM mv ORDER BY col;
- col 
+ col
 -----
    1
    2
@@ -469,7 +471,7 @@ SELECT * FROM mv ORDER BY col;
 INSERT INTO base VALUES (4);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 SELECT * FROM mv ORDER BY col;
- col 
+ col
 -----
    1
    2
@@ -524,7 +526,7 @@ CREATE MATERIALIZED VIEW mv AS SELECT * FROM test_yb;
 CREATE INDEX idx ON mv(t) SPLIT INTO 5 TABLETS;
 REFRESH MATERIALIZED VIEW mv;
 SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx'::regclass);
- num_tablets | num_hash_key_columns 
+ num_tablets | num_hash_key_columns
 -------------+----------------------
            3 |                    1
 (1 row)

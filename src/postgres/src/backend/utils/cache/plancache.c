@@ -446,7 +446,7 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	plansource->resultDesc = PlanCacheComputeResultDesc(querytree_list);
 
 	/* If the planner txn uses a pg relation, so will the execution txn */
-	plansource->usesPostgresRel = IsCurrentTxnWithPGRel();
+	plansource->usesPostgresRel = YbGetPgOpsInCurrentTxn() & YB_TXN_USES_TEMPORARY_RELATIONS;
 
 	MemoryContextSwitchTo(oldcxt);
 
