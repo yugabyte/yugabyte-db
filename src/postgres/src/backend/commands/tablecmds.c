@@ -5983,7 +5983,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		 * determine what rows are visible to a specific transaction.
 		 */
 		if (!IsYBRelationById(tab->relid) && tab->rewrite > 0)
-			SetTxnWithPGRel();
+			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 
 		/*
 		 * If we change column data types, the operation has to be propagated

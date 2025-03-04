@@ -3096,12 +3096,20 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 
 				is_breaking_change = false;
 				if (stmt->concurrent)
+				{
 					/*
 					 * REFRESH MATERIALIZED VIEW CONCURRENTLY does not need
 					 * a catalog version increment as it does not alter any
 					 * metadata. The command only performs data changes.
 					 */
 					is_version_increment = false;
+					/*
+					 * REFRESH MATERIALIZED VIEW CONCURRENTLY uses temp tables
+					 * which generates a PostgreSQL XID. Mark the transaction
+					 * as such, so that it can be handled at commit time.
+					 */
+					YbSetTxnWithPgOps(YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY);
+				}
 				else
 					/*
 					 * REFRESH MATERIALIZED VIEW NONCONCURRENTLY needs a catalog

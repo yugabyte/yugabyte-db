@@ -191,7 +191,7 @@ ExecuteQuery(ParseState *pstate,
 	 */
 	if (entry->plansource->usesPostgresRel)
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	/* Evaluate parameters, if any */
