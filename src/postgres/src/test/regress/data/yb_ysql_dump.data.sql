@@ -31,6 +31,14 @@ SET row_security = off;
 \set use_roles true
 \endif
 
+-- YB: disable auto analyze to avoid conflicts with catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
+END IF;
+END $$;
+
 --
 -- Name: hint_plan; Type: SCHEMA; Schema: -; Owner: yugabyte_test
 --
@@ -2487,6 +2495,14 @@ GRANT SELECT ON TABLE public.rls_private TO rls_user;
 GRANT ALL ON TABLE public.rls_public TO PUBLIC;
 \endif
 
+
+-- YB: re-enable auto analyze after all catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+END IF;
+END $$;
 
 --
 -- YSQL database dump complete

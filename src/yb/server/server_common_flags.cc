@@ -13,7 +13,11 @@
 
 // This file contains the gFlags that are common across yb-master and yb-tserver processes.
 
+#include "yb/server/server_common_flags.h"
+
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 
 // User specified identifier for this cluster. On the first master leader setup, this is stored in
 // the cluster_config. if not specified, a random UUID is generated.
@@ -41,3 +45,27 @@ DEFINE_RUNTIME_AUTO_bool(ycql_suppress_group_by_error, kLocalVolatile, true, fal
 
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_advisory_locks, false,
                                "Whether to enable advisory locks.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
+    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and "
+    "11.");
+DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11));
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_upgrade_to_pg15_completed, kLocalPersisted, false, true,
+    "Indicates the state of YSQL major upgrade to PostgreSQL version 15. Do not modify this "
+    "manually.");
+
+namespace yb {
+
+bool IsYsqlMajorVersionUpgradeInProgress() {
+  // yb_upgrade_to_pg15_completed is only available on the newer code version.
+  // So we use yb_major_version_upgrade_compatibility to determine if the YSQL major upgrade is in
+  // progress on processes running the older version.
+  // We cannot rely on yb_major_version_upgrade_compatibility only, since it will be reset in the
+  // Monitoring Phase.
+  //  DevNote: Keep this in sync with YBCPgYsqlMajorVersionUpgradeInProgress.
+  return FLAGS_ysql_yb_major_version_upgrade_compatibility > 0 ||
+         !FLAGS_ysql_yb_upgrade_to_pg15_completed;
+}
+
+}  // namespace yb

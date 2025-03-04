@@ -112,19 +112,15 @@ CREATE TABLE test_table_2(id INT PRIMARY KEY, aa INT, bb INT);
 
 ### YugabyteDB semantics
 
-Unlike PostgreSQL, any changes made to the publication's tables list are not applied immediately in YugabyteDB. Instead the publication's tables list is periodically refreshed, and changes, if any, are applied. The refresh interval is managed using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. The default is one hour (3600 sec). This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case.
+Unlike PostgreSQL, any changes made to the publication's tables list are not applied immediately in YugabyteDB. Instead the publication's tables list is periodically refreshed, and changes (if any) are applied. The refresh interval is managed using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. The default is 15 minutes (900 seconds). This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case.
 
-Consider the following example:
+Consider an example where the `cdcsdk_publication_list_refresh_interval_secs` flag is set to 900 seconds (15 minutes) and the publication's tables list is being refreshed every 15 minutes at 8:00 am, 8:15 am, 8:30 am, and so on.
 
-- Suppose that the value of the flag `cdcsdk_publication_list_refresh_interval_secs` is 3600 sec (1 hour) and the publication's tables list is being refreshed every hour at 8 am, 9 am, 10 am, and so on.
+A change made to the publication's tables list at 8:01 am will be applied at 8:15 am. Equally, a change made to the publication's tables list at 8:14 am will also be applied at 8:15 am.
 
-- If any change is made to publication's tables list at 8:01 am, then this change will be applied at 9:00 am. However, any change made to publication's tables list at 8:59 am will also be applied at 9:00 am.
+You can change the value of this flag at run time, but the change becomes effective only after some time. For example, suppose you change the `cdcsdk_publication_list_refresh_interval_secs` flag from 900 seconds (15 minutes) to 300 seconds (5 minutes) at 8:01 am.
 
-The value of this flag can be changed at run time, but the change becomes effective only after some time. Continuing the example:
-
-- Suppose that the value of the flag `cdcsdk_publication_list_refresh_interval_secs` is changed from 3600 sec (1 hour) to 600 sec (10 minutes) at 8:01 am.
-
-- This change will only be applied after 9:00 am. That is, the publication's tables list will be next refreshed at 9:00 am. Then, the next refresh will happen at 9:10 am, and the subsequent refreshes will take place every 10 minutes.
+This change will only be applied after 8:15 am. That is, the publication's tables list will next be refreshed at 8:15 am. Then the next refresh will happen at 8:20 am, and subsequent refreshes will take place every 5 minutes.
 
 ### Required settings
 
@@ -136,11 +132,15 @@ To enable dynamic table addition, perform the following steps:
     ./yb-ts-cli --server_address=<tserverIpAddress:tserverPort> set_flag cdcsdk_publication_list_refresh_interval_secs 120
     ```
 
-1. After you start receiving records from the newly added table in the publication, reset the  `cdcsdk_publication_list_refresh_interval_secs` flag to a high value (for example, 3600 seconds).
+1. After you start receiving records from the newly added table in the publication, reset the  `cdcsdk_publication_list_refresh_interval_secs` flag back to its original value (i.e 900 seconds).
 
     ```sh
-    ./yb-ts-cli --server_address=<tserverIpAddress:tserverPort> set_flag cdcsdk_publication_list_refresh_interval_secs 3600
+    ./yb-ts-cli --server_address=<tserverIpAddress:tserverPort> set_flag cdcsdk_publication_list_refresh_interval_secs 900
     ```
+
+{{< note title="Important" >}}
+If you lower the value of `cdcsdk_publication_list_refresh_interval_secs`, you should set the value of the flag back to its original value after you start receiving changes from the new table, as every refresh incurs overhead.
+{{< /note >}}
 
 ## Initial snapshot
 
@@ -162,6 +162,47 @@ from pg_replication_slots where slot_name = <slot_name>;
 ```
 
 For more information on the `pg_replication_slots` catalog view, refer to [pg_replication_slots](../monitor/#pg-replication-slots).
+
+### Using the HYBRID_TIME LSN
+
+YugabyteDB currently supports two types of [LSN](../key-concepts/#lsn-type), SEQUENCE and HYBRID_TIME. In HYBRID_TIME mode, you can specify a hybrid time value `t` in the `pg_lsn` format and the replication stream will begin streaming transactions committed after `t`.
+
+To obtain the current hybrid time value, use the `yb_get_current_hybrid_time_lsn()` function:
+
+```sql
+select * from yb_get_current_hybrid_time_lsn();
+```
+
+This gives an output in terms of a long value. You can further convert this to `pg_lsn` format by defining the following method:
+
+```sql
+CREATE OR REPLACE FUNCTION get_current_lsn_format()
+RETURNS text AS $$
+DECLARE
+    ht_lsn bigint;
+    formatted_lsn text;
+BEGIN
+    SELECT yb_get_current_hybrid_time_lsn() INTO ht_lsn;
+    SELECT UPPER(format('%s/%s', to_hex(ht_lsn >> 32), to_hex(ht_lsn & 4294967295)))
+    INTO formatted_lsn;
+    RETURN formatted_lsn;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+Using the value from the method `get_current_lsn_format()`, you can now start your replication stream using:
+
+```sh
+START_REPLICATION SLOT rs LOGICAL 62D63025/5462E000;
+```
+
+{{< note title="Important" >}}
+
+The replication slot being used must be created with LSN type `HYBRID_TIME`.
+
+The `yb_get_current_hybrid_time_lsn()` function only works with LSN type `HYBRID_TIME`, and will not work with `SEQUENCE`.
+
+{{< /note >}}
 
 ### Permissions
 

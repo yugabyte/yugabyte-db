@@ -39,6 +39,7 @@ import shlex
 import subprocess
 import sys
 import time
+from typing import List
 
 try:
     import html
@@ -1774,13 +1775,16 @@ class NodeChecker():
                     try:
                         table_schema_json = json.loads(table_schema_response)
                     except Exception as ex:
+                        # Somehow this can happen during DDL operations.
+                        # We will recheck once, and if happens again - raise an error.
                         logging.warning("Table HTTP API response is not a valid json: %s",
                                          table_schema_response)
-                        metric.add_value(0)
-                        return (e.fill_and_return_entry(
-                            ['Table HTTP API response is not a valid json'],
-                            has_error=True,
-                            metrics=[metric]), [])
+                        tables_with_errors.append(tableid)
+                        errors.append(("Table {} with oid {} and uuid {} exists in {} but master "
+                                       "leader API returns wrong table details - {}")
+                                       .format(tablename, pg_oid, tableid, dbname,
+                                               table_schema_response))
+                        continue
                     columns = [html.unescape(
                         column['column']) for column in table_schema_json["columns"]]
                     # Check if each column exists in pg_attribute
@@ -1841,7 +1845,11 @@ class NodeChecker():
 
     def check_yb_node_clock_drift(self):
         e = self._new_entry("Node Clock Drift")
-        if not chrony_exists() and not ntp_exists() and not timesyncd_exists():
+        ntp_services = [_ChronyService(), _NtpdService(), _SystemdTimesyncdService()]
+        found_services = [service for service in ntp_services if service.exists()]
+        # First check to make sure at least 1 service is installed, and if we need to skip the check
+        # otherwise.
+        if not found_services:
             if self.clock_service_required:
                 return e.fill_and_return_entry(["no time sync service found (chrony, ntp(d) or " +
                                                "timesyncd)"],
@@ -1849,19 +1857,40 @@ class NodeChecker():
             return e.ignore_check()
         # metrics[0] is clock drift metric
         # metrics[1] is ntp service status
+        # Initialize both with default values
         metrics = [
-            Metric.from_definition(YB_NODE_CLOCK_DRIFT_CHECK),
-            Metric.from_definition(YB_NODE_NTP_SERVICE_STATUS)
+            Metric.from_definition(YB_NODE_CLOCK_DRIFT_CHECK).add_value(0),
+            Metric.from_definition(YB_NODE_NTP_SERVICE_STATUS).add_value(0)
         ]
-        service_status = get_ntp_service_status()
-        service_error = service_status == 0
-        msgs = ["Ntp service is%s running" % " not" if service_error else ""]
-        metrics[1].add_value(service_status)
-        drift_ms = get_clock_drift_ms()
-        # Returns error string on failure, int on success
-        if isinstance(drift_ms, str):
-          msgs.append(drift_ms)
-          return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
+
+        # Ensure 1 service is active
+        active_service = None
+        for service in found_services:
+            if service.is_running():
+                active_service = service
+                break
+        if active_service is None:
+            msgs = ["Found ntp services {}, but none are running".format(
+               ", ".join([s.name() for s in found_services]))]
+            return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
+        msgs = ["Ntp service {} is running".format(active_service.name())]
+
+        # Validate clock is synced
+        in_sync = get_timedatectl_sync()
+        if not in_sync:
+            msgs.append("System clock is not synchronized")
+            return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
+
+        # Service is running and clock is synced.
+        metrics[1].add_value(1)
+
+        # Validate drift time is in a good state
+        try:
+            drift_ms = active_service.drift_ms()
+        except Exception as ex:
+            msgs.append("Failed to get clock drift: {}".format(str(ex)))
+            return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
+
         metrics[0].add_value(drift_ms)
         if drift_ms > self.time_drift_err_threshold:
             msgs.append("Node clock drift is {} ms, over {} ms".format(
@@ -1870,12 +1899,10 @@ class NodeChecker():
         if drift_ms > self.time_drift_wrn_threshold:
             msgs.append("Node clock drift is {} ms, over {} ms".format(
                 drift_ms, self.time_drift_wrn_threshold))
-            if service_error:
-                return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
             return e.fill_and_return_warning_entry(msgs, metrics=metrics)
 
         msgs.append("%s ms" % drift_ms)
-        return e.fill_and_return_entry(msgs, has_error=service_error, metrics=metrics)
+        return e.fill_and_return_entry(msgs, metrics=metrics)
 
     def check_process_stats(self, process_name):
         metrics = [Metric.from_definition(YB_PROCESS_CPU_SECONDS_TOTAL),
@@ -2160,103 +2187,9 @@ def is_equal_release_build(release_build1, release_build2):
     return (is_equal_or_newer_release_build(release_build1, release_build2) and
             is_equal_or_newer_release_build(release_build2, release_build1))
 
-def get_clock_drift_ms():
-    if chrony_exists():
-        return _chrony_get_clock_drift_ms()
-    if ntp_exists():
-        return _ntp_get_clock_drift_ms()
-    if timesyncd_exists():
-        return _timesyncd_get_clock_drift_ms()
-    logging.error("unknown time service: must be ntp(d) or chrony")
-    return "Failed to get clock drift"
-
-
-def _chrony_get_clock_drift_ms():
-    """
-    Get the clock drift in milliseconds. Returns absolute value of the drift
-    """
-    env = os.environ.copy()
-    chrony_out = check_output("systemctl status chronyd.service", env)
-    if "Error" not in chrony_out and "Active: active" in chrony_out:
-        # Check drift using chrony
-        out = check_output("chronyc tracking", env)
-        skew_match = re.search("System time.*: (.*) second", out, re.MULTILINE)
-        delay_match = re.search("Root delay.*: (.*) second", out, re.MULTILINE)
-        dispersion_match = re.search("Root dispersion.*: (.*) second", out, re.MULTILINE)
-        if skew_match and delay_match and dispersion_match:
-            skew = float(skew_match.group(1))
-            delay = float(delay_match.group(1))
-            dispersion = float(dispersion_match.group(1))
-            # Main algorithm is (skew + dispersion + (.5 * delay))
-            return (skew + dispersion + (.5 * delay)) * 1000 # Convert seconds to milliseconds
-    return "Failed to get clock drift from chrony"
-
-def _ntp_get_clock_drift_ms():
-    env = os.environ.copy()
-    ntp_out = check_output("systemctl status ntp.service", env)
-    ntpd_out = check_output("systemctl status ntpd.service", env)
-    if "Active: active" in ntp_out or "Active: active" in ntpd_out:
-        out = check_output("ntpq -p | awk '$1 ~ \"^*\" {print $9}'", env)
-        if "Error" not in out and out.strip() != "":
-            return int(float(out)) # ntpq -p offset is already in milliseconds
-    return "Failed to get clock drift from ntp(d)"
-
-def _timesyncd_get_clock_drift_ms():
-    # Timesyncd does not do incremental clock drift correction, and instead will step the clock
-    # to be correct. We will return 0 here and handle a not-synced system with other errors.
-    return 0
-
-# return 1 if ntp service status is good, 0 otherwise.
-# A good status is both having timedatectl show the system clock is "in sync" and
-# having the specific ntp service (chrony, ntpd, or timesyncd) be running.
-def get_ntp_service_status():
-    # First we check if the clock is synced, and fail if its not
-    if get_timedatectl_sync() == 0:
-        return 0
-    if chrony_exists():
-        return 1 if is_service_running("chronyd.service") else 0
-    elif ntp_exists():
-        ntp_running = is_service_running("ntp.service")
-        ntpd_running = is_service_running("ntpd.service")
-        return 1 if ntp_running or ntpd_running else 0
-    elif timesyncd_exists():
-        return get_timedatectl_status()
-    logging.error("unknown time service: must be ntp(d), chrony, or systemd-timesyncd")
-    return 0
-
-def chrony_exists():
-    env = os.environ.copy()
-    chrony_out = check_output("command -v chronyc", env)
-    return "Error" not in chrony_out
-
-def ntp_exists():
-    env = os.environ.copy()
-    ntp_out = check_output("command -v ntpq", env)
-    return "Error" not in ntp_out
-
-def timesyncd_exists():
-    env = os.environ.copy()
-    timesyncd_out = check_output("systemctl status systemd-timesyncd", env)
-    return "Error" not in timesyncd_out
-
-# Returns 1 if timesyncd is running 0 otherwise.
-def get_timedatectl_status():
-    # timesyncd is not running
-    if not is_service_running("systemd-timesyncd.service"):
-        return 0
-    return 1
-
-# Returns 1 if system clock is synchronized 0 otherwise.
-def get_timedatectl_sync():
-    env = os.environ.copy()
-    out = check_output("timedatectl status", env)
-    if "System clock synchronized: yes" in out:
-        return 1
-    return 0
-
 def is_service_running(service_name):
     env = os.environ.copy()
-    cmd = "systemctl show --no-pager {}".format(service_name)
+    cmd = "systemctl show --no-pager -p LoadState,ActiveState {}".format(service_name)
     out = check_output(cmd, env)
     if out.startswith("Error"):
         logging.warning("failed to determine if {} is running".format(service_name))
@@ -2269,6 +2202,87 @@ def is_service_running(service_name):
             return value == "active"
     logging.warning("No 'ActiveState' or 'LoadState' found in service details")
     return False
+
+class _NtpServiceBase:
+    _name = None
+    _exists_cmd = None
+    def name(self) -> str:
+        return self._name
+
+    def exists(self) -> bool:
+        if self._exists_cmd is None:
+            raise NotImplementedError()
+        env = os.environ.copy()
+        cmd = "command -v {}".format(self._exists_cmd)
+        out = check_output(cmd, env)
+        return "Error" not in out
+
+    def is_running(self) -> bool:
+        raise NotImplementedError()
+
+    def drift_ms(self) -> int:
+        raise NotImplementedError()
+
+class _ChronyService(_NtpServiceBase):
+    _name = "chrony"
+    _exists_cmd = "chronyc"
+
+    def is_running(self):
+        return is_service_running("chronyd.service")
+
+    def drift_ms(self):
+        env = os.environ.copy()
+        # Check drift using chrony
+        out = check_output("chronyc tracking", env)
+        skew_match = re.search("System time.*: (.*) second", out, re.MULTILINE)
+        delay_match = re.search("Root delay.*: (.*) second", out, re.MULTILINE)
+        dispersion_match = re.search("Root dispersion.*: (.*) second", out, re.MULTILINE)
+        if skew_match and delay_match and dispersion_match:
+            skew = float(skew_match.group(1))
+            delay = float(delay_match.group(1))
+            dispersion = float(dispersion_match.group(1))
+            # Main algorithm is (skew + dispersion + (.5 * delay))
+            return (skew + dispersion + (.5 * delay)) * 1000 # Convert seconds to milliseconds
+        raise Exception("Unable to find skew, delay, or dispersion from chronyc")
+
+class _NtpdService(_NtpServiceBase):
+    _name = "ntpd"
+    _exists_cmd = "ntpd"
+
+    def is_running(self):
+        ntp_running = is_service_running("ntp.service")
+        ntpd_running = is_service_running("ntpd.service")
+        return ntp_running or ntpd_running
+
+    def drift_ms(self):
+        env = os.environ.copy()
+        # Prints the 9th column from the first row that starts with '*' from ntpq -p, which is the
+        # offset in milliseconds.
+        out = check_output("ntpq -p | awk '$1 ~ \"^*\" {print $9}'", env)
+        if "Error" not in out and out.strip() != "":
+            return int(float(out)) # ntpq -p offset is already in milliseconds
+        raise Exception("Failed to get clock drift from ntp(d)")
+
+class _SystemdTimesyncdService(_NtpServiceBase):
+    _name = "systemd-timesyncd"
+
+    # Systemd needs a custom exists function, since there is no extra command that comes with
+    # systemd-timesyncd, just the service.
+    def exists(self):
+        env = os.environ.copy()
+        timesyncd_out = check_output("systemctl status systemd-timesyncd", env)
+        return "Error" not in timesyncd_out
+
+    def is_running(self):
+        return is_service_running("systemd-timesyncd.service")
+
+    def drift_ms(self):
+        return 0
+
+def get_timedatectl_sync() -> bool:
+    env = os.environ.copy()
+    out = check_output("timedatectl status", env)
+    return "System clock synchronized: yes" in out
 
 class CheckCoordinator:
     class PreCheckRunInfo:

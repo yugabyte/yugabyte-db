@@ -7,14 +7,10 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeAgentManager;
-import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.NodeAgent;
-import com.yugabyte.yw.models.NodeAgent.ArchType;
-import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -22,13 +18,11 @@ import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class InstallNodeAgent extends AbstractTaskBase {
@@ -36,7 +30,6 @@ public class InstallNodeAgent extends AbstractTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
-  private final RuntimeConfGetter confGetter;
   private ShellProcessContext shellContext =
       ShellProcessContext.builder().logCmdOutput(true).build();
 
@@ -44,12 +37,10 @@ public class InstallNodeAgent extends AbstractTaskBase {
   protected InstallNodeAgent(
       BaseTaskDependencies baseTaskDependencies,
       NodeUniverseManager nodeUniverseManager,
-      NodeAgentManager nodeAgentManager,
-      RuntimeConfGetter confGetter) {
+      NodeAgentManager nodeAgentManager) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
     this.nodeAgentManager = nodeAgentManager;
-    this.confGetter = confGetter;
   }
 
   public static class Params extends NodeTaskParams {
@@ -80,33 +71,6 @@ public class InstallNodeAgent extends AbstractTaskBase {
     return params;
   }
 
-  private NodeAgent createNodeAgent(Universe universe, NodeDetails node) {
-    String output =
-        nodeUniverseManager
-            .runCommand(node, universe, Arrays.asList("uname", "-sm"), shellContext)
-            .processErrors()
-            .extractRunCommandOutput();
-    if (StringUtils.isBlank(output)) {
-      throw new RuntimeException("Unknown OS and Arch output: " + output);
-    }
-    // Output is like Linux x86_64.
-    String[] parts = output.split("\\s+", 2);
-    if (parts.length != 2) {
-      throw new RuntimeException("Unknown OS and Arch output: " + output);
-    }
-    NodeAgent nodeAgent = new NodeAgent();
-    nodeAgent.setIp(node.cloudInfo.private_ip);
-    nodeAgent.setName(node.nodeName);
-    nodeAgent.setPort(taskParams().nodeAgentPort);
-    nodeAgent.setCustomerUuid(taskParams().customerUuid);
-    nodeAgent.setOsType(OSType.parse(parts[0].trim()));
-    nodeAgent.setArchType(ArchType.parse(parts[1].trim()));
-    nodeAgent.setVersion(nodeAgentManager.getSoftwareVersion());
-    nodeAgent.setHome(
-        Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR).toString());
-    return nodeAgentManager.create(nodeAgent, false);
-  }
-
   boolean doesNodeAgentDirectoryExists(
       NodeDetails node, Universe universe, ShellProcessContext shellContext, String nodeAgentHome) {
     StringBuilder sb = new StringBuilder();
@@ -127,13 +91,11 @@ public class InstallNodeAgent extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     NodeAgent nodeAgent = null;
-    InstallerFiles installerFiles = null;
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
     if (taskParams().sshUser != null) {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
-    Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
 
     boolean shouldSetUp = !optional.isPresent();
     if (optional.isPresent()) {
@@ -161,7 +123,6 @@ public class InstallNodeAgent extends AbstractTaskBase {
     }
 
     StringBuilder sb = new StringBuilder();
-    Path stagingDir = null, nodeAgentSourcePath = null;
     List<String> command;
 
     Path nodeAgentHomePath = Paths.get(nodeAgent.getHome());

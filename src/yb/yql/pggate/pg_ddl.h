@@ -112,7 +112,7 @@ class PgCreateTableBase : public PgDdl {
 
   Status SetNumTablets(int32_t num_tablets);
 
-  Status SetHnswOptions(int ef_construction, int m);
+  Status SetHnswOptions(int m, int m0, int ef_construction);
 
   Status SetVectorOptions(YbcPgVectorIdxOptions* options);
 

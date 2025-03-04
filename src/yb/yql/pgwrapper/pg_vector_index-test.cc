@@ -18,6 +18,9 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 
+#include "yb/docdb/doc_read_context.h"
+#include "yb/docdb/vector_index.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 
 #include "yb/qlexpr/index.h"
@@ -108,7 +111,10 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
   }
 
   Status CreateIndex(PGConn& conn) {
-    return conn.ExecuteFormat("CREATE INDEX ON test USING ybhnsw (embedding $0)", VectorOpsName());
+    return conn.ExecuteFormat(
+        "CREATE INDEX ON test USING ybhnsw (embedding $0) "
+            "WITH (ef_construction = 256, m = 32, m0 = 128)",
+        VectorOpsName());
   }
 
   Result<PGConn> MakeIndex(size_t dimensions = 3) {
@@ -351,6 +357,8 @@ void PgVectorIndexTest::VerifyRows(
       "SELECT * FROM test $0$1",
       add_filter ? "WHERE id + 3 <= 5" : "",
       IndexQuerySuffix("[0.0, 0.0, 0.0]", limit < 0 ? expected.size() : make_unsigned(limit))))));
+  LOG_WITH_FUNC(INFO) << "  Result: " << AsString(result);
+  LOG_WITH_FUNC(INFO) << "Expected: " << AsString(expected);
   ASSERT_EQ(result.size(), expected.size());
   for (size_t i = 0; i != std::min(result.size(), expected.size()); ++i) {
     SCOPED_TRACE(Format("Row $0", i));
@@ -691,6 +699,85 @@ TEST_P(PgVectorIndexTest, InnerProduct) {
 TEST_P(PgVectorIndexTest, Cosine) {
   distance_kind_ = vector_index::DistanceKind::kCosine;
   TestMetric("2; 3; 1");
+}
+
+TEST_P(PgVectorIndexTest, Options) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  std::unordered_map<TabletId, std::unordered_set<TableId>> checked_indexes;
+  std::vector<std::string> option_names = {"m", "m0", "ef_construction"};
+  // We need unique values for used params. Since m and ef has different allowed intervals,
+  // use different counters for them. counters[0] for m/m0 and counters[1] for ef_construction.
+  std::array<size_t, 2> counters = {32, 64};
+  for (int i = 0; i != 1 << option_names.size(); ++i) {
+    std::string expected_options;
+    {
+      std::string options;
+      size_t prev_value = 0;
+      for (size_t j = 0; j != option_names.size(); ++j) {
+        if (!expected_options.empty()) {
+          expected_options += " ";
+        }
+        size_t value;
+        if ((i & (1 << j))) {
+          value = ++counters[j >= 2];
+          if (!options.empty()) {
+            options += ", ";
+          }
+          options += Format("$0 = $1", option_names[j], value);
+        } else {
+          switch (j) {
+            case 0:
+              value = 32; // Default value for m
+              break;
+            case 1:
+              // When not specified m0 uses value of m.
+              value = prev_value;
+              break;
+            case 2:
+              value = 200; // Default value for ef
+              break;
+            default:
+              ASSERT_LT(j, 4U) << "Unexpected number of options";
+              value = 0;
+              break;
+          }
+        }
+        expected_options += Format("$0: $1", option_names[j], value);
+        prev_value = value;
+      }
+      if (!options.empty()) {
+        options = " WITH (" + options + ")";
+      }
+      auto query = "CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)" + options;
+      LOG(INFO) << "Query: " << query;
+      ASSERT_OK(conn.Execute(query));
+    }
+    auto peers = ListTabletPeers(
+        cluster_.get(), ListPeersFilter::kLeaders, IncludeTransactionStatusTablets::kFalse);
+    for (const auto& peer : peers) {
+      auto tablet = peer->shared_tablet();
+      auto vector_indexes = tablet->vector_indexes().List();
+      if (!vector_indexes) {
+        continue;
+      }
+      auto& tablet_indexes = checked_indexes[peer->tablet_id()];
+      size_t num_new_indexes = 0;
+      for (const auto& vector_index : *vector_indexes) {
+        if (!tablet_indexes.insert(vector_index->table_id()).second) {
+          continue;
+        }
+        ++num_new_indexes;
+        auto doc_read_context = ASSERT_RESULT(
+            tablet->metadata()->GetTableInfo(vector_index->table_id()))->doc_read_context;
+        const auto& hnsw_options = doc_read_context->vector_idx_options->hnsw();
+        LOG(INFO)
+            << "Vector index: " << AsString(vector_index) << ", options: "
+            << AsString(hnsw_options);
+        ASSERT_EQ(AsString(hnsw_options), expected_options);
+      }
+      ASSERT_EQ(num_new_indexes, 1);
+    }
+  }
 }
 
 std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {

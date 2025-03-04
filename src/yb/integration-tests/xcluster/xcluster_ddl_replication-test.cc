@@ -26,6 +26,7 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
+DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
 
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
@@ -489,6 +490,44 @@ TEST_F(XClusterDDLReplicationTest, DDLsWithinTransaction) {
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table->name());
 }
 
+TEST_F(XClusterDDLReplicationTest, PauseTargetOnRepeatedFailures) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(p_conn.Execute("CREATE TABLE test_table_1 (key int PRIMARY KEY);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Cause the target to fail the DDLs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+
+  const auto alter_query = "ALTER TABLE test_table_1 RENAME TO test_table_2;";
+  ASSERT_OK(p_conn.Execute(alter_query));
+
+  // Replication should not continue. Wait till we see replication errors.
+  ASSERT_OK(
+      StringWaiterLogSink("DDL replication is paused due to repeated failures").WaitFor(kTimeout));
+
+  // Stop failing DDLs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+
+  // Replication should not resume until we recreate the ddl_queue poller.
+  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+
+  // Resume replication by pausing and unpausing, this will recreate the pollers.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+  SleepFor(MonoDelta::FromSeconds(1));
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+
+  // Replication should resume and rows should replicate.
+  auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", "test_table_2"))));
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table->name());
+}
+
 TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
   // Test that when there are multiple tables with the same name, we are able to correctly link the
   // target tables to the correct source tables.
@@ -631,8 +670,6 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTables) {
   const auto kNumTables = 3;
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
   for (int i = 0; i < kNumTables; i++) {
     const auto table_name = kNewTableName + std::to_string(i);
     ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int)", table_name));
@@ -662,6 +699,56 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTables) {
   }
 }
 
+TEST_F(XClusterDDLReplicationTest, CreateColocatedIndexes) {
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto kNewTableName = "new_colocated_table";
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "CREATE TABLE $0 (key int PRIMARY KEY, a int, b text)", kNewTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2, i::text FROM generate_series(1, 100) as i;", kNewTableName));
+
+  // Pause DDL replication to test that we handle the index data correctly.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+  // Create index on column a and insert some more rows.
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE INDEX ON $0(a DESC)", kNewTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2, i::text FROM generate_series(101, 200) as i;", kNewTableName));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", kNewTableName))));
+  auto consumer_table = ASSERT_RESULT(GetConsumerTable(ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", kNewTableName))));
+  ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+
+  // Ensure that the index is correctly replicated.
+  const auto kCol2CountStmt = Format("SELECT COUNT(*) FROM $0 WHERE a >= 0", kNewTableName);
+  ASSERT_TRUE(ASSERT_RESULT(producer_conn.HasIndexScan(kCol2CountStmt)));
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn.HasIndexScan(kCol2CountStmt)));
+
+  // Test unique index on column b.
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0(b)", kNewTableName));
+  // Test inserting duplicate value.
+  ASSERT_NOK(producer_conn.ExecuteFormat("INSERT INTO $0 VALUES(-1, -1, '1');", kNewTableName));
+
+  // Verify uniqueness constraint on consumer.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  // Bypass writes being blocked on target clusters.
+  ASSERT_OK(consumer_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = true"));
+  ASSERT_NOK(consumer_conn.ExecuteFormat("INSERT INTO $0 VALUES(-1, -1, '1');", kNewTableName));
+  ASSERT_OK(consumer_conn.ExecuteFormat("INSERT INTO $0 VALUES(-1, -1, '-1');", kNewTableName));
+  ASSERT_OK(consumer_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = false"));
+}
+
 TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithPause) {
   ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
   ASSERT_OK(CheckpointReplicationGroup());
@@ -674,9 +761,7 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithPause) {
   const auto kNewTableName = "new_colocated_table";
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
-  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int)", kNewTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int primary key)", kNewTableName));
   ASSERT_OK(producer_conn.ExecuteFormat(
       "INSERT INTO $0 SELECT i FROM generate_series(1, 100) as i", kNewTableName));
   ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 add column a int", kNewTableName));
@@ -735,8 +820,6 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithSourceFailures) {
 
   // First fail creating a colocated table on the source.
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
   ASSERT_OK(producer_conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(producer_conn.ExecuteFormat(
       "CREATE TABLE $0 (a text) WITH (colocation_id=$1)", kNewTableName, kColocationId));
@@ -763,10 +846,11 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithSourceFailures) {
   // Pending schemas:
   // - 0 for the failed create table
   // - 1 for the successful create table
-  // - 2 for the drop column
+  // - 2 for the drop column (second part has the same schema, so doesn't get added)
   // After the DDLs run on the target:
-  // - 4 for the create table
-  // - 5 for the drop column
+  // - 3 for the create table
+  // - 4 for the drop column
+  // - 5 for the second part of the drop column
   EXPECT_EQ(consumer_table->schema().version(), 5);
 }
 
@@ -781,11 +865,11 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithTargetFailures) {
 
   // Allow DDLs through but fail them at the end of execution.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+  // Bump up the number of retries to ensure that we don't hit the limit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
-  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int)", kNewTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int primary key)", kNewTableName));
   ASSERT_OK(producer_conn.ExecuteFormat(
       "INSERT INTO $0 SELECT i FROM generate_series(1, 100) as i", kNewTableName));
 
@@ -805,7 +889,8 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithTargetFailures) {
   const auto kNewTableName2 = "renamed_colocated_table";
   ASSERT_OK(
       producer_conn.ExecuteFormat("ALTER TABLE $0 RENAME TO $1", kNewTableName, kNewTableName2));
-  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 add column b int", kNewTableName2));
+  // Also create an index as part of adding a unique index.
+  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 add column b int unique", kNewTableName2));
   ASSERT_OK(producer_conn.ExecuteFormat(
       "INSERT INTO $0 SELECT i, i*2 FROM generate_series(101, 200) as i", kNewTableName2));
 
@@ -835,8 +920,6 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(ColocatedHistoricalSchemasWit
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
   for (int i = 0; i < kNumTables; i++) {
     const auto table_name = kNewTableName + std::to_string(i);
     ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int)", table_name));
@@ -878,8 +961,6 @@ TEST_F(XClusterDDLReplicationTest, AlterExistingColocatedTable) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(
-      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
   ASSERT_OK(
       producer_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN j int", kInitialColocatedTableName));
   ASSERT_OK(producer_conn.ExecuteFormat(

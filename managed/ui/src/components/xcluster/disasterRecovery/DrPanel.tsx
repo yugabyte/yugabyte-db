@@ -346,12 +346,12 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
       >
         <h2 className="content-title">
           <Link to={`/universes/${xClusterConfig.sourceUniverseUUID}`}>
-            {sourceUniverse?.name ?? 'Undefined Universe'}
+            {sourceUniverse?.name ?? t('breadcrumb.undefinedUniverse')}
           </Link>
           <span className="subtext">
             <i className="fa fa-chevron-right submenu-icon" />
             <Link to={`/universes/${xClusterConfig.sourceUniverseUUID}/recovery/`}>
-              xCluster Disaster Recovery
+              {t('breadcrumb.xClusterDisasterRecovery')}
             </Link>
             <i className="fa fa-chevron-right submenu-icon" />
             {drConfig.name}
@@ -360,6 +360,7 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
         <Box padding={3}>
           <DrBannerSection
             drConfig={drConfig}
+            sourceUniverse={sourceUniverse}
             openRepairConfigModal={openRepairConfigModal}
             openRestartConfigModal={openRestartConfigModal}
             enabledDrConfigActions={enabledDrConfigActions}

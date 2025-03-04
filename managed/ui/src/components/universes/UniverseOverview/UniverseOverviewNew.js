@@ -520,6 +520,8 @@ export default class UniverseOverviewNew extends Component {
       <Col lg={3} sm={6} md={6} xs={12}>
         <ClusterInfoPanelContainer
           type={'read-replica'}
+          // In case of dedicated nodes, the read replica cluster can have only TServer nodes.
+          isDedicatedNodes={false}
           universeInfo={currentUniverse}
           runtimeConfigs={this.props.runtimeConfigs}
         />
@@ -873,7 +875,8 @@ export default class UniverseOverviewNew extends Component {
       )?.value === 'true';
 
     const isQueryMonitoringEnabled = localStorage.getItem('__yb_query_monitoring__') === 'true';
-    const isNewTaskDetailsUIEnabled = featureFlags?.test?.newTaskDetailsUI || featureFlags?.released?.newTaskDetailsUI;
+    const isNewTaskDetailsUIEnabled =
+      featureFlags?.test?.newTaskDetailsUI || featureFlags?.released?.newTaskDetailsUI;
 
     return (
       <Fragment>
@@ -881,7 +884,8 @@ export default class UniverseOverviewNew extends Component {
           ybSoftwareUpgradeState === SoftwareUpgradeState.PRE_FINALIZE && (
             <Row className="p-16">{<PreFinalizeBanner universeData={universeInfo} />}</Row>
           )}
-        {isRollBackFeatureEnabled && !isNewTaskDetailsUIEnabled &&
+        {isRollBackFeatureEnabled &&
+          !isNewTaskDetailsUIEnabled &&
           [SoftwareUpgradeState.ROLLBACK_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
             ybSoftwareUpgradeState
           ) &&

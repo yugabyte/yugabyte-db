@@ -6306,7 +6306,6 @@ Status CatalogManager::DeleteIndexInfoFromTable(
 void CatalogManager::AcquireObjectLocksGlobal(
     const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
-  VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
         rpc::ErrorStatusPB::ERROR_APPLICATION,
@@ -6319,7 +6318,6 @@ void CatalogManager::AcquireObjectLocksGlobal(
 void CatalogManager::ReleaseObjectLocksGlobal(
     const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
-  VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
         rpc::ErrorStatusPB::ERROR_APPLICATION,
@@ -6639,11 +6637,16 @@ Status CatalogManager::DeleteTableInternal(
     // Send a DeleteTablet() request to each tablet replica in the table.
     RETURN_NOT_OK(DeleteOrHideTabletsOfTable(
         *table.table_info_with_write_lock, table.delete_retainer, epoch));
+    // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
+    // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
+    // Note that we call TryRemoveFromTablegroup irrespective of colocated_tablet because
+    // it is possible that the tablet is already removed from table by a racing thread and
+    // in that case colocated_tablet will be nullptr.
+    if (table.table_info_with_write_lock.info->IsColocatedUserTable()) {
+      RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
+    }
     auto colocated_tablet = table.table_info_with_write_lock->GetColocatedUserTablet();
     if (colocated_tablet) {
-      // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
-      // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
-      RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
       // Send a RemoveTableFromTablet() request to each
       // colocated parent tablet replica in the table.
       if (!table.delete_retainer.IsHideOnly()) {
@@ -10100,6 +10103,33 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
   return Status::OK();
 }
 
+Result<DbOidVersionToMessageListMap>
+CatalogManager::GetYsqlCatalogInvalationMessagesImpl() {
+  return sys_catalog_->ReadYsqlCatalogInvalationMessages();
+}
+
+Result<DbOidVersionToMessageListMap> CatalogManager::GetYsqlCatalogInvalationMessages(
+    bool use_cache) {
+  if (!FLAGS_TEST_yb_enable_invalidation_messages ||
+      !FLAGS_ysql_enable_db_catalog_version_mode ||
+      !catalog_version_table_in_perdb_mode_) {
+    return DbOidVersionToMessageListMap();
+  }
+  if (use_cache) {
+    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+    // We expect that the only caller uses this cache is the heartbeat service.
+    // Note that if the periodic background refresh task has not populated
+    // heartbeat_pg_inval_messages_cache_ yet after the master leader starts, or
+    // when the last periodic reading of pg_yb_invalidation_messages has failed, it will
+    // be std::nullopt. Returning empty map is fine, as invalidation messages are only
+    // used as an optimization and if not there PG simply falls back to full catalog
+    // refresh.
+    return heartbeat_pg_inval_messages_cache_.has_value() ? *heartbeat_pg_inval_messages_cache_
+                                                          : DbOidVersionToMessageListMap();
+  }
+  return GetYsqlCatalogInvalationMessagesImpl();
+}
+
 // When a cluster is running in per-database catalog version mode, normally
 // catalog_version_table_in_perdb_mode_ is set to true as part of preparing for
 // tserver heartbeat response and once set to true it is never reset back to
@@ -12349,7 +12379,7 @@ Status CatalogManager::CollectTable(
   std::vector<std::string> indexes;
   {
     auto lock = table_description.table_info->LockForRead();
-    if (lock->started_hiding()) {
+    if (!flags.Test(CollectFlag::kIncludeHiddenTables) && lock->started_hiding()) {
       VLOG_WITH_PREFIX_AND_FUNC(4)
           << "Rejected hidden table: " << AsString(table_description.table_info);
       return Status::OK();
@@ -13165,6 +13195,9 @@ void CatalogManager::ResetCachedCatalogVersions() {
   if (heartbeat_pg_catalog_versions_cache_) {
     heartbeat_pg_catalog_versions_cache_->clear();
   }
+  // Reset to empty map to distinguish it from std::nullopt which means last periodic reading
+  // of pg_yb_invalidation_messages has failed.
+  heartbeat_pg_inval_messages_cache_ = DbOidVersionToMessageListMap();
 }
 
 void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
@@ -13186,6 +13219,7 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
   VLOG(2) << "Running " << __func__ << " task";
   DbOidToCatalogVersionMap versions;
   Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
+  bool changed = false;
   if (!s.ok()) {
     LOG(WARNING) << "Catalog versions refresh task failed: " << s.ToString();
     ResetCachedCatalogVersions();
@@ -13199,7 +13233,38 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
     } else {
       heartbeat_pg_catalog_versions_cache_ = std::move(versions);
     }
+    changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
     heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
+  }
+  if (FLAGS_TEST_yb_enable_invalidation_messages) {
+    // Maybe last time invalidation messages refresh failed, read it again.
+    if (!changed) {
+      SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+      // nullopt means the previous refresh has failed.
+      changed = !heartbeat_pg_inval_messages_cache_.has_value();
+    }
+    if (changed) {
+      // Cache invalidation messages are considered as an optimization extension of
+      // the catalog versions. If we cannot read the messages successfully, it means
+      // we will skip the optimization this time but it will not affect correctness
+      // because PG backends will fall back to do catalog cache refreshes.
+      auto messages = GetYsqlCatalogInvalationMessagesImpl();
+      if (!messages.ok()) {
+        LOG(WARNING) << "Catalog invalidation messages refresh failed: " << s;
+        LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+        // Reset to std::nullopt to indicate next time we want to read again.
+        heartbeat_pg_inval_messages_cache_ = std::nullopt;
+      } else {
+        VLOG_WITH_FUNC(2) << "Refreshed " << messages->size()
+                          << " catalog inval messages in memory";
+        LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+        if (heartbeat_pg_inval_messages_cache_) {
+          heartbeat_pg_inval_messages_cache_->swap(*messages);
+        } else {
+          heartbeat_pg_inval_messages_cache_ = std::move(*messages);
+        }
+      }
+    }
   }
   ScheduleRefreshPgCatalogVersionsTask();
 }
@@ -13232,6 +13297,47 @@ Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTableDr
   // xCluster and CDCSDK do not retain dropped tables.
 
   return retainer;
+}
+
+void CatalogManager::MarkTabletAsHiddenPostReload(TabletId tablet_id, const LeaderEpoch& epoch) {
+  auto tablet = GetTabletInfo(tablet_id);
+  if (!tablet.ok()) {
+    WARN_NOT_OK(tablet.status(), Format("Tablet: $0 not found", tablet_id));
+    return;
+  }
+  auto table = GetTableInfo((*tablet)->table()->id());
+  if (!table) {
+    LOG(WARNING) << Format("Table: $0 not found", (*tablet)->table()->id());
+    return;
+  }
+  auto schedules_to_tables_map =
+      master_->snapshot_coordinator().MakeSnapshotSchedulesToObjectIdsMap(
+          SysRowEntryType::TABLE, IncludeHiddenTables::kTrue);
+  if (!schedules_to_tables_map.ok()) {
+    WARN_NOT_OK(
+        schedules_to_tables_map.status(), Format(
+                                              "Error creating Snapshot Schedules To ObjectIds Map "
+                                              "for post reload Hide task of tablet: $0",
+                                              tablet_id));
+    return;
+  }
+  const auto delete_retainer = GetDeleteRetainerInfoForTableDrop(*table, *schedules_to_tables_map);
+  if (!delete_retainer.ok()) {
+    WARN_NOT_OK(
+        delete_retainer.status(),
+        Format("Unable to get the delete retainer for tablet: $0", tablet_id));
+    return;
+  }
+  auto l = (*tablet)->LockForWrite();
+  // Each tablet will have a different hide_hybrid_time. However, all of them will be earlier
+  // than the time we set the hide_hybrid_time of the table.
+  MarkTabletAsHidden(l.mutable_data()->pb, Clock()->Now(), *delete_retainer);
+  WARN_NOT_OK(
+      sys_catalog_->Upsert(epoch, *tablet),
+      Format("Failed to upsert tablet info with id: $0 into sys catalog.", tablet_id));
+  l.Commit();
+  LockGuard lock(mutex_);
+  hidden_tablets_.push_back(*tablet);
 }
 
 void CatalogManager::MarkTabletAsHidden(

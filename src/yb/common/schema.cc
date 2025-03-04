@@ -362,6 +362,7 @@ void Schema::CopyFrom(const Schema& other) {
 
   has_nullables_ = other.has_nullables_;
   has_statics_ = other.has_statics_;
+  vector_column_ids_ = other.vector_column_ids_;
   table_properties_ = other.table_properties_;
   cotable_id_ = other.cotable_id_;
   colocation_id_ = other.colocation_id_;
@@ -376,11 +377,16 @@ void Schema::ResetColumnIds(const vector<ColumnId>& ids) {
   col_ids_ = ids;
   id_to_index_.clear();
   max_col_id_ = 0;
+  vector_column_ids_.clear();
   for (size_t i = 0; i < ids.size(); ++i) {
     if (ids[i] > max_col_id_) {
       max_col_id_ = ids[i];
     }
     id_to_index_.set(ids[i], narrow_cast<int>(i));
+
+    if (cols_[i].is_vector()) {
+      vector_column_ids_.push_back(ids[i]);
+    }
   }
 }
 
@@ -638,18 +644,19 @@ Result<const QLValuePB&> Schema::GetMissingValueByColumnId(ColumnId id) const {
 
 bool Schema::TEST_Equals(const Schema& lhs, const Schema& rhs) {
   return lhs.Equals(rhs) &&
-         YB_STRUCT_EQUALS(num_hash_key_columns_,
-                          max_col_id_,
-                          col_ids_,
-                          col_offsets_,
-                          name_to_index_,
-                          name_to_index_,
-                          id_to_index_,
-                          has_nullables_,
-                          has_statics_,
-                          cotable_id_,
-                          colocation_id_,
-                          pgschema_name_);
+         YB_CLASS_EQUALS(num_hash_key_columns,
+                         max_col_id,
+                         col_ids,
+                         col_offsets,
+                         name_to_index,
+                         name_to_index,
+                         id_to_index,
+                         has_nullables,
+                         has_statics,
+                         vector_column_ids,
+                         cotable_id,
+                         colocation_id,
+                         pgschema_name);
 }
 
 // ============================================================================

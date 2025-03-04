@@ -23,14 +23,13 @@
 #include <thread>
 #include <variant>
 #include <vector>
+#include "yb/server/server_base_options.h"
 
 #ifndef __linux__
 #include <libproc.h>
 #endif
 
 #include <boost/algorithm/string.hpp>
-
-#include "yb/tserver/tablet_server_interface.h"
 
 #include "yb/rpc/secure_stream.h"
 
@@ -81,6 +80,7 @@ DEFINE_NON_RUNTIME_bool(yb_enable_valgrind, false,
 
 DEFINE_test_flag(bool, pg_collation_enabled, true,
                  "True to enable collation support in YugaByte PostgreSQL.");
+
 // Default to 5MB
 DEFINE_UNKNOWN_string(
     pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
@@ -335,11 +335,6 @@ DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
 DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
     "Enables the collection of query diagnostics data for YSQL queries, "
     "facilitating the creation of diagnostic bundles.");
-
-DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
-    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and "
-    "11.");
-DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11));
 
 DECLARE_bool(enable_pg_cron);
 
@@ -690,8 +685,7 @@ string GetPostgresInstallRoot() {
 
 Result<PgProcessConf> PgProcessConf::CreateValidateAndRunInitDb(
     const std::string& bind_addresses,
-    const std::string& data_dir,
-    const int tserver_shm_fd) {
+    const std::string& data_dir) {
   PgProcessConf conf;
   if (!bind_addresses.empty()) {
     auto pg_host_port = VERIFY_RESULT(HostPort::FromString(
@@ -700,7 +694,6 @@ Result<PgProcessConf> PgProcessConf::CreateValidateAndRunInitDb(
     conf.pg_port = pg_host_port.port();
   }
   conf.data_dir = data_dir;
-  conf.tserver_shm_fd = tserver_shm_fd;
   PgWrapper pg_wrapper(conf);
   RETURN_NOT_OK(pg_wrapper.PreflightCheck());
   RETURN_NOT_OK(pg_wrapper.InitDbLocalOnlyIfNeeded());
@@ -838,7 +831,7 @@ Status PgWrapper::Start() {
 
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
   proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGQUIT));
-  proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
+  proc_->InheritNonstandardFd(address_negotiator_fd_);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
 
   proc_->SetEnv("FLAGS_mem_tracker_tcmalloc_gc_release_bytes",
@@ -897,7 +890,7 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
   LOG(INFO) << "Launching initdb: " << AsString(initdb_args);
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
-  initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
+  initdb_subprocess.InheritNonstandardFd(address_negotiator_fd_);
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
   if (global_initdb) {
@@ -1055,8 +1048,11 @@ Status PgWrapper::CleanupPgData(const std::string& data_dir) {
 }
 
 Status PgWrapper::InitDbForYSQL(
-    const string& master_addresses, const string& tmp_dir_base, int tserver_shm_fd,
-    std::vector<std::pair<string, YbcPgOid>> db_to_oid, bool is_major_upgrade) {
+    PgWrapperContext* server, const server::ServerBaseOptions& options, FsManager& fs_manager,
+    const string& tmp_dir_base, std::vector<std::pair<string, YbcPgOid>> db_to_oid,
+    bool is_major_upgrade) {
+  const auto master_addresses = server::MasterAddressesToString(*options.GetMasterAddresses());
+
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;
@@ -1064,7 +1060,6 @@ Status PgWrapper::InitDbForYSQL(
   conf.pg_port = 0;  // We should not use this port.
   std::mt19937 rng{std::random_device()()};
   conf.data_dir = Format("$0/tmp_pg_data_$1", tmp_dir_base, rng());
-  conf.tserver_shm_fd = tserver_shm_fd;
   auto se = ScopeExit([&conf] {
     auto is_dir = Env::Default()->IsDirectory(conf.data_dir);
     if (is_dir.ok()) {
@@ -1079,7 +1074,11 @@ Status PgWrapper::InitDbForYSQL(
                    << is_dir.status();
     }
   });
+
+  RETURN_NOT_OK(conf.SetSslConf(options, fs_manager));
+
   PgWrapper pg_wrapper(conf);
+  pg_wrapper.PrepareSharedMemoryNegotiation(server);
   auto start_time = std::chrono::steady_clock::now();
   Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid, is_major_upgrade});
   auto elapsed_time = std::chrono::steady_clock::now() - start_time;
@@ -1090,6 +1089,12 @@ Status PgWrapper::InitDbForYSQL(
     LOG(ERROR) << "initdb failed: " << initdb_status;
   }
   return initdb_status;
+}
+
+void PgWrapper::PrepareSharedMemoryNegotiation(PgWrapperContext* server) {
+  CHECK_OK(server->StartSharedMemoryNegotiation());
+  address_negotiator_fd_ = server->SharedMemoryNegotiationFd();
+  shared_mem_uuid_ = server->permanent_uuid();
 }
 
 string PgWrapper::GetPostgresExecutablePath() {
@@ -1122,8 +1127,8 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
-  CHECK_NE(conf_.tserver_shm_fd, -1);
-  proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
+  proc->SetEnv("YB_PG_ADDRESS_NEGOTIATOR_FD", Format("$0", address_negotiator_fd_));
+  proc->SetEnv("FLAGS_pggate_tserver_shared_memory_uuid", shared_mem_uuid_);
   proc->SetEnv("FLAGS_log_dir", FLAGS_log_dir);
 #ifdef OS_MACOSX
   // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
@@ -1259,16 +1264,26 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
 // PgSupervisor: monitoring a PostgreSQL child process and restarting if needed
 // ------------------------------------------------------------------------------------------------
 
-PgSupervisor::PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver)
-    : conf_(std::move(conf)) {
-  if (tserver) {
-    tserver->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
+PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
+    : conf_(std::move(conf)), server_(server) {
+  if (server_) {
+    server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
   }
 }
 
 PgSupervisor::~PgSupervisor() {
+  Stop();
+
   std::lock_guard lock(mtx_);
   DeregisterPgFlagChangeNotifications();
+}
+
+void PgSupervisor::Stop() {
+  ProcessSupervisor::Stop();
+  if (server_) {
+    CHECK_OK(server_->StopSharedMemoryNegotiation());
+    server_ = nullptr;
+  }
 }
 
 Status PgSupervisor::ReloadConfig() {
@@ -1339,6 +1354,9 @@ std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
     FLAGS_enable_ysql_conn_mgr_stats = false;
   }
 
+  if (server_) {
+    pgwrapper->PrepareSharedMemoryNegotiation(server_);
+  }
   return pgwrapper;
 }
 

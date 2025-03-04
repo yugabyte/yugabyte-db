@@ -99,7 +99,9 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
     // the 'keys' table.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_colocate_database_by_default) = false;
     // Easier debugging.
-    // ASSERT_OK(SET_FLAG(vmodule, "read_query=1,pgsql_operation=1,pg_client_session=3"));
+    // google::SetVLOGLevel("read_query", 1);
+    // google::SetVLOGLevel("pgsql_operation", 1);
+    // google::SetVLOGLevel("pg_client_session", 3);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_log_statement) = "all";
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_log_min_duration_statement) = 0;
     PgMiniTestBase::SetUp();

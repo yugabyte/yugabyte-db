@@ -43,7 +43,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UpgradeDetails;
-import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.audit.YSQLAuditConfig;
@@ -804,12 +803,10 @@ public class GFlagsUtil {
   }
 
   public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
-    return getYsqlPgConfCsv(auditLogConfig, taskParams.ysqlMajorVersionUpgradeState);
+    return getYsqlPgConfCsv(taskParams.auditLogConfig);
   }
 
-  public static String getYsqlPgConfCsv(
-      AuditLogConfig auditLogConfig, YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+  public static String getYsqlPgConfCsv(AuditLogConfig auditLogConfig) {
     List<String> ysqlPgConfCsvEntries = new ArrayList<>();
     if (auditLogConfig != null) {
       if (auditLogConfig.getYsqlAuditConfig() != null

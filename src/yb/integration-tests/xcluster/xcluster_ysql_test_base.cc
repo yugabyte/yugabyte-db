@@ -48,10 +48,10 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(replication_factor);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_bool(cdc_enable_implicit_checkpointing);
+DECLARE_bool(xcluster_enable_ddl_replication);
 
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
 DECLARE_bool(TEST_use_custom_varz);
-DECLARE_bool(TEST_xcluster_enable_ddl_replication);
 DECLARE_uint64(TEST_pg_auth_key);
 
 namespace yb {
@@ -64,8 +64,7 @@ void XClusterYsqlTestBase::SetUp() {
   XClusterTestBase::SetUp();
 
   LOG(INFO) << "DB-scoped replication will use automatic mode: " << UseAutomaticMode();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) =
-      UseAutomaticMode();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_ddl_replication) = UseAutomaticMode();
 }
 
 Status XClusterYsqlTestBase::Initialize(uint32_t replication_factor, uint32_t num_masters) {
@@ -222,8 +221,7 @@ Status XClusterYsqlTestBase::InitPostgres(
   yb::pgwrapper::PgProcessConf pg_process_conf =
       VERIFY_RESULT(yb::pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
           yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), pg_port)),
-          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-          pg_ts->server()->GetSharedMemoryFd()));
+          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
@@ -233,7 +231,7 @@ Status XClusterYsqlTestBase::InitPostgres(
             << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
   cluster->pg_supervisor_ =
-      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
+      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
   RETURN_NOT_OK(cluster->pg_supervisor_->Start());
 
   pg_ts->SetPgServerHandlers(

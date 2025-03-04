@@ -30,7 +30,7 @@ To provide the advantages of connection pooling, but without the limitations, Yu
 ![Connection manager](/images/explore/ysql-connection-manager.png)
 
 {{< note title = "Note">}}
-YSQL Connection Manager is currently not supported for [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Aeon](../../../yugabyte-cloud/).
+YSQL Connection Manager is currently not supported for [YugabyteDB Aeon](../../../yugabyte-cloud/).
 {{< /note >}}
 
 ## Key features

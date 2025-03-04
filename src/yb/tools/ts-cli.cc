@@ -126,7 +126,6 @@ const char* const kListMasterServersOp = "list_master_servers";
 const char* const kClearAllMetaCachesOnServerOp = "clear_server_metacache";
 const char* const kClearUniverseUuidOp = "clear_universe_uuid";
 const char* const kAcquireObjectLockOp = "acquire_object_lock";
-const char* const kReleaseObjectLockOp = "release_object_lock";
 const char* const kReleaseAllLocksForTxnOp = "release_all_locks_for_txn";
 
 DEFINE_NON_RUNTIME_string(server_address, "localhost",
@@ -270,11 +269,8 @@ class TsAdminClient {
   Status ClearUniverseUuid();
 
   Status AcquireObjectLock(
-      const string& txn_id_str, const string& subtxn_id,
-      const string& database_id, const string& object_id, const std::string& lock_mode);
-  Status ReleaseObjectLock(
-      const string& txn_id_str, const string& subtxn_id,
-      const string& database_id, int argc, char** argv);
+      const string& txn_id_str, const string& subtxn_id, const string& database_id,
+      const string& object_id, const std::string& lock_mode);
   Status ReleaseAllLocksForTxn(
       const string& txn_id_str, const string& subtxn_id);
 
@@ -793,41 +789,6 @@ Status TsAdminClient::AcquireObjectLock(
   return Status::OK();
 }
 
-Status TsAdminClient::ReleaseObjectLock(
-    const string& txn_id_str, const string& subtxn_id,
-    const string& database_id, int argc, char** argv) {
-  SCHECK(initted_, IllegalState, "TsAdminClient not initialized");
-
-  tserver::ReleaseObjectLockRequestPB req;
-  tserver::ReleaseObjectLockResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-
-  auto txn_id = VERIFY_RESULT(TransactionId::FromString(txn_id_str));
-  req.set_txn_id(txn_id.data(), txn_id.size());
-  req.set_subtxn_id(stoi(subtxn_id));
-  req.set_session_host_uuid(FLAGS_server_address);
-  std::ostringstream object_ids_stream;
-  for (int i = 5; i < argc; i++) {
-    object_ids_stream << " " << argv[i];
-    auto* object_lock_req = req.add_object_locks();
-    object_lock_req->set_database_oid(stoi(database_id));
-    object_lock_req->set_object_oid(atoi(argv[i]));
-  }
-
-  RETURN_NOT_OK(ts_proxy_->ReleaseObjectLocks(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  std::cout << "Released all locks on objects with ids" << object_ids_stream.str()
-            << " database id=" <<  database_id
-            << " for txn=" << txn_id
-            << " subtxn id=" << subtxn_id
-            << " at tserver local object lock manager" << std::endl;
-  return Status::OK();
-}
-
 Status TsAdminClient::ReleaseAllLocksForTxn(
     const string& txn_id_str, const string& subtxn_id) {
   SCHECK(initted_, IllegalState, "TsAdminClient not initialized");
@@ -843,7 +804,6 @@ Status TsAdminClient::ReleaseAllLocksForTxn(
   if (!subtxn_id.empty()) {
     req.set_subtxn_id(stoi(subtxn_id));
   }
-  req.set_release_all_locks(true);
   RETURN_NOT_OK(ts_proxy_->ReleaseObjectLocks(req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -885,10 +845,7 @@ void SetUsage(const char* argv0) {
       << "  " << kClearUniverseUuidOp << "\n"
       << "  " << kAcquireObjectLockOp
       << " <txn id> <subtxn id> <database_id> <object_id> <lock type>\n"
-      << "  " << kReleaseObjectLockOp
-      << " <txn id> <subtxn id> <database_id> <object_id> [<object_id>..]\n"
-      << "  " << kReleaseAllLocksForTxnOp
-      << " <txn id> [subtxn id]\n";
+      << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -1126,13 +1083,6 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.AcquireObjectLock(argv[2], argv[3], argv[4], argv[5], argv[6]),
         "Unable to acquire object lock");
-  } else if (op == kReleaseObjectLockOp) {
-    if (argc < 6) {
-      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 6);
-    }
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(
-        client.ReleaseObjectLock(argv[2], argv[3], argv[4], argc, argv),
-        "Unable to release object lock");
   } else if (op == kReleaseAllLocksForTxnOp) {
     if (argc < 3) {
       CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);

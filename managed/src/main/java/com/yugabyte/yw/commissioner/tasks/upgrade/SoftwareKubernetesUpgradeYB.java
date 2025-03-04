@@ -65,7 +65,12 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    createSoftwareUpgradePrecheckTasks(taskParams().ybSoftwareVersion);
+    boolean ysqlMajorVersionUpgrade =
+        softwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            universe,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            taskParams().ybSoftwareVersion);
+    createSoftwareUpgradePrecheckTasks(taskParams().ybSoftwareVersion, ysqlMajorVersionUpgrade);
     addBasicPrecheckTasks();
   }
 
@@ -120,11 +125,8 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
             // want to revert masters to the previous version and proceed with the ysql major
             // upgrade.
             if (!catalogUpgradeCompleted) {
-              createGFlagsUpgradeAndRollbackMastersTaskForYSQLMajorUpgrade(
+              createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
                   universe, currentVersion, YsqlMajorVersionUpgradeState.IN_PROGRESS);
-
-              // Run pg upgrade pre-check
-              createPGUpgradeTServerCheckTask(newVersion);
 
               if (requireAdditionalSuperUserForCatalogUpgrade) {
                 password = Util.getPostgresCompatiblePassword();
@@ -172,6 +174,13 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
               getSoftwareUpgradeContext(
                   newVersion,
                   ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
+
+          if (ysqlMajorVersionUpgrade) {
+            createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
+                universe,
+                taskParams().ybSoftwareVersion,
+                YsqlMajorVersionUpgradeState.UPGRADE_COMPLETE);
+          }
 
           createPromoteAutoFlagTask(
               taskParams().getUniverseUUID(),

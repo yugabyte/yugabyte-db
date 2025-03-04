@@ -272,6 +272,7 @@ extern void YBCAssignTransactionPriorityUpperBound(double newval, void *extra);
 extern double YBCGetTransactionPriority();
 extern YbcTxnPriorityRequirement YBCGetTransactionPriorityType();
 static bool yb_check_no_txn(int *newval, void **extra, GucSource source);
+static bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source);
 
 static void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
@@ -2757,6 +2758,17 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+
+	{
+		{"yb_fast_path_for_colocated_copy", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Enable fast-path transaction for copy on colocated tables. For testint now."),
+			NULL
+		},
+		&yb_fast_path_for_colocated_copy,
+		false,
+		NULL, NULL, NULL
+	},
+
 	{
 		{"suppress_nonpg_logs", PGC_SIGHUP, LOGGING_WHAT,
 			gettext_noop("Suppresses non-Postgres logs from appearing in the Postgres log file."),
@@ -3180,6 +3192,30 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+
+	{
+		{"yb_upgrade_to_pg15_completed", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Indicates the state of YSQL major upgrade to PostgreSQL version 15. Do not modify this manually."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_upgrade_to_pg15_completed,
+		true,
+		NULL, NULL, NULL
+	},
+
+  {
+    {"yb_disable_auto_analyze", PGC_USERSET, CUSTOM_OPTIONS,
+      gettext_noop("Run 'ALTER DATABASE <name> SET yb_disable_auto_analyze=on' to disable auto "
+          "analyze on that database. Set it to off to resume auto analyze. Setting this GUC via "
+          "any other method is not allowed."),
+      NULL,
+      GUC_NOT_IN_SAMPLE
+    },
+    &yb_disable_auto_analyze,
+    false,
+    yb_disable_auto_analyze_check_hook, NULL, NULL
+  },
 
 	/* End-of-list marker */
 	{
@@ -15453,5 +15489,23 @@ assign_tcmalloc_sample_period(int newval, void *extra)
 	YBCSetTCMallocSamplingPeriod(newval);
 }
 
+static bool
+yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source)
+{
+	/*
+	 * PGC_S_DEFAULT means that GUCs are being initialized during startup. PGC_S_TEST will be seen
+	 * when GUCs are being tested for their setting when applying the setting on a per-database
+	 * level. In both cases, we want to allow the setting to be changed.
+	 */
+	if (source == PGC_S_DEFAULT || source == PGC_S_TEST)
+		return true;
+
+  if (source != PGC_S_DATABASE)
+	{
+		GUC_check_errmsg("Can only be set on a database level using ALTER DATABASE SET. Current source: %s", GucSource_Names[source]);
+	  return false;
+	}
+	return true;
+}
 
 #include "guc-file.c"

@@ -5368,10 +5368,6 @@
   proargmodes => '{i,o,o,o,o,o,o}',
   proargnames => '{db_oid,db_oid,backend_pid,query_text,termination_reason,query_start,query_end}',
   prosrc => 'yb_pg_stat_get_queries'},
-# YB_TODO(neil) talk to Fizaa about her changes for "pg_stat_get_progress_info".
-# commit ced7c32846e4adbe2a93ca20fc64fd648bec8851
-# Author: Fizaa Luthra <fizaaluthra@gmail.com>
-# Date:   Fri Jan 27 12:14:34 2023 -0500
 { oid => '3318',
   descr => 'statistics: information about progress of backends running maintenance command',
   proname => 'pg_stat_get_progress_info', prorows => '100', proretset => 't',
@@ -12163,5 +12159,13 @@
   proargmodes => '{i}',
   proargnames => '{pid}',
   prosrc => 'yb_log_backend_heap_snapshot_peak'},
+
+{ oid => '8089', descr => 'log the catcache stats of a given process',
+  proname => 'yb_log_catcache_stats', provolatile => 'v', proparallel => 'r',
+  prorettype => 'void', proargtypes => 'int4',
+  proallargtypes => '{int4}',
+  proargmodes => '{i}',
+  proargnames => '{pid}',
+  prosrc => 'yb_log_catcache_stats'},
 
 ]

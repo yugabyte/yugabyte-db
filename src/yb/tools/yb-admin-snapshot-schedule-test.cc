@@ -5504,6 +5504,45 @@ TEST_F(YbAdminSnapshotScheduleFailoverTests, LeaderFailoverRestoreSnapshot) {
   ASSERT_EQ(rows, "1,before");
 }
 
+// Tests that if the master leader crashes while dropping a table (after marking the table as
+// HIDING), the table is marked as HIDDEN when the new leader reloads the sys.catalog. i.e ensure
+// that the table is never stuck in HIDING state.
+TEST_F(YbAdminSnapshotScheduleTest, DroppedTableMarkedHiddenAfterFailover) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(kRetention, kRetention + 1s));
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(
+      client::kv_table_test::CreateTable(client::Transactional::kTrue, 3, client_.get(), &table_));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_crash_after_table_marked_deleting", "true"));
+  LOG(INFO) << "Delete table";
+  ASSERT_NOK(client_->DeleteTable(client::kTableName));
+  LOG(INFO) << "Stepping down the master leader";
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  MonoDelta timeout = 30s;
+  // Wait until the table is marked as hidden.
+  ASSERT_OK(Wait(
+      [&]() -> Result<bool> {
+        auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+        master::ListTablesRequestPB req;
+        master::ListTablesResponsePB resp;
+        rpc::RpcController controller;
+        controller.set_timeout(timeout);
+        req.set_include_not_running(true);
+        RETURN_NOT_OK(proxy.ListTables(req, &resp, &controller));
+        RETURN_NOT_OK(ResponseStatus(resp));
+        for (const auto& table : resp.tables()) {
+          if (table.table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE &&
+              table.relation_type() != master::RelationType::SYSTEM_TABLE_RELATION &&
+              !table.hidden()) {
+            LOG(INFO) << "Not yet hidden table: " << table.ShortDebugString();
+            return false;
+          }
+        }
+        LOG(INFO) << "All Tables are Hidden";
+        return true;
+      },
+      CoarseMonoClock::now() + timeout, "Are Tables Hidden"));
+}
+
 class YbAdminSnapshotScheduleTestWithLB : public YbAdminSnapshotScheduleTest {
   std::vector<std::string> ExtraMasterFlags() override {
     std::vector<std::string> flags;

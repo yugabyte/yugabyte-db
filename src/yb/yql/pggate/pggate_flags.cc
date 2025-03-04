@@ -30,8 +30,10 @@ DEFINE_UNKNOWN_int32(pggate_ybclient_reactor_threads, 2,
 DEFINE_UNKNOWN_string(pggate_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
 
-DEFINE_UNKNOWN_int32(pggate_tserver_shm_fd, -1,
-              "File descriptor of the local tablet server's shared memory.");
+DEFINE_NON_RUNTIME_string(pggate_tserver_shared_memory_uuid, "",
+                          "UUID for shared memory allocator files. This is used by tserver when "
+                          "starting postmaster and should never be set explicitly.");
+TAG_FLAG(pggate_tserver_shared_memory_uuid, hidden);
 
 DEPRECATE_FLAG(bool, TEST_pggate_ignore_tserver_shm, "02_2024");
 

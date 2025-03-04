@@ -35,6 +35,7 @@ class YBPgsqlOp;
 
 namespace tserver {
 
+class DbServerBase;
 class Heartbeater;
 class LocalTabletServer;
 class MetricsSnapshotter;

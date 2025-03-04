@@ -434,7 +434,8 @@ YbcStatus YBCPgCreateIndexSetNumTablets(YbcPgStatement handle, int32_t num_table
 
 YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdxOptions *options);
 
-YbcStatus YBCPgCreateIndexSetHnswOptions(YbcPgStatement handle, int ef_construction, int m);
+YbcStatus YBCPgCreateIndexSetHnswOptions(
+    YbcPgStatement handle, int m, int m0, int ef_construction);
 
 YbcStatus YBCPgExecCreateIndex(YbcPgStatement handle);
 
@@ -977,6 +978,14 @@ bool YBCPgHasExportedSnapshots();
 void YBCPgClearExportedTxnSnapshots();
 
 YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
+
+// Indicates if the YB universe is in the process of a YSQL major version upgrade (e.g., pg11 to
+// pg15). This will return true before any process has been upgraded to the new version, and will
+// return false after the upgrade has been finalized.
+// This will return false for regular YB upgrades (both major and minor).
+// DevNote: Finalize is a multi-step process involving YsqlMajorCatalog Finalize, AutoFlag Finalize,
+// and YsqlUpgrade. This will return false after the AutoFlag Finalize step.
+bool YBCPgYsqlMajorVersionUpgradeInProgress();
 
 #ifdef __cplusplus
 }  // extern "C"

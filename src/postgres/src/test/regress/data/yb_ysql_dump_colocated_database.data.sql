@@ -31,6 +31,14 @@ SET row_security = off;
 \set use_roles true
 \endif
 
+-- YB: disable auto analyze to avoid conflicts with catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
+END IF;
+END $$;
+
 \if :use_tablespaces
     SET default_tablespace = '';
 \endif
@@ -484,6 +492,14 @@ GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 
+
+-- YB: re-enable auto analyze after all catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+END IF;
+END $$;
 
 --
 -- YSQL database dump complete

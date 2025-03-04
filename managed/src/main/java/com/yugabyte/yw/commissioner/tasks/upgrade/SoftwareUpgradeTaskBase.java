@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -40,9 +41,13 @@ import org.yb.client.YBClient;
 @Slf4j
 public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
 
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
+
   @Inject
-  protected SoftwareUpgradeTaskBase(BaseTaskDependencies baseTaskDependencies) {
+  protected SoftwareUpgradeTaskBase(
+      BaseTaskDependencies baseTaskDependencies, SoftwareUpgradeHelper softwareUpgradeHelper) {
     super(baseTaskDependencies);
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @Override
@@ -222,14 +227,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
 
   protected void createYbcInstallTask(
       Universe universe, List<NodeDetails> nodes, String newVersion) {
-    createYbcInstallTask(universe, nodes, newVersion, null /* ysqlMajorVersionUpgradeState */);
-  }
-
-  protected void createYbcInstallTask(
-      Universe universe,
-      List<NodeDetails> nodes,
-      String newVersion,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
     createYbcSoftwareInstallTasks(nodes, newVersion, getTaskSubGroupType());
     // Start yb-controller process and wait for it to get responsive.
     createStartYbcProcessTasks(
@@ -365,6 +362,16 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     createCheckGlibcTask(new ArrayList<>(universe.getNodes()), newVersion)
         .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
+    String currentVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    // Skip PG Upgrade check on tserver nodes if it is an retry task.
+    // Pre-check will still be executed after the master upgrade as part of main task.
+    if (softwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            universe, currentVersion, newVersion)
+        && taskParams().getPreviousTaskUUID() == null) {
+      createPGUpgradeTServerCheckTask(newVersion);
+    }
+
     addBasicPrecheckTasks();
   }
 
@@ -440,37 +447,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
           "Error fetching version info on node: {} port: {} ", node.cloudInfo.private_ip, port, e);
     }
     return false;
-  }
-
-  protected void createFinalizeUpgradeTasks(
-      boolean upgradeSystemCatalog,
-      boolean finalizeCatalogUpgrade,
-      boolean requireAdditionalSuperUserForCatalogUpgrade) {
-    Universe universe = getUniverse();
-
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
-        false /* isSoftwareRollbackAllowed */,
-        true /* retainPrevYBSoftwareConfig */);
-
-    if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
-
-      createCommonFinalizeUpgradeTasks(
-          upgradeSystemCatalog,
-          finalizeCatalogUpgrade,
-          requireAdditionalSuperUserForCatalogUpgrade);
-
-      if (finalizeCatalogUpgrade) {
-        createGFlagsUpgradeTaskForYSQLMajorUpgrade(
-            universe, YsqlMajorVersionUpgradeState.FINALIZE_IN_PROGRESS);
-      }
-    } else {
-      log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
-    }
-
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-        false /* isSoftwareRollbackAllowed */);
   }
 
   protected void createGFlagsUpgradeTaskForYSQLMajorUpgrade(

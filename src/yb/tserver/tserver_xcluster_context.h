@@ -48,7 +48,8 @@ class TserverXClusterContext : public TserverXClusterContextIf {
 
   Status SetSourceTableInfoMappingForCreateTable(
       const YsqlFullTableName& table_name, const PgObjectId& source_table_id,
-      ColocationId colocation_id) override EXCLUDES(table_map_mutex_);
+      ColocationId colocation_id, const HybridTime& backfill_time) override
+      EXCLUDES(table_map_mutex_);
   void ClearSourceTableInfoMappingForCreateTable(const YsqlFullTableName& table_name) override
       EXCLUDES(table_map_mutex_);
 
@@ -67,8 +68,11 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   struct CreateTableInfo {
     PgObjectId source_table_id;
     ColocationId colocation_id;
+    HybridTime backfill_time_opt;  // Only set for colocated index creations.
 
-    std::string ToString() const { return YB_STRUCT_TO_STRING(source_table_id, colocation_id); }
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(source_table_id, colocation_id, backfill_time_opt);
+    }
   };
 
   mutable rw_spinlock table_map_mutex_;

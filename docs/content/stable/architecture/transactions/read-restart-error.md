@@ -16,6 +16,7 @@ rightNav:
 The distributed nature of YugabyteDB means that clock skew can be present between different physical nodes in the database cluster. Given that YugabyteDB is a multi-version concurrency control (MVCC) database, this clock skew can sometimes result in an unresolvable ambiguity of whether a version of data should, or not be part of a read in snapshot-based transaction isolations (that is, repeatable read and read committed). There are multiple solutions for this problem, [each with their own challenges](https://www.yugabyte.com/blog/evolving-clock-sync-for-distributed-databases/). PostgreSQL doesn't require defining semantics around read restart errors because it is a single-node database without clock skew.
 
 Read restart errors are raised to maintain the _read-after-commit-visibility_ guarantee: any read query should see all data that was committed before the read query was issued (even in the presence of clock skew between nodes). In other words, read restart errors prevent the following stale read anomaly:
+
 1. First, user X commits some data, for which the database picks a commit timestamp, say commit_time.
 2. Next, user X informs user Y about the commit via a channel outside the database, say a phone call.
 3. Then, user Y issues a read that picks a read time, which is less than the prior commit_time due to clock skew.

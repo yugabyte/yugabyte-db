@@ -96,7 +96,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(TestYbQueryDiagnostics.class);
     private static final AtomicInteger queryIdGenerator = new AtomicInteger();
-    private static final int ASH_SAMPLING_INTERVAL_MS = 500;
+    // Smaller value gives higher chances of data capture
+    private static final int ASH_SAMPLING_INTERVAL_MS = 50;
     private static final int YB_QD_MAX_EXPLAIN_PLAN_LEN = 16384;
     private static final int YB_QD_MAX_BIND_VARS_LEN = 2048;
     private static final int BG_WORKER_INTERVAL_MS = 1000;
@@ -122,7 +123,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         /* Required for some of the fields within schema details */
         flagMap.put("ysql_beta_features", "true");
-        flagMap.put("ysql_yb_ash_sampling_interval_ms", "100");
+        flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(ASH_SAMPLING_INTERVAL_MS));
 
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
@@ -140,7 +141,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         /* Required for some of the fields within schema details */
         flagMap.put("ysql_beta_features", "true");
-        flagMap.put("ysql_yb_ash_sampling_interval_ms", "50");
+        flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(ASH_SAMPLING_INTERVAL_MS));
 
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
@@ -331,29 +332,35 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         return Paths.get(resultSet.getString("yb_query_diagnostics"));
     }
 
+    private void waitForBundleCompletion(String queryId, Statement statement) throws Exception {
+        waitForBundleCompletion(queryId, statement, 0);
+    }
+
     /*
      * Waits for the bundle to complete by checking the yb_query_diagnostics_status view.
      */
     private void waitForBundleCompletion(String queryId, Statement statement,
                                          int diagnosticsInterval) throws Exception {
-        Thread.sleep(diagnosticsInterval * 1000 + BG_WORKER_INTERVAL_MS);
+        statement.execute("SELECT pg_sleep(" +
+                (diagnosticsInterval + (BG_WORKER_INTERVAL_MS / 1000)) + ")");
 
-        long start_time = System.currentTimeMillis();
-        while (true)
-        {
-            System.out.println("Waiting in forever loop");
+        long startTime = System.currentTimeMillis();
 
-            ResultSet resultSet = statement.executeQuery(
-                                  "SELECT * FROM yb_query_diagnostics_status where query_id = " +
-                                  queryId);
+        try {
+            TestUtils.waitFor(() -> {
+                ResultSet resultSet = statement.executeQuery(
+                        "SELECT * FROM yb_query_diagnostics_status where query_id = " +
+                                queryId);
 
-            if (resultSet.next() && !resultSet.getString("status").equals("In Progress"))
-                break;
+                if (resultSet.next() && !resultSet.getString("status").equals("In Progress"))
+                    return true;
 
-            if (System.currentTimeMillis() - start_time > 60000) // 1 minute
-                fail("Bundle did not complete within the expected time");
-
-            Thread.sleep(BG_WORKER_INTERVAL_MS);
+                return false;
+            },
+                    60000L, BG_WORKER_INTERVAL_MS);
+        } catch (Exception e) {
+            throw new AssertionError(
+                    "Bundle did not complete within the expected time");
         }
     }
 
@@ -751,8 +758,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     }
 
     private void validateAgainstFile(String expectedFilePath, String actualData) throws Exception{
-
-        Files.write(Paths.get(expectedFilePath), actualData.getBytes());
 
         Path expectedOutputPath = Paths.get(expectedFilePath);
         String expectedOutput = new String(Files.readAllBytes(expectedOutputPath),
@@ -1216,11 +1221,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
-    /**
-     * Disable until #25865 is done.
-     */
+    @Test
     public void checkAshData() throws Exception {
-        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
+        int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
                 diagnosticsInterval /* diagnosticsInterval */,
                 100 /* explainSampleRate */,
@@ -1230,15 +1233,19 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 0 /* bindVarQueryMinDuration */);
 
         try (Statement statement = connection.createStatement()) {
-            statement.execute("SELECT pg_sleep(0.5)");
-
-            String queryId = getQueryIdFromPgStatStatements(statement, "%pg_sleep%");
+            String queryId = getQueryIdFromPgStatStatements(statement, "%PREPARE%");
             Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
 
-            /* Protects from "No query executed;" warning */
-            statement.execute("SELECT pg_sleep(0.1)");
+            /*
+             * Protects from "No query executed;" warning and ensures that we do have some data
+             * to dump in active_session_history.csv otherwise the file wouldn't be created
+             * and we would get a "File does not exist" error.
+             */
+            for (int i = 0; i < 100; i++) {
+                statement.execute("EXECUTE stmt('var1', 1, 1.1)");
+            }
 
-            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+            waitForBundleCompletion(queryId, statement, 2 * diagnosticsInterval);
 
             Path ashPath = getFilePathFromBaseDir(bundleDataPath,
                     "active_session_history.csv");
@@ -1249,7 +1256,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void checkPgssData() throws Exception {
-        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
+        int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
             100 /* explainSampleRate */,
@@ -1279,7 +1286,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testPgssResetBetweenDiagnostics() throws Exception {
-        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
+        int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
             100 /* explainSampleRate */,
@@ -1334,7 +1341,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void emptyBundle() throws Exception {
-        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
+        int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
             diagnosticsInterval,
             100 /* explainSampleRate */,
@@ -1397,12 +1404,12 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
              * we consider only half the length.
              */
             int varLen = minLen / 2;
-            String largeVariable = new String(new char[ varLen ]).replace('\0', 'a');
+            String largeVariable = new String(new char[varLen]).replace('\0', 'a');
 
             /* To ensure that the buffer overflows we do twice as many iterations */
             int noOfIterations = (maxLen / varLen) + 1;
 
-            int diagnosticsInterval = noOfIterations * (BG_WORKER_INTERVAL_MS / 1000);
+            int diagnosticsInterval = 2 * noOfIterations * (BG_WORKER_INTERVAL_MS / 1000);
             QueryDiagnosticsParams params = new QueryDiagnosticsParams(
                 diagnosticsInterval,
                 100 /* explainSampleRate */,
@@ -1420,19 +1427,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 Thread.sleep(BG_WORKER_INTERVAL_MS);
             }
 
-            long start_time = System.currentTimeMillis();
-            while (true)
-            {
-                ResultSet resultSet = statement.executeQuery(
-                                      "SELECT * FROM yb_query_diagnostics_status");
-                if (resultSet.next() && resultSet.getString("status").equals("Success"))
-                    break;
-
-                if (System.currentTimeMillis() - start_time > 60000) // 1 minute
-                    fail("Bundle did not complete within the expected time");
-
-                Thread.sleep(BG_WORKER_INTERVAL_MS);
-            }
+            waitForBundleCompletion(queryId, statement);
 
             /* Bundle has expired */
             Path bindVariablesPath = bundleDataPath.resolve("constants_and_bind_variables.csv");
@@ -1443,6 +1438,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             String bindVariablesContent = new String(Files.readAllBytes(bindVariablesPath));
             String explainPlanContent = new String(Files.readAllBytes(explainPlanPath));
+
+            LOG.info("Explain plan content: \n" + explainPlanContent);
+            LOG.info("Bind variables content: \n" + bindVariablesContent);
 
             int bindVariablesLength = bindVariablesContent.length();
             int explainPlanLength = explainPlanContent.length();
@@ -1695,10 +1693,10 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     /*
      * Test that yb_query_diagnostics works fine when diagnosing a query that has
      * large number of joins, subqueries, and constants.
-     * Disable until #25865 is done
      */
+    @Test
     public void testComplexQuery() throws Exception {
-        int diagnosticsInterval = 2;
+        int diagnosticsInterval = 5;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
                 100 /* explainSampleRate */,
@@ -1751,8 +1749,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     /*
      * Tests a Long query(around 100000 chars).
-    * Disable until #25865 is done
      */
+    @Test
     public void testLongQueryWith5000Constants() throws Exception {
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(

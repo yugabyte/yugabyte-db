@@ -292,7 +292,8 @@ void InitPgGateImpl(
 
 Status PgInitSessionImpl(YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
   return WithMaskedYsqlSignals([&session_stats, is_binary_upgrade] {
-    return pgapi->InitSession(session_stats, is_binary_upgrade);
+    pgapi->InitSession(session_stats, is_binary_upgrade);
+    return static_cast<Status>(Status::OK());
   });
 }
 
@@ -1354,8 +1355,9 @@ YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdx
   return ToYBCStatus(pgapi->CreateIndexSetVectorOptions(handle, options));
 }
 
-YbcStatus YBCPgCreateIndexSetHnswOptions(YbcPgStatement handle, int ef_construction, int m) {
-  return ToYBCStatus(pgapi->CreateIndexSetHnswOptions(handle, ef_construction, m));
+YbcStatus YBCPgCreateIndexSetHnswOptions(
+    YbcPgStatement handle, int m, int m0, int ef_construction) {
+  return ToYBCStatus(pgapi->CreateIndexSetHnswOptions(handle, m, m0, ef_construction));
 }
 
 YbcStatus YBCPgExecCreateIndex(YbcPgStatement handle) {
@@ -3042,6 +3044,18 @@ void YBCPgClearExportedTxnSnapshots() { pgapi->ClearExportedTxnSnapshots(); }
 
 YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode) {
   return ToYBCStatus(pgapi->AcquireObjectLock(lock_id, mode));
+}
+
+bool YBCPgYsqlMajorVersionUpgradeInProgress() {
+  /*
+   * yb_upgrade_to_pg15_completed is only available on the newer code version.
+   * So we use yb_major_version_upgrade_compatibility to determine if the YSQL major upgrade is in
+   * progress on processes running the older version.
+   * We cannot rely on yb_major_version_upgrade_compatibility only, since it will be reset in the
+   * Monitoring Phase.
+   * DevNote: Keep this in sync with IsYsqlMajorVersionUpgradeInProgress.
+   */
+  return yb_major_version_upgrade_compatibility > 0 || !yb_upgrade_to_pg15_completed;
 }
 
 } // extern "C"

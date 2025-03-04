@@ -383,6 +383,7 @@ void TestBulkLoadUseFastPathForColocated(PGConn* conn, const std::string& table_
   generateCSVFileForCopy(csv_filename, num_rows, num_indices + 2);
   const int total_write_entries = num_rows * (num_indices + 1);
   ASSERT_OK(CreateTableWithIndex(conn, table_name, num_indices));
+  ASSERT_OK(conn->Execute("SET yb_fast_path_for_colocated_copy=true"));
   // will take 2 buffers if not adjusted
   ASSERT_OK(SetMaxBatchSize(conn, total_write_entries - 1));
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(

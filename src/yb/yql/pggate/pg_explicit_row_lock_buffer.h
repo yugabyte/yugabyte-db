@@ -13,7 +13,6 @@
 
 #pragma once
 
-#include <functional>
 #include <optional>
 
 #include "yb/gutil/macros.h"
@@ -43,9 +42,8 @@ class ExplicitRowLockBuffer {
     PgOid conflicting_table_id;
   };
 
-  ExplicitRowLockBuffer(
-      TableYbctidVectorProvider& ybctid_container_provider,
-      std::reference_wrapper<const YbctidReader> ybctid_reader);
+  explicit ExplicitRowLockBuffer(YbctidReaderProvider& reader_provider);
+
   Status Add(
       const Info& info, const LightweightTableYbctid& key, bool is_region_local,
       std::optional<ErrorStatusAdditionalInfo>& error_info);
@@ -57,8 +55,7 @@ class ExplicitRowLockBuffer {
   Status DoFlush(std::optional<ErrorStatusAdditionalInfo>& error_info);
   Status DoFlushImpl();
 
-  TableYbctidVectorProvider& ybctid_container_provider_;
-  const YbctidReader& ybctid_reader_;
+  YbctidReaderProvider& reader_provider_;
   TableYbctidSet intents_;
   OidSet region_local_tables_;
   std::optional<Info> info_;

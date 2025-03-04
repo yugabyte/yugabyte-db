@@ -147,6 +147,17 @@ static void inhibit_data_for_failed_table(ArchiveHandle *AH, TocEntry *te);
 
 static void StrictNamesCheck(RestoreOptions *ropt);
 
+/*
+ * Set the yb_disable_auto_analyze GUC on the database to disable auto analyze. For backwards
+ * compatiblity, check for the presence of the GUC before setting it.
+ */
+static const char *yb_disable_auto_analyze_cmd =
+		"DO $$\n"
+		"BEGIN\n"
+		"IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN\n"
+		"EXECUTE format('ALTER DATABASE %%I SET yb_disable_auto_analyze TO %s', current_database());\n"
+		"END IF;\n"
+		"END $$;\n";
 
 /*
  * Allocate a new DumpOptions block containing all default values.
@@ -171,6 +182,8 @@ InitDumpOptions(DumpOptions *opts)
 	opts->include_everything = true;
 	opts->cparams.promptPassword = TRI_DEFAULT;
 	opts->dumpSections = DUMP_UNSECTIONED;
+	opts->dumpSchema = true;
+	opts->dumpData = true;
 }
 
 /*
@@ -189,8 +202,8 @@ dumpOptionsFromRestoreOptions(RestoreOptions *ropt)
 	dopt->cparams.username = ropt->cparams.username ? pg_strdup(ropt->cparams.username) : NULL;
 	dopt->cparams.promptPassword = ropt->cparams.promptPassword;
 	dopt->outputClean = ropt->dropSchema;
-	dopt->dataOnly = ropt->dataOnly;
-	dopt->schemaOnly = ropt->schemaOnly;
+	dopt->dumpData = ropt->dumpData;
+	dopt->dumpSchema = ropt->dumpSchema;
 	dopt->if_exists = ropt->if_exists;
 	dopt->column_inserts = ropt->column_inserts;
 	dopt->dumpSections = ropt->dumpSections;
@@ -435,12 +448,12 @@ RestoreArchive(Archive *AHX)
 	 * Work out if we have an implied data-only restore. This can happen if
 	 * the dump was data only or if the user has used a toc list to exclude
 	 * all of the schema data. All we do is look for schema entries - if none
-	 * are found then we set the dataOnly flag.
+	 * are found then we unset the dumpSchema flag.
 	 *
 	 * We could scan for wanted TABLE entries, but that is not the same as
-	 * dataOnly. At this stage, it seems unnecessary (6-Mar-2001).
+	 * data-only. At this stage, it seems unnecessary (6-Mar-2001).
 	 */
-	if (!ropt->dataOnly)
+	if (ropt->dumpSchema)
 	{
 		int			impliedDataOnly = 1;
 
@@ -454,7 +467,7 @@ RestoreArchive(Archive *AHX)
 		}
 		if (impliedDataOnly)
 		{
-			ropt->dataOnly = impliedDataOnly;
+			ropt->dumpSchema = false;
 			pg_log_info("implied data-only restore");
 		}
 	}
@@ -731,6 +744,13 @@ RestoreArchive(Archive *AHX)
 		}
 	}
 
+	if (AH->public.dopt->include_yb_metadata && !AH->public.ropt->createDB)
+	{
+		ahprintf(AH, "-- YB: re-enable auto analyze after all catalog changes\n");
+		ahprintf(AH, yb_disable_auto_analyze_cmd, "off");
+		ahprintf(AH, "\n");
+	}
+
 	if (ropt->single_txn)
 	{
 		if (AH->connection)
@@ -776,7 +796,7 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 	/* Dump any relevant dump warnings to stderr */
 	if (!ropt->suppressDumpWarnings && strcmp(te->desc, "WARNING") == 0)
 	{
-		if (!ropt->dataOnly && te->defn != NULL && strlen(te->defn) != 0)
+		if (ropt->dumpSchema && te->defn != NULL && strlen(te->defn) != 0)
 			pg_log_warning("warning from original dump file: %s", te->defn);
 		else if (te->copyStmt != NULL && strlen(te->copyStmt) != 0)
 			pg_log_warning("warning from original dump file: %s", te->copyStmt);
@@ -979,6 +999,8 @@ NewRestoreOptions(void)
 	opts->format = archUnknown;
 	opts->cparams.promptPassword = TRI_DEFAULT;
 	opts->dumpSections = DUMP_UNSECTIONED;
+	opts->dumpSchema = true;
+	opts->dumpData = true;
 
 	return opts;
 }
@@ -989,7 +1011,7 @@ _disableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te)
 	RestoreOptions *ropt = AH->public.ropt;
 
 	/* This hack is only needed in a data-only restore */
-	if (!ropt->dataOnly || !ropt->disable_triggers)
+	if (ropt->dumpSchema || !ropt->disable_triggers)
 		return;
 
 	pg_log_info("disabling triggers for %s", te->tag);
@@ -1015,7 +1037,7 @@ _enableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te)
 	RestoreOptions *ropt = AH->public.ropt;
 
 	/* This hack is only needed in a data-only restore */
-	if (!ropt->dataOnly || !ropt->disable_triggers)
+	if (ropt->dumpSchema || !ropt->disable_triggers)
 		return;
 
 	pg_log_info("enabling triggers for %s", te->tag);
@@ -2989,13 +3011,13 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 	if ((strcmp(te->desc, "<Init>") == 0) && (strcmp(te->tag, "Max OID") == 0))
 		return 0;
 
-	/* Mask it if we only want schema */
-	if (ropt->schemaOnly)
+	/* Mask it if we don't want data */
+	if (!ropt->dumpData)
 	{
 		/*
-		 * The sequence_data option overrides schemaOnly for SEQUENCE SET.
+		 * The sequence_data option overrides dumpData for SEQUENCE SET.
 		 *
-		 * In binary-upgrade mode, even with schemaOnly set, we do not mask
+		 * In binary-upgrade mode, even with dumpData unset, we do not mask
 		 * out large objects.  (Only large object definitions, comments and
 		 * other metadata should be generated in binary-upgrade mode, not the
 		 * actual data, but that need not concern us here.)
@@ -3012,8 +3034,8 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 			res = res & REQ_SCHEMA;
 	}
 
-	/* Mask it if we only want data */
-	if (ropt->dataOnly)
+	/* Mask it if we don't want schema */
+	if (!ropt->dumpSchema)
 		res = res & REQ_DATA;
 
 	return res;
@@ -3140,6 +3162,20 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 				 "\\else\n"
 				 "\\set use_roles true\n"
 				 "\\endif\n");
+
+		/* If the --create option is specified, the target database will be created and connected to.
+		 * The current connection is to another database and we don't want to disable auto analyze on
+		 * that.
+		 *
+		 * TODO: If --create is specified, disable auto analyze after the target database is created
+		 * and we connect to it.
+		 */
+		if (!AH->public.ropt->createDB)
+		{
+			ahprintf(AH,
+				"\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
+			ahprintf(AH, yb_disable_auto_analyze_cmd, "on");
+		}
 	}
 
 	ahprintf(AH, "\n");

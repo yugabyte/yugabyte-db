@@ -57,7 +57,7 @@ To set up pg_recvlogical, create and start the local cluster by running the foll
 ./bin/yugabyted start \
   --advertise_address=127.0.0.1 \
   --base_dir="${HOME}/var/node1" \
-  --tserver_flags="cdcsdk_publication_list_refresh_interval_secs=2"
+  --tserver_flags="cdcsdk_publication_list_refresh_interval_secs=120"
 ```
 
 ### Create tables
@@ -164,6 +164,137 @@ Expected output observed on stdout where pg_recvlogical is running:
 BEGIN 3
 table public.projects: INSERT: project_id[integer]:1 name[character varying]:'Project A' description[text]:'Description of Project A'
 COMMIT 3
+```
+
+YugabyteDB semantics are different from PostgreSQL when it comes to streaming added tables to a publication. Refer to [YugabyteDB semantics](../../develop/change-data-capture/using-logical-replication/advanced-topic.md#yugabytedb-semantics) for more details.
+
+## Try it out with LSN type HYBRID_TIME
+
+### Create a table
+
+Create a table to be streamed using `pg_recvlogical`.
+
+```sql
+CREATE TABLE test (id INT PRIMARY KEY);
+```
+
+### Create a replication slot with LSN type HYBRID_TIME
+
+Create a logical replication slot with the output plugin `test_decoding` and LSN type `HYBRID_TIME` using the following:
+
+```sql
+SELECT * FROM pg_create_logical_replication_slot('test_logical_replication_slot', 'test_decoding', false, 'HYBRID_TIME');
+```
+
+```output
+           slot_name           | lsn
+-------------------------------+-----
+ test_logical_replication_slot | 0/2
+```
+
+### Start pg_recvlogical
+
+The pg_recvlogical binary can be found under `<yugabyte-db-dir>/postgres/bin/`.
+
+Open a new shell and start pg_recvlogical to connect to the `yugabyte` database with the superuser `yugabyte` and replicate changes using the replication slot you created as follows:
+
+```sh
+./pg_recvlogical -d yugabyte \
+  -U yugabyte \
+  -h 127.0.0.1 \
+  --slot test_logical_replication_slot \
+  --start \
+  -f -
+```
+
+### Insert records
+
+Insert records and verify the replication by observing the output of `pg_recvlogical`.
+
+```sql
+INSERT INTO test VALUES (1);
+INSERT INTO test VALUES (2);
+```
+
+```output
+BEGIN 2
+table public.test: INSERT: id[integer]:1
+COMMIT 2
+BEGIN 3
+table public.test: INSERT: id[integer]:2
+COMMIT 3
+```
+
+### Kill pg_recvlogical and insert more records
+
+Kill `pg_recvlogical` using `Ctrl+C` and then insert more records.
+
+```sql
+INSERT INTO test VALUES (3);
+INSERT INTO test VALUES (4);
+INSERT INTO test VALUES (5);
+```
+
+Notice that since `pg_recvlogical` is not running, it will not be streaming the above inserted records.
+
+### Get current hybrid time LSN
+
+Use the following query to get the current hybrid time LSN.
+
+```sql
+CREATE OR REPLACE FUNCTION get_current_lsn_format()
+RETURNS text AS $$
+DECLARE
+    ht_lsn bigint;
+    formatted_lsn text;
+BEGIN
+    SELECT yb_get_current_hybrid_time_lsn() INTO ht_lsn;
+    SELECT UPPER(format('%s/%s', to_hex(ht_lsn >> 32), to_hex(ht_lsn & 4294967295)))
+    INTO formatted_lsn;
+    RETURN formatted_lsn;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Using the above function, execute:
+SELECT get_current_lsn_format();
+```
+
+```output
+ get_current_lsn_format
+------------------------
+ 62E8B786/937E7000
+```
+
+### Start pg_recvlogical with current hybrid time LSN
+
+Using the current hybrid time LSN value obtained in the previous step, start `pg_recvlogical` now.
+
+```sh
+./pg_recvlogical -d yugabyte \
+  -U yugabyte \
+  -h 127.0.0.1 \
+  --slot test_logical_replication_slot \
+  -I 62E8B786/937E7000 \
+  --start \
+  -f -
+```
+
+### Insert more records
+
+```sql
+INSERT INTO test VALUES (6);
+INSERT INTO test VALUES (7);
+```
+
+Upon inserting these records, you will notice that you are only receiving the records which were inserted after the LSN value you provided and the records which were inserted when `pg_recvlogical` was down are not published.
+
+```output
+BEGIN 7
+table public.test: INSERT: id[integer]:6
+COMMIT 7
+BEGIN 8
+table public.test: INSERT: id[integer]:7
+COMMIT 8
 ```
 
 {{% explore-cleanup-local %}}

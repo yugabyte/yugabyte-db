@@ -1400,15 +1400,12 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 
-#ifdef YB_TODO
-	/* Yugabyte needs new implementation for stats */
 	Oid			db_oid = PG_ARGISNULL(0) ? -1 : PG_GETARG_OID(0);
 	size_t		num_queries = 0;
-	PgStat_YBStatQueryEntry *queries = pgstat_fetch_ybstat_queries(db_oid, &num_queries);
-
+	PgStat_YbTerminatedQuery *queries = pgstat_fetch_yb_terminated_queries(db_oid, &num_queries);
 	for (size_t i = 0; i < num_queries; i++)
 	{
-		if (has_privs_of_role(GetUserId(), queries[i].st_userid) ||
+		if (has_privs_of_role(GetUserId(), queries[i].userid) ||
 			is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS) ||
 			IsYbDbAdminUser(GetUserId()))
 		{
@@ -1418,7 +1415,7 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 			MemSet(values, 0, sizeof(values));
 			MemSet(nulls, 0, sizeof(nulls));
 
-			values[0] = ObjectIdGetDatum(queries[i].database_oid);
+			values[0] = ObjectIdGetDatum(queries[i].databaseoid);
 			values[1] = Int32GetDatum(queries[i].backend_pid);
 			values[2] = CStringGetTextDatum(queries[i].query_string);
 			values[3] = CStringGetTextDatum(queries[i].termination_reason);
@@ -1430,7 +1427,6 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 		else
 			continue;
 	}
-#endif
 
 	tuplestore_donestoring(tupstore);
 

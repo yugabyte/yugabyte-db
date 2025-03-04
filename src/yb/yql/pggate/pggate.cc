@@ -68,6 +68,7 @@
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_shared_mem.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
@@ -124,14 +125,6 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
       std::move(secure_context),
       VERIFY_RESULT(client::CreateClientMessenger(
           client_name, num_reactors, metric_entity, parent_mem_tracker, secure_context.get()))};
-}
-
-tserver::TServerSharedObject BuildTServerSharedObject() {
-  VLOG(1) << __func__
-          << ": " << YBCIsInitDbModeEnvVarSet()
-          << ", " << FLAGS_pggate_tserver_shm_fd;
-  LOG_IF(DFATAL, FLAGS_pggate_tserver_shm_fd == -1) << "pggate_tserver_shm_fd is not specified";
-  return CHECK_RESULT(tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd));
 }
 
 class ExplicitRowLockErrorInfoAdapter {
@@ -600,14 +593,19 @@ PgApiImpl::PgApiImpl(
       }),
       pg_client_(ash_config, wait_event_watcher_),
       clock_(new server::HybridClock()),
-      tserver_shared_object_(BuildTServerSharedObject()),
-      pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_)) {
+      pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_)),
+      ybctid_reader_provider_(pg_session_),
+      fk_reference_cache_(ybctid_reader_provider_, buffering_settings_),
+      explicit_row_lock_buffer_(ybctid_reader_provider_) {
+  PgBackendSetupSharedMemory();
+  tserver_shared_object_ = &PgSharedMemoryManager().SharedData();
+
   CHECK_OK(interrupter_->Start());
   CHECK_OK(clock_->Init());
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
-      tserver_shared_object_, session_id));
+      *tserver_shared_object_, session_id));
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -624,19 +622,12 @@ void PgApiImpl::Interrupt() {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
+void PgApiImpl::InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
   CHECK(!pg_session_);
 
-  auto session = make_scoped_refptr<PgSession>(
-      pg_client_, pg_txn_manager_, pg_callbacks_, session_stats,
-      [&pg_session = pg_session_](
-          PgOid database_id, TableYbctidVector& ybctids, const OidSet& region_local_tables,
-          const ExecParametersMutator& mutator) {
-        return FetchExistingYbctids(pg_session, database_id, ybctids, region_local_tables, mutator);
-      }, is_binary_upgrade, wait_event_watcher_);
-
-  pg_session_.swap(session);
-  return Status::OK();
+  pg_session_ = make_scoped_refptr<PgSession>(
+      pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
+      wait_event_watcher_, buffering_settings_);
 }
 
 uint64_t PgApiImpl::GetSessionID() const { return pg_client_.SessionID(); }
@@ -1160,9 +1151,10 @@ Status PgApiImpl::CreateIndexSetVectorOptions(PgStatement* handle, YbcPgVectorId
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle)).SetVectorOptions(options);
 }
 
-Status PgApiImpl::CreateIndexSetHnswOptions(PgStatement* handle, int ef_construction, int m) {
+Status PgApiImpl::CreateIndexSetHnswOptions(
+    PgStatement* handle, int m, int m0, int ef_construction) {
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle))
-      .SetHnswOptions(ef_construction, m);
+      .SetHnswOptions(m, m0, ef_construction);
 }
 
 Status PgApiImpl::ExecCreateIndex(PgStatement* handle) {
@@ -1814,7 +1806,7 @@ Status PgApiImpl::NewTupleExpr(
 
 // Transaction Control -----------------------------------------------------------------------------
 Status PgApiImpl::BeginTransaction(int64_t start_time) {
-  pg_session_->InvalidateForeignKeyReferenceCache();
+  fk_reference_cache_.Clear();
   return pg_txn_manager_->BeginTransaction(start_time);
 }
 
@@ -1971,29 +1963,28 @@ void PgApiImpl::ResetCatalogReadTime() {
 
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
     PgOid table_id, const Slice& ybctid, PgOid database_id) {
-  return pg_session_->ForeignKeyReferenceExists(
-      database_id, LightweightTableYbctid(table_id, ybctid));
+  return fk_reference_cache_.IsReferenceExists(
+      database_id, LightweightTableYbctid{table_id, ybctid});
 }
 
 void PgApiImpl::AddForeignKeyReferenceIntent(
     PgOid table_id, bool is_region_local, const Slice& ybctid) {
-  pg_session_->AddForeignKeyReferenceIntent(
-      LightweightTableYbctid(table_id, ybctid), is_region_local);
+  fk_reference_cache_.AddIntent(LightweightTableYbctid{table_id, ybctid}, is_region_local);
 }
 
 void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
-  pg_session_->DeleteForeignKeyReference(LightweightTableYbctid(table_id, ybctid));
+  fk_reference_cache_.DeleteReference(LightweightTableYbctid{table_id, ybctid});
 }
 
 void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
-  pg_session_->AddForeignKeyReference(LightweightTableYbctid(table_id, ybctid));
+  fk_reference_cache_.AddReference(LightweightTableYbctid{table_id, ybctid});
 }
 
 Status PgApiImpl::AddExplicitRowLockIntent(
     const PgObjectId& table_id, const Slice& ybctid, const YbcPgExplicitRowLockParams& params,
     bool is_region_local, YbcPgExplicitRowLockErrorInfo& error_info) {
   ExplicitRowLockErrorInfoAdapter adapter(error_info);
-  return pg_session_->explicit_row_lock_buffer().Add(
+  return explicit_row_lock_buffer_.Add(
       {.rowmark = params.rowmark,
        .pg_wait_policy = params.pg_wait_policy,
        .docdb_wait_policy = params.docdb_wait_policy,
@@ -2003,7 +1994,7 @@ Status PgApiImpl::AddExplicitRowLockIntent(
 
 Status PgApiImpl::FlushExplicitRowLockIntents(YbcPgExplicitRowLockErrorInfo& error_info) {
   ExplicitRowLockErrorInfoAdapter adapter(error_info);
-  return pg_session_->explicit_row_lock_buffer().Flush(adapter);
+  return explicit_row_lock_buffer_.Flush(adapter);
 }
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
@@ -2210,18 +2201,18 @@ Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
 
 void PgApiImpl::RollbackSubTransactionScopedSessionState() {
   pg_session_->DropBufferedOperations();
-  pg_session_->explicit_row_lock_buffer().Clear();
+  explicit_row_lock_buffer_.Clear();
   pg_session_->ClearAllInsertOnConflictBuffers();
 }
 
 void PgApiImpl::RollbackTransactionScopedSessionState() {
   RollbackSubTransactionScopedSessionState();
-  pg_session_->InvalidateForeignKeyReferenceCache();
+  fk_reference_cache_.Clear();
 }
 
 Status PgApiImpl::CommitTransactionScopedSessionState() {
   RSTATUS_DCHECK(
-      pg_session_->explicit_row_lock_buffer().IsEmpty(),
+      explicit_row_lock_buffer_.IsEmpty(),
       IllegalState,
       "Expected row lock buffer to be empty");
   RSTATUS_DCHECK(
@@ -2229,7 +2220,7 @@ Status PgApiImpl::CommitTransactionScopedSessionState() {
       IllegalState,
       "Expected INSERT ... ON CONFLICT buffer to be empty");
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  pg_session_->InvalidateForeignKeyReferenceCache();
+  fk_reference_cache_.Clear();
   return Status::OK();
 }
 

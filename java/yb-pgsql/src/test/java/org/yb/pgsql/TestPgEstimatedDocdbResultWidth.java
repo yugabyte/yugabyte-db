@@ -146,20 +146,23 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
     testDocdbResultWidhEstimationHelper(stmt,
         String.format("SELECT 0 FROM %1$s", table_name),
         String.format("%1$s", table_name), ybctid_size);
+
     testDocdbResultWidhEstimationHelper(stmt,
-        String.format("SELECT 0 FROM %1$s WHERE k1 > %2$s", table_name, value),
-        String.format("%1$s", table_name), ybctid_size);
+        String.format("/*+ IndexScan(%1$s %1$s_pkey) */ SELECT 0 FROM %1$s WHERE k1 > %2$s",
+            table_name, value),
+        String.format("%1$s", table_name), value_size);
     testDocdbResultWidhEstimationHelper(stmt,
-        String.format("SELECT 0 FROM %1$s WHERE k1 > %2$s and k2 > %2$s", table_name, value),
-        String.format("%1$s", table_name), ybctid_size);
+        String.format("/*+ IndexScan(%1$s %1$s_pkey) */ SELECT 0 FROM %1$s WHERE k1 > %2$s "
+            + "and k2 > %2$s", table_name, value),
+        String.format("%1$s", table_name), 2 * value_size);
     testDocdbResultWidhEstimationHelper(stmt,
-        String.format("SELECT 0 FROM %1$s WHERE k1 > %2$s and k2 > %2$s and v1 > %2$s",
-                      table_name, value),
-        String.format("%1$s", table_name), ybctid_size);
+        String.format("/*+ IndexScan(%1$s %1$s_pkey) */ SELECT 0 FROM %1$s WHERE k1 > %2$s "
+            + "and k2 > %2$s and v1 > %2$s", table_name, value),
+        String.format("%1$s", table_name), 2 * value_size);
     testDocdbResultWidhEstimationHelper(stmt,
-        String.format("SELECT 0 FROM %1$s WHERE k1 > %2$s and k2 > %2$s and " +
-                      "v1 > %2$s and v2 > %2$s", table_name, value),
-        String.format("%1$s", table_name), ybctid_size);
+        String.format("/*+ IndexScan(%1$s %1$s_pkey) */ SELECT 0 FROM %1$s WHERE k1 > %2$s "
+            + "and k2 > %2$s and v1 > %2$s and v2 > %2$s", table_name, value),
+        String.format("%1$s", table_name), 2 * value_size);
 
     /* In case of Index Only Scan when no column is projected and no index conditions are present,
      * then the ybctid is returned. If no columns are projected, but index condition exists, then

@@ -86,6 +86,6 @@ Result<VectorIndexPtr> CreateVectorIndex(
 extern const std::string kVectorIndexDirPrefix;
 
 void AddVectorIndexReverseEntry(
-    rocksdb::DirectWriteHandler* handler, Slice ybctid, Slice value, HybridTime write_ht);
+    rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht);
 
 }  // namespace yb::docdb

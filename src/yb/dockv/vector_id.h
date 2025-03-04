@@ -62,6 +62,7 @@ class DocVectorValue final {
 bool IsNull(const DocVectorValue& v);
 
 KeyBuffer VectorIdKey(vector_index::VectorId vector_id);
-std::array<Slice, 3> VectorIndexReverseEntryKeyParts(Slice value, Slice encoded_write_time);
+std::array<Slice, 3> VectorIndexReverseEntryKeyParts(Slice id, Slice encoded_write_time);
+std::array<Slice, 3> VectorIndexReverseEntryKeyPartsForValue(Slice value, Slice encoded_write_time);
 
 } // namespace yb::dockv

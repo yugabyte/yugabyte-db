@@ -105,6 +105,7 @@ DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(use_private_ip);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_int32(transaction_table_num_tablets);
+DECLARE_bool(TEST_address_segment_negotiator_dfatal_map_failure);
 
 namespace yb {
 
@@ -218,6 +219,11 @@ Status MiniCluster::StartAsync(
   // Default master args to make sure we don't wait to trigger new LB tasks upon master leader
   // failover.
   FLAGS_load_balancer_initial_delay_secs = 0;
+
+  // Unlike real deployments, minicluster tests have multiple master/tserver in one process. This
+  // results in multiple reserved address segments needed in one process, which is likely enough to
+  // collide with each other that we shouldn't DFATAL.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_address_segment_negotiator_dfatal_map_failure) = false;
 
   // start the masters
   RETURN_NOT_OK_PREPEND(StartMasters(),

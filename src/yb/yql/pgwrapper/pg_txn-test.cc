@@ -555,15 +555,13 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     auto port = cluster_->AllocateFreePort();
     PgProcessConf pg_process_conf = VERIFY_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
         AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-        pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-        pg_ts->server()->GetSharedMemoryFd()));
+        pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
 
     pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
     pg_process_conf.force_disable_log_file = true;
     pg_host_ports_[idx] = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
 
-    pg_supervisors_[idx] = std::make_unique<PgSupervisor>(
-      pg_process_conf, nullptr);
+    pg_supervisors_[idx] = std::make_unique<PgSupervisor>(pg_process_conf, pg_ts->server());
 
     return Status::OK();
   }

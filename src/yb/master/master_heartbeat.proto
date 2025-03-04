@@ -182,6 +182,22 @@ message DBCatalogVersionDataPB {
   repeated YsqlCatalogVersionPB db_catalog_versions = 1;
 }
 
+// This matches a row in pg_yb_invalidation_messages table, which has a composite primary
+// key of (db_oid, current_version). For each pair of (db_oid, current_version), there is
+// a list of invalidation messages. The table pg_yb_invalidation_messages also has a message
+// time column that is used to delete old messages from pg_yb_invalidation_messages, but it is
+// not needed by tserver so it is skipped here.
+message YsqlCatalogInvalMessagesPB {
+  optional uint32 db_oid = 1;
+  optional uint64 current_version = 2;
+  // Serialized/encoded message list related to PG catalog cache invalidation.
+  optional bytes message_list = 3;
+}
+
+message DBCatalogInvalMessagesDataPB {
+  repeated YsqlCatalogInvalMessagesPB db_catalog_inval_messages = 1;
+}
+
 // Heartbeat sent from the tablet-server to the master
 // to establish liveness and report back any status changes.
 message TSHeartbeatRequestPB {
@@ -302,6 +318,7 @@ message TSHeartbeatResponsePB {
   optional uint64 ysql_last_breaking_catalog_version = 15;
 
   optional DBCatalogVersionDataPB db_catalog_version_data = 20;
+  optional DBCatalogInvalMessagesDataPB db_catalog_inval_messages_data = 28;
 
   optional encryption.UniverseKeyRegistryPB universe_key_registry = 11;
 

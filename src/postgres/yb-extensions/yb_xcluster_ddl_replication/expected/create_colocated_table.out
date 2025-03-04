@@ -1,7 +1,5 @@
 \c colocation_test
 CALL TEST_reset();
--- TODO remove this later (#25888)
-SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1;
 -- Verify that temporary objects are allowed.
 SET yb_xcluster_ddl_replication.replication_role = SOURCE;
 CREATE TEMP TABLE temp_foo(i int PRIMARY KEY);

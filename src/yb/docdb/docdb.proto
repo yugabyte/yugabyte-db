@@ -96,6 +96,8 @@ message KeyValueWriteBatchPB {
   // Only relevant when the write op was launched for a session advisory lock request. Used by the
   // wait-queue to resume deadlocked requests.
   optional uint64 pg_session_req_version = 15;
+
+  optional bytes delete_vector_ids = 17;
 }
 
 message PerDbFilterPB {
@@ -138,6 +140,9 @@ message ApplyTransactionStatePB {
 
   // Transaction commit hybrid time.
   optional fixed64 commit_ht = 3;
+
+  // Transaction apply op id.
+  optional OpIdPB apply_op_id = 5;
 
   // Set of aborted subtransactions.
   optional SubtxnSetPB aborted = 4;

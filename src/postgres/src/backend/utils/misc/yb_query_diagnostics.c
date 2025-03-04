@@ -136,6 +136,12 @@ typedef struct BackgroundWorkerHandle
 	uint64 generation;
 } BackgroundWorkerHandle;
 
+enum QueryOutputFormat
+{
+	YB_QD_TABULAR = 0,
+	YB_QD_CSV
+};
+
 /* shared variables */
 static HTAB *bundles_in_progress = NULL;
 static LWLock *bundles_in_progress_lock;	/* protects bundles_in_progress
@@ -178,6 +184,9 @@ static void FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata,
 								   int status, const char *description);
 static int	DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name,
 								 const char *folder_path, char *description, slock_t *mutex);
+static void DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description);
+static void GetResultsInCsvFormat(StringInfo output_buffer, int num_cols);
+static void GetResultsInTabularFormat(StringInfo output_buffer, int num_cols);
 
 /* Function used in gathering bind_variables/constants data */
 static void AccumulateBindVariablesOrConstants(YbQueryDiagnosticsEntry *entry, StringInfo params);
@@ -186,8 +195,7 @@ static void AccumulateBindVariablesOrConstants(YbQueryDiagnosticsEntry *entry, S
 static void PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss,
 						 const char *queryString);
 static void FetchSchemaOids(List *rtable, Oid *schema_oids);
-static bool ExecuteQuery(StringInfo schema_details, const char *query,
-						 const char *title, char *description);
+static bool ExecuteQuery(StringInfo output_buffer, const char *query, int output_format);
 static int	DescribeOneTable(Oid oid, StringInfo schema_details, char *description);
 static void PrintTableName(Oid oid, StringInfo schema_details);
 
@@ -1448,12 +1456,6 @@ end_of_loop:
 												  "Fetching schema details errored out "
 												  "with the following message: %s",
 												  edata->message);
-
-			ereport(LOG,
-					(errmsg("error while dumping schema details %s\n%s",
-							edata->message, YBCGetStackTrace())),
-					(errhint("%s", edata->hint)));
-
 			FreeErrorData(edata);
 		}
 		PG_END_TRY();
@@ -1467,32 +1469,53 @@ end_of_loop:
 		if (status == YB_DIAGNOSTICS_ERROR)
 			goto remove_entry;
 
-		/* Dump ASH */
 		if (yb_enable_ash)
-		{
-			StringInfoData ash_buffer;
-
-			initStringInfo(&ash_buffer);
-
-			GetAshDataForQueryDiagnosticsBundle(entry->metadata.start_time,
-												BundleEndTime(entry),
-												entry->metadata.params.query_id,
-												&ash_buffer, description);
-
-			status = DumpToFile(entry->metadata.path, ash_file,
-								ash_buffer.data, description);
-
-			pfree(ash_buffer.data);
-
-			if (status == YB_DIAGNOSTICS_ERROR)
-				goto remove_entry;
-		}
+			DumpActiveSessionHistory(entry, description);
 
 remove_entry:
 		FinishBundleProcessing(&entry->metadata, status, description);
 	}
 
 	pfree(expired_entries);
+}
+
+/*
+ * DumpActiveSessionHistory
+ *		Gathers ASH data using SPI and dumps it to a file.
+ */
+static void
+DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description)
+{
+	/* Fixed buffer sized for max expected timestamp strings (30 chars each) */
+	char		query[256];
+	StringInfoData ash_buffer;
+	TimestampTz end_time = BundleEndTime(entry);
+
+	Assert(entry->metadata.start_time < end_time);
+
+	char	   *start_time_str = pstrdup(timestamptz_to_str(entry->metadata.start_time));
+	char	   *end_time_str = pstrdup(timestamptz_to_str(end_time));
+
+	initStringInfo(&ash_buffer);
+	snprintf(query, sizeof(query),
+			 "SELECT * FROM yb_active_session_history "
+			 "WHERE sample_time >= '%s' AND sample_time <= '%s'",
+			 start_time_str, end_time_str);
+
+	PG_TRY();
+	{
+		/* Execute the query */
+		if (!ExecuteQuery(&ash_buffer, query, YB_QD_CSV))
+			YbQueryDiagnosticsAppendToDescription(description, "Fetching ASH data failed; ");
+		else
+			DumpToFile(entry->metadata.path, ash_file,
+					   ash_buffer.data, description);
+	}
+	PG_END_TRY();
+
+	pfree(start_time_str);
+	pfree(end_time_str);
+	pfree(ash_buffer.data);
 }
 
 /*
@@ -1848,8 +1871,24 @@ DescribeOneTable(Oid oid, StringInfo schema_details, char *description)
 	{
 		snprintf(formatted_query, sizeof(formatted_query), queries[i], oid);
 
-		if (!ExecuteQuery(schema_details, formatted_query, titles[i], description))
+		/* Initialize a temporary buffer to hold the query result. */
+		StringInfoData temp_buffer;
+		initStringInfo(&temp_buffer);
+
+		/* Execute the query and format the output in tabular view. */
+		if (!ExecuteQuery(&temp_buffer, formatted_query, YB_QD_TABULAR))
+		{
+			YbQueryDiagnosticsAppendToDescription(description,
+												  "Fetching schema details failed;");
+			pfree(temp_buffer.data);
 			return YB_DIAGNOSTICS_ERROR;
+		}
+
+		/* If the query returned any data, append it with a title header. */
+		if (temp_buffer.len > 0)
+			appendStringInfo(schema_details, "- %s:\n%s\n", titles[i], temp_buffer.data);
+
+		pfree(temp_buffer.data);
 	}
 
 	return YB_DIAGNOSTICS_SUCCESS;
@@ -1873,24 +1912,21 @@ PrintTableName(Oid oid, StringInfo schema_details)
 
 /*
  * ExecuteQuery
- *		Uses SPI framework to execute the given query and appends the results to schema_details.
- *		The results are formatted as a table with a title.
+ *		Uses SPI framework to execute the given query and appends the results to
+ *		the output_buffer. The results are formatted based on the output_format.
+ *		- YB_QD_CSV: Comma-separated values
+ *		- YB_QD_TABULAR: Tabular format
+ *		Note: title is only added for YB_QD_TABULAR format to maintain consistency
+ *			  with csv formatting.
  *
  *		Returns true if the query was executed successfully, false in case of an error.
  *		Error is copied to description.
  */
 static bool
-ExecuteQuery(StringInfo schema_details, const char *query, const char *title, char *description)
+ExecuteQuery(StringInfo output_buffer, const char *query, int output_format)
 {
 	int			ret;
 	int			num_cols;
-	int		   *col_widths;
-	bool		is_result_empty = true;
-	StringInfoData result;
-	StringInfoData columns;
-
-	initStringInfo(&result);
-	initStringInfo(&columns);
 
 	/*
 	 * Start a transaction on which we can run queries. Note that each StartTransactionCommand()
@@ -1906,9 +1942,9 @@ ExecuteQuery(StringInfo schema_details, const char *query, const char *title, ch
 	ret = SPI_connect();
 	if (ret != SPI_OK_CONNECT)
 	{
-		snprintf(description, YB_QD_DESCRIPTION_LEN,
-				 "Failed to gather schema details. SPI_connect failed: %s",
-				 SPI_result_code_string(ret));
+		ereport(LOG,
+				(errmsg("SPI_connect failed: %s, while executing: %s",
+						SPI_result_code_string(ret), query)));
 		pgstat_report_activity(STATE_IDLE, NULL);
 		return false;
 	}
@@ -1928,100 +1964,40 @@ ExecuteQuery(StringInfo schema_details, const char *query, const char *title, ch
 					  0);		/* tcount (0 = unlimited rows) */
 	if (ret != SPI_OK_SELECT)
 	{
-		snprintf(description, YB_QD_DESCRIPTION_LEN,
-				 "Failed to gather schema details. SPI_execute failed: %s",
-				 SPI_result_code_string(ret));
+		ereport(LOG,
+				(errmsg("SPI_execute failed: %s, while executing: %s",
+						SPI_result_code_string(ret), query)));
 		pgstat_report_activity(STATE_IDLE, NULL);
 		return false;
 	}
 
-	/* Calculate column widths for formatting */
 	num_cols = SPI_tuptable->tupdesc->natts;
-	col_widths = (int *) palloc0(num_cols * sizeof(int));
 
-	/* Initialize column widths with column name lengths */
-	for (int i = 0; i < num_cols; i++)
+	switch (output_format)
 	{
-		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
-
-		col_widths[i] = strlen(NameStr(attr->attname));
-	}
-
-	/* Adjust column widths based on data */
-	for (uint64 j = 0; j < SPI_processed; j++)
-	{
-		HeapTuple	tuple = SPI_tuptable->vals[j];
-
-		for (int i = 0; i < num_cols; i++)
+		case YB_QD_CSV:
 		{
-			char	   *val = SPI_getvalue(tuple, SPI_tuptable->tupdesc, i + 1);
-			int			val_len = val ? strlen(val) : 0;	/* Empty string for NULL */
-
-			col_widths[i] = Max(col_widths[i], val_len);
-
-			if (val)
-				pfree(val);
+			GetResultsInCsvFormat(output_buffer, num_cols);
+			break;
 		}
-	}
 
-	/* Format column names */
-	appendStringInfoChar(&columns, '|');
-	for (int i = 0; i < num_cols; i++)
-	{
-		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
-
-		appendStringInfo(&columns, "%-*s |", col_widths[i], NameStr(attr->attname));
-	}
-
-	appendStringInfoChar(&columns, '\n');
-
-	/* Add separator line */
-	appendStringInfoChar(&columns, '+');
-	for (int i = 0; i < num_cols; i++)
-	{
-		for (int j = 0; j <= col_widths[i]; j++)
+		case YB_QD_TABULAR:
 		{
-			appendStringInfoChar(&columns, '-');
+			GetResultsInTabularFormat(output_buffer, num_cols);
+			break;
 		}
-		appendStringInfoChar(&columns, '+');
+
+		default:
+			Assert(false);
 	}
-
-	/* Format rows */
-	for (uint64 j = 0; j < SPI_processed; j++)
-	{
-		HeapTuple	tuple = SPI_tuptable->vals[j];
-
-		appendStringInfoChar(&result, '|');
-		for (int i = 0; i < num_cols; i++)
-		{
-			char	   *val = SPI_getvalue(tuple, SPI_tuptable->tupdesc, i + 1);
-
-			appendStringInfo(&result, "%-*s |", col_widths[i], val ? val : "");
-			if (val)
-			{
-				is_result_empty = false;
-				pfree(val);
-			}
-		}
-		appendStringInfoChar(&result, '\n');
-	}
-
-	/* Append formatted results to schema_details if not empty */
-	if (!is_result_empty)
-		appendStringInfo(schema_details, "- %s:\n%s\n%s\n", title, columns.data, result.data);
-
-	/* Clean up */
-	pfree(result.data);
-	pfree(columns.data);
-	pfree(col_widths);
 
 	/* Close the SPI connection and clean up the transaction context */
 	ret = SPI_finish();
 	if (ret != SPI_OK_FINISH)
 	{
-		snprintf(description, YB_QD_DESCRIPTION_LEN,
-				 "Failed to gather schema details. SPI_finish failed: %s",
-				 SPI_result_code_string(ret));
+		ereport(LOG,
+				(errmsg("SPI_finish failed: %s, while executing: %s",
+						SPI_result_code_string(ret), query)));
 		pgstat_report_activity(STATE_IDLE, NULL);
 		return false;
 	}
@@ -2031,6 +2007,136 @@ ExecuteQuery(StringInfo schema_details, const char *query, const char *title, ch
 	pgstat_report_stat(true);
 	pgstat_report_activity(STATE_IDLE, NULL);
 	return true;
+}
+
+static void
+GetResultsInCsvFormat(StringInfo output_buffer, int num_cols)
+{
+	/*
+	 * If there are no rows within output then its better to not create the file
+	 * than to output only the header.
+	 */
+	if (SPI_processed == 0)
+		return;
+
+	/* Build CSV header */
+	for (int i = 0; i < num_cols; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
+		appendStringInfo(output_buffer, "%s%s", (i == 0 ? "" : ","),
+						 NameStr(attr->attname));
+	}
+	appendStringInfoChar(output_buffer, '\n');
+	/* Build rows in CSV format */
+	for (uint64 j = 0; j < SPI_processed; j++)
+	{
+		HeapTuple tuple = SPI_tuptable->vals[j];
+		for (int i = 0; i < num_cols; i++)
+		{
+			char	   *val = SPI_getvalue(tuple, SPI_tuptable->tupdesc, i + 1);
+			appendStringInfo(output_buffer, "%s%s", (i == 0 ? "" : ","),
+							 val ? val : "");
+			if (val)
+				pfree(val);
+		}
+		appendStringInfoChar(output_buffer, '\n');
+	}
+}
+
+static void
+GetResultsInTabularFormat(StringInfo output_buffer, int num_cols)
+{
+	/*
+	 * If there are no rows within output then its better to not create the file
+	 * than to output only the header.
+	 */
+	if (SPI_processed == 0)
+		return;
+
+	int		   *col_widths = (int *) palloc0(num_cols * sizeof(int));
+	int			initial_len = output_buffer->len;
+	bool		is_it_all_null = true;
+
+	/* Initialize column widths with column name lengths */
+	for (int i = 0; i < num_cols; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
+		col_widths[i] = strlen(NameStr(attr->attname));
+	}
+
+	/* Adjust column widths based on data */
+	for (uint64 j = 0; j < SPI_processed; j++)
+	{
+		HeapTuple tuple = SPI_tuptable->vals[j];
+
+		for (int i = 0; i < num_cols; i++)
+		{
+			char	   *val = SPI_getvalue(tuple, SPI_tuptable->tupdesc, i + 1);
+			int			val_len = val ? strlen(val) : 0; /* Empty string for NULL */
+
+			col_widths[i] = Max(col_widths[i], val_len);
+
+			if (val)
+				pfree(val);
+		}
+	}
+
+	/* Format column names */
+	appendStringInfoChar(output_buffer, '|');
+	for (int i = 0; i < num_cols; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
+		appendStringInfo(output_buffer, "%-*s |", col_widths[i],
+						 NameStr(attr->attname));
+	}
+
+	appendStringInfoChar(output_buffer, '\n');
+
+	/* Add separator line */
+	appendStringInfoChar(output_buffer, '+');
+	for (int i = 0; i < num_cols; i++)
+	{
+		for (int j = 0; j <= col_widths[i]; j++)
+			appendStringInfoChar(output_buffer, '-');
+
+		appendStringInfoChar(output_buffer, '+');
+	}
+
+	appendStringInfoChar(output_buffer, '\n');
+
+	/* Format rows */
+	for (uint64 j = 0; j < SPI_processed; j++)
+	{
+		HeapTuple tuple = SPI_tuptable->vals[j];
+
+		appendStringInfoChar(output_buffer, '|');
+		for (int i = 0; i < num_cols; i++)
+		{
+			char	   *val = SPI_getvalue(tuple, SPI_tuptable->tupdesc, i + 1);
+
+			appendStringInfo(output_buffer, "%-*s |", col_widths[i], val ? val : "");
+			if (val)
+			{
+				is_it_all_null = false;
+				pfree(val);
+			}
+		}
+		appendStringInfoChar(output_buffer, '\n');
+	}
+
+	/*
+	 * Reset output_buffer to the original state if the result is empty to avoid
+	 * only printing headers.
+	 */
+	if (is_it_all_null)
+	{
+		output_buffer->len = initial_len;
+		Assert(output_buffer->data);
+		output_buffer->data[initial_len] = '\0';
+	}
+
+	if (col_widths)
+		pfree(col_widths);
 }
 
 /*

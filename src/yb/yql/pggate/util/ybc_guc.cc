@@ -93,4 +93,18 @@ int32_t yb_sampling_algorithm = 1 /* YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING 
 
 bool yb_refresh_matview_in_place = false;
 
+// When set to a non-zero value to indicate the yb universe will have PostgreSQL running different
+// versions.
+// This should be set during the Upgrade and Rollback Phases of the YSQL major upgrade. This is set
+// before the YSQL major upgrade starts, and can be reset as soon as the upgrade reaches the
+// Monitoring phase.
+// Use YBCPgYsqlMajorVersionUpgradeInProgress in order to know if the YSQL major upgrade is in
+// progress.
 int yb_major_version_upgrade_compatibility = 0;
+
+// Indicates that the upgrade to the PostgreSQL version 15 has been completed.
+// Use YBCPgYsqlMajorVersionUpgradeInProgress in order to know if the YSQL major upgrade is in
+// progress.
+bool yb_upgrade_to_pg15_completed = true;
+
+bool yb_disable_auto_analyze = false;

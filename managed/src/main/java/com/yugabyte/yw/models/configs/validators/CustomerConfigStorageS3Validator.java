@@ -33,6 +33,8 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
   private static final Collection<String> S3_URL_SCHEMES =
       Arrays.asList(new String[] {"http", "https", "s3"});
 
+  private static final String AUTHORITY_CHARS_REGEX = "^[a-z0-9][a-z0-9._-]{1,}[a-z0-9]$";
+
   private final CloudClientsFactory factory;
   private final AWSUtil awsUtil;
   private final RuntimeConfGetter runtimeConfGetter;
@@ -45,7 +47,7 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
       CloudClientsFactory factory,
       RuntimeConfGetter runtimeConfGetter,
       AWSUtil awsUtil) {
-    super(beanValidator, S3_URL_SCHEMES);
+    super(beanValidator, S3_URL_SCHEMES, AUTHORITY_CHARS_REGEX);
     this.factory = factory;
     this.runtimeConfGetter = runtimeConfGetter;
     this.awsUtil = awsUtil;

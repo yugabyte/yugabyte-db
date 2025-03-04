@@ -231,6 +231,25 @@ struct ApplyTransactionState {
   }
 };
 
+struct ApplyStateWithCommitInfo {
+  ApplyTransactionState state;
+  HybridTime commit_ht;
+  OpId apply_op_id;
+
+  template <class PB>
+  static Result<ApplyStateWithCommitInfo> FromPB(const PB& pb) {
+    return ApplyStateWithCommitInfo {
+      .state = VERIFY_RESULT(ApplyTransactionState::FromPB(pb)),
+      .commit_ht = HybridTime(pb.commit_ht()),
+      .apply_op_id = OpId::FromPB(pb.apply_op_id()),
+    };
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(state, commit_ht, apply_op_id);
+  }
+};
+
 Result<ApplyTransactionState> GetIntentsBatch(
     const TransactionId& transaction_id,
     const KeyBounds* key_bounds,

@@ -205,6 +205,10 @@ Status PgCreateTable::Exec(
     table_creator->xcluster_source_table_id(xcluster_source_table_id_.GetYbTableId());
   }
 
+  if (xcluster_backfill_hybrid_time_) {
+    table_creator->xcluster_backfill_hybrid_time(xcluster_backfill_hybrid_time_);
+  }
+
   if (transaction_metadata) {
     table_creator->part_of_transaction(transaction_metadata);
   }
@@ -361,6 +365,10 @@ size_t PgCreateTable::PrimaryKeyRangeColumnCount() const {
 
 void PgCreateTable::SetXClusterSourceTableId(const PgObjectId& xcluster_source_table_id) {
   xcluster_source_table_id_ = xcluster_source_table_id;
+}
+
+void PgCreateTable::SetXClusterBackfillHybridTime(uint64_t xcluster_backfill_hybrid_time) {
+  xcluster_backfill_hybrid_time_ = xcluster_backfill_hybrid_time;
 }
 
 void PgCreateTable::OverwriteColocationId(const ColocationId& colocation_id) {

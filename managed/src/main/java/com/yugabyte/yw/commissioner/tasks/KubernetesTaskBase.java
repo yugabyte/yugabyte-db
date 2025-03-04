@@ -1859,8 +1859,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     if (ysqlMajorVersionUpgradeState != null) {
       params.ysqlMajorVersionUpgradeState = ysqlMajorVersionUpgradeState;
-    } else if (isYsqlMajorUpgradeStateInPreFinalizeState(universe, gFlagsValidation)) {
-      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;
@@ -2203,8 +2201,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     if (ysqlMajorVersionUpgradeState != null) {
       params.ysqlMajorVersionUpgradeState = ysqlMajorVersionUpgradeState;
-    } else if (isYsqlMajorUpgradeStateInPreFinalizeState(universe, gFlagsValidation)) {
-      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;
@@ -2291,8 +2287,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     if (ysqlMajorVersionUpgradeState != null) {
       params.ysqlMajorVersionUpgradeState = ysqlMajorVersionUpgradeState;
-    } else if (isYsqlMajorUpgradeStateInPreFinalizeState(universe, gFlagsValidation)) {
-      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
     }
     params.enableNodeToNodeEncrypt = primaryCluster.userIntent.enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = primaryCluster.userIntent.enableClientToNodeEncrypt;
@@ -2366,8 +2360,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     if (ysqlMajorVersionUpgradeState != null) {
       params.ysqlMajorVersionUpgradeState = ysqlMajorVersionUpgradeState;
-    } else if (isYsqlMajorUpgradeStateInPreFinalizeState(universe, gFlagsValidation)) {
-      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
     }
     params.enableNodeToNodeEncrypt = primaryCluster.userIntent.enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = primaryCluster.userIntent.enableClientToNodeEncrypt;

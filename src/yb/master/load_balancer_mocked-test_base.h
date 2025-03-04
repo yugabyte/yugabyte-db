@@ -84,7 +84,7 @@ class LoadBalancerMockedBase : public YBTest {
     cb_.SetBlacklistAndPendingDeleteTS();
 
     const auto& table = tables_.FindTableOrNull(cur_table_uuid_);
-    const auto& replication_info = VERIFY_RESULT(cb_.GetTableReplicationInfo(table));
+    const auto replication_info = cb_.GetTableReplicationInfo(table);
     RETURN_NOT_OK(cb_.PopulateReplicationInfo(table, replication_info));
 
     cb_.InitializeTSDescriptors();
@@ -146,12 +146,11 @@ class LoadBalancerMockedBase : public YBTest {
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     // Only do one add at most. If we do an add then we'll call AddReplica which will update state.
     int remaining_adds = 1;
-    uint32_t master_errors = 0;
     bool task_added = false;
-    cb_.ProcessUnderReplicatedTablets(
-        remaining_adds, master_errors, task_added, out_tablet_id, out_to_ts);
+    cb_.ProcessUnderReplicatedTablets(remaining_adds, task_added, out_tablet_id, out_to_ts);
 
-    SCHECK_EQ(master_errors, 0, IllegalState, "ProcessUnderReplicatedTablets hit an error");
+    SCHECK(cb_.global_state_->warnings_.size() == 0, IllegalState,
+        "ProcessUnderReplicatedTablets hit an error");
     SCHECK_NE(remaining_adds, task_added, IllegalState, "task_added and remaining_adds mismatch");
     return task_added;
   }

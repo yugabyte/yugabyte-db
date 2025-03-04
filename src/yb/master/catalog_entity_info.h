@@ -573,8 +573,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
 
   bool IsXClusterDDLReplicationTable() const {
-    return IsXClusterDDLReplicationDDLQueueTable() ||
-           IsXClusterDDLReplicationReplicatedDDLsTable();
+    return IsXClusterDDLReplicationDDLQueueTable() || IsXClusterDDLReplicationReplicatedDDLsTable();
   }
 
   Result<uint32_t> GetPgTableOid(const std::string& id) const;

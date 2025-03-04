@@ -31,6 +31,14 @@ SET row_security = off;
 \set use_roles true
 \endif
 
+-- YB: disable auto analyze to avoid conflicts with catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
+END IF;
+END $$;
+
 SET default_table_access_method = heap;
 
 --
@@ -443,6 +451,14 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 
 REFRESH MATERIALIZED VIEW public.mv1;
 
+
+-- YB: re-enable auto analyze after all catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+END IF;
+END $$;
 
 --
 -- YSQL database dump complete

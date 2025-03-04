@@ -48,6 +48,9 @@ class Pg15UpgradeTestBase : public UpgradeTestBase {
   // version.
   Status UpgradeClusterToMixedMode();
 
+  // Restarts all other tservers in the current version. FinalizeUpgrade is not called
+  Status UpgradeAllTserversFromMixedMode();
+
   // Restarts all other tservers in the current version, and finalizes the upgrade.
   Status FinalizeUpgradeFromMixedMode();
 

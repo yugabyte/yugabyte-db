@@ -2889,12 +2889,13 @@ class PgClientSession::Impl {
         txn || !subtxn_id, IllegalState,
         "Cannot release object locks of a subtxn when there is no distributed txn with session");
     return DoReleaseObjectLocks(
-        txn ? txn->id() :  VERIFY_RESULT_REF(transaction_provider_.NextTxnIdForPlain(deadline)),
-        subtxn_id);
+        txn ? txn->id() : VERIFY_RESULT_REF(transaction_provider_.NextTxnIdForPlain(deadline)),
+        subtxn_id, deadline);
   }
 
   Status DoReleaseObjectLocks(
-      const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id = std::nullopt) {
+      const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
+      CoarseTimePoint deadline) {
     VLOG_WITH_PREFIX_AND_FUNC(2)
         << "txn: " << txn_id << " subtxn: " << AsString(subtxn_id);
     tserver::ReleaseObjectLockRequestPB req;
@@ -2903,7 +2904,7 @@ class PgClientSession::Impl {
       req.set_subtxn_id(*subtxn_id);
     }
     req.set_session_host_uuid(instance_uuid());
-    return ts_lock_manager()->ReleaseObjectLocks(req);
+    return ts_lock_manager()->ReleaseObjectLocks(req, deadline);
   }
 
   UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {

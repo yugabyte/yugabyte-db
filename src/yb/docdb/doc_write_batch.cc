@@ -894,6 +894,9 @@ void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
     kv_pair->dup_key(entry.key);
     kv_pair->dup_value(entry.value);
   }
+  if (!delete_vector_ids_.empty()) {
+    kv_pb->dup_delete_vector_ids(delete_vector_ids_.AsSlice());
+  }
   MoveLocksToWriteBatchPB(kv_pb, /* is_lock= */ true);
   if (has_ttl()) {
     kv_pb->set_ttl(ttl_ns());

@@ -38,6 +38,7 @@ set(PGGATE_SRCS
     pg_doc_op.cc
     pg_explicit_row_lock_buffer.cc
     pg_expr.cc
+    pg_fk_reference_cache.cc
     pg_function.cc
     pg_function_helpers.cc
     pggate.cc
@@ -50,12 +51,14 @@ set(PGGATE_SRCS
     pg_select.cc
     pg_select_index.cc
     pg_session.cc
+    pg_shared_mem.cc
     pg_sys_table_prefetcher.cc
     pg_table.cc
     pg_tabledesc.cc
     pg_tools.cc
     pg_txn_manager.cc
     pg_value.cc
+    ybc_pg_shared_mem.cc
     ybc_pggate.cc)
 
 ADD_YB_LIBRARY(yb_pggate_flags
@@ -70,7 +73,7 @@ set(PGGATE_LIBS
     yb_util
     yb_common
     yb_client
-    tserver_util
+    tserver_shared
     yb_pggate_util
     yb_pggate_flags
     tablet_error

@@ -39,6 +39,8 @@ using SharedMemoryUniquePtr = std::unique_ptr<T, SharedMemoryDeleter<T>>;
 
 class SharedMemoryAllocatorPrepareState {
  public:
+  SharedMemoryAllocatorPrepareState() = default;
+
   void* UserData() { return user_data_; }
 
  private:

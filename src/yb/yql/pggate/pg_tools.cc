@@ -221,13 +221,18 @@ size_t TableYbctidHasher::operator()(const LightweightTableYbctid& value) const 
   return hash;
 }
 
-Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
-                            PgOid database_id,
-                            TableYbctidVector& ybctids,
-                            const OidSet& region_local_tables,
-                            const ExecParametersMutator& exec_params_mutator) {
+Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid) {
+  char* value = nullptr;
+  int64_t bytes = 0;
+  pg_types.GetYbctid().datum_to_yb(ybctid, &value, &bytes);
+  return Slice(value, bytes);
+}
+
+Result<std::span<TableYbctid>> YbctidReaderProvider::Reader::DoRead(
+    PgOid database_id, const OidSet& region_local_tables,
+    const ExecParametersMutator& exec_params_mutator) {
   // Group the items by the table ID.
-  std::sort(ybctids.begin(), ybctids.end(), [](const auto& a, const auto& b) {
+  std::sort(ybctids_.begin(), ybctids_.end(), [](const auto& a, const auto& b) {
     return a.table_id < b.table_id;
   });
 
@@ -244,18 +249,18 @@ Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
   };
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
   // Each doc_op will use request_sender to send all the requests with single perform RPC.
-  for (auto it = ybctids.begin(), end = ybctids.end(); it != end;) {
+  for (auto it = ybctids_.begin(), end = ybctids_.end(); it != end;) {
     const auto table_id = it->table_id;
-    auto desc = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
+    auto desc = VERIFY_RESULT(session_->LoadTable(PgObjectId(database_id, table_id)));
     bool is_region_local = region_local_tables.find(table_id) != region_local_tables.end();
-    auto metrics_capture = session->metrics().metrics_capture();
+    auto metrics_capture = session_->metrics().metrics_capture();
     auto read_op = std::make_shared<PgsqlReadOpWithPgTable>(
         arena.get(), desc, is_region_local, metrics_capture);
 
     auto* expr_pb = read_op->read_request().add_targets();
     expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
     doc_ops.push_back(std::make_unique<PgDocReadOp>(
-        session, &read_op->table(), std::move(read_op), request_sender));
+        session_, &read_op->table(), std::move(read_op), request_sender));
     auto& doc_op = *doc_ops.back();
     auto exec_params = doc_op.ExecParameters();
     exec_params_mutator(exec_params);
@@ -267,14 +272,14 @@ Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
     RETURN_NOT_OK(doc_op.Execute());
   }
 
-  RETURN_NOT_OK(precast_sender.TransmitCollected(*session));
+  RETURN_NOT_OK(precast_sender.TransmitCollected(*session_));
   // Disable further request collecting as in the vast majority of cases new requests will not be
   // initiated because requests for all ybctids has already been sent. But in case of dynamic
   // splitting new requests might be sent. They will be sent and processed as usual (i.e. request
   // of each doc_op will be sent individually).
   precast_sender.DisableCollecting();
   // Collect the results from the docdb ops.
-  ybctids.clear();
+  ybctids_.clear();
   for (auto& it : doc_ops) {
     for (;;) {
       auto rowsets = VERIFY_RESULT(it->GetResult());
@@ -284,20 +289,13 @@ Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
       for (auto& row : rowsets) {
         RETURN_NOT_OK(row.ProcessSystemColumns());
         for (const auto& ybctid : row.ybctids()) {
-          ybctids.emplace_back(it->table()->relfilenode_id().object_oid, ybctid.ToBuffer());
+          ybctids_.emplace_back(it->table()->relfilenode_id().object_oid, ybctid.ToBuffer());
         }
       }
     }
   }
 
-  return Status::OK();
-}
-
-Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid) {
-  char* value = nullptr;
-  int64_t bytes = 0;
-  pg_types.GetYbctid().datum_to_yb(ybctid, &value, &bytes);
-  return Slice(value, bytes);
+  return std::span(ybctids_);
 }
 
 } // namespace yb::pggate

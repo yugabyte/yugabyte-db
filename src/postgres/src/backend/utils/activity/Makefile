@@ -29,6 +29,7 @@ OBJS = \
 	pgstat_subscription.o \
 	pgstat_wal.o \
 	pgstat_xact.o \
+	yb_pgstat_terminated_queries.o \
 	wait_event.o
 
 include $(top_srcdir)/src/backend/common.mk
