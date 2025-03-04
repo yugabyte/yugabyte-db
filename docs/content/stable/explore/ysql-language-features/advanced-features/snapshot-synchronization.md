@@ -1,31 +1,37 @@
 ---
-title: Snapshot Synchroinzation
-linkTitle: Snapshot Synchroinzation
-description: Snapshot Synchroinzation in YSQL
+title: Synchronize snapshots
+linkTitle: Synchronize snapshots
+description: Synchronize snapshots in YSQL
+tags:
+  feature: tech-preview
 menu:
   stable:
-    identifier: advanced-features-snapshot-synchroinzation
+    identifier: synchronize-snapshots
     parent: advanced-features
     weight: 800
 type: docs
 ---
 
-This document describes how different transactions can maintain a consistent view of the data.
+To maintain a consistent view of data, separate transactions can synchronize their snapshots. A snapshot determines which data is visible to the transaction that is using the snapshot. Synchronized snapshots are necessary when two or more sessions need to see identical content in the database. If two sessions start their transactions independently, there is always a possibility that some third transaction commits between the executions of the two START TRANSACTION commands, so that one session sees the effects of that transaction and the other does not.
 
-This feature is currently {{<tags/feature/tp>}} and requires the `ysql_enable_pg_export_snapshot` gFlag to be set to true for activation.
+To solve this problem, PostgreSQL allows a transaction to export the snapshot it is using. As long as the exporting transaction remains open, other transactions can import its snapshot, and thereby be guaranteed that they see exactly the same view of the database that the first transaction sees.
 
-{{% explore-setup-single %}}
+Note that any database changes made by any one of these transactions remain invisible to the other transactions, as is usual for changes made by uncommitted transactions. So the transactions are synchronized with respect to pre-existing data, but act normally for changes they make themselves.
 
-## Exporting a snapshot
+You export snapshots using the pg_export_snapshot function, and import them using the SET TRANSACTION command.
 
-You can export a snapshot using PostgresSQL compatible syntax.
+This feature is currently {{<tags/feature/tp idea="1161">}} and to use it you must first set the `ysql_enable_pg_export_snapshot` YB-TServer flag to true.
+
+## Export a snapshot
+
+You export a snapshot using PostgreSQL-compatible syntax.
 
 ```sql
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT pg_export_snapshot();
 ```
 
-The preceding query produces the following output:
+This produces the following output:
 
 ```output
                         pg_export_snapshot
@@ -34,22 +40,24 @@ The preceding query produces the following output:
 (1 row)
 ```
 
-The returned value (`6972261563b7411e9f089cc10e259a0c-b1fd4d6c94479680854623cd51c56bec` in this case) is the snapshot identifier, which can be used to import this snapshot.
+The returned value (`6972261563b7411e9f089cc10e259a0c-b1fd4d6c94479680854623cd51c56bec` in this case) is the snapshot ID, which can be used to import this snapshot.
 
-## Setting/Importing a Snapshot
+## Import a snapshot
 
-You can import a snapshot exported using pg_export_snapshot() with the following PostgreSQL-compatible syntax:
+You can import a snapshot exported using pg_export_snapshot() using the following commands:
 
 ```sql
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-SET TRANSACTION SNAPSHOT 'snapshot_identifier';
+SET TRANSACTION SNAPSHOT '<snapshot_id>';
 ```
 
 This ensures that the transaction sees the exact same view of the database as the exporting transaction.
 
-Note: A snapshot identifier becomes invalid as soon as the exporting transaction ends. Therefore, a snapshot can only be set if the exporting transaction is still active.
+Note that a snapshot ID becomes invalid as soon as the exporting transaction ends. Therefore, a snapshot can only be set if the exporting transaction is still active.
 
 ## Example
+
+{{% explore-setup-single %}}
 
 The following example demonstrates how to use snapshot export and import across two sessions to maintain a consistent view of the data.
 
@@ -61,6 +69,8 @@ The following example demonstrates how to use snapshot export and import across 
 
   <tr>
     <td>
+
+First create a table and add data:
 
 ```sql
 CREATE TABLE test(col INT);
@@ -113,7 +123,7 @@ SELECT * FROM test;
 (2 rows)
 ```
 
-Since this transaction is using the exported snapshot, it does not see the row inserted previously in session #2.
+Because this transaction is using the exported snapshot, it does not see the row inserted previously in session #2.
 
 </td>
     <td>
@@ -124,4 +134,4 @@ Since this transaction is using the exported snapshot, it does not see the row i
 
 ## Limitation
 
-Currently, exporting and setting a snapshot can only be performed within a transaction using the REPEATABLE READ isolation level.
+Currently, exporting and setting a snapshot can only be performed in a transaction using the REPEATABLE READ isolation level.
