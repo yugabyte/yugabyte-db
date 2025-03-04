@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.XClusterUtil;
@@ -109,6 +110,7 @@ public class XClusterConfigController extends AuthenticatedController {
   private final AutoFlagUtil autoFlagUtil;
   private final XClusterScheduler xClusterScheduler;
   private final UniverseTableHandler tableHandler;
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
   public XClusterConfigController(
@@ -121,7 +123,8 @@ public class XClusterConfigController extends AuthenticatedController {
       XClusterUniverseService xClusterUniverseService,
       AutoFlagUtil autoFlagUtil,
       XClusterScheduler xClusterScheduler,
-      UniverseTableHandler tableHandler) {
+      UniverseTableHandler tableHandler,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -132,6 +135,7 @@ public class XClusterConfigController extends AuthenticatedController {
     this.autoFlagUtil = autoFlagUtil;
     this.xClusterScheduler = xClusterScheduler;
     this.tableHandler = tableHandler;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   /**
@@ -221,7 +225,8 @@ public class XClusterConfigController extends AuthenticatedController {
         sourceTableInfoList,
         targetUniverse,
         targetTableInfoList,
-        confGetter);
+        confGetter,
+        softwareUpgradeHelper);
 
     if (createFormData.bootstrapParams != null
         && createFormData.bootstrapParams.allowBootstrap
@@ -461,7 +466,8 @@ public class XClusterConfigController extends AuthenticatedController {
               editFormData.tables,
               editFormData.bootstrapParams,
               editFormData.autoIncludeIndexTables,
-              editFormData.dryRun);
+              editFormData.dryRun,
+              softwareUpgradeHelper);
     } else {
       // If renaming, verify xCluster replication with same name (between same source/target)
       // does not already exist.
@@ -547,7 +553,8 @@ public class XClusterConfigController extends AuthenticatedController {
       Set<String> tableIds,
       @Nullable XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       boolean autoIncludeIndexTables,
-      boolean dryRun) {
+      boolean dryRun,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     Map<String, List<String>> mainTableToAddIndexTablesMap = null;
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList = null;
     Map<String, String> sourceTableIdTargetTableIdMap = Collections.emptyMap();
@@ -591,6 +598,9 @@ public class XClusterConfigController extends AuthenticatedController {
                 bootstrapParams.tables.addAll(indexTableIds);
               }
             });
+
+        XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+            softwareUpgradeHelper, sourceUniverse, targetUniverse);
       }
 
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
@@ -845,7 +855,8 @@ public class XClusterConfigController extends AuthenticatedController {
             restartForm.bootstrapParams,
             restartForm.dryRun,
             isForceDelete,
-            false /*forceBootstrap*/);
+            false /*forceBootstrap*/,
+            softwareUpgradeHelper);
 
     if (restartForm.dryRun) {
       return YBPSuccess.withMessage("The pre-checks are successful");
@@ -880,7 +891,8 @@ public class XClusterConfigController extends AuthenticatedController {
       RestartBootstrapParams restartBootstrapParams,
       boolean dryRun,
       boolean isForceDelete,
-      boolean isForceBootstrap) {
+      boolean isForceBootstrap,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
 
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
@@ -888,6 +900,9 @@ public class XClusterConfigController extends AuthenticatedController {
     Set<String> indexTableIdSet =
         mainTableIndexTablesMap.values().stream().flatMap(List::stream).collect(Collectors.toSet());
     tableIds.addAll(indexTableIdSet);
+
+    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+        softwareUpgradeHelper, sourceUniverse, targetUniverse);
 
     if (!dryRun) {
       xClusterConfig.addTablesIfNotExist(
@@ -945,7 +960,11 @@ public class XClusterConfigController extends AuthenticatedController {
       RestartBootstrapParams restartBootstrapParams,
       boolean dryRun,
       boolean isForceDelete,
-      boolean isForceBootstrap) {
+      boolean isForceBootstrap,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
+
+    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+        softwareUpgradeHelper, sourceUniverse, targetUniverse);
 
     XClusterConfigCreateFormData.BootstrapParams bootstrapParams = null;
     if (restartBootstrapParams != null) {
@@ -1828,12 +1847,16 @@ public class XClusterConfigController extends AuthenticatedController {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
       Universe targetUniverse,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     if (requestedTableInfoList.isEmpty()) {
       throw new IllegalArgumentException("requestedTableInfoList is empty");
     }
     Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
     CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
+
+    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+        softwareUpgradeHelper, sourceUniverse, targetUniverse);
 
     XClusterConfigTaskBase.verifyTablesNotInReplication(
         ybClientService,

@@ -29,6 +29,8 @@ import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
+import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
@@ -87,7 +89,7 @@ public class PitrControllerTest extends FakeDBApplication {
     defaultUniverse.save();
     Commissioner commissioner = app.injector().instanceOf(Commissioner.class);
     auditService = new AuditService();
-    pitrController = new PitrController(commissioner, mockService);
+    pitrController = new PitrController(commissioner, mockService, mockSoftwareUpgradeHelper);
     pitrController.setAuditService(auditService);
   }
 
@@ -119,6 +121,19 @@ public class PitrControllerTest extends FakeDBApplication {
             + "/pitr_config/"
             + pitrConfigUUID.toString();
     return doRequestWithAuthToken(method, url, authToken);
+  }
+
+  private Result updatePitrConfig(UUID universeUUID, UUID pitrConfigUUID, JsonNode bodyJson) {
+    String authToken = defaultUser.createAuthToken();
+    String method = "PUT";
+    String url =
+        "/api/customers/"
+            + defaultCustomer.getUuid()
+            + "/universes/"
+            + universeUUID.toString()
+            + "/pitr_config/"
+            + pitrConfigUUID.toString();
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result performPitr(UUID universeUUID, JsonNode bodyJson) {
@@ -815,5 +830,60 @@ public class PitrControllerTest extends FakeDBApplication {
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
     assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testPerformPitrWhenYsqlMajorVersionUpgradeInMonitoringPhase() {
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                  "2025.1.0.0-b1";
+              universe.getUniverseDetails().prevYBSoftwareConfig = new PrevYBSoftwareConfig();
+              universe
+                  .getUniverseDetails()
+                  .prevYBSoftwareConfig
+                  .setSoftwareVersion("2024.2.1.0-b1");
+            });
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("retentionPeriodInSeconds", 7 * 86400L);
+    bodyJson.put("intervalInSeconds", 86400L);
+    Result r =
+        assertPlatformException(
+            () ->
+                createPitrConfig(defaultUniverse.getUniverseUUID(), "YSQL", "yugabyte", bodyJson));
+    assertBadRequest(r, "Cannot enable PITR when the universe is in the middle of a major upgrade");
+    verify(mockCommissioner, times(0)).submit(any(), any());
+    assertAuditEntry(0, defaultCustomer.getUuid());
+
+    RestoreSnapshotScheduleParams params = new RestoreSnapshotScheduleParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.pitrConfigUUID = UUID.randomUUID();
+    params.restoreTimeInMillis = System.currentTimeMillis();
+
+    r =
+        assertPlatformException(
+            () -> performPitr(defaultUniverse.getUniverseUUID(), Json.toJson(params)));
+    assertBadRequest(
+        r, "Cannot perform PITR when the universe is in the middle of a major upgrade");
+    verify(mockCommissioner, times(0)).submit(any(), any());
+    assertAuditEntry(0, defaultCustomer.getUuid());
+
+    UpdatePitrConfigParams updatePitrConfigParams = new UpdatePitrConfigParams();
+    updatePitrConfigParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    updatePitrConfigParams.pitrConfigUUID = UUID.randomUUID();
+    updatePitrConfigParams.retentionPeriodInSeconds = 7 * 86400L;
+    updatePitrConfigParams.intervalInSeconds = 86400L;
+    r =
+        assertPlatformException(
+            () ->
+                updatePitrConfig(
+                    defaultUniverse.getUniverseUUID(),
+                    updatePitrConfigParams.pitrConfigUUID,
+                    Json.toJson(updatePitrConfigParams)));
+    assertBadRequest(r, "Cannot update PITR when the universe is in the middle of a major upgrade");
   }
 }

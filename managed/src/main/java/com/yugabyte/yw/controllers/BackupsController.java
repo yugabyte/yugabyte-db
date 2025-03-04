@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
@@ -90,6 +91,7 @@ public class BackupsController extends AuthenticatedController {
   private final YbcManager ybcManager;
   private final StorageUtilFactory storageUtilFactory;
   private final ScheduleTaskHelper scheduleTaskHelper;
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
   public BackupsController(
@@ -98,13 +100,15 @@ public class BackupsController extends AuthenticatedController {
       BackupHelper backupHelper,
       YbcManager ybcManager,
       StorageUtilFactory storageUtilFactory,
-      ScheduleTaskHelper scheduleTaskHelper) {
+      ScheduleTaskHelper scheduleTaskHelper,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.commissioner = commissioner;
     this.customerConfigService = customerConfigService;
     this.backupHelper = backupHelper;
     this.ybcManager = ybcManager;
     this.storageUtilFactory = storageUtilFactory;
     this.scheduleTaskHelper = scheduleTaskHelper;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @Inject TaskInfoManager taskManager;
@@ -570,6 +574,11 @@ public class BackupsController extends AuthenticatedController {
   public Result restore(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot restore backup with major version upgrade is in progress");
+    }
 
     Form<BackupTableParams> formData =
         formFactory.getFormDataOrBadRequest(request, BackupTableParams.class);
