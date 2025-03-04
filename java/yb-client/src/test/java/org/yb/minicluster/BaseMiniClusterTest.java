@@ -461,4 +461,13 @@ public class BaseMiniClusterTest extends BaseYBTest {
   protected static String maxQueryLayerRetriesConf(int max_retries) {
     return "yb_max_query_layer_retries=" + max_retries;
   }
+
+  public void findAndKillMasterLeader() throws Exception {
+    HostAndPort masterHostAndPort = miniCluster.getClient().getLeaderMasterHostAndPort();
+    miniCluster.killMasterOnHostPort(masterHostAndPort);
+  }
+
+  public void waitForMasterLeader(long timeout) throws Exception {
+    miniCluster.getClient().waitForMasterLeader(timeout);
+  }
 }
