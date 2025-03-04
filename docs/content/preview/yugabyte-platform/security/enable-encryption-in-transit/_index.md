@@ -30,15 +30,9 @@ YugabyteDB Anywhere supports the following certificates for encryption in transi
 
 ## Rotate certificates
 
-TLS certificates must be rotated before they expire to avoid service interruption.
+YugabyteDB Anywhere automatically alerts you 30 days before the expiry of any certificate. You can view the time to expiry of certificates by navigating to your universe **Health** tab.
 
-- Be sure to rotate (that is, refresh) your database node certificates before they expire.
-
-- Be sure to rotate (that is, refresh) your client-to-node certificates before they expire.
-
-- Be sure to rotate (that is, refresh) your custom CA certificate before it expires. YugabyteDB Anywhere automatically rotates node certificates when you rotate your root certificate.
-
-YugabyteDB Anywhere will alert you 30 days before the expiry of any certificate. You can view the time to expiry of certificates by navigating to your universe **Health** tab.
+You must rotate (refresh) TLS certificates before they expire to avoid service interruption.
 
 {{<lead link="rotate-certificates/">}}
 For information on rotating certificates, refer to [Rotate certificates](rotate-certificates/).

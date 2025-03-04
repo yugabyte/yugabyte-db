@@ -14,11 +14,19 @@ type: docs
 
 YugabyteDB Anywhere will alert you 30 days before the expiry of any certificates. You can view the time to expiry of certificates by navigating to your universe **Health** tab.
 
-Before rotating certificates, ensure that you have added the new certificates to YugabyteDB Anywhere. Refer to [Add certificates](../add-certificate-self/).
+You must rotate (refresh) TLS certificates before they expire to avoid service interruption. This can include the following certificates:
+
+- Root and server certificates used for node-to-node TLS encryption.
+
+- Root certificate used for client-to-node TLS encryption.
+
+- Custom CA certificate.
+
+If you are using [automatically generated universe certificates](../auto-certificate/), you must still rotate the certificate; YugabyteDB Anywhere can generate new certificates for you.
+
+If you are using your own certificates, before rotating certificates, ensure that you have added the new certificates to YugabyteDB Anywhere. Refer to [Add certificates](../add-certificate-self/).
 
 Rotating the CA certificate on the source universe with xCluster Replication causes replication to pause. You should [restart replication](../../../manage-deployments/xcluster-replication/xcluster-replication-setup/#restart-replication) after completing the CA certificate rotation on the source universe.
-
-If you are using [automatically generated universe certificates](../auto-certificate/), YugabyteDB Anywhere can generate new certificates for you.
 
 ## Enable or disable encryption in transit
 
