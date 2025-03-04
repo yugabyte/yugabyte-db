@@ -550,6 +550,12 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
         poll_stats_history_.SetError(std::move(s));
       }
 
+      // If we're paused or failed, then stop processing the DDL queue table.
+      if (is_paused_ || is_failed_) {
+        SchedulePoll();
+        return;
+      }
+
       // If processing ddl_queue table fails, then retry just this part (don't repeat ApplyChanges).
       ScheduleFuncWithDelay(
           GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs),

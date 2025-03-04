@@ -26,6 +26,7 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
+DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
 
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
@@ -489,6 +490,44 @@ TEST_F(XClusterDDLReplicationTest, DDLsWithinTransaction) {
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table->name());
 }
 
+TEST_F(XClusterDDLReplicationTest, PauseTargetOnRepeatedFailures) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(p_conn.Execute("CREATE TABLE test_table_1 (key int PRIMARY KEY);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Cause the target to fail the DDLs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+
+  const auto alter_query = "ALTER TABLE test_table_1 RENAME TO test_table_2;";
+  ASSERT_OK(p_conn.Execute(alter_query));
+
+  // Replication should not continue. Wait till we see replication errors.
+  ASSERT_OK(
+      StringWaiterLogSink("DDL replication is paused due to repeated failures").WaitFor(kTimeout));
+
+  // Stop failing DDLs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+
+  // Replication should not resume until we recreate the ddl_queue poller.
+  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+
+  // Resume replication by pausing and unpausing, this will recreate the pollers.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+  SleepFor(MonoDelta::FromSeconds(1));
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+
+  // Replication should resume and rows should replicate.
+  auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", "test_table_2"))));
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table->name());
+}
+
 TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
   // Test that when there are multiple tables with the same name, we are able to correctly link the
   // target tables to the correct source tables.
@@ -826,6 +865,8 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithTargetFailures) {
 
   // Allow DDLs through but fail them at the end of execution.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+  // Bump up the number of retries to ensure that we don't hit the limit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
   ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int primary key)", kNewTableName));

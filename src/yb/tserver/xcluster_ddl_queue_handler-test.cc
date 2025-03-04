@@ -83,6 +83,8 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
     return rows_;
   }
 
+  Status CheckForFailedQuery() override { return Status::OK(); };
+
   Status ProcessDDLQuery(const DDLQueryInfo& query_info) override { return Status::OK(); }
 
   Result<bool> CheckIfAlreadyProcessed(const DDLQueryInfo& query_info) override { return false; };
