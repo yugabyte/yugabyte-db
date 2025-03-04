@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -75,79 +76,100 @@ public class YNPProvisioning extends AbstractTaskBase {
       Provider provider,
       String outputFilePath,
       Path nodeAgentHome) {
-    ObjectNode rootNode = mapper.createObjectNode();
-    ObjectNode ynpNode = mapper.createObjectNode();
-    ynpNode.put("node_ip", node.cloudInfo.private_ip);
-    ynpNode.put("is_install_node_agent", false);
-    ynpNode.put("yb_user_id", "1994");
-    ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
-    ynpNode.put(
-        "tmp_directory", confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
-    rootNode.set("ynp", ynpNode);
 
-    ObjectNode extraNode = mapper.createObjectNode();
-    extraNode.put("cloud_type", node.cloudInfo.cloud);
-    extraNode.put("is_cloud", true);
-    if (taskParams().deviceInfo.mountPoints != null) {
-      extraNode.put("mount_paths", taskParams().deviceInfo.mountPoints);
-    } else {
-      int numVolumes =
-          universe.getCluster(node.placementUuid).userIntent.getDeviceInfoForNode(node).numVolumes;
-      StringBuilder volumePaths = new StringBuilder();
-      for (int i = 0; i < numVolumes; i++) {
-        if (i > 0) {
-          volumePaths.append(" ");
-        }
-        volumePaths.append("/mnt/d").append(i);
-      }
-      extraNode.put("mount_paths", volumePaths.toString());
-    }
-    if (node.cloudInfo.cloud.equals(Common.CloudType.azu.toString())
-        && node.cloudInfo.lun_indexes.length > 0) {
-      StringBuilder sb = new StringBuilder();
-      for (int i = 0; i < node.cloudInfo.lun_indexes.length; i++) {
-        sb.append(node.cloudInfo.lun_indexes[i]);
-        if (i < node.cloudInfo.lun_indexes.length - 1) {
-          sb.append(" ");
-        }
-      }
-      extraNode.put("disk_lun_indexes", sb.toString());
-    }
-    String buildRelease = nodeAgentManager.getSoftwareVersion();
-    String localPackagePath = nodeAgentHome.toString() + "/thirdparty";
-    if (localPackagePath != null) {
-      extraNode.put("package_path", localPackagePath);
-    }
-
-    if (!provider.getCode().equals(CloudType.onprem.toString())) {
-      List<String> devicePaths =
-          this.queryHelper.getDeviceNames(
-              provider,
-              Common.CloudType.valueOf(node.cloudInfo.cloud),
-              Integer.toString(taskParams().deviceInfo.numVolumes),
-              taskParams().deviceInfo.storageType.toString().toLowerCase(),
-              node.cloudInfo.region,
-              node.cloudInfo.instance_type);
-      String paths = String.join(" ", devicePaths);
-      extraNode.put("device_paths", paths);
-    }
-    rootNode.set("extra", extraNode);
-
-    ObjectNode loggingNode = mapper.createObjectNode();
-    loggingNode.put("level", "DEBUG");
-    rootNode.set("logging", loggingNode);
+    ObjectMapper mapper = new ObjectMapper();
 
     try {
+      ObjectNode rootNode = mapper.createObjectNode();
+
+      // "ynp" JSON Object
+      ObjectNode ynpNode = mapper.createObjectNode();
+      ynpNode.put("node_ip", node.cloudInfo.private_ip);
+      ynpNode.put("is_install_node_agent", false);
+      ynpNode.put("yb_user_id", "1994");
+      ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
+      ynpNode.put(
+          "tmp_directory",
+          confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
+      rootNode.set("ynp", ynpNode);
+
+      // "extra" JSON Object
+      ObjectNode extraNode = mapper.createObjectNode();
+      extraNode.put("cloud_type", node.cloudInfo.cloud);
+      extraNode.put("is_cloud", true);
+
+      // Set mount paths
+      if (taskParams().deviceInfo.mountPoints != null) {
+        extraNode.put("mount_paths", taskParams().deviceInfo.mountPoints);
+      } else {
+        int numVolumes =
+            universe
+                .getCluster(node.placementUuid)
+                .userIntent
+                .getDeviceInfoForNode(node)
+                .numVolumes;
+        StringBuilder volumePaths = new StringBuilder();
+        for (int i = 0; i < numVolumes; i++) {
+          if (i > 0) {
+            volumePaths.append(" ");
+          }
+          volumePaths.append("/mnt/d").append(i);
+        }
+        extraNode.put("mount_paths", volumePaths.toString());
+      }
+
+      // Azure-specific disk lun indexes
+      if (node.cloudInfo.cloud.equals(Common.CloudType.azu.toString())
+          && node.cloudInfo.lun_indexes.length > 0) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < node.cloudInfo.lun_indexes.length; i++) {
+          sb.append(node.cloudInfo.lun_indexes[i]);
+          if (i < node.cloudInfo.lun_indexes.length - 1) {
+            sb.append(" ");
+          }
+        }
+        extraNode.put("disk_lun_indexes", sb.toString());
+      }
+
+      // Set package path
+      String localPackagePath = nodeAgentHome.toString() + "/thirdparty";
+      extraNode.put("package_path", localPackagePath);
+
+      // Set device paths for cloud providers
+      if (!provider.getCode().equals(CloudType.onprem.toString())) {
+        List<String> devicePaths =
+            this.queryHelper.getDeviceNames(
+                provider,
+                Common.CloudType.valueOf(node.cloudInfo.cloud),
+                Integer.toString(taskParams().deviceInfo.numVolumes),
+                taskParams().deviceInfo.storageType.toString().toLowerCase(),
+                node.cloudInfo.region,
+                node.cloudInfo.instance_type);
+        extraNode.put("device_paths", String.join(" ", devicePaths));
+      }
+
+      rootNode.set("extra", extraNode);
+
+      // "logging" JSON Object
+      ObjectNode loggingNode = mapper.createObjectNode();
+      loggingNode.put("level", "DEBUG");
+      rootNode.set("logging", loggingNode);
+
+      // Convert to JSON string
       String jsonString = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(rootNode);
-      // Write the JSON string to the specified file
+      // Log JSON for debugging
+      log.debug("Generated JSON:\n{}", jsonString);
+
+      // Write to file with proper truncation
       Path outputPath = Paths.get(outputFilePath);
       Files.write(
           outputPath,
-          jsonString.getBytes(),
+          jsonString.getBytes(StandardCharsets.UTF_8),
           StandardOpenOption.CREATE,
           StandardOpenOption.TRUNCATE_EXISTING);
+
     } catch (Exception e) {
-      log.error("Failed parsing JSON file: {}", e.getMessage());
+      log.error("Failed generating JSON file: ", e);
     }
   }
 
