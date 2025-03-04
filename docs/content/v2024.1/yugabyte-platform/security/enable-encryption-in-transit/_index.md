@@ -20,39 +20,23 @@ YugabyteDB Anywhere allows you to protect data in transit by using the following
 
 ## Manage certificates
 
-YugabyteDB Anywhere uses TLS certificates to encrypt and validate connections. These certificates can be automatically generated and managed by YugabyteDB Anywhere, or you can add your own custom certificates.
+YugabyteDB Anywhere supports the following certificates for encryption in transit:
 
-Navigate to **Integrations > Security > Encryption in Transit** to view and add the certificates used for encryption in transit.
+- [Self-signed certificates created and managed by YugabyteDB Anywhere](auto-certificate/). YugabyteDB Anywhere can automatically create self-signed certificates and copy them to universe nodes.
+- [Custom self-signed certificates](add-certificate-self/). Create and upload your own self-signed certificates for use with universes.
+- [CA certificates](add-certificate-ca/). For on-premises universes, you can upload your own CA certificates. You must manually copy the certificates to universe nodes.
+- [Hashicorp vault](add-certificate-hashicorp/).
+- [Kubernetes cert-manager](add-certificate-kubernetes/). Use cert-manager for securing Kubernetes universes.
 
-To view certificate details, click **Show details** for the certificate you want to view.
+## Rotate certificates
 
-{{<index/block>}}
+YugabyteDB Anywhere automatically alerts you 30 days before the expiry of any certificate. You can view the time to expiry of certificates by navigating to your universe **Health** tab.
 
-  {{<index/item
-    title="Automatically generated certificates"
-    body="YugabyteDB Anywhere can create and manage universe certificates."
-    href="auto-certificate/"
-    icon="fa-thin fa-certificate">}}
+You must rotate (refresh) TLS certificates before they expire to avoid service interruption.
 
-  {{<index/item
-    title="Add certificates"
-    body="Upload your own certificates to secure data transfer on your universes."
-    href="add-certificate-self/"
-    icon="fa-thin fa-file-certificate">}}
-
-  {{<index/item
-    title="Rotate certificates"
-    body="Update the certificates on universes when they expire."
-    href="rotate-certificates/"
-    icon="fa-thin fa-rotate">}}
-
-  {{<index/item
-    title="Trust Store"
-    body="Add certificates to the YugabyteDB Anywhere Trust Store to validate connections from other services."
-    href="trust-store/"
-    icon="fa-thin fa-shop-lock">}}
-
-{{</index/block>}}
+{{<lead link="rotate-certificates/">}}
+For information on rotating certificates, refer to [Rotate certificates](rotate-certificates/).
+{{</lead>}}
 
 ## Enable encryption in transit
 
@@ -86,6 +70,14 @@ In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it
 ```shell
 --ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
 ```
+
+## Trust store
+
+Add certificates to the YugabyteDB Anywhere Trust Store to validate connections from other services.
+
+{{<lead link="trust-store/">}}
+See [Trust store](trust-store/)
+{{</lead>}}
 
 ## Learn more
 

@@ -12,7 +12,19 @@ menu:
 type: docs
 ---
 
-Before rotating certificates, ensure that you have added the new certificates to YugabyteDB Anywhere. Refer to [Add certificates](../add-certificate-self/).
+YugabyteDB Anywhere will alert you 30 days before the expiry of any certificates. You can view the time to expiry of certificates by navigating to your universe **Health** tab.
+
+You must rotate (refresh) TLS certificates before they expire to avoid service interruption. This can include the following certificates:
+
+- Root and server certificates used for node-to-node TLS encryption.
+
+- Root certificate used for client-to-node TLS encryption.
+
+- Custom CA certificate.
+
+If you are using [automatically generated universe certificates](../auto-certificate/), you must still rotate the certificate; YugabyteDB Anywhere can generate new certificates for you.
+
+If you are using your own certificates, before rotating certificates, ensure that you have added the new certificates to YugabyteDB Anywhere. Refer to [Add certificates](../add-certificate-self/).
 
 Rotating the CA certificate on the source universe with xCluster Replication causes replication to pause. You should [restart replication](../../../manage-deployments/xcluster-replication/xcluster-replication-setup/#restart-replication) after completing the CA certificate rotation on the source universe.
 
@@ -73,7 +85,9 @@ To rotate server (node) certificates for a universe, do the following:
 
 1. On the **Server Certificate** tab, select the **Rotate Node-to-Node Server Certificate** and **Rotate Client-to-Node Server Certificate** options as appropriate.
 
-1. If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, select the **Use rolling upgrade to apply this change** option to perform the upgrade in a rolling update (recommended) and enter the number of seconds to wait between node upgrades. Otherwise, deselect this option to perform a hot certificate reload with no downtime.
+1. _Deselect_ the rolling upgrade option to perform a hot certificate reload with no downtime.
+
+    If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, select the **Use rolling upgrade to apply this change** option to perform the upgrade in a rolling update (recommended) and enter the number of seconds to wait between node upgrades.
 
 1. Click **Apply**.
 
@@ -89,10 +103,12 @@ To rotate root certificates for a universe, do the following:
 
     If your certificate is not listed, ensure you have [added the certificate](../add-certificate-ca/) to YugabyteDB Anywhere.
 
-    To have YBA generate a new self-signed CA certificate [automatically](../auto-certificate/), clear the root certificate field.
+    To have YugabyteDB Anywhere generate a new self-signed CA certificate [automatically](../auto-certificate/), _clear_ the root certificate field.
 
     Note that when you rotate the root certificate, the server certificates are automatically rotated.
 
-1. If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, select the **Use rolling upgrade to apply this change** option to perform the upgrade in a rolling update (recommended) and enter the number of seconds to wait between node upgrades. Otherwise, deselect this option to perform a hot certificate reload with no downtime.
+1. _Deselect_ the rolling upgrade option to perform a hot certificate reload with no downtime.
+
+    If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, select the **Use rolling upgrade to apply this change** option to perform the upgrade in a rolling update (recommended) and enter the number of seconds to wait between node upgrades.
 
 1. Click **Apply**.
