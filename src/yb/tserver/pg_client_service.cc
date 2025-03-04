@@ -1698,6 +1698,23 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status GetTserverCatalogMessageLists(
+      const PgGetTserverCatalogMessageListsRequestPB& req,
+      PgGetTserverCatalogMessageListsResponsePB* resp,
+      rpc::RpcContext* context) {
+    GetTserverCatalogMessageListsRequestPB request;
+    GetTserverCatalogMessageListsResponsePB response;
+    const auto db_oid = req.db_oid();
+    const auto ysql_catalog_version = req.ysql_catalog_version();
+    const auto num_catalog_versions = req.num_catalog_versions();
+    request.set_db_oid(db_oid);
+    request.set_ysql_catalog_version(ysql_catalog_version);
+    request.set_num_catalog_versions(num_catalog_versions);
+    RETURN_NOT_OK(tablet_server_.GetTserverCatalogMessageLists(request, &response));
+    resp->mutable_entries()->Swap(response.mutable_entries());
+    return Status::OK();
+  }
+
   Status IsObjectPartOfXRepl(
     const PgIsObjectPartOfXReplRequestPB& req, PgIsObjectPartOfXReplResponsePB* resp,
     rpc::RpcContext* context) {

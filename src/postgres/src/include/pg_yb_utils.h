@@ -1293,6 +1293,8 @@ extern Oid	YbGetDatabaseOidToIncrementCatalogVersion();
 
 extern bool yb_default_collation_resolved;
 
+extern bool YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
+
 extern bool YbInvalidationMessagesTableExists();
 
 extern bool yb_is_calling_internal_function_for_ddl;

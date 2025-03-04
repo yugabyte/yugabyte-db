@@ -140,6 +140,9 @@ service PgClientService {
 
   rpc ClearExportedTxnSnapshots(PgClearExportedTxnSnapshotsRequestPB)
       returns (PgClearExportedTxnSnapshotsResponsePB);
+
+  rpc GetTserverCatalogMessageLists(PgGetTserverCatalogMessageListsRequestPB)
+      returns (PgGetTserverCatalogMessageListsResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -913,6 +916,27 @@ message PgGetTserverCatalogVersionInfoResponsePB {
   AppStatusPB status = 1;
   repeated TServerDBCatalogVersionInfo entries = 2;
   uint32 num_entries = 3;
+}
+
+message PgGetTserverCatalogMessageListsRequestPB {
+  uint32 db_oid = 1;
+  // We are only interested in messages associated with ysql_catalog_version + 1 and beyond.
+  // For example, if ysql_catalog_version == x, we will fetch messages x + 1, x + 2, ... x + k
+  // stored in tserver messages queue (with no holes), where k is num_catalog_versions. This
+  // represents the case where PG backend's local catalog version is x and the shared memory
+  // catalog version is x + k. Those messages of catalog version y (y <= x) in the tserver
+  // message queue will be skipped for this request.
+  uint64 ysql_catalog_version = 2;
+  uint32 num_catalog_versions = 3;
+  AshMetadataPB ash_metadata = 4;
+}
+
+message PgGetTserverCatalogMessageListsResponsePB {
+  AppStatusPB status = 1;
+  // Each entry is a list of messages associated with a catalog version. If the request cannot
+  // be fulfilled, entries will be empty. This only happens when the requested sequence does not
+  // exist in the tserver's message queue.
+  repeated TServerDBCatalogMessageListInfo entries = 2;
 }
 
 message PgWaitForBackendsCatalogVersionRequestPB {

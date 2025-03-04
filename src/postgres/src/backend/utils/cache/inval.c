@@ -314,6 +314,9 @@ AddInvalidationMessage(InvalidationMsgsGroup *group, int subgroup,
 		   YBGetDdlOriginalNodeTag() == T_Invalid ||
 		   yb_non_ddl_txn_for_sys_tables_allowed ||
 		   YBGetDdlNestingLevel() > 0);
+	if (IsYugaByteEnabled())
+		Assert(msg->id != SHAREDINVALSMGR_ID &&
+			   msg->id != SHAREDINVALRELMAP_ID);
 	InvalMessageArray *ima = &InvalMessageArrays[subgroup];
 	int			nextindex = group->nextmsg[subgroup];
 
@@ -1168,6 +1171,15 @@ YbLogInvalidationMessages(const SharedInvalidationMessage *msgs, int nmsgs)
 					break;
 			}
 		}
+}
+
+/*
+ * TODO (myang) expand when considering interop between different releases.
+ */
+bool
+YbCanApplyMessage(const SharedInvalidationMessage *msg)
+{
+	return true;
 }
 
 /*

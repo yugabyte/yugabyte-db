@@ -3226,6 +3226,18 @@ void TabletServiceImpl::GetTserverCatalogVersionInfo(
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::GetTserverCatalogMessageLists(
+    const GetTserverCatalogMessageListsRequestPB* req,
+    GetTserverCatalogMessageListsResponsePB* resp,
+    rpc::RpcContext context) {
+  auto status = server_->GetTserverCatalogMessageLists(*req, resp);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
                                           ListMasterServersResponsePB* resp,
                                           rpc::RpcContext context) {

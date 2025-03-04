@@ -704,6 +704,12 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
   return Status::OK();
 }
 
+Status Master::GetTserverCatalogMessageLists(
+    const tserver::GetTserverCatalogMessageListsRequestPB& req,
+    tserver::GetTserverCatalogMessageListsResponsePB *resp) const {
+  return STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__);
+}
+
 Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 

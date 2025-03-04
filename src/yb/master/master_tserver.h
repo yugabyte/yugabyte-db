@@ -66,6 +66,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
 
+  Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB *resp) const override;
+
   client::TransactionPool& TransactionPool() override;
 
   ConcurrentPointerReference<tserver::TServerSharedData> SharedObject() override;

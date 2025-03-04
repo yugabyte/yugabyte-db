@@ -625,6 +625,10 @@ message TServerDBCatalogVersionInfo {
   optional int32 shm_index = 2;
 }
 
+message TServerDBCatalogMessageListInfo {
+  optional bytes message_list = 2;
+}
+
 message DatumMessagePB {
   optional string column_name = 1;
   optional int64 column_type = 2;

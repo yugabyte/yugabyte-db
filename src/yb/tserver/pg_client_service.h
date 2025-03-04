@@ -74,6 +74,7 @@ class TserverXClusterContextIf;
     (GetTableDiskSize) \
     (GetTablePartitionList) \
     (GetTserverCatalogVersionInfo) \
+    (GetTserverCatalogMessageLists) \
     (Heartbeat) \
     (InsertSequenceTuple) \
     (IsInitDbDone) \

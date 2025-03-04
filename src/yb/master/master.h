@@ -218,6 +218,10 @@ class Master : public tserver::DbServerBase {
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const;
 
+  Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB *resp) const;
+
   Status ReloadKeysAndCertificates() override;
 
   std::string GetCertificateDetails() override;

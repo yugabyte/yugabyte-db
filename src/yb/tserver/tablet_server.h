@@ -307,6 +307,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB* resp) const EXCLUDES(lock_) override;
 
+  Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB* resp) const override;
+
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
   rpc::Messenger* GetMessenger(ash::Component component) const override;
