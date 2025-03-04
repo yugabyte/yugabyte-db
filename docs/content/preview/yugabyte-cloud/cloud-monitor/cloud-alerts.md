@@ -78,7 +78,7 @@ When you receive a cluster alert, the first step is to review the chart for the 
 | [Disk Throughput](#fix-throughput-alerts) | Disk IOPS |
 | [Disk IOPS](#fix-iops-alerts) | Disk IOPS |
 | [Node Free Storage](#fix-storage-alerts) | Disk Usage metric |
-| [Nodes Down](#fix-nodes-reporting-as-down-alerts) | Go to the cluster **Nodes** tab to see which nodes are down |
+| [Nodes Down](#fix-nodes-reporting-as-down-alerts) | Go to the cluster [Nodes tab](../monitor-nodes/) to see which nodes are down |
 | [Memory Use](#fix-memory-alerts) | Memory Usage metric |
 | [Cluster Queues Overflow](#fix-database-overload-alerts) | RPC Queue Size metric |
 | [Compaction Overload](#fix-database-overload-alerts) | Compaction metric |
@@ -155,7 +155,7 @@ YugabyteDB Aeon sends a notification when the number of primary or read replica 
 - More than 34% of all primary or read replica nodes in the cluster are reporting as down (Warning).
 - More than 66% of all primary or read replica nodes in the cluster are reporting as down (Severe).
 
-Go to the cluster **Nodes** tab to see which nodes are down.
+Go to the cluster [Nodes tab](../monitor-nodes/) to see which nodes are down.
 
 If fewer than 34% of primary or read replica nodes in a multi-node (that is, highly available) cluster are down, the cluster remains healthy and can continue to serve requests, and the status is reported in the [cluster health](#cluster-health).
 

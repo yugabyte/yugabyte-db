@@ -8,7 +8,7 @@ menu:
   preview_yugabyte-cloud:
     identifier: monitor-activity
     parent: cloud-monitor
-    weight: 620
+    weight: 640
 type: docs
 ---
 
