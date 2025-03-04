@@ -108,7 +108,7 @@ In your certificate authority UI (for example, Venafi), generate the following:
 
 In addition, you add the certificates to YugabyteDB Anywhere.
 
-For more information, refer to [CA certificates](../../security/enable-encryption-in-transit/add-certificate-ca/).
+For more information, refer to [CA certificates](../../security/enable-encryption-in-transit/#use-custom-ca-signed-certificates-to-enable-tls).
 
 ### Additional software for airgapped deployment
 
