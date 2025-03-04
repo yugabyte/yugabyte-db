@@ -32,6 +32,8 @@ YugabyteDB Anywhere allows you to create a universe in one geographic region acr
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
 
+For information on modifying or scaling an existing universe, refer to [Modify universe](../../manage-deployments/edit-universe/).
+
 ## Prerequisites
 
 Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Create cloud provider configuration](../../configure-yugabyte-platform/aws/).

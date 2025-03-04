@@ -37,7 +37,7 @@ The following requirements must be met:
 
 ## Set up instance VMs
 
-When you create a universe, you need to import nodes that can be managed by YugabyteDB Anywhere. To set up your nodes, follow instructions in [Prepare nodes (on-premises)](../../install-yugabyte-platform/prepare-on-prem-nodes/).
+When you create a universe, you need to import nodes that can be managed by YugabyteDB Anywhere. To set up your nodes, follow instructions in [Servers for nodes (on-premises)](../../prepare/server-nodes/).
 
 Note the following:
 
