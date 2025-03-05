@@ -998,10 +998,11 @@ class PgClient::Impl : public BigDataFetcher {
         req, resp, ash::PggateRPC::kListLiveTabletServers));
     RETURN_NOT_OK(ResponseStatus(resp));
     client::TabletServersInfo result;
-    result.reserve(resp.servers().size());
+    result.tablet_servers.reserve(resp.servers().size());
     for (const auto& server : resp.servers()) {
-      result.push_back(client::YBTabletServerPlacementInfo::FromPB(server));
+      result.tablet_servers.push_back(client::YBTabletServerPlacementInfo::FromPB(server));
     }
+    result.universe_uuid = resp.universe_uuid();
     return result;
   }
 

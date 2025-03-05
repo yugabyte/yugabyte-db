@@ -3500,14 +3500,14 @@ yb_servers(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
 
-	int			expected_ncols = 9;
-
 	static int	ncols = 0;
 
-	if (ncols < expected_ncols)
-		ncols = YbGetNumberOfFunctionOutputColumns(8019);	/* yb_servers function
-															 * oid hardcoded in
-															 * pg_proc.dat */
+#define YB_SERVERS_COLS_V1 8
+#define YB_SERVERS_COLS_V2 9
+#define YB_SERVERS_COLS_V3 10
+
+	if (ncols < YB_SERVERS_COLS_V3)
+		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_SERVERS);
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -3534,11 +3534,14 @@ yb_servers(PG_FUNCTION_ARGS)
 						   "zone", TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 8,
 						   "public_ip", TEXTOID, -1, 0);
-		if (ncols >= expected_ncols)
-		{
+
+		if (ncols >= YB_SERVERS_COLS_V2)
 			TupleDescInitEntry(tupdesc, (AttrNumber) 9,
 							   "uuid", TEXTOID, -1, 0);
-		}
+
+		if (ncols >= YB_SERVERS_COLS_V3)
+			TupleDescInitEntry(tupdesc, (AttrNumber) 10,
+							   "universe_uuid", TEXTOID, -1, 0);
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
 		YbcServerDescriptor *servers = NULL;
@@ -3570,16 +3573,23 @@ yb_servers(PG_FUNCTION_ARGS)
 		values[5] = CStringGetTextDatum(server->region);
 		values[6] = CStringGetTextDatum(server->zone);
 		values[7] = CStringGetTextDatum(server->public_ip);
-		if (ncols >= expected_ncols)
-		{
+
+		if (ncols >= YB_SERVERS_COLS_V2)
 			values[8] = CStringGetTextDatum(server->uuid);
-		}
+
+		if (ncols >= YB_SERVERS_COLS_V3)
+			values[9] = CStringGetTextDatum(server->universe_uuid);
 		memset(nulls, 0, sizeof(nulls));
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
 	}
 	else
 		SRF_RETURN_DONE(funcctx);
+
+#undef YB_SERVERS_COLS_V1
+#undef YB_SERVERS_COLS_V2
+#undef YB_SERVERS_COLS_V3
+
 }
 
 bool

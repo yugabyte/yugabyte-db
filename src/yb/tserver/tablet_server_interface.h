@@ -137,6 +137,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual bool SkipCatalogVersionChecks() { return false; }
 
   virtual const std::string& permanent_uuid() const = 0;
+
+  virtual Result<std::string> GetUniverseUuid() const = 0;
 };
 
 } // namespace tserver

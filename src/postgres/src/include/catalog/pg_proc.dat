@@ -4201,9 +4201,9 @@
   proname => 'yb_servers', proretset => 't', provolatile => 'v',
   prorettype => 'record',
   proargtypes => '',
-  proallargtypes => '{text,int8,int8,text,text,text,text,text,text}',
-  proargmodes => '{o,o,o,o,o,o,o,o,o}',
-  proargnames => '{host,port,num_connections,node_type,cloud,region,zone,public_ip,uuid}',
+  proallargtypes => '{text,int8,int8,text,text,text,text,text,text,text}',
+  proargmodes => '{o,o,o,o,o,o,o,o,o,o}',
+  proargnames => '{host,port,num_connections,node_type,cloud,region,zone,public_ip,uuid,universe_uuid}',
   prosrc => 'yb_servers' },
 
 { oid => '2627',

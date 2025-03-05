@@ -246,5 +246,10 @@ const std::string& MasterTabletServer::permanent_uuid() const {
   return master_->permanent_uuid();
 }
 
+Result<std::string> MasterTabletServer::GetUniverseUuid() const {
+  LOG(DFATAL) << "Unexpected call of GetUniverseUuid()";
+  return STATUS_FORMAT(InternalError, "Unexpected call of GetUniverseUuid()");
+}
+
 } // namespace master
 } // namespace yb
