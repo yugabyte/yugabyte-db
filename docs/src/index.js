@@ -1,7 +1,6 @@
 import Clipboard from 'clipboard';
 
 const $ = window.jQuery;
-const innerWidthsArray = [...document.querySelectorAll('.links-panels .inner-container')].map(el => ({ width: el.offsetWidth, parent: el.parentNode }));
 
 /**
  * Create Cookie.
@@ -102,15 +101,16 @@ function yugabyteScrollLeftNav(activeLink) {
 }
 
 /**
- * Function to calculate width for the page finder functionality.
+ * Function to calculate and rotate "Page Finder" to horizontal or vertical design
+ * based on the container width.
  */
-function yugabytePageFinderWidth(width) {
-  width.forEach((innerEach) => {
-    const parent = innerEach.parent;
-    if (parent) {
+function yugabytePageFinderWidth() {
+  document.querySelectorAll('.page-finder .finder-panel .inner-container').forEach((finderContainer) => {
+    if (finderContainer.parentNode) {
       const innerContainer = document.querySelector('.content-area');
-      const width = innerEach.width;
-      if (width > innerContainer.offsetWidth) {
+      const innerWidth = finderContainer.offsetWidth;
+      const parent = finderContainer.parentNode;
+      if (innerWidth > innerContainer.offsetWidth) {
         parent.classList.add('vertical');
         parent.classList.remove('horizontal');
       } else {
@@ -267,7 +267,7 @@ $(document).ready(() => {
           maxWidth: mouseMoveX,
         });
         $('body').addClass('dragging');
-        yugabytePageFinderWidth(innerWidthsArray);
+        yugabytePageFinderWidth();
       });
     });
 
@@ -647,10 +647,10 @@ $(document).ready(() => {
     }
   });
 
-  yugabytePageFinderWidth(innerWidthsArray);
+  yugabytePageFinderWidth();
   document.querySelector('.side-nav-collapse-toggle-2').addEventListener('click', () => {
     setTimeout(() => {
-      yugabytePageFinderWidth(innerWidthsArray);
+      yugabytePageFinderWidth();
     }, 500);
   });
 });
@@ -663,5 +663,5 @@ $(window).resize(() => {
   setTimeout(() => {
     setCookie('leftMenuWidth', 300, 3);
   }, 1000);
-  yugabytePageFinderWidth(innerWidthsArray);
+  yugabytePageFinderWidth();
 });
