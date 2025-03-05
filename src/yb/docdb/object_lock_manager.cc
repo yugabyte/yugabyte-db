@@ -201,6 +201,7 @@ class ObjectLockManagerImpl {
 bool ObjectLockedBatchEntry::Lock(
     const LockBatchEntry<ObjectLockManager>& lock_entry, CoarseTimePoint deadline,
     const ObjectLockOwner& object_lock_owner, TrackedTransactionLockEntry& transaction_entry) {
+  TRACE_FUNC();
   auto old_value = num_holding.load(std::memory_order_acquire);
   auto add = IntentTypeSetAdd(lock_entry.intent_types);
   auto conflicting_lock_state = IntentTypeSetConflict(lock_entry.intent_types);
@@ -250,6 +251,7 @@ bool ObjectLockedBatchEntry::Lock(
 void ObjectLockedBatchEntry::Unlock(
     const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
     TrackedTransactionLockEntry& transaction_entry) {
+  TRACE_FUNC();
   tracker->ReleasedLock(lock_entry, object_lock_owner, transaction_entry);
   DoUnlock(IntentTypeSetAdd(lock_entry.intent_types));
 }
@@ -498,6 +500,7 @@ void ObjectLockManagerImpl::DoReleaseTrackedLock(
 void ObjectLockManagerImpl::AcquiredLock(
     const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
     TrackedTransactionLockEntry& txn, LocksMapType locks_map) {
+  TRACE_FUNC();
   VLOG_WITH_FUNC(1) << "lock_entry: " << lock_entry.ToString()
                     << ", object_lock_owner: " << AsString(object_lock_owner);
   auto delta = IntentTypeSetAdd(lock_entry.intent_types);
@@ -516,6 +519,7 @@ void ObjectLockManagerImpl::AcquiredLock(
 void ObjectLockManagerImpl::ReleasedLock(
     const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
     TrackedTransactionLockEntry& txn, LocksMapType locks_map) {
+  TRACE_FUNC();
   VLOG_WITH_FUNC(1) << "lock_entry: " << lock_entry.ToString()
                     << ", object_lock_owner: " << AsString(object_lock_owner);
   auto delta = IntentTypeSetAdd(lock_entry.intent_types);
