@@ -7,7 +7,7 @@ const $ = window.jQuery;
  */
 function setCookie(name, value, monthToLive) {
   let cookie = `${name}=${encodeURIComponent(value)}; max-age=${(monthToLive * 30 * (24 * 60 * 60))}; path=/`;
-  if (location.hostname !== 'localhost' || location.hostname !== '192.168.10.8') {
+  if (location.hostname !== 'localhost') {
     cookie += '; secure=true';
   }
 
