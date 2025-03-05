@@ -783,10 +783,10 @@ extern const char *YbHeapTupleToStringWithIsOmitted(HeapTuple tuple,
 													bool *is_omitted);
 
 /* Same as above except it takes slot instead of tuple. */
-extern const char *YbTupleTableSlotToString(TupleTableSlot *slot);
+extern const char *YbSlotToString(TupleTableSlot *slot);
 
-extern const char *YbTupleTableSlotToStringWithIsOmitted(TupleTableSlot *slot,
-														 bool *is_omitted);
+extern const char *YbSlotToStringWithIsOmitted(TupleTableSlot *slot,
+											   bool *is_omitted);
 
 /* Get a string representation of a bitmapset (for debug purposes only!) */
 extern const char *YbBitmapsetToString(Bitmapset *bms);
