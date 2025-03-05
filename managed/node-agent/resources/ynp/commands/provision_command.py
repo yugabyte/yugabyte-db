@@ -193,15 +193,15 @@ class ProvisionCommand(Command):
 
         # Determine OS family
         if distribution in {"rhel", "centos", "almalinux", "ol", "fedora"}:
-            os_family = OSFamily.REDHAT
+            os_family = OSFamily.REDHAT.value
         elif distribution in {"ubuntu", "debian"}:
-            os_family = OSFamily.DEBIAN
+            os_family = OSFamily.DEBIAN.value
         elif distribution in {"suse", "opensuse", "sles"}:
-            os_family = OSFamily.SUSE
+            os_family = OSFamily.SUSE.value
         elif distribution == "arch":
-            os_family = OSFamily.ARCH
+            os_family = OSFamily.ARCH.value
         else:
-            os_family = OSFamily.UNKNOWN
+            os_family = OSFamily.UNKNOWN.value
 
         return distribution, os_family, major_version
 
