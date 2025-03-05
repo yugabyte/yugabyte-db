@@ -590,20 +590,20 @@ SET LOCAL documentdb_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a" : {"$in" : [[{ "B" : "caT"}], [{ "c" : "caT"}]] }}, "sort": { "_id": 1 }, "skip": 0, "limit": 100, "collation": { "locale": "en", "strength" : 1} }');
 ERROR:  operator $in or operators that can be optimized to $in is not supported with collation, when $in contains nested objects
 END;
--- (6.B) $cond needs collationString to be plumbed
+-- (6.B)
 BEGIN;
 SET LOCAL documentdb_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$sort": { "_id": 1 } }, { "$addFields": { "e": {  "f": "$a" } } }, { "$replaceRoot": { "newRoot": "$e" } }, { "$match" : { "f": { "$elemMatch": {"$eq": "cAt"} } } }, {"$project": { "items" : { "$filter" : { "input" : "$f", "as" : "animal", "cond" : { "$eq" : ["$$animal", "CAT"] } }} }} ],
  "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
-        document         
+            document            
 ---------------------------------------------------------------------
+ { "items" : [ "Cat", "CAT" ] }
+ { "items" : [ "cat", "CAT" ] }
+ { "items" : [ "cat" ] }
+ { "items" : [ "Cat" ] }
+ { "items" : [ "cat" ] }
  { "items" : [ "CAT" ] }
- { "items" : [ "CAT" ] }
- { "items" : [  ] }
- { "items" : [  ] }
- { "items" : [  ] }
- { "items" : [ "CAT" ] }
- { "items" : [  ] }
+ { "items" : [ "cAt" ] }
 (7 rows)
 
 END;
@@ -2060,6 +2060,73 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "coll_agg_proj", "fi
  document 
 ---------------------------------------------------------------------
 (0 rows)
+
+-- project
+SELECT documentdb_api_internal.bson_dollar_project(document, '{ "newField": { "$eq": ["$a", "CAT"] } }', NULL, 'en-u-ks-level1') FROM documentdb_api.collection('db', 'coll_agg_proj');
+                  bson_dollar_project                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "newField" : true }
+ { "_id" : { "$numberInt" : "2" }, "newField" : false }
+ { "_id" : { "$numberInt" : "3" }, "newField" : true }
+ { "_id" : { "$numberInt" : "4" }, "newField" : false }
+ { "_id" : "hen", "newField" : false }
+ { "_id" : "bat", "newField" : false }
+(6 rows)
+
+SELECT documentdb_api_internal.bson_dollar_project(document, '{ "newField": { "$eq": ["$a", "DOG"] } }', NULL, 'en-u-ks-level1') FROM documentdb_api.collection('db', 'coll_agg_proj');
+                  bson_dollar_project                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "newField" : false }
+ { "_id" : { "$numberInt" : "2" }, "newField" : true }
+ { "_id" : { "$numberInt" : "3" }, "newField" : false }
+ { "_id" : { "$numberInt" : "4" }, "newField" : true }
+ { "_id" : "hen", "newField" : false }
+ { "_id" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": { "$ne": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 1} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : false }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : false }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : true }
+ { "_id" : "hen", "a" : "hen", "newField" : true }
+ { "_id" : "bat", "a" : "bat", "newField" : true }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": { "$lte": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 1} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : false }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : false }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : true }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": { "$gte": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 3} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : false }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : false }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : true }
+ { "_id" : "hen", "a" : "hen", "newField" : true }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": { "$gte": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 1} }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : true }
+ { "_id" : "hen", "a" : "hen", "newField" : true }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
 
 -- redact
 SELECT documentdb_api.insert_one('db','coll_redact','{ "_id": 1, "level": "public", "content": "content 1", "details": { "level": "public", "value": "content 1.1", "moreDetails": { "level": "restricted", "info": "content 1.1.1" } } }', NULL);

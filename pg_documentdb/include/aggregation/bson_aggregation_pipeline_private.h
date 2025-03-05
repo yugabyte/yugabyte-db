@@ -221,7 +221,8 @@ Query * HandleMatch(const bson_value_t *existingValue, Query *query,
 Query * HandleSimpleProjectionStage(const bson_value_t *existingValue, Query *query,
 									AggregationPipelineBuildContext *context,
 									const char *stageName, Oid functionOid,
-									Oid (*functionOidWithLet)(void));
+									Oid (*functionOidWithLet)(void),
+									Oid (*functionOidWithLetAndCollation)(void));
 Query * HandleGroup(const bson_value_t *existingValue, Query *query,
 					AggregationPipelineBuildContext *context);
 

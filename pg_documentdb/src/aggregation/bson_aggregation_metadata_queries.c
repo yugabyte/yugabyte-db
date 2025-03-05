@@ -843,6 +843,13 @@ HandleListCollectionsProjector(Query *query, AggregationPipelineBuildContext *co
 
 	pgbson *bson = PgbsonWriterGetPgbson(&writer);
 	bson_value_t bsonValue = ConvertPgbsonToBsonValue(bson);
+
+	/* no use for *WithLet or *WithLetAndCollation projection functions here, so we set them to NULL */
+	Oid (*projectWithLetFuncOid) (void) = NULL;
+	Oid (*projectWithLetAndCollationFuncOid) (void) = NULL;
+
 	return HandleSimpleProjectionStage(&bsonValue, query, context, "$project",
-									   BsonDollarProjectFunctionOid(), NULL);
+									   BsonDollarProjectFunctionOid(),
+									   projectWithLetFuncOid,
+									   projectWithLetAndCollationFuncOid);
 }

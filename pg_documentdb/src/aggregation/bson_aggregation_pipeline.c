@@ -1835,7 +1835,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTime
 	pgbson *addFieldsSpec = PgbsonWriterGetPgbson(&addFieldsWriter);
 	bson_value_t addFieldsValue = ConvertPgbsonToBsonValue(addFieldsSpec);
 	query = HandleSimpleProjectionStage(&addFieldsValue, query, &context, "$addFields",
-										BsonDollaMergeDocumentsFunctionOid(), NULL);
+										BsonDollaMergeDocumentsFunctionOid(), NULL, NULL);
 
 	return query;
 }
@@ -2120,7 +2120,8 @@ Query *
 HandleSimpleProjectionStage(const bson_value_t *existingValue, Query *query,
 							AggregationPipelineBuildContext *context,
 							const char *stageName, Oid functionOid,
-							Oid (*functionOidWithLet)(void))
+							Oid (*functionOidWithLet)(void),
+							Oid (*functionOidWithLetAndCollation)(void))
 {
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -2145,7 +2146,24 @@ HandleSimpleProjectionStage(const bson_value_t *existingValue, Query *query,
 	Const *addFieldsProcessed = MakeBsonConst(docBson);
 
 	List *args;
-	if (context->variableSpec != NULL && functionOidWithLet != NULL)
+
+	/* if valid collation is specified, we use the function with both let and collation support, if applicable */
+	/* else if only variableSpec is given, we use the function with let support, if applicable */
+	/* else the base function */
+	bool addLetAndCollationArg = IsCollationApplicable(context->collationString) &&
+								 functionOidWithLetAndCollation != NULL;
+	bool addOnlyVariableSpecArg = context->variableSpec != NULL && functionOidWithLet !=
+								  NULL;
+
+	if (addLetAndCollationArg && IsClusterVersionAtleast(DocDB_V0, 102, 0))
+	{
+		Const *collationConst = MakeTextConst(context->collationString, strlen(
+												  context->collationString));
+		args = list_make4(currentProjection, addFieldsProcessed, context->variableSpec,
+						  collationConst);
+		functionOid = functionOidWithLetAndCollation();
+	}
+	else if (addOnlyVariableSpecArg)
 	{
 		args = list_make3(currentProjection, addFieldsProcessed,
 						  context->variableSpec);
@@ -2532,9 +2550,12 @@ HandleAddFields(const bson_value_t *existingValue, Query *query,
 				AggregationPipelineBuildContext *context)
 {
 	ReportFeatureUsage(FEATURE_STAGE_ADD_FIELDS);
+
+	Oid (*addFieldsWithLetAndCollationFuncOid)(void) = NULL;
 	return HandleSimpleProjectionStage(existingValue, query, context, "$addFields",
 									   BsonDollarAddFieldsFunctionOid(),
-									   BsonDollarAddFieldsWithLetFunctionOid);
+									   BsonDollarAddFieldsWithLetFunctionOid,
+									   addFieldsWithLetAndCollationFuncOid);
 }
 
 
@@ -2948,7 +2969,8 @@ HandleProject(const bson_value_t *existingValue, Query *query,
 	ReportFeatureUsage(FEATURE_STAGE_PROJECT);
 	return HandleSimpleProjectionStage(existingValue, query, context, "$project",
 									   BsonDollarProjectFunctionOid(),
-									   BsonDollarProjectWithLetFunctionOid);
+									   BsonDollarProjectWithLetFunctionOid,
+									   BsonDollarProjectWithLetAndCollationFunctionOid);
 }
 
 
@@ -3123,9 +3145,12 @@ HandleReplaceRoot(const bson_value_t *existingValue, Query *query,
 				  AggregationPipelineBuildContext *context)
 {
 	ReportFeatureUsage(FEATURE_STAGE_REPLACE_ROOT);
+
+	Oid (*replaceRootWithLetAndCollationFuncOid)(void) = NULL;
 	return HandleSimpleProjectionStage(existingValue, query, context, "$replaceRoot",
 									   BsonDollarReplaceRootFunctionOid(),
-									   &BsonDollarReplaceRootWithLetFunctionOid);
+									   &BsonDollarReplaceRootWithLetFunctionOid,
+									   replaceRootWithLetAndCollationFuncOid);
 }
 
 

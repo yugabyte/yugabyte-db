@@ -55,6 +55,9 @@ typedef struct BsonProjectionContext
 
 	/* The variable spec for let scenarios if applicable */
 	pgbson *variableSpec;
+
+	/* Collation string for comparison, if applicable */
+	const char *collationString;
 } BsonProjectionContext;
 
 /*

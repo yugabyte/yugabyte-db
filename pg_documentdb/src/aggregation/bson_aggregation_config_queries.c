@@ -190,9 +190,13 @@ GenerateDatabasesQuery(AggregationPipelineBuildContext *context)
 	pgbson *spec = PgbsonWriterGetPgbson(&projectionSpec);
 	bson_value_t projectionValue = ConvertPgbsonToBsonValue(spec);
 
+	/* no use for *WithLet or *WithLetAndCollation projection functions here, so we set them to NULL */
+	Oid (*addFieldsWithLetFuncOid) (void) = NULL;
+	Oid (*addFieldsWithLetAndCollationFuncOid) (void) = NULL;
+
 	query = HandleSimpleProjectionStage(
 		&projectionValue, query, context, "$addFields", BsonDollarAddFieldsFunctionOid(),
-		NULL);
+		addFieldsWithLetFuncOid, addFieldsWithLetAndCollationFuncOid);
 
 	return query;
 }
@@ -283,9 +287,13 @@ GenerateCollectionsQuery(AggregationPipelineBuildContext *context)
 	pgbson *spec = PgbsonWriterGetPgbson(&writer);
 	bson_value_t projectionValue = ConvertPgbsonToBsonValue(spec);
 
+	/* no use for *WithLet or *WithLetAndCollation projection functions here, so we set them to NULL */
+	Oid (*addFieldsWithLetFuncOid) (void) = NULL;
+	Oid (*addFieldsWithLetAndCollationFuncOid) (void) = NULL;
+
 	query = HandleSimpleProjectionStage(
 		&projectionValue, query, context, "$project", BsonDollarProjectFunctionOid(),
-		NULL);
+		addFieldsWithLetFuncOid, addFieldsWithLetAndCollationFuncOid);
 
 	return query;
 }
@@ -379,9 +387,13 @@ GenerateChunksQuery(AggregationPipelineBuildContext *context)
 	pgbson *spec = PgbsonWriterGetPgbson(&writer);
 	bson_value_t projectionValue = ConvertPgbsonToBsonValue(spec);
 
+	/* no use for *WithLet or *WithLetAndCollation projection functions here, so we set them to NULL */
+	Oid (*projectWithLetFuncOid) (void) = NULL;
+	Oid (*projectWithLetAndCollationFuncOid) (void) = NULL;
+
 	query = HandleSimpleProjectionStage(
 		&projectionValue, query, context, "$project", BsonDollarProjectFunctionOid(),
-		NULL);
+		projectWithLetFuncOid, projectWithLetAndCollationFuncOid);
 
 	return MutateChunksQueryForDistribution(query);
 }

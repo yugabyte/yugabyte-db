@@ -2,6 +2,7 @@
 #include "udfs/ttl/ttl_support_functions--0.102-0.sql"
 #include "udfs/commands_diagnostic/current_op--0.102-0.sql"
 #include "udfs/query/bson_query_match--0.102-0.sql"
+#include "udfs/projection/bson_projection--0.102-0.sql"
 #include "udfs/aggregation/bson_aggregation_redact--0.102-0.sql"
 #include "udfs/aggregation/bson_merge_functions--0.102-0.sql"
 

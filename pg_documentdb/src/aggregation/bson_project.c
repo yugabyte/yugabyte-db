@@ -210,14 +210,24 @@ bson_dollar_project(PG_FUNCTION_ARGS)
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
 	pgbson *variableSpec = NULL;
+	char *collationString = NULL;
 
-	int argPositions[2] = { 1, 2 };
+	int argPositions[3] = { 1, 2, 3 };
 	int numArgs = 1;
 
 	if (PG_NARGS() > 2)
 	{
 		variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(2);
 		numArgs = 2;
+	}
+
+	if (PG_NARGS() == 4)
+	{
+		if (EnableCollation && !PG_ARGISNULL(3))
+		{
+			collationString = text_to_cstring(PG_GETARG_TEXT_P(3));
+		}
+		numArgs = 3;
 	}
 
 	/* project_find with empty projection spec is a no-op */
@@ -236,7 +246,9 @@ bson_dollar_project(PG_FUNCTION_ARGS)
 		.pathSpecIter = &pathSpecIter,
 		.querySpec = NULL,
 		.variableSpec = variableSpec,
+		.collationString = collationString
 	};
+
 	SetCachedFunctionStateMultiArgs(
 		state,
 		BsonProjectionQueryState,
@@ -1606,6 +1618,12 @@ BuildBsonPathTreeForDollarProjectCore(BsonProjectionQueryState *state,
 	GetTimeSystemVariablesFromVariableSpec(projectionContext->variableSpec,
 										   &pathTreeContext->parseAggregationContext.
 										   timeSystemVariables);
+
+	if (IsCollationApplicable(projectionContext->collationString))
+	{
+		pathTreeContext->parseAggregationContext.collationString =
+			projectionContext->collationString;
+	}
 
 	bool hasFields = false;
 	bool forceLeafExpression = false;
