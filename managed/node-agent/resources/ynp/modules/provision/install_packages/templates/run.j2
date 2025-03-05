@@ -37,10 +37,10 @@ detect_architecture() {
 
 # Detect package manager
 detect_package_manager() {
-  if command -v yum >/dev/null 2>&1; then
-    echo "yum"
-  elif command -v dnf >/dev/null 2>&1; then
+  if command -v dnf >/dev/null 2>&1; then
     echo "dnf"
+  elif command -v yum >/dev/null 2>&1; then
+    echo "yum"
   elif command -v apt-get >/dev/null 2>&1; then
     echo "apt"
   else
@@ -64,7 +64,7 @@ if [[ "$architecture" == "aarch64" ]]; then
   if [[ "$linux_flavor" == "Debian" ]]; then
     echo "Installing Debian ARM-specific packages..."
     install_packages "$pkg_mgr" "${debian_aarch64_packages[@]}"
-  elif [[ "$linux_flavor" == "Redhat" ]]; then
+  elif [[ "$linux_flavor" == "RedHat" ]]; then
     echo "Installing RedHat ARM-specific packages..."
     install_packages "$pkg_mgr" "${aarch64_packages[@]}"
   fi

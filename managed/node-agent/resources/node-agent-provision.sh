@@ -203,7 +203,8 @@ execute_python() {
 # Function for importing the GPG key if required.
 import_gpg_key_if_required() {
     # Check if the OS is Red Hat-based (RHEL, Rocky, Alma)
-    if grep -qiE "rhel|rocky|almalinux" /etc/os-release; then
+    if grep -qiE "rhel|rocky|almalinux" /etc/os-release && \
+        grep -qIE 'VERSION_ID="8([.][0-9]+)?"' /etc/os-release; then
         echo "Importing RPM keys for Red Hat-based OS"
         rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux
         echo "Successfully imported GPG keys"
