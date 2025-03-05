@@ -3592,7 +3592,7 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
 }
 
 Status CatalogManager::CopyPgsqlSysTables(const NamespaceInfo& ns,
-                                          const std::vector<scoped_refptr<TableInfo>>& tables,
+                                          const std::vector<TableInfoPtr>& tables,
                                           const LeaderEpoch& epoch) {
   if (tables.empty()) {
     return Status::OK();
@@ -8475,7 +8475,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
             << ": " << req->DebugString();
 
   scoped_refptr<NamespaceInfo> ns;
-  std::vector<scoped_refptr<TableInfo>> pgsql_tables;
+  std::vector<TableInfoPtr> pgsql_tables;
   TransactionMetadata txn;
   const auto db_type = GetDatabaseType(*req);
   NamespaceInfo::WriteLock ns_l;
@@ -8612,9 +8612,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
             if (IsPriorVersionYsqlCatalogTable(table_id)) {
               continue;
             }
-            // Since indexes have dependencies on the base tables, put the tables in the front.
-            const bool is_table = table->indexed_table_id().empty();
-            pgsql_tables.insert(is_table ? pgsql_tables.begin() : pgsql_tables.end(), table);
+            pgsql_tables.push_back(table);
           }
         }
 
@@ -8715,6 +8713,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     }
   }
 
+  std::sort(pgsql_tables.begin(), pgsql_tables.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs->id() < rhs->id();
+  });
+
   if (db_type == YQL_DATABASE_PGSQL) {
     LOG(INFO) << "Keyspace create enqueued for later processing: " << ns->ToString();
     RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(std::bind(
@@ -8745,9 +8747,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 }
 
 void CatalogManager::ProcessPendingNamespace(
-    NamespaceId id,
-    std::vector<scoped_refptr<TableInfo>> template_tables,
-    TransactionMetadata txn, const LeaderEpoch& epoch) {
+    const NamespaceId& id,
+    const std::vector<TableInfoPtr>& template_tables,
+    const TransactionMetadata& txn,
+    const LeaderEpoch& epoch) {
   LOG(INFO) << "ProcessPendingNamespace started for " << id;
 
   // Ensure that we are the leader and our view of the term does not change while handling DDL

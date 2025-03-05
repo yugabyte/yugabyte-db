@@ -1772,9 +1772,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                           const NamespaceId& id,
                           int64_t term) REQUIRES(mutex_);
 
-  void ProcessPendingNamespace(NamespaceId id,
-                               std::vector<scoped_refptr<TableInfo>> template_tables,
-                               TransactionMetadata txn, const LeaderEpoch& epoch);
+  void ProcessPendingNamespace(const NamespaceId& id,
+                               const std::vector<TableInfoPtr>& template_tables,
+                               const TransactionMetadata& txn,
+                               const LeaderEpoch& epoch);
 
   // Called when transaction associated with NS create finishes. Verifies postgres layer present.
   void ScheduleVerifyNamespacePgLayer(TransactionMetadata txn,
