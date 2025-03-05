@@ -206,6 +206,7 @@
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
         "upgradeAction": "Upgrade",
+        "precheckAction": "Run Pre-check Only",
         "chooseTarget": "1. Choose target version",
         "currentVersion": "Current Version",
         "targetVersion": "Target Version",
@@ -218,6 +219,7 @@
         "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "footerMsg1": "Once the upgrade is finished, you can assess Universe performance and ",
         "footerMsg2": "if any unusual behavior is detected.",
+        "footerMsg3": "We recommend you to take backup of your universe before upgrading.",
         "rollbackPrevious": "roll back to the previous version",
         "avoidDisruption": "Avoid disruption to xCluster configuration",
         "xclusterWarning": "This universe is part of one or more xCluster configurations. To minimize disruptions to these configurations during the upgrade process, you should, if possible, upgrade the target universe first.",
@@ -233,6 +235,11 @@
         "upgradeFialedNonRollback": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state,you can choose to either retry the upgrade or get in touch our support team.",
         "viewTask": "View Task Details",
         "retryTask": "Retry Task",
+        "upgradeModal": {
+          "upgradeWarning": "<b>Warning:</b> You cannot run DDL operations while the upgrade is in progress. DDL operations are re-enabled after you finalize the upgrade.<br/><b>Warning:</b> Backups taken after the upgrade can only be restored to <b>{{version}} or later</b>.",
+          "submitAction": "Proceed to Upgrade",
+          "title": "Before you proceed..."
+        },
         "preFinalize": {
           "finalizeUpgrade": "Finalize Upgrade",
           "rollback": "Roll back to the previous version",
