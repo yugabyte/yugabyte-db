@@ -9719,7 +9719,8 @@ YbGetNext(YbFKTriggerScanDesc desc)
 				desc->all_tuples_processed = true;
 				break;
 			}
-			YbAddTriggerFKReferenceIntent(desc->trigger, desc->pkrel, tuple);
+			YbAddTriggerFKReferenceIntent(desc->trigger, desc->pkrel,
+										  tuple, /* is_deferred= */ false);
 			desc->buffered_tuples[desc->buffered_tuples_size++] = tuple;
 		}
 	}

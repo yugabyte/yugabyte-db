@@ -6203,7 +6203,10 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 		}
 
 		if (is_fk_trigger_on_yb_table)
-			YbAddTriggerFKReferenceIntent(trigger, rel, newtup);
+		{
+			const bool is_deferred = new_shared.ybc_txn_fdw_tuplestore != NULL;
+			YbAddTriggerFKReferenceIntent(trigger, rel, newtup, is_deferred);
+		}
 
 		afterTriggerAddEvent(
 				&afterTriggers.query_stack[afterTriggers.query_depth].events, &new_event, &new_shared);

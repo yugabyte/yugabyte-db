@@ -3324,7 +3324,8 @@ RI_FKey_trigger_type(Oid tgfoid)
 }
 
 void
-YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel, HeapTuple new_row)
+YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
+							  HeapTuple new_row, bool is_deferred)
 {
 	YBCPgYBTupleIdDescriptor *descr = YBCBuildYBTupleIdDescriptor(
 		ri_FetchConstraintInfo(trigger, fk_rel, false /* rel_is_pk */), new_row);
@@ -3345,7 +3346,9 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel, HeapTuple new_r
 			null_found = attr->is_null && (attr->attr_num > 0);
 
 		if (!null_found)
-			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr, YBCIsRegionLocal(fk_rel)));
+			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr,
+														   YBCIsRegionLocal(fk_rel),
+														   is_deferred));
 		pfree(descr);
 	}
 }

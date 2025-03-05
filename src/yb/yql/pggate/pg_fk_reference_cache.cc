@@ -47,8 +47,10 @@ class PgFKReferenceCache::Impl {
 
   void Clear() {
     references_.clear();
-    intents_.clear();
+    regular_intents_.clear();
+    deferred_intents_.clear();
     region_local_tables_.clear();
+    intents_ = &regular_intents_;
   }
 
   void DeleteReference(const LightweightTableYbctid& key) {
@@ -66,26 +68,31 @@ class PgFKReferenceCache::Impl {
       return true;
     }
 
-    // Check existence of required FK intent.
-    // Absence means the key was checked by previous batched request and was not found.
-    // We don't need to call the reader in this case.
-    auto it = intents_.find(key);
-    if (it == intents_.end()) {
-      return false;
-    }
-
     auto reader = reader_provider_();
-    auto available_capacity = std::min<size_t>(
-        intents_.size(), buffering_settings_.max_batch_size);
-    reader.Reserve(available_capacity);
-    // If the reader fails to get the result, we fail the whole operation (and transaction).
-    // Hence it's ok to extract (erase) the keys from intent before calling reader.
-    reader.Add(std::move(intents_.extract(it).value()));
-    --available_capacity;
+    auto residual_capacity = std::min<size_t>(intents_->size(), buffering_settings_.max_batch_size);
+    reader.Reserve(residual_capacity);
 
-    for (auto it = intents_.begin();
-         it != intents_.end() && available_capacity; --available_capacity) {
-      reader.Add(std::move(intents_.extract(it++).value()));
+    // Check existence of required FK intent.
+    const auto intents_end = intents_->end();
+    auto it = intents_->find(key);
+    if (it == intents_end) {
+      if (!IsDeferredTriggersProcessingStarted()) {
+        // In case of processing non deferred intents absence means the key was checked by previous
+        // batched request and was not found. We don't need to call the reader in this case.
+        return false;
+      }
+      // In case of processing deferred intents absence of intent could be caused by
+      // subtxnransaction rollback. In this case we have to make a read attempt.
+      reader.Add(TableYbctid{key.table_id, std::string{key.ybctid}});
+    } else {
+      // If the reader fails to get the result, we fail the whole operation (and transaction).
+      // Hence it's ok to extract (erase) the keys from intent before calling reader.
+      reader.Add(std::move(intents_->extract(it).value()));
+    }
+    --residual_capacity;
+
+    for (auto it = intents_->begin(); it != intents_end && residual_capacity; --residual_capacity) {
+      reader.Add(std::move(intents_->extract(it++).value()));
     }
 
     // Add the keys found in docdb to the FK cache.
@@ -98,23 +105,42 @@ class PgFKReferenceCache::Impl {
     return references_.contains(key);
   }
 
-  void AddIntent(const LightweightTableYbctid& key, bool is_region_local) {
+  void AddIntent(const LightweightTableYbctid& key, const IntentOptions& options) {
+    LOG_IF(DFATAL, IsDeferredTriggersProcessingStarted())
+        << "AddIntent is not expected after deferred trigger processing start";
+
     if (references_.contains(key)) {
         return;
     }
 
-    if (is_region_local) {
+    if (options.is_region_local) {
       region_local_tables_.insert(key.table_id);
     }
-    DCHECK(is_region_local || !region_local_tables_.contains(key.table_id));
-    intents_.emplace(key.table_id, std::string(key.ybctid));
+    LOG_IF(DFATAL, !options.is_region_local && region_local_tables_.contains(key.table_id))
+        << "The " << key.table_id << " table was previously reported as region local";
+    (options.is_deferred ? &deferred_intents_ : &regular_intents_)->emplace(
+        key.table_id, std::string(key.ybctid));
+  }
+
+  void OnDeferredTriggersProcessingStarted() {
+    LOG_IF(DFATAL, IsDeferredTriggersProcessingStarted())
+        << "Multiple call of OnDeferredTriggersProcessingStarted is not expected";
+    LOG_IF(DFATAL, !regular_intents_.empty())
+        << "OnDeferredTriggersProcessingStarted implies all non deferred intents were processed";
+    intents_ = &deferred_intents_;
   }
 
  private:
+  [[nodiscard]] bool IsDeferredTriggersProcessingStarted() const {
+    return intents_ == &deferred_intents_;
+  }
+
   YbctidReaderProvider& reader_provider_;
   const BufferingSettings& buffering_settings_;
   MemoryOptimizedTableYbctidSet references_;
-  TableYbctidSet intents_;
+  TableYbctidSet regular_intents_;
+  TableYbctidSet deferred_intents_;
+  TableYbctidSet* intents_ = &regular_intents_;
   OidSet region_local_tables_;
 };
 
@@ -142,8 +168,13 @@ Result<bool> PgFKReferenceCache::IsReferenceExists(
   return impl_->IsReferenceExists(database_id, key);
 }
 
-void PgFKReferenceCache::AddIntent(const LightweightTableYbctid& key, bool is_region_local) {
-  impl_->AddIntent(key, is_region_local);
+void PgFKReferenceCache::AddIntent(
+    const LightweightTableYbctid& key, const IntentOptions& options) {
+  impl_->AddIntent(key, options);
+}
+
+void PgFKReferenceCache::OnDeferredTriggersProcessingStarted() {
+  impl_->OnDeferredTriggersProcessingStarted();
 }
 
 } // namespace yb::pggate

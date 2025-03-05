@@ -272,7 +272,8 @@ extern bool RI_FKey_fk_upd_check_required(Trigger *trigger, Relation fk_rel,
 							  const YbSkippableEntities *yb_skip_entities);
 extern bool RI_Initial_Check(Trigger *trigger,
 				 Relation fk_rel, Relation pk_rel);
-extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel, HeapTuple new_row);
+extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
+										  HeapTuple new_row, bool is_deferred);
 
 /* result values for RI_FKey_trigger_type: */
 #define RI_TRIGGER_PK	1		/* is a trigger on the PK relation */

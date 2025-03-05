@@ -769,8 +769,10 @@ void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_relfilenode_oid, uin
 void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_relfilenode_oid, uint64_t ybctid);
 YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor* descr);
 YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor* descr, bool* res);
-YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor* descr,
-                                          bool relation_is_region_local);
+YBCStatus YBCAddForeignKeyReferenceIntent(
+    const YBCPgYBTupleIdDescriptor* descr, bool relation_is_region_local,
+    bool is_deferred_trigger);
+void YBCNotifyDeferredTriggersProcessingStarted();
 
 // Explicit Row-level Locking.
 YBCPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(

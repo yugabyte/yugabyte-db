@@ -1935,11 +1935,20 @@ YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor *source, b
 }
 
 YBCStatus YBCAddForeignKeyReferenceIntent(
-    const YBCPgYBTupleIdDescriptor *source, bool relation_is_region_local) {
-  return ProcessYbctid(*source, [relation_is_region_local](auto table_id, const auto& ybctid) {
-    pgapi->AddForeignKeyReferenceIntent(table_id, relation_is_region_local, ybctid);
-    return Status::OK();
-  });
+    const YBCPgYBTupleIdDescriptor *source, bool relation_is_region_local,
+    bool is_deferred_trigger) {
+  return ProcessYbctid(
+      *source,
+      [relation_is_region_local, is_deferred_trigger](auto table_id, const auto& ybctid) {
+        pgapi->AddForeignKeyReferenceIntent(
+            table_id, ybctid,
+            {.is_region_local = relation_is_region_local, .is_deferred = is_deferred_trigger});
+        return Status::OK();
+      });
+}
+
+void YBCNotifyDeferredTriggersProcessingStarted() {
+  pgapi->NotifyDeferredTriggersProcessingStarted();
 }
 
 YBCPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(

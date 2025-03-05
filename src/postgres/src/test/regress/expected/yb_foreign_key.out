@@ -618,7 +618,7 @@ INSERT INTO c VALUES(1, 1, 1, 1, 1);
  Trigger for constraint c_p2_fk_fkey: calls=1
  Trigger for constraint c_p4_fk_fkey: calls=1
  Storage Read Requests: 1
- Storage Rows Scanned: 4
+ Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
 (9 rows)
@@ -682,7 +682,7 @@ INSERT INTO fk VALUES (500, 1); -- should fail
 ERROR:  insert or update on table "fk" violates foreign key constraint "fk_id_fkey"
 DETAIL:  Key (id, name)=(500, 1) is not present in table "pk".
 SELECT * from fk;
- id | name 
+ id | name
 ----+------
   1 |  500
 (1 row)
