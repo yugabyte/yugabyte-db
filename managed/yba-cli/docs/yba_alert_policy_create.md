@@ -24,7 +24,7 @@ yba alert policy create --name <alert-policy-name> \
       --description string        [Optional] Description of alert policy to create.
       --target-uuids string       [Optional] Comma separated list of target UUIDs for the alert policy. If left empty, the alert policy will be created for all targets of the target type. Allowed for target type: universe.
       --threshold stringArray     [Optional] Threshold for the configuration corresponding to severity. Each threshold needs to be added as a separate --threshold flag.Provide the following double colon (::) separated fields as key-value pairs: "severity=<severity>::condition=<condition>::threshold=<threshold>". Allowed values for severity: severe, warning. Allowed values for condition: greater-than, less-than, not-equal. Threshold should be a double. Example: "severity=severe::condition=greater-than::threshold=60000".
-      --template string           [Required] Template name for the alert policy. Use single quotes ('') to provide values with special characters. Run "yba alert template list" to check list of available template names.
+      --template string           [Required] Template name for the alert policy. Use single quotes ('') to provide values with special characters. Run "yba alert policy template list" to check list of available template names.
       --duration int              [Optional] Duration in seconds, while condition is met to raise an alert. (default 0)
       --destination-type string   [Optional] Destination type to create alert policy. Allowed values: no, default, selected
       --destination string        [Optional] Destination name to send alerts. Run "yba alert destination list" to check list of available destinations. Required if destination-type is selected.

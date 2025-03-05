@@ -23,7 +23,7 @@ var listDestinationAlertCmd = &cobra.Command{
 	Aliases: []string{"ls"},
 	Short:   "List YugabyteDB Anywhere alert destinations",
 	Long:    "List YugabyteDB Anywhere alert destinations",
-	Example: `yba destination list`,
+	Example: `yba alert destination list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 

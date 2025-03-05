@@ -6,9 +6,9 @@ package alert
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/channel"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/configuration"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/destination"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/template"
 )
 
 // AlertCmd set of commands are used to perform operations on alerts
@@ -30,9 +30,7 @@ func init() {
 	AlertCmd.AddCommand(describeAlertCmd)
 	AlertCmd.AddCommand(countAlertCmd)
 	AlertCmd.AddCommand(acknowledgeAlertCmd)
-
 	AlertCmd.AddCommand(configuration.ConfigurationAlertCmd)
-	AlertCmd.AddCommand(template.TemplateAlertCmd)
 	AlertCmd.AddCommand(destination.DestinationAlertCmd)
-
+	AlertCmd.AddCommand(channel.ChannelAlertCmd)
 }

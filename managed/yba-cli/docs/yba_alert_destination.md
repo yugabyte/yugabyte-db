@@ -4,7 +4,7 @@ Manage YugabyteDB Anywhere alert destinations
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere alert destinations
+Manage YugabyteDB Anywhere alert destinations (group of channels)
 
 ```
 yba alert destination [flags]
@@ -33,5 +33,9 @@ yba alert destination [flags]
 ### SEE ALSO
 
 * [yba alert](yba_alert.md)	 - Manage YugabyteDB Anywhere alerts
+* [yba alert destination create](yba_alert_destination_create.md)	 - Create an alert destination in YugabyteDB Anywhere
+* [yba alert destination delete](yba_alert_destination_delete.md)	 - Delete YugabyteDB Anywhere alert destination
+* [yba alert destination describe](yba_alert_destination_describe.md)	 - Describe a YugabyteDB Anywhere alert destination
 * [yba alert destination list](yba_alert_destination_list.md)	 - List YugabyteDB Anywhere alert destinations
+* [yba alert destination update](yba_alert_destination_update.md)	 - Update an alert destination in YugabyteDB Anywhere
 

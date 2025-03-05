@@ -6,6 +6,7 @@ package configuration
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/configuration/template"
 )
 
 // ConfigurationAlertCmd set of commands are used to perform operations on policies
@@ -30,5 +31,6 @@ func init() {
 	ConfigurationAlertCmd.AddCommand(createConfigurationAlertCmd)
 	ConfigurationAlertCmd.AddCommand(updateConfigurationAlertCmd)
 	ConfigurationAlertCmd.AddCommand(testAlertConfigurationAlertCmd)
+	ConfigurationAlertCmd.AddCommand(template.TemplateAlertCmd)
 
 }

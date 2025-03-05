@@ -21,9 +21,9 @@ import (
 var listTemplateAlertCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List YugabyteDB Anywhere alert templates",
-	Long:    "List YugabyteDB Anywhere alert templates",
-	Example: `yba template list`,
+	Short:   "List YugabyteDB Anywhere alert policy templates",
+	Long:    "List YugabyteDB Anywhere alert policy templates",
+	Example: `yba alert policy template list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 

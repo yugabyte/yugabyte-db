@@ -70,8 +70,12 @@ func (a *AuthAPIClient) ListBackupSchedulesRest(
 
 	var req *http.Request
 
-	req, err = http.NewRequest("POST", fmt.Sprintf("%s://%s/api/v1/customers/%s/schedules/page",
-		a.RestClient.Scheme, a.RestClient.Host, a.CustomerUUID), reqBuf)
+	req, err = http.NewRequest(
+		http.MethodPost,
+		fmt.Sprintf("%s://%s/api/v1/customers/%s/schedules/page",
+			a.RestClient.Scheme, a.RestClient.Host, a.CustomerUUID),
+		reqBuf,
+	)
 
 	if err != nil {
 		return util.SchedulePagedResponse{},

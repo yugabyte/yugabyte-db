@@ -34,10 +34,10 @@ yba alert [flags]
 
 * [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
 * [yba alert acknowledge](yba_alert_acknowledge.md)	 - Acknowledge YugabyteDB Anywhere alert
+* [yba alert channel](yba_alert_channel.md)	 - Manage YugabyteDB Anywhere alert notification channels
 * [yba alert count](yba_alert_count.md)	 - Count YugabyteDB Anywhere alerts
 * [yba alert describe](yba_alert_describe.md)	 - Describe YugabyteDB Anywhere alert
 * [yba alert destination](yba_alert_destination.md)	 - Manage YugabyteDB Anywhere alert destinations
 * [yba alert list](yba_alert_list.md)	 - List YugabyteDB Anywhere alerts
 * [yba alert policy](yba_alert_policy.md)	 - Manage YugabyteDB Anywhere alert policies
-* [yba alert template](yba_alert_template.md)	 - Manage YugabyteDB Anywhere alert templates
 

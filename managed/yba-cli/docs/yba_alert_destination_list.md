@@ -13,7 +13,7 @@ yba alert destination list [flags]
 ### Examples
 
 ```
-yba destination list
+yba alert destination list
 ```
 
 ### Options
