@@ -13,10 +13,11 @@ import {
   SHOW_TASK_IN_DRAWER,
   HIDE_TASK_IN_DRAWER,
   SHOW_TASK_BANNER,
-  HIDE_TASK_BANNER
+  HIDE_TASK_BANNER,
+  HIDE_ALL_TASK_BANNERS
 } from '../actions/tasks';
 import moment from 'moment';
-import { get, set } from 'lodash';
+import { get, mapValues, set } from 'lodash';
 
 import {
   getInitialState,
@@ -105,6 +106,16 @@ export default function (state = INITIAL_STATE, action) {
     }
     case HIDE_TASK_BANNER:
       set(state.taskBannerInfo, [action.payload.universeUUID, action.payload.taskUUID, 'visible'], false);
+      return {
+        ...state,
+      };
+    case HIDE_ALL_TASK_BANNERS:
+      state.taskBannerInfo[action.payload.universeUUID] = mapValues(
+        state.taskBannerInfo[action.payload.universeUUID],
+        (value) => {
+          return { ...value, visible: false };
+        }
+      );
       return {
         ...state,
       };
