@@ -37,6 +37,7 @@ yba alert policy [flags]
 * [yba alert policy delete](yba_alert_policy_delete.md)	 - Delete YugabyteDB Anywhere alert policy
 * [yba alert policy describe](yba_alert_policy_describe.md)	 - Describe YugabyteDB Anywhere alert policy
 * [yba alert policy list](yba_alert_policy_list.md)	 - List YugabyteDB Anywhere alert policies
+* [yba alert policy template](yba_alert_policy_template.md)	 - Manage YugabyteDB Anywhere alert templates
 * [yba alert policy test-alert](yba_alert_policy_test-alert.md)	 - Send a test alert corresponding to YugabyteDB Anywhere alert policy
 * [yba alert policy update](yba_alert_policy_update.md)	 - Update an alert policy in YugabyteDB Anywhere
 

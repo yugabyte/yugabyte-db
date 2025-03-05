@@ -75,8 +75,12 @@ func (a *AuthAPIClient) ListRoleBindingRest(
 		query.Add("userUUID", userUUID)
 	}
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s://%s/api/v1/customers/%s/rbac/role_binding",
-		a.RestClient.Scheme, a.RestClient.Host, a.CustomerUUID), nil)
+	req, err := http.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("%s://%s/api/v1/customers/%s/rbac/role_binding",
+			a.RestClient.Scheme, a.RestClient.Host, a.CustomerUUID),
+		nil,
+	)
 
 	if err != nil {
 		return nil,

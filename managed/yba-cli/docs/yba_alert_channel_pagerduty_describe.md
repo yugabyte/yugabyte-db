@@ -1,19 +1,25 @@
-## yba alert template
+## yba alert channel pagerduty describe
 
-Manage YugabyteDB Anywhere alert templates
+Describe a YugabyteDB Anywhere PagerDuty alert channel
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere alert templates
+Describe a PagerDuty alert channel in YugabyteDB Anywhere
 
 ```
-yba alert template [flags]
+yba alert channel pagerduty describe [flags]
+```
+
+### Examples
+
+```
+yba alert channel pagerduty describe --name <alert-channel-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for template
+  -h, --help   help for describe
 ```
 
 ### Options inherited from parent commands
@@ -25,6 +31,7 @@ yba alert template [flags]
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
+  -n, --name string        [Optional] The name of the alert channel for the operation. Use single quotes ('') to provide values with special characters. Required for create, update, describe, delete.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -32,6 +39,5 @@ yba alert template [flags]
 
 ### SEE ALSO
 
-* [yba alert](yba_alert.md)	 - Manage YugabyteDB Anywhere alerts
-* [yba alert template list](yba_alert_template_list.md)	 - List YugabyteDB Anywhere alert templates
+* [yba alert channel pagerduty](yba_alert_channel_pagerduty.md)	 - Manage YugabyteDB Anywhere PagerDuty alert notification channels
 

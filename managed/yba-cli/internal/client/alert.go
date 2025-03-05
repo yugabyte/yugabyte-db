@@ -5,7 +5,12 @@
 package client
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
 // ListOfAlerts fetches list of alerts associated with the customer
@@ -172,4 +177,161 @@ func (a *AuthAPIClient) DeleteAlertDestination(
 	destinationUUID string,
 ) ybaclient.AlertsApiApiDeleteAlertDestinationRequest {
 	return a.APIClient.AlertsApi.DeleteAlertDestination(a.ctx, a.CustomerUUID, destinationUUID)
+}
+
+// ListAlertChannelsRest uses REST API to call list schedule functionality
+func (a *AuthAPIClient) ListAlertChannelsRest(
+	callSite,
+	operation string,
+) (
+	[]util.AlertChannel, error,
+) {
+	errorTag := fmt.Errorf("%s, Operation: %s", callSite, operation)
+
+	body, err := a.RestAPICall(
+		RestAPIParameters{
+			reqBytes:        nil,
+			urlRoute:        "alert_channels",
+			method:          http.MethodGet,
+			operationString: "list alert channels",
+		},
+	)
+	if err != nil {
+		return nil,
+			fmt.Errorf("%w: %s", errorTag, err.Error())
+	}
+
+	responseBody := []util.AlertChannel{}
+	if err = json.Unmarshal(body, &responseBody); err != nil {
+		return nil,
+			fmt.Errorf("%w: Failed unmarshalling list alert channel response body %s",
+				errorTag,
+				err.Error())
+	}
+
+	if responseBody != nil {
+		return responseBody, nil
+	}
+
+	responseBodyError := util.YbaStructuredError{}
+	if err = json.Unmarshal(body, &responseBodyError); err != nil {
+		return nil,
+			fmt.Errorf("%w: Failed unmarshalling list alert channel error response body %s",
+				errorTag,
+				err.Error())
+	}
+
+	errorMessage := util.ErrorFromResponseBody(responseBodyError)
+	return nil,
+		fmt.Errorf("%w: Error fetching list of alert channels: %s", errorTag, errorMessage)
+
+}
+
+// CreateAlertChannelRest uses REST API to call list schedule functionality
+func (a *AuthAPIClient) CreateAlertChannelRest(
+	reqBody util.AlertChannelFormData,
+	callSite string,
+) (
+	util.AlertChannel, error,
+) {
+	errorTag := fmt.Errorf("%s, Operation: Create", callSite)
+
+	reqBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return util.AlertChannel{},
+			fmt.Errorf("%w: %s", errorTag, err.Error())
+	}
+
+	body, err := a.RestAPICall(
+		RestAPIParameters{
+			reqBytes:        reqBytes,
+			urlRoute:        "alert_channels",
+			method:          http.MethodPost,
+			operationString: "create alert channel",
+		},
+	)
+	if err != nil {
+		return util.AlertChannel{},
+			fmt.Errorf("%w: %s", errorTag, err.Error())
+	}
+
+	responseBody := util.AlertChannel{}
+	if err = json.Unmarshal(body, &responseBody); err != nil {
+		return util.AlertChannel{},
+			fmt.Errorf("%w: Failed unmarshalling create alert channel response body %s",
+				errorTag,
+				err.Error())
+	}
+
+	if responseBody.Uuid != nil {
+		return responseBody, nil
+	}
+
+	responseBodyError := util.YbaStructuredError{}
+	if err = json.Unmarshal(body, &responseBodyError); err != nil {
+		return util.AlertChannel{},
+			fmt.Errorf("%w: Failed unmarshalling create alert channel error response body %s",
+				errorTag,
+				err.Error())
+	}
+
+	errorMessage := util.ErrorFromResponseBody(responseBodyError)
+	return util.AlertChannel{},
+		fmt.Errorf("%w: Error fetching create of alert channels: %s", errorTag, errorMessage)
+
+}
+
+// UpdateAlertChannelRest uses REST API to call list schedule functionality
+func (a *AuthAPIClient) UpdateAlertChannelRest(
+	uuid string,
+	callSite string,
+	reqBody util.AlertChannelFormData,
+) (
+	util.AlertChannel, error,
+) {
+	errorTag := fmt.Errorf("%s, Operation: Update", callSite)
+
+	reqBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return util.AlertChannel{},
+			fmt.Errorf("%w: %s", errorTag, err.Error())
+	}
+
+	body, err := a.RestAPICall(
+		RestAPIParameters{
+			reqBytes:        reqBytes,
+			urlRoute:        fmt.Sprintf("alert_channels/%s", uuid),
+			method:          http.MethodPut,
+			operationString: "update alert channel",
+		},
+	)
+	if err != nil {
+		return util.AlertChannel{},
+			fmt.Errorf("%w: %s", errorTag, err.Error())
+	}
+
+	responseBody := util.AlertChannel{}
+	if err = json.Unmarshal(body, &responseBody); err != nil {
+		return util.AlertChannel{},
+			fmt.Errorf("%w: Failed unmarshalling update alert channel response body %s",
+				errorTag,
+				err.Error())
+	}
+
+	if responseBody.Uuid != nil {
+		return responseBody, nil
+	}
+
+	responseBodyError := util.YbaStructuredError{}
+	if err = json.Unmarshal(body, &responseBodyError); err != nil {
+		return util.AlertChannel{},
+			fmt.Errorf("%w: Failed unmarshalling update alert channel error response body %s",
+				errorTag,
+				err.Error())
+	}
+
+	errorMessage := util.ErrorFromResponseBody(responseBodyError)
+	return util.AlertChannel{},
+		fmt.Errorf("%w: Error fetching update of alert channels: %s", errorTag, errorMessage)
+
 }

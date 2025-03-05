@@ -119,7 +119,7 @@ func (c *Context) Channels() string {
 				if i == 0 {
 					channels = fmt.Sprintf("%s(%s)", v2.GetName(), v)
 				} else {
-					channels = fmt.Sprintf("%s\n %s(%s)", channels, v2.GetName(), v)
+					channels = fmt.Sprintf("%s\n%s(%s)", channels, v2.GetName(), v)
 				}
 			}
 		}

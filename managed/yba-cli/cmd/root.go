@@ -115,9 +115,6 @@ func init() {
 	rootCmd.AddCommand(xcluster.XClusterCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
-	// Example for adding preview commands to the list of available commands
-	// util.AddCommandIfFeatureFlag(rootCmd, exampleCmd, util.PREVIEW)
-
 	util.PreviewCommand(rootCmd, []*cobra.Command{alert.AlertCmd})
 
 }

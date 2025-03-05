@@ -1,27 +1,26 @@
-## yba alert template list
+## yba alert destination describe
 
-List YugabyteDB Anywhere alert templates
+Describe a YugabyteDB Anywhere alert destination
 
 ### Synopsis
 
-List YugabyteDB Anywhere alert templates
+Describe a YugabyteDB Anywhere alert destination
 
 ```
-yba alert template list [flags]
+yba alert destination describe [flags]
 ```
 
 ### Examples
 
 ```
-yba template list
+yba alert destination describe --name <alert-destination-name>
 ```
 
 ### Options
 
 ```
-  -n, --name string          [Optional] Name of the alert template.
-      --target-type string   [Optional] Target type of the alert template. Allowed values: platform, universe.
-  -h, --help                 help for list
+  -n, --name string   [Required] Name of the alert destination.
+  -h, --help          help for describe
 ```
 
 ### Options inherited from parent commands
@@ -40,5 +39,5 @@ yba template list
 
 ### SEE ALSO
 
-* [yba alert template](yba_alert_template.md)	 - Manage YugabyteDB Anywhere alert templates
+* [yba alert destination](yba_alert_destination.md)	 - Manage YugabyteDB Anywhere alert destinations
 
