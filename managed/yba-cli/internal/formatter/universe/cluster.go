@@ -38,7 +38,7 @@ const (
 	tserverGFlagsHeader  = "TServer GFlags"
 	specificGFlagsHeader = "Specific GFlags (in json)"
 	instanceTypeHeader   = "Instance Type"
-	volumeSizeHeader     = "Volume Size"
+	volumeSizeHeader     = "Volume Size in GB"
 	numVolumesHeader     = "Number of Volumes"
 	diskIopsHeader       = "Disk IOPS"
 	throughputHeader     = "Throughput"

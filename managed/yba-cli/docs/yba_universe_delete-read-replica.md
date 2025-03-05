@@ -1,22 +1,29 @@
-## yba universe edit
+## yba universe delete-read-replica
 
-Edit a YugabyteDB Anywhere universe
+Delete a YugabyteDB Anywhere universe Read Replica
 
 ### Synopsis
 
-Edit a universe in YugabyteDB Anywhere
+Delete Read replica from a universe in YugabyteDB Anywhere
 
 ```
-yba universe edit [flags]
+yba universe delete-read-replica [flags]
+```
+
+### Examples
+
+```
+yba universe delete-read-replica -n <universe-name>
 ```
 
 ### Options
 
 ```
-  -n, --name string        [Required] The name of the universe to be edited.
+  -n, --name string        [Required] The name of the universe.
   -f, --force              [Optional] Bypass the prompt for non-interactive usage.
+      --force-delete       [Optional] Force delete the universe read replica despite errors, defaults to false.
   -s, --skip-validations   [Optional] Skip validations before running the CLI command.
-  -h, --help               help for edit
+  -h, --help               help for delete-read-replica
 ```
 
 ### Options inherited from parent commands
@@ -36,6 +43,4 @@ yba universe edit [flags]
 ### SEE ALSO
 
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
-* [yba universe edit cluster](yba_universe_edit_cluster.md)	 - Edit clusters in a YugabyteDB Anywhere universe
-* [yba universe edit ysql](yba_universe_edit_ysql.md)	 - Edit YSQL settings for a YugabyteDB Anywhere Universe
 

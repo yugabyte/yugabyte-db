@@ -1,22 +1,27 @@
-## yba universe edit
+## yba universe pause
 
-Edit a YugabyteDB Anywhere universe
+Pause a YugabyteDB Anywhere universe
 
 ### Synopsis
 
-Edit a universe in YugabyteDB Anywhere
+Pause a universe in YugabyteDB Anywhere
 
 ```
-yba universe edit [flags]
+yba universe pause [flags]
+```
+
+### Examples
+
+```
+yba universe pause --name <universe-name>
 ```
 
 ### Options
 
 ```
-  -n, --name string        [Required] The name of the universe to be edited.
-  -f, --force              [Optional] Bypass the prompt for non-interactive usage.
-  -s, --skip-validations   [Optional] Skip validations before running the CLI command.
-  -h, --help               help for edit
+  -n, --name string   [Required] The name of the universe to be paused.
+  -f, --force         [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help          help for pause
 ```
 
 ### Options inherited from parent commands
@@ -36,6 +41,4 @@ yba universe edit [flags]
 ### SEE ALSO
 
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
-* [yba universe edit cluster](yba_universe_edit_cluster.md)	 - Edit clusters in a YugabyteDB Anywhere universe
-* [yba universe edit ysql](yba_universe_edit_ysql.md)	 - Edit YSQL settings for a YugabyteDB Anywhere Universe
 

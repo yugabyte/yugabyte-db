@@ -298,6 +298,14 @@ const (
 	StorageCustomerConfigType = "STORAGE"
 )
 
+// Cluster Type
+const (
+	// PrimaryCluster of universe
+	PrimaryCluster = "PRIMARY"
+	// ReadReplicaCluster of universe
+	ReadReplicaCluster = "ASYNC"
+)
+
 // Server Type values
 const (
 	// MasterServerType for master processes

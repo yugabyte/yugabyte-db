@@ -34,12 +34,16 @@ yba universe [flags]
 
 * [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
 * [yba universe create](yba_universe_create.md)	 - Create YugabyteDB Anywhere universe
+* [yba universe create-read-replica](yba_universe_create-read-replica.md)	 - Create a read replica for existing YugabyteDB universe
 * [yba universe delete](yba_universe_delete.md)	 - Delete a YugabyteDB Anywhere universe
+* [yba universe delete-read-replica](yba_universe_delete-read-replica.md)	 - Delete a YugabyteDB Anywhere universe Read Replica
 * [yba universe describe](yba_universe_describe.md)	 - Describe a YugabyteDB Anywhere universe
 * [yba universe edit](yba_universe_edit.md)	 - Edit a YugabyteDB Anywhere universe
 * [yba universe list](yba_universe_list.md)	 - List YugabyteDB Anywhere universes
 * [yba universe node](yba_universe_node.md)	 - Manage YugabyteDB Anywhere universe nodes
+* [yba universe pause](yba_universe_pause.md)	 - Pause a YugabyteDB Anywhere universe
 * [yba universe restart](yba_universe_restart.md)	 - Restart a YugabyteDB Anywhere Universe
+* [yba universe resume](yba_universe_resume.md)	 - Resume a YugabyteDB Anywhere universe
 * [yba universe run-sample-apps](yba_universe_run-sample-apps.md)	 - Get sample apps command for a YugabyteDB Anywhere universe
 * [yba universe security](yba_universe_security.md)	 - Manage security settings for a universe
 * [yba universe table](yba_universe_table.md)	 - Manage YugabyteDB Anywhere universe tables

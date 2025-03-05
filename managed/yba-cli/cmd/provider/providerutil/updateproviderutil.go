@@ -166,6 +166,12 @@ func BuildZoneMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		case "num-nodes":
+			if len(strings.TrimSpace(val)) != 0 {
+				zone["num-nodes"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
 		}
 	}
 	if _, ok := zone["name"]; !ok {

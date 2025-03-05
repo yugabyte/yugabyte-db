@@ -19,6 +19,7 @@ import (
 var listUniverseCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
+	GroupID: "action",
 	Short:   "List YugabyteDB Anywhere universes",
 	Long:    "List YugabyteDB Anywhere universes",
 	Example: `yba universe list`,
