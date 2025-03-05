@@ -2367,6 +2367,9 @@ CommitTransaction(void)
 			 TransStateAsString(s->state));
 	Assert(s->parent == NULL);
 
+	if (IsYugaByteEnabled())
+		YBCNotifyDeferredTriggersProcessingStarted();
+
 	/*
 	 * Do pre-commit processing that involves calling user-defined code, such
 	 * as triggers.  SECURITY_RESTRICTED_OPERATION contexts must not queue an

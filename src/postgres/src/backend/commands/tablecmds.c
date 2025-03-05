@@ -12374,7 +12374,9 @@ YbGetNext(YbFKTriggerScanDesc desc, TupleTableSlot *slot)
 				ExecDropSingleTupleTableSlot(new_slot);
 				break;
 			}
-			YbAddTriggerFKReferenceIntent(desc->trigger, desc->fk_rel, new_slot, desc->estate);
+			YbAddTriggerFKReferenceIntent(desc->trigger,
+										  desc->fk_rel, new_slot, desc->estate,
+										  /* is_deferred= */ false);
 			desc->buffered_tuples[desc->buffered_tuples_size++] = new_slot;
 		}
 	}

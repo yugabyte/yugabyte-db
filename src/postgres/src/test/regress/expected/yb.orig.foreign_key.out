@@ -618,7 +618,7 @@ INSERT INTO c VALUES(1, 1, 1, 1, 1);
  Trigger for constraint c_p2_fk_fkey: calls=1
  Trigger for constraint c_p4_fk_fkey: calls=1
  Storage Read Requests: 1
- Storage Rows Scanned: 4
+ Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
 (9 rows)
@@ -699,7 +699,7 @@ INSERT INTO fk VALUES (500, 1); -- should fail
 ERROR:  insert or update on table "fk" violates foreign key constraint "fk_id_name_fkey"
 DETAIL:  Key (id, name)=(500, 1) is not present in table "pk".
 SELECT * from fk;
- id | name 
+ id | name
 ----+------
   1 |  500
 (1 row)
@@ -721,7 +721,7 @@ INSERT INTO fk VALUES (200); -- should fail
 ERROR:  insert or update on table "fk" violates foreign key constraint "fk_id_fkey"
 DETAIL:  Key (id)=(200) is not present in table "pk".
 SELECT * FROM fk;
- id  
+ id
 -----
    1
  105
@@ -743,7 +743,7 @@ INSERT INTO fk VALUES (200); -- should fail
 ERROR:  insert or update on table "fk" violates foreign key constraint "fk_b_fkey"
 DETAIL:  Key (b)=(200) is not present in table "pk".
 SELECT * FROM fk;
-  b  
+  b
 -----
    1
  105
@@ -764,7 +764,7 @@ INSERT INTO fk VALUES (150, 20); -- should fail
 ERROR:  insert or update on table "fk" violates foreign key constraint "fk_a_c_fkey"
 DETAIL:  Key (a, c)=(150, 20) is not present in table "pk".
 SELECT * FROM fk;
- a | c  
+ a | c
 ---+----
  1 | 20
 (1 row)
@@ -787,7 +787,7 @@ INSERT INTO fk(a, c) VALUES (150, 20); -- should fail
 ERROR:  insert or update on table "fk" violates foreign key constraint "fk_a_c_fkey"
 DETAIL:  Key (a, c)=(150, 20) is not present in table "pk".
 SELECT * FROM fk;
- b | d | a | c  
+ b | d | a | c
 ---+---+---+----
    |   | 1 | 20
 (1 row)
@@ -810,7 +810,7 @@ DETAIL:  Partition key of the failing row contains (a) = (20).
 INSERT into pk values (5);
 INSERT into fk values (5);
 SELECT * FROM fk;
- a 
+ a
 ---
  5
 (1 row)
@@ -834,7 +834,7 @@ INSERT INTO fk VALUES (1, 10); -- should fail
 ERROR:  insert or update on table "fk" violates foreign key constraint "fk_b2_fkey"
 DETAIL:  Key (b2)=(10) is not present in table "pk2".
 SELECT * from fk;
- b | b2 
+ b | b2
 ---+----
  1 |  1
 (1 row)
@@ -851,7 +851,7 @@ DETAIL:  Key (a, b)=(2, 1) is not present in table "pk".
 INSERT INTO pk VALUES (5, 1);
 UPDATE fk set a = a + 4; -- should pass
 SELECT * from fk;
- a | b 
+ a | b
 ---+---
  5 | 1
 (1 row)

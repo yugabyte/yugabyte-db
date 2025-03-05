@@ -2017,11 +2017,20 @@ YbcStatus YBCForeignKeyReferenceExists(const YbcPgYBTupleIdDescriptor *source, b
 }
 
 YbcStatus YBCAddForeignKeyReferenceIntent(
-    const YbcPgYBTupleIdDescriptor *source, bool relation_is_region_local) {
-  return ProcessYbctid(*source, [relation_is_region_local](auto table_id, const auto& ybctid) {
-    pgapi->AddForeignKeyReferenceIntent(table_id, relation_is_region_local, ybctid);
-    return Status::OK();
-  });
+    const YbcPgYBTupleIdDescriptor *source, bool is_region_local_relation,
+    bool is_deferred_trigger) {
+  return ProcessYbctid(
+      *source,
+      [is_region_local_relation, is_deferred_trigger](auto table_id, const auto& ybctid) {
+        pgapi->AddForeignKeyReferenceIntent(
+            table_id, ybctid,
+            {.is_region_local = is_region_local_relation, .is_deferred = is_deferred_trigger});
+        return Status::OK();
+      });
+}
+
+void YBCNotifyDeferredTriggersProcessingStarted() {
+  pgapi->NotifyDeferredTriggersProcessingStarted();
 }
 
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
