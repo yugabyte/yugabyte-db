@@ -5615,7 +5615,8 @@ assign_yb_read_time(const char *newval, void *extra)
 	if (needs_syscaches_refresh)
 		YbResetCatalogCacheVersion();
 
-	if (!am_walsender && yb_read_time)
+  /* Skip logging the warning for internal calls. */
+	if (yb_read_time && !yb_disable_catalog_version_check && !am_walsender)
 	{
 		ereport(NOTICE,
 				(errmsg("yb_read_time should only be set for read-only queries. "

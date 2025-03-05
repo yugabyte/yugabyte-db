@@ -503,8 +503,11 @@ Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
 Result<std::vector<std::tuple<int64, int64, std::string>>>
 XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
   // Since applies can come out of order, need to read at the apply_safe_time and not latest.
+  // Use yb_disable_catalog_version_check since we do not need to read from the latest catalog (the
+  // extension tables should not change).
   RETURN_NOT_OK(pg_conn_->ExecuteFormat(
-      "SET ROLE NONE; SET yb_read_time = $0", apply_safe_time.GetPhysicalValueMicros()));
+      "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time = $0",
+      apply_safe_time.GetPhysicalValueMicros()));
   // Select all rows that are in ddl_queue but not in replicated_ddls.
   // Note that this is done at apply_safe_time and rows written to replicated_ddls are done at the
   // time the DDL is rerun, so this does not filter out all rows (see kDDLPrepStmtAlreadyProcessed).
@@ -515,7 +518,8 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
       xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn, kDDLQueueFullTableName, kReplicatedDDLsFullTableName))));
   // DDLs are blocked when yb_read_time is non-zero, so reset.
-  RETURN_NOT_OK(pg_conn_->Execute("SET yb_read_time = 0"));
+  RETURN_NOT_OK(
+      pg_conn_->Execute("SET yb_read_time = 0; SET yb_disable_catalog_version_check = 0"));
   return rows;
 }
 
