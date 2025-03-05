@@ -35,7 +35,7 @@ const awsRegionList = AWS_REGIONS.map((region, index) => {
   };
 });
 
-const KmsProvider = {
+export const KmsProvider = {
   AWS: 'AWS',
   HASHICORP: 'HASHICORP',
   GCP: 'GCP',
@@ -74,7 +74,7 @@ const DEFAULT_AZU_PROTECTION_ALGO = AZU_PROTECTION_ALGOS[0];
 const DEFAULT_KEY_SIZE = KEY_SIZES[0];
 
 // CipherTrust KMS
-const CipherTrustAuthType = {
+export const CipherTrustAuthType = {
   PASSWORD: 'PASSWORD',
   REFRESH_TOKEN: 'REFRESH_TOKEN'
 };
