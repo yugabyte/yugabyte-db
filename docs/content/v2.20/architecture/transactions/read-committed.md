@@ -1587,7 +1587,7 @@ Adding this new isolation level does not affect the performance of existing isol
 
 ### Performance tuning
 
-If a statement in the Read Committed isolation level faces a conflict, it is retried with exponential backoff until the statement times out. The following parameters control the backoff:
+If a statement in the Read Committed isolation level faces a conflict, it is retried. If using [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control mode, the retries are done with exponential backoff until the statement times out or the `yb_max_query_layer_retries` are exhausted, whichever happens first. The following parameters control the backoff:
 
 * `retry_max_backoff` is the maximum backoff in milliseconds between retries.
 * `retry_min_backoff` is the minimum backoff in milliseconds between retries.
