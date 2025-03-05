@@ -122,6 +122,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
   Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(
         const tserver::PgTxnSnapshotLocalId& snapshot_id) override;
 
+  Result<std::string> GetUniverseUuid() const override;
+
  private:
   Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;

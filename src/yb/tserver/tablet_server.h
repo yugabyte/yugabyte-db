@@ -412,6 +412,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) override;
 
+  Result<std::string> GetUniverseUuid() const override;
+
   void TEST_SetIsCronLeader(bool is_cron_leader);
 
  protected:
