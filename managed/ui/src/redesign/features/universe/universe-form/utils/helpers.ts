@@ -263,6 +263,12 @@ export const getFormData = (
     data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
   }
 
+  if (
+    [CloudType.kubernetes, CloudType.onprem].includes(data.cloudConfig.provider?.code as CloudType)
+  ) {
+    data.instanceConfig.useTimeSync = false;
+  }
+
   return data;
 };
 
@@ -350,6 +356,10 @@ export const getUserIntent = (
   if (!_.isEmpty(azOverrides)) intent.userIntentOverrides = { azOverrides };
   if (!_.isEmpty(proxyConfig)) intent.proxyConfig = proxyConfig;
   if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
+
+  if ([CloudType.kubernetes, CloudType.onprem].includes(cloudConfig.provider?.code as CloudType)) {
+    instanceConfig.useTimeSync = false;
+  }
 
   if (cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
     intent.masterInstanceType = instanceConfig.masterInstanceType;
