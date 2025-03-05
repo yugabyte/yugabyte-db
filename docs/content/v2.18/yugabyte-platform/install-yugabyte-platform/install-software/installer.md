@@ -51,6 +51,7 @@ You can use YBA Installer only if you are about to perform a new install. Curren
 ## Prerequisites
 
 - Ensure your machine satisfies the [minimum requirements](../../prerequisites/installer/).
+- Installation requires a license file. To obtain your license, contact your sales representative. If you are not yet a customer and want to try YugabyteDB Anywhere, [book a demo](https://www.yugabyte.com/demo/).
 - For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](#non-sudo-installation).)
 
   If your sudo permissions are limited, add the following to the allowed list for root in the sudoers file:
@@ -65,7 +66,6 @@ You can use YBA Installer only if you are about to perform a new install. Curren
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
 
-1. Obtain your license from Yugabyte Support.
 1. Download and extract the YBA Installer by entering the following commands:
 
     ```sh
@@ -104,7 +104,7 @@ $ tar -xf yba_installer_full-{{<yb-version version="v2.18" format="build">}}-lin
 $ cd yba_installer_full-{{<yb-version version="v2.18" format="build">}}/
 ```
 
-This bundle provides everything needed, except a [license](#provide-a-license), to complete a fresh install of YBA:
+This bundle provides everything needed (except your license), to complete a fresh install of YBA:
 
 - `yba-ctl` executable binary is used to perform all of the YBA Installer workflows.
 - `yba-ctl.yml.reference` is a YAML reference for the available configuration options for both YBA Installer and YugabyteDB Anywhere.
@@ -143,8 +143,6 @@ You can change some configuration options post-installation using the [reconfigu
 ## Install YBA using YBA Installer
 
 ### Provide a license
-
-YBA Installer requires a valid license before installing. To obtain a license, contact {{% support-platform %}}.
 
 Provide the license to YBA Installer by running the `license` command as follows:
 

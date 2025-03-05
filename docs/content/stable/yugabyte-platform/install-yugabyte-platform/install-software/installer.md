@@ -53,6 +53,8 @@ YBA Installer also supports non-root installation. Refer to [Non-sudo installati
 
 Make sure your machine satisfies the [minimum prerequisites](../../../prepare/server-yba/).
 
+Installation requires a license file. To obtain your license, contact your sales representative. If you are not yet a customer and want to try YugabyteDB Anywhere, [book a demo](https://www.yugabyte.com/demo/).
+
 {{< warning title="Keep the control plane separate from the data plane" >}}
 Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
 {{< /warning >}}
@@ -61,7 +63,6 @@ Don't install YugabyteDB Anywhere on servers that you will use for database clus
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
 
-1. Obtain your license from {{% support-platform %}}.
 1. Download and extract the YBA Installer by entering the following commands:
 
     ```sh
@@ -100,7 +101,7 @@ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linu
 cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
 ```
 
-This bundle provides everything needed, except a [license](#provide-a-license), to complete a fresh install of YBA:
+This bundle provides everything needed (except your license), to complete a fresh install of YBA:
 
 - `yba-ctl` executable binary is used to perform all of the YBA Installer workflows.
 - `yba-ctl.yml.reference` is a YAML reference for the available configuration options for both YBA Installer and YugabyteDB Anywhere.
@@ -139,8 +140,6 @@ You can change some configuration options post-installation using the [reconfigu
 ## Install YBA using YBA Installer
 
 ### Provide a license
-
-YBA Installer requires a valid license before installing. To obtain a license, contact {{% support-platform %}}.
 
 Provide the license to YBA Installer by running the `license` command as follows:
 
@@ -190,7 +189,7 @@ To perform an install, run the `install` command. Once started, an install can t
 sudo ./yba-ctl install
 ```
 
-You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license) :
+You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license):
 
 ```sh
 sudo ./yba-ctl install -l /path/to/license
