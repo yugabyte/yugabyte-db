@@ -1968,8 +1968,8 @@ Result<bool> PgApiImpl::ForeignKeyReferenceExists(
 }
 
 void PgApiImpl::AddForeignKeyReferenceIntent(
-    PgOid table_id, bool is_region_local, const Slice& ybctid) {
-  fk_reference_cache_.AddIntent(LightweightTableYbctid{table_id, ybctid}, is_region_local);
+    PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options) {
+  fk_reference_cache_.AddIntent(LightweightTableYbctid{table_id, ybctid}, options);
 }
 
 void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
@@ -1978,6 +1978,10 @@ void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
 
 void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   fk_reference_cache_.AddReference(LightweightTableYbctid{table_id, ybctid});
+}
+
+void PgApiImpl::NotifyDeferredTriggersProcessingStarted() {
+  fk_reference_cache_.OnDeferredTriggersProcessingStarted();
 }
 
 Status PgApiImpl::AddExplicitRowLockIntent(

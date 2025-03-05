@@ -6620,8 +6620,13 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 			}
 		}
 
-		if (IsYBBackedRelation(rel) && RI_FKey_trigger_type(trigger->tgfoid) == RI_TRIGGER_FK)
-			YbAddTriggerFKReferenceIntent(trigger, rel, newslot, estate);
+		if (IsYBBackedRelation(rel) &&
+			RI_FKey_trigger_type(trigger->tgfoid) == RI_TRIGGER_FK)
+		{
+			const bool is_deferred = new_shared.ybc_txn_fdw_tuplestore != NULL;
+			YbAddTriggerFKReferenceIntent(trigger, rel, newslot, estate,
+										  is_deferred);
+		}
 
 		afterTriggerAddEvent(&afterTriggers.query_stack[afterTriggers.query_depth].events,
 							 &new_event, &new_shared);
