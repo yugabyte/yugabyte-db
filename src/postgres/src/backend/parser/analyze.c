@@ -123,7 +123,7 @@ parse_analyze(RawStmt *parseTree, const char *sourceText,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	if (post_parse_analyze_hook)
@@ -160,7 +160,7 @@ parse_analyze_varparams(RawStmt *parseTree, const char *sourceText,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	/* make sure all is well with parameter types */

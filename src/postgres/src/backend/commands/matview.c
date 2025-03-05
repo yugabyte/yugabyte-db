@@ -522,13 +522,6 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 					myState->output_cid,
 					myState->hi_options,
 					myState->bistate);
-		/*
-		 * In this case when the transient relation is a temporary relation, heap_insert
-		 * will set a transaction id. However, we must clear this transaction id, since
-		 * REFRESH matview should not invoke any TxnWithPGRel code paths
-		 * (that are used for temp tables).
-		 */
-		YbClearCurrentTransactionId();
 	}
 	/* We know this is a newly created relation, so there are no indexes */
 
