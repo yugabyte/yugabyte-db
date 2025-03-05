@@ -192,7 +192,7 @@ To perform an install, run the `install` command. Once started, an install can t
 sudo ./yba-ctl install
 ```
 
-You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license) :
+You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license):
 
 ```sh
 sudo ./yba-ctl install -l /path/to/license
