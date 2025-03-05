@@ -316,9 +316,14 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	/*
 	 * Required to allow the creation for the temp table since we directly
 	 * call make_new_heap instead of going through DefineRelation.
+	 * For postgres xid cleanup, mark the current transaction as running a
+	 * concurrent refresh.
 	 */
 	if (yb_in_place_refresh)
+	{
 		YBCDdlEnableForceCatalogModification();
+		YbSetTxnWithPgOps(YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY);
+	}
 
 	/*
 	 * Create the transient table that will receive the regenerated data. Lock
