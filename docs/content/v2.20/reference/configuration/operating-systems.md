@@ -19,7 +19,7 @@ Unless otherwise noted, operating systems are supported by all supported version
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :---- |
-| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Default for YBA-deployed nodes |
+| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Default for YugabyteDB Anywhere-deployed nodes |
 | AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |       |
 | Amazon Linux 2   | {{<icon/partial>}} | {{<icon/partial>}} |Supported in v2.18.0 and later<br>Deprecated in v2.20; not supported v2.21, v2024.1, and subsequent release series. |
 | Amazon Linux 2<br>(ARM, CIS-hardened) |  | {{<icon/partial>}} | Supported only in v2.20.x. Database performance in this environment varies both due to CIS-hardening and ARM. For more information, contact {{% support-general %}}.|
