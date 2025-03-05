@@ -1,17 +1,14 @@
 ---
-title: Transactions overview
-headerTitle: Transactions overview
-linkTitle: Overview
-description: An overview of transactions work in YugabyteDB.
+title: Fundamentals of Distributed Transactions
+linkTitle: Fundamentals
+description: The fundamental concepts behind distributed transactions
 menu:
   v2.20:
     identifier: architecture-transactions-overview
     parent: architecture-acid-transactions
-    weight: 10
+    weight: 100
 type: docs
 ---
-
-Transactions and strong consistency are a fundamental requirement for any RDBMS. DocDB has been designed for strong consistency. It supports fully distributed atomicity, consistency, isolation, durability (ACID) transactions across rows, multiple tablets, and multiple nodes at any scale. Transactions can span across tables in DocDB.
 
 A transaction is a sequence of operations performed as a single logical unit of work. The intermediate states of the database as a result of applying the operations inside a transaction are not visible to other concurrent transactions, and if a failure occurs that prevents the transaction from completing, then none of the steps affect the database.
 

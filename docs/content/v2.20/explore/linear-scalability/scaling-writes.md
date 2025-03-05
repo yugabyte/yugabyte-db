@@ -59,6 +59,5 @@ The cluster configuration is shown in the following illustration.
 ## Learn more
 
 - [TPC-C benchmark](../../../benchmark/tpcc-ysql)
-- [Write I/O path](../../../architecture/core-functions/write-path/)
 - [YugabyteDB Benchmarks](../../../benchmark)
 - [Scaling: YugabyteDB vs Cockroach vs Aurora](https://www.yugabyte.com/blog/yugabytedb-vs-cockroachdb-vs-aurora/)

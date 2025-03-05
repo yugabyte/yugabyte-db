@@ -7,7 +7,7 @@ menu:
   v2.20:
     identifier: architecture-distributed-acid-transactions
     parent: architecture-acid-transactions
-    weight: 70
+    weight: 200
 type: docs
 ---
 
@@ -83,7 +83,7 @@ After a transaction is committed, the following two fields are set:
 
 ## Impact of failures
 
-Provisional records are written to all the replicas of the tablets responsible for the keys being modified in a transaction. When a node with the tablet that has received or is about to receive the provisional records fails, a new leader is elected for the tablet in a few seconds(`~2s`) as described in [Leader Failure](../../core-functions/high-availability/#tablet-peer-leader-failure). The query layer waits for leader election to occur and then the transaction proceeds further with the newly elected leader. In this case, the time taken for the transaction to complete increases by the time taken for the leader election.
+Provisional records are written to all the replicas of the tablets responsible for the keys being modified in a transaction. When a node with the tablet that has received or is about to receive the provisional records fails, a new leader is elected for the tablet in a few seconds(`~2s`) as described in [Leader Failure](../../key-concepts/#tablet-leader). The query layer waits for leader election to occur and then the transaction proceeds further with the newly elected leader. In this case, the time taken for the transaction to complete increases by the time taken for the leader election.
 
 The transaction manager (typically, the node the client is connected to) sends heartbeats to the transaction status tablet that maintains information about the transaction. When the manager fails, these heartbeats stop and the provisional records expire after certain time. At this point, the status tablet automatically cancels this transaction, so the related provisional records would no longer block conflicting transactions waiting on the same keys. Clients connected to the failed manager receive an error message similar to the following:
 
