@@ -1,13 +1,14 @@
 import Clipboard from 'clipboard';
 
 const $ = window.jQuery;
+const innerWidthsArray = [...document.querySelectorAll('.links-panels .inner-container')].map(el => ({ width: el.offsetWidth, parent: el.parentNode }));
 
 /**
  * Create Cookie.
  */
 function setCookie(name, value, monthToLive) {
   let cookie = `${name}=${encodeURIComponent(value)}; max-age=${(monthToLive * 30 * (24 * 60 * 60))}; path=/`;
-  if (location.hostname !== 'localhost') {
+  if (location.hostname !== 'localhost' || location.hostname !== '192.168.10.8') {
     cookie += '; secure=true';
   }
 
@@ -98,6 +99,26 @@ function yugabyteScrollLeftNav(activeLink) {
   setTimeout(() => {
     leftSidebar.style.overflow = 'auto';
   }, 600);
+}
+
+/**
+ * Function to calculate width for the page finder functionality.
+ */
+function yugabytePageFinderWidth(width) {
+  width.forEach((innerEach) => {
+    const parent = innerEach.parent;
+    if (parent) {
+      const innerContainer = document.querySelector('.content-area');
+      const width = innerEach.width;
+      if (width > innerContainer.offsetWidth) {
+        parent.classList.add('vertical');
+        parent.classList.remove('horizontal');
+      } else {
+        parent.classList.add('horizontal');
+        parent.classList.remove('vertical');
+      }
+    }
+  });
 }
 
 /**
@@ -246,6 +267,7 @@ $(document).ready(() => {
           maxWidth: mouseMoveX,
         });
         $('body').addClass('dragging');
+        yugabytePageFinderWidth(innerWidthsArray);
       });
     });
 
@@ -624,6 +646,13 @@ $(document).ready(() => {
       window.location.href = `/search/?q=${searchValue}`;
     }
   });
+
+  yugabytePageFinderWidth(innerWidthsArray);
+  document.querySelector('.side-nav-collapse-toggle-2').addEventListener('click', () => {
+    setTimeout(() => {
+      yugabytePageFinderWidth(innerWidthsArray);
+    }, 500);
+  });
 });
 
 $(window).resize(() => {
@@ -634,4 +663,5 @@ $(window).resize(() => {
   setTimeout(() => {
     setCookie('leftMenuWidth', 300, 3);
   }, 1000);
+  yugabytePageFinderWidth(innerWidthsArray);
 });

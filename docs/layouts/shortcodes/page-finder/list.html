@@ -1,0 +1,11 @@
+{{- $isFirst := eq .Ordinal 0 -}}
+<a href="{{- .Params.url -}}" title="{{- .Params.text -}}">
+  <span class="icon">
+    <img src="{{- .Params.icon -}}" alt="{{- .Params.text -}}" title="{{- .Params.text -}}" width="16" height="16">
+  </span>
+  <span class="title">{{- .Params.text -}}</span>
+
+  {{- if $isFirst -}}
+    {{- readFile "static/icons/bookmark.svg" | safeHTML -}}
+  {{- end -}}
+</a>
