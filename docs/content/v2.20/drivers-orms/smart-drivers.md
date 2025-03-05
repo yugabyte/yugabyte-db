@@ -287,7 +287,7 @@ YugabyteDB Aeon requires TLS/SSL. Depending on the smart driver, using load bala
 | Go | Yes | |
 | Node.js | Yes | In the ssl object, set `rejectUnauthorized` to true, `ca` to point to your cluster CA certificate, and `servername` to the cluster host name. |
 
-For more information on using TLS/SSL in YugabyteDB Aeon, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+For more information on using TLS/SSL in YugabyteDB Aeon, refer to [Encryption in transit](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 ## Learn more
 

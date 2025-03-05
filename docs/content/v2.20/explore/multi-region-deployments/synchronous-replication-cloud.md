@@ -92,7 +92,7 @@ To view your cluster metrics such as YSQL Operations/Second and YSQL Average Lat
 
 ## Tuning latencies
 
-Latency in a multi-region cluster depends on the distance and network packet transfer times between the nodes of the cluster and between the cluster and the client. Because the [tablet leader](../../../architecture/core-functions/write-path/#preparation-of-the-operation-for-replication-by-tablet-leader) replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
+Latency in a multi-region cluster depends on the distance and network packet transfer times between the nodes of the cluster and between the cluster and the client. Because the [tablet leader](../../../architecture/key-concepts/#tablet-leader) replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
 
 For best performance as well as lower data transfer costs, you want to minimize transfers between providers, and between provider regions. You do this by locating your cluster as close to your applications as possible:
 

@@ -1,13 +1,13 @@
 ---
-title: Colocated tables
-headerTitle: Colocated tables
-linkTitle: Colocated tables
+title: Colocating tables and databases
+headerTitle: Colocating tables
+linkTitle: Colocation
 description: Learn how colocated tables aggregate data into a single tablet.
 menu:
   v2.20:
-    identifier: docdb-colocated-tables
-    parent: architecture-docdb-sharding
-    weight: 1144
+    identifier: colocation
+    parent: explore
+    weight: 250
 rightNav:
   hideH4: true
 type: docs
@@ -47,7 +47,7 @@ Applications that have a large dataset could have the following characteristics:
 - A handful of tables that are expected to grow large, and thereby need to be scaled out.
 - The remaining tables continue to remain small.
 
-Here, only the few large tables need to be sharded and scaled out. All other tables benefit from colocation as queries involving these tables do not need network hops.
+In this case, only the few large tables need to be sharded and scaled out. All other tables benefit from colocation as queries involving these tables do not need network hops.
 
 #### Scaling the number of databases, each database with a small dataset
 
@@ -61,7 +61,7 @@ Colocation can be enabled at the cluster, database, or table level. For a coloca
 
 ### Clusters
 
-To enable colocation for all databases in a cluster, when you create the cluster, set the following [flag](../../../reference/configuration/yb-master/#ysql-colocate-database-by-default) to true for [YB-Master](../../concepts/yb-master/) and [YB-TServer](../../concepts/yb-tserver/) services as follows:
+To enable colocation for all databases in a cluster, when you create the cluster, set the following [flag](../../reference/configuration/yb-master/#ysql-colocate-database-by-default) to true for [YB-Master](../../architecture/yb-master/) and [YB-TServer](../../architecture/yb-tserver/) services as follows:
 
 ```sql
 ysql_colocate_database_by_default = true
@@ -131,7 +131,7 @@ CREATE TABLE <name> (columns) WITH (colocated = <true|false>)
 
 {{< /warning >}}
 
-To check if a table is colocated or not, you can use the [`\d`](../../../admin/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../../admin/ysqlsh). You can also retrieve the same information using the `yb_table_properties` function as follows:
+To check if a table is colocated or not, you can use the [\d](../../admin/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../admin/ysqlsh/). You can also retrieve the same information using the `yb_table_properties()` function as follows:
 
 ```sql
 select is_colocated from yb_table_properties('table_name'::regclass);
@@ -147,10 +147,10 @@ You should see an output similar to the following:
 
 #### Change table colocation
 
-To remove a single table from a colocation (for example, if it increases beyond a certain size), you can create a copy of the table using `CREATE TABLE AS SELECT` with colocation set to false. Do the following:
+To remove a single table from a colocation (for example, if it increases beyond a certain size), you can create a copy of the table using CREATE TABLE AS SELECT with colocation set to false. Do the following:
 
 1. Rename your colocated table to ensure no further changes modify the table or its contents.
-1. Create a new non-colocated table from the original colocated table using `CREATE TABLE AS SELECT`. You can choose to use the same name as the original table.
+1. Create a new non-colocated table from the original colocated table using CREATE TABLE AS SELECT. You can choose to use the same name as the original table.
 1. Optionally, drop the original colocated table after confirming reads and writes on the new, non-colocated table.
 
 You can use the same process to add a non-colocated table to colocation in a colocated database.
@@ -175,11 +175,12 @@ To view metrics such as table size, use the name of the parent colocation table.
 ### Semantic differences between colocated and non-colocated tables
 
 Concurrent DML and DDL on different tables in the same colocated database will abort the DML. This is not the case for distributed, non-colocated tables.
+
 For a colocated table, a TRUNCATE / DROP operation may abort due to conflicts if another session is holding row-level locks on the table.
 
 ## xCluster and colocation
 
-xCluster is supported for colocated tables and indexes in v2.18.0 only via [yb-admin](../../../admin/yb-admin/). To set up xCluster for colocated tables, the `colocation_id` for a given table or index needs to match on the source and target universes.
+xCluster is supported for colocated tables and indexes in v2.18.0 only via [yb-admin](../../admin/yb-admin/). To set up xCluster for colocated tables, the `colocation_id` for a given table or index needs to match on the source and target universes.
 
 To set up xCluster for colocated tables, do the following:
 
@@ -235,4 +236,4 @@ To set up xCluster for colocated tables, do the following:
 
 If new colocated tables are added to the same colocated database on both source and target universes with matching colocation IDs, then they are automatically included in replication.
 
-For information on how to set up xCluster for non-colocated tables, refer to [xCluster deployment](../../../deploy/multi-dc/async-replication/).
+For information on how to set up xCluster for non-colocated tables, refer to [xCluster deployment](../../deploy/multi-dc/async-replication/).

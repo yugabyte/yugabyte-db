@@ -20,7 +20,7 @@ sysbench is a popular tool for benchmarking databases like PostgreSQL and MySQL,
 
 To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/).
 
-Make sure you have the [YSQL shell](../../api/ysqlsh/) `ysqlsh` exported to the `PATH` variable.
+Make sure you have the [YSQL shell](../../admin/ysqlsh/) `ysqlsh` exported to the `PATH` variable.
 
 ```sh
 $ export PATH=$PATH:/path/to/ysqlsh
@@ -28,8 +28,7 @@ $ export PATH=$PATH:/path/to/ysqlsh
 
 ### Install sysbench
 
-Install sysbench on a machine which satisfies the Prerequisites using one of 
-the following options:
+Install sysbench on a machine which satisfies the Prerequisites using one of the following options:
 
 <ul class="nav nav-tabs nav-tabs-yb">
     <li>
