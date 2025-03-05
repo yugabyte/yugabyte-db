@@ -1200,3 +1200,164 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document from bson_aggregation_pipeline('
 
 RESET citus.explain_all_tasks;
 RESET citus.max_adaptive_executor_pool_size;
+-- query match
+-- enableLetAndCollationForQueryMatch GUC off: ignore variableSpec
+SET documentdb.enableLetAndCollationForQueryMatch TO off;
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"$expr": {"a": "$$varRef"} }', '{ "let": {"varRef": "cat"} }', NULL);
+NOTICE:  using bson_query_match implementation
+ERROR:  Use of undefined variable: varRef
+-- enableLetAndCollationForQueryMatch GUC on: use variableSpec
+SET documentdb.enableLetAndCollationForQueryMatch TO on;
+-- query match: wrong access of variable in query (outside $expr)
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"a": "$$varRef"}', '{ "let": {"varRef": "cat"} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 5}', '{"a": {"$lt": "$$varRef"} }', '{ "let": {"varRef": 10} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- query match: using $expr
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"$expr": {"$eq": ["$a", "$$varRef"] } }', '{ "let": {"varRef": "cat"} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat", "b": "dog"}', '{"$expr": {"$and": [{"$eq": ["$a", "$$varRef1"] }, {"$eq": ["$b", "$$varRef2"] } ]} }', '{ "let": {"varRef1": "cat", "varRef2": "dog"} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"$expr": {"$ne": ["$a", "$$varRef"] } }', '{ "let": {"varRef": "dog"} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 2}', '{"$expr": {"$gt": ["$a", "$$varRef"] } }', '{ "let": {"varRef": 5} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 2}', '{"$expr": {"$gte": ["$a", "$$varRef"] } }', '{ "let": {"varRef": -2} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 2}', '{"$expr": {"$or": [{"$lt": ["$a", "$$varRef1"] }, {"$gt": ["$b", "$$varRef2"] } ]} }', '{ "let": {"varRef1": 2, "varRef2": 2} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 2}', '{"$expr": {"$and": [{"$lt": ["$a", "$$varRef1"] }, {"$gt": ["$b", "$$varRef2"] } ]} }', '{ "let": {"varRef1": 2, "varRef2": 2} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 2}', '{"$expr": {"$not": {"$lt": ["$a", "$$varRef"] } } }', '{ "let": {"varRef": 5} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"$expr": {"$in": ["$a", ["$$varRef1", "$$varRef2"]] } }', '{ "let": {"varRef1": "cat", "varRef2": "dog"} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- query match: sharded collection
+SELECT documentdb_api.shard_collection('db', 'coll_query_op_let', '{ "_id": "hashed" }', false);
+NOTICE:  creating collection
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'coll_query_op_let', '{"_id": 1, "a": "cat" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'coll_query_op_let', '{"_id": 2, "a": "dog" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE documentdb_api_internal.bson_query_match(document, '{"$expr": {"$eq": ["$a", "$$varRef"] } }', '{ "let": {"varRef": "cat"} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$ne": ["$a", "$$varRef"] } }', '{ "let": {"varRef": "dog"} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$in": ["$a", ["$$varRef1", "$$varRef2"]] } }', '{ "let": {"varRef1": "cat", "varRef2": "dog"} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(2 rows)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$lt": ["$_id", "$$varRef"] } }', '{ "let": {"varRef": 2} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$lte": ["$_id", "$$varRef"] } }', '{ "let": {"varRef": 2} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(2 rows)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$gt": ["$_id", "$$varRef"] } }', '{ "let": {"varRef": 1} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$gte": ["$_id", "$$varRef"] } }', '{ "let": {"varRef": 1} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(2 rows)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$and": [{"$lt": ["$_id", "$$varRef1"] }, {"$gt": ["$_id", "$$varRef2"] } ]} }', '{ "let": {"varRef1": 2, "varRef2": 1} }', NULL);
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$or": [{"$lt": ["$_id", "$$varRef1"] }, {"$gt": ["$_id", "$$varRef2"] } ]} }', '{ "let": {"varRef1": 2, "varRef2": 1} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(2 rows)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$not": {"$lt": ["$_id", "$$varRef"] } } }', '{ "let": {"varRef": 1} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(2 rows)
+
+RESET documentdb.enableLetAndCollationForQueryMatch;

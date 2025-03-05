@@ -118,9 +118,9 @@ bool EnableSortbyIdPushDownToPrimaryKey =
 bool EnableMatchWithLetInLookup =
 	DEFAULT_ENABLE_MATCH_WITH_LET_IN_LOOKUP;
 
-#define DEFAULT_ENABLE_COLLATION_LET_FOR_WRITE_COMMANDS false
-bool EnableCollationAndLetForQueryMatch =
-	DEFAULT_ENABLE_COLLATION_LET_FOR_WRITE_COMMANDS;
+#define DEFAULT_ENABLE_LET_AND_COLLATION_FOR_QUERY_MATCH false
+bool EnableLetAndCollationForQueryMatch =
+	DEFAULT_ENABLE_LET_AND_COLLATION_FOR_QUERY_MATCH;
 
 void
 InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix)
@@ -351,10 +351,10 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		psprintf("%s.enableCollationAndLetForQueryMatch", newGucPrefix),
+		psprintf("%s.enableLetAndCollationForQueryMatch", newGucPrefix),
 		gettext_noop(
-			"Whether or not to enable collation and let for write commands."),
-		NULL, &EnableCollationAndLetForQueryMatch,
-		DEFAULT_ENABLE_COLLATION_LET_FOR_WRITE_COMMANDS,
+			"Whether or not to enable collation and let for query match and write commands."),
+		NULL, &EnableLetAndCollationForQueryMatch,
+		DEFAULT_ENABLE_LET_AND_COLLATION_FOR_QUERY_MATCH,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/planner/query_operator.c
+ * src/query/query_operator.c
  *
  * Implementation of BSON query to operator conversion.
  *
@@ -108,7 +108,7 @@ typedef struct IdFilterWalkerContext
 } IdFilterWalkerContext;
 
 extern bool EnableCollation;
-extern bool EnableCollationAndLetForQueryMatch;
+extern bool EnableLetAndCollationForQueryMatch;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -119,7 +119,7 @@ static Node * ReplaceBsonQueryOperatorsMutator(Node *node,
 static Expr * ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 									  Query *currentQuery, ParamListInfo boundParams,
 									  List **targetEntries, List **sortClauses,
-									  const char *collationString);
+									  const char *collationString, Const *variableSpec);
 static Expr * CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 												  BsonQueryOperatorContext *c,
 												  const char *traversedPath);
@@ -244,10 +244,10 @@ bson_query_match(PG_FUNCTION_ARGS)
 	ReplaceBsonQueryOperatorsContext context;
 	memset(&context, 0, sizeof(context));
 
-	/* if EnableEnableCollationAndLetForQueryMatch is off,  */
+	/* if EnableEnableLetAndCollationForQueryMatch is off,  */
 	/* the collationString and variableSpec will be ignored  */
 	Node *quals = NULL;
-	if (!EnableCollationAndLetForQueryMatch || PG_NARGS() == 2)
+	if (!EnableLetAndCollationForQueryMatch || PG_NARGS() == 2)
 	{
 		/* Expand the @@ operator into regular BSON operators */
 		OpExpr *queryExpr = makeNode(OpExpr);
@@ -260,8 +260,19 @@ bson_query_match(PG_FUNCTION_ARGS)
 
 		quals = ReplaceBsonQueryOperatorsMutator((Node *) queryExpr, &context);
 	}
-	else if (EnableCollationAndLetForQueryMatch && PG_NARGS() == 4)
+	else if (EnableLetAndCollationForQueryMatch && PG_NARGS() == 4)
 	{
+		Const *variableSpecConst = NULL;
+		if (PG_ARGISNULL(2))
+		{
+			variableSpecConst = makeNullConst(BsonTypeId(), -1, InvalidOid);
+		}
+		else
+		{
+			pgbson *variableSpecBson = PG_GETARG_PGBSON(2);
+			variableSpecConst = MakeBsonConst(variableSpecBson);
+		}
+
 		Const *collationConst = NULL;
 		if (PG_ARGISNULL(3))
 		{
@@ -274,9 +285,8 @@ bson_query_match(PG_FUNCTION_ARGS)
 									   false, false);
 		}
 
-		Const *variableConst = makeNullConst(BsonTypeId(), -1, InvalidOid);
-
-		List *args = list_make4(documentConst, queryConst, variableConst, collationConst);
+		List *args = list_make4(documentConst, queryConst, variableSpecConst,
+								collationConst);
 		FuncExpr *funcExpr = makeFuncExpr(BsonQueryMatchWithLetAndCollationFunctionId(),
 										  BsonTypeId(), args,
 										  InvalidOid, InvalidOid, InvalidOid);
@@ -767,6 +777,7 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 			if (IsA(queryNode, Const))
 			{
 				const char *collationString = NULL;
+				Const *variableSpecConst = NULL;
 
 				Node *expandedExpr =
 					(Node *) ExpandBsonQueryOperator(opExpr,
@@ -775,7 +786,7 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 													 context->boundParams,
 													 &(context->targetEntries),
 													 &(context->sortClauses),
-													 collationString);
+													 collationString, variableSpecConst);
 
 				return expandedExpr;
 			}
@@ -786,7 +797,7 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 	else if (IsA(node, FuncExpr))
 	{
 		FuncExpr *funcExpr = (FuncExpr *) node;
-		if (EnableCollationAndLetForQueryMatch &&
+		if (EnableLetAndCollationForQueryMatch &&
 			funcExpr->funcid == BsonQueryMatchWithLetAndCollationFunctionId())
 		{
 			Node *queryNode = lsecond(funcExpr->args);
@@ -796,6 +807,13 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 													context->boundParams);
 			}
 
+			Node *variableSpecNode = lthird(funcExpr->args);
+			if (IsA(variableSpecNode, Param))
+			{
+				variableSpecNode = EvaluateBoundParameters(variableSpecNode,
+														   context->boundParams);
+			}
+
 			Node *collationStringNode = lfourth(funcExpr->args);
 			if (IsA(collationStringNode, Param))
 			{
@@ -803,7 +821,8 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 															  context->boundParams);
 			}
 
-			if (IsA(queryNode, Const) && IsA(collationStringNode, Const))
+			if (IsA(queryNode, Const) && IsA(variableSpecNode, Const) &&
+				IsA(collationStringNode, Const))
 			{
 				Node *documentNode = linitial(funcExpr->args);
 				if (IsA(documentNode, RelabelType))
@@ -814,6 +833,8 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 						documentNode = (Node *) relabeled->arg;
 					}
 				}
+
+				Const *variableSpecConst = variableSpecConst = (Const *) variableSpecNode;
 
 				char *collationString = NULL;
 				Const *collationConst = (Const *) collationStringNode;
@@ -834,7 +855,8 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 													 context->boundParams,
 													 &(context->targetEntries),
 													 &(context->sortClauses),
-													 collationString);
+													 collationString,
+													 variableSpecConst);
 
 				return expandedExpr;
 			}
@@ -911,7 +933,7 @@ static Expr *
 ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 						Query *currentQuery, ParamListInfo boundParams,
 						List **targetEntries, List **sortClauses,
-						const char *collationString)
+						const char *collationString, Const *variableSpec)
 {
 	BsonQueryOperatorContext context = { 0 };
 	context.documentExpr = linitial(queryOpExpr->args);
@@ -919,7 +941,12 @@ ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = true;
 	context.requiredFilterPathNameHashSet = NULL;
+
 	context.variableContext = NULL;
+	if (variableSpec != NULL && !variableSpec->constisnull)
+	{
+		context.variableContext = (Expr *) variableSpec;
+	}
 
 	if (IsCollationApplicable(collationString))
 	{

@@ -2062,8 +2062,8 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "coll_agg_proj", "fi
 (0 rows)
 
 -- query match
--- enableCollationAndLetForQueryMatch GUC off: ignore collation
-SET documentdb.enableCollationAndLetForQueryMatch TO off;
+-- enableLetAndCollationForQueryMatch GUC off: ignore collation
+SET documentdb.enableLetAndCollationForQueryMatch TO off;
 SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"a": "CAT"}', NULL, 'en-u-ks-level1');
 NOTICE:  using bson_query_match implementation
  bson_query_match 
@@ -2071,8 +2071,8 @@ NOTICE:  using bson_query_match implementation
  f
 (1 row)
 
--- enableCollationAndLetForQueryMatch GUC on: enforce collation
-SET documentdb.enableCollationAndLetForQueryMatch TO on;
+-- enableLetAndCollationForQueryMatch GUC on: enforce collation
+SET documentdb.enableLetAndCollationForQueryMatch TO on;
 -- query match: _id tests
 SELECT documentdb_api_internal.bson_query_match('{"_id": "cat"}', '{"_id": "CAT"}', NULL, 'en-u-ks-level1');
  bson_query_match 
@@ -2220,5 +2220,5 @@ SELECT document from documentdb_api.collection('db', 'coll_query_op') WHERE docu
 ---------------------------------------------------------------------
 (0 rows)
 
-RESET documentdb.enableCollationAndLetForQueryMatch;
+RESET documentdb.enableLetAndCollationForQueryMatch;
 RESET documentdb_core.enablecollation;
