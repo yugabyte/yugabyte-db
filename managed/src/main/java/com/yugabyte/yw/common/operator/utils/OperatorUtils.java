@@ -669,8 +669,6 @@ public class OperatorUtils {
   BackupRequestParams getBackupRequestFromCr(
       JsonNode crParams, String namespace, SharedIndexInformer<StorageConfig> scInformer)
       throws Exception {
-    log.info(crParams.toPrettyString());
-    log.info("namespace {}", namespace);
     Customer cust;
     try {
       cust = getOperatorCustomer();
@@ -715,8 +713,8 @@ public class OperatorUtils {
         && StringUtils.isNotBlank(((ObjectNode) crParams).get("incrementalBackupBase").asText())) {
       String baseBackupName = ((ObjectNode) crParams).get("incrementalBackupBase").asText();
       com.yugabyte.yw.models.Backup baseBackup = getBaseBackup(baseBackupName, namespace, cust);
-      if (storageConfigUUID != baseBackup.getStorageConfigUUID()
-          || universeUUID != baseBackup.getUniverseUUID()) {
+      if (!storageConfigUUID.equals(baseBackup.getStorageConfigUUID())
+          || !universeUUID.equals(baseBackup.getUniverseUUID())) {
         throw new Exception(
             "Invalid cr values: Storage config and Universe should be same for incremental backup");
       }
@@ -778,7 +776,7 @@ public class OperatorUtils {
         Universe.getOrBadRequest(backup.getUniverseUUID(), Customer.get(backup.getCustomerUUID()));
     crSpec.setUniverse(universe.getUniverseDetails().getKubernetesResourceDetails().name);
     // If incremental backup, add incemental backup base name in spec
-    if (baseBackupUUID != backup.getBackupUUID()) {
+    if (!baseBackupUUID.equals(backup.getBackupUUID())) {
       com.yugabyte.yw.models.Backup baseBackup =
           com.yugabyte.yw.models.Backup.getOrBadRequest(backup.getCustomerUUID(), baseBackupUUID);
       crSpec.setIncrementalBackupBase(
@@ -792,7 +790,7 @@ public class OperatorUtils {
             .withNamespace(params.getKubernetesResourceDetails().namespace)
             .withLabels(Map.of(IGNORE_RECONCILER_ADD_LABEL, "true"))
             .withFinalizers(Collections.singletonList(YB_FINALIZER));
-    if (baseBackupUUID != backup.getBackupUUID()) {
+    if (!baseBackupUUID.equals(backup.getBackupUUID())) {
       com.yugabyte.yw.models.Backup lastSuccessfulbackup =
           com.yugabyte.yw.models.Backup.getLastSuccessfulBackupInChain(
               backup.getCustomerUUID(), baseBackupUUID);

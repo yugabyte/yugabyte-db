@@ -33,6 +33,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -155,7 +156,7 @@ public class OperatorUtilsTest extends FakeDBApplication {
 
   @Test
   public void testGenerateBackupParamsIncrementalBackupSuccess() throws Exception {
-    doReturn(testStorageConfig.getConfigUUID())
+    doReturn(UUID.fromString(testStorageConfig.getConfigUUID().toString()))
         .when(operatorUtils)
         .getStorageConfigUUIDFromName(anyString(), nullable(SharedIndexInformer.class));
     doReturn(testUniverse)
