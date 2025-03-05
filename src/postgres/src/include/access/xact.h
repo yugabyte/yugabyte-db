@@ -387,8 +387,8 @@ extern void YBResetTransactionReadPoint(void);
 extern void YBRestartReadPoint(void);
 extern void StartTransactionCommand(void);
 extern void YBCRestartWriteTransaction(void);
-extern void SetTxnWithPGRel(void);
-extern bool IsCurrentTxnWithPGRel(void);
+extern void YbSetTxnWithPgOps(uint8 pg_op_type);
+extern uint8 YbGetPgOpsInCurrentTxn(void);
 extern void CommitTransactionCommand(void);
 extern void AbortCurrentTransaction(void);
 extern void BeginTransactionBlock(void);
@@ -480,6 +480,9 @@ extern void YBClearDdlHandles(void);
 /*
  * Utility for clearing transaction ID.
 */
-extern void YbClearCurrentTransactionId(void);
 extern void YbClearParallelContexts(void);
+
+#define YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY	0x0001
+#define YB_TXN_USES_TEMPORARY_RELATIONS				0x0002
+
 #endif							/* XACT_H */
