@@ -2337,6 +2337,7 @@ class AcquireObjectLocksGlobalRpc
   }
 
   void CallRemoteMethod() override {
+    VLOG(2) << "Calling AcquireObjectLocksGlobal with request: " << req_.DebugString();
     master_ddl_proxy()->AcquireObjectLocksGlobalAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
         std::bind(&AcquireObjectLocksGlobalRpc::Finished, this, Status::OK()));
@@ -2381,6 +2382,7 @@ class ReleaseObjectLocksGlobalRpc
   }
 
   void CallRemoteMethod() override {
+    VLOG(2) << "Calling ReleaseObjectLocksGlobalAsync with request: " << req_.DebugString();
     master_ddl_proxy()->ReleaseObjectLocksGlobalAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
         std::bind(&ReleaseObjectLocksGlobalRpc::Finished, this, Status::OK()));

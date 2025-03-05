@@ -199,6 +199,10 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
     return context_ ? context_->GetClientDeadline() : CoarseTimePoint::max();
   }
 
+  Trace *trace() const {
+    return trace_.get();
+  }
+
  private:
   void LaunchFrom(size_t from_idx);
   void Done(size_t i, const Status& s);
@@ -225,6 +229,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   std::optional<rpc::RpcContext> context_;
   std::optional<uint64_t> requestor_latest_lease_epoch_;
   bool remove_lease_epoch_entry_;
+  const TracePtr trace_;
 };
 
 template <class Req, class Resp>
@@ -385,6 +390,7 @@ std::shared_ptr<ObjectLockInfo> ObjectLockInfoManager::Impl::GetOrCreateObjectLo
 
 Status ObjectLockInfoManager::Impl::PersistRequest(
     LeaderEpoch epoch, const AcquireObjectLockRequestPB& req) {
+  TRACE_FUNC();
   VLOG(3) << __PRETTY_FUNCTION__;
   auto key = req.session_host_uuid();
   std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(key);
@@ -405,6 +411,7 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
 
 Status ObjectLockInfoManager::Impl::PersistRequest(
     LeaderEpoch epoch, const ReleaseObjectLockRequestPB& req, bool remove_lease_epoch_entry) {
+  TRACE_FUNC();
   VLOG(3) << __PRETTY_FUNCTION__;
   auto key = req.session_host_uuid();
   std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(key);
@@ -683,7 +690,8 @@ UpdateAllTServers<Req, Resp>::UpdateAllTServers(
       callback_(callback),
       context_(std::move(context)),
       requestor_latest_lease_epoch_(requestor_latest_lease_epoch),
-      remove_lease_epoch_entry_(remove_lease_epoch_entry) {
+      remove_lease_epoch_entry_(remove_lease_epoch_entry),
+      trace_(Trace::CurrentTrace()) {
   VLOG(3) << __PRETTY_FUNCTION__;
 }
 
@@ -694,6 +702,9 @@ void UpdateAllTServers<Req, Resp>::Done(size_t i, const Status& s) {
   } else {
     statuses_[i] = Status::OK();
   }
+  TRACE_TO(
+      trace(), "Done $0 ($1) : $2", i, ts_descriptors_[i]->permanent_uuid(),
+      statuses_[i].ToString());
   // TODO: There is a potential here for early return if s is not OK.
   if (--ts_pending_ == 0) {
     CheckForDone();
@@ -734,6 +745,7 @@ void UpdateAllTServers<Req, Resp>::Launch() {
 
 template <class Req, class Resp>
 void UpdateAllTServers<Req, Resp>::LaunchFrom(size_t start_idx) {
+  TRACE("Launching for $0 TServers from $1", ts_descriptors_.size(), start_idx);
   ts_pending_ = ts_descriptors_.size() - start_idx;
   LOG(INFO) << __func__ << " launching for " << ts_pending_ << " tservers.";
   for (size_t i = start_idx; i < ts_descriptors_.size(); ++i) {
@@ -752,6 +764,7 @@ void UpdateAllTServers<Req, Resp>::LaunchFrom(size_t start_idx) {
 
 template <class Req, class Resp>
 void UpdateAllTServers<Req, Resp>::DoCallbackAndRespond(const Status& s) {
+  TRACE("$0: $1", __func__, s.ToString());
   VLOG_WITH_FUNC(2) << s;
   callback_(s);
   if (context_.has_value()) {
@@ -777,6 +790,7 @@ void UpdateAllTServers<Req, Resp>::CheckForDone() {
 template <>
 Status
 UpdateAllTServers<AcquireObjectLockRequestPB, AcquireObjectLocksGlobalResponsePB>::BeforeRpcs() {
+  TRACE_FUNC();
   RETURN_NOT_OK(ValidateLockRequest(req_, requestor_latest_lease_epoch_));
   std::shared_ptr<tserver::TSLocalLockManager> local_lock_manager;
   DCHECK(!epoch_.has_value()) << "Epoch should not yet be set for AcquireObjectLockRequestPB";
@@ -811,6 +825,7 @@ UpdateAllTServers<AcquireObjectLockRequestPB, AcquireObjectLocksGlobalResponsePB
 template <>
 Status
 UpdateAllTServers<ReleaseObjectLockRequestPB, ReleaseObjectLocksGlobalResponsePB>::BeforeRpcs() {
+  TRACE_FUNC();
   if (!epoch_.has_value()) {
     SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
     RETURN_NOT_OK(CheckLeaderLockStatus(l, std::nullopt));
@@ -822,12 +837,14 @@ UpdateAllTServers<ReleaseObjectLockRequestPB, ReleaseObjectLocksGlobalResponsePB
 template <>
 Status
 UpdateAllTServers<AcquireObjectLockRequestPB, AcquireObjectLocksGlobalResponsePB>::AfterRpcs() {
+  TRACE_FUNC();
   return Status::OK();
 }
 
 template <>
 Status
 UpdateAllTServers<ReleaseObjectLockRequestPB, ReleaseObjectLocksGlobalResponsePB>::AfterRpcs() {
+  TRACE_FUNC();
   VLOG_WITH_FUNC(2);
   SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
   RETURN_NOT_OK(CheckLeaderLockStatus(l, epoch_));
@@ -849,6 +866,8 @@ UpdateAllTServers<ReleaseObjectLockRequestPB, ReleaseObjectLocksGlobalResponsePB
 
 template <class Req, class Resp>
 void UpdateAllTServers<Req, Resp>::DoneAll() {
+  ADOPT_TRACE(trace());
+  TRACE_FUNC();
   DoCallbackAndRespond(AfterRpcs());
 }
 
@@ -861,6 +880,7 @@ bool UpdateAllTServers<
 template <>
 bool UpdateAllTServers<
     ReleaseObjectLockRequestPB, ReleaseObjectLocksGlobalResponsePB>::RelaunchIfNecessary() {
+  TRACE_TO(trace(), "Relaunching");
   auto old_size = ts_descriptors_.size();
   auto current_ts_descriptors = master_->ts_manager()->GetAllDescriptorsWithALiveLease();
   for (const auto& ts_descriptor : current_ts_descriptors) {
