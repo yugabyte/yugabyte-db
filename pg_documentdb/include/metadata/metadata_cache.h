@@ -288,6 +288,7 @@ Oid BsonDollarInverseMatchFunctionId(void);
 Oid BsonDollarProjectFunctionOid(void);
 Oid BsonDollarProjectWithLetFunctionOid(void);
 Oid BsonDollarRedactWithLetFunctionOid(void);
+Oid BsonDollarRedactWithLetAndCollationFunctionOid(void);
 Oid BsonDollarMergeHandleWhenMatchedFunctionOid(void);
 Oid BsonDollarMergeAddObjectIdFunctionOid(void);
 Oid BsonDollarMergeGenerateObjectId(void);

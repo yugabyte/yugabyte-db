@@ -144,7 +144,8 @@ static void PopulateReplaceRootExpressionDataFromSpec(
 	BsonReplaceRootRedactState *expressionData, pgbson *pathSpec, pgbson *variableSpec);
 
 static void BuildRedactState(BsonReplaceRootRedactState *redactState, const
-							 bson_value_t *redactValue, pgbson *variableSpec);
+							 bson_value_t *redactValue, pgbson *variableSpec, const
+							 char *collationString);
 static void BuildBsonPathTreeForDollarProject(BsonProjectionQueryState *state,
 											  BsonProjectionContext *context);
 static void BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
@@ -1094,6 +1095,12 @@ bson_dollar_redact(PG_FUNCTION_ARGS)
 	pgbson *redactSpec = PG_GETARG_PGBSON(1);
 	char *redactSpecText = text_to_cstring(PG_GETARG_TEXT_PP(2));
 	pgbson *variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(3);
+	char *collationString = NULL;
+
+	if (EnableCollation && PG_NARGS() == 5 && !PG_ARGISNULL(4))
+	{
+		collationString = text_to_cstring(PG_GETARG_TEXT_P(4));
+	}
 
 	bson_value_t redactValue = { 0 };
 
@@ -1108,8 +1115,8 @@ bson_dollar_redact(PG_FUNCTION_ARGS)
 		redactValue = ConvertPgbsonToBsonValue(redactSpec);
 	}
 
-	int argPositions[3] = { 1, 2, 3 };
-	int numArgs = 3;
+	int argPositions[4] = { 1, 2, 3, 4 };
+	int numArgs = 4;
 
 	if (variableSpec == NULL)
 	{
@@ -1124,14 +1131,15 @@ bson_dollar_redact(PG_FUNCTION_ARGS)
 		numArgs,
 		BuildRedactState,
 		&redactValue,
-		variableSpec);
+		variableSpec,
+		collationString);
 
 	pgbson *result;
 	bool shouldPrune = false;
 	if (redactState == NULL)
 	{
 		BsonReplaceRootRedactState newState = { 0 };
-		BuildRedactState(&newState, &redactValue, variableSpec);
+		BuildRedactState(&newState, &redactValue, variableSpec, collationString);
 		result = EvaluateRedactDocument(document, &newState, &shouldPrune);
 	}
 	else
@@ -1153,14 +1161,19 @@ bson_dollar_redact(PG_FUNCTION_ARGS)
  */
 static void
 BuildRedactState(BsonReplaceRootRedactState *redactState, const bson_value_t *redactValue,
-				 pgbson *variableSpec)
+				 pgbson *variableSpec, const char *collationString)
 {
 	ParseAggregationExpressionContext context = { .allowRedactVariables = true };
 	redactState->expressionData = palloc0(sizeof(AggregationExpressionData));
 
 	GetTimeSystemVariablesFromVariableSpec(variableSpec, &context.timeSystemVariables);
-	ParseAggregationExpressionData(redactState->expressionData, redactValue, &context);
 
+	if (IsCollationApplicable(collationString))
+	{
+		context.collationString = collationString;
+	}
+
+	ParseAggregationExpressionData(redactState->expressionData, redactValue, &context);
 	SetVariableSpec(&redactState->variableContext, variableSpec);
 }
 

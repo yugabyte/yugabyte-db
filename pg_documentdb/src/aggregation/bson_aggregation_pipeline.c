@@ -3009,13 +3009,36 @@ HandleRedact(const bson_value_t *existingValue, Query *query,
 	 * existingValue->value.value_type is BSON_TYPE_UTF8.
 	 * In this case, BsonDollarRedactWithLetFunctionOid() takes four parameters, currentProjection, redactSpec, redactSpecText, variableSpec.
 	 * redactSpec is set to empty document and redactSpecText is the string.
+	 *
+	 * If context->collationString is valid, we use BsonDollarRedactWithLetAndCollationFunctionOid() instead.
+	 * BsonDollarRedactWithLetAndCollationFunctionOid() takes five parameters, currentProjection, redactSpec, redactSpecText, variableSpec,
+	 * collationString.
 	 */
-	List *args = list_make4(currentProjection, redactSpec, redactSpecText,
-							context->variableSpec == NULL ? (Expr *) MakeBsonConst(
-								PgbsonInitEmpty()) : context->variableSpec);
+
+	List *args = NIL;
+	Oid funcOid = BsonDollarRedactWithLetFunctionOid();
+
+	Expr *variableSpecConst = context->variableSpec == NULL ?
+							  (Expr *) MakeBsonConst(PgbsonInitEmpty()) :
+							  context->variableSpec;
+
+	if (IsClusterVersionAtleast(DocDB_V0, 102, 0) &&
+		IsCollationApplicable(context->collationString))
+	{
+		Const *collationStringConst = MakeTextConst(context->collationString, strlen(
+														context->collationString));
+		args = list_make5(currentProjection, redactSpec, redactSpecText,
+						  variableSpecConst, collationStringConst);
+		funcOid = BsonDollarRedactWithLetAndCollationFunctionOid();
+	}
+	else
+	{
+		args = list_make4(currentProjection, redactSpec, redactSpecText,
+						  variableSpecConst);
+	}
 
 	FuncExpr *resultExpr = makeFuncExpr(
-		BsonDollarRedactWithLetFunctionOid(), BsonTypeId(), args, InvalidOid,
+		funcOid, BsonTypeId(), args, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
 	firstEntry->expr = (Expr *) resultExpr;

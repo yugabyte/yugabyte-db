@@ -666,6 +666,9 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the bson_dollar_redact(bson, bson, text, bson) function */
 	Oid ApiInternalBsonDollarRedactWithLetFunctionOid;
 
+	/* OID of the bson_dollar_redact(bson, bson, text, bson, text) function */
+	Oid ApiInternalBsonDollarRedactWithLetAndCollationFunctionOid;
+
 	/* OID of the bson_dollar_project function with let */
 	Oid ApiCatalogBsonDollarProjectWithLetFunctionOid;
 
@@ -3175,6 +3178,18 @@ BsonDollarRedactWithLetFunctionOid(void)
 		"bson_dollar_redact",
 		BsonTypeId(), BsonTypeId(),
 		TEXTOID, BsonTypeId());
+}
+
+
+Oid
+BsonDollarRedactWithLetAndCollationFunctionOid(void)
+{
+	return GetOperatorFunctionIdFiveArgs(
+		&Cache.ApiInternalBsonDollarRedactWithLetAndCollationFunctionOid,
+		DocumentDBApiInternalSchemaName,
+		"bson_dollar_redact",
+		BsonTypeId(), BsonTypeId(),
+		TEXTOID, BsonTypeId(), TEXTOID);
 }
 
 
