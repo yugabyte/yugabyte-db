@@ -77,6 +77,7 @@ export const RuntimeConfigKey = {
   ENABLE_ROLLBACK_SUPPORT: 'yb.upgrade.enable_rollback_support',
   PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics',
   ENABLE_CONNECTION_POOLING: 'yb.universe.allow_connection_pooling',
+  USE_ANSIBLE_PROVISIONING: 'yb.node_agent.use_ansible_provisioning',
   RF_CHANGE_FEATURE_FLAG: 'yb.ui.feature_flags.enable_rf_change',
   NODE_AGENT_CLIENT_ENABLE: 'yb.node_agent.client.enabled',
   NODE_AGENT_ENABLER_SCAN_INTERVAL: 'yb.node_agent.enabler.scan_interval',
