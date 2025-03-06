@@ -106,13 +106,13 @@ class VectorLSMInsertTask :
     chunk_ = chunk;
   }
 
-  void Add(VectorId vertex_id, Vector&& vector) {
-    vectors_.emplace_back(vertex_id, std::move(vector));
+  void Add(VectorId vector_id, Vector&& vector) {
+    vectors_.emplace_back(vector_id, std::move(vector));
   }
 
   void Run() override {
-    for (const auto& [vertex_id, vector] : vectors_) {
-      lsm_.CheckFailure(chunk_->index->Insert(vertex_id, vector));
+    for (const auto& [vector_id, vector] : vectors_) {
+      lsm_.CheckFailure(chunk_->index->Insert(vector_id, vector));
     }
     auto new_tasks = --chunk_->num_tasks;
     if (new_tasks == 0) {
@@ -277,7 +277,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   bool RegisterInsert(
       const std::vector<InsertEntry>& entries, const Options& options, size_t new_tasks,
       const rocksdb::UserFrontiers* frontiers) {
-    if (num_entries && num_entries + entries.size() > index->MaxVectors()) {
+    if (num_entries && num_entries + entries.size() > index->Capacity()) {
       return false;
     }
     num_entries += entries.size();
@@ -288,8 +288,8 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
     return true;
   }
 
-  void Insert(VectorLSM& lsm, VectorId vertex_id, const Vector& vector) {
-    lsm.CheckFailure(index->Insert(vertex_id, vector));
+  void Insert(VectorLSM& lsm, VectorId vector_id, const Vector& vector) {
+    lsm.CheckFailure(index->Insert(vector_id, vector));
   }
 
   std::string ToString() const {
@@ -516,12 +516,12 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
   auto tasks = insert_registry_->AllocateTasks(*this, chunk, num_tasks);
   auto tasks_it = tasks.begin();
   size_t index_in_task = 0;
-  for (auto& [vertex_id, v] : entries) {
+  for (auto& [vector_id, v] : entries) {
     if (index_in_task++ >= entries_per_task) {
       ++tasks_it;
       index_in_task = 0;
     }
-    tasks_it->Add(vertex_id, std::move(v));
+    tasks_it->Add(vector_id, std::move(v));
   }
   insert_registry_->ExecuteTasks(tasks);
 
@@ -836,7 +836,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_vecto
   VLOG_WITH_PREFIX_AND_FUNC(4) << min_vectors;
   VectorIndexPtr index;
   if (mutable_chunk_ && mutable_chunk_->num_entries == 0 &&
-      mutable_chunk_->index->MaxVectors() >= min_vectors) {
+      mutable_chunk_->index->Capacity() >= min_vectors) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Reuse index of " << AsString(*mutable_chunk_);
     index = std::move(mutable_chunk_->index);
   } else {
@@ -941,7 +941,7 @@ DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::WaitForFlush() {
   std::unique_lock lock(mutex_);
-  // TODO(vector-index) Don't wait flushes that started after this call.
+  // TODO(vector_index) Don't wait flushes that started after this call.
   updates_queue_empty_.wait(
       lock, [this]() NO_THREAD_SAFETY_ANALYSIS { return updates_queue_.empty(); });
   return Status::OK();

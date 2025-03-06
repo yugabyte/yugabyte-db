@@ -26,10 +26,10 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/doc_ttl_util.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value_type.h"
-#include "yb/dockv/vector_id.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"

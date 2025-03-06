@@ -20,11 +20,11 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_packing.h"
 #include "yb/dockv/value_type.h"
-#include "yb/dockv/vector_id.h"
 
 #include "yb/util/decimal.h"
 #include "yb/util/fast_varint.h"

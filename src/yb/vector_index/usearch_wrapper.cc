@@ -155,8 +155,9 @@ class UsearchIndex :
     // Since it always allocate power of 2, we use this weird logic to make it pick minimal
     // power of 2 that is greater or equals than num_vectors.
     auto rounded_num_vectors = unum::usearch::ceil2(num_vectors);
+    auto num_members = std::max<size_t>(rounded_num_vectors * 2 / 3, 1);
     index_.reserve(unum::usearch::index_limits_t(
-        rounded_num_vectors * 2 / 3, max_concurrent_inserts + max_concurrent_reads));
+      num_members, max_concurrent_inserts + max_concurrent_reads));
     search_semaphore_.emplace(max_concurrent_reads);
     return Status::OK();
   }
@@ -169,7 +170,11 @@ class UsearchIndex :
     return Status::OK();
   }
 
-  size_t MaxVectors() const override {
+  size_t Size() const override {
+    return index_.size();
+  }
+
+  size_t Capacity() const override {
     return index_.limits().members;
   }
 

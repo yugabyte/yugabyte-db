@@ -12,9 +12,9 @@
 // under the License.
 //
 
-#include "yb/docdb/vector_index.h"
+#include "yb/docdb/doc_vector_index.h"
 
-#include "yb/dockv/vector_id.h"
+#include "yb/dockv/doc_vector_id.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_util.h"
@@ -79,7 +79,7 @@ auto VectorLSMFactory(const PgVectorIdxOptionsPB& options) {
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
 auto GetVectorLSMFactory(const PgVectorIdxOptionsPB& options)
-    -> Result<typename vector_index::VectorLSMTypes<Vector, DistanceResult>::VectorIndexFactory>{
+    -> Result<vector_index::VectorIndexFactory<Vector, DistanceResult>> {
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
@@ -114,7 +114,7 @@ Result<Vector> VectorFromYSQL(Slice slice) {
 
 template<vector_index::IndexableVectorType Vector>
 Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
-    const VectorIndexInsertEntry& entry) {
+    const DocVectorIndexInsertEntry& entry) {
 
   RSTATUS_DCHECK(!entry.value.empty(), InvalidArgument, "Vector value is not specified");
 
@@ -136,9 +136,9 @@ EncodedDistance EncodeDistance(float distance) {
 
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
-class VectorIndexImpl : public VectorIndex {
+class DocVectorIndexImpl : public DocVectorIndex {
  public:
-  VectorIndexImpl(
+  DocVectorIndexImpl(
       const TableId& table_id, Slice indexed_table_key_prefix, ColumnId column_id,
       HybridTime hybrid_time, const DocDB& doc_db)
       : table_id_(table_id), indexed_table_key_prefix_(indexed_table_key_prefix),
@@ -183,7 +183,8 @@ class VectorIndexImpl : public VectorIndex {
   }
 
   Status Insert(
-      const VectorIndexInsertEntries& entries, const rocksdb::UserFrontiers* frontiers) override {
+      const DocVectorIndexInsertEntries& entries,
+      const rocksdb::UserFrontiers* frontiers) override {
     typename LSM::InsertEntries lsm_entries;
     lsm_entries.reserve(entries.size());
     for (const auto& entry : entries) {
@@ -195,24 +196,25 @@ class VectorIndexImpl : public VectorIndex {
     return lsm_.Insert(lsm_entries, context);
   }
 
-  Result<VectorIndexSearchResult> Search(
+  Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options) override {
     auto entries = VERIFY_RESULT(lsm_.Search(
         VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
 
-    // TODO(vector-index): check if ReadOptions are required.
+    // TODO(vector_index): check if ReadOptions are required.
     docdb::BoundedRocksDbIterator iter(doc_db_.regular, {}, doc_db_.key_bounds);
 
-    VectorIndexSearchResult result;
+    DocVectorIndexSearchResult result;
     result.reserve(entries.size());
     for (auto& entry : entries) {
-      auto key = dockv::VectorIdKey(entry.vector_id);
-      const auto& db_entry = iter.Seek(key.AsSlice());
-      if (!db_entry.Valid() || !db_entry.key.starts_with(key.AsSlice())) {
+      auto key = dockv::DocVectorKey(entry.vector_id);
+      const auto& db_entry = iter.Seek(key);
+      if (!db_entry.Valid() || !db_entry.key.starts_with(key)) {
         return STATUS_FORMAT(NotFound, "Vector not found: $0", entry.vector_id);
       }
 
-      result.push_back(VectorIndexSearchResultEntry {
+      // TODO(vector_index): does it handle kTombstone in db_entry.value?
+      result.push_back(DocVectorIndexSearchResultEntry {
         .encoded_distance = EncodeDistance(entry.distance),
         .key = KeyBuffer(db_entry.value),
       });
@@ -279,7 +281,7 @@ class VectorIndexImpl : public VectorIndex {
 
 } // namespace
 
-bool VectorIndex::BackfillDone() {
+bool DocVectorIndex::BackfillDone() {
   if (backfill_done_cache_.load()) {
     return true;
   }
@@ -291,7 +293,15 @@ bool VectorIndex::BackfillDone() {
   return false;
 }
 
-Result<VectorIndexPtr> CreateVectorIndex(
+void DocVectorIndex::ApplyReverseEntry(
+    rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht) {
+  DocHybridTimeBuffer ht_buf;
+  auto encoded_write_time = ht_buf.EncodeWithValueType(write_ht);
+  auto vector_id = dockv::EncodedDocVectorValue::FromSlice(value).id;
+  handler.Put(dockv::DocVectorKeyAsParts(vector_id, encoded_write_time), { &ybctid, 1 });
+}
+
+Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& log_prefix,
     const std::string& data_root_dir,
     rpc::ThreadPool& thread_pool,
@@ -300,19 +310,11 @@ Result<VectorIndexPtr> CreateVectorIndex(
     const qlexpr::IndexInfo& index_info,
     const DocDB& doc_db) {
   auto& options = index_info.vector_idx_options();
-  auto result = std::make_shared<VectorIndexImpl<std::vector<float>, float>>(
+  auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), hybrid_time,
       doc_db);
   RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool, options));
   return result;
 }
 
-void AddVectorIndexReverseEntry(
-    rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht) {
-  DocHybridTimeBuffer ht_buf;
-  auto encoded_write_time = ht_buf.EncodeWithValueType(write_ht);
-  handler.Put(
-      dockv::VectorIndexReverseEntryKeyPartsForValue(value, encoded_write_time), {&ybctid, 1});
-}
-
-}  // namespace yb::docdb
+} // namespace yb::docdb

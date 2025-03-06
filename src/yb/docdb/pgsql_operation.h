@@ -172,7 +172,7 @@ struct PgsqlReadOperationData {
   const TransactionOperationContext& txn_op_context;
   const YQLStorageIf& ql_storage;
   const ScopedRWOperation& pending_op;
-  VectorIndexPtr vector_index;
+  DocVectorIndexPtr vector_index;
 };
 
 class PgsqlReadOperation : public DocExprExecutor {

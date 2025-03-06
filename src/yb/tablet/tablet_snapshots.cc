@@ -21,10 +21,10 @@
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_vector_index.h"
+#include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
-#include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/vector_index.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/file_util.h"

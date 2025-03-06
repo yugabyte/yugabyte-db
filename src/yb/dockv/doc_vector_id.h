@@ -14,11 +14,11 @@
 #pragma once
 
 #include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+
+#include "yb/util/uuid.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
-
-#include "yb/util/kv_util.h"
-#include "yb/util/uuid.h"
 
 
 namespace yb::dockv {
@@ -61,8 +61,8 @@ class DocVectorValue final {
 
 bool IsNull(const DocVectorValue& v);
 
-KeyBuffer VectorIdKey(vector_index::VectorId vector_id);
-std::array<Slice, 3> VectorIndexReverseEntryKeyParts(Slice id, Slice encoded_write_time);
-std::array<Slice, 3> VectorIndexReverseEntryKeyPartsForValue(Slice value, Slice encoded_write_time);
+KeyBytes DocVectorKey(vector_index::VectorId vector_id);
+std::array<Slice, 3> DocVectorKeyAsParts(Slice id, Slice encoded_write_time);
+
 
 } // namespace yb::dockv
