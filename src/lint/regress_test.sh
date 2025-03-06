@@ -24,6 +24,21 @@ if ! [[ "$1" =~ /yb[^/]+$ ]]; then
   exit 1
 fi
 
+# Trailing whitespace.  Avoid enforcing it for lines not owned by YB such as
+# ported test lines without "yb" in them.
+if [[ "$1" != *.out ]]; then
+  sed_pattern='s/^/error:trailing_whitespace:Remove trailing whitespace:/'
+  if [[ "$1" =~ /yb\.port\.[^/]+$ ]]; then
+    grep -nE '(YB|Yb|yb).*\s+$' "$1" \
+      | sed "$sed_pattern"
+  else
+    # Dependency tests may have lines ported from upstream PG, but it is rare
+    # for such lines to have trailing whitespace.
+    grep -nE '\s+$' "$1" \
+      | sed "$sed_pattern"
+  fi
+fi
+
 if ! [[ "$1" =~ (expected/[^/]+\.out|specs/[^/]+\.spec|sql/[^/]+\.sql|\
 pg_partman/test/.*\.sql)$ ]]; then
   echo 'error:bad_regress_test_file_extension:'\

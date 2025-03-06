@@ -315,12 +315,12 @@ DELETE FROM main_table WHERE a IN (123, 456);
 SELECT * FROM main_table ORDER BY a, b;
 -- In YB we cannot rely on row order inside update so use multiple calls to check behavior.
 -- Note: trigger_func returns null so if called as before-trigger it will cancel the op.
--- Update rows where 'a' is already 50 (no modify_a notices): 
+-- Update rows where 'a' is already 50 (no modify_a notices):
 --   1. expect 1 modify_any notice (there are 2 rows but one has b=60 already).
 --   2. expect 1 after_upd_row notice (for the b=60 row as the other is cancelled by the trigger).
 --   3. expect 1 after_upd_stmt notice (once per statement).
 UPDATE main_table SET a = 50, b = 60 WHERE a = 50;
--- Update rows where 'a' is not 50: 
+-- Update rows where 'a' is not 50:
 --  1. expect 5 modify_a notices (one for each row).
 --  2. expect no modify_any or after_upd_row notices as modify_a trigger call cancels the op.
 --  3. expect 1 after_upd_stmt notice (once per statement).

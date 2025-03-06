@@ -306,15 +306,15 @@ EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_co
 EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
 with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2),
      cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2)
-SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1 
-UNION ALL 
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+UNION ALL
 SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
 
 /*+IndexScan(GH18347) SeqScan(GH18347_1) */
 with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2),
      cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2)
-SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1 
-UNION ALL 
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+UNION ALL
 SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
 
 -- Try variation.
@@ -328,15 +328,15 @@ EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_co
 EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
 with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2),
      cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2)
-SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1 
-UNION ALL 
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+UNION ALL
 SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
 
 /*+IndexScan(GH18347) SeqScan(GH18347_1) */
 with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2),
      cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2)
-SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1 
-UNION ALL 
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+UNION ALL
 SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
 
 -- Try a 1 element IN with row constructor. Should get an index scan since this turns into an equality.
@@ -350,8 +350,8 @@ EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_co
 EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
 with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2),
      cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2)
-SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1 
-UNION ALL 
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+UNION ALL
 SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
 
 /*+IndexScan(GH18347) SeqScan(GH18347_1) */
@@ -362,7 +362,7 @@ union all
 SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
 
 -- Try an IN with yb_hash_code(). Cannot do an index scan since the query execution code does not support this
--- so plan will have a sequantial scan. (This was hitting an assert before this issue was fixed.) 
+-- so plan will have a sequantial scan. (This was hitting an assert before this issue was fixed.)
 
 EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;
 

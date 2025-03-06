@@ -52,7 +52,7 @@ select pg_sleep(1);
 select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname='maintable_idx';
 
 -- test for refreshing materialized table view
-insert into maintable (c1, c2) values (6, 'sol'); 
+insert into maintable (c1, c2) values (6, 'sol');
 /*+IndexScan(maintable) IndexScan(materialized_maintable_view)*/
 refresh materialized view materialized_maintable_view;
 select pg_sleep(1);
@@ -154,7 +154,7 @@ select * from partitioned_table where v='2' order by (k);
 
 select pg_sleep(1);
 select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'p.idx' order by (indexrelname);
-  
+
 -- test for GIN idx_scan increment
 create table pendtest (ts tsvector);
 create index pendtest_idx on pendtest using gin(ts);
@@ -212,7 +212,7 @@ select * from mycolocatedtable where c3=8;
 select pg_sleep(1);
 select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'mycolocatedtable_index.' order by (indexrelname);
 
--- test for tablegroup 
+-- test for tablegroup
 create database test_db;
 \c test_db;
 create tablegroup test_tg;

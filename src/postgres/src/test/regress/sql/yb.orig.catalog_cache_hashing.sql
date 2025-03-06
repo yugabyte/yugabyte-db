@@ -69,10 +69,10 @@ BEGIN
       WHERE catcache_name = info.catcache_name
     LOOP
       FOR i IN 1..4 LOOP
-        /* 
+        /*
          * Construct the the expressions for the keys we will hash,
          * as an array of text. Each element is the name of a column
-         * in the table. The array always has 4 elements. If there are 
+         * in the table. The array always has 4 elements. If there are
          * fewer than 4 keys, the remaining elements are 'NULL'.
          *
          * Example key:
@@ -106,8 +106,8 @@ BEGIN
 
             casttxt := '((' || quote_literal(casttxt) || ')::oidvector)';
 
-          -- For some objects, PostgreSQL automatically converts the OID to the object name as a string. 
-          -- This is an issue because multiple functions can have the same name, so we need to use the 
+          -- For some objects, PostgreSQL automatically converts the OID to the object name as a string.
+          -- This is an issue because multiple functions can have the same name, so we need to use the
           -- raw OID as an integer to disambiguate.
           ELSIF attrec.atttypid IN (
                  'pg_catalog.regclass'::regtype,
@@ -121,10 +121,10 @@ BEGIN
             casttxt := '((' || quote_literal(fkeys.keys->>fkey) || ')::oid)';
           ELSE
             -- For other types, we just cast to the type of the column.
-            casttxt := '((' 
-                       || quote_literal(fkeys.keys->>fkey) 
-                       || ')::' 
-                       || format_type(attrec.atttypid, NULL) 
+            casttxt := '(('
+                       || quote_literal(fkeys.keys->>fkey)
+                       || ')::'
+                       || format_type(attrec.atttypid, NULL)
                        || ')';
           END IF;
 
@@ -179,7 +179,7 @@ BEGIN
 END
 $$;
 
--- Verify that we're testing all of the caches and 
+-- Verify that we're testing all of the caches and
 -- the right number of keys for each catalog cache.
 SELECT COUNT(DISTINCT catcache_name) FROM catcache_keys;
 
