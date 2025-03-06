@@ -32,11 +32,13 @@ namespace yb::docdb {
 
 using EncodedDistance = uint64_t;
 
-struct VectorIndexInsertEntry {
+extern const std::string kVectorIndexDirPrefix;
+
+struct DocVectorIndexInsertEntry {
   ValueBuffer value;
 };
 
-struct VectorIndexSearchResultEntry {
+struct DocVectorIndexSearchResultEntry {
   EncodedDistance encoded_distance;
   KeyBuffer key;
 
@@ -45,9 +47,9 @@ struct VectorIndexSearchResultEntry {
   }
 };
 
-class VectorIndex {
+class DocVectorIndex {
  public:
-  virtual ~VectorIndex() = default;
+  virtual ~DocVectorIndex() = default;
 
   virtual const TableId& table_id() const = 0;
   virtual Slice indexed_table_key_prefix() const = 0;
@@ -56,8 +58,8 @@ class VectorIndex {
   virtual HybridTime hybrid_time() const = 0;
 
   virtual Status Insert(
-      const VectorIndexInsertEntries& entries, const rocksdb::UserFrontiers* frontiers) = 0;
-  virtual Result<VectorIndexSearchResult> Search(
+      const DocVectorIndexInsertEntries& entries, const rocksdb::UserFrontiers* frontiers) = 0;
+  virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
   virtual Status Flush() = 0;
@@ -70,11 +72,14 @@ class VectorIndex {
 
   bool BackfillDone();
 
+  static void ApplyReverseEntry(
+      rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht);
+
  private:
   std::atomic<bool> backfill_done_cache_{false};
 };
 
-Result<VectorIndexPtr> CreateVectorIndex(
+Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& log_prefix,
     const std::string& data_root_dir,
     rpc::ThreadPool& thread_pool,
@@ -82,10 +87,5 @@ Result<VectorIndexPtr> CreateVectorIndex(
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
     const DocDB& doc_db);
-
-extern const std::string kVectorIndexDirPrefix;
-
-void AddVectorIndexReverseEntry(
-    rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht);
 
 }  // namespace yb::docdb

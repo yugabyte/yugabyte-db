@@ -37,6 +37,7 @@
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
@@ -46,16 +47,15 @@
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_storage_interface.h"
-#include "yb/docdb/vector_index.h"
 
 #include "yb/dockv/doc_path.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value_util.h"
 #include "yb/dockv/reader_projection.h"
-#include "yb/dockv/vector_id.h"
 
 #include "yb/gutil/macros.h"
 
@@ -825,8 +825,9 @@ std::string DocDbStatsToString(const DocDBStatistics* doc_db_stats) {
 class VectorIndexKeyProvider {
  public:
   VectorIndexKeyProvider(
-      VectorIndexSearchResult& search_result, PgsqlResponsePB& response, VectorIndex& vector_index,
-      Slice vector_slice, size_t max_results, WriteBuffer& result_buffer)
+      DocVectorIndexSearchResult& search_result, PgsqlResponsePB& response,
+      DocVectorIndex& vector_index, Slice vector_slice, size_t max_results,
+      WriteBuffer& result_buffer)
       : search_result_(search_result), response_(response), vector_index_(vector_index),
         vector_slice_(vector_slice), max_results_(max_results), result_buffer_(result_buffer) {}
 
@@ -861,7 +862,7 @@ class VectorIndexKeyProvider {
       RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
                      vector_index_.column_id(), table_row.ToString());
       auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
-      search_result_.push_back(VectorIndexSearchResultEntry {
+      search_result_.push_back(DocVectorIndexSearchResultEntry {
         // TODO(vector_index) Avoid decoding vector_slice for each vector
         .encoded_distance = VERIFY_RESULT(vector_index_.Distance(
             vector_slice_, encoded_value.data)),
@@ -890,9 +891,9 @@ class VectorIndexKeyProvider {
   }
 
  private:
-  VectorIndexSearchResult& search_result_;
+  DocVectorIndexSearchResult& search_result_;
   PgsqlResponsePB& response_;
-  VectorIndex& vector_index_;
+  DocVectorIndex& vector_index_;
   Slice vector_slice_;
   const size_t max_results_;
   WriteBuffer& result_buffer_;
@@ -938,9 +939,9 @@ class PgsqlVectorFilter {
       return true;
     }
     ++num_checked_entries_;
-    auto key = dockv::VectorIdKey(vector_id);
+    auto key = dockv::DocVectorKey(vector_id);
     // TODO(vector_index) handle failure
-    auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key.AsSlice()));
+    auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key));
     if (ybctid.empty() || ybctid[0] == dockv::ValueEntryTypeAsChar::kTombstone) {
       return false;
     }

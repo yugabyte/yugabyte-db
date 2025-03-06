@@ -66,6 +66,7 @@
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_compaction_filter_intents.h"
@@ -77,7 +78,6 @@
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
-#include "yb/docdb/vector_index.h"
 
 #include "yb/dockv/value_type.h"
 
@@ -1999,7 +1999,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
         table_info->schema().table_properties().is_ysql_catalog_table(),
         &subtransaction_metadata));
 
-    docdb::VectorIndexPtr vector_index;
+    docdb::DocVectorIndexPtr vector_index;
     TableId index_table_id;
     if (pgsql_read_request.has_index_request()) {
       index_table_id = pgsql_read_request.index_request().table_id();

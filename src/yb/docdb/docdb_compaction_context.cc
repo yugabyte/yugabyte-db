@@ -774,7 +774,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   VLOG(4) << "Feed: " << internal_key.ToDebugHexString() << "/"
           << dockv::SubDocKey::DebugSliceToString(key) << " => " << value.ToDebugHexString();
 
-  // TODO(vector-index) implement better handing for vector index metadata, it's kept in SST now.
+  // TODO(vector_index) implement better handing for vector index metadata, it's kept in SST now.
   if (dockv::DecodeKeyEntryType(key) == dockv::KeyEntryType::kVectorIndexMetadata) {
     return ForwardToNextFeed(internal_key, value);
   }

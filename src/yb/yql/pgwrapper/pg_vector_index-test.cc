@@ -19,7 +19,7 @@
 #include "yb/consensus/log.h"
 
 #include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/vector_index.h"
+#include "yb/docdb/doc_vector_index.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 

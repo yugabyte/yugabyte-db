@@ -91,14 +91,14 @@ std::vector<VectorWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbor
     return {};
   }
   MaxDistanceQueue<DistanceResult> queue;
-  for (const auto& vertex_id : vertex_ids) {
-    auto distance = distance_fn(vertex_id, query);
-    auto new_element = VectorWithDistance<DistanceResult>(vertex_id, distance);
+  for (const auto& vector_id : vertex_ids) {
+    auto distance = distance_fn(vector_id, query);
+    auto new_element = VectorWithDistance<DistanceResult>(vector_id, distance);
     if (queue.size() < num_results || new_element < queue.top()) {
       // Add a new element if there is a room in the result set, or if the new element is better
       // than the worst element of the result set. The comparsion is done using the (distance,
-      // vertex_id) as a lexicographic pair, so we should prefer elements that have the lowest
-      // vertex_id among those that have the same distance from the query.
+      // vector_id) as a lexicographic pair, so we should prefer elements that have the lowest
+      // vector_id among those that have the same distance from the query.
       queue.push(new_element);
     }
     if (queue.size() > num_results) {
@@ -125,15 +125,15 @@ Result<VectorIndexIfPtr<Vector, DistanceResult>> Merge(
 
   size_t total_max_vectors = 0;
   for (const auto& index : indexes) {
-    total_max_vectors += index->MaxVectors();
+    total_max_vectors += index->Capacity();
   }
 
   RETURN_NOT_OK(merged_index->Reserve(
       total_max_vectors, std::thread::hardware_concurrency(), std::thread::hardware_concurrency()));
 
   for (const auto& index : indexes) {
-    for (const auto& [vertex_id, vector] : *index) {
-      RETURN_NOT_OK(merged_index->Insert(vertex_id, vector));
+    for (const auto& [vector_id, vector] : *index) {
+      RETURN_NOT_OK(merged_index->Insert(vector_id, vector));
     }
   }
 

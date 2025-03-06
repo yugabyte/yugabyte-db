@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/dockv/vector_id.h"
+#include "yb/dockv/doc_vector_id.h"
 
 #include "yb/common/ql_value.h"
 
@@ -34,8 +34,6 @@ namespace {
 
 constexpr const size_t kEncodedVectorIdValueSize = 1 + kUuidSize;
 constexpr const size_t kEncodedVectorIdSize = kEncodedVectorIdValueSize + 1;
-constexpr std::array<char, 2> kVectorIdKeyPrefix =
-    { dockv::KeyEntryTypeAsChar::kVectorIndexMetadata, dockv::KeyEntryTypeAsChar::kVectorId };
 
 char* GrowAtLeast(std::string* buffer, size_t size) {
   const auto current_size = buffer->size();
@@ -122,28 +120,29 @@ bool IsNull(const dockv::DocVectorValue& v) {
   return IsNull(v.value());
 }
 
-KeyBuffer VectorIdKey(vector_index::VectorId vector_id) {
-  KeyBuffer key;
-  key.Append(Slice(kVectorIdKeyPrefix));
-  key.Append(vector_id.AsSlice());
+// Vector Key is used for reverse entries only with the following format:
+// |----------------------------------------------------------------------|
+// |                       encoded full vector key                        |
+// |----------------------------------------------------------------------|
+// |               encoded vector id key                |                 |
+// |----------------------------------------------------------------------|
+// | kVectorIndexMetadata | kVectorId |    vector id    | doc hybrid time |
+// |----------------------------------------------------------------------|
+// |        1 byte        |  1 byte   | kUuidSize bytes |     N bytes     |
+// |----------------------------------------------------------------------|
+
+constexpr std::array<char, 2> kVectorIdKeyPrefix =
+    { dockv::KeyEntryTypeAsChar::kVectorIndexMetadata, dockv::KeyEntryTypeAsChar::kVectorId };
+
+KeyBytes DocVectorKey(vector_index::VectorId vector_id) {
+  KeyBytes key;
+  key.AppendRawBytes(Slice(kVectorIdKeyPrefix));
+  key.AppendRawBytes(vector_id.AsSlice());
   return key;
 }
 
-std::array<Slice, 3> VectorIndexReverseEntryKeyPartsForValue(
-    Slice value, Slice encoded_write_time) {
-  return std::array<Slice, 3>{
-    Slice(kVectorIdKeyPrefix),
-    EncodedDocVectorValue::FromSlice(value).id,
-    encoded_write_time,
-  };
-}
-
-std::array<Slice, 3> VectorIndexReverseEntryKeyParts(Slice id, Slice encoded_write_time) {
-  return std::array<Slice, 3>{
-    Slice(kVectorIdKeyPrefix),
-    id,
-    encoded_write_time,
-  };
+std::array<Slice, 3> DocVectorKeyAsParts(Slice id, Slice encoded_write_time) {
+  return std::array<Slice, 3>{ Slice(kVectorIdKeyPrefix), id, encoded_write_time };
 }
 
 } // namespace yb::dockv

@@ -67,12 +67,12 @@ class HnswlibIndex :
 
   std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
     return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
-        *this, hnsw_->vectors_begin(), options_.dimensions);
+        hnsw_->vectors_begin(), options_.dimensions);
   }
 
   std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> EndImpl() const override {
     return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
-        *this, hnsw_->vectors_end(), options_.dimensions);
+        hnsw_->vectors_end(), options_.dimensions);
   }
 
   Status Reserve(size_t num_vectors, size_t, size_t) override {
@@ -101,15 +101,17 @@ class HnswlibIndex :
     return Status::OK();
   }
 
-  size_t MaxVectors() const override {
+  size_t Size() const override {
+    return hnsw_->getCurrentElementCount();
+  }
+
+  size_t Capacity() const override {
     return hnsw_->getInternalParameters().max_elements;
   }
 
   Status DoSaveToFile(const std::string& path) {
     try {
       hnsw_->saveIndex(path);
-      // TODO(vector-index) temp solution for hnsw lib which accepts only integers as vector id.
-      // Need to save mapping.
     } catch (std::exception& e) {
       return STATUS_FORMAT(
           IOError, "Failed to save Hnswlib index to file $0: $1", path, e.what());
@@ -122,8 +124,6 @@ class HnswlibIndex :
     RETURN_NOT_OK(Reserve(0, 0, 0));
     try {
       hnsw_->loadIndex(path, space_.get());
-      // TODO(vector-index) temp solution for hnsw lib which accepts only integers as vector id.
-      // Need to load mapping.
     } catch (std::exception& e) {
       return STATUS_FORMAT(
           IOError, "Failed to load Hnswlib index from file $0: $1", path, e.what());
@@ -150,7 +150,7 @@ class HnswlibIndex :
     return result;
   }
 
-  Result<Vector> GetVector(VectorId vertex_id) const override {
+  Result<Vector> GetVector(VectorId vector_id) const override {
     return STATUS(
         NotSupported, "Hnswlib wrapper currently does not allow retriving vectors by id");
   }
@@ -230,8 +230,8 @@ class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
   using VectorIndex = HnswlibIndex<Vector, DistanceResult>;
   using HNSWIterator = hnswlib::VectorIterator<DistanceResult, VectorId>;
 
-  HnswlibVectorIterator(const VectorIndex& index, HNSWIterator position, int dimensions)
-      : internal_iterator_(position), dimensions_(dimensions), index_(index) {}
+  HnswlibVectorIterator(HNSWIterator position, int dimensions)
+      : internal_iterator_(position), dimensions_(dimensions) {}
 
  protected:
   std::pair<VectorId, Vector> Dereference() const override {
@@ -252,9 +252,6 @@ class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
  private:
   HNSWIterator internal_iterator_;
   int dimensions_;
-
-  // TODO(vector-index) refer to https://github.com/yugabyte/yugabyte-db/issues/25041.
-  const VectorIndex& index_;
 };
 
 }  // namespace
