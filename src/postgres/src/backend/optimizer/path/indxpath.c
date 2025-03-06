@@ -42,6 +42,7 @@
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
+#include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/rel.h"
 
@@ -1134,7 +1135,7 @@ yb_hash_code_on_left(ScalarArrayOpExpr *saop)
 
 	Assert(leftop != NULL);
 
-	return IsA(leftop, FuncExpr) && ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID;
+	return IsA(leftop, FuncExpr) && ((FuncExpr *) leftop)->funcid == F_YB_HASH_CODE;
 }
 
 /*
@@ -2845,7 +2846,7 @@ is_yb_hash_code_call(Node *clause)
 {
 	return (clause &&
 			IsA(clause, FuncExpr) &&
-			(((FuncExpr *) clause)->funcid == YB_HASH_CODE_OID));
+			(((FuncExpr *) clause)->funcid == F_YB_HASH_CODE));
 }
 
 
@@ -4520,7 +4521,7 @@ match_index_to_operand(Node *operand,
 			 */
 			FuncExpr   *fn = (FuncExpr *) operand;
 
-			if (fn->funcid == YB_HASH_CODE_OID
+			if (fn->funcid == F_YB_HASH_CODE
 				&& fn->args->length > 0
 				&& index->nhashcolumns == fn->args->length)
 			{

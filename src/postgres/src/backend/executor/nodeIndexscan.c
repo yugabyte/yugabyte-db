@@ -52,6 +52,7 @@
 #include "access/xact.h"
 #include "access/yb_scan.h"
 #include "optimizer/clauses.h"
+#include "utils/fmgroids.h"
 
 /*
  * When an ordering operator is used, tuples fetched from the index that
@@ -1374,7 +1375,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 			Assert(leftop != NULL);
 
 			if (IsA(leftop, FuncExpr)
-				&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
+				&& ((FuncExpr *) leftop)->funcid == F_YB_HASH_CODE)
 			{
 				flags |= YB_SK_IS_HASHED;
 			}
@@ -1511,7 +1512,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				 * Check for yb_hash_code() and set flag if present.
 				 */
 				if (IsA(leftop, FuncExpr)
-					&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
+					&& ((FuncExpr *) leftop)->funcid == F_YB_HASH_CODE)
 					flags |= YB_SK_IS_HASHED;
 
 				if (!(IsA(leftop, Var) &&

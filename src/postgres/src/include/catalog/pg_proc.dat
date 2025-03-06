@@ -7711,9 +7711,6 @@
 { oid => '2404', descr => 'I/O',
   proname => 'int2recv', prorettype => 'int2', proargtypes => 'internal',
   prosrc => 'int2recv' },
-# YB_TODO(sergei@yugabyte) Review changes for "PG_PROC_INT2SEND_OID"
-# - PG13 doesn't allow having "oid_symbol" for proc.
-# - Please define your symbol elsewhere.
 { oid => '2405', descr => 'I/O',
   proname => 'int2send', prorettype => 'bytea', proargtypes => 'int2',
   prosrc => 'int2send' },
@@ -11856,10 +11853,6 @@
   proname => 'brin_minmax_multi_summary_send', provolatile => 's',
   prorettype => 'bytea', proargtypes => 'pg_brin_minmax_multi_summary',
   prosrc => 'brin_minmax_multi_summary_send' },
-
-# YB_TODO(tanuj@yugabyte) Review changes for YB_HASH_CODE_OID.
-# - PG13 doesn't allow having "oid_symbol" for proc.
-# - Its definition is currently defined in "yb_scan.h".
 { oid => '8020', descr => 'function to compute internal hash code of given values',
   proname => 'yb_hash_code', provariadic => 'any', proisstrict => 'f',
   prorettype => 'int4', proargtypes => 'any', proallargtypes => '{any}',
