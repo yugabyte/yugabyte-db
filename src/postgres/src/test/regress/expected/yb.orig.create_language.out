@@ -6,11 +6,11 @@ NOTICE:  drop cascades to function myfunc(integer)
 CREATE LANGUAGE plpgsql;
 CREATE FUNCTION test() RETURNS INTEGER AS $$begin return 1; end$$ LANGUAGE plpgsql;
 SELECT * FROM test();
- test
+ test 
 ------
     1
 (1 row)
-  
+
 DROP LANGUAGE plpgsql CASCADE;
 ERROR:  cannot drop language plpgsql because extension plpgsql requires it
 HINT:  You can drop extension plpgsql instead.

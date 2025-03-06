@@ -15,16 +15,16 @@ INSERT INTO items VALUES (1, '[1.0, 0.4, 0.3]');
 INSERT INTO items VALUES (2, '[0.001, 0.432, 0.32]');
 \d items
                                Table "public.items"
-  Column   |   Type    | Collation | Nullable |              Default
+  Column   |   Type    | Collation | Nullable |              Default              
 -----------+-----------+-----------+----------+-----------------------------------
  id        | bigint    |           | not null | nextval('items_id_seq'::regclass)
- embedding | vector(3) |           |          |
+ embedding | vector(3) |           |          | 
 Indexes:
     "items_pkey" PRIMARY KEY, lsm (id HASH)
     "items_embedding_idx" ybdummyann (embedding)
 
 EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
-                       QUERY PLAN
+                       QUERY PLAN                        
 ---------------------------------------------------------
  Limit
    ->  Index Scan using items_embedding_idx on items
@@ -32,14 +32,14 @@ EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]'
 (3 rows)
 
 SELECT * FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
- id |     embedding
+ id |     embedding      
 ----+--------------------
   1 | [1,0.4,0.3]
   2 | [0.001,0.432,0.32]
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT embedding FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Limit
    ->  Index Only Scan using items_embedding_idx on items
@@ -47,7 +47,7 @@ EXPLAIN (COSTS OFF) SELECT embedding FROM items ORDER BY embedding <-> '[1.0, 0.
 (3 rows)
 
 SELECT embedding FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
-     embedding
+     embedding      
 --------------------
  [1,0.4,0.3]
  [0.001,0.432,0.32]
@@ -55,7 +55,7 @@ SELECT embedding FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
 
 DELETE FROM items WHERE id = 1;
 SELECT * FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
- id |     embedding
+ id |     embedding      
 ----+--------------------
   2 | [0.001,0.432,0.32]
 (1 row)
@@ -109,7 +109,7 @@ INSERT INTO items (embedding) VALUES
 ('[10,10,10,10,10,1,1,1,1,1]');
 -- Reference query.
 /*+SeqScan(items)*/ EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Sort
    Sort Key: ((embedding <-> '[1,1,1,1,1,1,1,1,1,1]'::vector))
@@ -117,7 +117,7 @@ INSERT INTO items (embedding) VALUES
 (3 rows)
 
 /*+SeqScan(items)*/ SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
- id |          embedding
+ id |          embedding          
 ----+-----------------------------
   1 | [1,1,1,1,1,1,1,1,1,1]
   2 | [1,1,1,1,1,1,1,1,1,1.1]
@@ -151,14 +151,14 @@ INSERT INTO items (embedding) VALUES
 (29 rows)
 
 /*+IndexScan(items)*/ EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Index Scan using items_embedding_idx on items
    Order By: (embedding <-> '[1,1,1,1,1,1,1,1,1,1]'::vector)
 (2 rows)
 
 /*+IndexScan(items)*/ SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
- id |          embedding
+ id |          embedding          
 ----+-----------------------------
   1 | [1,1,1,1,1,1,1,1,1,1]
   2 | [1,1,1,1,1,1,1,1,1,1.1]
@@ -193,7 +193,7 @@ INSERT INTO items (embedding) VALUES
 
 -- Reference query.
 /*+SeqScan(items)*/ EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[10,10,10,10,10,1,1,1,1,1]';
-                             QUERY PLAN
+                             QUERY PLAN                             
 --------------------------------------------------------------------
  Sort
    Sort Key: ((embedding <-> '[10,10,10,10,10,1,1,1,1,1]'::vector))
@@ -201,7 +201,7 @@ INSERT INTO items (embedding) VALUES
 (3 rows)
 
 /*+SeqScan(items)*/ SELECT * FROM items ORDER BY embedding <-> '[10,10,10,10,10,1,1,1,1,1]';
- id |          embedding
+ id |          embedding          
 ----+-----------------------------
  29 | [10,10,10,10,10,1,1,1,1,1]
  27 | [8,8.1,8.2,1,1,1,1,1,1,1]
@@ -235,14 +235,14 @@ INSERT INTO items (embedding) VALUES
 (29 rows)
 
 /*+IndexScan(items)*/ EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[10,10,10,10,10,1,1,1,1,1]';
-                            QUERY PLAN
+                            QUERY PLAN                            
 ------------------------------------------------------------------
  Index Scan using items_embedding_idx on items
    Order By: (embedding <-> '[10,10,10,10,10,1,1,1,1,1]'::vector)
 (2 rows)
 
 /*+IndexScan(items)*/ SELECT * FROM items ORDER BY embedding <-> '[10,10,10,10,10,1,1,1,1,1]';
- id |          embedding
+ id |          embedding          
 ----+-----------------------------
  29 | [10,10,10,10,10,1,1,1,1,1]
  27 | [8,8.1,8.2,1,1,1,1,1,1,1]
@@ -283,14 +283,14 @@ DROP INDEX items_embedding_idx;
 CREATE INDEX ON items USING ybdummyann (embedding vector_l2_ops);
 WARNING:  ybdummyann is meant for internal-testing only and does not yield ordered results
 EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Index Scan using items_embedding_idx on items
    Order By: (embedding <-> '[1,1,1,1,1,1,1,1,1,1]'::vector)
 (2 rows)
 
 SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
- id |          embedding
+ id |          embedding          
 ----+-----------------------------
   1 | [1,1,1,1,1,1,1,1,1,1]
   2 | [1,1,1,1,1,1,1,1,1,1.1]

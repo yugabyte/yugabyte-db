@@ -7,25 +7,25 @@ INSERT INTO root_list_parent VALUES ('a', 1, 2);
 -- Add a column to the parent table, verify that selecting data still works.
 ALTER TABLE root_list_parent ADD COLUMN foo VARCHAR(2);
 SELECT * FROM root_list_parent;
- list_part_key | hash_part_key | range_part_key | foo
+ list_part_key | hash_part_key | range_part_key | foo 
 ---------------+---------------+----------------+-----
- a             |             1 |              2 |
+ a             |             1 |              2 | 
 (1 row)
 
 -- Alter column type at the parent table.
 ALTER TABLE root_list_parent ALTER COLUMN foo TYPE VARCHAR(3);
 INSERT INTO root_list_parent VALUES ('a', 1, 2, 'abc');
 SELECT * FROM root_list_parent ORDER BY foo;
- list_part_key | hash_part_key | range_part_key | foo
+ list_part_key | hash_part_key | range_part_key | foo 
 ---------------+---------------+----------------+-----
  a             |             1 |              2 | abc
- a             |             1 |              2 |
+ a             |             1 |              2 | 
 (2 rows)
 
 -- Drop a column from the parent table, verify that selecting data still works.
 ALTER TABLE root_list_parent DROP COLUMN foo;
 SELECT * FROM root_list_parent;
- list_part_key | hash_part_key | range_part_key
+ list_part_key | hash_part_key | range_part_key 
 ---------------+---------------+----------------
  a             |             1 |              2
  a             |             1 |              2
@@ -38,7 +38,7 @@ ALTER TABLE root_list_parent ADD COLUMN foo text not null DEFAULT 'abc'; -- pass
 -- Rename a column belonging to the parent table.
 ALTER TABLE root_list_parent RENAME COLUMN list_part_key TO list_part_key_renamed;
 SELECT * FROM child_partition ORDER BY foo;
- list_part_key_renamed | hash_part_key | range_part_key | foo
+ list_part_key_renamed | hash_part_key | range_part_key | foo 
 -----------------------+---------------+----------------+-----
  a                     |             1 |              2 | abc
  a                     |             1 |              2 | abc
@@ -53,8 +53,9 @@ ERROR:  duplicate key value violates unique constraint "child_partition_list_par
 ALTER TABLE root_list_parent DROP CONSTRAINT constraint_test;
 INSERT INTO child_partition VALUES ('a', 1, 2), ('a', 1, 2);
 SELECT * FROM root_list_parent ORDER BY foo;
- list_part_key_renamed | hash_part_key | range_part_key | foo
+ list_part_key_renamed | hash_part_key | range_part_key | foo 
 -----------------------+---------------+----------------+-----
  a                     |             1 |              2 | abc
  a                     |             1 |              2 | abc
 (2 rows)
+

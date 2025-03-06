@@ -11,14 +11,14 @@ INSERT INTO yb_char_in_value VALUES (13, chr(1042));
 INSERT INTO yb_char_in_value VALUES (14, chr(1043));
 INSERT INTO yb_char_in_value VALUES (15, chr(1044));
 SELECT * FROM yb_char_in_value ORDER BY k;
- k  | c
+ k  | c 
 ----+---
   1 | a
   2 | b
   3 | c
   4 | d
   5 | e
- 10 |
+ 10 | 
  11 | А
  12 | Б
  13 | В
@@ -27,7 +27,7 @@ SELECT * FROM yb_char_in_value ORDER BY k;
 (11 rows)
 
 SELECT * FROM yb_char_in_value ORDER BY c;
- k  | c
+ k  | c 
 ----+---
   1 | a
   2 | b
@@ -39,23 +39,23 @@ SELECT * FROM yb_char_in_value ORDER BY c;
  13 | В
  14 | Г
  15 | Д
- 10 |
+ 10 | 
 (11 rows)
 
 SELECT * FROM yb_char_in_value WHERE k = 1;
- k | c
+ k | c 
 ---+---
  1 | a
 (1 row)
 
 SELECT * FROM yb_char_in_value WHERE c = 'a';
- k | c
+ k | c 
 ---+---
  1 | a
 (1 row)
 
 SELECT * FROM yb_char_in_value WHERE c = chr(1041);
- k  | c
+ k  | c 
 ----+---
  12 | Б
 (1 row)
@@ -73,7 +73,7 @@ INSERT INTO yb_char_in_key VALUES (chr(1042));
 INSERT INTO yb_char_in_key VALUES (chr(1043));
 INSERT INTO yb_char_in_key VALUES (chr(1044));
 SELECT * FROM yb_char_in_key ORDER BY ck;
- ck
+ ck 
 ----
  a
  b
@@ -88,20 +88,20 @@ SELECT * FROM yb_char_in_key ORDER BY ck;
 (10 rows)
 
 SELECT * FROM yb_char_in_key WHERE ck = 'a';
- ck
+ ck 
 ----
  a
 (1 row)
 
 SELECT * FROM yb_char_in_key WHERE ck = chr(1042);
- ck
+ ck 
 ----
  В
 (1 row)
 
 set yb_enable_expression_pushdown to off;
 SELECT * FROM yb_char_in_key ORDER BY ck;
- ck
+ ck 
 ----
  a
  b
@@ -116,13 +116,13 @@ SELECT * FROM yb_char_in_key ORDER BY ck;
 (10 rows)
 
 SELECT * FROM yb_char_in_key WHERE ck = 'a';
- ck
+ ck 
 ----
  a
 (1 row)
 
 SELECT * FROM yb_char_in_key WHERE ck = chr(1042);
- ck
+ ck 
 ----
  В
 (1 row)
@@ -143,25 +143,25 @@ INSERT INTO yb_charn_in_value(f1) VALUES ('abcde');
 ERROR:  value too long for type character(4)
 INSERT INTO yb_charn_in_value(f1) VALUES ('abcd    ');
 SELECT * FROM yb_charn_in_value ORDER BY f1;
-  f1
+  f1  
 ------
   abc
- a
- ab
- abc
- abc
+ a   
+ ab  
+ abc 
+ abc 
  abcd
  abcd
 (7 rows)
 
 SELECT * FROM yb_charn_in_value WHERE f1 = 'ab';
-  f1
+  f1  
 ------
- ab
+ ab  
 (1 row)
 
 SELECT * FROM yb_charn_in_value WHERE f1 = 'abcd';
-  f1
+  f1  
 ------
  abcd
  abcd
@@ -181,23 +181,23 @@ ERROR:  value too long for type character(4)
 INSERT INTO yb_charn_in_key(f1) VALUES ('abcd    ');
 ERROR:  duplicate key value violates unique constraint "yb_charn_in_key_pkey"
 SELECT * FROM yb_charn_in_key ORDER BY f1;
-  f1
+  f1  
 ------
   abc
- a
- ab
- abc
+ a   
+ ab  
+ abc 
  abcd
 (5 rows)
 
 SELECT * FROM yb_charn_in_key WHERE f1 = 'ab';
-  f1
+  f1  
 ------
- ab
+ ab  
 (1 row)
 
 SELECT * FROM yb_charn_in_key WHERE f1 = 'abcd';
-  f1
+  f1  
 ------
  abcd
 (1 row)

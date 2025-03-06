@@ -26,34 +26,34 @@ INSERT INTO VARCHAR_TBL (f1) VALUES ('cd');
 ERROR:  value too long for type character varying(1)
 INSERT INTO VARCHAR_TBL (f1) VALUES ('c     ');
 SELECT '' AS seven, f1 FROM VARCHAR_TBL;
- seven | f1
+ seven | f1 
 -------+----
        | a
        | A
        | 1
        | 2
        | 3
-       |
+       | 
        | c
 (7 rows)
 
 SELECT '' AS six, c.f1
    FROM VARCHAR_TBL c
    WHERE c.f1 <> 'a';
- six | f1
+ six | f1 
 -----+----
      | A
      | 1
      | 2
      | 3
-     |
+     | 
      | c
 (6 rows)
 
 SELECT '' AS one, c.f1
    FROM VARCHAR_TBL c
    WHERE c.f1 = 'a';
- one | f1
+ one | f1 
 -----+----
      | a
 (1 row)
@@ -61,32 +61,32 @@ SELECT '' AS one, c.f1
 SELECT '' AS five, c.f1
    FROM VARCHAR_TBL c
    WHERE c.f1 < 'a';
- five | f1
+ five | f1 
 ------+----
       | A
       | 1
       | 2
       | 3
-      |
+      | 
 (5 rows)
 
 SELECT '' AS six, c.f1
    FROM VARCHAR_TBL c
    WHERE c.f1 <= 'a';
- six | f1
+ six | f1 
 -----+----
      | a
      | A
      | 1
      | 2
      | 3
-     |
+     | 
 (6 rows)
 
 SELECT '' AS one, c.f1
    FROM VARCHAR_TBL c
    WHERE c.f1 > 'a';
- one | f1
+ one | f1 
 -----+----
      | c
 (1 row)
@@ -94,7 +94,7 @@ SELECT '' AS one, c.f1
 SELECT '' AS two, c.f1
    FROM VARCHAR_TBL c
    WHERE c.f1 >= 'a';
- two | f1
+ two | f1 
 -----+----
      | a
      | c
@@ -114,10 +114,11 @@ INSERT INTO VARCHAR_TBL (f1) VALUES ('abcde');
 ERROR:  value too long for type character varying(4)
 -- YB note: add query ordering to match upstream PG output ordering.
 SELECT '' AS four, * FROM VARCHAR_TBL ORDER BY 1, 2;
- four |  f1
+ four |  f1  
 ------+------
       | a
       | ab
       | abcd
       | abcd
 (4 rows)
+

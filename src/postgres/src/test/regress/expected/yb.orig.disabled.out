@@ -17,9 +17,9 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1872. React with thumb
 SELECT pg_notify('channel', 'text');
 WARNING:  NOTIFY not supported yet and will be ignored
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1872. React with thumbs up to raise its priority
- pg_notify
+ pg_notify 
 -----------
-
+ 
 (1 row)
 
 LISTEN channel;

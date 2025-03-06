@@ -64,7 +64,7 @@ LINE 1: INSERT INTO LINE_TBL VALUES ('[(1,2),(1,2)]');
 INSERT INTO LINE_TBL VALUES (line(point '(1,0)', point '(1,0)'));
 ERROR:  invalid line specification: must be two distinct points
 select * from LINE_TBL;
-                       s
+                       s                        
 ------------------------------------------------
  {0,-1,5}
  {1,0,5}
@@ -80,7 +80,8 @@ select * from LINE_TBL;
 
 select '{nan, 1, nan}'::line = '{nan, 1, nan}'::line as true,
 	   '{nan, 1, nan}'::line = '{nan, 2, nan}'::line as false;
- true | false
+ true | false 
 ------+-------
  t    | f
 (1 row)
+

@@ -113,14 +113,14 @@
 --
 -- Column 'ident' should be sorted in ASC for this SELECT
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
-                                 QUERY PLAN
+                                 QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Scan using airport_type_region_idx on airports
    Index Cond: ((type = 'closed'::text) AND (iso_region = 'US-CA'::bpchar))
 (2 rows)
 
 SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
-  ident  |  type  |                     name                      | elevation_ft | continent | iso_country | iso_region |     municipality     | gps_code | iata_code | local_code |              coordinates
+  ident  |  type  |                     name                      | elevation_ft | continent | iso_country | iso_region |     municipality     | gps_code | iata_code | local_code |              coordinates               
 ---------+--------+-----------------------------------------------+--------------+-----------+-------------+------------+----------------------+----------+-----------+------------+----------------------------------------
  0CA1    | closed | Northside Airpark                             |          190 | NA        | US          | US-CA      | Santa Maria          |          |           |            | 34.9883003235, -120.458000183
  28CL    | closed | Borax Heliport                                |         2400 | NA        | US          | US-CA      | Boron                |          |           |            | 35.030498, -117.708
@@ -190,7 +190,7 @@ SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
 -- This query the first 10 rows.
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
   ORDER BY ident LIMIT 10;
-                                        QUERY PLAN
+                                        QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Limit
    ->  Index Scan using airport_type_region_idx on airports
@@ -199,7 +199,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'medium_airport' AND iso
 
 SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
   ORDER BY ident LIMIT 10;
- ident |      type      |                       name                       | elevation_ft | continent | iso_country | iso_region |    municipality    | gps_code | iata_code | local_code |              coordinates
+ ident |      type      |                       name                       | elevation_ft | continent | iso_country | iso_region |    municipality    | gps_code | iata_code | local_code |              coordinates               
 -------+----------------+--------------------------------------------------+--------------+-----------+-------------+------------+--------------------+----------+-----------+------------+----------------------------------------
  KACV  | medium_airport | California Redwood Coast-Humboldt County Airport |          221 | NA        | US          | US-CA      | Arcata/Eureka      | KACV     | ACV       | ACV        | 40.978101, -124.109
  KBFL  | medium_airport | Meadows Field                                    |          510 | NA        | US          | US-CA      | Bakersfield        | KBFL     | BFL       | BFL        | 35.43360138, -119.0569992
@@ -217,7 +217,7 @@ SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
 -- This query the last 10 rows.
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
   ORDER BY ident DESC LIMIT 10;
-                                        QUERY PLAN
+                                        QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Limit
    ->  Index Scan Backward using airport_type_region_idx on airports
@@ -226,7 +226,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'medium_airport' AND iso
 
 SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
   ORDER BY ident DESC LIMIT 10;
- ident |      type      |                    name                    | elevation_ft | continent | iso_country | iso_region |   municipality   | gps_code | iata_code | local_code |              coordinates
+ ident |      type      |                    name                    | elevation_ft | continent | iso_country | iso_region |   municipality   | gps_code | iata_code | local_code |              coordinates               
 -------+----------------+--------------------------------------------+--------------+-----------+-------------+------------+------------------+----------+-----------+------------+----------------------------------------
  KWJF  | medium_airport | General WM J Fox Airfield                  |         2351 | NA        | US          | US-CA      | Lancaster        | KWJF     | WJF       | WJF        | 34.74110031, -118.2190018
  KVNY  | medium_airport | Van Nuys Airport                           |          802 | NA        | US          | US-CA      | Van Nuys         | KVNY     | VNY       | VNY        | 34.209800720215, -118.48999786377
@@ -239,3 +239,4 @@ SELECT * FROM airports WHERE type = 'medium_airport' AND iso_region = 'US-CA'
  KSMX  | medium_airport | Santa Maria Pub/Capt G Allan Hancock Field |          261 | NA        | US          | US-CA      | Santa Maria      | KSMX     | SMX       | SMX        | 34.89889908, -120.4570007
  KSLI  | medium_airport | Los Alamitos Army Air Field                |           32 | NA        | US          | US-CA      | Los Alamitos     | KSLI     |           | SLI        | 33.79000092, -118.052002
 (10 rows)
+

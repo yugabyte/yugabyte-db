@@ -23,7 +23,7 @@ CREATE TABLE lp_efgh PARTITION OF list_partitioned FOR VALUES in ('e', 'f', 'g',
 CREATE TABLE lp_ef_notbsp PARTITION OF lp_efgh FOR VALUES in ('e', 'f');
 CREATE TABLE lp_gh_local PARTITION OF lp_efgh FOR VALUES in ('g', 'h') TABLESPACE regionlocal;
 EXPLAIN (COSTS OFF) SELECT * FROM list_partitioned WHERE yb_is_local_table(tableoid);
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Append
    ->  Seq Scan on lp_bc_local list_partitioned_1
@@ -43,7 +43,7 @@ CREATE TABLE hp2 PARTITION OF hash_partitioned FOR VALUES WITH (modulus 3, remai
 CREATE TABLE hp2_1_local PARTITION OF hp2 FOR VALUES WITH (modulus 2, remainder 0) TABLESPACE regionlocal;
 CREATE TABLE hp2_2_notbsp PARTITION OF hp2 FOR VALUES WITH (modulus 2, remainder 1);
 EXPLAIN (COSTS OFF) SELECT * FROM hash_partitioned WHERE yb_is_local_table(tableoid);
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Append
    ->  Seq Scan on hp0_local hash_partitioned_1
@@ -64,7 +64,7 @@ CREATE TABLE rp_1_10 PARTITION OF range_partitioned FOR VALUES FROM (1) TO (10) 
 CREATE TABLE rp_1_5_notbsp PARTITION OF rp_1_10 FOR VALUES FROM (1) TO (5);
 CREATE TABLE rp_5_10_local PARTITION OF rp_1_10 FOR VALUES FROM (5) TO (10) TABLESPACE regionlocal;
 EXPLAIN (COSTS OFF) SELECT * FROM range_partitioned WHERE yb_is_local_table(tableoid);
-                      QUERY PLAN
+                      QUERY PLAN                      
 ------------------------------------------------------
  Append
    ->  Seq Scan on rp_5_10_local range_partitioned_1
@@ -77,7 +77,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM range_partitioned WHERE yb_is_local_table(tabl
 -- The function is invoked only across hash_partitioned, so scan all partitions of
 -- range_partitioned, but only local partitions of hash_partitioned.
 EXPLAIN (COSTS OFF) SELECT * FROM range_partitioned INNER JOIN hash_partitioned ON range_partitioned.partkey = hash_partitioned.partkey WHERE yb_is_local_table(hash_partitioned.tableoid);
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Merge Join
    Merge Cond: (hash_partitioned.partkey = range_partitioned.partkey)
@@ -101,7 +101,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM range_partitioned INNER JOIN hash_partitioned 
 -- TODO (deepthi): The following query should prune out the local partition but it does not.
 -- Fix this in a later patch.
 EXPLAIN (COSTS OFF) SELECT * FROM range_partitioned WHERE NOT yb_is_local_table(tableoid);
-                       QUERY PLAN
+                       QUERY PLAN                        
 ---------------------------------------------------------
  Append
    ->  Seq Scan on rp_1_5_notbsp range_partitioned_1
@@ -124,7 +124,7 @@ CREATE INDEX rp_idx ON range_partitioned(partvalue);
 -- deterministic.
 SET enable_seqscan=false;
 EXPLAIN (COSTS OFF) SELECT partvalue FROM range_partitioned WHERE yb_is_local_table(tableoid) AND partvalue = 5;
-                                        QUERY PLAN
+                                        QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Append
    ->  Index Scan using rp_5_10_local_partvalue_idx on rp_5_10_local range_partitioned_1
@@ -138,7 +138,7 @@ EXPLAIN (COSTS OFF) SELECT partvalue FROM range_partitioned WHERE yb_is_local_ta
 SET enable_seqscan=true;
 -- Update test.
 EXPLAIN (COSTS OFF) UPDATE range_partitioned SET partvalue = 5 WHERE yb_is_local_table(tableoid);
-                         QUERY PLAN
+                         QUERY PLAN                         
 ------------------------------------------------------------
  Update on range_partitioned
    Update on rp_5_10_local range_partitioned_1
@@ -151,7 +151,7 @@ EXPLAIN (COSTS OFF) UPDATE range_partitioned SET partvalue = 5 WHERE yb_is_local
 (8 rows)
 
 EXPLAIN (COSTS OFF) UPDATE list_partitioned SET partkey = 5 WHERE yb_is_local_table(tableoid);
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Update on list_partitioned
    Update on lp_bc_local list_partitioned_1
@@ -167,7 +167,7 @@ EXPLAIN (COSTS OFF) UPDATE list_partitioned SET partkey = 5 WHERE yb_is_local_ta
 (11 rows)
 
 EXPLAIN (COSTS OFF) UPDATE hash_partitioned SET partkey = 5 WHERE yb_is_local_table(tableoid);
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Update on hash_partitioned
    Update on hp0_local hash_partitioned_1
@@ -190,7 +190,7 @@ CREATE TABLE multikey4 PARTITION OF multikey FOR VALUES FROM (2, 1) TO (2, maxva
 CREATE TABLE multikey5 PARTITION OF multikey FOR VALUES FROM (2, maxvalue) TO (maxvalue, maxvalue);
 -- Query with one partition key and function.
 EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a < 2 AND yb_is_local_table(tableoid);
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Append
    ->  Seq Scan on multikey1_local multikey_1
@@ -203,7 +203,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a < 2 AND yb_is_local_table(tab
 
 -- Query with both partition keys.
 EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a = 2 AND b < 1 AND yb_is_local_table(tableoid);
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Seq Scan on multikey3_local multikey
    Storage Filter: ((b < 1) AND (a = 2))
@@ -212,7 +212,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a = 2 AND b < 1 AND yb_is_local
 
 -- Query with null check.
 EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE b is null AND yb_is_local_table(tableoid);
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Seq Scan on multikey_default_local multikey
    Storage Filter: (b IS NULL)
@@ -235,7 +235,7 @@ INSERT INTO prt2 SELECT i FROM generate_series(0, 599) i WHERE i % 30 = 0;
 -- Inner Join. Pick local tables with a < 450.
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t2.b FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a < 450 AND yb_is_local_table(t1.tableoid) ORDER BY t1.a, t2.b;
-                    QUERY PLAN
+                    QUERY PLAN                     
 ---------------------------------------------------
  Merge Join
    Merge Cond: (t1.a = t2.b)
@@ -253,7 +253,7 @@ SELECT t1.a, t2.b FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a < 450 AND yb_
 (13 rows)
 
 SELECT t1.a, t2.b FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a < 450 AND yb_is_local_table(t1.tableoid) ORDER BY t1.a, t2.b;
-  a  |  b
+  a  |  b  
 -----+-----
  300 | 300
  360 | 360
@@ -263,7 +263,7 @@ SELECT t1.a, t2.b FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a < 450 AND yb_
 -- Left Join.
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE yb_is_local_table(prt2.tableoid)) t2 ON t1.a = t2.b ORDER BY t1.a, t2.b;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Incremental Sort
    Sort Key: prt1.a, prt2.b
@@ -284,37 +284,37 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT *
 (16 rows)
 
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE yb_is_local_table(prt2.tableoid)) t2 ON t1.a = t2.b ORDER BY t1.a, t2.b;
-  a  |  b
+  a  |  b  
 -----+-----
-   0 |
-  20 |
-  40 |
-  60 |
-  80 |
- 100 |
- 120 |
- 140 |
- 160 |
- 180 |
- 200 |
- 220 |
- 240 |
- 260 |
- 280 |
+   0 |    
+  20 |    
+  40 |    
+  60 |    
+  80 |    
+ 100 |    
+ 120 |    
+ 140 |    
+ 160 |    
+ 180 |    
+ 200 |    
+ 220 |    
+ 240 |    
+ 260 |    
+ 280 |    
  300 | 300
- 320 |
- 340 |
+ 320 |    
+ 340 |    
  360 | 360
- 380 |
- 400 |
+ 380 |    
+ 400 |    
  420 | 420
- 440 |
+ 440 |    
 (23 rows)
 
 -- Full Join.
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE yb_is_local_table(prt1.tableoid)) t1 FULL JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b ORDER BY t1.a, t2.b;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Sort
    Sort Key: prt1.a, prt2.b
@@ -334,19 +334,19 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE yb_is_local_table(prt1.tableoid
 (15 rows)
 
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE yb_is_local_table(prt1.tableoid)) t1 FULL JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b ORDER BY t1.a, t2.b;
-  a  |  b
+  a  |  b  
 -----+-----
- 260 |
- 280 |
+ 260 |    
+ 280 |    
  300 | 300
- 320 |
- 340 |
+ 320 |    
+ 340 |    
  360 | 360
- 380 |
- 400 |
+ 380 |    
+ 400 |    
  420 | 420
- 440 |
- 460 |
+ 440 |    
+ 460 |    
  480 | 480
      | 270
      | 330
@@ -360,7 +360,7 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE yb_is_local_table(prt1.tableoid
 -- Semi-join
 EXPLAIN (COSTS OFF)
 SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t2.b FROM prt2 t2 WHERE yb_is_local_table(t2.tableoid)) ORDER BY t1.a;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Sort
    Sort Key: t1.a
@@ -382,7 +382,7 @@ CREATE TEMP TABLE temp_partitioned (partkey char) PARTITION BY LIST(partkey);
 CREATE TEMP TABLE tp1 PARTITION OF temp_partitioned FOR VALUES in ('a', 'd');
 CREATE TEMP TABLE tp2 PARTITION OF temp_partitioned FOR VALUES in ('b', 'c');
 EXPLAIN (COSTS OFF) SELECT * FROM temp_partitioned WHERE yb_is_local_table(tableoid);
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Append
    ->  Seq Scan on tp1 temp_partitioned_1

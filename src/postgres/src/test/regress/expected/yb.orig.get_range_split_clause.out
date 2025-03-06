@@ -3,22 +3,22 @@
 \pset null '(null)'
 -- Test edge cases & system tables
 SELECT yb_get_range_split_clause(null);
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
  (null)
 (1 row)
 
 SELECT yb_get_range_split_clause(0);
 NOTICE:  relation with oid 0 is not backed by YB
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
  (null)
 (1 row)
 
 SELECT yb_get_range_split_clause('pg_class'::regclass);
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
-
+ 
 (1 row)
 
 -- Control the message level sent to the client to make this test suite more robust for oid changes.
@@ -26,7 +26,7 @@ SELECT yb_get_range_split_clause('pg_class'::regclass);
 SET client_min_messages = 'WARNING';
 -- Test system view, view, YB materialized view
 SELECT yb_get_range_split_clause('pg_roles'::regclass);
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
  (null)
 (1 row)
@@ -34,7 +34,7 @@ SELECT yb_get_range_split_clause('pg_roles'::regclass);
 CREATE TABLE view_test (a INT);
 CREATE VIEW my_view AS SELECT * FROM view_test;
 SELECT yb_get_range_split_clause('my_view'::regclass);
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
  (null)
 (1 row)
@@ -42,7 +42,7 @@ SELECT yb_get_range_split_clause('my_view'::regclass);
 DROP VIEW my_view;
 CREATE MATERIALIZED VIEW my_materialized_view AS SELECT * FROM view_test;
 SELECT yb_get_range_split_clause('my_materialized_view'::regclass);
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
  (null)
 (1 row)
@@ -59,7 +59,7 @@ CREATE TEMP TABLE temp_tbl (
 WARNING:  split options on TEMP table will be ignored
 SELECT yb_get_range_split_clause('temp_tbl'::regclass);
 NOTICE:  relation with oid 20000 is not backed by YB
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
  (null)
 (1 row)
@@ -72,7 +72,7 @@ CREATE TABLE no_pk_tbl (
 ) WITH (table_oid = 20003);
 SELECT yb_get_range_split_clause('no_pk_tbl'::regclass);
 NOTICE:  relation with oid 20003 is not range-partitioned
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
  (null)
 (1 row)
@@ -82,7 +82,7 @@ DROP TABLE no_pk_tbl;
 CREATE TABLE hash_partitioned_tbl (k INT PRIMARY KEY) WITH (table_oid = 20006) SPLIT INTO 5 TABLETS;
 SELECT yb_get_range_split_clause('hash_partitioned_tbl'::regclass);
 NOTICE:  relation with oid 20006 is not range-partitioned
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
  (null)
 (1 row)
@@ -95,9 +95,9 @@ CREATE TABLE range_no_split_at_tbl (
   PRIMARY KEY(a ASC)
 );
 SELECT yb_get_range_split_clause('range_no_split_at_tbl'::regclass);
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
-
+ 
 (1 row)
 
 DROP TABLE range_no_split_at_tbl;
@@ -107,7 +107,7 @@ CREATE TABLE tbl (
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES((-100), (250));
 SELECT yb_get_range_split_clause('tbl'::regclass);
-    yb_get_range_split_clause
+    yb_get_range_split_clause    
 ---------------------------------
  SPLIT AT VALUES ((-100), (250))
 (1 row)
@@ -119,7 +119,7 @@ CREATE TABLE tbl2 (
  PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES(('bar'), ('foo'));
 SELECT yb_get_range_split_clause('tbl2'::regclass);
-     yb_get_range_split_clause
+     yb_get_range_split_clause      
 ------------------------------------
  SPLIT AT VALUES (('bar'), ('foo'))
 (1 row)
@@ -138,7 +138,7 @@ CREATE TABLE tbl_with_many_numeric_types (
  PRIMARY KEY(a ASC, b ASC, c ASC, d ASC, e ASC, f ASC, g ASC, h ASC, i ASC)
 ) SPLIT AT VALUES((100, 100, 100, 100, 100, 100, 100, 100, 100));
 SELECT yb_get_range_split_clause('tbl_with_many_numeric_types'::regclass);
-                    yb_get_range_split_clause
+                    yb_get_range_split_clause                    
 -----------------------------------------------------------------
  SPLIT AT VALUES ((100, 100, 100, 100, 100, 100, 100, 100, 100))
 (1 row)
@@ -153,7 +153,7 @@ CREATE TABLE tbl_with_many_character_types (
  PRIMARY KEY(a ASC, b ASC, c ASC, d ASC, e ASC)
 ) SPLIT AT VALUES(('a', 'bb', 'ccc', 'dddd', 'eeeee'));
 SELECT yb_get_range_split_clause('tbl_with_many_character_types'::regclass);
-                     yb_get_range_split_clause
+                     yb_get_range_split_clause                      
 --------------------------------------------------------------------
  SPLIT AT VALUES (('a', 'bb', 'ccc       ', 'dddd      ', 'eeeee'))
 (1 row)
@@ -168,7 +168,7 @@ CREATE TABLE tbl3 (
   PRIMARY KEY(a ASC, b ASC, c ASC, d ASC)
 ) SPLIT AT VALUES((100), (200, MINVALUE, MINVALUE, 5), (400, MAXVALUE));
 SELECT yb_get_range_split_clause('tbl3'::regclass);
-                                                yb_get_range_split_clause
+                                                yb_get_range_split_clause                                                 
 --------------------------------------------------------------------------------------------------------------------------
  SPLIT AT VALUES ((100, MINVALUE, MINVALUE, MINVALUE), (200, MINVALUE, MINVALUE, 5), (400, MAXVALUE, MINVALUE, MINVALUE))
 (1 row)
@@ -183,7 +183,7 @@ CREATE TABLE tbl4 (
   PRIMARY KEY(a ASC, b ASC, c ASC, d ASC)
 ) SPLIT AT VALUES((100), (200, MINVALUE, MINVALUE, 5), (400, MAXVALUE));
 SELECT yb_get_range_split_clause('tbl4'::regclass);
-                                                    yb_get_range_split_clause
+                                                    yb_get_range_split_clause                                                     
 ----------------------------------------------------------------------------------------------------------------------------------
  SPLIT AT VALUES (('100', MINVALUE, MINVALUE, MINVALUE), ('200', MINVALUE, MINVALUE, '5'), ('400', MAXVALUE, MINVALUE, MINVALUE))
 (1 row)
@@ -195,7 +195,7 @@ CREATE TABLE tbl5 (
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES (('$100.99'));
 SELECT yb_get_range_split_clause('tbl5'::regclass);
-   yb_get_range_split_clause
+   yb_get_range_split_clause   
 -------------------------------
  SPLIT AT VALUES (('$100.99'))
 (1 row)
@@ -207,13 +207,13 @@ CREATE TABLE tbl6 (
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES (('value'));
 SELECT yb_get_range_split_clause('tbl6'::regclass);
-      yb_get_range_split_clause
+      yb_get_range_split_clause       
 --------------------------------------
  SPLIT AT VALUES ((E'\\x76616c7565'))
 (1 row)
 
 SELECT 'value'::bytea; -- verify the same binary string output
-    bytea
+    bytea     
 --------------
  \x76616c7565
 (1 row)
@@ -224,13 +224,13 @@ CREATE TABLE escape_binary (
   PRIMARY KEY (a ASC)
 ) SPLIT AT VALUES ((E'\x7F\U0001ffff'));
 SELECT yb_get_range_split_clause('escape_binary'::regclass);
-      yb_get_range_split_clause
+      yb_get_range_split_clause       
 --------------------------------------
  SPLIT AT VALUES ((E'\\x7ff09fbfbf'))
 (1 row)
 
 SELECT E'\x7F\U0001ffff'::bytea = E'\\x7ff09fbfbf'::bytea;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -247,14 +247,14 @@ CREATE TABLE tbl_with_many_date_time_types (
   PRIMARY KEY(a ASC, b ASC, c ASC, d ASC)
 ) SPLIT AT VALUES (('1234-01-30 07:08:09', '1234-01-30 07:08:09+06', '1234-01-30', '07:08:09'));
 SELECT yb_get_range_split_clause('tbl_with_many_date_time_types'::regclass);
-                                   yb_get_range_split_clause
+                                   yb_get_range_split_clause                                   
 -----------------------------------------------------------------------------------------------
  SPLIT AT VALUES (('1234-01-30 07:08:09', '1234-01-30 01:08:09+00', '1234-01-30', '07:08:09'))
 (1 row)
 
 SET timezone = '2';
 SELECT yb_get_range_split_clause('tbl_with_many_date_time_types'::regclass);
-                                   yb_get_range_split_clause
+                                   yb_get_range_split_clause                                   
 -----------------------------------------------------------------------------------------------
  SPLIT AT VALUES (('1234-01-30 07:08:09', '1234-01-30 03:08:09+02', '1234-01-30', '07:08:09'))
 (1 row)
@@ -268,7 +268,7 @@ CREATE TABLE tbl7 (
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES (('true'));
 SELECT yb_get_range_split_clause('tbl7'::regclass);
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
  SPLIT AT VALUES (('t'))
 (1 row)
@@ -280,7 +280,7 @@ CREATE TABLE tbl8 (
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES (('12345678-1234-5678-1234-567812345678'));
 SELECT yb_get_range_split_clause('tbl8'::regclass);
-                 yb_get_range_split_clause
+                 yb_get_range_split_clause                  
 ------------------------------------------------------------
  SPLIT AT VALUES (('12345678-1234-5678-1234-567812345678'))
 (1 row)
@@ -302,7 +302,7 @@ CREATE TABLE tbl_with_many_object_identifier_types (
   PRIMARY KEY(a ASC, b ASC, c ASC, d ASC, e ASC, f ASC, g ASC, h ASC, i ASC, j ASC, k ASC)
 ) SPLIT AT VALUES ((100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100));
 SELECT yb_get_range_split_clause('tbl_with_many_object_identifier_types'::regclass);
-                                   yb_get_range_split_clause
+                                   yb_get_range_split_clause                                   
 -----------------------------------------------------------------------------------------------
  SPLIT AT VALUES ((100, '100', '100', '100', '100', '100', '100', '100', '100', '100', '100'))
 (1 row)
@@ -314,7 +314,7 @@ CREATE TABLE tbl9 (
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES (('1/2345678'));
 SELECT yb_get_range_split_clause('tbl9'::regclass);
-    yb_get_range_split_clause
+    yb_get_range_split_clause    
 ---------------------------------
  SPLIT AT VALUES (('1/2345678'))
 (1 row)
@@ -326,7 +326,7 @@ CREATE TABLE tbl_floating_point_infinity (
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES (('-Infinity'), (100), (200), ('Infinity'));
 SELECT yb_get_range_split_clause('tbl_floating_point_infinity'::regclass);
-                  yb_get_range_split_clause
+                  yb_get_range_split_clause                  
 -------------------------------------------------------------
  SPLIT AT VALUES (('-Infinity'), (100), (200), ('Infinity'))
 (1 row)
@@ -338,7 +338,7 @@ CREATE TABLE tbl_floating_point_nan (
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES ((100), (200), ('NaN'));
 SELECT yb_get_range_split_clause('tbl_floating_point_nan'::regclass);
-        yb_get_range_split_clause
+        yb_get_range_split_clause        
 -----------------------------------------
  SPLIT AT VALUES ((100), (200), ('NaN'))
 (1 row)
@@ -350,7 +350,7 @@ CREATE TABLE tbl_has_nan_value (
 );
 INSERT INTO tbl_has_nan_value VALUES ('NAN'), (100), (200);
 SELECT * FROM tbl_has_nan_value ORDER BY a ASC;
-  a
+  a  
 -----
  100
  200
@@ -370,7 +370,7 @@ CREATE TABLE tbl_enum (
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES (('two'), ('four'), ('six'));
 SELECT yb_get_range_split_clause('tbl_enum'::regclass);
-          yb_get_range_split_clause
+          yb_get_range_split_clause           
 ----------------------------------------------
  SPLIT AT VALUES (('two'), ('four'), ('six'))
 (1 row)
@@ -383,7 +383,7 @@ CREATE TABLE tbl_with_special_strings (
  PRIMARY KEY(a DESC)
 ) SPLIT AT VALUES(('D si''ngle quo''tes'), ('C double" quotes'), (E'B back\\slashes'), (E'A all'' combo\\ of them"'));
 SELECT yb_get_range_split_clause('tbl_with_special_strings'::regclass);
-                                              yb_get_range_split_clause
+                                              yb_get_range_split_clause                                               
 ----------------------------------------------------------------------------------------------------------------------
  SPLIT AT VALUES (('D si''ngle quo''tes'), ('C double" quotes'), (E'B back\\slashes'), (E'A all'' combo\\ of them"'))
 (1 row)
@@ -396,7 +396,7 @@ CREATE TABLE tbl_with_special_strings2 (
  PRIMARY KEY(a DESC)
 ) SPLIT AT VALUES(('D si''ngle quo''tes'), ('C double" quotes'), ('B back\slashes'), ('A all'' combo\ of them"'));
 SELECT yb_get_range_split_clause('tbl_with_special_strings2'::regclass);
-                                              yb_get_range_split_clause
+                                              yb_get_range_split_clause                                               
 ----------------------------------------------------------------------------------------------------------------------
  SPLIT AT VALUES (('D si''ngle quo''tes'), ('C double" quotes'), (E'B back\\slashes'), (E'A all'' combo\\ of them"'))
 (1 row)
@@ -410,13 +410,13 @@ WARNING:  nonstandard use of escape in a string literal
 LINE 1: SELECT 'B back\slashes';
                ^
 HINT:  Use the escape string syntax for escapes, e.g., E'\r\n'.
-   ?column?
+   ?column?    
 ---------------
  B backslashes
 (1 row)
 
 SELECT E'B back\slashes';
-   ?column?
+   ?column?    
 ---------------
  B backslashes
 (1 row)
@@ -434,7 +434,7 @@ LINE 4: ...tes'), ('C double" quotes'), ('B back\slashes'), ('A all'' c...
                                                              ^
 HINT:  Use the escape string syntax for escapes, e.g., E'\r\n'.
 SELECT yb_get_range_split_clause('tbl_with_special_strings3'::regclass);
-                                           yb_get_range_split_clause
+                                           yb_get_range_split_clause                                            
 ----------------------------------------------------------------------------------------------------------------
  SPLIT AT VALUES (('D si''ngle quo''tes'), ('C double" quotes'), ('B backslashes'), ('A all'' combo of them"'))
 (1 row)
@@ -446,7 +446,7 @@ CREATE TABLE tbl_with_special_strings4 (
  PRIMARY KEY(a DESC)
 ) SPLIT AT VALUES((E'C\tC'), (E'B\x42'), (E'A\\A'));
 SELECT yb_get_range_split_clause('tbl_with_special_strings4'::regclass);
-            yb_get_range_split_clause
+            yb_get_range_split_clause            
 -------------------------------------------------
  SPLIT AT VALUES (('C    C'), ('BB'), (E'A\\A'))
 (1 row)
@@ -457,7 +457,7 @@ CREATE TABLE tbl_with_special_strings5 (
  PRIMARY KEY(a DESC)
 ) SPLIT AT VALUES((E'A\nB'));
 SELECT yb_get_range_split_clause('tbl_with_special_strings5'::regclass);
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
  SPLIT AT VALUES (('A     +
  B'))
@@ -465,7 +465,7 @@ SELECT yb_get_range_split_clause('tbl_with_special_strings5'::regclass);
 
 -- verify correctness of tbl_with_special_strings5
 SELECT yb_get_range_split_clause('tbl_with_special_strings5'::regclass)::TEXT = 'SPLIT AT VALUES ((''' || E'A\nB' || '''))';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -479,7 +479,7 @@ CREATE TABLE tbl_multibyte (
  PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES((E'\u7F57'), ('羽'), (E'\xe8\x80\x80'));
 SELECT yb_get_range_split_clause('tbl_multibyte'::regclass);
-        yb_get_range_split_clause
+        yb_get_range_split_clause         
 ------------------------------------------
  SPLIT AT VALUES (('罗'), ('羽'), ('耀'))
 (1 row)
@@ -490,7 +490,7 @@ CREATE INDEX tbl10_idx ON tbl10 (
   a ASC
 ) SPLIT AT VALUES (('bar'), ('foo'), ('qux'));
 SELECT yb_get_range_split_clause('tbl10_idx'::regclass);
-          yb_get_range_split_clause
+          yb_get_range_split_clause          
 ---------------------------------------------
  SPLIT AT VALUES (('bar'), ('foo'), ('qux'))
 (1 row)
@@ -502,7 +502,7 @@ CREATE UNIQUE INDEX tbl11_idx ON tbl11 (
   a ASC, b ASC, c ASC, d ASC
 ) SPLIT AT VALUES (('bar', 1, 1, 1), ('foo', 2, 2, 2), ('qux', 3, 3, 3));
 SELECT yb_get_range_split_clause('tbl11_idx'::regclass);
-                       yb_get_range_split_clause
+                       yb_get_range_split_clause                        
 ------------------------------------------------------------------------
  SPLIT AT VALUES (('bar', 1, 1, 1), ('foo', 2, 2, 2), ('qux', 3, 3, 3))
 (1 row)
@@ -514,7 +514,7 @@ CREATE TABLE vectors (i serial PRIMARY KEY, v tsvector);
 CREATE INDEX vectors_idx ON vectors USING ybgin (v) SPLIT AT VALUES (
   (MINVALUE), ('ccc'), ('fff'), (MAXVALUE));
 SELECT yb_get_range_split_clause('vectors_idx'::regclass);
-                 yb_get_range_split_clause
+                 yb_get_range_split_clause                  
 ------------------------------------------------------------
  SPLIT AT VALUES ((MINVALUE), ('ccc'), ('fff'), (MAXVALUE))
 (1 row)
@@ -525,7 +525,7 @@ CREATE TABLE int_arrays (i serial PRIMARY KEY, a INT[]);
 CREATE INDEX int_arrays_idx ON int_arrays USING ybgin (a) SPLIT AT VALUES (
   (MINVALUE), (2), (4), (6), (MAXVALUE));
 SELECT yb_get_range_split_clause('int_arrays_idx'::regclass);
-                yb_get_range_split_clause
+                yb_get_range_split_clause                
 ---------------------------------------------------------
  SPLIT AT VALUES ((MINVALUE), (2), (4), (6), (MAXVALUE))
 (1 row)
@@ -536,7 +536,7 @@ CREATE TABLE text_arrays (i serial PRIMARY KEY, a TEXT[]);
 CREATE INDEX text_arrays_idx ON text_arrays USING ybgin (a) SPLIT AT VALUES (
   (MINVALUE), ('aa'), ('bb'), ('zz'), (MAXVALUE));
 SELECT yb_get_range_split_clause('text_arrays_idx'::regclass);
-                    yb_get_range_split_clause
+                    yb_get_range_split_clause                     
 ------------------------------------------------------------------
  SPLIT AT VALUES ((MINVALUE), ('aa'), ('bb'), ('zz'), (MAXVALUE))
 (1 row)
@@ -549,7 +549,7 @@ CREATE TABLE tbl_serial_pk (
  PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES((-100), (200));
 SELECT yb_get_range_split_clause('tbl_serial_pk'::regclass);
-    yb_get_range_split_clause
+    yb_get_range_split_clause    
 ---------------------------------
  SPLIT AT VALUES ((-100), (200))
 (1 row)
@@ -561,7 +561,7 @@ CREATE TABLE tbl_collation_pk (
  PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES(('bar'), ('foo'));
 SELECT yb_get_range_split_clause('tbl_collation_pk'::regclass);
-     yb_get_range_split_clause
+     yb_get_range_split_clause      
 ------------------------------------
  SPLIT AT VALUES (('bar'), ('foo'))
 (1 row)
@@ -572,7 +572,7 @@ CREATE TABLE tbl_collation_pk2 (
  PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES(('äbc'), ('bbc'));
 SELECT yb_get_range_split_clause('tbl_collation_pk2'::regclass);
-     yb_get_range_split_clause
+     yb_get_range_split_clause      
 ------------------------------------
  SPLIT AT VALUES (('äbc'), ('bbc'))
 (1 row)
@@ -583,7 +583,7 @@ CREATE TABLE tbl_collation_pk3 (
  PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES(('bbc'), ('äbc'));
 SELECT yb_get_range_split_clause('tbl_collation_pk3'::regclass);
-     yb_get_range_split_clause
+     yb_get_range_split_clause      
 ------------------------------------
  SPLIT AT VALUES (('bbc'), ('äbc'))
 (1 row)
@@ -608,9 +608,9 @@ CREATE TABLE tbl_colocated (
   PRIMARY KEY(a ASC, b ASC)
 );
 SELECT yb_get_range_split_clause('tbl_colocated'::regclass);
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
-
+ 
 (1 row)
 
 \c yugabyte
@@ -629,7 +629,7 @@ CREATE TABLE tbl_group_table (
 SELECT yb_get_range_split_clause('tbl_group_table'::regclass);
  yb_get_range_split_clause 
 ---------------------------
-
+ 
 (1 row)
 
 DROP TABLE tbl_group_table;
@@ -641,7 +641,7 @@ CREATE TABLE range_split_expressions (
   PRIMARY KEY(k1 ASC, k2 DESC)
 ) SPLIT AT VALUES ((1 + 2, substr('abc', 1, 2)), (factorial(4), repeat('d', 5)));
 SELECT yb_get_range_split_clause('range_split_expressions'::regclass);
-         yb_get_range_split_clause
+         yb_get_range_split_clause          
 --------------------------------------------
  SPLIT AT VALUES ((3, 'ab'), (24, 'ddddd'))
 (1 row)
@@ -656,7 +656,7 @@ CREATE TABLE column_ordering_mismatch (
   PRIMARY KEY (k1 ASC, k2 ASC)
 ) SPLIT AT VALUES((1, '1'), (100, '100'));
 SELECT yb_get_range_split_clause('column_ordering_mismatch'::regclass);
-        yb_get_range_split_clause
+        yb_get_range_split_clause         
 ------------------------------------------
  SPLIT AT VALUES ((1, '1'), (100, '100'))
 (1 row)
@@ -670,7 +670,7 @@ CREATE TABLE tbl_with_include_clause (
   PRIMARY KEY (k1 ASC, k2 ASC) INCLUDE (v)
 ) SPLIT AT VALUES((1, '1'), (100, '100'));
 SELECT yb_get_range_split_clause('tbl_with_include_clause'::regclass);
-        yb_get_range_split_clause
+        yb_get_range_split_clause         
 ------------------------------------------
  SPLIT AT VALUES ((1, '1'), (100, '100'))
 (1 row)
@@ -749,7 +749,7 @@ CREATE INDEX test_idx on test_tbl (
   k3 DESC
 ) SPLIT AT VALUES ((1.1, '11', 1, 1.1), (3.3, '33', 3, 3.3));
 SELECT yb_get_range_split_clause('test_idx'::regclass);
-                 yb_get_range_split_clause
+                 yb_get_range_split_clause                  
 ------------------------------------------------------------
  SPLIT AT VALUES ((1.1, '11', 1, 1.1), (3.3, '33', 3, 3.3))
 (1 row)

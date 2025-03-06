@@ -24,7 +24,7 @@ SELECT proname, prorettype::regtype, proargtypes::regtype[] FROM pg_proc
        WHERE oid in ('functest_A_1'::regproc,
                      'functest_A_2'::regproc,
                      'functest_A_3'::regproc) ORDER BY proname;
-   proname    | prorettype |    proargtypes
+   proname    | prorettype |    proargtypes    
 --------------+------------+-------------------
  functest_a_1 | boolean    | [0:1]={text,date}
  functest_a_2 | integer    | [0:0]={text[]}
@@ -65,7 +65,7 @@ SELECT proname, provolatile FROM pg_proc
                      'functest_B_2'::regproc,
                      'functest_B_3'::regproc,
 		     'functest_B_4'::regproc) ORDER BY proname;
-   proname    | provolatile
+   proname    | provolatile 
 --------------+-------------
  functest_b_1 | v
  functest_b_2 | i
@@ -80,7 +80,7 @@ SELECT proname, provolatile FROM pg_proc
                      'functest_B_2'::regproc,
                      'functest_B_3'::regproc,
 		     'functest_B_4'::regproc) ORDER BY proname;
-   proname    | provolatile
+   proname    | provolatile 
 --------------+-------------
  functest_b_1 | v
  functest_b_2 | v
@@ -101,7 +101,7 @@ SELECT proname, prosecdef FROM pg_proc
        WHERE oid in ('functest_C_1'::regproc,
                      'functest_C_2'::regproc,
                      'functest_C_3'::regproc) ORDER BY proname;
-   proname    | prosecdef
+   proname    | prosecdef 
 --------------+-----------
  functest_c_1 | f
  functest_c_2 | t
@@ -115,7 +115,7 @@ SELECT proname, prosecdef FROM pg_proc
        WHERE oid in ('functest_C_1'::regproc,
                      'functest_C_2'::regproc,
                      'functest_C_3'::regproc) ORDER BY proname;
-   proname    | prosecdef
+   proname    | prosecdef 
 --------------+-----------
  functest_c_1 | f
  functest_c_2 | f
@@ -132,7 +132,7 @@ CREATE FUNCTION functest_E_2(int) RETURNS bool LANGUAGE 'sql'
 SELECT proname, proleakproof FROM pg_proc
        WHERE oid in ('functest_E_1'::regproc,
                      'functest_E_2'::regproc) ORDER BY proname;
-   proname    | proleakproof
+   proname    | proleakproof 
 --------------+--------------
  functest_e_1 | f
  functest_e_2 | t
@@ -143,7 +143,7 @@ ALTER FUNCTION functest_E_2(int) STABLE;	-- unrelated change, no effect
 SELECT proname, proleakproof FROM pg_proc
        WHERE oid in ('functest_E_1'::regproc,
                      'functest_E_2'::regproc) ORDER BY proname;
-   proname    | proleakproof
+   proname    | proleakproof 
 --------------+--------------
  functest_e_1 | t
  functest_e_2 | t
@@ -153,7 +153,7 @@ ALTER FUNCTION functest_E_2(int) NOT LEAKPROOF;	-- remove leakproof attribute
 SELECT proname, proleakproof FROM pg_proc
        WHERE oid in ('functest_E_1'::regproc,
                      'functest_E_2'::regproc) ORDER BY proname;
-   proname    | proleakproof
+   proname    | proleakproof 
 --------------+--------------
  functest_e_1 | t
  functest_e_2 | f
@@ -187,7 +187,7 @@ SELECT proname, proisstrict FROM pg_proc
                      'functest_F_2'::regproc,
                      'functest_F_3'::regproc,
                      'functest_F_4'::regproc) ORDER BY proname;
-   proname    | proisstrict
+   proname    | proisstrict 
 --------------+-------------
  functest_f_1 | f
  functest_f_2 | f
@@ -203,7 +203,7 @@ SELECT proname, proisstrict FROM pg_proc
                      'functest_F_2'::regproc,
                      'functest_F_3'::regproc,
                      'functest_F_4'::regproc) ORDER BY proname;
-   proname    | proisstrict
+   proname    | proisstrict 
 --------------+-------------
  functest_f_1 | f
  functest_f_2 | t
@@ -213,46 +213,46 @@ SELECT proname, proisstrict FROM pg_proc
 
 -- pg_get_functiondef tests
 SELECT pg_get_functiondef('functest_A_1'::regproc);
-                         pg_get_functiondef
+                         pg_get_functiondef                         
 --------------------------------------------------------------------
  CREATE OR REPLACE FUNCTION temp_func_test.functest_a_1(text, date)+
   RETURNS boolean                                                  +
   LANGUAGE sql                                                     +
  AS $function$SELECT $1 = 'abcd' AND $2 > '2001-01-01'$function$   +
-
+ 
 (1 row)
 
 SELECT pg_get_functiondef('functest_B_3'::regproc);
-                       pg_get_functiondef
+                       pg_get_functiondef                        
 -----------------------------------------------------------------
  CREATE OR REPLACE FUNCTION temp_func_test.functest_b_3(integer)+
   RETURNS boolean                                               +
   LANGUAGE sql                                                  +
   STABLE                                                        +
  AS $function$SELECT $1 = 0$function$                           +
-
+ 
 (1 row)
 
 SELECT pg_get_functiondef('functest_C_3'::regproc);
-                       pg_get_functiondef
+                       pg_get_functiondef                        
 -----------------------------------------------------------------
  CREATE OR REPLACE FUNCTION temp_func_test.functest_c_3(integer)+
   RETURNS boolean                                               +
   LANGUAGE sql                                                  +
   SECURITY DEFINER                                              +
  AS $function$SELECT $1 < 0$function$                           +
-
+ 
 (1 row)
 
 SELECT pg_get_functiondef('functest_F_2'::regproc);
-                       pg_get_functiondef
+                       pg_get_functiondef                        
 -----------------------------------------------------------------
  CREATE OR REPLACE FUNCTION temp_func_test.functest_f_2(integer)+
   RETURNS boolean                                               +
   LANGUAGE sql                                                  +
   STRICT                                                        +
  AS $function$SELECT $1 = 50$function$                          +
-
+ 
 (1 row)
 
 --
@@ -471,15 +471,15 @@ SELECT routine_name, ordinal_position, parameter_name, parameter_default
     FROM information_schema.parameters JOIN information_schema.routines USING (specific_schema, specific_name)
     WHERE routine_schema = 'temp_func_test' AND routine_name ~ '^functest_is_'
     ORDER BY 1, 2;
- routine_name  | ordinal_position | parameter_name | parameter_default
+ routine_name  | ordinal_position | parameter_name | parameter_default 
 ---------------+------------------+----------------+-------------------
- functest_is_1 |                1 | a              |
+ functest_is_1 |                1 | a              | 
  functest_is_1 |                2 | b              | 1
  functest_is_1 |                3 | c              | 'foo'::text
- functest_is_2 |                1 | a              |
+ functest_is_2 |                1 | a              | 
  functest_is_2 |                2 | b              | 1
  functest_is_3 |                1 | a              | 1
- functest_is_3 |                2 | b              |
+ functest_is_3 |                2 | b              | 
 (7 rows)
 
 DROP FUNCTION functest_IS_1(int, int, text), functest_IS_2(int), functest_IS_3(int);
@@ -614,22 +614,22 @@ NOTICE:  drop cascades to function functest_sri2()
 CREATE FUNCTION voidtest1(a int) RETURNS VOID LANGUAGE SQL AS
 $$ SELECT a + 1 $$;
 SELECT voidtest1(42);
- voidtest1
+ voidtest1 
 -----------
-
+ 
 (1 row)
 
 CREATE FUNCTION voidtest2(a int, b int) RETURNS VOID LANGUAGE SQL AS
 $$ SELECT voidtest1(a + b) $$;
 SELECT voidtest2(11,22);
- voidtest2
+ voidtest2 
 -----------
-
+ 
 (1 row)
 
 -- currently, we can inline voidtest2 but not voidtest1
 EXPLAIN (verbose, costs off) SELECT voidtest2(11,22);
-       QUERY PLAN
+       QUERY PLAN        
 -------------------------
  Result
    Output: voidtest1(33)
@@ -639,21 +639,21 @@ CREATE TEMP TABLE sometable(f1 int);
 CREATE FUNCTION voidtest3(a int) RETURNS VOID LANGUAGE SQL AS
 $$ INSERT INTO sometable VALUES(a + 1) $$;
 SELECT voidtest3(17);
- voidtest3
+ voidtest3 
 -----------
-
+ 
 (1 row)
 
 CREATE FUNCTION voidtest4(a int) RETURNS VOID LANGUAGE SQL AS
 $$ INSERT INTO sometable VALUES(a - 1) RETURNING f1 $$;
 SELECT voidtest4(39);
- voidtest4
+ voidtest4 
 -----------
-
+ 
 (1 row)
 
 TABLE sometable;
- f1
+ f1 
 ----
  18
  38
@@ -662,7 +662,7 @@ TABLE sometable;
 CREATE FUNCTION voidtest5(a int) RETURNS SETOF VOID LANGUAGE SQL AS
 $$ SELECT generate_series(1, a) $$ STABLE;
 SELECT * FROM voidtest5(3);
- voidtest5
+ voidtest5 
 -----------
 (0 rows)
 

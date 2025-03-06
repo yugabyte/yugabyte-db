@@ -4,7 +4,8 @@ SET pg_hint_plan.enable_hint_table TO on;
 SELECT numeric_precision FROM information_schema.columns
     WHERE table_schema = 'pg_catalog' AND table_name = 'pg_class'
           AND column_name = 'relname';
- numeric_precision
+ numeric_precision 
 -------------------
-
+                  
 (1 row)
+

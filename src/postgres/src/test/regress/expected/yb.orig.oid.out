@@ -37,7 +37,7 @@ ERROR:  OID out of range
 INSERT INTO oid_table (id, value, tag) VALUES (-4294967297, -4294967297, 111);
 ERROR:  OID out of range
 SELECT * FROM oid_table ORDER BY id;
-     id     |   value    | tag
+     id     |   value    | tag 
 ------------+------------+-----
           0 |         10 |   0
           1 |         21 |   1
@@ -57,7 +57,7 @@ SELECT * FROM oid_table ORDER BY id;
 (15 rows)
 
 SELECT * FROM oid_table ORDER BY id DESC;
-     id     |   value    | tag
+     id     |   value    | tag 
 ------------+------------+-----
  4294967295 | 4294967295 |   9
  4294967294 | 4294967275 | 101
@@ -77,7 +77,7 @@ SELECT * FROM oid_table ORDER BY id DESC;
 (15 rows)
 
 SELECT * FROM oid_table ORDER BY value;
-     id     |   value    | tag
+     id     |   value    | tag 
 ------------+------------+-----
           0 |         10 |   0
           1 |         21 |   1
@@ -97,7 +97,7 @@ SELECT * FROM oid_table ORDER BY value;
 (15 rows)
 
 SELECT * FROM oid_table ORDER BY value DESC;
-     id     |   value    | tag
+     id     |   value    | tag 
 ------------+------------+-----
  4294967295 | 4294967295 |   9
  4294967294 | 4294967275 | 101

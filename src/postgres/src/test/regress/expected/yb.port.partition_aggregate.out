@@ -20,7 +20,7 @@ ANALYZE pagg_tab;
 -- When GROUP BY clause matches; full aggregation is performed for each partition.
 EXPLAIN (COSTS OFF)
 SELECT c, sum(a), avg(b), count(*), min(a), max(b) FROM pagg_tab GROUP BY c HAVING avg(d) < 15 ORDER BY 1, 2, 3;
-                          QUERY PLAN
+                          QUERY PLAN                          
 --------------------------------------------------------------
  Sort
    Sort Key: pagg_tab.c, (sum(pagg_tab.a)), (avg(pagg_tab.b))
@@ -40,7 +40,7 @@ SELECT c, sum(a), avg(b), count(*), min(a), max(b) FROM pagg_tab GROUP BY c HAVI
 (15 rows)
 
 SELECT c, sum(a), avg(b), count(*), min(a), max(b) FROM pagg_tab GROUP BY c HAVING avg(d) < 15 ORDER BY 1, 2, 3;
-  c   | sum  |         avg         | count | min | max
+  c   | sum  |         avg         | count | min | max 
 ------+------+---------------------+-------+-----+-----
  0000 | 2000 | 12.0000000000000000 |   250 |   0 |  24
  0001 | 2250 | 13.0000000000000000 |   250 |   1 |  25
@@ -56,7 +56,7 @@ EXPLAIN (COSTS OFF)
 SELECT a, sum(b), avg(b), count(*), min(a), max(b) FROM pagg_tab GROUP BY a HAVING avg(d) < 15 ORDER BY 1, 2, 3;
 */
 SELECT a, sum(b), avg(b), count(*), min(a), max(b) FROM pagg_tab GROUP BY a HAVING avg(d) < 15 ORDER BY 1, 2, 3;
- a  | sum  |         avg         | count | min | max
+ a  | sum  |         avg         | count | min | max 
 ----+------+---------------------+-------+-----+-----
   0 | 1500 | 10.0000000000000000 |   150 |   0 |  20
   1 | 1650 | 11.0000000000000000 |   150 |   1 |  21
@@ -73,7 +73,7 @@ SELECT a, sum(b), avg(b), count(*), min(a), max(b) FROM pagg_tab GROUP BY a HAVI
 -- Check with multiple columns in GROUP BY
 EXPLAIN (COSTS OFF)
 SELECT a, c, count(*) FROM pagg_tab GROUP BY a, c;
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  Append
    ->  HashAggregate
@@ -90,7 +90,7 @@ SELECT a, c, count(*) FROM pagg_tab GROUP BY a, c;
 -- Check with multiple columns in GROUP BY, order in GROUP BY is reversed
 EXPLAIN (COSTS OFF)
 SELECT a, c, count(*) FROM pagg_tab GROUP BY c, a;
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  Append
    ->  HashAggregate
@@ -107,7 +107,7 @@ SELECT a, c, count(*) FROM pagg_tab GROUP BY c, a;
 -- Check with multiple columns in GROUP BY, order in target-list is reversed
 EXPLAIN (COSTS OFF)
 SELECT c, a, count(*) FROM pagg_tab GROUP BY a, c;
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  Append
    ->  HashAggregate
@@ -124,7 +124,7 @@ SELECT c, a, count(*) FROM pagg_tab GROUP BY a, c;
 -- Test when input relation for grouping is dummy
 EXPLAIN (COSTS OFF)
 SELECT c, sum(a) FROM pagg_tab WHERE 1 = 2 GROUP BY c;
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  HashAggregate
    Group Key: c
@@ -133,13 +133,13 @@ SELECT c, sum(a) FROM pagg_tab WHERE 1 = 2 GROUP BY c;
 (4 rows)
 
 SELECT c, sum(a) FROM pagg_tab WHERE 1 = 2 GROUP BY c;
- c | sum
+ c | sum 
 ---+-----
 (0 rows)
 
 EXPLAIN (COSTS OFF)
 SELECT c, sum(a) FROM pagg_tab WHERE c = 'x' GROUP BY c;
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  GroupAggregate
    Group Key: c
@@ -148,7 +148,7 @@ SELECT c, sum(a) FROM pagg_tab WHERE c = 'x' GROUP BY c;
 (4 rows)
 
 SELECT c, sum(a) FROM pagg_tab WHERE c = 'x' GROUP BY c;
- c | sum
+ c | sum 
 ---+-----
 (0 rows)
 
@@ -160,7 +160,7 @@ EXPLAIN (COSTS OFF)
 SELECT c, sum(a), avg(b), count(*) FROM pagg_tab GROUP BY 1 HAVING avg(d) < 15 ORDER BY 1, 2, 3;
 */
 SELECT c, sum(a), avg(b), count(*) FROM pagg_tab GROUP BY 1 HAVING avg(d) < 15 ORDER BY 1, 2, 3;
-  c   | sum  |         avg         | count
+  c   | sum  |         avg         | count 
 ------+------+---------------------+-------
  0000 | 2000 | 12.0000000000000000 |   250
  0001 | 2250 | 13.0000000000000000 |   250
@@ -173,7 +173,7 @@ SELECT c, sum(a), avg(b), count(*) FROM pagg_tab GROUP BY 1 HAVING avg(d) < 15 O
 -- When GROUP BY clause does not match; partial aggregation is performed for each partition.
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), avg(b), count(*) FROM pagg_tab GROUP BY 1 HAVING avg(d) < 15 ORDER BY 1, 2, 3;
-                            QUERY PLAN
+                            QUERY PLAN                            
 ------------------------------------------------------------------
  Incremental Sort
    Sort Key: pagg_tab.a, (sum(pagg_tab.b)), (avg(pagg_tab.b))
@@ -201,7 +201,7 @@ SELECT a, sum(b), avg(b), count(*) FROM pagg_tab GROUP BY 1 HAVING avg(d) < 15 O
 (23 rows)
 
 SELECT a, sum(b), avg(b), count(*) FROM pagg_tab GROUP BY 1 HAVING avg(d) < 15 ORDER BY 1, 2, 3;
- a  | sum  |         avg         | count
+ a  | sum  |         avg         | count 
 ----+------+---------------------+-------
   0 | 1500 | 10.0000000000000000 |   150
   1 | 1650 | 11.0000000000000000 |   150
@@ -218,7 +218,7 @@ SELECT a, sum(b), avg(b), count(*) FROM pagg_tab GROUP BY 1 HAVING avg(d) < 15 O
 -- Test partitionwise grouping without any aggregates
 EXPLAIN (COSTS OFF)
 SELECT c FROM pagg_tab GROUP BY c ORDER BY 1;
-                      QUERY PLAN
+                      QUERY PLAN                      
 ------------------------------------------------------
  Merge Append
    Sort Key: pagg_tab.c
@@ -240,7 +240,7 @@ SELECT c FROM pagg_tab GROUP BY c ORDER BY 1;
 (17 rows)
 
 SELECT c FROM pagg_tab GROUP BY c ORDER BY 1;
-  c
+  c   
 ------
  0000
  0001
@@ -258,7 +258,7 @@ SELECT c FROM pagg_tab GROUP BY c ORDER BY 1;
 
 EXPLAIN (COSTS OFF)
 SELECT a FROM pagg_tab WHERE a < 3 GROUP BY a ORDER BY 1;
-                         QUERY PLAN
+                         QUERY PLAN                         
 ------------------------------------------------------------
  Group
    Group Key: pagg_tab.a
@@ -285,7 +285,7 @@ SELECT a FROM pagg_tab WHERE a < 3 GROUP BY a ORDER BY 1;
 (22 rows)
 
 SELECT a FROM pagg_tab WHERE a < 3 GROUP BY a ORDER BY 1;
- a
+ a 
 ---
  0
  1
@@ -296,7 +296,7 @@ RESET enable_hashagg;
 -- ROLLUP, partitionwise aggregation does not apply
 EXPLAIN (COSTS OFF)
 SELECT c, sum(a) FROM pagg_tab GROUP BY rollup(c) ORDER BY 1, 2;
-                      QUERY PLAN
+                      QUERY PLAN                      
 ------------------------------------------------------
  Sort
    Sort Key: pagg_tab.c, (sum(pagg_tab.a))
@@ -315,7 +315,7 @@ SELECT c, sum(a) FROM pagg_tab GROUP BY rollup(c) ORDER BY 1, 2;
 -- make any difference.
 EXPLAIN (COSTS OFF)
 SELECT c, sum(b order by a) FROM pagg_tab GROUP BY c ORDER BY 1, 2;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Incremental Sort
    Sort Key: pagg_tab.c, (sum(pagg_tab.b ORDER BY pagg_tab.a))
@@ -344,7 +344,7 @@ SELECT c, sum(b order by a) FROM pagg_tab GROUP BY c ORDER BY 1, 2;
 -- partitionwise aggregation plan is not generated.
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b order by a) FROM pagg_tab GROUP BY a ORDER BY 1, 2;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Incremental Sort
    Sort Key: pagg_tab.a, (sum(pagg_tab.b ORDER BY pagg_tab.a))
@@ -378,7 +378,7 @@ EXPLAIN (COSTS OFF)
 SELECT t1.x, sum(t1.y), count(*) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2.y GROUP BY t1.x ORDER BY 1, 2, 3;
 */
 SELECT t1.x, sum(t1.y), count(*) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2.y GROUP BY t1.x ORDER BY 1, 2, 3;
- x  | sum  | count
+ x  | sum  | count 
 ----+------+-------
   0 |  500 |   100
   6 | 1100 |   100
@@ -390,7 +390,7 @@ SELECT t1.x, sum(t1.y), count(*) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2
 -- Check with whole-row reference; partitionwise aggregation does not apply
 EXPLAIN (COSTS OFF)
 SELECT t1.x, sum(t1.y), count(t1) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2.y GROUP BY t1.x ORDER BY 1, 2, 3;
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Sort
    Sort Key: t1.x, (sum(t1.y)), (count(((t1.*)::pagg_tab1)))
@@ -410,7 +410,7 @@ SELECT t1.x, sum(t1.y), count(t1) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t
 (15 rows)
 
 SELECT t1.x, sum(t1.y), count(t1) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2.y GROUP BY t1.x ORDER BY 1, 2, 3;
- x  | sum  | count
+ x  | sum  | count 
 ----+------+-------
   0 |  500 |   100
   6 | 1100 |   100
@@ -432,7 +432,7 @@ EXPLAIN (COSTS OFF)
 SELECT t1.y, sum(t1.x), count(*) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2.y GROUP BY t1.y HAVING avg(t1.x) > 10 ORDER BY 1, 2, 3;
 */
 SELECT t1.y, sum(t1.x), count(*) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2.y GROUP BY t1.y HAVING avg(t1.x) > 10 ORDER BY 1, 2, 3;
- y  | sum  | count
+ y  | sum  | count 
 ----+------+-------
   2 |  600 |    50
   4 | 1200 |    50
@@ -452,7 +452,7 @@ EXPLAIN (COSTS OFF)
 SELECT b.y, sum(a.y) FROM pagg_tab1 a LEFT JOIN pagg_tab2 b ON a.x = b.y GROUP BY b.y ORDER BY 1 NULLS LAST;
 */
 SELECT b.y, sum(a.y) FROM pagg_tab1 a LEFT JOIN pagg_tab2 b ON a.x = b.y GROUP BY b.y ORDER BY 1 NULLS LAST;
- y  | sum
+ y  | sum  
 ----+------
   0 |  500
   6 | 1100
@@ -469,18 +469,18 @@ EXPLAIN (COSTS OFF)
 SELECT b.y, sum(a.y) FROM pagg_tab1 a RIGHT JOIN pagg_tab2 b ON a.x = b.y GROUP BY b.y ORDER BY 1 NULLS LAST;
 */
 SELECT b.y, sum(a.y) FROM pagg_tab1 a RIGHT JOIN pagg_tab2 b ON a.x = b.y GROUP BY b.y ORDER BY 1 NULLS LAST;
- y  | sum
+ y  | sum  
 ----+------
   0 |  500
-  3 |
+  3 |     
   6 | 1100
-  9 |
+  9 |     
  12 |  700
- 15 |
+ 15 |     
  18 | 1300
- 21 |
+ 21 |     
  24 |  900
- 27 |
+ 27 |     
 (10 rows)
 
 -- FULL JOIN, should produce partial partitionwise aggregation plan as
@@ -490,23 +490,23 @@ EXPLAIN (COSTS OFF)
 SELECT a.x, sum(b.x) FROM pagg_tab1 a FULL OUTER JOIN pagg_tab2 b ON a.x = b.y GROUP BY a.x ORDER BY 1 NULLS LAST;
 */
 SELECT a.x, sum(b.x) FROM pagg_tab1 a FULL OUTER JOIN pagg_tab2 b ON a.x = b.y GROUP BY a.x ORDER BY 1 NULLS LAST;
- x  | sum
+ x  | sum  
 ----+------
   0 |  500
-  2 |
-  4 |
+  2 |     
+  4 |     
   6 | 1100
-  8 |
- 10 |
+  8 |     
+ 10 |     
  12 |  700
- 14 |
- 16 |
+ 14 |     
+ 16 |     
  18 | 1300
- 20 |
- 22 |
+ 20 |     
+ 22 |     
  24 |  900
- 26 |
- 28 |
+ 26 |     
+ 28 |     
     |  500
 (16 rows)
 
@@ -515,7 +515,7 @@ SELECT a.x, sum(b.x) FROM pagg_tab1 a FULL OUTER JOIN pagg_tab2 b ON a.x = b.y G
 -- non-nullable columns
 EXPLAIN (COSTS OFF)
 SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a LEFT JOIN (SELECT * FROM pagg_tab2 WHERE y > 10) b ON a.x = b.y WHERE a.x > 5 or b.y < 20  GROUP BY a.x, b.y ORDER BY 1, 2;
-                             QUERY PLAN
+                             QUERY PLAN                             
 --------------------------------------------------------------------
  GroupAggregate
    Group Key: pagg_tab1.x, pagg_tab2.y
@@ -538,7 +538,7 @@ SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a LEFT JOI
 (18 rows)
 
 SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a LEFT JOIN (SELECT * FROM pagg_tab2 WHERE y > 10) b ON a.x = b.y WHERE a.x > 5 or b.y < 20  GROUP BY a.x, b.y ORDER BY 1, 2;
- x  | y  | count
+ x  | y  | count 
 ----+----+-------
   6 |    |    10
   8 |    |    10
@@ -557,7 +557,7 @@ EXPLAIN (COSTS OFF)
 SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a FULL JOIN (SELECT * FROM pagg_tab2 WHERE y > 10) b ON a.x = b.y WHERE a.x > 5 or b.y < 20  GROUP BY a.x, b.y ORDER BY 1, 2;
 */
 SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a FULL JOIN (SELECT * FROM pagg_tab2 WHERE y > 10) b ON a.x = b.y WHERE a.x > 5 or b.y < 20 GROUP BY a.x, b.y ORDER BY 1, 2;
- x  | y  | count
+ x  | y  | count 
 ----+----+-------
   6 |    |    10
   8 |    |    10
@@ -572,7 +572,7 @@ SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a FULL JOI
 -- Empty join relation because of empty outer side, no partitionwise agg plan
 EXPLAIN (COSTS OFF)
 SELECT a.x, a.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x = 1 AND x = 2) a LEFT JOIN pagg_tab2 b ON a.x = b.y GROUP BY a.x, a.y ORDER BY 1, 2;
-              QUERY PLAN
+              QUERY PLAN               
 ---------------------------------------
  GroupAggregate
    Group Key: pagg_tab1.x, pagg_tab1.y
@@ -583,7 +583,7 @@ SELECT a.x, a.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x = 1 AND x = 2) a
 (6 rows)
 
 SELECT a.x, a.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x = 1 AND x = 2) a LEFT JOIN pagg_tab2 b ON a.x = b.y GROUP BY a.x, a.y ORDER BY 1, 2;
- x | y | count
+ x | y | count 
 ---+---+-------
 (0 rows)
 
@@ -597,7 +597,7 @@ ANALYZE pagg_tab_m;
 -- Partial aggregation as GROUP BY clause does not match with PARTITION KEY
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a HAVING avg(c) < 22 ORDER BY 1, 2, 3;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Incremental Sort
    Sort Key: pagg_tab_m.a, (sum(pagg_tab_m.b)), (avg(pagg_tab_m.c))
@@ -620,7 +620,7 @@ SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a HAVING avg(c) < 22
 (18 rows)
 
 SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a HAVING avg(c) < 22 ORDER BY 1, 2, 3;
- a  | sum  |         avg         | count
+ a  | sum  |         avg         | count 
 ----+------+---------------------+-------
   0 | 1500 | 20.0000000000000000 |   100
   1 | 1600 | 21.0000000000000000 |   100
@@ -633,7 +633,7 @@ SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a HAVING avg(c) < 22
 -- Full aggregation as GROUP BY clause matches with PARTITION KEY
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a, (a+b)/2 HAVING sum(b) < 50 ORDER BY 1, 2, 3;
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort
    Sort Key: pagg_tab_m.a, (sum(pagg_tab_m.b)), (avg(pagg_tab_m.c))
@@ -653,7 +653,7 @@ SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a, (a+b)/2 HAVING su
 (15 rows)
 
 SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a, (a+b)/2 HAVING sum(b) < 50 ORDER BY 1, 2, 3;
- a  | sum |         avg         | count
+ a  | sum |         avg         | count 
 ----+-----+---------------------+-------
   0 |   0 | 20.0000000000000000 |    25
   1 |  25 | 21.0000000000000000 |    25
@@ -666,7 +666,7 @@ SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a, (a+b)/2 HAVING su
 -- Full aggregation as PARTITION KEY is part of GROUP BY clause
 EXPLAIN (COSTS OFF)
 SELECT a, c, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY (a+b)/2, 2, 1 HAVING sum(b) = 50 AND avg(c) > 25 ORDER BY 1, 2, 3;
-                                            QUERY PLAN
+                                            QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Sort
    Sort Key: pagg_tab_m.a, pagg_tab_m.c, (sum(pagg_tab_m.b))
@@ -686,7 +686,7 @@ SELECT a, c, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY (a+b)/2, 2, 1 HAV
 (15 rows)
 
 SELECT a, c, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY (a+b)/2, 2, 1 HAVING sum(b) = 50 AND avg(c) > 25 ORDER BY 1, 2, 3;
- a  | c  | sum |         avg         | count
+ a  | c  | sum |         avg         | count 
 ----+----+-----+---------------------+-------
   0 | 30 |  50 | 30.0000000000000000 |     5
   0 | 40 |  50 | 40.0000000000000000 |     5
@@ -721,7 +721,7 @@ EXPLAIN (COSTS OFF)
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
 */
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
- a  | sum |  array_agg  | count
+ a  | sum |  array_agg  | count 
 ----+-----+-------------+-------
   0 |   0 | {0000,0002} |   100
   1 | 100 | {0001,0003} |   100
@@ -746,7 +746,7 @@ EXPLAIN (COSTS OFF)
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
 */
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
- a  | sum | count
+ a  | sum | count 
 ----+-----+-------
   0 |   0 |   100
   1 | 100 |   100
@@ -766,7 +766,7 @@ EXPLAIN (COSTS OFF)
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b ORDER BY 1, 2, 3;
 */
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b HAVING avg(a) < 15 ORDER BY 1, 2, 3;
- b | sum  | count
+ b | sum  | count 
 ---+------+-------
  0 | 3000 |   300
  1 | 3300 |   300
@@ -778,7 +778,7 @@ SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b HAVING avg(a) < 15 ORDER 
 -- Full aggregation at all levels as GROUP BY clause matches with PARTITION KEY
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 ORDER BY 1, 2, 3;
-                                 QUERY PLAN
+                                 QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Sort
    Sort Key: pagg_tab_ml.a, (sum(pagg_tab_ml.b)), (count(*))
@@ -806,7 +806,7 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 O
 (23 rows)
 
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 ORDER BY 1, 2, 3;
- a  | sum | count
+ a  | sum | count 
 ----+-----+-------
   8 | 400 |    50
   8 | 400 |    50
@@ -833,7 +833,7 @@ EXPLAIN (COSTS OFF)
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
 */
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
- a  | sum | count
+ a  | sum | count 
 ----+-----+-------
   0 |   0 |   100
   1 | 100 |   100
@@ -853,7 +853,7 @@ EXPLAIN (COSTS OFF)
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b ORDER BY 1, 2, 3;
 */
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b HAVING avg(a) < 15 ORDER BY 1, 2, 3;
- b | sum  | count
+ b | sum  | count 
 ---+------+-------
  0 | 3000 |   300
  1 | 3300 |   300
@@ -868,7 +868,7 @@ EXPLAIN (COSTS OFF)
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 ORDER BY 1, 2, 3;
 */
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 ORDER BY 1, 2, 3;
- a  | sum | count
+ a  | sum | count 
 ----+-----+-------
   8 | 400 |    50
   8 | 400 |    50
@@ -905,7 +905,7 @@ EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
 */
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
- x  | sum |        avg         | count
+ x  | sum |        avg         | count 
 ----+-----+--------------------+-------
   0 | 500 | 5.0000000000000000 |   100
   1 | 600 | 6.0000000000000000 |   100
@@ -921,7 +921,7 @@ EXPLAIN (COSTS OFF)
 SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) < 12 ORDER BY 1, 2, 3;
 */
 SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) < 12 ORDER BY 1, 2, 3;
- y  | sum  |         avg         | count
+ y  | sum  |         avg         | count 
 ----+------+---------------------+-------
   0 | 1500 | 10.0000000000000000 |   150
   1 | 1650 | 11.0000000000000000 |   150
@@ -940,7 +940,7 @@ EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
 */
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
- x  | sum |        avg         | count
+ x  | sum |        avg         | count 
 ----+-----+--------------------+-------
   0 | 500 | 5.0000000000000000 |   100
   1 | 600 | 6.0000000000000000 |   100
@@ -958,7 +958,7 @@ EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
 */
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
- x  | sum |        avg         | count
+ x  | sum |        avg         | count 
 ----+-----+--------------------+-------
   0 | 500 | 5.0000000000000000 |   100
   1 | 600 | 6.0000000000000000 |   100
@@ -973,7 +973,7 @@ RESET min_parallel_table_scan_size;
 RESET parallel_setup_cost;
 EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Sort
    Sort Key: pagg_tab_para.x, (sum(pagg_tab_para.y)), (avg(pagg_tab_para.y))
@@ -993,7 +993,7 @@ SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) <
 (15 rows)
 
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
- x  | sum |        avg         | count
+ x  | sum |        avg         | count 
 ----+-----+--------------------+-------
   0 | 500 | 5.0000000000000000 |   100
   1 | 600 | 6.0000000000000000 |   100
@@ -1002,3 +1002,4 @@ SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) <
  20 | 500 | 5.0000000000000000 |   100
  21 | 600 | 6.0000000000000000 |   100
 (6 rows)
+

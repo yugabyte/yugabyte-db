@@ -5,7 +5,7 @@
 -- The following queries can use any index depending on cost estimator.
 --
 EXPLAIN (COSTS OFF) SELECT count(*) FROM airports WHERE iso_region = 'US-CA';
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using airports_idx2 on airports
@@ -15,7 +15,7 @@ EXPLAIN (COSTS OFF) SELECT count(*) FROM airports WHERE iso_region = 'US-CA';
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY ident;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Index Scan using airports_pkey on airports
    Index Cond: (iso_region = 'US-CA'::text)
@@ -24,7 +24,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY ident LIMIT 1;
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Limit
    ->  Index Scan using airports_pkey on airports
@@ -36,7 +36,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 -- The following query should use PRIMARY KEY index.
 --
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' LIMIT 1;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Limit
    ->  Index Scan using airports_pkey on airports
@@ -44,7 +44,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' LIMIT 1;
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' ORDER BY ident LIMIT 1;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Limit
    ->  Index Scan using airports_pkey on airports
@@ -52,7 +52,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' ORDER BY i
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' ORDER BY ident ASC LIMIT 1;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Limit
    ->  Index Scan using airports_pkey on airports
@@ -60,7 +60,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' ORDER BY i
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM airports  WHERE iso_region = 'US-CA' ORDER BY ident DESC LIMIT 1;
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Limit
    ->  Index Scan Backward using airports_pkey on airports
@@ -68,7 +68,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports  WHERE iso_region = 'US-CA' ORDER BY 
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' ORDER BY iso_region, ident LIMIT 1;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Limit
    ->  Index Scan using airports_pkey on airports
@@ -76,7 +76,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' ORDER BY i
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND ident >= '4' LIMIT 2;
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Limit
    ->  Index Scan using airports_pkey on airports
@@ -84,7 +84,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND ident < '4' LIMIT 2;
-                                 QUERY PLAN
+                                 QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Limit
    ->  Index Scan using airports_pkey on airports
@@ -95,7 +95,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 -- The following query should use "airports_idx1" index
 --
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORDER BY name DESC LIMIT 1;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Limit
    ->  Index Scan using airports_idx1 on airports
@@ -103,7 +103,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORD
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORDER BY name ASC LIMIT 1;
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Limit
    ->  Index Scan Backward using airports_idx1 on airports
@@ -114,7 +114,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORD
 -- The following query should use "airports_idx2" index
 --
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORDER BY gps_code ASC LIMIT 1;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Limit
    ->  Index Only Scan using airports_idx2 on airports
@@ -122,7 +122,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORD
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORDER BY gps_code DESC LIMIT 1;
-                           QUERY PLAN
+                           QUERY PLAN                           
 ----------------------------------------------------------------
  Limit
    ->  Index Only Scan Backward using airports_idx2 on airports
@@ -130,21 +130,21 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORD
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports ORDER BY iso_region, gps_code LIMIT 1;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Limit
    ->  Index Only Scan using airports_idx2 on airports
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports ORDER BY iso_region ASC, gps_code ASC LIMIT 1;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Limit
    ->  Index Only Scan using airports_idx2 on airports
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports ORDER BY iso_region DESC, gps_code DESC LIMIT 1;
-                           QUERY PLAN
+                           QUERY PLAN                           
 ----------------------------------------------------------------
  Limit
    ->  Index Only Scan Backward using airports_idx2 on airports
@@ -155,7 +155,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports ORDER BY iso_region DESC, gps_
 --
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident, name LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Only Scan using airports_idx3 on airports
@@ -164,7 +164,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates ASC, ident, name LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Only Scan using airports_idx3 on airports
@@ -173,7 +173,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates DESC, ident DESC, name DESC LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Only Scan Backward using airports_idx3 on airports
@@ -182,7 +182,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident, name ASC LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Only Scan using airports_idx3 on airports
@@ -191,7 +191,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Only Scan using airports_idx3 on airports
@@ -200,7 +200,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Only Scan using airports_idx3 on airports
@@ -212,7 +212,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 --
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident, name LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Scan using airports_idx3 on airports
@@ -221,7 +221,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type =
 
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates ASC, ident, name LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Scan using airports_idx3 on airports
@@ -230,7 +230,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type =
 
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates DESC, ident DESC, name DESC LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Scan Backward using airports_idx3 on airports
@@ -239,7 +239,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type =
 
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident, name ASC LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Scan using airports_idx3 on airports
@@ -248,7 +248,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type =
 
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Scan using airports_idx3 on airports
@@ -257,7 +257,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type =
 
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates LIMIT 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Scan using airports_idx3 on airports
@@ -269,7 +269,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type =
 --
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident, name;
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Index Only Scan using airports_idx3 on airports
    Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
@@ -277,7 +277,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident;
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Index Only Scan using airports_idx3 on airports
    Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
@@ -285,7 +285,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates;
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Index Only Scan using airports_idx3 on airports
    Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
@@ -296,7 +296,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 --
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident, name;
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Index Scan using airports_idx3 on airports
    Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
@@ -304,7 +304,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type =
 
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident;
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Index Scan using airports_idx3 on airports
    Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
@@ -312,7 +312,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type =
 
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates;
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Index Scan using airports_idx3 on airports
    Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
@@ -324,14 +324,14 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type =
 --
 -- No where clause
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports;
-      QUERY PLAN
+      QUERY PLAN      
 ----------------------
  Seq Scan on airports
 (1 row)
 
 -- Use '!=' on hash column.
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region != 'US-CA';
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Seq Scan on airports
    Storage Filter: (iso_region <> 'US-CA'::text)
@@ -339,7 +339,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region != 'US-CA';
 
 -- ORDER BY hash column.
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORDER BY type, coordinates;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Sort
    Sort Key: type, coordinates
@@ -349,7 +349,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORD
 
 -- ORDER BY in wrong direction.
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports ORDER BY iso_region ASC, gps_code DESC LIMIT 1;
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Limit
    ->  Incremental Sort
@@ -360,7 +360,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports ORDER BY iso_region ASC, gps_c
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates DESC, ident, name LIMIT 1;
-                                         QUERY PLAN
+                                         QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Limit
    ->  Incremental Sort
@@ -372,7 +372,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY coordinates, ident, name DESC LIMIT 1;
-                                         QUERY PLAN
+                                         QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Limit
    ->  Incremental Sort
@@ -385,7 +385,7 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND
 -- HASH column is not completely specified while ordering by RANGE column
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA'
           ORDER BY type, coordinates LIMIT 1;
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Limit
    ->  Sort
@@ -393,3 +393,4 @@ EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA'
          ->  Index Scan using airports_pkey on airports
                Index Cond: (iso_region = 'US-CA'::text)
 (5 rows)
+

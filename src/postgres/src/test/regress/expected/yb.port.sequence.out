@@ -73,7 +73,7 @@ INSERT INTO serialTest1 VALUES ('wrong', NULL);
 ERROR:  null value in column "f2" of relation "serialtest1" violates not-null constraint
 DETAIL:  Failing row contains (wrong, null).
 SELECT * FROM serialTest1 ORDER BY f2; -- YB: add ordering
-  f1   | f2
+  f1   | f2  
 -------+-----
  foo   |   1
  bar   |   2
@@ -81,7 +81,7 @@ SELECT * FROM serialTest1 ORDER BY f2; -- YB: add ordering
 (3 rows)
 
 SELECT pg_get_serial_sequence('serialTest1', 'f2');
-  pg_get_serial_sequence
+  pg_get_serial_sequence   
 ---------------------------
  public.serialtest1_f2_seq
 (1 row)
@@ -122,7 +122,7 @@ INSERT INTO serialTest2 (f1, f6)
   VALUES ('bogus', 9223372036854775808);
 ERROR:  bigint out of range
 SELECT * FROM serialTest2 ORDER BY f2 ASC;
-      f1       |     f2      |   f3   |   f4   |          f5          |          f6
+      f1       |     f2      |   f3   |   f4   |          f5          |          f6          
 ---------------+-------------+--------+--------+----------------------+----------------------
  test_min_vals | -2147483648 | -32768 | -32768 | -9223372036854775808 | -9223372036854775808
  test_defaults |           1 |      1 |      1 |                    1 |                    1
@@ -130,31 +130,31 @@ SELECT * FROM serialTest2 ORDER BY f2 ASC;
 (3 rows)
 
 SELECT nextval('serialTest2_f2_seq');
- nextval
+ nextval 
 ---------
        2
 (1 row)
 
 SELECT nextval('serialTest2_f3_seq');
- nextval
+ nextval 
 ---------
        2
 (1 row)
 
 SELECT nextval('serialTest2_f4_seq');
- nextval
+ nextval 
 ---------
        2
 (1 row)
 
 SELECT nextval('serialTest2_f5_seq');
- nextval
+ nextval 
 ---------
        2
 (1 row)
 
 SELECT nextval('serialTest2_f6_seq');
- nextval
+ nextval 
 ---------
        2
 (1 row)
@@ -164,73 +164,73 @@ CREATE SEQUENCE sequence_test;
 CREATE SEQUENCE IF NOT EXISTS sequence_test;
 NOTICE:  relation "sequence_test" already exists, skipping
 SELECT nextval('sequence_test'::text);
- nextval
+ nextval 
 ---------
        1
 (1 row)
 
 SELECT nextval('sequence_test'::regclass);
- nextval
+ nextval 
 ---------
        2
 (1 row)
 
 SELECT currval('sequence_test'::text);
- currval
+ currval 
 ---------
        2
 (1 row)
 
 SELECT currval('sequence_test'::regclass);
- currval
+ currval 
 ---------
        2
 (1 row)
 
 SELECT setval('sequence_test'::text, 32);
- setval
+ setval 
 --------
      32
 (1 row)
 
 SELECT nextval('sequence_test'::regclass);
- nextval
+ nextval 
 ---------
       33
 (1 row)
 
 SELECT setval('sequence_test'::text, 99, false);
- setval
+ setval 
 --------
      99
 (1 row)
 
 SELECT nextval('sequence_test'::regclass);
- nextval
+ nextval 
 ---------
       99
 (1 row)
 
 SELECT setval('sequence_test'::regclass, 32);
- setval
+ setval 
 --------
      32
 (1 row)
 
 SELECT nextval('sequence_test'::text);
- nextval
+ nextval 
 ---------
       33
 (1 row)
 
 SELECT setval('sequence_test'::regclass, 99, false);
- setval
+ setval 
 --------
      99
 (1 row)
 
 SELECT nextval('sequence_test'::text);
- nextval
+ nextval 
 ---------
       99
 (1 row)
@@ -243,19 +243,19 @@ DROP SEQUENCE sequence_test;
 CREATE SEQUENCE foo_seq;
 ALTER TABLE foo_seq RENAME TO foo_seq_new;
 SELECT * FROM foo_seq_new;
- last_value | log_cnt | is_called
+ last_value | log_cnt | is_called 
 ------------+---------+-----------
           1 |       0 | f
 (1 row)
 
 SELECT nextval('foo_seq_new');
- nextval
+ nextval 
 ---------
        1
 (1 row)
 
 SELECT nextval('foo_seq_new');
- nextval
+ nextval 
 ---------
        2
 (1 row)
@@ -273,7 +273,7 @@ DROP SEQUENCE foo_seq_new;
 ALTER TABLE serialtest1_f2_seq RENAME TO serialtest1_f2_foo;
 INSERT INTO serialTest1 VALUES ('more');
 SELECT * FROM serialTest1 ORDER BY substr(f1, 3); -- YB: add ordering
-  f1   | f2
+  f1   | f2  
 -------+-----
  foo   |   1
  bar   |   2
@@ -319,20 +319,20 @@ ERROR:  "serialtest1" is not a sequence
 CREATE SEQUENCE sequence_test2 START WITH 32;
 CREATE SEQUENCE sequence_test4 INCREMENT BY -1;
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
       32
 (1 row)
 
 SELECT nextval('sequence_test4');
- nextval
+ nextval 
 ---------
       -1
 (1 row)
 
 ALTER SEQUENCE sequence_test2 RESTART;
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
       32
 (1 row)
@@ -345,31 +345,31 @@ ERROR:  RESTART value (40) cannot be greater than MAXVALUE (-1)
 ALTER SEQUENCE sequence_test2 RESTART WITH 24
   INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
       24
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
       28
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
       32
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
       36
 (1 row)
 
 SELECT nextval('sequence_test2');  -- cycled
- nextval
+ nextval 
 ---------
        5
 (1 row)
@@ -377,25 +377,25 @@ SELECT nextval('sequence_test2');  -- cycled
 ALTER SEQUENCE sequence_test2 RESTART WITH 24
   NO CYCLE;
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
       24
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
       28
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
       32
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
       36
 (1 row)
@@ -405,31 +405,31 @@ ERROR:  nextval: reached maximum value of sequence "sequence_test2" (36)
 ALTER SEQUENCE sequence_test2 RESTART WITH -24 START WITH -24
   INCREMENT BY -4 MINVALUE -36 MAXVALUE -5 CYCLE;
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
      -24
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
      -28
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
      -32
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
      -36
 (1 row)
 
 SELECT nextval('sequence_test2');  -- cycled
- nextval
+ nextval 
 ---------
       -5
 (1 row)
@@ -437,25 +437,25 @@ SELECT nextval('sequence_test2');  -- cycled
 ALTER SEQUENCE sequence_test2 RESTART WITH -24
   NO CYCLE;
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
      -24
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
      -28
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
      -32
 (1 row)
 
 SELECT nextval('sequence_test2');
- nextval
+ nextval 
 ---------
      -36
 (1 row)
@@ -470,7 +470,7 @@ ERROR:  setval: value -100 is out of bounds for sequence "sequence_test2" (5..36
 SELECT setval('sequence_test2', 100);  -- error
 ERROR:  setval: value 100 is out of bounds for sequence "sequence_test2" (5..36)
 SELECT setval('sequence_test2', 5);
- setval
+ setval 
 --------
       5
 (1 row)
@@ -480,7 +480,7 @@ CREATE SEQUENCE sequence_test3;  -- not read from, to test is_called
 SELECT * FROM information_schema.sequences
   WHERE sequence_name ~ ANY(ARRAY['sequence_test', 'serialtest'])
   ORDER BY sequence_name ASC;
- sequence_catalog | sequence_schema |   sequence_name    | data_type | numeric_precision | numeric_precision_radix | numeric_scale | start_value |    minimum_value     |    maximum_value    | increment | cycle_option
+ sequence_catalog | sequence_schema |   sequence_name    | data_type | numeric_precision | numeric_precision_radix | numeric_scale | start_value |    minimum_value     |    maximum_value    | increment | cycle_option 
 ------------------+-----------------+--------------------+-----------+-------------------+-------------------------+---------------+-------------+----------------------+---------------------+-----------+--------------
  yugabyte         | public          | sequence_test10    | smallint  |                16 |                       2 |             0 | 1           | -20000               | 32767               | 1         | NO
  yugabyte         | public          | sequence_test11    | integer   |                32 |                       2 |             0 | 1           | 1                    | 2147483647          | 1         | NO
@@ -507,7 +507,7 @@ SELECT schemaname, sequencename, start_value, min_value, max_value, increment_by
 FROM pg_sequences
 WHERE sequencename ~ ANY(ARRAY['sequence_test', 'serialtest'])
   ORDER BY sequencename ASC;
- schemaname |    sequencename    | start_value |      min_value       |      max_value      | increment_by | cycle | cache_size
+ schemaname |    sequencename    | start_value |      min_value       |      max_value      | increment_by | cycle | cache_size 
 ------------+--------------------+-------------+----------------------+---------------------+--------------+-------+------------
  public     | sequence_test10    |           1 |               -20000 |               32767 |            1 | f     |          1
  public     | sequence_test11    |           1 |                    1 |          2147483647 |            1 | f     |          1
@@ -531,20 +531,20 @@ WHERE sequencename ~ ANY(ARRAY['sequence_test', 'serialtest'])
 (19 rows)
 
 SELECT * FROM pg_sequence_parameters('sequence_test4'::regclass);
- start_value |    minimum_value     | maximum_value | increment | cycle_option | cache_size | data_type
+ start_value |    minimum_value     | maximum_value | increment | cycle_option | cache_size | data_type 
 -------------+----------------------+---------------+-----------+--------------+------------+-----------
           -1 | -9223372036854775808 |            -1 |        -1 | f            |          1 |        20
 (1 row)
 
 \d sequence_test4
                        Sequence "public.sequence_test4"
-  Type  | Start |       Minimum        | Maximum | Increment | Cycles? | Cache
+  Type  | Start |       Minimum        | Maximum | Increment | Cycles? | Cache 
 --------+-------+----------------------+---------+-----------+---------+-------
  bigint |    -1 | -9223372036854775808 |      -1 |        -1 | no      |     1
 
 \d serialtest2_f2_seq
                  Sequence "public.serialtest2_f2_seq"
-  Type   | Start | Minimum |  Maximum   | Increment | Cycles? | Cache
+  Type   | Start | Minimum |  Maximum   | Increment | Cycles? | Cache 
 ---------+-------+---------+------------+-----------+---------+-------
  integer |     1 |       1 | 2147483647 |         1 | no      |     1
 Owned by: public.serialtest2.f2
@@ -557,25 +557,25 @@ COMMENT ON SEQUENCE sequence_test2 IS NULL;
 -- Test lastval()
 CREATE SEQUENCE seq;
 SELECT nextval('seq');
- nextval
+ nextval 
 ---------
        1
 (1 row)
 
 SELECT lastval();
- lastval
+ lastval 
 ---------
        1
 (1 row)
 
 SELECT setval('seq', 99);
- setval
+ setval 
 --------
      99
 (1 row)
 
 SELECT lastval();
- lastval
+ lastval 
 ---------
       99
 (1 row)
@@ -585,13 +585,13 @@ SELECT lastval();
 ERROR:  lastval is not yet defined in this session
 CREATE SEQUENCE seq2;
 SELECT nextval('seq2');
- nextval
+ nextval 
 ---------
        1
 (1 row)
 
 SELECT lastval();
- lastval
+ lastval 
 ---------
        1
 (1 row)
@@ -607,7 +607,7 @@ NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relati
 ALTER SEQUENCE sequence_test_unlogged SET LOGGED;
 \d sequence_test_unlogged
                    Sequence "public.sequence_test_unlogged"
-  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
 --------+-------+---------+---------------------+-----------+---------+-------
  bigint |     1 |       1 | 9223372036854775807 |         1 | no      |     1
 
@@ -615,7 +615,7 @@ ALTER SEQUENCE sequence_test_unlogged SET UNLOGGED;
 NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
 \d sequence_test_unlogged
                    Sequence "public.sequence_test_unlogged"
-  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
 --------+-------+---------+---------------------+-----------+---------+-------
  bigint |     1 |       1 | 9223372036854775807 |         1 | no      |     1
 
@@ -624,7 +624,7 @@ DROP SEQUENCE sequence_test_unlogged;
 CREATE TEMPORARY SEQUENCE sequence_test_temp1;
 START TRANSACTION READ ONLY;
 SELECT nextval('sequence_test_temp1');  -- ok
- nextval
+ nextval 
 ---------
        1
 (1 row)
@@ -634,7 +634,7 @@ ERROR:  cannot execute nextval() in a read-only transaction
 ROLLBACK;
 START TRANSACTION READ ONLY;
 SELECT setval('sequence_test_temp1', 1);  -- ok
- setval
+ setval 
 --------
       1
 (1 row)
@@ -660,7 +660,7 @@ CREATE SEQUENCE seq3;
 REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT UPDATE ON seq3 TO regress_seq_user;
 SELECT nextval('seq3');
- nextval
+ nextval 
 ---------
        1
 (1 row)
@@ -673,7 +673,7 @@ CREATE SEQUENCE seq3;
 REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT USAGE ON seq3 TO regress_seq_user;
 SELECT nextval('seq3');
- nextval
+ nextval 
 ---------
        1
 (1 row)
@@ -685,7 +685,7 @@ BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
 SELECT nextval('seq3');
- nextval
+ nextval 
 ---------
        1
 (1 row)
@@ -693,7 +693,7 @@ SELECT nextval('seq3');
 REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT SELECT ON seq3 TO regress_seq_user;
 SELECT currval('seq3');
- currval
+ currval 
 ---------
        1
 (1 row)
@@ -704,7 +704,7 @@ BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
 SELECT nextval('seq3');
- nextval
+ nextval 
 ---------
        1
 (1 row)
@@ -719,7 +719,7 @@ BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
 SELECT nextval('seq3');
- nextval
+ nextval 
 ---------
        1
 (1 row)
@@ -727,7 +727,7 @@ SELECT nextval('seq3');
 REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT USAGE ON seq3 TO regress_seq_user;
 SELECT currval('seq3');
- currval
+ currval 
 ---------
        1
 (1 row)
@@ -739,7 +739,7 @@ BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
 SELECT nextval('seq3');
- nextval
+ nextval 
 ---------
        1
 (1 row)
@@ -747,7 +747,7 @@ SELECT nextval('seq3');
 REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT SELECT ON seq3 TO regress_seq_user;
 SELECT lastval();
- lastval
+ lastval 
 ---------
        1
 (1 row)
@@ -758,7 +758,7 @@ BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
 SELECT nextval('seq3');
- nextval
+ nextval 
 ---------
        1
 (1 row)
@@ -773,7 +773,7 @@ BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
 SELECT nextval('seq3');
- nextval
+ nextval 
 ---------
        1
 (1 row)
@@ -781,7 +781,7 @@ SELECT nextval('seq3');
 REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT USAGE ON seq3 TO regress_seq_user;
 SELECT lastval();
- lastval
+ lastval 
 ---------
        1
 (1 row)
@@ -799,13 +799,13 @@ ERROR:  permission denied for sequence seq3
 ROLLBACK TO save;
 GRANT UPDATE ON seq3 TO regress_seq_user;
 SELECT setval('seq3', 5);
- setval
+ setval 
 --------
       5
 (1 row)
 
 SELECT nextval('seq3');
- nextval
+ nextval 
 ---------
        6
 (1 row)
@@ -825,7 +825,7 @@ SELECT * FROM information_schema.sequences WHERE sequence_name IN
   ('sequence_test2', 'serialtest2_f2_seq', 'serialtest2_f3_seq',
    'serialtest2_f4_seq', 'serialtest2_f5_seq', 'serialtest2_f6_seq')
   ORDER BY sequence_name ASC;
- sequence_catalog | sequence_schema | sequence_name  | data_type | numeric_precision | numeric_precision_radix | numeric_scale | start_value | minimum_value | maximum_value | increment | cycle_option
+ sequence_catalog | sequence_schema | sequence_name  | data_type | numeric_precision | numeric_precision_radix | numeric_scale | start_value | minimum_value | maximum_value | increment | cycle_option 
 ------------------+-----------------+----------------+-----------+-------------------+-------------------------+---------------+-------------+---------------+---------------+-----------+--------------
  yugabyte         | public          | sequence_test2 | bigint    |                64 |                       2 |             0 | 32          | 5             | 36            | 4         | YES
 (1 row)
@@ -835,19 +835,19 @@ DROP SEQUENCE seq;
 -- cache tests
 CREATE SEQUENCE test_seq1 CACHE 10;
 SELECT nextval('test_seq1');
- nextval
+ nextval 
 ---------
        1
 (1 row)
 
 SELECT nextval('test_seq1');
- nextval
+ nextval 
 ---------
        2
 (1 row)
 
 SELECT nextval('test_seq1');
- nextval
+ nextval 
 ---------
        3
 (1 row)

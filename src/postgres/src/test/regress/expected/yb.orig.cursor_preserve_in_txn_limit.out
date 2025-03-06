@@ -16,7 +16,7 @@ DECLARE c1 SCROLL CURSOR FOR SELECT * FROM t1;
 INSERT INTO t1 VALUES(3); -- rows inserted before the first FETCH will be visible
 INSERT INTO t1 VALUES(4);
 FETCH 1 FROM c1;
- k
+ k 
 ---
  1
 (1 row)
@@ -24,13 +24,13 @@ FETCH 1 FROM c1;
 INSERT INTO t1 VALUES(5); -- rows inserted after the first FETCH should not be visible
 INSERT INTO t1 VALUES(6);
 SELECT count(*) FROM t1; -- this statement uses a new in_txn_limit and hence sees all rows
- count
+ count 
 -------
      6
 (1 row)
 
 FETCH 10 FROM c1;
- k
+ k 
 ---
  2
  3

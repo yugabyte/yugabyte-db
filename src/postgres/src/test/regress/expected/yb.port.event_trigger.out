@@ -282,7 +282,7 @@ NOTICE:  schema "audit_tbls" does not exist, skipping
 NOTICE:  schema "audit_tbls" does not exist, skipping
 NOTICE:  schema "audit_tbls" does not exist, skipping
 SELECT * FROM dropped_objects WHERE type = 'schema' order by object asc;
-  type  | schema |   object
+  type  | schema |   object   
 --------+--------+------------
  schema |        | audit_tbls
  schema |        | schema_one

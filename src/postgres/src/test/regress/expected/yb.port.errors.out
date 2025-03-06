@@ -3,7 +3,7 @@
 --
 -- bad in postquel, but ok in PostgreSQL
 select 1;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)

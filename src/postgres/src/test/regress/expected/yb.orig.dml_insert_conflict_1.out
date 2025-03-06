@@ -12,7 +12,7 @@ INSERT INTO tab VALUES (1, 7) ON CONFLICT ON CONSTRAINT tab_pkey DO UPDATE
     SET j = tab.j + excluded.j;
 -- Use select to verify result.
 SELECT * FROM tab;
-  i  |  j
+  i  |  j  
 -----+-----
    1 |   8
  200 | 200
@@ -30,7 +30,7 @@ INSERT INTO tab VALUES (1, 200) ON CONFLICT (j) DO UPDATE
     SET j = tab.j + excluded.j;
 -- Use SELECT to verify result.
 SELECT * FROM tab;
-  i  |  j
+  i  |  j  
 -----+-----
    1 |   8
  200 | 400
@@ -40,7 +40,7 @@ SELECT * FROM tab;
 INSERT INTO tab VALUES (1, 400) ON CONFLICT ON CONSTRAINT tab_j_constraint DO NOTHING;
 -- Use SELECT to verify result.
 SELECT * FROM tab;
-  i  |  j
+  i  |  j  
 -----+-----
    1 |   8
  200 | 400
@@ -51,7 +51,7 @@ INSERT INTO tab VALUES (1, 400) ON CONFLICT ON CONSTRAINT tab_j_constraint DO UP
     SET j = tab.j + excluded.j;
 -- Use SELECT to verify result.
 SELECT * FROM tab;
-  i  |  j
+  i  |  j  
 -----+-----
    1 |   8
  200 | 800
@@ -66,7 +66,7 @@ insert into arr_pk_tbl values (1, '{1,2,3}');
 insert into arr_pk_tbl values (1, '{3,4,5}') on conflict (pk)
   do update set f1[1] = excluded.f1[1], f1[3] = excluded.f1[3]
   returning pk, f1;
- pk |   f1
+ pk |   f1    
 ----+---------
   1 | {3,2,5}
 (1 row)
@@ -76,7 +76,7 @@ insert into arr_pk_tbl(pk, f1[1:2]) values (1, '{6,7,8}') on conflict (pk)
     f1[2] = excluded.f1[2],
     f1[3] = excluded.f1[3]
   returning pk, f1;
- pk |     f1
+ pk |     f1     
 ----+------------
   1 | {6,7,NULL}
 (1 row)

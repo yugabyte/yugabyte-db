@@ -6,32 +6,32 @@
 --
 \d pg_yb_profile
                    Table "pg_catalog.pg_yb_profile"
-          Column           |  Type   | Collation | Nullable | Default
+          Column           |  Type   | Collation | Nullable | Default 
 ---------------------------+---------+-----------+----------+---------
- oid                       | oid     |           | not null |
- prfname                   | name    |           | not null |
- prfmaxfailedloginattempts | integer |           | not null |
- prfpasswordlocktime       | integer |           | not null |
+ oid                       | oid     |           | not null | 
+ prfname                   | name    |           | not null | 
+ prfmaxfailedloginattempts | integer |           | not null | 
+ prfpasswordlocktime       | integer |           | not null | 
 Indexes:
     "pg_yb_profile_oid_index" PRIMARY KEY, lsm (oid ASC), tablespace "pg_global"
     "pg_yb_profile_prfname_index" UNIQUE, lsm (prfname ASC), tablespace "pg_global"
 Tablespace: "pg_global"
 
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_profile', 'pg_yb_profile_oid_index');
- oid  |         relname         | reltype | relnatts
+ oid  |         relname         | reltype | relnatts 
 ------+-------------------------+---------+----------
  8051 | pg_yb_profile           |    8053 |        4
  8052 | pg_yb_profile_oid_index |       0 |        1
 (2 rows)
 
 SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_yb_profile';
- oid  |    typname    | typrelid
+ oid  |    typname    | typrelid 
 ------+---------------+----------
  8053 | pg_yb_profile |     8051
 (1 row)
 
 SELECT pg_describe_object('pg_yb_profile'::regclass::oid, oid, 0) FROM pg_yb_profile;
- pg_describe_object
+ pg_describe_object 
 --------------------
 (0 rows)
 
@@ -39,13 +39,13 @@ SELECT pg_describe_object('pg_yb_profile'::regclass::oid, oid, 0) FROM pg_yb_pro
 -- CREATE PROFILE
 --
 SELECT oid, prfname, prfmaxfailedloginattempts FROM pg_catalog.pg_yb_profile ORDER BY oid;
- oid | prfname | prfmaxfailedloginattempts
+ oid | prfname | prfmaxfailedloginattempts 
 -----+---------+---------------------------
 (0 rows)
 
 CREATE PROFILE test_profile LIMIT FAILED_LOGIN_ATTEMPTS 3;
 SELECT prfname, prfmaxfailedloginattempts FROM pg_catalog.pg_yb_profile ORDER BY OID;
-   prfname    | prfmaxfailedloginattempts
+   prfname    | prfmaxfailedloginattempts 
 --------------+---------------------------
  test_profile |                         3
 (1 row)
@@ -167,3 +167,4 @@ where role_specification can be:
   | CURRENT_ROLE
   | CURRENT_USER
   | SESSION_USER
+

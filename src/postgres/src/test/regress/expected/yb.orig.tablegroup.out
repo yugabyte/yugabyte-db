@@ -25,26 +25,26 @@ DROP TABLEGROUP name
 --
 \d pg_yb_tablegroup
             Table "pg_catalog.pg_yb_tablegroup"
-    Column     |   Type    | Collation | Nullable | Default
+    Column     |   Type    | Collation | Nullable | Default 
 ---------------+-----------+-----------+----------+---------
- oid           | oid       |           | not null |
- grpname       | name      |           | not null |
- grpowner      | oid       |           | not null |
- grptablespace | oid       |           | not null |
- grpacl        | aclitem[] |           |          |
- grpoptions    | text[]    | C         |          |
+ oid           | oid       |           | not null | 
+ grpname       | name      |           | not null | 
+ grpowner      | oid       |           | not null | 
+ grptablespace | oid       |           | not null | 
+ grpacl        | aclitem[] |           |          | 
+ grpoptions    | text[]    | C         |          | 
 Indexes:
     "pg_yb_tablegroup_oid_index" PRIMARY KEY, lsm (oid ASC)
 
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_tablegroup', 'pg_yb_tablegroup_oid_index');
- oid  |          relname           | reltype | relnatts
+ oid  |          relname           | reltype | relnatts 
 ------+----------------------------+---------+----------
  8036 | pg_yb_tablegroup           |    8038 |        6
  8037 | pg_yb_tablegroup_oid_index |       0 |        1
 (2 rows)
 
 SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_yb_tablegroup';
- oid  |     typname      | typrelid
+ oid  |     typname      | typrelid 
 ------+------------------+----------
  8038 | pg_yb_tablegroup |     8036
 (1 row)
@@ -65,7 +65,7 @@ LINE 1: CREATE TABLE nogroup (col1 int) NO TABLEGROUP;
 CREATE TABLE nogroup (col1 int);
 -- TODO(alex): Create a table with a primary key
 SELECT grpname FROM pg_yb_tablegroup;
- grpname
+ grpname 
 ---------
  tgroup1
  tgroup2
@@ -77,9 +77,9 @@ SELECT cl.relname, tg.grpname
     LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid
     WHERE cl.oid >= 16384
     ORDER BY cl.relname;
-        relname        | grpname
+        relname        | grpname 
 -----------------------+---------
- nogroup               |
+ nogroup               | 
  tgroup_test1          | tgroup1
  tgroup_test1_col2_idx | tgroup1
  tgroup_test2          | tgroup1
@@ -92,9 +92,9 @@ SELECT cl.relname, tg.grpname
     LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid
     WHERE cl.oid >= 16384
     ORDER BY cl.relname;
-        relname        | grpname
+        relname        | grpname 
 -----------------------+---------
- nogroup               |
+ nogroup               | 
  tgroup_test1          | tgroup1
  tgroup_test1_col2_idx | tgroup1
  tgroup_test2          | tgroup1
@@ -153,7 +153,7 @@ DROP TABLEGROUP alice_grp_3 CASCADE;
 NOTICE:  drop cascades to table bob_table_3
 DROP TABLE bob_table;
 SELECT relname FROM pg_class WHERE relname LIKE 'bob%';
-   relname
+   relname   
 -------------
  bob_table_2
 (1 row)
@@ -163,7 +163,7 @@ DROP OWNED BY alice CASCADE;  -- CASCADE means we are allowed to drop bob's tabl
 NOTICE:  drop cascades to table bob_table_2
 DROP USER alice;              -- we dropped all of alice's entities, so we can remove her
 SELECT relname FROM pg_class WHERE relname LIKE 'bob%';
- relname
+ relname 
 ---------
 (0 rows)
 
@@ -207,12 +207,12 @@ CREATE UNIQUE INDEX unique_idx3_tbl ON tbl (r1 hash, r2 asc);
 ERROR:  cannot create a hash partitioned index in a TABLEGROUP
 \d tbl
                 Table "public.tbl"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- r1     | integer |           | not null |
- r2     | integer |           | not null |
- v1     | integer |           |          |
- v2     | integer |           |          |
+ r1     | integer |           | not null | 
+ r2     | integer |           | not null | 
+ v1     | integer |           |          | 
+ v2     | integer |           |          | 
 Indexes:
     "tbl_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC)
 Tablegroup: "tgroup_hash_index_test"
@@ -224,12 +224,12 @@ TABLEGROUP tgroup_hash_index_test;
 ALTER TABLE tbl2 ADD CONSTRAINT unique_v2_tbl2 UNIQUE(v2);
 \d tbl2
                 Table "public.tbl2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- r1     | integer |           | not null |
- r2     | integer |           |          |
- v1     | integer |           |          |
- v2     | integer |           |          |
+ r1     | integer |           | not null | 
+ r2     | integer |           |          | 
+ v1     | integer |           |          | 
+ v2     | integer |           |          | 
 Indexes:
     "tbl2_pkey" PRIMARY KEY, lsm (r1 ASC)
     "tbl2_v1_key" UNIQUE CONSTRAINT, lsm (v1 ASC), tablegroup "tgroup_hash_index_test"
@@ -249,7 +249,7 @@ COMMENT ON TABLEGROUP tgroup1 IS 'Comment for Tablegroup 1';
 COMMENT ON TABLEGROUP tgroup2 IS 'Comment for Tablegroup 2';
 \dgr
 List of tablegroups
-  Name   |  Owner
+  Name   |  Owner   
 ---------+----------
  tgroup1 | yugabyte
  tgroup2 | yugabyte
@@ -258,16 +258,16 @@ List of tablegroups
 
 \dgr+
                                    List of tablegroups
-  Name   |  Owner   | Access privileges |       Description        | Tablespace | Options
+  Name   |  Owner   | Access privileges |       Description        | Tablespace | Options 
 ---------+----------+-------------------+--------------------------+------------+---------
- tgroup1 | yugabyte |                   | Comment for Tablegroup 1 |            |
- tgroup2 | yugabyte |                   | Comment for Tablegroup 2 |            |
- tgroup3 | yugabyte |                   |                          |            |
+ tgroup1 | yugabyte |                   | Comment for Tablegroup 1 |            | 
+ tgroup2 | yugabyte |                   | Comment for Tablegroup 2 |            | 
+ tgroup3 | yugabyte |                   |                          |            | 
 (3 rows)
 
 \dgrt
                       List of tablegroup tables
- Group Name | Group Owner |         Name          | Type  |  Owner
+ Group Name | Group Owner |         Name          | Type  |  Owner   
 ------------+-------------+-----------------------+-------+----------
  tgroup1    | yugabyte    | tgroup_test1          | table | yugabyte
  tgroup1    | yugabyte    | tgroup_test1_col2_idx | index | yugabyte
@@ -281,29 +281,29 @@ List of tablegroups
 
 \dgrt+
                                                                            List of tablegroup tables
- Group Name | Group Owner | Access privileges |    Group Description     | Group Tablespace | Group Options |         Name          | Type  |  Owner   | Rel Description | Size
+ Group Name | Group Owner | Access privileges |    Group Description     | Group Tablespace | Group Options |         Name          | Type  |  Owner   | Rel Description | Size 
 ------------+-------------+-------------------+--------------------------+------------------+---------------+-----------------------+-------+----------+-----------------+------
- tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1          | table | yugabyte |                 |
- tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1_col2_idx | index | yugabyte |                 |
- tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test2          | table | yugabyte |                 |
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test3          | table | yugabyte |                 |
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test3_col1_idx | index | yugabyte |                 |
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4          | table | yugabyte |                 |
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col1_idx | index | yugabyte |                 |
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col2_idx | index | yugabyte |                 |
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1          | table | yugabyte |                 | 
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1_col2_idx | index | yugabyte |                 | 
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test2          | table | yugabyte |                 | 
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test3          | table | yugabyte |                 | 
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test3_col1_idx | index | yugabyte |                 | 
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4          | table | yugabyte |                 | 
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col1_idx | index | yugabyte |                 | 
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col2_idx | index | yugabyte |                 | 
 (8 rows)
 
 COMMENT ON TABLEGROUP tgroup2 IS NULL;
 \dgr+ tgroup2
                              List of tablegroups
-  Name   |  Owner   | Access privileges | Description | Tablespace | Options
+  Name   |  Owner   | Access privileges | Description | Tablespace | Options 
 ---------+----------+-------------------+-------------+------------+---------
- tgroup2 | yugabyte |                   |             |            |
+ tgroup2 | yugabyte |                   |             |            | 
 (1 row)
 
 \dgrt tgroup2
                       List of tablegroup tables
- Group Name | Group Owner |         Name          | Type  |  Owner
+ Group Name | Group Owner |         Name          | Type  |  Owner   
 ------------+-------------+-----------------------+-------+----------
  tgroup2    | yugabyte    | tgroup_test3          | table | yugabyte
  tgroup2    | yugabyte    | tgroup_test3_col1_idx | index | yugabyte
@@ -315,18 +315,18 @@ COMMENT ON TABLEGROUP tgroup2 IS NULL;
 -- Describe table
 \d tgroup_test2
             Table "public.tgroup_test2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- col1   | integer |           |          |
- col2   | integer |           |          |
+ col1   | integer |           |          | 
+ col2   | integer |           |          | 
 Tablegroup: "tgroup1"
 
 \d tgroup_test4
             Table "public.tgroup_test4"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- col1   | integer |           |          |
- col2   | integer |           |          |
+ col1   | integer |           |          | 
+ col2   | integer |           |          | 
 Indexes:
     "tgroup_test4_col1_idx" lsm (col1 ASC), tablegroup "tgroup2"
     "tgroup_test4_col2_idx" lsm (col2 ASC), tablegroup "tgroup2"
@@ -334,7 +334,7 @@ Tablegroup: "tgroup2"
 
 \d tgroup_test4_col1_idx
  Index "public.tgroup_test4_col1_idx"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  col1   | integer | yes  | col1
 lsm, for table "public.tgroup_test4"
@@ -346,9 +346,9 @@ CREATE TABLE tgroup_describe (col1 int) TABLEGROUP tgroup_describe1;
 CREATE INDEX ON tgroup_describe(col1);
 \d tgroup_describe
           Table "public.tgroup_describe"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- col1   | integer |           |          |
+ col1   | integer |           |          | 
 Indexes:
     "tgroup_describe_col1_idx" lsm (col1 ASC), tablegroup "tgroup_describe1"
 Tablegroup: "tgroup_describe1"
@@ -395,28 +395,28 @@ SET default_tablespace = '';
 CREATE TABLE tgroup_test6 (col1 int, col2 int) TABLEGROUP grp3;
 \dgr+
                                  List of tablegroups
-       Name       |  Owner   | Access privileges | Description | Tablespace | Options
+       Name       |  Owner   | Access privileges | Description | Tablespace | Options 
 ------------------+----------+-------------------+-------------+------------+---------
- grp3             | yugabyte |                   |             | tblspc     |
- grp4             | yugabyte |                   |             | tblspc     |
- tgroup1          | yugabyte |                   |             |            |
- tgroup2          | yugabyte |                   |             |            |
- tgroup_describe1 | yugabyte |                   |             |            |
- tgroup_describe2 | yugabyte |                   |             |            |
+ grp3             | yugabyte |                   |             | tblspc     | 
+ grp4             | yugabyte |                   |             | tblspc     | 
+ tgroup1          | yugabyte |                   |             |            | 
+ tgroup2          | yugabyte |                   |             |            | 
+ tgroup_describe1 | yugabyte |                   |             |            | 
+ tgroup_describe2 | yugabyte |                   |             |            | 
 (6 rows)
 
 \dgrt+
                                                                             List of tablegroup tables
-    Group Name    | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options |           Name           | Type  |  Owner   | Rel Description | Size
+    Group Name    | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options |           Name           | Type  |  Owner   | Rel Description | Size 
 ------------------+-------------+-------------------+-------------------+------------------+---------------+--------------------------+-------+----------+-----------------+------
- grp3             | yugabyte    |                   |                   | tblspc           |               | tgroup_test6             | table | yugabyte |                 |
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3_col1_idx    | index | yugabyte |                 |
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4             | table | yugabyte |                 |
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col1_idx    | index | yugabyte |                 |
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3             | table | yugabyte |                 |
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col2_idx    | index | yugabyte |                 |
- tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe_col1_idx | index | yugabyte |                 |
- tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe          | table | yugabyte |                 |
+ grp3             | yugabyte    |                   |                   | tblspc           |               | tgroup_test6             | table | yugabyte |                 | 
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3_col1_idx    | index | yugabyte |                 | 
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4             | table | yugabyte |                 | 
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col1_idx    | index | yugabyte |                 | 
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3             | table | yugabyte |                 | 
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col2_idx    | index | yugabyte |                 | 
+ tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe_col1_idx | index | yugabyte |                 | 
+ tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe          | table | yugabyte |                 | 
 (8 rows)
 
 --

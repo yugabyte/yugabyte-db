@@ -1,8 +1,8 @@
 CREATE EXTENSION pg_stat_monitor;
 SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset
+ pg_stat_monitor_reset 
 -----------------------
-
+ 
 (1 row)
 
 SELECT 1/0;   -- divide by zero

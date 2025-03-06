@@ -4,7 +4,7 @@
 -- Basic WITH
 WITH q1(x,y) AS (SELECT 1,2)
 SELECT * FROM q1, q1 AS q2;
- x | y | x | y
+ x | y | x | y 
 ---+---+---+---
  1 | 2 | 1 | 2
 (1 row)
@@ -16,7 +16,7 @@ SELECT count(*) FROM (
   UNION
     SELECT * FROM q1
 ) ss;
- count
+ count 
 -------
      5
 (1 row)
@@ -29,7 +29,7 @@ UNION ALL
     SELECT n+1 FROM t WHERE n < 100
 )
 SELECT sum(n) FROM t;
- sum
+ sum  
 ------
  5050
 (1 row)
@@ -40,7 +40,7 @@ UNION ALL
     SELECT n+1 FROM t WHERE n < 5
 )
 SELECT * FROM t;
- n
+ n 
 ---
  1
  2
@@ -64,7 +64,7 @@ CREATE RECURSIVE VIEW nums (n) AS
 UNION ALL
     SELECT n+1 FROM nums WHERE n < 5;
 SELECT * FROM nums;
- n
+ n 
 ---
  1
  2
@@ -78,7 +78,7 @@ CREATE OR REPLACE RECURSIVE VIEW nums (n) AS
 UNION ALL
     SELECT n+1 FROM nums WHERE n < 6;
 SELECT * FROM nums;
- n
+ n 
 ---
  1
  2
@@ -94,7 +94,7 @@ WITH RECURSIVE t(n) AS (
 UNION
     SELECT 10-n FROM t)
 SELECT * FROM t;
- n
+ n 
 ---
  1
  9
@@ -106,7 +106,7 @@ WITH RECURSIVE t(n) AS (
 UNION ALL
     SELECT n+1 FROM t)
 SELECT * FROM t LIMIT 10;
- n
+ n  
 ----
   1
   2
@@ -126,7 +126,7 @@ WITH RECURSIVE t(n) AS (
 UNION
     SELECT n+1 FROM t)
 SELECT * FROM t LIMIT 10;
- n
+ n  
 ----
   1
   2
@@ -268,7 +268,7 @@ WITH RECURSIVE subdepartment AS
 		WHERE d.parent_department = sd.id
 )
 SELECT * FROM subdepartment ORDER BY name;
- root_name | id | parent_department | name
+ root_name | id | parent_department | name 
 -----------+----+-------------------+------
  A         |  1 |                 0 | A
  A         |  2 |                 1 | B
@@ -288,7 +288,7 @@ WITH RECURSIVE subdepartment(level, id, parent_department, name) AS
 		WHERE d.parent_department = sd.id
 )
 SELECT * FROM subdepartment ORDER BY name;
- level | id | parent_department | name
+ level | id | parent_department | name 
 -------+----+-------------------+------
      1 |  1 |                 0 | A
      2 |  2 |                 1 | B
@@ -309,7 +309,7 @@ WITH RECURSIVE subdepartment(level, id, parent_department, name) AS
 		WHERE d.parent_department = sd.id
 )
 SELECT * FROM subdepartment WHERE level >= 2 ORDER BY name;
- level | id | parent_department | name
+ level | id | parent_department | name 
 -------+----+-------------------+------
      2 |  2 |                 1 | B
      3 |  3 |                 2 | C
@@ -324,7 +324,7 @@ WITH RECURSIVE subdepartment AS
 	SELECT * FROM department WHERE name = 'A'
 )
 SELECT * FROM subdepartment ORDER BY name;
- id | parent_department | name
+ id | parent_department | name 
 ----+-------------------+------
   1 |                 0 | A
 (1 row)
@@ -341,7 +341,7 @@ SELECT count(*) FROM (
                 )
             SELECT * FROM t WHERE n < 50000
          ) AS t WHERE n < 100);
- count
+ count 
 -------
     98
 (1 row)
@@ -351,7 +351,7 @@ WITH q1(x,y) AS (
     SELECT hundred, sum(ten) FROM tenk1 GROUP BY hundred
   )
 SELECT count(*) FROM q1 WHERE y > (SELECT sum(y)/100 FROM q1 qsub);
- count
+ count 
 -------
     50
 (1 row)
@@ -369,7 +369,7 @@ CREATE TEMPORARY VIEW vsubdepartment AS
 	)
 	SELECT * FROM subdepartment;
 SELECT * FROM vsubdepartment ORDER BY name;
- id | parent_department | name
+ id | parent_department | name 
 ----+-------------------+------
   1 |                 0 | A
   2 |                 1 | B
@@ -380,7 +380,7 @@ SELECT * FROM vsubdepartment ORDER BY name;
 
 -- Check reverse listing
 SELECT pg_get_viewdef('vsubdepartment'::regclass);
-                pg_get_viewdef
+                pg_get_viewdef                 
 -----------------------------------------------
   WITH RECURSIVE subdepartment AS (           +
           SELECT department.id,               +
@@ -403,7 +403,7 @@ SELECT pg_get_viewdef('vsubdepartment'::regclass);
 (1 row)
 
 SELECT pg_get_viewdef('vsubdepartment'::regclass, true);
-               pg_get_viewdef
+               pg_get_viewdef                
 ---------------------------------------------
   WITH RECURSIVE subdepartment AS (         +
           SELECT department.id,             +
@@ -435,9 +435,9 @@ UNION ALL
 SELECT sum(n) FROM t;
 \d+ sums_1_100
                          View "public.sums_1_100"
- Column |  Type  | Collation | Nullable | Default | Storage | Description
+ Column |  Type  | Collation | Nullable | Default | Storage | Description 
 --------+--------+-----------+----------+---------+---------+-------------
- sum    | bigint |           |          |         | plain   |
+ sum    | bigint |           |          |         | plain   | 
 View definition:
  WITH RECURSIVE t(n) AS (
          VALUES (1)
@@ -457,7 +457,7 @@ with recursive q as (
        select * from x)
     )
 select * from q limit 24;
- id | parent_department | name
+ id | parent_department | name 
 ----+-------------------+------
   0 |                   | ROOT
   1 |                 0 | A
@@ -496,7 +496,7 @@ with recursive q as (
        select * from x)
     )
 select * from q limit 32;
- id | parent_department | name
+ id | parent_department | name 
 ----+-------------------+------
   0 |                   | ROOT
   1 |                 0 | A
@@ -540,7 +540,7 @@ WITH RECURSIVE t(i,j) AS (
 		(SELECT 2 AS i UNION ALL SELECT 3 AS i) AS t2
 		JOIN t ON (t2.i = t.i+1))
 	SELECT * FROM t;
- i | j
+ i | j 
 ---+---
  1 | 2
  2 | 3
@@ -571,7 +571,7 @@ SELECT t1.*, t2.* FROM t AS t1 JOIN t AS t2 ON
 	array_upper(t1.path,1) = 1 AND
 	array_upper(t2.path,1) > 1)
 	ORDER BY t1.id, t2.id;
- id | path | id |    path
+ id | path | id |    path     
 ----+------+----+-------------
   2 | {2}  |  4 | {2,4}
   2 | {2}  |  5 | {2,5}
@@ -601,7 +601,7 @@ SELECT t1.id, count(t2.*) FROM t AS t1 JOIN t AS t2 ON
 	array_upper(t2.path,1) > 1)
 	GROUP BY t1.id
 	ORDER BY t1.id;
- id | count
+ id | count 
 ----+-------
   2 |     6
   3 |     7
@@ -616,7 +616,7 @@ UNION ALL
 )
 SELECT t1.id, t2.path, t2 FROM t AS t1 JOIN t AS t2 ON
 (t1.id=t2.id);
- id |    path     |         t2
+ id |    path     |         t2         
 ----+-------------+--------------------
   1 | {}          | (1,{})
   2 | {2}         | (2,{2})
@@ -1642,7 +1642,7 @@ WITH RECURSIVE
   y (id) AS (VALUES (1)),
   x (id) AS (SELECT * FROM y UNION ALL SELECT id+1 FROM x WHERE id < 5)
 SELECT * FROM x;
- id
+ id 
 ----
   1
   2
@@ -1656,7 +1656,7 @@ WITH RECURSIVE
     x(id) AS (SELECT * FROM y UNION ALL SELECT id+1 FROM x WHERE id < 5),
     y(id) AS (values (1))
  SELECT * FROM x;
- id
+ id 
 ----
   1
   2
@@ -1671,18 +1671,18 @@ WITH RECURSIVE
    y(id) AS
      (VALUES (1) UNION ALL SELECT id+1 FROM y WHERE id < 10)
  SELECT y.*, x.* FROM y LEFT JOIN x USING (id);
- id | id
+ id | id 
 ----+----
   1 |  1
   2 |  2
   3 |  3
   4 |  4
   5 |  5
-  6 |
-  7 |
-  8 |
-  9 |
- 10 |
+  6 |   
+  7 |   
+  8 |   
+  9 |   
+ 10 |   
 (10 rows)
 
 WITH RECURSIVE
@@ -1691,14 +1691,14 @@ WITH RECURSIVE
    y(id) AS
      (VALUES (1) UNION ALL SELECT id+1 FROM x WHERE id < 10)
  SELECT y.*, x.* FROM y LEFT JOIN x USING (id);
- id | id
+ id | id 
 ----+----
   1 |  1
   2 |  2
   3 |  3
   4 |  4
   5 |  5
-  6 |
+  6 |   
 (6 rows)
 
 WITH RECURSIVE
@@ -1709,7 +1709,7 @@ WITH RECURSIVE
    z(id) AS
      (SELECT * FROM x UNION ALL SELECT id+1 FROM z WHERE id < 10)
  SELECT * FROM z;
- id
+ id 
 ----
   1
   2
@@ -1748,7 +1748,7 @@ WITH RECURSIVE
    z(id) AS
      (SELECT * FROM y UNION ALL SELECT id+1 FROM z WHERE id < 10)
  SELECT * FROM z;
- id
+ id 
 ----
   1
   2
@@ -1816,7 +1816,7 @@ WITH t AS (
 )
 INSERT INTO y
 SELECT a+20 FROM t RETURNING *;
- a
+ a  
 ----
  21
  22
@@ -1831,7 +1831,7 @@ SELECT a+20 FROM t RETURNING *;
 (10 rows)
 
 SELECT * FROM y;
- a
+ a  
 ----
   1
   2
@@ -1859,7 +1859,7 @@ WITH t AS (
 	SELECT a FROM y
 )
 UPDATE y SET a = y.a-10 FROM t WHERE y.a > 20 AND t.a = y.a RETURNING y.a;
- a
+ a  
 ----
  11
  12
@@ -1874,7 +1874,7 @@ UPDATE y SET a = y.a-10 FROM t WHERE y.a > 20 AND t.a = y.a RETURNING y.a;
 (10 rows)
 
 SELECT * FROM y;
- a
+ a  
 ----
   1
   2
@@ -1904,7 +1904,7 @@ WITH RECURSIVE t(a) AS (
 	SELECT a+1 FROM t WHERE a < 50
 )
 DELETE FROM y USING t WHERE t.a = y.a RETURNING y.a;
- a
+ a  
 ----
  11
  12
@@ -1919,7 +1919,7 @@ DELETE FROM y USING t WHERE t.a = y.a RETURNING y.a;
 (10 rows)
 
 SELECT * FROM y;
- a
+ a  
 ----
   1
   2
@@ -2123,13 +2123,13 @@ ERROR:  cannot refer to OLD within WITH query
 -- test for bug #4902
 --
 with cte(foo) as ( values(42) ) values((select foo from cte));
- column1
+ column1 
 ---------
       42
 (1 row)
 
 with cte(foo) as ( select 42 ) select * from ((select foo from cte)) q;
- foo
+ foo 
 -----
   42
 (1 row)
@@ -2141,7 +2141,7 @@ select ( with cte(foo) as ( values(f1) )
          select (select foo from cte) )
 from int4_tbl
 LIMIT ALL) ybview ORDER BY (abs(foo) - sign(foo)); -- YB ordering
-     foo
+     foo     
 -------------
            0
       123456
@@ -2155,7 +2155,7 @@ select ( with cte(foo) as ( values(f1) )
           values((select foo from cte)) )
 from int4_tbl
 LIMIT ALL) ybview ORDER BY (abs(column1) - sign(column1)); -- YB ordering
-   column1
+   column1   
 -------------
            0
       123456
@@ -2178,7 +2178,7 @@ WITH RECURSIVE t(j) AS (
     SELECT j+1 FROM t WHERE j < 10
 )
 SELECT * FROM t;
- j
+ j  
 ----
   1
   2
@@ -2247,7 +2247,7 @@ WITH outermost(x) AS (
          UNION SELECT 3)
 )
 SELECT * FROM outermost ORDER BY 1;
- x
+ x 
 ---
  1
  2
@@ -2273,7 +2273,7 @@ WITH RECURSIVE outermost(x) AS (
          UNION SELECT * FROM innermost)
 )
 SELECT * FROM outermost ORDER BY 1;
- x
+ x 
 ---
  1
  2
@@ -2300,7 +2300,7 @@ A as ( select q2 as id, (select q1) as x from int8_tbl ),
 B as ( select id, row_number() over (partition by id) as r from A ),
 C as ( select A.id, array(select B.id from B where B.id = A.id) from A )
 select * from C;
-        id         |                array
+        id         |                array                
 -------------------+-------------------------------------
                456 | {456}
   4567890123456789 | {4567890123456789,4567890123456789}
@@ -2337,7 +2337,7 @@ WITH RECURSIVE
     )
   )
 SELECT * FROM iter;
- id_key | row_type | link
+ id_key | row_type | link 
 --------+----------+------
       0 | base     |   17
       1 | true     |   17
@@ -2373,7 +2373,7 @@ WITH RECURSIVE
     )
   )
 SELECT * FROM iter;
- id_key | row_type | link
+ id_key | row_type | link 
 --------+----------+------
       0 | base     |   17
       1 | true     |   17
@@ -2404,7 +2404,7 @@ WITH t AS (
     RETURNING *
 )
 SELECT a FROM t; -- YB: avoid ybsort column
- a
+ a  
 ----
  11
  12
@@ -2419,7 +2419,7 @@ SELECT a FROM t; -- YB: avoid ybsort column
 (10 rows)
 
 SELECT a FROM y; -- YB: avoid ybsort column
- a
+ a  
 ----
   1
   2
@@ -2450,7 +2450,7 @@ WITH t AS (
     RETURNING *
 )
 SELECT a FROM t; -- YB: avoid ybsort column
- a
+ a  
 ----
   2
   3
@@ -2475,7 +2475,7 @@ SELECT a FROM t; -- YB: avoid ybsort column
 (20 rows)
 
 SELECT a FROM y; -- YB: avoid ybsort column
- a
+ a  
 ----
   2
   3
@@ -2506,7 +2506,7 @@ WITH t AS (
     RETURNING *
 )
 SELECT a FROM t; -- YB: avoid ybsort column
- a
+ a  
 ----
   2
   3
@@ -2520,7 +2520,7 @@ SELECT a FROM t; -- YB: avoid ybsort column
 (9 rows)
 
 SELECT a FROM y; -- YB: avoid ybsort column
- a
+ a  
 ----
  11
  12
@@ -2546,7 +2546,7 @@ WITH RECURSIVE t AS (
 SELECT a FROM t -- YB: avoid ybsort column
 UNION ALL
 SELECT a FROM t2; -- YB: avoid ybsort column
- a
+ a  
 ----
  11
  12
@@ -2567,7 +2567,7 @@ SELECT a FROM t2; -- YB: avoid ybsort column
 (16 rows)
 
 SELECT a FROM y; -- YB: avoid ybsort column
- a
+ a  
 ----
   0
   1
@@ -2594,13 +2594,13 @@ WITH t AS (
 	DELETE FROM y RETURNING *
 )
 SELECT a FROM t; -- YB: avoid ybsort column
- a
+ a  
 ----
  42
 (1 row)
 
 SELECT a FROM y; -- YB: avoid ybsort column
- a
+ a  
 ----
   0
   1
@@ -2626,7 +2626,7 @@ DROP RULE y_rule ON y;
 CREATE TEMP TABLE bug6051 AS
   select i from generate_series(1,3) as t(i);
 SELECT * FROM bug6051;
- i
+ i 
 ---
  1
  2
@@ -2636,7 +2636,7 @@ SELECT * FROM bug6051;
 WITH t1 AS ( DELETE FROM bug6051 RETURNING * )
 INSERT INTO bug6051 SELECT * FROM t1;
 SELECT * FROM bug6051;
- i
+ i 
 ---
  1
  2
@@ -2650,12 +2650,12 @@ CREATE RULE bug6051_ins AS ON INSERT TO bug6051 DO INSTEAD
 WITH t1 AS ( DELETE FROM bug6051 RETURNING * )
 INSERT INTO bug6051 SELECT * FROM t1;
 SELECT * FROM bug6051;
- i
+ i 
 ---
 (0 rows)
 
 SELECT * FROM bug6051_2;
- i
+ i 
 ---
  1
  2
@@ -2771,7 +2771,7 @@ WITH RECURSIVE t(a) AS (
 		SELECT * FROM t RETURNING *
 )
 SELECT a FROM t2 JOIN y USING (a) ORDER BY a; -- YB: avoid ybsort column
- a
+ a 
 ---
  0
  1
@@ -2781,7 +2781,7 @@ SELECT a FROM t2 JOIN y USING (a) ORDER BY a; -- YB: avoid ybsort column
 (5 rows)
 
 SELECT a FROM y; -- YB: avoid ybsort column
- a
+ a  
 ----
   0
   1
@@ -2866,7 +2866,7 @@ WITH t AS (
     UPDATE y SET a = a * 100 RETURNING *
 )
 SELECT a FROM t LIMIT 10; -- YB: avoid ybsort column
-  a
+  a   
 ------
  1100
  1200
@@ -2881,7 +2881,7 @@ SELECT a FROM t LIMIT 10; -- YB: avoid ybsort column
 (10 rows)
 
 SELECT a FROM y; -- YB: avoid ybsort column
-   a
+   a   
 -------
   1100
   1200
@@ -2917,7 +2917,7 @@ WITH t AS (
     RETURNING *
 )
 SELECT k, v, a FROM t JOIN y ON t.k = y.a ORDER BY a, k; -- YB: avoid ybsort column
- k |   v    | a
+ k |   v    | a 
 ---+--------+---
  0 | insert | 0
  0 | insert | 0
@@ -2930,13 +2930,13 @@ WITH aa AS (
     RETURNING *
 )
 SELECT * FROM aa;
- k | v
+ k | v 
 ---+---
 (0 rows)
 
 -- New query/snapshot demonstrates side-effects of previous query.
 SELECT * FROM withz ORDER BY k;
- k  |        v
+ k  |        v         
 ----+------------------
   0 | insert
   1 | 1 v, now update
@@ -2988,7 +2988,7 @@ upsert_cte AS (
 INSERT INTO withz VALUES(2, 'Red') ON CONFLICT (k) DO
 UPDATE SET (k, v) = (SELECT k, v FROM upsert_cte WHERE upsert_cte.k = withz.k)
 RETURNING k, v; -- YB: output is different from PG (see #6782)
- k |   v
+ k |   v   
 ---+-------
  2 | Green
 (1 row)
@@ -3029,13 +3029,13 @@ WITH RECURSIVE t1 AS (
   INSERT INTO yy SELECT * FROM t1 RETURNING *
 )
 SELECT 1;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
 
 SELECT a FROM y ORDER BY ybsort; -- YB: avoid ybsort column; add ordering
- a
+ a 
 ---
  1
  2
@@ -3046,7 +3046,7 @@ SELECT a FROM y ORDER BY ybsort; -- YB: avoid ybsort column; add ordering
 (6 rows)
 
 SELECT a FROM yy ORDER BY ybsort; -- YB: avoid ybsort column; add ordering
- a
+ a 
 ---
  1
  2
@@ -3059,13 +3059,13 @@ WITH RECURSIVE t1 AS (
   INSERT INTO y SELECT a FROM y ORDER BY y.ybsort RETURNING * -- YB: add ordering; avoid selecting ybsort column to auto-generate it during insert
 )
 SELECT 1;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
 
 SELECT a FROM y ORDER BY ybsort; -- YB: avoid ybsort column; add ordering
- a
+ a 
 ---
  1
  2
@@ -3082,7 +3082,7 @@ SELECT a FROM y ORDER BY ybsort; -- YB: avoid ybsort column; add ordering
 (12 rows)
 
 SELECT a FROM yy ORDER BY ybsort; -- YB: avoid ybsort column; add ordering
- a
+ a 
 ---
  1
  2
@@ -3122,7 +3122,7 @@ SELECT a FROM t; -- YB: avoid ybsort column
 NOTICE:  y_trigger: a = 21
 NOTICE:  y_trigger: a = 22
 NOTICE:  y_trigger: a = 23
- a
+ a  
 ----
  21
  22
@@ -3130,7 +3130,7 @@ NOTICE:  y_trigger: a = 23
 (3 rows)
 
 SELECT a FROM y; -- YB: avoid ybsort column
- a
+ a  
 ----
   1
   2
@@ -3162,13 +3162,13 @@ SELECT a FROM t LIMIT 1; -- YB: avoid ybsort column
 NOTICE:  y_trigger: a = 31
 NOTICE:  y_trigger: a = 32
 NOTICE:  y_trigger: a = 33
- a
+ a  
 ----
  31
 (1 row)
 
 SELECT a FROM y; -- YB: avoid ybsort column
- a
+ a  
 ----
   1
   2
@@ -3207,7 +3207,7 @@ WITH t AS (
 )
 SELECT a FROM t; -- YB: avoid ybsort column
 NOTICE:  y_trigger
- a
+ a  
 ----
  41
  42
@@ -3215,7 +3215,7 @@ NOTICE:  y_trigger
 (3 rows)
 
 SELECT a FROM y; -- YB: avoid ybsort column
- a
+ a  
 ----
   1
   2
@@ -3338,7 +3338,7 @@ ERROR:  syntax error at or near "with"
 LINE 1: create table foo (with ordinality);
                           ^
 with ordinality as (select 1 as x) select * from ordinality;
- x
+ x 
 ---
  1
 (1 row)

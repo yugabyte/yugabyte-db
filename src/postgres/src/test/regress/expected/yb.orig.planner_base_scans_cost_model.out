@@ -4,14 +4,14 @@ SET yb_enable_optimizer_statistics = ON;
 CREATE TABLE test (v1 INT, v2 INT, v3 INT);
 CREATE INDEX test_index ON test ((v1) HASH, v2 ASC) INCLUDE (v3);
 EXPLAIN (COSTS OFF) SELECT * FROM test WHERE v2 > 100;
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Index Only Scan using test_index on test
    Index Cond: (v2 > 100)
 (2 rows)
 
 SELECT * FROM test WHERE v2 > 100;
- v1 | v2 | v3
+ v1 | v2 | v3 
 ----+----+----
 (0 rows)
 
@@ -24,20 +24,20 @@ INSERT INTO t1 (SELECT s, s FROM generate_series(1, 100000) s);
 CREATE INDEX t1_v1 ON t1 (v1 ASC);
 SET yb_enable_base_scans_cost_model = ON;
 /*+ IndexScan(t1) */ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 > 80000;
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (k1 > 80000)
 (2 rows)
 
 /*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN (COSTS OFF) SELECT v1 FROM t1;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Index Only Scan using t1_v1 on t1
 (1 row)
 
 /*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN (COSTS OFF) SELECT v1 FROM t1 WHERE v1 < 50000;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Index Only Scan using t1_v1 on t1
    Index Cond: (v1 < 50000)
@@ -51,7 +51,7 @@ UPDATE pg_yb_catalog_version SET current_version=current_version+1 WHERE db_oid=
 SET yb_non_ddl_txn_for_sys_tables_allowed = off;
 \c yugabyte
 SELECT reltuples FROM pg_class where relname LIKE 't1%';
- reltuples
+ reltuples 
 -----------
     100000
     100000
@@ -60,20 +60,20 @@ SELECT reltuples FROM pg_class where relname LIKE 't1%';
 
 SET yb_enable_base_scans_cost_model = ON;
 /*+ IndexScan(t1) */ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 > 80000;
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (k1 > 80000)
 (2 rows)
 
 /*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN (COSTS OFF) SELECT v1 FROM t1;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Index Only Scan using t1_v1 on t1
 (1 row)
 
 /*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN (COSTS OFF) SELECT v1 FROM t1 WHERE v1 < 50000;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Index Only Scan using t1_v1 on t1
    Index Cond: (v1 < 50000)
@@ -90,7 +90,7 @@ ANALYZE t_24916;
 SET yb_enable_base_scans_cost_model = ON;
 -- Partial Index Scan should be preferred over full index scan or seq scan
 EXPLAIN (COSTS OFF) SELECT * FROM t_24916 WHERE v1 = 1 AND v2 < 5;
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Index Scan using t_24916_partial_idx on t_24916
    Index Cond: (v2 < 5)
@@ -130,7 +130,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = OFF;
 -- After this fix, the optimizer should pick Index Only Scan of
 -- `idx_t_23709_g_t_a` even if it involves skip-scan.
 EXPLAIN (COSTS OFF) SELECT g, max(a) FROM t_23709 WHERE t <= '2024-09-30 00:00:00 +0000' GROUP BY g;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  GroupAggregate
    Group Key: g
@@ -148,21 +148,21 @@ ANALYZE t_26235;
 SET yb_enable_base_scans_cost_model = ON;
 -- Following querie should pick primary index scan over seq scan
 EXPLAIN (COSTS OFF) SELECT * FROM t_26235 WHERE k1 < 1;
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Index Scan using t_26235_pkey on t_26235
    Index Cond: (k1 < 1)
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t_26235 WHERE k1 < 5;
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Index Scan using t_26235_pkey on t_26235
    Index Cond: (k1 < 5)
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t_26235 WHERE k1 < 10;
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Index Scan using t_26235_pkey on t_26235
    Index Cond: (k1 < 10)
@@ -170,7 +170,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM t_26235 WHERE k1 < 10;
 
 -- Without filter, seq scan should be preferred
 EXPLAIN (COSTS OFF) SELECT * FROM t_26235;
-     QUERY PLAN
+     QUERY PLAN      
 ---------------------
  Seq Scan on t_26235
 (1 row)
+

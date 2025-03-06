@@ -20,24 +20,24 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d test_1;
                Table "public.test_1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- h1     | integer |           | not null |
- h2     | integer |           | not null |
- h3     | integer |           | not null |
- v1     | integer |           |          |
+ h1     | integer |           | not null | 
+ h2     | integer |           | not null | 
+ h3     | integer |           | not null | 
+ v1     | integer |           |          | 
 Partition of: test FOR VALUES WITH (modulus 2, remainder 0)
 Indexes:
     "test_1_pkey" PRIMARY KEY, lsm (h1 HASH, h2 ASC, h3 ASC)
 
 \d test_2;
                Table "public.test_2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- h1     | integer |           | not null |
- h2     | integer |           | not null |
- h3     | integer |           | not null |
- v1     | integer |           |          |
+ h1     | integer |           | not null | 
+ h2     | integer |           | not null | 
+ h3     | integer |           | not null | 
+ v1     | integer |           |          | 
 Partition of: test FOR VALUES WITH (modulus 2, remainder 1)
 Indexes:
     "test_2_pkey" PRIMARY KEY, lsm (h1 HASH, h2 ASC, h3 ASC)
@@ -47,21 +47,21 @@ INSERT INTO test VALUES (1, 4, 3);
 INSERT INTO test VALUES (1, 4, 3);
 ERROR:  duplicate key value violates unique constraint "test_1_pkey"
 EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 AND h2 = 4 AND h3 = 3;
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Index Scan using test_1_pkey on test_1 test
    Index Cond: ((h1 = 1) AND (h2 = 4) AND (h3 = 3))
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 ORDER BY h2;
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Index Scan using test_1_pkey on test_1 test
    Index Cond: (h1 = 1)
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 AND h2 = 4 ORDER BY h3;
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Index Scan using test_1_pkey on test_1 test
    Index Cond: ((h1 = 1) AND (h2 = 4))
@@ -89,24 +89,24 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d person_americas;
             Table "public.person_americas"
-  Column   |  Type   | Collation | Nullable | Default
+  Column   |  Type   | Collation | Nullable | Default 
 -----------+---------+-----------+----------+---------
- person_id | integer |           | not null |
- country   | text    |           | not null |
- name      | text    |           |          |
- age       | integer |           |          |
+ person_id | integer |           | not null | 
+ country   | text    |           | not null | 
+ name      | text    |           |          | 
+ age       | integer |           |          | 
 Partition of: person FOR VALUES IN ('United States', 'Brazil', 'Mexico', 'Columbia')
 Indexes:
     "person_americas_pkey" PRIMARY KEY, lsm ((person_id, country) HASH)
 
 \d person_apac;
               Table "public.person_apac"
-  Column   |  Type   | Collation | Nullable | Default
+  Column   |  Type   | Collation | Nullable | Default 
 -----------+---------+-----------+----------+---------
- person_id | integer |           | not null |
- country   | text    |           | not null |
- name      | text    |           |          |
- age       | integer |           |          |
+ person_id | integer |           | not null | 
+ country   | text    |           | not null | 
+ name      | text    |           |          | 
+ age       | integer |           |          | 
 Partition of: person FOR VALUES IN ('India', 'Singapore')
 Indexes:
     "person_apac_pkey" PRIMARY KEY, lsm ((person_id, country) HASH)
@@ -116,7 +116,7 @@ INSERT INTO person_americas VALUES (1, 'United States', 'Jane Doe', 23);
 INSERT INTO person_americas VALUES (1, 'United States', 'Jane Doe', 23);
 ERROR:  duplicate key value violates unique constraint "person_americas_pkey"
 EXPLAIN (COSTS OFF) SELECT * FROM person WHERE person_id=1 AND country='United States';
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using person_americas_pkey on person_americas person
    Index Cond: ((person_id = 1) AND (country = 'United States'::text))
@@ -128,20 +128,20 @@ CREATE TABLE part_a_1_5 PARTITION OF parted (a, b) FOR VALUES FROM (1) TO (5);
 CREATE TABLE part_a_5_10 PARTITION OF parted (a, b) FOR VALUES FROM (5) TO (10);
 \d part_a_1_5;
              Table "public.part_a_1_5"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           | not null |
- b      | text    |           | not null |
+ a      | integer |           | not null | 
+ b      | text    |           | not null | 
 Partition of: parted FOR VALUES FROM (1) TO (5)
 Indexes:
     "part_a_1_5_pkey" PRIMARY KEY, lsm (a ASC, b DESC)
 
 \d part_a_5_10;
             Table "public.part_a_5_10"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           | not null |
- b      | text    |           | not null |
+ a      | integer |           | not null | 
+ b      | text    |           | not null | 
 Partition of: parted FOR VALUES FROM (5) TO (10)
 Indexes:
     "part_a_5_10_pkey" PRIMARY KEY, lsm (a ASC, b DESC)
@@ -151,14 +151,14 @@ INSERT INTO parted VALUES (1, '1');
 INSERT INTO parted VALUES (1, '1');
 ERROR:  duplicate key value violates unique constraint "part_a_1_5_pkey"
 EXPLAIN (COSTS OFF) SELECT * FROM parted WHERE a = 1 ORDER BY b DESC;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Index Scan using part_a_1_5_pkey on part_a_1_5 parted
    Index Cond: (a = 1)
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM parted ORDER BY a;
-                           QUERY PLAN
+                           QUERY PLAN                            
 -----------------------------------------------------------------
  Merge Append
    Sort Key: parted.a
@@ -197,10 +197,10 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d part_a_25_40;
       Partitioned table "public.part_a_25_40"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           | not null |
- b      | text    |           | not null |
+ a      | integer |           | not null | 
+ b      | text    |           | not null | 
 Partition of: parted FOR VALUES FROM (25) TO (40)
 Partition key: RANGE (a)
 Indexes:
@@ -209,10 +209,10 @@ Number of partitions: 2 (Use \d+ to list them.)
 
 \d part_a_25_35;
       Partitioned table "public.part_a_25_35"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           | not null |
- b      | text    |           | not null |
+ a      | integer |           | not null | 
+ b      | text    |           | not null | 
 Partition of: part_a_25_40 FOR VALUES FROM (25) TO (35)
 Partition key: RANGE (a)
 Indexes:
@@ -221,10 +221,10 @@ Number of partitions: 2 (Use \d+ to list them.)
 
 \d part_a_25_30;
             Table "public.part_a_25_30"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           | not null |
- b      | text    |           | not null |
+ a      | integer |           | not null | 
+ b      | text    |           | not null | 
 Partition of: part_a_25_35 FOR VALUES FROM (25) TO (30)
 Indexes:
     "part_a_25_30_pkey" PRIMARY KEY, lsm (a ASC, b DESC)
@@ -259,13 +259,13 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d col_order_change_part;
             Table "public.col_order_change_part"
- Column |       Type        | Collation | Nullable | Default
+ Column |       Type        | Collation | Nullable | Default 
 --------+-------------------+-----------+----------+---------
- d      | integer           |           | not null |
- c      | numeric           |           | not null |
- e      | character varying |           | not null |
- a      | text              |           | not null |
- b      | bigint            |           | not null |
+ d      | integer           |           | not null | 
+ c      | numeric           |           | not null | 
+ e      | character varying |           | not null | 
+ a      | text              |           | not null | 
+ b      | bigint            |           | not null | 
 Partition of: col_order_change FOR VALUES FROM ('a', '10') TO ('a', '20')
 Indexes:
     "col_order_change_part_pkey" PRIMARY KEY, lsm ((a, b) HASH, c ASC, d DESC)

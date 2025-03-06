@@ -7,35 +7,35 @@ INSERT INTO nr VALUES (1, 2), (3, 4);
 BEGIN;
 INSERT INTO nr VALUES (null, 6);
 SELECT i FROM nr ORDER BY i;
- i
+ i 
 ---
  1
  3
-
+  
 (3 rows)
 
 SELECT i FROM nr ORDER BY i NULLS FIRST;
- i
+ i 
 ---
-
+  
  1
  3
 (3 rows)
 
 SELECT i FROM nr ORDER BY i DESC;
- i
+ i 
 ---
-
+  
  3
  1
 (3 rows)
 
 SELECT i FROM nr ORDER BY i DESC NULLS LAST;
- i
+ i 
 ---
  3
  1
-
+  
 (3 rows)
 
 ROLLBACK;
@@ -45,35 +45,35 @@ INSERT INTO nr2 VALUES (1, 2), (3, 4);
 BEGIN;
 INSERT INTO nr2 VALUES (null, 6);
 SELECT i FROM nr2 ORDER BY i;
- i
+ i 
 ---
  1
  3
-
+  
 (3 rows)
 
 SELECT i FROM nr2 ORDER BY i NULLS FIRST;
- i
+ i 
 ---
-
+  
  1
  3
 (3 rows)
 
 SELECT i FROM nr2 ORDER BY i DESC;
- i
+ i 
 ---
-
+  
  3
  1
 (3 rows)
 
 SELECT i FROM nr2 ORDER BY i DESC NULLS LAST;
- i
+ i 
 ---
  3
  1
-
+  
 (3 rows)
 
 ROLLBACK;
@@ -102,7 +102,7 @@ VALUES (1, 1),
        (1, 14);
 -- Check ascending order.
 SELECT r FROM reverse_scan_test WHERE h = 1;
- r
+ r  
 ----
   1
   2
@@ -121,7 +121,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1;
 (14 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint);
- r
+ r  
 ----
   1
   2
@@ -140,7 +140,7 @@ SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint);
 (14 rows)
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 2 and r < 9;
- r
+ r 
 ---
  3
  4
@@ -151,7 +151,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 2 and r < 9;
 (6 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 2 and r < 9;
- r
+ r 
 ---
  3
  4
@@ -162,7 +162,7 @@ SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) 
 (6 rows)
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 2 and r < 9 LIMIT 5;
- r
+ r 
 ---
  3
  4
@@ -172,7 +172,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 2 and r < 9 LIMIT 5;
 (5 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 2 and r < 9 LIMIT 5;
- r
+ r 
 ---
  3
  4
@@ -182,7 +182,7 @@ SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) 
 (5 rows)
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 2 and r <= 13;
- r
+ r  
 ----
   2
   3
@@ -199,7 +199,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 2 and r <= 13;
 (12 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 2 and r <= 13;
- r
+ r  
 ----
   2
   3
@@ -216,7 +216,7 @@ SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) 
 (12 rows)
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 2 and r <= 13 LIMIT 10;
- r
+ r  
 ----
   2
   3
@@ -231,7 +231,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 2 and r <= 13 LIMIT 10;
 (10 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 2 and r <= 13 LIMIT 10;
- r
+ r  
 ----
   2
   3
@@ -247,7 +247,7 @@ SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) 
 
 -- Test desc order (reverse scan).
 SELECT r FROM reverse_scan_test WHERE h = 1 ORDER BY r DESC;
- r
+ r  
 ----
  14
  13
@@ -266,7 +266,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1 ORDER BY r DESC;
 (14 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) ORDER BY r DESC;
- r
+ r  
 ----
  14
  13
@@ -285,7 +285,7 @@ SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) 
 (14 rows)
 
 SELECT r FROM reverse_scan_test WHERE h = 1 ORDER BY r DESC LIMIT 5;
- r
+ r  
 ----
  14
  13
@@ -295,7 +295,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1 ORDER BY r DESC LIMIT 5;
 (5 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) ORDER BY r DESC LIMIT 5;
- r
+ r  
 ----
  14
  13
@@ -305,7 +305,7 @@ SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) 
 (5 rows)
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r < 9 ORDER BY r DESC LIMIT 5;
- r
+ r 
 ---
  8
  7
@@ -315,7 +315,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r < 9 ORDER BY r DESC LIMIT 5;
 (5 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r < 9 ORDER BY r DESC LIMIT 5;
- r
+ r 
 ---
  8
  7
@@ -325,7 +325,7 @@ SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) 
 (5 rows)
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 1 AND r < 14 ORDER BY r DESC;
- r
+ r  
 ----
  13
  12
@@ -342,7 +342,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 1 AND r < 14 ORDER BY r DESC
 (12 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 1 AND r < 14 ORDER BY r DESC;
- r
+ r  
 ----
  13
  12
@@ -359,7 +359,7 @@ SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) 
 (12 rows)
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 1 AND r < 14 ORDER BY r DESC LIMIT 9;
- r
+ r  
 ----
  13
  12
@@ -373,7 +373,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 1 AND r < 14 ORDER BY r DESC
 (9 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 1 AND r < 14 ORDER BY r DESC LIMIT 9;
- r
+ r  
 ----
  13
  12
@@ -387,7 +387,7 @@ SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) 
 (9 rows)
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 3 and r <= 13 ORDER BY r DESC;
- r
+ r  
 ----
  13
  12
@@ -403,7 +403,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 3 and r <= 13 ORDER BY r DE
 (11 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 3 and r <= 13 ORDER BY r DESC;
- r
+ r  
 ----
  13
  12
@@ -419,7 +419,7 @@ SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) 
 (11 rows)
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 3 and r <= 13 ORDER BY r DESC LIMIT 8;
- r
+ r  
 ----
  13
  12
@@ -432,7 +432,7 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 3 and r <= 13 ORDER BY r DE
 (8 rows)
 
 SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 3 and r <= 13 ORDER BY r DESC LIMIT 8;
- r
+ r  
 ----
  13
  12
@@ -448,31 +448,31 @@ PREPARE myplan AS SELECT * FROM reverse_scan_test LIMIT $1;
 -- Execute myplan > 5 times. After 5 times the plan should default to the
 -- generic plan
 EXECUTE myplan(0);
- h | r
+ h | r 
 ---+---
 (0 rows)
 
 EXPLAIN EXECUTE myplan(null);
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Seq Scan on reverse_scan_test  (cost=0.00..100.00 rows=1000 width=12)
 (1 row)
 
 EXECUTE myplan(1);
- h | r
+ h | r 
 ---+---
  1 | 1
 (1 row)
 
 EXECUTE myplan(2);
- h | r
+ h | r 
 ---+---
  1 | 1
  1 | 2
 (2 rows)
 
 EXECUTE myplan(3);
- h | r
+ h | r 
 ---+---
  1 | 1
  1 | 2
@@ -481,14 +481,14 @@ EXECUTE myplan(3);
 
 -- generic plan with limit node should be used
 EXPLAIN EXECUTE myplan(null);
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Limit  (cost=0.00..10.00 rows=100 width=12)
    ->  Seq Scan on reverse_scan_test  (cost=0.00..100.00 rows=1000 width=12)
 (2 rows)
 
 EXECUTE myplan(null);
- h | r
+ h | r  
 ---+----
  1 |  1
  1 |  2
@@ -507,12 +507,12 @@ EXECUTE myplan(null);
 (14 rows)
 
 EXECUTE myplan(0);
- h | r
+ h | r 
 ---+---
 (0 rows)
 
 EXECUTE myplan(1);
- h | r
+ h | r 
 ---+---
  1 | 1
 (1 row)
@@ -523,7 +523,7 @@ EXECUTE myplan(1);
 CREATE TABLE t(h INT, r INT, PRIMARY KEY(h, r ASC));
 INSERT INTO t VALUES(1, 1), (1, 3);
 SELECT * FROM t WHERE h = 1 AND r in(1, 3) FOR KEY SHARE;
- h | r
+ h | r 
 ---+---
  1 | 1
  1 | 3
@@ -531,7 +531,7 @@ SELECT * FROM t WHERE h = 1 AND r in(1, 3) FOR KEY SHARE;
 
 -- On this query postgres process stucked in an infinite loop.
 SELECT * FROM t WHERE h = 1 AND r IN (1, 2, 3) FOR KEY SHARE;
- h | r
+ h | r 
 ---+---
  1 | 1
  1 | 3
@@ -547,7 +547,7 @@ EXPLAIN (SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT att.attname as name
 	    att.attnum > 0
 	    AND att.attisdropped IS FALSE
 	ORDER BY att.attnum LIMIT 1;
-                                                     QUERY PLAN
+                                                     QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
  Limit
    ->  Sort
@@ -569,14 +569,14 @@ EXPLAIN (SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT att.attname as name
 -- check system columns in YbSeqScan(#18485)
 explain (costs off)
 /*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;
-        QUERY PLAN
+        QUERY PLAN         
 ---------------------------
  Seq Scan on nr2
    Storage Filter: (i = 1)
 (2 rows)
 
 /*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;
- tableoid | i | j
+ tableoid | i | j 
 ----------+---+---
  nr2      | 1 | 2
 (1 row)
@@ -611,7 +611,7 @@ select
   )
 from a
 order by a.a;
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort
    Output: a.a, ((SubPlan 1))
@@ -666,12 +666,12 @@ select
   )
 from a
 order by a.a;
- a | sum
+ a | sum 
 ---+-----
  1 |   6
  2 |   5
- 3 |
- 4 |
+ 3 |    
+ 4 |    
 (4 rows)
 
 explain (verbose, costs off)
@@ -694,7 +694,7 @@ select
 from a
 where a in (1, 2)
 order by a.a;
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort
    Output: a.a, ((SubPlan 1))
@@ -751,7 +751,7 @@ select
 from a
 where a in (1, 2)
 order by a.a;
- a | sum
+ a | sum 
 ---+-----
  1 |   6
  2 |   5
@@ -762,14 +762,14 @@ create table string_to_text_test(data text);
 insert into string_to_text_test values ('foo bar');
 explain (costs off)
 select * from string_to_text_test where 'foo' = ANY(string_to_array(data, ' '));
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Seq Scan on string_to_text_test
    Storage Filter: ('foo'::text = ANY (string_to_array(data, ' '::text)))
 (2 rows)
 
 select * from string_to_text_test where 'foo' = ANY(string_to_array(data, ' '));
-  data
+  data   
 ---------
  foo bar
 (1 row)
@@ -791,7 +791,7 @@ JOIN (
     WHERE a.site_id = 1
     AND a.recorded_at IS NULL
     ) aa ON true;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Nested Loop
    ->  Aggregate
@@ -815,7 +815,7 @@ JOIN (
     WHERE a.site_id = 1
     AND a.recorded_at IS NULL
     ) aa ON true;
-                           QUERY PLAN
+                           QUERY PLAN                            
 -----------------------------------------------------------------
  Nested Loop
    ->  Aggregate

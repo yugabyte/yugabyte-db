@@ -11,21 +11,21 @@ INSERT INTO t_simple (SELECT i FROM generate_series(1, 10) AS i);
 CREATE MATERIALIZED VIEW mv_xid_test AS (SELECT * FROM t_simple);
 CREATE UNIQUE INDEX ON mv_xid_test (k);
 SELECT age('3'::xid);
- age
+ age 
 -----
    0
 (1 row)
 
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 SELECT age('3'::xid);
- age
+ age 
 -----
    1
 (1 row)
 
 REFRESH MATERIALIZED VIEW mv_xid_test;
 SELECT age('3'::xid);
- age
+ age 
 -----
    1
 (1 row)
@@ -36,14 +36,14 @@ REFRESH MATERIALIZED VIEW mv_xid_test;
 INSERT INTO t_simple VALUES (11), (12);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 SELECT COUNT(*) FROM mv_xid_test;
- count
+ count 
 -------
     10
 (1 row)
 
 COMMIT;
 SELECT age('3'::xid);
- age
+ age 
 -----
    2
 (1 row)
@@ -53,7 +53,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 REFRESH MATERIALIZED VIEW mv_xid_test;
 INSERT INTO t_simple VALUES (13), (14);
 SELECT COUNT(*) FROM mv_xid_test;
- count
+ count 
 -------
     12
 (1 row)
@@ -64,7 +64,7 @@ COMMIT;
 -- its parent. In release builds where Read Committed isolation is disabled, the
 -- XID should increase by 1.
 SELECT age('3'::xid);
- age
+ age 
 -----
    4
 (1 row)
@@ -82,7 +82,7 @@ DETAIL:  Row: (null)
 CREATE TABLE pg_temp_foo (col int);
 INSERT INTO pg_temp_foo values (1);
 SELECT * FROM pg_temp_foo;
- col
+ col 
 -----
    1
 (1 row)
@@ -90,7 +90,7 @@ SELECT * FROM pg_temp_foo;
 CREATE TABLE pg_temp__123 (col int);
 INSERT INTO pg_temp__123 values (1);
 SELECT * from pg_temp__123;
- col
+ col 
 -----
    1
 (1 row)
@@ -243,7 +243,7 @@ CREATE TABLE mvtest_t (id int NOT NULL PRIMARY KEY, type text NOT NULL, amt nume
 CREATE VIEW mvtest_tv AS SELECT type, sum(amt) AS totamt FROM mvtest_t GROUP BY type;
 CREATE MATERIALIZED VIEW mvtest_tm2 AS SELECT * FROM mvtest_tv;
 SELECT * FROM mvtest_tm2;
- type | totamt
+ type | totamt 
 ------+--------
 (0 rows)
 
@@ -266,7 +266,7 @@ INSERT INTO mvtest_t3 VALUES
 create index on mvtest_t3 using ybgin (a);
 CREATE MATERIALIZED VIEW mvtest_tv5 AS SELECT a[1], sum(id) FROM mvtest_t3 GROUP BY a[1];
 select * from mvtest_tv5;
- a | sum
+ a | sum 
 ---+-----
  1 |  10
 (1 row)
@@ -274,7 +274,7 @@ select * from mvtest_tv5;
 CREATE MATERIALIZED VIEW mvtest_tv6 AS SELECT * FROM mvtest_t3;
 create index on mvtest_tv6 using ybgin (a);
 select a[1] from mvtest_tv6;
- a
+ a 
 ---
  1
  1
@@ -295,7 +295,7 @@ INSERT INTO arrays VALUES
 INSERT INTO arrays SELECT '{0}' FROM generate_series(1, 1000);
 CREATE MATERIALIZED VIEW mvtest_tv7 AS SELECT * FROM arrays;
 explain (costs off) select * from mvtest_tv7 where a @> '{6}';
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Seq Scan on mvtest_tv7
    Filter: (a @> '{6}'::integer[])
@@ -303,14 +303,14 @@ explain (costs off) select * from mvtest_tv7 where a @> '{6}';
 
 CREATE INDEX NONCONCURRENTLY ON mvtest_tv7 using ybgin (a);
 explain (costs off) select * from mvtest_tv7 where a @> '{6}';
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Index Scan using mvtest_tv7_a_idx on mvtest_tv7
    Index Cond: (a @> '{6}'::integer[])
 (2 rows)
 
 select * from mvtest_tv7 where a @> '{6}' order by k;
-    a    | k
+    a    | k 
 ---------+---
  {1,1,6} | 1
  {1,6,1} | 2
@@ -323,7 +323,7 @@ INSERT INTO arrays VALUES
 ('{7,6,7}');
 refresh materialized view mvtest_tv7;
 select * from mvtest_tv7 where a @> '{6}' order by k;
-    a    |  k
+    a    |  k   
 ---------+------
  {1,1,6} |    1
  {1,6,1} |    2
@@ -341,7 +341,7 @@ CREATE MATERIALIZED VIEW mv_collate_test_POSIX AS SELECT * FROM collate_test_POS
 INSERT INTO collate_test_POSIX VALUES (1, 'abc'), (2, 'Abc'), (3, 'bbc'), (4, 'ABD'), (5, 'zzz'), (6, 'ZZZ');
 REFRESH MATERIALIZED VIEW mv_collate_test_POSIX;
 SELECT * FROM mv_collate_test_POSIX ORDER BY b;
- a |  b
+ a |  b  
 ---+-----
  4 | ABD
  2 | Abc
@@ -352,7 +352,7 @@ SELECT * FROM mv_collate_test_POSIX ORDER BY b;
 (6 rows)
 
 SELECT * FROM mv_collate_test_POSIX ORDER BY b COLLATE "en-US-x-icu";
- a |  b
+ a |  b  
 ---+-----
  1 | abc
  2 | Abc
@@ -364,7 +364,7 @@ SELECT * FROM mv_collate_test_POSIX ORDER BY b COLLATE "en-US-x-icu";
 
 CREATE MATERIALIZED VIEW mv_collate_test_explicit_collation AS SELECT b COLLATE "en-US-x-icu" FROM collate_test_POSIX;
 SELECT * FROM mv_collate_test_explicit_collation ORDER BY b;
-  b
+  b  
 -----
  abc
  Abc
@@ -381,7 +381,7 @@ BEGIN
   EXECUTE 'EXPLAIN ANALYZE CREATE MATERIALIZED VIEW view_as_1 AS SELECT 1';
 END$$;
 SELECT * FROM view_as_1;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -489,14 +489,14 @@ CREATE TABLEGROUP test_tg;
 CREATE TABLE test_t (col int) TABLEGROUP test_tg;
 CREATE MATERIALIZED VIEW mv AS SELECT * FROM test_t;
 SELECT * FROM mv;
- col
+ col 
 -----
 (0 rows)
 
 INSERT INTO test_t VALUES (1);
 REFRESH MATERIALIZED VIEW mv;
 SELECT * FROM mv;
- col
+ col 
 -----
    1
 (1 row)
@@ -505,7 +505,7 @@ INSERT INTO test_t VALUES (2);
 CREATE UNIQUE INDEX ON mv(col);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 SELECT * FROM mv ORDER BY col;
- col
+ col 
 -----
    1
    2
@@ -544,10 +544,10 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumb
 CREATE MATERIALIZED VIEW mv TABLESPACE mv_tblspace1 AS SELECT * FROM test_yb;
 \d mv;
            Materialized view "public.mv"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- t      | integer |           |          |
- j      | integer |           |          |
+ t      | integer |           |          | 
+ j      | integer |           |          | 
 Tablespace: "mv_tblspace1"
 
 ALTER MATERIALIZED VIEW mv SET TABLESPACE mv_tblspace2;
@@ -555,10 +555,10 @@ NOTICE:  data movement for table mv is successfully initiated
 DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 \d mv;
            Materialized view "public.mv"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- t      | integer |           |          |
- j      | integer |           |          |
+ t      | integer |           |          | 
+ j      | integer |           |          | 
 Tablespace: "mv_tblspace2"
 
 -- Matview with temp tables + transactions
@@ -567,14 +567,14 @@ BEGIN;
 INSERT INTO t_temp VALUES (1, 1), (2, 2);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 SELECT COUNT(*) FROM t_temp;
- count
+ count 
 -------
      2
 (1 row)
 
 COMMIT;
 SELECT COUNT(*) FROM t_temp;
- count
+ count 
 -------
      2
 (1 row)
@@ -589,7 +589,7 @@ ROLLBACK TO sp1;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 COMMIT;
 SELECT COUNT(*) FROM t_temp;
- count
+ count 
 -------
      2
 (1 row)
@@ -602,7 +602,7 @@ INSERT INTO t_temp VALUES (3, 3), (4, 4);
 ROLLBACK TO sp2;
 COMMIT;
 SELECT COUNT(*) FROM t_temp;
- count
+ count 
 -------
      2
 (1 row)
@@ -617,7 +617,8 @@ ROLLBACK TO sp1;
 EXECUTE temp_stmt;
 COMMIT;
 SELECT COUNT(*) FROM t_temp;
- count
+ count 
 -------
      4
 (1 row)
+

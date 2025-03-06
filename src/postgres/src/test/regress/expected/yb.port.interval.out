@@ -5,49 +5,49 @@ SET DATESTYLE = 'ISO';
 SET IntervalStyle to postgres;
 -- check acceptance of "time zone style"
 SELECT INTERVAL '01:00' AS "One hour";
- One hour
+ One hour 
 ----------
  01:00:00
 (1 row)
 
 SELECT INTERVAL '+02:00' AS "Two hours";
- Two hours
+ Two hours 
 -----------
  02:00:00
 (1 row)
 
 SELECT INTERVAL '-08:00' AS "Eight hours";
- Eight hours
+ Eight hours 
 -------------
  -08:00:00
 (1 row)
 
 SELECT INTERVAL '-1 +02:03' AS "22 hours ago...";
-  22 hours ago...
+  22 hours ago...  
 -------------------
  -1 days +02:03:00
 (1 row)
 
 SELECT INTERVAL '-1 days +02:03' AS "22 hours ago...";
-  22 hours ago...
+  22 hours ago...  
 -------------------
  -1 days +02:03:00
 (1 row)
 
 SELECT INTERVAL '1.5 weeks' AS "Ten days twelve hours";
- Ten days twelve hours
+ Ten days twelve hours 
 -----------------------
  10 days 12:00:00
 (1 row)
 
 SELECT INTERVAL '1.5 months' AS "One month 15 days";
- One month 15 days
+ One month 15 days 
 -------------------
  1 mon 15 days
 (1 row)
 
 SELECT INTERVAL '10 years -11 month -12 days +13:14' AS "9 years...";
-            9 years...
+            9 years...            
 ----------------------------------
  9 years 1 mon -12 days +13:14:00
 (1 row)
@@ -239,7 +239,7 @@ SELECT r1.*, r2.*
    FROM INTERVAL_TBL_OF r1, INTERVAL_TBL_OF r2
    WHERE r1.f1 > r2.f1
    ORDER BY r1.f1, r2.f1;
-                    f1                     |                    f1
+                    f1                     |                    f1                     
 -------------------------------------------+-------------------------------------------
  -178956970 years -8 mons +2147483647 days | -178956970 years -8 mons -2147483648 days
  1 year                                    | -178956970 years -8 mons -2147483648 days
@@ -259,7 +259,7 @@ ERROR:  INDEX on column of type 'INTERVAL' not yet supported
 SET enable_seqscan TO false;
 EXPLAIN (COSTS OFF)
 SELECT f1 FROM INTERVAL_TBL_OF r1 ORDER BY f1;
-              QUERY PLAN
+              QUERY PLAN              
 --------------------------------------
  Sort
    Sort Key: f1
@@ -289,7 +289,7 @@ CREATE TABLE INTERVAL_MULDIV_TBL (span interval);
 COPY INTERVAL_MULDIV_TBL FROM STDIN;
 SELECT span * 0.3 AS product
 FROM INTERVAL_MULDIV_TBL;
-              product
+              product               
 ------------------------------------
  1 year 12 days 122:24:00
  -1 years -12 days +93:36:00
@@ -303,7 +303,7 @@ FROM INTERVAL_MULDIV_TBL;
 
 SELECT span * 8.2 AS product
 FROM INTERVAL_MULDIV_TBL;
-                   product
+                   product                   
 ---------------------------------------------
  28 years 104 days 2961:36:00
  -28 years -104 days +2942:24:00
@@ -317,7 +317,7 @@ FROM INTERVAL_MULDIV_TBL;
 
 SELECT span / 10 AS quotient
 FROM INTERVAL_MULDIV_TBL;
-             quotient
+             quotient             
 ----------------------------------
  4 mons 4 days 40:48:00
  -4 mons -4 days +31:12:00
@@ -331,7 +331,7 @@ FROM INTERVAL_MULDIV_TBL;
 
 SELECT span / 100 AS quotient
 FROM INTERVAL_MULDIV_TBL;
-        quotient
+        quotient         
 -------------------------
  12 days 13:40:48
  -12 days -06:28:48
@@ -372,7 +372,7 @@ select avg(f1) from interval_tbl;
 
 -- test long interval input
 select '4 millenniums 5 centuries 4 decades 1 year 4 months 4 days 17 minutes 31 seconds'::interval;
-                  interval
+                  interval                  
 --------------------------------------------
  @ 4541 years 4 mons 4 days 17 mins 31 secs
 (1 row)
@@ -382,20 +382,20 @@ select '4 millenniums 5 centuries 4 decades 1 year 4 months 4 days 17 minutes 31
 -- but we need the test to work for both integer and floating-point
 -- timestamps.
 select '100000000y 10mon -1000000000d -100000h -10min -10.000001s ago'::interval;
-                                       interval
+                                       interval                                        
 ---------------------------------------------------------------------------------------
  @ 100000000 years 10 mons -1000000000 days -100000 hours -10 mins -10.000001 secs ago
 (1 row)
 
 -- test justify_hours() and justify_days()
 SELECT justify_hours(interval '6 months 3 days 52 hours 3 minutes 2 seconds') as "6 mons 5 days 4 hours 3 mins 2 seconds";
- 6 mons 5 days 4 hours 3 mins 2 seconds
+ 6 mons 5 days 4 hours 3 mins 2 seconds 
 ----------------------------------------
  @ 6 mons 5 days 4 hours 3 mins 2 secs
 (1 row)
 
 SELECT justify_days(interval '6 months 36 days 5 hours 4 minutes 3 seconds') as "7 mons 6 days 5 hours 4 mins 3 seconds";
- 7 mons 6 days 5 hours 4 mins 3 seconds
+ 7 mons 6 days 5 hours 4 mins 3 seconds 
 ----------------------------------------
  @ 7 mons 6 days 5 hours 4 mins 3 secs
 (1 row)
@@ -406,7 +406,7 @@ SELECT justify_days(interval '2147483647 months 30 days');
 ERROR:  interval out of range
 -- test justify_interval()
 SELECT justify_interval(interval '1 month -1 hour') as "1 month -1 hour";
-  1 month -1 hour
+  1 month -1 hour   
 --------------------
  @ 29 days 23 hours
 (1 row)
@@ -448,13 +448,13 @@ SET DATESTYLE = 'ISO';
 SET IntervalStyle TO postgres;
 SELECT '1 millisecond'::interval, '1 microsecond'::interval,
        '500 seconds 99 milliseconds 51 microseconds'::interval;
-   interval   |    interval     |    interval
+   interval   |    interval     |    interval     
 --------------+-----------------+-----------------
  00:00:00.001 | 00:00:00.000001 | 00:08:20.099051
 (1 row)
 
 SELECT '3 days 5 milliseconds'::interval;
-      interval
+      interval       
 ---------------------
  3 days 00:00:00.005
 (1 row)
@@ -480,104 +480,104 @@ ERROR:  invalid input syntax for type interval: "1 day 1 day"
 LINE 1: SELECT '1 day 1 day'::interval;
                ^
 SELECT interval '1-2';  -- SQL year-month literal
-   interval
+   interval    
 ---------------
  1 year 2 mons
 (1 row)
 
 SELECT interval '999' second;  -- oversize leading field is ok
- interval
+ interval 
 ----------
  00:16:39
 (1 row)
 
 SELECT interval '999' minute;
- interval
+ interval 
 ----------
  16:39:00
 (1 row)
 
 SELECT interval '999' hour;
- interval
+ interval  
 -----------
  999:00:00
 (1 row)
 
 SELECT interval '999' day;
- interval
+ interval 
 ----------
  999 days
 (1 row)
 
 SELECT interval '999' month;
-    interval
+    interval     
 -----------------
  83 years 3 mons
 (1 row)
 
 -- test SQL-spec syntaxes for restricted field sets
 SELECT interval '1' year;
- interval
+ interval 
 ----------
  1 year
 (1 row)
 
 SELECT interval '2' month;
- interval
+ interval 
 ----------
  2 mons
 (1 row)
 
 SELECT interval '3' day;
- interval
+ interval 
 ----------
  3 days
 (1 row)
 
 SELECT interval '4' hour;
- interval
+ interval 
 ----------
  04:00:00
 (1 row)
 
 SELECT interval '5' minute;
- interval
+ interval 
 ----------
  00:05:00
 (1 row)
 
 SELECT interval '6' second;
- interval
+ interval 
 ----------
  00:00:06
 (1 row)
 
 SELECT interval '1' year to month;
- interval
+ interval 
 ----------
  1 mon
 (1 row)
 
 SELECT interval '1-2' year to month;
-   interval
+   interval    
 ---------------
  1 year 2 mons
 (1 row)
 
 SELECT interval '1 2' day to hour;
-    interval
+    interval    
 ----------------
  1 day 02:00:00
 (1 row)
 
 SELECT interval '1 2:03' day to hour;
-    interval
+    interval    
 ----------------
  1 day 02:00:00
 (1 row)
 
 SELECT interval '1 2:03:04' day to hour;
-    interval
+    interval    
 ----------------
  1 day 02:00:00
 (1 row)
@@ -587,13 +587,13 @@ ERROR:  invalid input syntax for type interval: "1 2"
 LINE 1: SELECT interval '1 2' day to minute;
                         ^
 SELECT interval '1 2:03' day to minute;
-    interval
+    interval    
 ----------------
  1 day 02:03:00
 (1 row)
 
 SELECT interval '1 2:03:04' day to minute;
-    interval
+    interval    
 ----------------
  1 day 02:03:00
 (1 row)
@@ -603,13 +603,13 @@ ERROR:  invalid input syntax for type interval: "1 2"
 LINE 1: SELECT interval '1 2' day to second;
                         ^
 SELECT interval '1 2:03' day to second;
-    interval
+    interval    
 ----------------
  1 day 02:03:00
 (1 row)
 
 SELECT interval '1 2:03:04' day to second;
-    interval
+    interval    
 ----------------
  1 day 02:03:04
 (1 row)
@@ -619,13 +619,13 @@ ERROR:  invalid input syntax for type interval: "1 2"
 LINE 1: SELECT interval '1 2' hour to minute;
                         ^
 SELECT interval '1 2:03' hour to minute;
-    interval
+    interval    
 ----------------
  1 day 02:03:00
 (1 row)
 
 SELECT interval '1 2:03:04' hour to minute;
-    interval
+    interval    
 ----------------
  1 day 02:03:00
 (1 row)
@@ -635,13 +635,13 @@ ERROR:  invalid input syntax for type interval: "1 2"
 LINE 1: SELECT interval '1 2' hour to second;
                         ^
 SELECT interval '1 2:03' hour to second;
-    interval
+    interval    
 ----------------
  1 day 02:03:00
 (1 row)
 
 SELECT interval '1 2:03:04' hour to second;
-    interval
+    interval    
 ----------------
  1 day 02:03:04
 (1 row)
@@ -651,43 +651,43 @@ ERROR:  invalid input syntax for type interval: "1 2"
 LINE 1: SELECT interval '1 2' minute to second;
                         ^
 SELECT interval '1 2:03' minute to second;
-    interval
+    interval    
 ----------------
  1 day 00:02:03
 (1 row)
 
 SELECT interval '1 2:03:04' minute to second;
-    interval
+    interval    
 ----------------
  1 day 02:03:04
 (1 row)
 
 SELECT interval '1 +2:03' minute to second;
-    interval
+    interval    
 ----------------
  1 day 00:02:03
 (1 row)
 
 SELECT interval '1 +2:03:04' minute to second;
-    interval
+    interval    
 ----------------
  1 day 02:03:04
 (1 row)
 
 SELECT interval '1 -2:03' minute to second;
-    interval
+    interval     
 -----------------
  1 day -00:02:03
 (1 row)
 
 SELECT interval '1 -2:03:04' minute to second;
-    interval
+    interval     
 -----------------
  1 day -02:03:04
 (1 row)
 
 SELECT interval '123 11' day to hour; -- ok
-     interval
+     interval      
 -------------------
  123 days 11:00:00
 (1 row)
@@ -706,31 +706,31 @@ LINE 1: SELECT interval '123 2:03 -2:04';
                         ^
 -- test syntaxes for restricted precision
 SELECT interval(0) '1 day 01:23:45.6789';
-    interval
+    interval    
 ----------------
  1 day 01:23:46
 (1 row)
 
 SELECT interval(2) '1 day 01:23:45.6789';
-     interval
+     interval      
 -------------------
  1 day 01:23:45.68
 (1 row)
 
 SELECT interval '12:34.5678' minute to second(2);  -- per SQL spec
-  interval
+  interval   
 -------------
  00:12:34.57
 (1 row)
 
 SELECT interval '1.234' second;
-   interval
+   interval   
 --------------
  00:00:01.234
 (1 row)
 
 SELECT interval '1.234' second(2);
-  interval
+  interval   
 -------------
  00:00:01.23
 (1 row)
@@ -740,19 +740,19 @@ ERROR:  invalid input syntax for type interval: "1 2.345"
 LINE 1: SELECT interval '1 2.345' day to second(2);
                         ^
 SELECT interval '1 2:03' day to second(2);
-    interval
+    interval    
 ----------------
  1 day 02:03:00
 (1 row)
 
 SELECT interval '1 2:03.4567' day to second(2);
-     interval
+     interval      
 -------------------
  1 day 00:02:03.46
 (1 row)
 
 SELECT interval '1 2:03:04.5678' day to second(2);
-     interval
+     interval      
 -------------------
  1 day 02:03:04.57
 (1 row)
@@ -762,13 +762,13 @@ ERROR:  invalid input syntax for type interval: "1 2.345"
 LINE 1: SELECT interval '1 2.345' hour to second(2);
                         ^
 SELECT interval '1 2:03.45678' hour to second(2);
-     interval
+     interval      
 -------------------
  1 day 00:02:03.46
 (1 row)
 
 SELECT interval '1 2:03:04.5678' hour to second(2);
-     interval
+     interval      
 -------------------
  1 day 02:03:04.57
 (1 row)
@@ -778,13 +778,13 @@ ERROR:  invalid input syntax for type interval: "1 2.3456"
 LINE 1: SELECT interval '1 2.3456' minute to second(2);
                         ^
 SELECT interval '1 2:03.5678' minute to second(2);
-     interval
+     interval      
 -------------------
  1 day 00:02:03.57
 (1 row)
 
 SELECT interval '1 2:03:04.5678' minute to second(2);
-     interval
+     interval      
 -------------------
  1 day 02:03:04.57
 (1 row)
@@ -814,7 +814,7 @@ SELECT  interval '0'                       AS "zero",
         interval '1 2:03:04' day to second AS "day-time",
         - interval '1-2'                   AS "negative year-month",
         - interval '1 2:03:04'             AS "negative day-time";
- zero | year-month | day-time  | negative year-month | negative day-time
+ zero | year-month | day-time  | negative year-month | negative day-time 
 ------+------------+-----------+---------------------+-------------------
  0    | 1-2        | 1 2:03:04 | -1-2                | -1 2:03:04
 (1 row)
@@ -825,7 +825,7 @@ SELECT  interval '+1 -1:00:00',
         interval '-1 +1:00:00',
         interval '+1-2 -3 +4:05:06.789',
         interval '-1-2 +3 -4:05:06.789';
-    interval     |     interval      |              interval               |                interval
+    interval     |     interval      |              interval               |                interval                
 -----------------+-------------------+-------------------------------------+----------------------------------------
  1 day -01:00:00 | -1 days +01:00:00 | 1 year 2 mons -3 days +04:05:06.789 | -1 years -2 mons +3 days -04:05:06.789
 (1 row)
@@ -846,7 +846,7 @@ SELECT  interval '1 day -1 hours',
         interval '-1 days +1 hours',
         interval '1 years 2 months -3 days 4 hours 5 minutes 6.789 seconds',
         - interval '1 years 2 months -3 days 4 hours 5 minutes 6.789 seconds';
-     interval     |     interval     |       interval       |       ?column?
+     interval     |     interval     |       interval       |       ?column?       
 ------------------+------------------+----------------------+----------------------
  +0-0 +1 -1:00:00 | +0-0 -1 +1:00:00 | +1-2 -3 +4:05:06.789 | -1-2 +3 -4:05:06.789
 (1 row)
@@ -870,7 +870,7 @@ select  interval '0'                                AS "zero",
         (interval '1-2' + interval '3 4:05:06.7')   AS "all fields",
         (interval '1-2' - interval '3 4:05:06.7')   AS "mixed sign",
         (- interval '1-2' + interval '3 4:05:06.7') AS "negative";
- zero | a year 2 months | a bit over a day | a bit over 2 hours |    all fields    |      mixed sign      |      negative
+ zero | a year 2 months | a bit over a day | a bit over 2 hours |    all fields    |      mixed sign      |      negative      
 ------+-----------------+------------------+--------------------+------------------+----------------------+--------------------
  PT0S | P1Y2M           | P1DT2H3M4S       | PT2H3M4.45679S     | P1Y2M3DT4H5M6.7S | P1Y2M-3DT-4H-5M-6.7S | P-1Y-2M3DT4H5M6.7S
 (1 row)
@@ -884,7 +884,7 @@ select  interval 'P0Y'                    AS "zero",
         interval 'P1Y2M3DT4H5M6.7S'       AS "all fields",
         interval 'P-1Y-2M-3DT-4H-5M-6.7S' AS "negative",
         interval 'PT-0.1S'                AS "fractional second";
- zero | a year 2 months |  a week   | a bit over a day |     all fields     |      negative      | fractional second
+ zero | a year 2 months |  a week   | a bit over a day |     all fields     |      negative      | fractional second 
 ------+-----------------+-----------+------------------+--------------------+--------------------+-------------------
  0    | 1-2             | 7 0:00:00 | 1 2:03:04        | +1-2 +3 +4:05:06.7 | -1-2 -3 -4:05:06.7 | -0:00:00.1
 (1 row)
@@ -893,7 +893,7 @@ select  interval 'P0Y'                    AS "zero",
 SET IntervalStyle to postgres;
 select  interval 'P00021015T103020'       AS "ISO8601 Basic Format",
         interval 'P0002-10-15T10:30:20'   AS "ISO8601 Extended Format";
-       ISO8601 Basic Format       |     ISO8601 Extended Format
+       ISO8601 Basic Format       |     ISO8601 Extended Format      
 ----------------------------------+----------------------------------
  2 years 10 mons 15 days 10:30:20 | 2 years 10 mons 15 days 10:30:20
 (1 row)
@@ -907,7 +907,7 @@ select  interval 'P0002'                  AS "year only",
         interval 'P0002-10-15T1S'         AS "year month day plus time",
         interval 'PT10'                   AS "hour only",
         interval 'PT10:30'                AS "hour minute";
- year only |   year month    |     year month day      | year only plus time |   year month plus time   |     year month day plus time     | hour only | hour minute
+ year only |   year month    |     year month day      | year only plus time |   year month plus time   |     year month day plus time     | hour only | hour minute 
 -----------+-----------------+-------------------------+---------------------+--------------------------+----------------------------------+-----------+-------------
  2 years   | 2 years 10 mons | 2 years 10 mons 15 days | 2 years 00:00:01    | 2 years 10 mons 00:00:01 | 2 years 10 mons 15 days 00:00:01 | 10:00:00  | 10:30:00
 (1 row)
@@ -950,19 +950,19 @@ LINE 1: select interval 'P.Y0M3DT4H5M6S';
 -- test a couple rounding cases that changed since 8.3 w/ HAVE_INT64_TIMESTAMP.
 SET IntervalStyle to postgres_verbose;
 select interval '-10 mons -3 days +03:55:06.70';
-                     interval
+                     interval                     
 --------------------------------------------------
  @ 10 mons 3 days -3 hours -55 mins -6.7 secs ago
 (1 row)
 
 select interval '1 year 2 mons 3 days 04:05:06.699999';
-                      interval
+                      interval                       
 -----------------------------------------------------
  @ 1 year 2 mons 3 days 4 hours 5 mins 6.699999 secs
 (1 row)
 
 select interval '0:0:0.7', interval '@ 0.70 secs', interval '0.7 seconds';
-  interval  |  interval  |  interval
+  interval  |  interval  |  interval  
 ------------+------------+------------
  @ 0.7 secs | @ 0.7 secs | @ 0.7 secs
 (1 row)
@@ -1580,44 +1580,44 @@ select interval '-2147483648 months -2147483648 days -9223372036854775808 us';
 
 -- check that '30 days' equals '1 month' according to the hash function
 select '30 days'::interval = '1 month'::interval as t;
- t
+ t 
 ---
  t
 (1 row)
 
 select interval_hash('30 days'::interval) = interval_hash('1 month'::interval) as t;
- t
+ t 
 ---
  t
 (1 row)
 
 -- numeric constructor
 select make_interval(years := 2);
- make_interval
+ make_interval 
 ---------------
  @ 2 years
 (1 row)
 
 select make_interval(years := 1, months := 6);
-  make_interval
+  make_interval  
 -----------------
  @ 1 year 6 mons
 (1 row)
 
 select make_interval(years := 1, months := -1, weeks := 5, days := -7, hours := 25, mins := -180);
-       make_interval
+       make_interval        
 ----------------------------
  @ 11 mons 28 days 22 hours
 (1 row)
 
 select make_interval() = make_interval(years := 0, months := 0, weeks := 0, days := 0, mins := 0, secs := 0.0);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select make_interval(hours := -2, mins := -10, secs := -25.3);
-          make_interval
+          make_interval          
 ---------------------------------
  @ 2 hours 10 mins 25.3 secs ago
 (1 row)
@@ -1631,7 +1631,7 @@ ERROR:  interval out of range
 select make_interval(secs := 'NaN');
 ERROR:  interval out of range
 select make_interval(secs := 7e12);
-           make_interval
+           make_interval            
 ------------------------------------
  @ 1944444444 hours 26 mins 40 secs
 (1 row)

@@ -143,7 +143,7 @@ insert into rtest_t3 values (5, 35);
 insert into rtest_v1 values (1, 11);
 insert into rtest_v1 values (2, 12);
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 11
  2 | 12
@@ -152,7 +152,7 @@ select * from rtest_v1 ORDER BY a, b;
 -- delete with constant expression
 delete from rtest_v1 where a = 1;
 select * from rtest_v1;
- a | b
+ a | b  
 ---+----
  2 | 12
 (1 row)
@@ -160,7 +160,7 @@ select * from rtest_v1;
 insert into rtest_v1 values (1, 11);
 delete from rtest_v1 where b = 12;
 select * from rtest_v1;
- a | b
+ a | b  
 ---+----
  1 | 11
 (1 row)
@@ -168,7 +168,7 @@ select * from rtest_v1;
 insert into rtest_v1 values (2, 12);
 insert into rtest_v1 values (2, 13);
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 11
  2 | 12
@@ -185,7 +185,7 @@ select * from rtest_v1 ORDER BY a, b;
 \r
 delete from rtest_v1 where b = 12;
 select * from rtest_v1;
- a | b
+ a | b  
 ---+----
  1 | 11
 (1 row)
@@ -194,7 +194,7 @@ delete from rtest_v1;
 -- insert select
 insert into rtest_v1 select * from rtest_t2;
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 21
  2 | 22
@@ -205,7 +205,7 @@ delete from rtest_v1;
 -- same with swapped targetlist
 insert into rtest_v1 (b, a) select b, a from rtest_t2;
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 21
  2 | 22
@@ -215,33 +215,33 @@ select * from rtest_v1 ORDER BY a, b;
 -- now with only one target attribute
 insert into rtest_v1 (a) select a from rtest_t3;
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 21
- 1 |
+ 1 |   
  2 | 22
- 2 |
+ 2 |   
  3 | 23
- 3 |
- 4 |
- 5 |
+ 3 |   
+ 4 |   
+ 5 |   
 (8 rows)
 
 select * from rtest_v1 where b isnull ORDER BY a, b;
- a | b
+ a | b 
 ---+---
- 1 |
- 2 |
- 3 |
- 4 |
- 5 |
+ 1 |  
+ 2 |  
+ 3 |  
+ 4 |  
+ 5 |  
 (5 rows)
 
 -- let attribute a differ (must be done on rtest_t1 - see above)
 update rtest_t1 set a = a + 10 where b isnull;
 delete from rtest_v1 where b isnull;
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 21
  2 | 22
@@ -251,7 +251,7 @@ select * from rtest_v1 ORDER BY a, b;
 -- now updates with constant expression
 update rtest_v1 set b = 42 where a = 2;
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 21
  2 | 42
@@ -260,7 +260,7 @@ select * from rtest_v1 ORDER BY a, b;
 
 update rtest_v1 set b = 99 where b = 42;
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 21
  2 | 99
@@ -269,7 +269,7 @@ select * from rtest_v1 ORDER BY a, b;
 
 update rtest_v1 set b = 88 where b < 50;
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 88
  2 | 99
@@ -281,7 +281,7 @@ insert into rtest_v1 select rtest_t2.a, rtest_t3.b
     from rtest_t2, rtest_t3
     where rtest_t2.a = rtest_t3.a;
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 31
  2 | 32
@@ -291,7 +291,7 @@ select * from rtest_v1 ORDER BY a, b;
 -- updates in a mergejoin
 update rtest_v1 set b = rtest_t2.b from rtest_t2 where rtest_v1.a = rtest_t2.a;
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 21
  2 | 22
@@ -300,7 +300,7 @@ select * from rtest_v1 ORDER BY a, b;
 
 insert into rtest_v1 select * from rtest_t3;
 select * from rtest_v1 ORDER BY a, b;
- a | b
+ a | b  
 ---+----
  1 | 21
  1 | 31
@@ -314,7 +314,7 @@ select * from rtest_v1 ORDER BY a, b;
 
 update rtest_t1 set a = a + 10 where b > 30;
 select * from rtest_v1 ORDER BY a, b;
- a  | b
+ a  | b  
 ----+----
   1 | 21
   2 | 22
@@ -328,7 +328,7 @@ select * from rtest_v1 ORDER BY a, b;
 
 update rtest_v1 set a = rtest_t3.a + 20 from rtest_t3 where rtest_v1.b = rtest_t3.b;
 select * from rtest_v1 ORDER BY a, b;
- a  | b
+ a  | b  
 ----+----
   1 | 21
   2 | 22
@@ -357,7 +357,7 @@ insert into rtest_admin values ('jw', 'notjw');
 insert into rtest_admin values ('bm', 'neptun');
 update rtest_system set sysname = 'pluto' where sysname = 'neptun';
 select * from rtest_interface ORDER BY sysname, ifname;
- sysname | ifname
+ sysname | ifname 
 ---------+--------
  notjw   | eth0
  orion   | eth0
@@ -366,7 +366,7 @@ select * from rtest_interface ORDER BY sysname, ifname;
 (4 rows)
 
 select * from rtest_admin ORDER BY pname, sysname;
- pname | sysname
+ pname | sysname 
 -------+---------
  bm    | pluto
  jw    | notjw
@@ -378,7 +378,7 @@ update rtest_person set pname = 'jwieck' where pdesc = 'Jan Wieck';
 -- The above UPDATE affects two rows with equal keys, so they could be
 -- updated in either order depending on the whim of the local qsort().
 select * from rtest_admin order by pname, sysname;
- pname  | sysname
+ pname  | sysname 
 --------+---------
  bm     | pluto
  jwieck | notjw
@@ -387,14 +387,14 @@ select * from rtest_admin order by pname, sysname;
 
 delete from rtest_system where sysname = 'orion';
 select * from rtest_interface ORDER BY sysname, ifname;
- sysname | ifname
+ sysname | ifname 
 ---------+--------
  notjw   | eth0
  pluto   | eth0
 (2 rows)
 
 select * from rtest_admin ORDER BY pname, sysname;
- pname  | sysname
+ pname  | sysname 
 --------+---------
  bm     | pluto
  jwieck | notjw
@@ -410,7 +410,7 @@ update rtest_emp set ename = 'wieck', salary = '6000.00' where ename = 'wiecx';
 update rtest_emp set salary = '7000.00' where ename = 'wieck';
 delete from rtest_emp where ename = 'gates';
 select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal;
-        ename         | matches user |   action   |   newsal   |   oldsal
+        ename         | matches user |   action   |   newsal   |   oldsal   
 ----------------------+--------------+------------+------------+------------
  gates                | t            | fired      |      $0.00 | $80,000.00
  gates                | t            | hired      | $80,000.00 |      $0.00
@@ -424,7 +424,7 @@ insert into rtest_empmass values ('maier', '5000.00');
 insert into rtest_empmass values ('mayr', '6000.00');
 insert into rtest_emp select * from rtest_empmass;
 select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal;
-        ename         | matches user |   action   |   newsal   |   oldsal
+        ename         | matches user |   action   |   newsal   |   oldsal   
 ----------------------+--------------+------------+------------+------------
  gates                | t            | fired      |      $0.00 | $80,000.00
  gates                | t            | hired      | $80,000.00 |      $0.00
@@ -439,7 +439,7 @@ select ename, who = current_user as "matches user", action, newsal, oldsal from 
 update rtest_empmass set salary = salary + '1000.00';
 update rtest_emp set salary = rtest_empmass.salary from rtest_empmass where rtest_emp.ename = rtest_empmass.ename;
 select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal;
-        ename         | matches user |   action   |   newsal   |   oldsal
+        ename         | matches user |   action   |   newsal   |   oldsal   
 ----------------------+--------------+------------+------------+------------
  gates                | t            | fired      |      $0.00 | $80,000.00
  gates                | t            | hired      | $80,000.00 |      $0.00
@@ -456,7 +456,7 @@ select ename, who = current_user as "matches user", action, newsal, oldsal from 
 
 delete from rtest_emp using rtest_empmass where rtest_emp.ename = rtest_empmass.ename;
 select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal;
-        ename         | matches user |   action   |   newsal   |   oldsal
+        ename         | matches user |   action   |   newsal   |   oldsal   
 ----------------------+--------------+------------+------------+------------
  gates                | t            | fired      |      $0.00 | $80,000.00
  gates                | t            | hired      | $80,000.00 |      $0.00
@@ -488,7 +488,7 @@ insert into rtest_t4 values (28, 'Record should go to rtest_t4 and t8');
 insert into rtest_t4 values (30, 'Record should go to rtest_t4');
 insert into rtest_t4 values (40, 'Record should go to rtest_t4');
 select * from rtest_t4 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
   1 | Record should go to rtest_t4
   2 | Record should go to rtest_t4
@@ -500,7 +500,7 @@ select * from rtest_t4 ORDER BY a, b;
 (7 rows)
 
 select * from rtest_t5 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  10 | Record should go to rtest_t5
  15 | Record should go to rtest_t5
@@ -508,19 +508,19 @@ select * from rtest_t5 ORDER BY a, b;
 (3 rows)
 
 select * from rtest_t6 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  20 | Record should go to rtest_t4 and t6
 (1 row)
 
 select * from rtest_t7 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  19 | Record should go to rtest_t5 and t7
 (1 row)
 
 select * from rtest_t8 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  26 | Record should go to rtest_t4 and t8
  28 | Record should go to rtest_t4 and t8
@@ -543,14 +543,14 @@ insert into rtest_t9 values (30, 'Record should go to rtest_t4');
 insert into rtest_t9 values (40, 'Record should go to rtest_t4');
 insert into rtest_t4 select * from rtest_t9 where a < 20;
 select * from rtest_t4 ORDER BY a, b;
- a |              b
+ a |              b               
 ---+------------------------------
  1 | Record should go to rtest_t4
  2 | Record should go to rtest_t4
 (2 rows)
 
 select * from rtest_t5 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  10 | Record should go to rtest_t5
  15 | Record should go to rtest_t5
@@ -558,24 +558,24 @@ select * from rtest_t5 ORDER BY a, b;
 (3 rows)
 
 select * from rtest_t6;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
 select * from rtest_t7;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  19 | Record should go to rtest_t5 and t7
 (1 row)
 
 select * from rtest_t8;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
 insert into rtest_t4 select * from rtest_t9 where b ~ 'and t8';
 select * from rtest_t4 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
   1 | Record should go to rtest_t4
   2 | Record should go to rtest_t4
@@ -584,7 +584,7 @@ select * from rtest_t4 ORDER BY a, b;
 (4 rows)
 
 select * from rtest_t5 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  10 | Record should go to rtest_t5
  15 | Record should go to rtest_t5
@@ -592,18 +592,18 @@ select * from rtest_t5 ORDER BY a, b;
 (3 rows)
 
 select * from rtest_t6;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
 select * from rtest_t7;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  19 | Record should go to rtest_t5 and t7
 (1 row)
 
 select * from rtest_t8 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  26 | Record should go to rtest_t4 and t8
  28 | Record should go to rtest_t4 and t8
@@ -611,7 +611,7 @@ select * from rtest_t8 ORDER BY a, b;
 
 insert into rtest_t4 select a + 1, b from rtest_t9 where a in (20, 30, 40);
 select * from rtest_t4 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
   1 | Record should go to rtest_t4
   2 | Record should go to rtest_t4
@@ -623,7 +623,7 @@ select * from rtest_t4 ORDER BY a, b;
 (7 rows)
 
 select * from rtest_t5 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  10 | Record should go to rtest_t5
  15 | Record should go to rtest_t5
@@ -631,19 +631,19 @@ select * from rtest_t5 ORDER BY a, b;
 (3 rows)
 
 select * from rtest_t6;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  21 | Record should go to rtest_t4 and t6
 (1 row)
 
 select * from rtest_t7;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  19 | Record should go to rtest_t5 and t7
 (1 row)
 
 select * from rtest_t8 ORDER BY a, b;
- a  |                  b
+ a  |                  b                  
 ----+-------------------------------------
  26 | Record should go to rtest_t4 and t8
  28 | Record should go to rtest_t4 and t8
@@ -654,7 +654,7 @@ select * from rtest_t8 ORDER BY a, b;
 --
 insert into rtest_order1 values (1);
 select * from rtest_order2 ORDER BY a, b, c;
- a | b |              c
+ a | b |              c               
 ---+---+------------------------------
  1 | 1 | rule 1 - this should run 1st
  1 | 2 | rule 2 - this should run 2nd
@@ -677,7 +677,7 @@ insert into rtest_nothn1 values (40, 'want this');
 insert into rtest_nothn1 values (50, 'want this');
 insert into rtest_nothn1 values (60, 'want this');
 select * from rtest_nothn1 ORDER BY a, b;
- a  |     b
+ a  |     b     
 ----+-----------
   1 | want this
   2 | want this
@@ -693,12 +693,12 @@ insert into rtest_nothn2 values (50, 'too small');
 insert into rtest_nothn2 values (100, 'OK');
 insert into rtest_nothn2 values (200, 'OK');
 select * from rtest_nothn2;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
 select * from rtest_nothn3 ORDER BY a, b;
-  a  | b
+  a  | b  
 -----+----
  100 | OK
  200 | OK
@@ -720,7 +720,7 @@ insert into rtest_nothn4 values (50, 'want this');
 insert into rtest_nothn4 values (60, 'want this');
 insert into rtest_nothn1 select * from rtest_nothn4;
 select * from rtest_nothn1 ORDER BY a, b;
- a  |     b
+ a  |     b     
 ----+-----------
   1 | want this
   2 | want this
@@ -738,12 +738,12 @@ insert into rtest_nothn4 values (100, 'OK');
 insert into rtest_nothn4 values (200, 'OK');
 insert into rtest_nothn2 select * from rtest_nothn4;
 select * from rtest_nothn2;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
 select * from rtest_nothn3 ORDER BY a, b;
-  a  | b
+  a  | b  
 -----+----
  100 | OK
  200 | OK
@@ -784,7 +784,7 @@ insert into rtest_view2 values (7);
 insert into rtest_view2 values (7);
 insert into rtest_view2 values (7);
 select * from rtest_vview1 ORDER BY a, b;
- a |   b
+ a |   b    
 ---+--------
  2 | item 2
  4 | item 4
@@ -793,7 +793,7 @@ select * from rtest_vview1 ORDER BY a, b;
 (4 rows)
 
 select * from rtest_vview2 ORDER BY a, b;
- a |   b
+ a |   b    
 ---+--------
  1 | item 1
  2 | item 2
@@ -804,7 +804,7 @@ select * from rtest_vview2 ORDER BY a, b;
 (6 rows)
 
 select * from rtest_vview3 ORDER BY a, b;
- a |   b
+ a |   b    
 ---+--------
  2 | item 2
  5 | item 5
@@ -812,7 +812,7 @@ select * from rtest_vview3 ORDER BY a, b;
 (3 rows)
 
 select * from rtest_vview4 order by a, b;
- a |   b    | refcount
+ a |   b    | refcount 
 ---+--------+----------
  2 | item 2 |        2
  4 | item 4 |        1
@@ -821,7 +821,7 @@ select * from rtest_vview4 order by a, b;
 (4 rows)
 
 select * from rtest_vview5 ORDER BY a, b, refcount;
- a |   b    | refcount
+ a |   b    | refcount 
 ---+--------+----------
  1 | item 1 |        0
  2 | item 2 |        2
@@ -835,7 +835,7 @@ select * from rtest_vview5 ORDER BY a, b, refcount;
 
 insert into rtest_view3 select * from rtest_vview1 where a < 7;
 select * from rtest_view3 ORDER BY a, b;
- a |   b
+ a |   b    
 ---+--------
  2 | item 2
  4 | item 4
@@ -845,7 +845,7 @@ select * from rtest_view3 ORDER BY a, b;
 delete from rtest_view3;
 insert into rtest_view3 select * from rtest_vview2 where a != 5 and b !~ '2';
 select * from rtest_view3 ORDER BY a, b;
- a |   b
+ a |   b    
 ---+--------
  1 | item 1
  3 | item 3
@@ -856,7 +856,7 @@ select * from rtest_view3 ORDER BY a, b;
 delete from rtest_view3;
 insert into rtest_view3 select * from rtest_vview3;
 select * from rtest_view3 ORDER BY a, b;
- a |   b
+ a |   b    
 ---+--------
  2 | item 2
  5 | item 5
@@ -866,7 +866,7 @@ select * from rtest_view3 ORDER BY a, b;
 delete from rtest_view3;
 insert into rtest_view4 select * from rtest_vview4 where 3 > refcount;
 select * from rtest_view4 order by a, b;
- a |   b    | c
+ a |   b    | c 
 ---+--------+---
  2 | item 2 | 2
  4 | item 4 | 1
@@ -876,7 +876,7 @@ select * from rtest_view4 order by a, b;
 delete from rtest_view4;
 insert into rtest_view4 select * from rtest_vview5 where a > 2 and refcount = 0;
 select * from rtest_view4 ORDER BY a, b, c;
- a |   b    | c
+ a |   b    | c 
 ---+--------+---
  3 | item 3 | 0
  6 | item 6 | 0
@@ -910,7 +910,7 @@ insert into rtest_comp values ('p4', 'cm', 15.0);
 insert into rtest_comp values ('p5', 'inch', 7.0);
 insert into rtest_comp values ('p6', 'inch', 4.4);
 select * from rtest_vcomp order by part;
- part |     size_in_cm
+ part |     size_in_cm     
 ------+--------------------
  p1   |                500
  p2   |                300
@@ -921,7 +921,7 @@ select * from rtest_vcomp order by part;
 (6 rows)
 
 select * from rtest_vcomp where size_in_cm > 10.0 order by size_in_cm using >;
- part |     size_in_cm
+ part |     size_in_cm     
 ------+--------------------
  p1   |                500
  p2   |                300
@@ -1000,7 +1000,7 @@ INSERT INTO shoelace_data VALUES ('sl7', 7, 'brown', 60 , 'cm');
 INSERT INTO shoelace_data VALUES ('sl8', 1, 'brown', 40 , 'inch');
 -- SELECTs in doc
 SELECT * FROM shoelace ORDER BY sl_name;
-  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm
+  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm 
 ------------+----------+------------+--------+----------+-----------
  sl1        |        5 | black      |     80 | cm       |        80
  sl2        |        6 | black      |    100 | cm       |       100
@@ -1013,7 +1013,7 @@ SELECT * FROM shoelace ORDER BY sl_name;
 (8 rows)
 
 SELECT * FROM shoe_ready WHERE total_avail >= 2 ORDER BY 1;
-  shoename  | sh_avail |  sl_name   | sl_avail | total_avail
+  shoename  | sh_avail |  sl_name   | sl_avail | total_avail 
 ------------+----------+------------+----------+-------------
  sh1        |        2 | sl1        |        5 |           2
  sh3        |        4 | sl7        |        7 |           4
@@ -1038,7 +1038,7 @@ SELECT * FROM shoe_ready WHERE total_avail >= 2 ORDER BY 1;
                                     );
 UPDATE shoelace_data SET sl_avail = 6 WHERE  sl_name = 'sl7';
 SELECT * FROM shoelace_log;
-  sl_name   | sl_avail | log_who  |         log_when
+  sl_name   | sl_avail | log_who  |         log_when         
 ------------+----------+----------+--------------------------
  sl7        |        6 | Al Bundy | Thu Jan 01 00:00:00 1970
 (1 row)
@@ -1081,7 +1081,7 @@ INSERT INTO shoelace_arrive VALUES ('sl3', 10);
 INSERT INTO shoelace_arrive VALUES ('sl6', 20);
 INSERT INTO shoelace_arrive VALUES ('sl8', 20);
 SELECT * FROM shoelace ORDER BY sl_name;
-  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm
+  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm 
 ------------+----------+------------+--------+----------+-----------
  sl1        |        5 | black      |     80 | cm       |        80
  sl2        |        6 | black      |    100 | cm       |       100
@@ -1095,7 +1095,7 @@ SELECT * FROM shoelace ORDER BY sl_name;
 
 insert into shoelace_ok select * from shoelace_arrive;
 SELECT * FROM shoelace ORDER BY sl_name;
-  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm
+  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm 
 ------------+----------+------------+--------+----------+-----------
  sl1        |        5 | black      |     80 | cm       |        80
  sl2        |        6 | black      |    100 | cm       |       100
@@ -1108,7 +1108,7 @@ SELECT * FROM shoelace ORDER BY sl_name;
 (8 rows)
 
 SELECT * FROM shoelace_log ORDER BY sl_name;
-  sl_name   | sl_avail | log_who  |         log_when
+  sl_name   | sl_avail | log_who  |         log_when         
 ------------+----------+----------+--------------------------
  sl3        |       10 | Al Bundy | Thu Jan 01 00:00:00 1970
  sl6        |       20 | Al Bundy | Thu Jan 01 00:00:00 1970
@@ -1128,14 +1128,14 @@ insert into shoelace values ('sl10', 1000, 'magenta', 40.0, 'inch', 0.0)
   on conflict do nothing;
 ERROR:  INSERT with ON CONFLICT clause cannot be used with table that has INSERT or UPDATE rules
 SELECT * FROM shoelace_obsolete ORDER BY sl_len_cm;
-  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm
+  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm 
 ------------+----------+------------+--------+----------+-----------
  sl9        |        0 | pink       |     35 | inch     |      88.9
  sl10       |     1000 | magenta    |     40 | inch     |     101.6
 (2 rows)
 
 SELECT * FROM shoelace_candelete;
-  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm
+  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm 
 ------------+----------+------------+--------+----------+-----------
  sl9        |        0 | pink       |     35 | inch     |      88.9
 (1 row)
@@ -1144,7 +1144,7 @@ DELETE FROM shoelace WHERE EXISTS
     (SELECT * FROM shoelace_candelete
              WHERE sl_name = shoelace.sl_name);
 SELECT * FROM shoelace ORDER BY sl_name;
-  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm
+  sl_name   | sl_avail |  sl_color  | sl_len | sl_unit  | sl_len_cm 
 ------------+----------+------------+--------+----------+-----------
  sl1        |        5 | black      |     80 | cm       |        80
  sl10       |     1000 | magenta    |     40 | inch     |     101.6
@@ -1158,16 +1158,16 @@ SELECT * FROM shoelace ORDER BY sl_name;
 (9 rows)
 
 SELECT * FROM shoe ORDER BY shoename;
-  shoename  | sh_avail |  slcolor   | slminlen | slminlen_cm | slmaxlen | slmaxlen_cm |  slunit
+  shoename  | sh_avail |  slcolor   | slminlen | slminlen_cm | slmaxlen | slmaxlen_cm |  slunit  
 ------------+----------+------------+----------+-------------+----------+-------------+----------
- sh1        |        2 | black      |       70 |          70 |       90 |          90 | cm
- sh2        |        0 | black      |       30 |        76.2 |       40 |       101.6 | inch
- sh3        |        4 | brown      |       50 |          50 |       65 |          65 | cm
- sh4        |        3 | brown      |       40 |       101.6 |       50 |         127 | inch
+ sh1        |        2 | black      |       70 |          70 |       90 |          90 | cm      
+ sh2        |        0 | black      |       30 |        76.2 |       40 |       101.6 | inch    
+ sh3        |        4 | brown      |       50 |          50 |       65 |          65 | cm      
+ sh4        |        3 | brown      |       40 |       101.6 |       50 |         127 | inch    
 (4 rows)
 
 SELECT count(*) FROM shoe;
- count
+ count 
 -------
      4
 (1 row)
@@ -1182,7 +1182,7 @@ do instead nothing;
 insert into rules_foo values(1);
 insert into rules_foo values(1001);
 select * from rules_foo;
-  f1
+  f1  
 ------
  1001
 (1 row)
@@ -1201,14 +1201,14 @@ do instead insert into rules_foo2 values (new.f1);
 insert into rules_foo values(2);
 insert into rules_foo values(100);
 select * from rules_foo ORDER BY f1;
-  f1
+  f1  
 ------
   100
  1001
 (2 rows)
 
 select * from rules_foo2;
- f1
+ f1 
 ----
   2
 (1 row)
@@ -1236,23 +1236,23 @@ create rule rrule as
   update cchild set descrip = new.descrip where cchild.pid = old.pid;
 );
 select * from vview ORDER BY pid, txt, descrip;
- pid |   txt   | descrip
+ pid |   txt   | descrip  
 -----+---------+----------
    1 | parent1 | descrip1
-   2 | parent2 |
+   2 | parent2 | 
 (2 rows)
 
 update vview set descrip='test1' where pid=1;
 select * from vview ORDER BY pid, txt, descrip;
- pid |   txt   | descrip
+ pid |   txt   | descrip 
 -----+---------+---------
    1 | parent1 | test1
-   2 | parent2 |
+   2 | parent2 | 
 (2 rows)
 
 update vview set descrip='test2' where pid=2;
 select * from vview ORDER BY pid, txt, descrip;
- pid |   txt   | descrip
+ pid |   txt   | descrip 
 -----+---------+---------
    1 | parent1 | test1
    2 | parent2 | test2
@@ -1260,14 +1260,14 @@ select * from vview ORDER BY pid, txt, descrip;
 
 update vview set descrip='test3' where pid=3;
 select * from vview ORDER BY pid, txt, descrip;
- pid |   txt   | descrip
+ pid |   txt   | descrip 
 -----+---------+---------
    1 | parent1 | test1
    2 | parent2 | test2
 (2 rows)
 
 select * from cchild ORDER BY pid, descrip;
- pid | descrip
+ pid | descrip 
 -----+---------
    1 | test1
    2 | test2
@@ -2744,7 +2744,7 @@ CREATE OR REPLACE RULE myrule AS ON INSERT TO ruletest_tbl
 	DO INSTEAD INSERT INTO ruletest_tbl2 VALUES (1000, 1000);
 INSERT INTO ruletest_tbl VALUES (99, 99);
 SELECT * FROM ruletest_tbl2 ORDER BY a, b;
-  a   |  b
+  a   |  b   
 ------+------
    10 |   10
  1000 | 1000
@@ -2756,7 +2756,7 @@ insert into rules_base values(1,2), (11,12);
 create rule r1 as on update to rules_base do instead
   select * from rules_base where f1 = 1 for update;
 update rules_base set f2 = f2 + 1;
- f1 | f2
+ f1 | f2 
 ----+----
   1 |  2
 (1 row)
@@ -2764,7 +2764,7 @@ update rules_base set f2 = f2 + 1;
 create or replace rule r1 as on update to rules_base do instead
   select * from rules_base where f1 = 11 for update of rules_base;
 update rules_base set f2 = f2 + 1;
- f1 | f2
+ f1 | f2 
 ----+----
  11 | 12
 (1 row)
@@ -2791,12 +2791,12 @@ SET SESSION AUTHORIZATION regress_rule_user1;
 INSERT INTO ruletest_v1 VALUES (1);
 RESET SESSION AUTHORIZATION;
 SELECT * FROM ruletest_t1;
- x
+ x 
 ---
 (0 rows)
 
 SELECT * FROM ruletest_t2;
- x
+ x 
 ---
  1
 (1 row)

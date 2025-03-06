@@ -4,21 +4,21 @@ starting permutation: s1a s2a s1b s1c s2b s2c
 step s1a: SELECT * FROM queue; -- this is just to ensure we have picked the read point
 id|data|status
 --+----+------
- 1|foo |NEW
- 2|bar |NEW
+ 1|foo |NEW   
+ 2|bar |NEW   
 (2 rows)
 
 step s2a: SELECT * FROM queue; -- this is just to ensure we have picked the read point
 id|data|status
 --+----+------
- 1|foo |NEW
- 2|bar |NEW
+ 1|foo |NEW   
+ 2|bar |NEW   
 (2 rows)
 
 step s1b: SELECT * FROM queue ORDER BY id FOR UPDATE LIMIT 1;
 id|data|status
 --+----+------
- 1|foo |NEW
+ 1|foo |NEW   
 (1 row)
 
 step s1c: COMMIT;

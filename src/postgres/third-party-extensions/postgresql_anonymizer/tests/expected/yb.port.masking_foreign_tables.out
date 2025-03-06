@@ -36,7 +36,7 @@ SECURITY LABEL FOR anon ON COLUMN passwd.username
 IS 'MASKED WITH FUNCTION anon.fake_last_name()';
 -- STEP 4 : Connect with the masked user
 \! PGPASSWORD=x ${YB_BUILD_ROOT}/postgres/bin/ysqlsh -U skynet -c "SELECT count(*)=0 FROM passwd WHERE username = 'root';" # YB: Use ysqlsh and the default database
- ?column?
+ ?column? 
 ----------
  t
 (1 row)

@@ -4,22 +4,22 @@ starting permutation: s1a s2a s1b s2b s1c s2c
 step s1a: SELECT * FROM queue; -- this is just to ensure we have picked the read point
 id|data|status
 --+----+------
- 1|foo |NEW
- 2|bar |NEW
+ 1|foo |NEW   
+ 2|bar |NEW   
 (2 rows)
 
 step s2a: SELECT * FROM queue; -- this is just to ensure we have picked the read point
 id|data|status
 --+----+------
- 1|foo |NEW
- 2|bar |NEW
+ 1|foo |NEW   
+ 2|bar |NEW   
 (2 rows)
 
 step s1b: UPDATE queue set status='OLD' WHERE id=1;
 step s2b: SELECT * FROM queue ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1;
 id|data|status
 --+----+------
- 2|bar |NEW
+ 2|bar |NEW   
 (1 row)
 
 step s1c: COMMIT;
@@ -29,15 +29,15 @@ starting permutation: s1a s2a s1b s1c s2b s2c
 step s1a: SELECT * FROM queue; -- this is just to ensure we have picked the read point
 id|data|status
 --+----+------
- 1|foo |NEW
- 2|bar |NEW
+ 1|foo |NEW   
+ 2|bar |NEW   
 (2 rows)
 
 step s2a: SELECT * FROM queue; -- this is just to ensure we have picked the read point
 id|data|status
 --+----+------
- 1|foo |NEW
- 2|bar |NEW
+ 1|foo |NEW   
+ 2|bar |NEW   
 (2 rows)
 
 step s1b: UPDATE queue set status='OLD' WHERE id=1;
@@ -45,7 +45,7 @@ step s1c: COMMIT;
 step s2b: SELECT * FROM queue ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1;
 id|data|status
 --+----+------
- 2|bar |NEW
+ 2|bar |NEW   
 (1 row)
 
 step s2c: COMMIT;
@@ -54,15 +54,15 @@ starting permutation: s1a s2a s1b s1c s2_sleep s2b s2c
 step s1a: SELECT * FROM queue; -- this is just to ensure we have picked the read point
 id|data|status
 --+----+------
- 1|foo |NEW
- 2|bar |NEW
+ 1|foo |NEW   
+ 2|bar |NEW   
 (2 rows)
 
 step s2a: SELECT * FROM queue; -- this is just to ensure we have picked the read point
 id|data|status
 --+----+------
- 1|foo |NEW
- 2|bar |NEW
+ 1|foo |NEW   
+ 2|bar |NEW   
 (2 rows)
 
 step s1b: UPDATE queue set status='OLD' WHERE id=1;
@@ -70,13 +70,13 @@ step s1c: COMMIT;
 step s2_sleep: SELECT pg_sleep(1);
 pg_sleep
 --------
-
+        
 (1 row)
 
 step s2b: SELECT * FROM queue ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1;
 id|data|status
 --+----+------
- 2|bar |NEW
+ 2|bar |NEW   
 (1 row)
 
 step s2c: COMMIT;

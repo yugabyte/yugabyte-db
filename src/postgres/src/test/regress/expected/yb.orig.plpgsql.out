@@ -6,7 +6,7 @@
 create temp table foo (f1 int, f2 int);
 insert into foo values (1, 2), (3, 4), (5, 6), (5, 6), (7, 8), (9, 10);
 select * from foo order by f1;
- f1 | f2
+ f1 | f2 
 ----+----
   1 |  2
   3 |  4
@@ -19,7 +19,7 @@ select * from foo order by f1;
 create table bar (f1 int, f2 int);
 insert into bar values (1, 2), (3, 4), (5, 6), (5, 6), (7, 8), (9, 10);
 select * from bar order by f1;
- f1 | f2
+ f1 | f2 
 ----+----
   1 |  2
   3 |  4
@@ -59,16 +59,16 @@ begin
 end$$ language plpgsql;
 select stricttest1();
 NOTICE:  x.f1 = 3, x.f2 = 4
- stricttest1
+ stricttest1 
 -------------
-
+ 
 (1 row)
 
 select stricttest2();
 NOTICE:  x.f1 = 3, x.f2 = 4
- stricttest2
+ stricttest2 
 -------------
-
+ 
 (1 row)
 
 select stricttest3();
@@ -100,7 +100,7 @@ begin
 end$$ LANGUAGE plpgsql;
 call intermediate_commit();
 select * from test order by k;
- k | v
+ k | v 
 ---+---
  1 | 1
  2 | 2
@@ -115,7 +115,7 @@ begin
   insert into test values(6, 6);
 end $$;
 select * from test order by k;
- k | v
+ k | v 
 ---+---
  1 | 1
  2 | 2
@@ -137,7 +137,7 @@ begin
   insert into test values(9, 9);
 end $$;
 select * from test order by k;
- k | v
+ k | v 
 ---+---
  1 | 1
  2 | 2

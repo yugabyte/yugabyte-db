@@ -3,7 +3,7 @@ CREATE TABLE truncate_a (col1 integer primary key);
 INSERT INTO truncate_a VALUES (1);
 INSERT INTO truncate_a VALUES (2);
 SELECT * FROM truncate_a;
- col1
+ col1 
 ------
     1
     2
@@ -14,7 +14,7 @@ BEGIN;
 TRUNCATE truncate_a;
 ROLLBACK;
 SELECT * FROM truncate_a; -- YB: TRUNCATE is currently not rolled back
- col1
+ col1 
 ------
 (0 rows)
 
@@ -25,7 +25,7 @@ BEGIN;
 TRUNCATE truncate_a;
 COMMIT;
 SELECT * FROM truncate_a;
- col1
+ col1 
 ------
 (0 rows)
 
@@ -101,12 +101,12 @@ SELECT * FROM truncate_a
  SELECT * FROM trunc_b
    UNION ALL
  SELECT * FROM trunc_d;
- col1
+ col1 
 ------
 (0 rows)
 
 SELECT * FROM trunc_e;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
@@ -128,12 +128,12 @@ SELECT * FROM truncate_a
  SELECT * FROM trunc_b
    UNION ALL
  SELECT * FROM trunc_d;
- col1
+ col1 
 ------
 (0 rows)
 
 SELECT * FROM trunc_e;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
@@ -169,25 +169,25 @@ BEFORE TRUNCATE ON trunc_trigger_test
 FOR EACH STATEMENT
 EXECUTE PROCEDURE trunctrigger('before trigger truncate');
 SELECT count(*) as "Row count in test table" FROM trunc_trigger_test;
- Row count in test table
+ Row count in test table 
 -------------------------
                        2
 (1 row)
 
 SELECT * FROM trunc_trigger_log;
- tgop | tglevel | tgwhen | tgargv | tgtable | rowcount
+ tgop | tglevel | tgwhen | tgargv | tgtable | rowcount 
 ------+---------+--------+--------+---------+----------
 (0 rows)
 
 TRUNCATE trunc_trigger_test;
 SELECT count(*) as "Row count in test table" FROM trunc_trigger_test;
- Row count in test table
+ Row count in test table 
 -------------------------
                        0
 (1 row)
 
 SELECT * FROM trunc_trigger_log;
-   tgop   |  tglevel  | tgwhen |         tgargv          |      tgtable       | rowcount
+   tgop   |  tglevel  | tgwhen |         tgargv          |      tgtable       | rowcount 
 ----------+-----------+--------+-------------------------+--------------------+----------
  TRUNCATE | STATEMENT | BEFORE | before trigger truncate | trunc_trigger_test |        2
 (1 row)
@@ -201,25 +201,25 @@ AFTER TRUNCATE ON trunc_trigger_test
 FOR EACH STATEMENT
 EXECUTE PROCEDURE trunctrigger('after trigger truncate');
 SELECT count(*) as "Row count in test table" FROM trunc_trigger_test;
- Row count in test table
+ Row count in test table 
 -------------------------
                        2
 (1 row)
 
 SELECT * FROM trunc_trigger_log;
- tgop | tglevel | tgwhen | tgargv | tgtable | rowcount
+ tgop | tglevel | tgwhen | tgargv | tgtable | rowcount 
 ------+---------+--------+--------+---------+----------
 (0 rows)
 
 TRUNCATE trunc_trigger_test;
 SELECT count(*) as "Row count in test table" FROM trunc_trigger_test;
- Row count in test table
+ Row count in test table 
 -------------------------
                        0
 (1 row)
 
 SELECT * FROM trunc_trigger_log;
-   tgop   |  tglevel  | tgwhen |         tgargv         |      tgtable       | rowcount
+   tgop   |  tglevel  | tgwhen |         tgargv         |      tgtable       | rowcount 
 ----------+-----------+--------+------------------------+--------------------+----------
  TRUNCATE | STATEMENT | AFTER  | after trigger truncate | trunc_trigger_test |        0
 (1 row)
@@ -235,7 +235,7 @@ ALTER SEQUENCE truncate_a_id1 OWNED BY truncate_a.id1;
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
 SELECT * FROM truncate_a;
- id | id1
+ id | id1 
 ----+-----
   1 |  33
   2 |  34
@@ -245,7 +245,7 @@ TRUNCATE truncate_a;
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
 SELECT * FROM truncate_a;
- id | id1
+ id | id1 
 ----+-----
   3 |  35
   4 |  36
@@ -255,7 +255,7 @@ TRUNCATE truncate_a RESTART IDENTITY;
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
 SELECT * FROM truncate_a;
- id | id1
+ id | id1 
 ----+-----
   1 |  33
   2 |  34
@@ -265,7 +265,7 @@ CREATE TABLE truncate_b (id int GENERATED ALWAYS AS IDENTITY (START WITH 44), PR
 INSERT INTO truncate_b DEFAULT VALUES;
 INSERT INTO truncate_b DEFAULT VALUES;
 SELECT * FROM truncate_b;
- id
+ id 
 ----
  44
  45
@@ -275,7 +275,7 @@ TRUNCATE truncate_b;
 INSERT INTO truncate_b DEFAULT VALUES;
 INSERT INTO truncate_b DEFAULT VALUES;
 SELECT * FROM truncate_b;
- id
+ id 
 ----
  46
  47
@@ -285,7 +285,7 @@ TRUNCATE truncate_b RESTART IDENTITY;
 INSERT INTO truncate_b DEFAULT VALUES;
 INSERT INTO truncate_b DEFAULT VALUES;
 SELECT * FROM truncate_b;
- id
+ id 
 ----
  44
  45
@@ -302,7 +302,7 @@ ROLLBACK;
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
 SELECT * FROM truncate_a;
- id | id1
+ id | id1 
 ----+-----
   1 |  33
   2 |  34
@@ -367,12 +367,12 @@ select tp_ins_data();
 -- should truncate everything
 TRUNCATE TABLE truncprim, truncpart;
 select * from tp_chk_data();
- pktb | pkval | fktb | fkval
+ pktb | pkval | fktb | fkval 
 ------+-------+------+-------
 (0 rows)
 
 select tp_ins_data();
- tp_ins_data
+ tp_ins_data 
 -------------
  
 (1 row)
@@ -385,12 +385,12 @@ NOTICE:  truncate cascades to table "truncpart_2"
 NOTICE:  truncate cascades to table "truncpart_2_1"
 NOTICE:  truncate cascades to table "truncpart_2_d"
 SELECT * FROM tp_chk_data();
- pktb | pkval | fktb | fkval
+ pktb | pkval | fktb | fkval 
 ------+-------+------+-------
 (0 rows)
 
 SELECT tp_ins_data();
- tp_ins_data
+ tp_ins_data 
 -------------
  
 (1 row)
@@ -398,7 +398,7 @@ SELECT tp_ins_data();
 -- should truncate all partitions
 TRUNCATE TABLE truncpart;
 SELECT * FROM tp_chk_data();
-   pktb    | pkval | fktb | fkval
+   pktb    | pkval | fktb | fkval 
 -----------+-------+------+-------
  truncprim |     1 |      |      
  truncprim |   100 |      |      

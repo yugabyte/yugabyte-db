@@ -56,26 +56,26 @@ INSERT INTO test values (1, '1');
 -- (1) Check that transaction priority is 0 until a distributed txn is started.
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT yb_get_current_transaction_priority(); -- 0 since a distributed transaction hasn't started
-    yb_get_current_transaction_priority
+    yb_get_current_transaction_priority    
 -------------------------------------------
  0.000000000 (Normal priority transaction)
 (1 row)
 
 SELECT * FROM test; -- this is a read-only operation and doesn't start a distributed transaction
- k | v
+ k | v 
 ---+---
  1 | 1
 (1 row)
 
 SELECT yb_get_current_transaction_priority(); -- still 0
-    yb_get_current_transaction_priority
+    yb_get_current_transaction_priority    
 -------------------------------------------
  0.000000000 (Normal priority transaction)
 (1 row)
 
 INSERT INTO test VALUES (2, '2'); -- start a distributed txn
 SELECT yb_get_current_transaction_priority(); -- non-zero now
-    yb_get_current_transaction_priority
+    yb_get_current_transaction_priority    
 -------------------------------------------
  0.400000000 (Normal priority transaction)
 (1 row)
@@ -83,20 +83,20 @@ SELECT yb_get_current_transaction_priority(); -- non-zero now
 COMMIT;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 SELECT yb_get_current_transaction_priority(); -- 0 since a distributed transaction hasn't started
-    yb_get_current_transaction_priority
+    yb_get_current_transaction_priority    
 -------------------------------------------
  0.000000000 (Normal priority transaction)
 (1 row)
 
 SELECT * FROM test; -- reads start a distributed txn in serializable isolation level
- k | v
+ k | v 
 ---+---
  1 | 1
  2 | 2
 (2 rows)
 
 SELECT yb_get_current_transaction_priority();
-    yb_get_current_transaction_priority
+    yb_get_current_transaction_priority    
 -------------------------------------------
  0.400000000 (Normal priority transaction)
 (1 row)
@@ -104,7 +104,7 @@ SELECT yb_get_current_transaction_priority();
 COMMIT;
 -- (2) Showing yb_transaction_priority outside a transaction block
 SELECT yb_get_current_transaction_priority();
-    yb_get_current_transaction_priority
+    yb_get_current_transaction_priority    
 -------------------------------------------
  0.000000000 (Normal priority transaction)
 (1 row)
@@ -113,14 +113,14 @@ SELECT yb_get_current_transaction_priority();
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 INSERT INTO test (k, v) SELECT 3, yb_get_current_transaction_priority(); -- starts a distributed transaction
 SELECT yb_get_current_transaction_priority();
-    yb_get_current_transaction_priority
+    yb_get_current_transaction_priority    
 -------------------------------------------
  0.400000000 (Normal priority transaction)
 (1 row)
 
 INSERT INTO test (k, v) SELECT 4, yb_get_current_transaction_priority();
 SELECT * FROM test ORDER BY k;
- k |                     v
+ k |                     v                     
 ---+-------------------------------------------
  1 | 1
  2 | 2
@@ -132,14 +132,14 @@ COMMIT;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 INSERT INTO test (k, v) SELECT 5, yb_get_current_transaction_priority(); -- starts a distributed transaction
 SELECT yb_get_current_transaction_priority();
-    yb_get_current_transaction_priority
+    yb_get_current_transaction_priority    
 -------------------------------------------
  0.400000000 (Normal priority transaction)
 (1 row)
 
 INSERT INTO test (k, v) SELECT 6, yb_get_current_transaction_priority();
 SELECT * FROM test ORDER BY k;
- k |                     v
+ k |                     v                     
 ---+-------------------------------------------
  1 | 1
  2 | 2
@@ -153,20 +153,20 @@ COMMIT;
 -- (4) High priority
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT * FROM test WHERE k = 1 FOR UPDATE; -- starts a distributed transaction in high pri bucket
- k | v
+ k | v 
 ---+---
  1 | 1
 (1 row)
 
 SELECT yb_get_current_transaction_priority();
-   yb_get_current_transaction_priority
+   yb_get_current_transaction_priority   
 -----------------------------------------
  0.400000000 (High priority transaction)
 (1 row)
 
 INSERT INTO test (k, v) SELECT 7, yb_get_current_transaction_priority();
 SELECT * FROM test ORDER BY k;
- k |                     v
+ k |                     v                     
 ---+-------------------------------------------
  1 | 1
  2 | 2
@@ -180,20 +180,20 @@ SELECT * FROM test ORDER BY k;
 COMMIT;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 SELECT * FROM test WHERE k = 1 FOR UPDATE; -- starts a distributed transaction in high pri bucket
- k | v
+ k | v 
 ---+---
  1 | 1
 (1 row)
 
 SELECT yb_get_current_transaction_priority();
-   yb_get_current_transaction_priority
+   yb_get_current_transaction_priority   
 -----------------------------------------
  0.400000000 (High priority transaction)
 (1 row)
 
 INSERT INTO test (k, v) SELECT 8, yb_get_current_transaction_priority();
 SELECT * FROM test ORDER BY k;
- k |                     v
+ k |                     v                     
 ---+-------------------------------------------
  1 | 1
  2 | 2
@@ -215,13 +215,13 @@ NOTICE:  priorities don't exist for read committed isolation transations, the tr
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT * FROM test WHERE k = 1 FOR UPDATE;
- k | v
+ k | v 
 ---+---
  1 | 1
 (1 row)
 
 SELECT yb_get_current_transaction_priority();
- yb_get_current_transaction_priority
+ yb_get_current_transaction_priority 
 -------------------------------------
  Highest priority transaction
 (1 row)
@@ -229,13 +229,13 @@ SELECT yb_get_current_transaction_priority();
 COMMIT;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 SELECT * FROM test WHERE k = 1 FOR UPDATE;
- k | v
+ k | v 
 ---+---
  1 | 1
 (1 row)
 
 SELECT yb_get_current_transaction_priority();
- yb_get_current_transaction_priority
+ yb_get_current_transaction_priority 
 -------------------------------------
  Highest priority transaction
 (1 row)

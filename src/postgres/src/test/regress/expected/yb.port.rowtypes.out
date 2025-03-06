@@ -8,37 +8,37 @@ create temp table fullname (first text, last text);
 create type quad as (c1 complex, c2 complex);
 -- Some simple tests of I/O conversions and row construction
 select (1.1,2.2)::complex, row((3.3,4.4),(5.5,null))::quad;
-    row    |          row
+    row    |          row           
 -----------+------------------------
  (1.1,2.2) | ("(3.3,4.4)","(5.5,)")
 (1 row)
 
 select row('Joe', 'Blow')::fullname, '(Joe,Blow)'::fullname;
-    row     |  fullname
+    row     |  fullname  
 ------------+------------
  (Joe,Blow) | (Joe,Blow)
 (1 row)
 
 select '(Joe,von Blow)'::fullname, '(Joe,d''Blow)'::fullname;
-     fullname     |   fullname
+     fullname     |   fullname   
 ------------------+--------------
  (Joe,"von Blow") | (Joe,d'Blow)
 (1 row)
 
 select '(Joe,"von""Blow")'::fullname, E'(Joe,d\\\\Blow)'::fullname;
-     fullname      |    fullname
+     fullname      |    fullname     
 -------------------+-----------------
  (Joe,"von""Blow") | (Joe,"d\\Blow")
 (1 row)
 
 select '(Joe,"Blow,Jr")'::fullname;
-    fullname
+    fullname     
 -----------------
  (Joe,"Blow,Jr")
 (1 row)
 
 select '(Joe,)'::fullname;	-- ok, null 2nd column
- fullname
+ fullname 
 ----------
  (Joe,)
 (1 row)
@@ -59,7 +59,7 @@ LINE 1: select '[]'::fullname;
                ^
 DETAIL:  Missing left parenthesis.
 select ' (Joe,Blow)  '::fullname;  -- ok, extra whitespace
-  fullname
+  fullname  
 ------------
  (Joe,Blow)
 (1 row)
@@ -73,7 +73,7 @@ create temp table quadtable(f1 int, q quad);
 insert into quadtable values (1, ((3.3,4.4),(5.5,6.6)));
 insert into quadtable values (2, ((null,4.4),(5.5,6.6)));
 select * from quadtable;
- f1 |             q
+ f1 |             q             
 ----+---------------------------
   1 | ("(3.3,4.4)","(5.5,6.6)")
   2 | ("(,4.4)","(5.5,6.6)")
@@ -84,7 +84,7 @@ ERROR:  missing FROM-clause entry for table "q"
 LINE 1: select f1, q.c1 from quadtable;
                    ^
 select f1, (q).c1, (qq.q).c1.i from quadtable qq;
- f1 |    c1     |  i
+ f1 |    c1     |  i  
 ----+-----------+-----
   1 | (3.3,4.4) | 4.4
   2 | (,4.4)    | 4.4
@@ -93,7 +93,7 @@ select f1, (q).c1, (qq.q).c1.i from quadtable qq;
 create temp table people (fn fullname, bd date);
 insert into people values ('(Joe,Blow)', '1984-01-10');
 select * from people;
-     fn     |     bd
+     fn     |     bd     
 ------------+------------
  (Joe,Blow) | 01-10-1984
 (1 row)
@@ -125,7 +125,7 @@ LINE 1: update quadtable set q.c1 = 12;
                              ^
 HINT:  You will need to rewrite or cast the expression.
 select * from quadtable;
- f1 |             q
+ f1 |             q             
 ----+---------------------------
   1 | ("(3.3,4.4)","(5.5,6.6)")
  44 | ("(55,)","(,66)")
@@ -139,7 +139,7 @@ create temp table pp (f1 text);
 -- insert into pp values (repeat('abcdefghijkl', 100000)); -- YB: TODO(jason): uncomment when issue #2003 is closed or closing.
 insert into people select ('Jim', f1, null)::fullname, current_date from pp;
 select (fn).first, substr((fn).last, 1, 20), length((fn).last) from people; -- YB: output is missing a row due to commented out INSERT above
- first | substr | length
+ first | substr | length 
 -------+--------+--------
  Joe   | Blow   |      4
 (1 row)
@@ -147,62 +147,62 @@ select (fn).first, substr((fn).last, 1, 20), length((fn).last) from people; -- Y
 -- Test row comparison semantics.  Prior to PG 8.2 we did this in a totally
 -- non-spec-compliant way.
 select ROW(1,2) < ROW(1,3) as true;
- true
+ true 
 ------
  t
 (1 row)
 
 select ROW(1,2) < ROW(1,1) as false;
- false
+ false 
 -------
  f
 (1 row)
 
 select ROW(1,2) < ROW(1,NULL) as null;
- null
+ null 
 ------
-
+ 
 (1 row)
 
 select ROW(1,2,3) < ROW(1,3,NULL) as true; -- the NULL is not examined
- true
+ true 
 ------
  t
 (1 row)
 
 select ROW(11,'ABC') < ROW(11,'DEF') as true;
- true
+ true 
 ------
  t
 (1 row)
 
 select ROW(11,'ABC') > ROW(11,'DEF') as false;
- false
+ false 
 -------
  f
 (1 row)
 
 select ROW(12,'ABC') > ROW(11,'DEF') as true;
- true
+ true 
 ------
  t
 (1 row)
 
 -- = and <> have different NULL-behavior than < etc
 select ROW(1,2,3) < ROW(1,NULL,4) as null;
- null
+ null 
 ------
-
+ 
 (1 row)
 
 select ROW(1,2,3) = ROW(1,NULL,4) as false;
- false
+ false 
 -------
  f
 (1 row)
 
 select ROW(1,2,3) <> ROW(1,NULL,4) as true;
- true
+ true 
 ------
  t
 (1 row)
@@ -210,13 +210,13 @@ select ROW(1,2,3) <> ROW(1,NULL,4) as true;
 -- We allow operators beyond the six standard ones, if they have btree
 -- operator classes.
 select ROW('ABC','DEF') ~<=~ ROW('DEF','ABC') as true;
- true
+ true 
 ------
  t
 (1 row)
 
 select ROW('ABC','DEF') ~>=~ ROW('DEF','ABC') as false;
- false
+ false 
 -------
  f
 (1 row)
@@ -228,19 +228,19 @@ LINE 1: select ROW('ABC','DEF') ~~ ROW('DEF','ABC') as fail;
 HINT:  Row comparison operators must be associated with btree operator families.
 -- Comparisons of ROW() expressions can cope with some type mismatches
 select ROW(1,2) = ROW(1,2::int8);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select ROW(1,2) in (ROW(3,4), ROW(1,2));
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select ROW(1,2) in (ROW(3,4), ROW(1,2::int8));
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -250,7 +250,7 @@ select unique1, unique2 from tenk1
 where (unique1, unique2) < any (select ten, ten from tenk1 where hundred < 3)
       and unique1 <= 20
 order by 1;
- unique1 | unique2
+ unique1 | unique2 
 ---------+---------
        0 |    9998
        1 |    2838
@@ -261,7 +261,7 @@ explain (costs off)
 select thousand, tenthous from tenk1
 where (thousand, tenthous) >= (997, 5000)
 order by thousand, tenthous;
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Index Only Scan using tenk1_thous_tenthous on tenk1
    Index Cond: (ROW(thousand, tenthous) >= ROW(997, 5000))
@@ -270,7 +270,7 @@ order by thousand, tenthous;
 select thousand, tenthous from tenk1
 where (thousand, tenthous) >= (997, 5000)
 order by thousand, tenthous;
- thousand | tenthous
+ thousand | tenthous 
 ----------+----------
       997 |     5997
       997 |     6997
@@ -303,7 +303,7 @@ explain (costs off)
 select thousand, tenthous, four from tenk1
 where (thousand, tenthous, four) > (998, 5000, 3)
 order by thousand, tenthous; -- YB: TODO(tim): update output when bitmap scan is supported
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Index Scan using tenk1_thous_tenthous on tenk1
    Index Cond: (ROW(thousand, tenthous) >= ROW(998, 5000))
@@ -368,7 +368,7 @@ explain (costs off)
 select thousand, hundred from tenk1
 where (998, 5000) < (thousand, hundred)
 order by thousand, hundred; -- YB: TODO(tim): update output when bitmap scan is supported
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Incremental Sort
    Sort Key: thousand, hundred
@@ -404,14 +404,14 @@ create index on test_table (a,b);
 set enable_sort = off;
 explain (costs off)
 select a,b from test_table where (a,b) > ('a','a') order by a,b;
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Index Only Scan using test_table_a_b_idx on test_table
    Index Cond: (ROW(a, b) > ROW('a'::text, 'a'::text))
 (2 rows)
 
 select a,b from test_table where (a,b) > ('a','a') order by a,b;
- a | b
+ a | b 
 ---+---
  a | b
  b | a
@@ -432,7 +432,7 @@ where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
 
 select * from int8_tbl i8
 where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
-        q1        | q2
+        q1        | q2  
 ------------------+-----
               123 | 456
  4567890123456789 | 123
@@ -479,13 +479,13 @@ select (r).* from (select row(1, 2.0) as r) ss;
 
 -- Check some corner cases involving empty rowtypes
 select ROW();
- row
+ row 
 -----
  ()
 (1 row)
 
 select ROW() IS NULL;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -496,20 +496,20 @@ LINE 1: select ROW() = ROW();
                      ^
 -- Check ability to create arrays of anonymous rowtypes
 select array[ row(1,2), row(3,4), row(5,6) ];
-           array
+           array           
 ---------------------------
  {"(1,2)","(3,4)","(5,6)"}
 (1 row)
 
 -- Check ability to compare an anonymous row to elements of an array
 select row(1,1.1) = any (array[ row(7,7.7), row(1,1.1), row(0,0.0) ]);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1,1.1) = any (array[ row(7,7.7), row(1,1.0), row(0,0.0) ]);
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
@@ -530,81 +530,81 @@ HINT:  Use an explicit ordering operator or modify the query.
 create type testtype1 as (a int, b int);
 -- all true
 select row(1, 2)::testtype1 < row(1, 3)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 2)::testtype1 <= row(1, 3)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 2)::testtype1 = row(1, 2)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 2)::testtype1 <> row(1, 3)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 3)::testtype1 >= row(1, 2)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 3)::testtype1 > row(1, 2)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- all false
 select row(1, -2)::testtype1 < row(1, -3)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, -2)::testtype1 <= row(1, -3)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, -2)::testtype1 = row(1, -3)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, -2)::testtype1 <> row(1, -2)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, -3)::testtype1 >= row(1, -2)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, -3)::testtype1 > row(1, -2)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 -- true, but see *< below
 select row(1, -2)::testtype1 < row(1, 3)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -633,74 +633,74 @@ drop type testtype1, testtype3, testtype5, testtype6;
 create type testtype1 as (a int, b int);
 -- all true
 select row(1, 2)::testtype1 *< row(1, 3)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 2)::testtype1 *<= row(1, 3)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 2)::testtype1 *= row(1, 2)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 2)::testtype1 *<> row(1, 3)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 3)::testtype1 *>= row(1, 2)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 3)::testtype1 *> row(1, 2)::testtype1;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- all false
 select row(1, -2)::testtype1 *< row(1, -3)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, -2)::testtype1 *<= row(1, -3)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, -2)::testtype1 *= row(1, -3)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, -2)::testtype1 *<> row(1, -2)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, -3)::testtype1 *>= row(1, -2)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, -3)::testtype1 *> row(1, -2)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
@@ -708,7 +708,7 @@ select row(1, -3)::testtype1 *> row(1, -2)::testtype1;
 -- This returns the "wrong" order because record_image_cmp works on
 -- unsigned datums without knowing about the actual data type.
 select row(1, -2)::testtype1 *< row(1, 3)::testtype1;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
@@ -716,63 +716,63 @@ select row(1, -2)::testtype1 *< row(1, 3)::testtype1;
 -- other types
 create type testtype2 as (a smallint, b bool);  -- byval different sizes
 select row(1, true)::testtype2 *< row(2, true)::testtype2;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(-2, true)::testtype2 *< row(-1, true)::testtype2;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(0, false)::testtype2 *< row(0, true)::testtype2;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(0, false)::testtype2 *<> row(0, true)::testtype2;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 create type testtype3 as (a int, b text);  -- variable length
 select row(1, 'abc')::testtype3 *< row(1, 'abd')::testtype3;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 'abc')::testtype3 *< row(1, 'abcd')::testtype3;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, 'abc')::testtype3 *> row(1, 'abd')::testtype3;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, 'abc')::testtype3 *<> row(1, 'abd')::testtype3;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 create type testtype4 as (a int, b point);  -- by ref, fixed length
 select row(1, '(1,2)')::testtype4 *< row(1, '(1,3)')::testtype4;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, '(1,2)')::testtype4 *<> row(1, '(1,3)')::testtype4;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -790,19 +790,19 @@ ERROR:  cannot compare record types with different numbers of columns
 -- non-comparable types
 create type testtype6 as (a int, b point);
 select row(1, '(1,2)')::testtype6 *< row(1, '(1,3)')::testtype6;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select row(1, '(1,2)')::testtype6 *>= row(1, '(1,3)')::testtype6;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select row(1, '(1,2)')::testtype6 *<> row(1, '(1,3)')::testtype6;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -847,7 +847,7 @@ UPDATE price
     FROM unnest(ARRAY[(10, 123.00), (11, 99.99)]::price_input[]) input_prices
     WHERE price_key_from_table(price.*) = price_key_from_input(input_prices.*);
 select * from price order by id; -- YB: add ordering since PK is default HASH instead of ASC; output differs with upstream PG on 123
- id | active | price
+ id | active | price 
 ----+--------+-------
   1 | f      |    42
  10 | t      |   123
@@ -877,25 +877,25 @@ create function fcompos3(v compos) returns void as $$
 select fcompos1(fcompos3.v.*);
 $$ language sql;
 select fcompos1(row(1,'one'));
- fcompos1
+ fcompos1 
 ----------
-
+ 
 (1 row)
 
 select fcompos2(row(2,'two'));
- fcompos2
+ fcompos2 
 ----------
-
+ 
 (1 row)
 
 select fcompos3(row(3,'three'));
- fcompos3
+ fcompos3 
 ----------
-
+ 
 (1 row)
 
 select * from compos;
- f1 |  f2
+ f1 |  f2   
 ----+-------
   1 | one
   2 | two
@@ -908,12 +908,12 @@ select * from compos;
 -- the latter is too prone to be invoked unintentionally.
 --
 select cast (fullname as text) from fullname;
- fullname
+ fullname 
 ----------
 (0 rows)
 
 select fullname::text from fullname;
- fullname
+ fullname 
 ----------
 (0 rows)
 
@@ -928,13 +928,13 @@ LINE 1: select fullname.text from fullname;
                ^
 -- same, but RECORD instead of named composite type:
 select cast (row('Jim', 'Beam') as text);
-    row
+    row     
 ------------
  (Jim,Beam)
 (1 row)
 
 select (row('Jim', 'Beam'))::text;
-    row
+    row     
 ------------
  (Jim,Beam)
 (1 row)
@@ -953,13 +953,13 @@ LINE 1: select (row('Jim', 'Beam')).text;
 --
 insert into fullname values ('Joe', 'Blow');
 select f.last from fullname f;
- last
+ last 
 ------
  Blow
 (1 row)
 
 select last(f) from fullname f;
- last
+ last 
 ------
  Blow
 (1 row)
@@ -967,13 +967,13 @@ select last(f) from fullname f;
 create function longname(fullname) returns text language sql
 as $$select $1.first || ' ' || $1.last$$;
 select f.longname from fullname f;
- longname
+ longname 
 ----------
  Joe Blow
 (1 row)
 
 select longname(f) from fullname f;
- longname
+ longname 
 ----------
  Joe Blow
 (1 row)
@@ -981,13 +981,13 @@ select longname(f) from fullname f;
 -- Starting in v11, the notational form does matter if there's ambiguity
 alter table fullname add column longname text;
 select f.longname from fullname f;
- longname
+ longname 
 ----------
-
+ 
 (1 row)
 
 select longname(f) from fullname f;
- longname
+ longname 
 ----------
  Joe Blow
 (1 row)
@@ -997,7 +997,7 @@ select longname(f) from fullname f;
 -- (bug #11210 and other reports)
 --
 select row_to_json(i) from int8_tbl i;
-                  row_to_json
+                  row_to_json                   
 ------------------------------------------------
  {"q1":123,"q2":456}
  {"q1":123,"q2":4567890123456789}
@@ -1008,7 +1008,7 @@ select row_to_json(i) from int8_tbl i;
 
 -- since "i" is of type "int8_tbl", attaching aliases doesn't change anything:
 select row_to_json(i) from int8_tbl i(x,y);
-                  row_to_json
+                  row_to_json                   
 ------------------------------------------------
  {"q1":123,"q2":456}
  {"q1":123,"q2":4567890123456789}
@@ -1088,7 +1088,7 @@ explain (costs off)
 select row_to_json(q) from
   (select thousand, tenthous from tenk1
    where thousand = 42 and tenthous < 2000 offset 0) q;
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Subquery Scan on q
    ->  Index Only Scan using tenk1_thous_tenthous on tenk1
@@ -1098,7 +1098,7 @@ select row_to_json(q) from
 select row_to_json(q) from
   (select thousand, tenthous from tenk1
    where thousand = 42 and tenthous < 2000 offset 0) q;
-           row_to_json
+           row_to_json           
 ---------------------------------
  {"thousand":42,"tenthous":42}
  {"thousand":42,"tenthous":1042}
@@ -1107,7 +1107,7 @@ select row_to_json(q) from
 select row_to_json(q) from
   (select thousand as x, tenthous as y from tenk1
    where thousand = 42 and tenthous < 2000 offset 0) q;
-    row_to_json
+    row_to_json    
 -------------------
  {"x":42,"y":42}
  {"x":42,"y":1042}
@@ -1116,7 +1116,7 @@ select row_to_json(q) from
 select row_to_json(q) from
   (select thousand as x, tenthous as y from tenk1
    where thousand = 42 and tenthous < 2000 offset 0) q(a,b);
-    row_to_json
+    row_to_json    
 -------------------
  {"a":42,"b":42}
  {"a":42,"b":1042}
@@ -1140,7 +1140,7 @@ explain (verbose, costs off)
 select r, r is null as isnull, r is not null as isnotnull
 from (values (1,row(1,2)), (1,row(null,null)), (1,null),
              (null,row(1,2)), (null,row(null,null)), (null,null) ) r(a,b);
-                                                                                                         QUERY PLAN
+                                                                                                         QUERY PLAN                                                                                                          
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Values Scan on "*VALUES*"
    Output: ROW("*VALUES*".column1, "*VALUES*".column2), (("*VALUES*".column1 IS NULL) AND ("*VALUES*".column2 IS NOT DISTINCT FROM NULL)), (("*VALUES*".column1 IS NOT NULL) AND ("*VALUES*".column2 IS DISTINCT FROM NULL))
@@ -1149,7 +1149,7 @@ from (values (1,row(1,2)), (1,row(null,null)), (1,null),
 select r, r is null as isnull, r is not null as isnotnull
 from (values (1,row(1,2)), (1,row(null,null)), (1,null),
              (null,row(1,2)), (null,row(null,null)), (null,null) ) r(a,b);
-      r      | isnull | isnotnull
+      r      | isnull | isnotnull 
 -------------+--------+-----------
  (1,"(1,2)") | f      | t
  (1,"(,)")   | f      | t
@@ -1164,7 +1164,7 @@ with r(a,b) as materialized
   (values (1,row(1,2)), (1,row(null,null)), (1,null),
           (null,row(1,2)), (null,row(null,null)), (null,null) )
 select r, r is null as isnull, r is not null as isnotnull from r;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  CTE Scan on r
    Output: r.*, (r.* IS NULL), (r.* IS NOT NULL)
@@ -1177,7 +1177,7 @@ with r(a,b) as materialized
   (values (1,row(1,2)), (1,row(null,null)), (1,null),
           (null,row(1,2)), (null,row(null,null)), (null,null) )
 select r, r is null as isnull, r is not null as isnotnull from r;
-      r      | isnull | isnotnull
+      r      | isnull | isnotnull 
 -------------+--------+-----------
  (1,"(1,2)") | f      | t
  (1,"(,)")   | f      | t
@@ -1199,7 +1199,7 @@ LINE 1: SELECT d.a FROM (SELECT compositetable AS d FROM compositeta...
                ^
 -- but can be accessed with proper parens
 SELECT (d).a, (d).b FROM (SELECT compositetable AS d FROM compositetable) s;
- a  | b
+ a  | b  
 ----+----
  fa | fb
 (1 row)
@@ -1216,9 +1216,9 @@ LINE 1: SELECT (NULL::compositetable).nonexistent;
                 ^
 -- existing column in a NULL composite yield NULL
 SELECT (NULL::compositetable).a;
- a
+ a 
 ---
-
+ 
 (1 row)
 
 -- oids can't be accessed in composite types (error)

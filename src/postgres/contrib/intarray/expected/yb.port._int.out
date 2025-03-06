@@ -5,392 +5,392 @@ FROM pg_opclass opc LEFT JOIN pg_am am ON am.oid = opcmethod
 WHERE opc.oid >= 16384 AND NOT amvalidate(opc.oid);
 ERROR:  cannot validate operator family without ordered data
 SELECT intset(1234);
- intset
+ intset 
 --------
  {1234}
 (1 row)
 
 SELECT icount('{1234234,234234}');
- icount
+ icount 
 --------
       2
 (1 row)
 
 SELECT sort('{1234234,-30,234234}');
-         sort
+         sort         
 ----------------------
  {-30,234234,1234234}
 (1 row)
 
 SELECT sort('{1234234,-30,234234}','asc');
-         sort
+         sort         
 ----------------------
  {-30,234234,1234234}
 (1 row)
 
 SELECT sort('{1234234,-30,234234}','desc');
-         sort
+         sort         
 ----------------------
  {1234234,234234,-30}
 (1 row)
 
 SELECT sort_asc('{1234234,-30,234234}');
-       sort_asc
+       sort_asc       
 ----------------------
  {-30,234234,1234234}
 (1 row)
 
 SELECT sort_desc('{1234234,-30,234234}');
-      sort_desc
+      sort_desc       
 ----------------------
  {1234234,234234,-30}
 (1 row)
 
 SELECT uniq('{1234234,-30,-30,234234,-30}');
-           uniq
+           uniq           
 --------------------------
  {1234234,-30,234234,-30}
 (1 row)
 
 SELECT uniq(sort_asc('{1234234,-30,-30,234234,-30}'));
-         uniq
+         uniq         
 ----------------------
  {-30,234234,1234234}
 (1 row)
 
 SELECT idx('{1234234,-30,-30,234234,-30}',-30);
- idx
+ idx 
 -----
    2
 (1 row)
 
 SELECT subarray('{1234234,-30,-30,234234,-30}',2,3);
-     subarray
+     subarray     
 ------------------
  {-30,-30,234234}
 (1 row)
 
 SELECT subarray('{1234234,-30,-30,234234,-30}',-1,1);
- subarray
+ subarray 
 ----------
  {-30}
 (1 row)
 
 SELECT subarray('{1234234,-30,-30,234234,-30}',0,-1);
-         subarray
+         subarray         
 --------------------------
  {1234234,-30,-30,234234}
 (1 row)
 
 SELECT #'{1234234,234234}'::int[];
- ?column?
+ ?column? 
 ----------
         2
 (1 row)
 
 SELECT '{123,623,445}'::int[] + 1245;
-      ?column?
+      ?column?      
 --------------------
  {123,623,445,1245}
 (1 row)
 
 SELECT '{123,623,445}'::int[] + 445;
-     ?column?
+     ?column?      
 -------------------
  {123,623,445,445}
 (1 row)
 
 SELECT '{123,623,445}'::int[] + '{1245,87,445}';
-         ?column?
+         ?column?          
 ---------------------------
  {123,623,445,1245,87,445}
 (1 row)
 
 SELECT '{123,623,445}'::int[] - 623;
- ?column?
+ ?column?  
 -----------
  {123,445}
 (1 row)
 
 SELECT '{123,623,445}'::int[] - '{1623,623}';
- ?column?
+ ?column?  
 -----------
  {123,445}
 (1 row)
 
 SELECT '{123,623,445}'::int[] | 623;
-   ?column?
+   ?column?    
 ---------------
  {123,445,623}
 (1 row)
 
 SELECT '{123,623,445}'::int[] | 1623;
-      ?column?
+      ?column?      
 --------------------
  {123,445,623,1623}
 (1 row)
 
 SELECT '{123,623,445}'::int[] | '{1623,623}';
-      ?column?
+      ?column?      
 --------------------
  {123,445,623,1623}
 (1 row)
 
 SELECT '{123,623,445}'::int[] & '{1623,623}';
- ?column?
+ ?column? 
 ----------
  {623}
 (1 row)
 
 SELECT '{-1,3,1}'::int[] & '{1,2}';
- ?column?
+ ?column? 
 ----------
  {1}
 (1 row)
 
 SELECT '{1}'::int[] & '{2}'::int[];
- ?column?
+ ?column? 
 ----------
  {}
 (1 row)
 
 SELECT array_dims('{1}'::int[] & '{2}'::int[]);
- array_dims
+ array_dims 
 ------------
-
+ 
 (1 row)
 
 SELECT ('{1}'::int[] & '{2}'::int[]) = '{}'::int[];
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT ('{}'::int[] & '{}'::int[]) = '{}'::int[];
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 --test query_int
 SELECT '1'::query_int;
- query_int
+ query_int 
 -----------
  1
 (1 row)
 
 SELECT ' 1'::query_int;
- query_int
+ query_int 
 -----------
  1
 (1 row)
 
 SELECT '1 '::query_int;
- query_int
+ query_int 
 -----------
  1
 (1 row)
 
 SELECT ' 1 '::query_int;
- query_int
+ query_int 
 -----------
  1
 (1 row)
 
 SELECT ' ! 1 '::query_int;
- query_int
+ query_int 
 -----------
  !1
 (1 row)
 
 SELECT '!1'::query_int;
- query_int
+ query_int 
 -----------
  !1
 (1 row)
 
 SELECT '1|2'::query_int;
- query_int
+ query_int 
 -----------
  1 | 2
 (1 row)
 
 SELECT '1|!2'::query_int;
- query_int
+ query_int 
 -----------
  1 | !2
 (1 row)
 
 SELECT '!1|2'::query_int;
- query_int
+ query_int 
 -----------
  !1 | 2
 (1 row)
 
 SELECT '!1|!2'::query_int;
- query_int
+ query_int 
 -----------
  !1 | !2
 (1 row)
 
 SELECT '!(!1|!2)'::query_int;
-  query_int
+  query_int   
 --------------
  !( !1 | !2 )
 (1 row)
 
 SELECT '!(!1|2)'::query_int;
-  query_int
+  query_int  
 -------------
  !( !1 | 2 )
 (1 row)
 
 SELECT '!(1|!2)'::query_int;
-  query_int
+  query_int  
 -------------
  !( 1 | !2 )
 (1 row)
 
 SELECT '!(1|2)'::query_int;
- query_int
+ query_int  
 ------------
  !( 1 | 2 )
 (1 row)
 
 SELECT '1&2'::query_int;
- query_int
+ query_int 
 -----------
  1 & 2
 (1 row)
 
 SELECT '!1&2'::query_int;
- query_int
+ query_int 
 -----------
  !1 & 2
 (1 row)
 
 SELECT '1&!2'::query_int;
- query_int
+ query_int 
 -----------
  1 & !2
 (1 row)
 
 SELECT '!1&!2'::query_int;
- query_int
+ query_int 
 -----------
  !1 & !2
 (1 row)
 
 SELECT '(1&2)'::query_int;
- query_int
+ query_int 
 -----------
  1 & 2
 (1 row)
 
 SELECT '1&(2)'::query_int;
- query_int
+ query_int 
 -----------
  1 & 2
 (1 row)
 
 SELECT '!(1)&2'::query_int;
- query_int
+ query_int 
 -----------
  !1 & 2
 (1 row)
 
 SELECT '!(1&2)'::query_int;
- query_int
+ query_int  
 ------------
  !( 1 & 2 )
 (1 row)
 
 SELECT '1|2&3'::query_int;
- query_int
+ query_int 
 -----------
  1 | 2 & 3
 (1 row)
 
 SELECT '1|(2&3)'::query_int;
- query_int
+ query_int 
 -----------
  1 | 2 & 3
 (1 row)
 
 SELECT '(1|2)&3'::query_int;
-   query_int
+   query_int   
 ---------------
  ( 1 | 2 ) & 3
 (1 row)
 
 SELECT '1|2&!3'::query_int;
- query_int
+ query_int  
 ------------
  1 | 2 & !3
 (1 row)
 
 SELECT '1|!2&3'::query_int;
- query_int
+ query_int  
 ------------
  1 | !2 & 3
 (1 row)
 
 SELECT '!1|2&3'::query_int;
- query_int
+ query_int  
 ------------
  !1 | 2 & 3
 (1 row)
 
 SELECT '!1|(2&3)'::query_int;
- query_int
+ query_int  
 ------------
  !1 | 2 & 3
 (1 row)
 
 SELECT '!(1|2)&3'::query_int;
-   query_int
+   query_int    
 ----------------
  !( 1 | 2 ) & 3
 (1 row)
 
 SELECT '(!1|2)&3'::query_int;
-   query_int
+   query_int    
 ----------------
  ( !1 | 2 ) & 3
 (1 row)
 
 SELECT '1|(2|(4|(5|6)))'::query_int;
-           query_int
+           query_int           
 -------------------------------
  1 | ( 2 | ( 4 | ( 5 | 6 ) ) )
 (1 row)
 
 SELECT '1|2|4|5|6'::query_int;
-           query_int
+           query_int           
 -------------------------------
  ( ( ( 1 | 2 ) | 4 ) | 5 ) | 6
 (1 row)
 
 SELECT '1&(2&(4&(5&6)))'::query_int;
-     query_int
+     query_int     
 -------------------
  1 & 2 & 4 & 5 & 6
 (1 row)
 
 SELECT '1&2&4&5&6'::query_int;
-     query_int
+     query_int     
 -------------------
  1 & 2 & 4 & 5 & 6
 (1 row)
 
 SELECT '1&(2&(4&(5|6)))'::query_int;
-       query_int
+       query_int       
 -----------------------
  1 & 2 & 4 & ( 5 | 6 )
 (1 row)
 
 SELECT '1&(2&(4&(5|!6)))'::query_int;
-       query_int
+       query_int        
 ------------------------
  1 & 2 & 4 & ( 5 | !6 )
 (1 row)
@@ -399,73 +399,73 @@ CREATE TABLE test__int( a int[] );
 \copy test__int from 'data/test__int.data'
 ANALYZE test__int;
 SELECT count(*) from test__int WHERE a && '{23,50}';
- count
+ count 
 -------
    403
 (1 row)
 
 SELECT count(*) from test__int WHERE a @@ '23|50';
- count
+ count 
 -------
    403
 (1 row)
 
 SELECT count(*) from test__int WHERE a @> '{23,50}';
- count
+ count 
 -------
     12
 (1 row)
 
 SELECT count(*) from test__int WHERE a @@ '23&50';
- count
+ count 
 -------
     12
 (1 row)
 
 SELECT count(*) from test__int WHERE a @> '{20,23}';
- count
+ count 
 -------
     12
 (1 row)
 
 SELECT count(*) from test__int WHERE a <@ '{73,23,20}';
- count
+ count 
 -------
     10
 (1 row)
 
 SELECT count(*) from test__int WHERE a = '{73,23,20}';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) from test__int WHERE a @@ '50&68';
- count
+ count 
 -------
      9
 (1 row)
 
 SELECT count(*) from test__int WHERE a @> '{20,23}' or a @> '{50,68}';
- count
+ count 
 -------
     21
 (1 row)
 
 SELECT count(*) from test__int WHERE a @@ '(20&23)|(50&68)';
- count
+ count 
 -------
     21
 (1 row)
 
 SELECT count(*) from test__int WHERE a @@ '20 | !21';
- count
+ count 
 -------
   6566
 (1 row)
 
 SELECT count(*) from test__int WHERE a @@ '!20 & !21';
- count
+ count 
 -------
   6343
 (1 row)

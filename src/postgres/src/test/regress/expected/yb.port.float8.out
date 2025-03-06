@@ -69,31 +69,31 @@ LINE 1: INSERT INTO FLOAT8_TBL(f1) VALUES ('123           5');
                                            ^
 -- special inputs
 SELECT 'NaN'::float8;
- float8
+ float8 
 --------
     NaN
 (1 row)
 
 SELECT 'nan'::float8;
- float8
+ float8 
 --------
     NaN
 (1 row)
 
 SELECT '   NAN  '::float8;
- float8
+ float8 
 --------
     NaN
 (1 row)
 
 SELECT 'infinity'::float8;
-  float8
+  float8  
 ----------
  Infinity
 (1 row)
 
 SELECT '          -INFINiTY   '::float8;
-  float8
+  float8   
 -----------
  -Infinity
 (1 row)
@@ -112,31 +112,31 @@ ERROR:  invalid input syntax for type double precision: " INFINITY    x"
 LINE 1: SELECT ' INFINITY    x'::float8;
                ^
 SELECT 'Infinity'::float8 + 100.0;
- ?column?
+ ?column? 
 ----------
  Infinity
 (1 row)
 
 SELECT 'Infinity'::float8 / 'Infinity'::float8;
- ?column?
+ ?column? 
 ----------
       NaN
 (1 row)
 
 SELECT 'nan'::float8 / 'nan'::float8;
- ?column?
+ ?column? 
 ----------
       NaN
 (1 row)
 
 SELECT 'nan'::numeric::float8;
- float8
+ float8 
 --------
     NaN
 (1 row)
 
 SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
- five |          f1
+ five |          f1          
 ------+----------------------
       |               -34.84
       |                    0
@@ -146,7 +146,7 @@ SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
 (5 rows)
 
 SELECT '' AS four, f.* FROM FLOAT8_TBL f WHERE f.f1 <> '1004.3' ORDER BY f1;
- four |          f1
+ four |          f1          
 ------+----------------------
       |               -34.84
       |                    0
@@ -155,13 +155,13 @@ SELECT '' AS four, f.* FROM FLOAT8_TBL f WHERE f.f1 <> '1004.3' ORDER BY f1;
 (4 rows)
 
 SELECT '' AS one, f.* FROM FLOAT8_TBL f WHERE f.f1 = '1004.3' ORDER BY f1;
- one |   f1
+ one |   f1   
 -----+--------
      | 1004.3
 (1 row)
 
 SELECT '' AS three, f.* FROM FLOAT8_TBL f WHERE '1004.3' > f.f1 ORDER BY f1;
- three |          f1
+ three |          f1          
 -------+----------------------
        |               -34.84
        |                    0
@@ -169,7 +169,7 @@ SELECT '' AS three, f.* FROM FLOAT8_TBL f WHERE '1004.3' > f.f1 ORDER BY f1;
 (3 rows)
 
 SELECT '' AS three, f.* FROM FLOAT8_TBL f WHERE  f.f1 < '1004.3' ORDER BY f1;
- three |          f1
+ three |          f1          
 -------+----------------------
        |               -34.84
        |                    0
@@ -177,7 +177,7 @@ SELECT '' AS three, f.* FROM FLOAT8_TBL f WHERE  f.f1 < '1004.3' ORDER BY f1;
 (3 rows)
 
 SELECT '' AS four, f.* FROM FLOAT8_TBL f WHERE '1004.3' >= f.f1 ORDER BY f1;
- four |          f1
+ four |          f1          
 ------+----------------------
       |               -34.84
       |                    0
@@ -186,7 +186,7 @@ SELECT '' AS four, f.* FROM FLOAT8_TBL f WHERE '1004.3' >= f.f1 ORDER BY f1;
 (4 rows)
 
 SELECT '' AS four, f.* FROM FLOAT8_TBL f WHERE  f.f1 <= '1004.3' ORDER BY f1;
- four |          f1
+ four |          f1          
 ------+----------------------
       |               -34.84
       |                    0
@@ -197,7 +197,7 @@ SELECT '' AS four, f.* FROM FLOAT8_TBL f WHERE  f.f1 <= '1004.3' ORDER BY f1;
 SELECT '' AS three, f.f1, f.f1 * '-10' AS x
    FROM FLOAT8_TBL f
    WHERE f.f1 > '0.0' ORDER BY f1;
- three |          f1          |           x
+ three |          f1          |           x           
 -------+----------------------+-----------------------
        | 1.2345678901234e-200 | -1.2345678901234e-199
        |               1004.3 |                -10043
@@ -207,7 +207,7 @@ SELECT '' AS three, f.f1, f.f1 * '-10' AS x
 SELECT '' AS three, f.f1, f.f1 + '-10' AS x
    FROM FLOAT8_TBL f
    WHERE f.f1 > '0.0' ORDER BY f1;
- three |          f1          |          x
+ three |          f1          |          x           
 -------+----------------------+----------------------
        | 1.2345678901234e-200 |                  -10
        |               1004.3 |                994.3
@@ -217,7 +217,7 @@ SELECT '' AS three, f.f1, f.f1 + '-10' AS x
 SELECT '' AS three, f.f1, f.f1 / '-10' AS x
    FROM FLOAT8_TBL f
    WHERE f.f1 > '0.0' ORDER BY f1;
- three |          f1          |           x
+ three |          f1          |           x           
 -------+----------------------+-----------------------
        | 1.2345678901234e-200 | -1.2345678901234e-201
        |               1004.3 |   -100.42999999999999
@@ -227,7 +227,7 @@ SELECT '' AS three, f.f1, f.f1 / '-10' AS x
 SELECT '' AS three, f.f1, f.f1 - '-10' AS x
    FROM FLOAT8_TBL f
    WHERE f.f1 > '0.0' ORDER BY f1;
- three |          f1          |          x
+ three |          f1          |          x           
 -------+----------------------+----------------------
        | 1.2345678901234e-200 |                   10
        |               1004.3 |               1014.3
@@ -236,7 +236,7 @@ SELECT '' AS three, f.f1, f.f1 - '-10' AS x
 
 SELECT '' AS one, f.f1 ^ '2.0' AS square_f1
    FROM FLOAT8_TBL f where f.f1 = '1004.3' ORDER BY f1;
- one |     square_f1
+ one |     square_f1      
 -----+--------------------
      | 1008618.4899999999
 (1 row)
@@ -244,7 +244,7 @@ SELECT '' AS one, f.f1 ^ '2.0' AS square_f1
 -- absolute value
 SELECT '' AS five, f.f1, @f.f1 AS abs_f1
    FROM FLOAT8_TBL f ORDER BY f1;
- five |          f1          |        abs_f1
+ five |          f1          |        abs_f1        
 ------+----------------------+----------------------
       |               -34.84 |                34.84
       |                    0 |                    0
@@ -256,7 +256,7 @@ SELECT '' AS five, f.f1, @f.f1 AS abs_f1
 -- truncate
 SELECT '' AS five, f.f1, trunc(f.f1) AS trunc_f1
    FROM FLOAT8_TBL f ORDER BY f1;
- five |          f1          |       trunc_f1
+ five |          f1          |       trunc_f1       
 ------+----------------------+----------------------
       |               -34.84 |                  -34
       |                    0 |                    0
@@ -268,7 +268,7 @@ SELECT '' AS five, f.f1, trunc(f.f1) AS trunc_f1
 -- round
 SELECT '' AS five, f.f1, round(f.f1) AS round_f1
    FROM FLOAT8_TBL f ORDER BY f1;
- five |          f1          |       round_f1
+ five |          f1          |       round_f1       
 ------+----------------------+----------------------
       |               -34.84 |                  -35
       |                    0 |                    0
@@ -279,7 +279,7 @@ SELECT '' AS five, f.f1, round(f.f1) AS round_f1
 
 -- ceil / ceiling
 select ceil(f1) as ceil_f1 from float8_tbl f ORDER BY f1;
-       ceil_f1
+       ceil_f1        
 ----------------------
                   -34
                     0
@@ -289,7 +289,7 @@ select ceil(f1) as ceil_f1 from float8_tbl f ORDER BY f1;
 (5 rows)
 
 select ceiling(f1) as ceiling_f1 from float8_tbl f ORDER BY f1;
-      ceiling_f1
+      ceiling_f1      
 ----------------------
                   -34
                     0
@@ -300,7 +300,7 @@ select ceiling(f1) as ceiling_f1 from float8_tbl f ORDER BY f1;
 
 -- floor
 select floor(f1) as floor_f1 from float8_tbl f ORDER BY f1;
-       floor_f1
+       floor_f1       
 ----------------------
                   -35
                     0
@@ -311,7 +311,7 @@ select floor(f1) as floor_f1 from float8_tbl f ORDER BY f1;
 
 -- sign
 select sign(f1) as sign_f1 from float8_tbl f ORDER BY f1;
- sign_f1
+ sign_f1 
 ---------
       -1
        0
@@ -324,13 +324,13 @@ select sign(f1) as sign_f1 from float8_tbl f ORDER BY f1;
 SET extra_float_digits = 0;
 -- square root
 SELECT sqrt(float8 '64') AS eight;
- eight
+ eight 
 -------
      8
 (1 row)
 
 SELECT |/ float8 '64' AS eight;
- eight
+ eight 
 -------
      8
 (1 row)
@@ -338,7 +338,7 @@ SELECT |/ float8 '64' AS eight;
 SELECT '' AS three, f.f1, |/f.f1 AS sqrt_f1
    FROM FLOAT8_TBL f
    WHERE f.f1 > '0.0' ORDER BY f1;
- three |          f1          |        sqrt_f1
+ three |          f1          |        sqrt_f1        
 -------+----------------------+-----------------------
        | 1.2345678901234e-200 | 1.11111110611109e-100
        |               1004.3 |      31.6906926399535
@@ -347,7 +347,7 @@ SELECT '' AS three, f.f1, |/f.f1 AS sqrt_f1
 
 -- power
 SELECT power(float8 '144', float8 '0.5');
- power
+ power 
 -------
     12
 (1 row)
@@ -356,7 +356,7 @@ SELECT power(float8 '144', float8 '0.5');
 SELECT '' AS three, f.f1, exp(ln(f.f1)) AS exp_ln_f1
    FROM FLOAT8_TBL f
    WHERE f.f1 > '0.0' ORDER BY f1;
- three |          f1          |       exp_ln_f1
+ three |          f1          |       exp_ln_f1       
 -------+----------------------+-----------------------
        | 1.2345678901234e-200 | 1.23456789012339e-200
        |               1004.3 |                1004.3
@@ -365,13 +365,13 @@ SELECT '' AS three, f.f1, exp(ln(f.f1)) AS exp_ln_f1
 
 -- cube root
 SELECT ||/ float8 '27' AS three;
- three
+ three 
 -------
      3
 (1 row)
 
 SELECT '' AS five, f.f1, ||/f.f1 AS cbrt_f1 FROM FLOAT8_TBL f ORDER BY f1;
- five |          f1          |       cbrt_f1
+ five |          f1          |       cbrt_f1        
 ------+----------------------+----------------------
       |               -34.84 |    -3.26607421344208
       |                    0 |                    0
@@ -381,7 +381,7 @@ SELECT '' AS five, f.f1, ||/f.f1 AS cbrt_f1 FROM FLOAT8_TBL f ORDER BY f1;
 (5 rows)
 
 SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
- five |          f1
+ five |          f1          
 ------+----------------------
       |               -34.84
       |                    0
@@ -403,7 +403,7 @@ ERROR:  value out of range: overflow
 SELECT '' AS bad, f.f1 ^ '1e200' from FLOAT8_TBL f ORDER BY f1;
 ERROR:  value out of range: overflow
 SELECT 0 ^ 0 + 0 ^ 1 + 0 ^ 0.0 + 0 ^ 0.5;
- ?column?
+ ?column? 
 ----------
         2
 (1 row)
@@ -417,7 +417,7 @@ ERROR:  value out of range: underflow
 SELECT '' AS bad, f.f1 / '0.0' from FLOAT8_TBL f ORDER BY f1;
 ERROR:  division by zero
 SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
- five |          f1
+ five |          f1           
 ------+-----------------------
       | -1.2345678901234e+200
       |               -1004.3
@@ -450,7 +450,7 @@ DROP SCHEMA yb_tmp;
 RESET search_path;
 -- Check the float8 values exported for use by other tests
 SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
- five |          f1
+ five |          f1           
 ------+-----------------------
       | -1.2345678901234e+200
       |               -1004.3
@@ -465,7 +465,7 @@ SELECT x,
        sind(x) IN (-1,-0.5,0,0.5,1) AS sind_exact
 FROM (VALUES (0), (30), (90), (150), (180),
       (210), (270), (330), (360)) AS t(x);
-  x  | sind | sind_exact
+  x  | sind | sind_exact 
 -----+------+------------
    0 |    0 | t
   30 |  0.5 | t
@@ -483,7 +483,7 @@ SELECT x,
        cosd(x) IN (-1,-0.5,0,0.5,1) AS cosd_exact
 FROM (VALUES (0), (60), (90), (120), (180),
       (240), (270), (300), (360)) AS t(x);
-  x  | cosd | cosd_exact
+  x  | cosd | cosd_exact 
 -----+------+------------
    0 |    1 | t
   60 |  0.5 | t
@@ -505,7 +505,7 @@ SELECT x,
                    1,'Infinity'::float8) AS cotd_exact
 FROM (VALUES (0), (45), (90), (135), (180),
       (225), (270), (315), (360)) AS t(x);
-  x  |   tand    | tand_exact |   cotd    | cotd_exact
+  x  |   tand    | tand_exact |   cotd    | cotd_exact 
 -----+-----------+------------+-----------+------------
    0 |         0 | t          |  Infinity | t
   45 |         1 | t          |         1 | t
@@ -524,7 +524,7 @@ SELECT x,
        acosd(x),
        acosd(x) IN (0,60,90,120,180) AS acosd_exact
 FROM (VALUES (-1), (-0.5), (0), (0.5), (1)) AS t(x);
-  x   | asind | asind_exact | acosd | acosd_exact
+  x   | asind | asind_exact | acosd | acosd_exact 
 ------+-------+-------------+-------+-------------
    -1 |   -90 | t           |   180 | t
  -0.5 |   -30 | t           |   120 | t
@@ -538,7 +538,7 @@ SELECT x,
        atand(x) IN (-90,-45,0,45,90) AS atand_exact
 FROM (VALUES ('-Infinity'::float8), (-1), (0), (1),
       ('Infinity'::float8)) AS t(x);
-     x     | atand | atand_exact
+     x     | atand | atand_exact 
 -----------+-------+-------------
  -Infinity |   -90 | t
         -1 |   -45 | t
@@ -552,7 +552,7 @@ SELECT x, y,
        atan2d(y, x) IN (-90,0,90,180) AS atan2d_exact
 FROM (SELECT 10*cosd(a), 10*sind(a)
       FROM generate_series(0, 360, 90) AS t(a)) AS t(x,y);
-  x  |  y  | atan2d | atan2d_exact
+  x  |  y  | atan2d | atan2d_exact 
 -----+-----+--------+--------------
   10 |   0 |      0 | t
    0 |  10 |     90 | t

@@ -21,53 +21,53 @@
 -------------------------------------------------------------------------------
 -- Variables of Type Boolean
 SHOW enable_seqscan;
- enable_seqscan
+ enable_seqscan 
 ----------------
  on
 (1 row)
 
 SHOW ssl;
- ssl
+ ssl 
 -----
  off
 (1 row)
 
 -- Variables of Type Int
 SHOW deadlock_timeout;
- deadlock_timeout
+ deadlock_timeout 
 ------------------
  1s
 (1 row)
 
 SHOW ssl_renegotiation_limit;
- ssl_renegotiation_limit
+ ssl_renegotiation_limit 
 -------------------------
  0
 (1 row)
 
 -- Variables of Type Real
 SHOW seq_page_cost;
- seq_page_cost
+ seq_page_cost 
 ---------------
  1
 (1 row)
 
 -- Variables of Type String
 SHOW dynamic_library_path;
- dynamic_library_path
+ dynamic_library_path 
 ----------------------
  $libdir
 (1 row)
 
 SHOW ssl_ciphers;
-       ssl_ciphers
+       ssl_ciphers        
 --------------------------
  HIGH:MEDIUM:+3DES:!aNULL
 (1 row)
 
 -- Variables of Type Enum
 SHOW bytea_output;
- bytea_output
+ bytea_output 
 --------------
  hex
 (1 row)
@@ -94,31 +94,31 @@ BEGIN;
 		SET LOCAL bytea_output = "escape";
 -- SET LOCAL: Show values while inside the transaction.
 		SHOW enable_seqscan;
- enable_seqscan
+ enable_seqscan 
 ----------------
  off
 (1 row)
 
 		SHOW deadlock_timeout;
- deadlock_timeout
+ deadlock_timeout 
 ------------------
  10s
 (1 row)
 
 		SHOW seq_page_cost;
- seq_page_cost
+ seq_page_cost 
 ---------------
  7.7
 (1 row)
 
 		SHOW dynamic_library_path;
- dynamic_library_path
+ dynamic_library_path 
 ----------------------
  /tmp/data
 (1 row)
 
 		SHOW bytea_output;
- bytea_output
+ bytea_output 
 --------------
  escape
 (1 row)
@@ -129,31 +129,31 @@ END;
 -- All set values should go back to DEFAULT
 -------------------------------------------------------------------------------
 SHOW enable_seqscan;
- enable_seqscan
+ enable_seqscan 
 ----------------
  on
 (1 row)
 
 SHOW deadlock_timeout;
- deadlock_timeout
+ deadlock_timeout 
 ------------------
  1s
 (1 row)
 
 SHOW seq_page_cost;
- seq_page_cost
+ seq_page_cost 
 ---------------
  1
 (1 row)
 
 SHOW dynamic_library_path;
- dynamic_library_path
+ dynamic_library_path 
 ----------------------
  $libdir
 (1 row)
 
 SHOW bytea_output;
- bytea_output
+ bytea_output 
 --------------
  hex
 (1 row)
@@ -169,31 +169,31 @@ BEGIN;
 		SET bytea_output = "escape";
 -- SET SESSION: Show values while inside the transaction.
 		SHOW enable_seqscan;
- enable_seqscan
+ enable_seqscan 
 ----------------
  off
 (1 row)
 
 		SHOW deadlock_timeout;
- deadlock_timeout
+ deadlock_timeout 
 ------------------
  10s
 (1 row)
 
 		SHOW seq_page_cost;
- seq_page_cost
+ seq_page_cost 
 ---------------
  7.7
 (1 row)
 
 		SHOW dynamic_library_path;
- dynamic_library_path
+ dynamic_library_path 
 ----------------------
  /tmp/data
 (1 row)
 
 		SHOW bytea_output;
- bytea_output
+ bytea_output 
 --------------
  escape
 (1 row)
@@ -204,31 +204,31 @@ END;
 -- All set values should stay till end of session.
 -------------------------------------------------------------------------------
 SHOW enable_seqscan;
- enable_seqscan
+ enable_seqscan 
 ----------------
  off
 (1 row)
 
 SHOW deadlock_timeout;
- deadlock_timeout
+ deadlock_timeout 
 ------------------
  10s
 (1 row)
 
 SHOW seq_page_cost;
- seq_page_cost
+ seq_page_cost 
 ---------------
  7.7
 (1 row)
 
 SHOW dynamic_library_path;
- dynamic_library_path
+ dynamic_library_path 
 ----------------------
  /tmp/data
 (1 row)
 
 SHOW bytea_output;
- bytea_output
+ bytea_output 
 --------------
  escape
 (1 row)
@@ -240,31 +240,31 @@ BEGIN;
 		RESET ALL;
 END;
 SHOW enable_seqscan;
- enable_seqscan
+ enable_seqscan 
 ----------------
  on
 (1 row)
 
 SHOW deadlock_timeout;
- deadlock_timeout
+ deadlock_timeout 
 ------------------
  1s
 (1 row)
 
 SHOW seq_page_cost;
- seq_page_cost
+ seq_page_cost 
 ---------------
  1
 (1 row)
 
 SHOW dynamic_library_path;
- dynamic_library_path
+ dynamic_library_path 
 ----------------------
  $libdir
 (1 row)
 
 SHOW bytea_output;
- bytea_output
+ bytea_output 
 --------------
  hex
 (1 row)
@@ -282,31 +282,31 @@ BEGIN;
 END;
 WARNING:  there is no transaction in progress
 SHOW enable_seqscan;
- enable_seqscan
+ enable_seqscan 
 ----------------
  on
 (1 row)
 
 SHOW deadlock_timeout;
- deadlock_timeout
+ deadlock_timeout 
 ------------------
  1s
 (1 row)
 
 SHOW seq_page_cost;
- seq_page_cost
+ seq_page_cost 
 ---------------
  1
 (1 row)
 
 SHOW dynamic_library_path;
- dynamic_library_path
+ dynamic_library_path 
 ----------------------
  $libdir
 (1 row)
 
 SHOW bytea_output;
- bytea_output
+ bytea_output 
 --------------
  hex
 (1 row)

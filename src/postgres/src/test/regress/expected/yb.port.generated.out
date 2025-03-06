@@ -472,7 +472,7 @@ CREATE TABLE gtest20b (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 2) STOR
 INSERT INTO gtest20b (a) VALUES (10);
 INSERT INTO gtest20b (a) VALUES (30);
 ALTER TABLE gtest20b ADD CONSTRAINT chk CHECK (b < 50) NOT VALID;
-ALTER TABLE gtest20b VALIDATE CONSTRAINT chk;  -- fails on existing row 
+ALTER TABLE gtest20b VALIDATE CONSTRAINT chk;  -- fails on existing row
 ERROR:  check constraint "chk" of relation "gtest20b" is violated by some row
 -- not-null constraints
 CREATE TABLE gtest21a (a int PRIMARY KEY, b int GENERATED ALWAYS AS (nullif(a, 0)) STORED NOT NULL);
@@ -702,10 +702,10 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d gtest27
                                 Table "public.gtest27"
- Column |  Type   | Collation | Nullable |                  Default
+ Column |  Type   | Collation | Nullable |                  Default                   
 --------+---------+-----------+----------+--------------------------------------------
- a      | integer |           |          |
- b      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
  x      | numeric |           |          | generated always as (((a + b) * 2)) stored
 
 SELECT * FROM gtest27 order by a; -- YB: add ordering

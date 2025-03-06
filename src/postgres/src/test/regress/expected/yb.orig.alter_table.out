@@ -125,7 +125,7 @@ ALTER TABLE rename_test RENAME TO foobar;
 ERROR:  Failed DDL operation as requested
 -- The table name must be unchanged.
 SELECT * FROM rename_test;
- id
+ id 
 ----
 (0 rows)
 
@@ -248,7 +248,7 @@ SELECT * FROM foo WHERE b is null;
 
 -- Test expression pushdown on column with default value.
 EXPLAIN SELECT * FROM foo WHERE d = '01-01-2023';
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Seq Scan on foo  (cost=0.00..102.50 rows=1000 width=80)
    Storage Filter: (d = 'Sun Jan 01 00:00:00 2023'::timestamp without time zone)
@@ -269,7 +269,7 @@ SELECT * FROM foo WHERE b = 6 ORDER BY a;
 -- pg_attribute.attmissingval.
 SELECT atthasmissing, attmissingval FROM pg_attribute
     WHERE attrelid='foo'::regclass;
- atthasmissing |        attmissingval 
+ atthasmissing |        attmissingval         
 ---------------+------------------------------
  f             | 
  f             | 
@@ -278,7 +278,7 @@ SELECT atthasmissing, attmissingval FROM pg_attribute
  f             | 
  f             | 
  f             | 
- f             |
+ f             | 
  t             | {6}
  t             | {"(127.0.0.1,010)"}
  t             | {"Sun Jan 01 00:00:00 2023"}
@@ -434,11 +434,11 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 ERROR:  check constraint "foo_unique_d_check" of relation "foo_unique" is violated by some row
 ALTER TABLE foo_unique ADD COLUMN d float UNIQUE CHECK (d >= 1);
 SELECT a,b,d FROM foo_unique ORDER BY a;
- a | b | d
+ a | b | d 
 ---+---+---
- 1 |   |
- 2 |   |
- 3 |   |
+ 1 |   |  
+ 2 |   |  
+ 3 |   |  
 (3 rows)
 
 --
@@ -494,7 +494,7 @@ ERROR:  check constraint "test_validate_constraint_part_check" of relation "test
 DELETE FROM test_validate_constraint_part WHERE a % 2 = 1;
 ALTER TABLE test_validate_constraint_part
     VALIDATE CONSTRAINT test_validate_constraint_part_check;
--- validate fix for "schema version mismatch" after failed ALTER TABLE. 
+-- validate fix for "schema version mismatch" after failed ALTER TABLE.
 CREATE TABLE pk(a int primary key);
 INSERT INTO pk values (1);
 CREATE TABLE fk(a int);

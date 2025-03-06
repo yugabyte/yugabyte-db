@@ -9,7 +9,7 @@ s2: NOTICE:  priorities don't exist for read committed isolation transations, th
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-step s1_fk_pkey_insert:
+step s1_fk_pkey_insert: 
   INSERT INTO fk_pkey_table VALUES(1, 1, '2022-01-01 05:00:00');
 
 step s2_update: UPDATE products SET price = 2 WHERE product_id = 1;
@@ -29,7 +29,7 @@ s2: NOTICE:  priorities don't exist for read committed isolation transations, th
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-step s1_fk_pkey_insert:
+step s1_fk_pkey_insert: 
   INSERT INTO fk_pkey_table VALUES(1, 1, '2022-01-01 05:00:00');
 
 step s2_update: UPDATE products SET price = 2 WHERE product_id = 1;
@@ -49,7 +49,7 @@ s2: NOTICE:  priorities don't exist for read committed isolation transations, th
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
-step s1_fk_pkey_insert:
+step s1_fk_pkey_insert: 
   INSERT INTO fk_pkey_table VALUES(1, 1, '2022-01-01 05:00:00');
 
 step s2_update: UPDATE products SET price = 2 WHERE product_id = 1;
@@ -70,7 +70,7 @@ DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict c
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s2_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-step s1_fk_pkey_insert:
+step s1_fk_pkey_insert: 
   INSERT INTO fk_pkey_table VALUES(1, 1, '2022-01-01 05:00:00');
 
 step s2_update: UPDATE products SET price = 2 WHERE product_id = 1;
@@ -92,7 +92,7 @@ DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict c
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-step s1_fk_pkey_insert:
+step s1_fk_pkey_insert: 
   INSERT INTO fk_pkey_table VALUES(1, 1, '2022-01-01 05:00:00');
 
 step s2_update: UPDATE products SET price = 2 WHERE product_id = 1;
@@ -114,7 +114,7 @@ DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict c
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
-step s1_fk_pkey_insert:
+step s1_fk_pkey_insert: 
   INSERT INTO fk_pkey_table VALUES(1, 1, '2022-01-01 05:00:00');
 
 step s2_update: UPDATE products SET price = 2 WHERE product_id = 1;
@@ -357,3 +357,4 @@ product_id|date_added              |name|price|discounted_price
 ----------+------------------------+----+-----+----------------
          1|Sat Jan 01 05:00:00 2022|oats|    2|               1
 (1 row)
+

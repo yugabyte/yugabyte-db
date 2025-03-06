@@ -4,7 +4,7 @@
 SELECT DISTINCT ON (string4) string4, two, ten
    FROM onek
    ORDER BY string4 using <, two using >, ten using <;
- string4 | two | ten
+ string4 | two | ten 
 ---------+-----+-----
  AAAAxx  |   1 |   1
  HHHHxx  |   1 |   1
@@ -22,7 +22,7 @@ LINE 1: SELECT DISTINCT ON (string4, ten) string4, two, ten
 SELECT DISTINCT ON (string4, ten) string4, ten, two
    FROM onek
    ORDER BY string4 using <, ten using >, two using <;
- string4 | ten | two
+ string4 | ten | two 
 ---------+-----+-----
  AAAAxx  |   9 |   1
  AAAAxx  |   8 |   0
@@ -68,7 +68,8 @@ SELECT DISTINCT ON (string4, ten) string4, ten, two
 
 -- bug #5049: early 8.4.x chokes on volatile DISTINCT ON clauses
 select distinct on (1) floor(random()) as r, f1 from int4_tbl order by 1,2;
- r |     f1
+ r |     f1      
 ---+-------------
  0 | -2147483647
 (1 row)
+

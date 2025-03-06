@@ -10,16 +10,16 @@ select relname, relkind, inhparent::regclass
     from pg_class left join pg_index ix on (indexrelid = oid)
 	left join pg_inherits on (ix.indexrelid = inhrelid)
 	where relname like 'idxpart%' order by relname;
-     relname     | relkind |   inhparent
+     relname     | relkind |   inhparent    
 -----------------+---------+----------------
- idxpart         | p       |
- idxpart1        | r       |
+ idxpart         | p       | 
+ idxpart1        | r       | 
  idxpart1_a_idx  | i       | idxpart_a_idx
- idxpart2        | p       |
- idxpart21       | r       |
+ idxpart2        | p       | 
+ idxpart21       | r       | 
  idxpart21_a_idx | i       | idxpart2_a_idx
  idxpart2_a_idx  | I       | idxpart_a_idx
- idxpart_a_idx   | I       |
+ idxpart_a_idx   | I       | 
 (8 rows)
 
 drop table idxpart;
@@ -35,7 +35,7 @@ CREATE TABLE idxpart (col1 INT) PARTITION BY RANGE (col1);
 CREATE INDEX ON idxpart (col1);
 CREATE TABLE idxpart_two (col2 INT);
 SELECT col2 FROM idxpart_two fk LEFT OUTER JOIN idxpart pk ON (col1 = col2);
- col2
+ col2 
 ------
 (0 rows)
 
@@ -62,20 +62,20 @@ create index idxparti2 on idxpart (b, c);
 create table idxpart1 (like idxpart);
 \d idxpart1
               Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
- c      | text    |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | text    |           |          | 
 
 alter table idxpart attach partition idxpart1 for values from (0) to (10);
 \d idxpart1
               Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
- c      | text    |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | text    |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (10)
 Indexes:
     "idxpart1_a_idx" lsm (a HASH)
@@ -83,20 +83,20 @@ Indexes:
 
 \d+ idxpart1_a_idx
                  Index "public.idxpart1_a_idx"
- Column |  Type   | Key? | Definition | Storage | Stats target
+ Column |  Type   | Key? | Definition | Storage | Stats target 
 --------+---------+------+------------+---------+--------------
- a      | integer | yes  | a          | plain   |
-Partition of: idxparti
+ a      | integer | yes  | a          | plain   | 
+Partition of: idxparti 
 No partition constraint
 lsm, for table "public.idxpart1"
 
 \d+ idxpart1_b_c_idx
                 Index "public.idxpart1_b_c_idx"
- Column |  Type   | Key? | Definition | Storage  | Stats target
+ Column |  Type   | Key? | Definition | Storage  | Stats target 
 --------+---------+------+------------+----------+--------------
- b      | integer | yes  | b          | plain    |
- c      | text    | yes  | c          | extended |
-Partition of: idxparti2
+ b      | integer | yes  | b          | plain    | 
+ c      | text    | yes  | c          | extended | 
+Partition of: idxparti2 
 No partition constraint
 lsm, for table "public.idxpart1"
 
@@ -108,10 +108,10 @@ create index on idxpart1 (a, b);
 create index on idxpart (a, b);
 \d idxpart1
               Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
 Partition of: idxpart FOR VALUES FROM (0, 0) TO (10, 10)
 Indexes:
     "idxpart1_a_b_idx" lsm (a HASH, b ASC)
@@ -120,12 +120,12 @@ select relname, relkind, inhparent::regclass
     from pg_class left join pg_index ix on (indexrelid = oid)
 	left join pg_inherits on (ix.indexrelid = inhrelid)
 	where relname like 'idxpart%' order by relname;
-     relname      | relkind |    inhparent
+     relname      | relkind |    inhparent    
 ------------------+---------+-----------------
- idxpart          | p       |
- idxpart1         | r       |
+ idxpart          | p       | 
+ idxpart1         | r       | 
  idxpart1_a_b_idx | i       | idxpart_a_b_idx
- idxpart_a_b_idx  | I       |
+ idxpart_a_b_idx  | I       | 
 (4 rows)
 
 drop table idxpart;
@@ -142,7 +142,7 @@ create table idxpart1 partition of idxpart for values from (0) to (10);
 drop index idxpart_a_idx;	-- both indexes go away
 select relname, relkind from pg_class
   where relname like 'idxpart%' order by relname;
- relname  | relkind
+ relname  | relkind 
 ----------+---------
  idxpart  | p
  idxpart1 | r
@@ -152,7 +152,7 @@ create index on idxpart (a);
 drop table idxpart1;		-- the index on partition goes away too
 select relname, relkind from pg_class
   where relname like 'idxpart%' order by relname;
-    relname    | relkind
+    relname    | relkind 
 ---------------+---------
  idxpart       | p
  idxpart_a_idx | I
@@ -198,7 +198,7 @@ drop table idxpart;
 -- make sure everything's gone
 select indexrelid::regclass, indrelid::regclass
   from pg_index where indexrelid::regclass::text like 'idxpart%';
- indexrelid | indrelid
+ indexrelid | indrelid 
 ------------+----------
 (0 rows)
 
@@ -210,7 +210,7 @@ create index on idxpart1 using hash (a);
 NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
 \d idxpart1_a_idx
     Index "public.idxpart1_a_idx"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  a      | integer | yes  | a
 lsm, for table "public.idxpart1"
@@ -227,10 +227,10 @@ create index on idxpart (a);
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
 \d idxpart1
               Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (1000)
 Indexes:
     "idxpart1_a_a1_idx" lsm (a HASH, a ASC)
@@ -240,10 +240,10 @@ Indexes:
 
 \d idxpart1_a_idx
     Index "public.idxpart1_a_idx"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  a      | integer | yes  | a
-Partition of: idxpart_a_idx
+Partition of: idxpart_a_idx 
 lsm, for table "public.idxpart1"
 
 drop table idxpart;
@@ -263,18 +263,18 @@ create index on idxpart (a);
 -- does not; also, idxpart22 is not attached.
 \d idxpart1
               Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (100)
 Indexes:
     "idxpart1_a_idx" lsm (a HASH)
 
 \d idxpart2
         Partitioned table "public.idxpart2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Partition of: idxpart FOR VALUES FROM (100) TO (1000)
 Partition key: RANGE (a)
 Indexes:
@@ -283,21 +283,21 @@ Number of partitions: 2 (Use \d+ to list them.)
 
 \d idxpart21
              Table "public.idxpart21"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Partition of: idxpart2 FOR VALUES FROM (100) TO (200)
 
 select indexrelid::regclass, indrelid::regclass, inhparent::regclass
   from pg_index idx left join pg_inherits inh on (idx.indexrelid = inh.inhrelid)
 where indexrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
-   indexrelid    | indrelid  |   inhparent
+   indexrelid    | indrelid  |   inhparent   
 -----------------+-----------+---------------
  idxpart1_a_idx  | idxpart1  | idxpart_a_idx
- idxpart22_a_idx | idxpart22 |
+ idxpart22_a_idx | idxpart22 | 
  idxpart2_a_idx  | idxpart2  | idxpart_a_idx
- idxpart_a_idx   | idxpart   |
+ idxpart_a_idx   | idxpart   | 
 (4 rows)
 
 alter index idxpart2_a_idx attach partition idxpart22_a_idx;
@@ -305,21 +305,21 @@ select indexrelid::regclass, indrelid::regclass, inhparent::regclass
   from pg_index idx left join pg_inherits inh on (idx.indexrelid = inh.inhrelid)
 where indexrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
-   indexrelid    | indrelid  |   inhparent
+   indexrelid    | indrelid  |   inhparent    
 -----------------+-----------+----------------
  idxpart1_a_idx  | idxpart1  | idxpart_a_idx
  idxpart22_a_idx | idxpart22 | idxpart2_a_idx
  idxpart2_a_idx  | idxpart2  | idxpart_a_idx
- idxpart_a_idx   | idxpart   |
+ idxpart_a_idx   | idxpart   | 
 (4 rows)
 
 -- attaching idxpart22 is not enough to set idxpart22_a_idx valid ...
 alter index idxpart2_a_idx attach partition idxpart22_a_idx;
 \d idxpart2
         Partitioned table "public.idxpart2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Partition of: idxpart FOR VALUES FROM (100) TO (1000)
 Partition key: RANGE (a)
 Indexes:
@@ -331,9 +331,9 @@ create index on idxpart21 (a);
 alter index idxpart2_a_idx attach partition idxpart21_a_idx;
 \d idxpart2
         Partitioned table "public.idxpart2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Partition of: idxpart FOR VALUES FROM (100) TO (1000)
 Partition key: RANGE (a)
 Indexes:
@@ -350,11 +350,11 @@ create index idxparti2 on idxpart (b, c);
 create table idxpart1 (like idxpart including indexes);
 \d idxpart1
               Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
- c      | text    |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | text    |           |          | 
 Indexes:
     "idxpart1_a_idx" lsm (a HASH)
     "idxpart1_b_c_idx" lsm (b HASH, c ASC)
@@ -363,24 +363,24 @@ select relname, relkind, inhparent::regclass
     from pg_class left join pg_index ix on (indexrelid = oid)
 	left join pg_inherits on (ix.indexrelid = inhrelid)
 	where relname like 'idxpart%' order by relname;
-     relname      | relkind | inhparent
+     relname      | relkind | inhparent 
 ------------------+---------+-----------
- idxpart          | p       |
- idxpart1         | r       |
- idxpart1_a_idx   | i       |
- idxpart1_b_c_idx | i       |
- idxparti         | I       |
- idxparti2        | I       |
+ idxpart          | p       | 
+ idxpart1         | r       | 
+ idxpart1_a_idx   | i       | 
+ idxpart1_b_c_idx | i       | 
+ idxparti         | I       | 
+ idxparti2        | I       | 
 (6 rows)
 
 alter table idxpart attach partition idxpart1 for values from (0) to (10);
 \d idxpart1
               Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
- c      | text    |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | text    |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (10)
 Indexes:
     "idxpart1_a_idx" lsm (a HASH)
@@ -390,14 +390,14 @@ select relname, relkind, inhparent::regclass
     from pg_class left join pg_index ix on (indexrelid = oid)
 	left join pg_inherits on (ix.indexrelid = inhrelid)
 	where relname like 'idxpart%' order by relname;
-     relname      | relkind | inhparent
+     relname      | relkind | inhparent 
 ------------------+---------+-----------
- idxpart          | p       |
- idxpart1         | r       |
+ idxpart          | p       | 
+ idxpart1         | r       | 
  idxpart1_a_idx   | i       | idxparti
  idxpart1_b_c_idx | i       | idxparti2
- idxparti         | I       |
- idxparti2        | I       |
+ idxparti         | I       | 
+ idxparti2        | I       | 
 (6 rows)
 
 drop table idxpart;
@@ -413,7 +413,7 @@ create index on only idxpart (a);
 -- this results in two invalid indexes:
 select relname, indisvalid from pg_class join pg_index on indexrelid = oid
    where relname like 'idxpart%' order by relname;
-    relname     | indisvalid
+    relname     | indisvalid 
 ----------------+------------
  idxpart1_a_idx | f
  idxpart_a_idx  | f
@@ -423,7 +423,7 @@ select relname, indisvalid from pg_class join pg_index on indexrelid = oid
 alter index idxpart_a_idx attach partition idxpart1_a_idx;
 select relname, indisvalid from pg_class join pg_index on indexrelid = oid
    where relname like 'idxpart%' order by relname;
-    relname     | indisvalid
+    relname     | indisvalid 
 ----------------+------------
  idxpart1_a_idx | f
  idxpart_a_idx  | f
@@ -435,7 +435,7 @@ create index on idxpart11 (a);
 alter index idxpart1_a_idx attach partition idxpart11_a_idx;
 select relname, indisvalid from pg_class join pg_index on indexrelid = oid
    where relname like 'idxpart%' order by relname;
-     relname     | indisvalid
+     relname     | indisvalid 
 -----------------+------------
  idxpart11_a_idx | t
  idxpart1_a_idx  | t
@@ -453,7 +453,7 @@ alter table idxpart attach partition idxpart1 for values from (0000) to (1000);
 alter table idxpart attach partition idxpart2 for values from (1000) to (2000);
 create table idxpart3 partition of idxpart for values from (2000) to (3000);
 select relname, relkind from pg_class where relname like 'idxpart%' order by relname;
-    relname     | relkind
+    relname     | relkind 
 ----------------+---------
  idxpart        | p
  idxpart1       | r
@@ -473,7 +473,7 @@ drop index idxpart1_a_idx;
 drop index idxpart2_a_idx;
 drop index idxpart3_a_idx;
 select relname, relkind from pg_class where relname like 'idxpart%' order by relname;
-    relname    | relkind
+    relname    | relkind 
 ---------------+---------
  idxpart       | p
  idxpart1      | r
@@ -484,7 +484,7 @@ select relname, relkind from pg_class where relname like 'idxpart%' order by rel
 
 drop table idxpart, idxpart1, idxpart2, idxpart3;
 select relname, relkind from pg_class where relname like 'idxpart%' order by relname;
- relname | relkind
+ relname | relkind 
 ---------+---------
 (0 rows)
 
@@ -498,7 +498,7 @@ alter table idxpart attach partition idxpart2 for values from (1000) to (2000);
 create table idxpart3 partition of idxpart for values from (2000) to (3000);
 -- b) after detaching, dropping the index on parent does not remove the others
 select relname, relkind from pg_class where relname like 'idxpart%' order by relname;
-    relname     | relkind
+    relname     | relkind 
 ----------------+---------
  idxpart        | p
  idxpart1       | r
@@ -515,7 +515,7 @@ alter table idxpart detach partition idxpart2;
 alter table idxpart detach partition idxpart3;
 drop index idxpart_a_idx;
 select relname, relkind from pg_class where relname like 'idxpart%' order by relname;
-    relname     | relkind
+    relname     | relkind 
 ----------------+---------
  idxpart        | p
  idxpart1       | r
@@ -528,7 +528,7 @@ select relname, relkind from pg_class where relname like 'idxpart%' order by rel
 
 drop table idxpart, idxpart1, idxpart2, idxpart3;
 select relname, relkind from pg_class where relname like 'idxpart%' order by relname;
- relname | relkind
+ relname | relkind 
 ---------+---------
 (0 rows)
 
@@ -545,7 +545,7 @@ select relname as child, inhparent::regclass as parent, pg_get_indexdef as child
   from pg_class join pg_inherits on inhrelid = oid,
   lateral pg_get_indexdef(pg_class.oid)
   where relkind in ('i', 'I') and relname like 'idxpart%' order by relname;
-       child       |      parent      |                                   childdef
+       child       |      parent      |                                   childdef                                   
 -------------------+------------------+------------------------------------------------------------------------------
  idxpart1_expr_idx | idxpart_expr_idx | CREATE INDEX idxpart1_expr_idx ON public.idxpart1 USING lsm (((a + b)) HASH)
  idxpart2_expr_idx | idxpart_expr_idx | CREATE INDEX idxpart2_expr_idx ON public.idxpart2 USING lsm (((a + b)) HASH)
@@ -569,7 +569,7 @@ select relname as child, inhparent::regclass as parent, pg_get_indexdef as child
   from pg_class left join pg_inherits on inhrelid = oid,
   lateral pg_get_indexdef(pg_class.oid)
   where relkind in ('i', 'I') and relname like 'idxpart%' order by relname;
-      child      |    parent     |                                     childdef
+      child      |    parent     |                                     childdef                                      
 -----------------+---------------+-----------------------------------------------------------------------------------
  idxpart1_a_idx  | idxpart_a_idx | CREATE INDEX idxpart1_a_idx ON public.idxpart1 USING lsm (a COLLATE "C" HASH)
  idxpart2_a_idx  |               | CREATE INDEX idxpart2_a_idx ON public.idxpart2 USING lsm (a COLLATE "POSIX" HASH)
@@ -596,7 +596,7 @@ select relname as child, inhparent::regclass as parent, pg_get_indexdef as child
   from pg_class left join pg_inherits on inhrelid = oid,
   lateral pg_get_indexdef(pg_class.oid)
   where relkind in ('i', 'I') and relname like 'idxpart%' order by relname;
-      child      |    parent     |                                       childdef
+      child      |    parent     |                                       childdef                                        
 -----------------+---------------+---------------------------------------------------------------------------------------
  idxpart1_a_idx  | idxpart_a_idx | CREATE INDEX idxpart1_a_idx ON public.idxpart1 USING lsm (a text_pattern_ops HASH)
  idxpart2_a_idx  |               | CREATE INDEX idxpart2_a_idx ON public.idxpart2 USING lsm (a HASH)
@@ -642,7 +642,7 @@ select relname as child, inhparent::regclass as parent, pg_get_indexdef as child
   from pg_class left join pg_inherits on inhrelid = oid,
   lateral pg_get_indexdef(pg_class.oid)
   where relkind in ('i', 'I') and relname like 'idxpart%' order by relname;
-      child      |    parent     |                                          childdef
+      child      |    parent     |                                          childdef                                          
 -----------------+---------------+--------------------------------------------------------------------------------------------
  idxpart1_1_idx  | idxpart_1_idx | CREATE INDEX idxpart1_1_idx ON public.idxpart1 USING lsm (b HASH, a ASC)
  idxpart1_1b_idx |               | CREATE INDEX idxpart1_1b_idx ON public.idxpart1 USING lsm (b HASH)
@@ -668,7 +668,7 @@ select c.relname, pg_get_indexdef(indexrelid)
   from pg_class c join pg_index i on c.oid = i.indexrelid
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
-     relname      |                              pg_get_indexdef
+     relname      |                              pg_get_indexdef                               
 ------------------+----------------------------------------------------------------------------
  idxpart1_a_idx   | CREATE INDEX idxpart1_a_idx ON public.idxpart1 USING lsm (a HASH)
  idxpart1_c_b_idx | CREATE INDEX idxpart1_c_b_idx ON public.idxpart1 USING lsm (c HASH, b ASC)
@@ -695,7 +695,7 @@ select c.relname, pg_get_indexdef(indexrelid)
   from pg_class c join pg_index i on c.oid = i.indexrelid
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
-      relname      |                                 pg_get_indexdef
+      relname      |                                 pg_get_indexdef                                 
 -------------------+---------------------------------------------------------------------------------
  idxpart1_abs_idx  | CREATE INDEX idxpart1_abs_idx ON public.idxpart1 USING lsm (abs(b) HASH)
  idxpart1_expr_idx | CREATE INDEX idxpart1_expr_idx ON public.idxpart1 USING lsm (((b + 1)) HASH)
@@ -721,7 +721,7 @@ select c.relname, pg_get_indexdef(indexrelid)
   from pg_class c join pg_index i on c.oid = i.indexrelid
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
-    relname     |                                    pg_get_indexdef
+    relname     |                                    pg_get_indexdef                                    
 ----------------+---------------------------------------------------------------------------------------
  idxpart1_a_idx | CREATE INDEX idxpart1_a_idx ON public.idxpart1 USING lsm (a HASH) WHERE (b > 1000)
  idxpart2_a_idx | CREATE INDEX idxpart2_a_idx ON public.idxpart2 USING lsm (a HASH) WHERE (b > 1000)
@@ -740,9 +740,9 @@ create index on idxpart (col_keep);
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
 \d idxpart
          Partitioned table "public.idxpart"
-  Column  |  Type   | Collation | Nullable | Default
+  Column  |  Type   | Collation | Nullable | Default 
 ----------+---------+-----------+----------+---------
- col_keep | integer |           |          |
+ col_keep | integer |           |          | 
 Partition key: RANGE (col_keep)
 Indexes:
     "idxpart_col_keep_idx" lsm (col_keep HASH)
@@ -750,9 +750,9 @@ Number of partitions: 1 (Use \d+ to list them.)
 
 \d idxpart1
                Table "public.idxpart1"
-  Column  |  Type   | Collation | Nullable | Default
+  Column  |  Type   | Collation | Nullable | Default 
 ----------+---------+-----------+----------+---------
- col_keep | integer |           |          |
+ col_keep | integer |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (1000)
 Indexes:
     "idxpart1_col_keep_idx" lsm (col_keep HASH)
@@ -760,7 +760,7 @@ Indexes:
 select attrelid::regclass, attname, attnum from pg_attribute
   where attrelid::regclass::text like 'idxpart%' and attnum > 0
   order by attrelid::regclass, attnum;
-       attrelid        |           attname            | attnum
+       attrelid        |           attname            | attnum 
 -----------------------+------------------------------+--------
  idxpart1              | ........pg.dropped.1........ |      1
  idxpart1              | ........pg.dropped.2........ |      2
@@ -783,9 +783,9 @@ create index on idxpart (col_keep);
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
 \d idxpart
          Partitioned table "public.idxpart"
-  Column  |  Type   | Collation | Nullable | Default
+  Column  |  Type   | Collation | Nullable | Default 
 ----------+---------+-----------+----------+---------
- col_keep | integer |           |          |
+ col_keep | integer |           |          | 
 Partition key: RANGE (col_keep)
 Indexes:
     "idxpart_col_keep_idx" lsm (col_keep HASH)
@@ -793,9 +793,9 @@ Number of partitions: 1 (Use \d+ to list them.)
 
 \d idxpart1
                Table "public.idxpart1"
-  Column  |  Type   | Collation | Nullable | Default
+  Column  |  Type   | Collation | Nullable | Default 
 ----------+---------+-----------+----------+---------
- col_keep | integer |           |          |
+ col_keep | integer |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (1000)
 Indexes:
     "idxpart1_col_keep_idx" lsm (col_keep HASH)
@@ -803,7 +803,7 @@ Indexes:
 select attrelid::regclass, attname, attnum from pg_attribute
   where attrelid::regclass::text like 'idxpart%' and attnum > 0
   order by attrelid::regclass, attnum;
-       attrelid        |           attname            | attnum
+       attrelid        |           attname            | attnum 
 -----------------------+------------------------------+--------
  idxpart               | ........pg.dropped.1........ |      1
  idxpart               | ........pg.dropped.2........ |      2
@@ -822,10 +822,10 @@ drop table idxpart;
 create table idxpart (a int primary key, b int) partition by range (a);
 \d idxpart
         Partitioned table "public.idxpart"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           | not null |
- b      | integer |           |          |
+ a      | integer |           | not null | 
+ b      | integer |           |          | 
 Partition key: RANGE (a)
 Indexes:
     "idxpart_pkey" PRIMARY KEY, lsm (a HASH)
@@ -840,9 +840,9 @@ create table idxpart (a int) partition by range (a);
 create table idxpart1pk partition of idxpart (a primary key) for values from (0) to (100);
 \d idxpart1pk
              Table "public.idxpart1pk"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           | not null |
+ a      | integer |           | not null | 
 Partition of: idxpart FOR VALUES FROM (0) TO (100)
 Indexes:
     "idxpart1pk_pkey" PRIMARY KEY, lsm (a HASH)
@@ -888,11 +888,11 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d idxpart
         Partitioned table "public.idxpart"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           | not null |
- b      | integer |           | not null |
- c      | text    |           |          |
+ a      | integer |           | not null | 
+ b      | integer |           | not null | 
+ c      | text    |           |          | 
 Partition key: RANGE (a, b)
 Indexes:
     "idxpart_pkey" PRIMARY KEY, lsm (a HASH, b ASC)
@@ -901,11 +901,11 @@ Number of partitions: 0
 create table idxpart1 partition of idxpart for values from (0, 0) to (1000, 1000);
 \d idxpart1
               Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           | not null |
- b      | integer |           | not null |
- c      | text    |           |          |
+ a      | integer |           | not null | 
+ b      | integer |           | not null | 
+ c      | text    |           |          | 
 Partition of: idxpart FOR VALUES FROM (0, 0) TO (1000, 1000)
 Indexes:
     "idxpart1_pkey" PRIMARY KEY, lsm (a HASH, b ASC)
@@ -919,10 +919,10 @@ DETAIL:  UNIQUE constraint on table "idxpart" lacks column "b" which is part of 
 alter table idxpart add unique (b, a);		-- this works
 \d idxpart
         Partitioned table "public.idxpart"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
 Partition key: RANGE (a, b)
 Indexes:
     "idxpart_b_a_key" UNIQUE CONSTRAINT, lsm (b HASH, a ASC)
@@ -952,7 +952,7 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 select conname, contype, conrelid::regclass, conindid::regclass, conkey
   from pg_constraint where conrelid::regclass::text like 'idxpart%'
   order by conname;
-    conname     | contype | conrelid  |    conindid    | conkey
+    conname     | contype | conrelid  |    conindid    | conkey 
 ----------------+---------+-----------+----------------+--------
  idxpart1_pkey  | p       | idxpart1  | idxpart1_pkey  | {1,2}
  idxpart21_pkey | p       | idxpart21 | idxpart21_pkey | {1,2}
@@ -986,7 +986,7 @@ create table idxpart21 partition of idxpart2 for values from (0) to (1000);
 select conname, contype, conrelid::regclass, conindid::regclass, conkey
   from pg_constraint where conrelid::regclass::text like 'idxpart%'
   order by conname;
-    conname     | contype | conrelid  |    conindid    | conkey
+    conname     | contype | conrelid  |    conindid    | conkey 
 ----------------+---------+-----------+----------------+--------
  idxpart21_pkey | p       | idxpart21 | idxpart21_pkey | {1,2}
  idxpart2_pkey  | p       | idxpart2  | idxpart2_pkey  | {1,2}
@@ -1021,7 +1021,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
+ indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
 ----------+---------------+--------------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey | idxpart_pkey | t          | idxpart0_pkey | f          |           1 | t            | t
  idxpart1 | idxpart1_pkey | idxpart_pkey | t          | idxpart1_pkey | f          |           1 | f            | t
@@ -1054,7 +1054,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid | indexrelid | inhparent | indisvalid | conname | conislocal | coninhcount | connoinherit | convalidated
+ indrelid | indexrelid | inhparent | indisvalid | conname | conislocal | coninhcount | connoinherit | convalidated 
 ----------+------------+-----------+------------+---------+------------+-------------+--------------+--------------
 (0 rows)
 
@@ -1100,7 +1100,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   | inhparent | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
+ indrelid |  indexrelid   | inhparent | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
 ----------+---------------+-----------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey |           | t          | idxpart0_pkey | t          |           0 | t            | t
  idxpart  | idxpart_pkey  |           | f          | idxpart_pkey  | t          |           0 | t            | t
@@ -1113,7 +1113,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
+ indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
 ----------+---------------+--------------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey | idxpart_pkey | t          | idxpart0_pkey | f          |           1 | t            | t
  idxpart  | idxpart_pkey  |              | t          | idxpart_pkey  | t          |           0 | t            | t
@@ -1139,9 +1139,9 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |   indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
+ indrelid |   indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
 ----------+----------------+--------------+------------+---------------+------------+-------------+--------------+--------------
- idxpart1 | idxpart1_a_idx |              | t          |               |            |             |              |
+ idxpart1 | idxpart1_a_idx |              | t          |               |            |             |              | 
  idxpart1 | idxpart1_pkey  | idxpart_pkey | t          | idxpart1_pkey | f          |           1 | f            | t
  idxpart  | idxpart_pkey   |              | t          | idxpart_pkey  | t          |           0 | t            | t
 (3 rows)
@@ -1185,7 +1185,7 @@ insert into idxpart values (572814, 'five');
 ERROR:  duplicate key value violates unique constraint "idxpart2_a_idx"
 insert into idxpart values (857142, 'six');
 select tableoid::regclass, * from idxpart order by a;
- tableoid |   a    |       b
+ tableoid |   a    |       b        
 ----------+--------+----------------
  idxpart1 |      0 | zero
  idxpart1 |     16 | sixteen
@@ -1214,13 +1214,13 @@ NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collectio
 set enable_seqscan to false;
 set enable_bitmapscan to false;
 select sum(a) from fastpath where a = 6456;
- sum
+ sum  
 ------
  6456
 (1 row)
 
 select sum(a) from fastpath where a >= 5000 and a < 5700;
-   sum
+   sum   
 ---------
  3744650
 (1 row)
@@ -1232,28 +1232,28 @@ truncate fastpath;
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
 
 select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  6167a852b3e0679886b84a5405b5b53d
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  dfcf2bd5e5fea8397d47b2fd14618d31
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
@@ -1267,28 +1267,28 @@ vacuum fastpath;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
 
 select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  6167a852b3e0679886b84a5405b5b53d
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  dfcf2bd5e5fea8397d47b2fd14618d31
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
@@ -1303,28 +1303,28 @@ vacuum fastpath;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
 
 select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  6167a852b3e0679886b84a5405b5b53d
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  dfcf2bd5e5fea8397d47b2fd14618d31
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
@@ -1338,28 +1338,28 @@ vacuum fastpath;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
 
 select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  6167a852b3e0679886b84a5405b5b53d
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  dfcf2bd5e5fea8397d47b2fd14618d31
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
@@ -1374,28 +1374,28 @@ vacuum fastpath;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
 
 select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  6167a852b3e0679886b84a5405b5b53d
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  dfcf2bd5e5fea8397d47b2fd14618d31
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
@@ -1409,28 +1409,28 @@ vacuum fastpath;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
 
 select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  6167a852b3e0679886b84a5405b5b53d
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a desc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  dfcf2bd5e5fea8397d47b2fd14618d31
 (1 row)
 
 select md5(string_agg(a::text, b order by b, a asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5
+               md5                
 ----------------------------------
  2ca216010a558a52d7df12f76dfc77ab
 (1 row)
@@ -1495,7 +1495,7 @@ drop table parted_uniq_detach_test, parted_uniq_detach_test1;
 create table range_in_inequality(r1 int, r2 int, primary key(r1 asc, r2 asc));
 insert into range_in_inequality select i/5, i%5 from generate_series(1,20) i;
 select * from range_in_inequality;
- r1 | r2
+ r1 | r2 
 ----+----
   0 |  1
   0 |  2
@@ -1520,7 +1520,7 @@ select * from range_in_inequality;
 (20 rows)
 
 select * from range_in_inequality where r1 in (1, 3) and r2 > 2;
- r1 | r2
+ r1 | r2 
 ----+----
   1 |  3
   1 |  4
@@ -1529,7 +1529,7 @@ select * from range_in_inequality where r1 in (1, 3) and r2 > 2;
 (4 rows)
 
 select * from range_in_inequality where r1 in (0, 1, 3) and r2 > 2;
- r1 | r2
+ r1 | r2 
 ----+----
   0 |  3
   0 |  4

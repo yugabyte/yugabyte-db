@@ -13,7 +13,7 @@ INSERT INTO num_data VALUES (9, '-24926804.045047420');
 COMMIT TRANSACTION;
 -- ASC/DESC check
 SELECT * FROM num_data ORDER BY val ASC, id ASC;
- id |         val
+ id |         val          
 ----+----------------------
   7 | -83028485.0000000000
   2 | -34338492.2153970470
@@ -28,7 +28,7 @@ SELECT * FROM num_data ORDER BY val ASC, id ASC;
 (10 rows)
 
 SELECT * FROM num_data ORDER BY val DESC, id DESC;
- id |         val
+ id |         val          
 ----+----------------------
   4 |   7799461.4119000000
   6 |     93901.5776302600
@@ -50,7 +50,7 @@ INSERT INTO num_data_with_pk VALUES ('1.1','-11.11');
 INSERT INTO num_data_with_pk VALUES ('2.2','-22.22');
 INSERT INTO num_data_with_pk VALUES ('3.3','-33.33');
 SELECT * FROM num_data_with_pk ORDER BY id;
- id  |  val
+ id  |  val   
 -----+--------
  1.1 | -11.11
  2.2 | -22.22
@@ -58,7 +58,7 @@ SELECT * FROM num_data_with_pk ORDER BY id;
 (3 rows)
 
 SELECT VAL FROM num_data_with_pk WHERE id = '2.2';
-  val
+  val   
 --------
  -22.22
 (1 row)

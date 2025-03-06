@@ -87,10 +87,10 @@ alter aggregate my_rank(VARIADIC "any" ORDER BY VARIADIC "any")
   rename to test_rank;
 \da test_*
                                        List of aggregate functions
- Schema |         Name         | Result data type |          Argument data types           | Description
+ Schema |         Name         | Result data type |          Argument data types           | Description 
 --------+----------------------+------------------+----------------------------------------+-------------
- public | test_percentile_disc | anyelement       | double precision ORDER BY anyelement   |
- public | test_rank            | bigint           | VARIADIC "any" ORDER BY VARIADIC "any" |
+ public | test_percentile_disc | anyelement       | double precision ORDER BY anyelement   | 
+ public | test_rank            | bigint           | VARIADIC "any" ORDER BY VARIADIC "any" | 
 (2 rows)
 
 -- moving-aggregate options
@@ -155,7 +155,7 @@ SELECT aggfnoid, aggtransfn, aggcombinefn, aggtranstype::regtype,
        aggserialfn, aggdeserialfn, aggfinalmodify
 FROM pg_aggregate
 WHERE aggfnoid = 'myavg'::REGPROC;
- aggfnoid |    aggtransfn     |    aggcombinefn     | aggtranstype |      aggserialfn      |      aggdeserialfn      | aggfinalmodify
+ aggfnoid |    aggtransfn     |    aggcombinefn     | aggtranstype |      aggserialfn      |      aggdeserialfn      | aggfinalmodify 
 ----------+-------------------+---------------------+--------------+-----------------------+-------------------------+----------------
  myavg    | numeric_avg_accum | numeric_avg_combine | internal     | numeric_avg_serialize | numeric_avg_deserialize | s
 (1 row)

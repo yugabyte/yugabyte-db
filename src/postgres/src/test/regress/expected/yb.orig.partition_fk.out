@@ -10,7 +10,7 @@ INSERT INTO partitioned (a) VALUES (123);
 ERROR:  insert or update on table "partitioned_part" violates foreign key constraint "partitioned_a_fkey"
 DETAIL:  Key (a)=(123) is not present in table "referenced".
 SELECT tableoid::regclass, a FROM partitioned ORDER BY a;
- tableoid | a
+ tableoid | a 
 ----------+---
 (0 rows)
 
@@ -18,7 +18,7 @@ INSERT INTO partitioned_part (a) VALUES (123);
 ERROR:  insert or update on table "partitioned_part" violates foreign key constraint "partitioned_a_fkey"
 DETAIL:  Key (a)=(123) is not present in table "referenced".
 SELECT tableoid::regclass, a FROM partitioned ORDER BY a;
- tableoid | a
+ tableoid | a 
 ----------+---
 (0 rows)
 
@@ -31,7 +31,7 @@ INSERT INTO partitioned (a) VALUES (123);
 ERROR:  insert or update on table "partitioned_part" violates foreign key constraint "partitioned_part_a_fkey"
 DETAIL:  Key (a)=(123) is not present in table "referenced".
 SELECT tableoid::regclass, a FROM partitioned ORDER BY a;
- tableoid | a
+ tableoid | a 
 ----------+---
 (0 rows)
 
@@ -39,7 +39,7 @@ INSERT INTO partitioned_part (a) VALUES (123);
 ERROR:  insert or update on table "partitioned_part" violates foreign key constraint "partitioned_part_a_fkey"
 DETAIL:  Key (a)=(123) is not present in table "referenced".
 SELECT tableoid::regclass, a FROM partitioned ORDER BY a;
- tableoid | a
+ tableoid | a 
 ----------+---
 (0 rows)
 
@@ -53,7 +53,7 @@ INSERT INTO partitioned (a) VALUES (123);
 ERROR:  insert or update on table "partitioned_lvl2" violates foreign key constraint "partitioned_lvl1_a_fkey"
 DETAIL:  Key (a)=(123) is not present in table "referenced".
 SELECT tableoid::regclass, a FROM partitioned ORDER BY a;
- tableoid | a
+ tableoid | a 
 ----------+---
 (0 rows)
 
@@ -61,7 +61,7 @@ INSERT INTO partitioned_lvl1 (a) VALUES (123);
 ERROR:  insert or update on table "partitioned_lvl2" violates foreign key constraint "partitioned_lvl1_a_fkey"
 DETAIL:  Key (a)=(123) is not present in table "referenced".
 SELECT tableoid::regclass, a FROM partitioned ORDER BY a;
- tableoid | a
+ tableoid | a 
 ----------+---
 (0 rows)
 
@@ -69,7 +69,7 @@ INSERT INTO partitioned_lvl2 (a) VALUES (123);
 ERROR:  insert or update on table "partitioned_lvl2" violates foreign key constraint "partitioned_lvl1_a_fkey"
 DETAIL:  Key (a)=(123) is not present in table "referenced".
 SELECT tableoid::regclass, a FROM partitioned ORDER BY a;
- tableoid | a
+ tableoid | a 
 ----------+---
 (0 rows)
 

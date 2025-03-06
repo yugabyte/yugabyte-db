@@ -3,21 +3,21 @@
 --
 -- SELECT with LIMIT to check if prefetching hurts performance for a small set of data.
 SELECT 1 FROM airports LIMIT 1;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
 
 -- Check aggregate function performance for a large set or rows.
 SELECT COUNT(*) FROM airports;
- count
+ count 
 -------
   9999
 (1 row)
 
 -- SELECT ALL to check if prefetching is working fine for a large set of data.
 SELECT * FROM airports ORDER BY ident;
- ident |      type      |                                name                                | elevation_ft | continent | iso_country | iso_region |           municipality           | gps_code | iata_code | local_code |               coordinates
+ ident |      type      |                                name                                | elevation_ft | continent | iso_country | iso_region |           municipality           | gps_code | iata_code | local_code |               coordinates               
 -------+----------------+--------------------------------------------------------------------+--------------+-----------+-------------+------------+----------------------------------+----------+-----------+------------+-----------------------------------------
  00A   | heliport       | Total Rf Heliport                                                  |           11 | NA        | US          | US-PA      | Bensalem                         | 00A      |           | 00A        | -74.93360137939453, 40.07080078125
  00AA  | small_airport  | Aero B Ranch Airport                                               |         3435 | NA        | US          | US-KS      | Leoti                            | 00AA     |           | 00AA       | -101.473911, 38.704022
@@ -10022,7 +10022,7 @@ SELECT * FROM airports ORDER BY ident;
 
 -- SELECT ALL with WHERE condition on PRIMARY KEY for a large set of data.
 SELECT * FROM airports WHERE ident < '04' AND ident > '01' ORDER BY ident;
- ident |     type      |                       name                       | elevation_ft | continent | iso_country | iso_region |   municipality    | gps_code | iata_code | local_code |               coordinates
+ ident |     type      |                       name                       | elevation_ft | continent | iso_country | iso_region |   municipality    | gps_code | iata_code | local_code |               coordinates               
 -------+---------------+--------------------------------------------------+--------------+-----------+-------------+------------+-------------------+----------+-----------+------------+-----------------------------------------
  01A   | small_airport | Purkeypile Airport                               |         1950 | NA        | US          | US-AK      | Purkeypile        | 01A      |           | 01A        | -152.27000427246094, 62.943599700927734
  01AK  | heliport      | Providence Seward Medical Center Heliport        |          120 | NA        | US          | US-AK      | Seward            | 01AK     |           | 01AK       | -149.446249008, 60.105873975399994
@@ -10216,7 +10216,7 @@ SELECT * FROM airports WHERE ident < '04' AND ident > '01' ORDER BY ident;
 
 -- SELECT ALL with WHERE condition on non PRIMARY KEY for a large set of data.
 SELECT * FROM airports WHERE iso_region = 'US-CA' ORDER BY ident;
- ident |     type      |                          name                          | elevation_ft | continent | iso_country | iso_region |      municipality      | gps_code | iata_code | local_code |               coordinates
+ ident |     type      |                          name                          | elevation_ft | continent | iso_country | iso_region |      municipality      | gps_code | iata_code | local_code |               coordinates               
 -------+---------------+--------------------------------------------------------+--------------+-----------+-------------+------------+------------------------+----------+-----------+------------+-----------------------------------------
  00CA  | small_airport | Goldstone /Gts/ Airport                                |         3038 | NA        | US          | US-CA      | Barstow                | 00CA     |           | 00CA       | -116.888000488, 35.350498199499995
  00CL  | small_airport | Williams Ag Airport                                    |           87 | NA        | US          | US-CA      | Biggs                  | 00CL     |           | 00CL       | -121.763427, 39.427188
@@ -10707,3 +10707,4 @@ SELECT * FROM airports WHERE iso_region = 'US-CA' ORDER BY ident;
  9CL9  | small_airport | Spezia Airport                                         |              | NA        | US          | US-CA      | Walnut Grove           | 9CL9     |           | 9CL9       | -121.53399658203125, 38.21659851074219
  9CN1  | heliport      | Hazel Hawkins Memorial Hospital Heliport               |          397 | NA        | US          | US-CA      | Hollister              | 9CN1     |           | 9CN1       | -121.386479, 36.834811
 (488 rows)
+

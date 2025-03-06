@@ -10,7 +10,7 @@ insert into inserttest (col1, col2, col3) values (DEFAULT, 5, DEFAULT);
 insert into inserttest values (DEFAULT, 5, 'test');
 insert into inserttest values (DEFAULT, 7);
 select * from inserttest;
- col1 | col2 |  col3
+ col1 | col2 |  col3   
 ------+------+---------
       |    3 | testing
       |    5 | testing
@@ -38,7 +38,7 @@ ERROR:  INSERT has more expressions than target columns
 LINE 1: insert into inserttest (col1) values (DEFAULT, DEFAULT);
                                                        ^
 select * from inserttest;
- col1 | col2 |  col3
+ col1 | col2 |  col3   
 ------+------+---------
       |    3 | testing
       |    5 | testing
@@ -52,7 +52,7 @@ select * from inserttest;
 insert into inserttest values(10, 20, '40'), (-1, 2, DEFAULT),
     ((select 2), (select i from (values(3)) as foo (i)), 'values are fun!');
 select * from inserttest;
- col1 | col2 |      col3
+ col1 | col2 |      col3       
 ------+------+-----------------
       |    3 | testing
       |    5 | testing
@@ -68,7 +68,7 @@ select * from inserttest;
 --
 insert into inserttest values(30, 50, repeat('x', 10000));
 select col1, col2, char_length(col3) from inserttest;
- col1 | col2 | char_length
+ col1 | col2 | char_length 
 ------+------+-------------
       |    3 |           7
       |    5 |           7
@@ -121,20 +121,20 @@ insert into inserttest (f4[1].if2[1], f4[1].if2[2]) values ('foo', 'bar');
 insert into inserttest (f4[1].if2[1], f4[1].if2[2]) values ('foo', 'bar'), ('baz', 'quux');
 insert into inserttest (f4[1].if2[1], f4[1].if2[2]) select 'bear', 'beer';
 select * from inserttest;
- f1 |  f2   |        f3        |           f4
+ f1 |  f2   |        f3        |           f4           
 ----+-------+------------------+------------------------
-    | {1,2} |                  |
-    | {3,4} |                  |
-    | {5,6} |                  |
-    | {7,8} |                  |
-    |       | (1,{foo})        |
-    |       | (1,{foo})        |
-    |       | (2,{bar})        |
-    |       | (3,"{baz,quux}") |
-    |       | (,"{foo,bar}")   |
-    |       | (,"{foo,bar}")   |
-    |       | (,"{baz,quux}")  |
-    |       | (,"{bear,beer}") |
+    | {1,2} |                  | 
+    | {3,4} |                  | 
+    | {5,6} |                  | 
+    | {7,8} |                  | 
+    |       | (1,{foo})        | 
+    |       | (1,{foo})        | 
+    |       | (2,{bar})        | 
+    |       | (3,"{baz,quux}") | 
+    |       | (,"{foo,bar}")   | 
+    |       | (,"{foo,bar}")   | 
+    |       | (,"{baz,quux}")  | 
+    |       | (,"{bear,beer}") | 
     |       |                  | {"(,\"{foo,bar}\")"}
     |       |                  | {"(,\"{foo,bar}\")"}
     |       |                  | {"(,\"{baz,quux}\")"}
@@ -154,10 +154,10 @@ create rule irule3 as on insert to inserttest2 do also
   select new.f1, new.f2;
 \d+ inserttest2
                                 Table "public.inserttest2"
- Column |  Type  | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type  | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+--------+-----------+----------+---------+----------+--------------+-------------
- f1     | bigint |           |          |         | plain    |              |
- f2     | text   |           |          |         | extended |              |
+ f1     | bigint |           |          |         | plain    |              | 
+ f2     | text   |           |          |         | extended |              | 
 Rules:
     irule1 AS
     ON INSERT TO inserttest2 DO  INSERT INTO inserttest (f3.if2[1], f3.if2[2])
@@ -278,7 +278,7 @@ insert into list_parted values ('ab', 21);
 insert into list_parted values ('xx', 1);
 insert into list_parted values ('yy', 2);
 select tableoid::regclass, * from list_parted;
-      tableoid      | a  | b
+      tableoid      | a  | b  
 --------------------+----+----
  part_cc_dd         | cC |  1
  part_ee_ff1        | ff |  1
@@ -323,7 +323,7 @@ insert into range_parted values ('a', null);
 insert into range_parted values (null, 19);
 insert into range_parted values ('b', 20);
 select tableoid::regclass, * from range_parted;
- tableoid | a | b
+ tableoid | a | b  
 ----------+---+----
  part1    | a |  1
  part1    | a |  1
@@ -352,7 +352,7 @@ DETAIL:  Partition key of the failing row contains (b) = (0).
 insert into list_parted values ('EE', 1);
 insert into part_ee_ff values ('EE', 10);
 select tableoid::regclass, * from list_parted;
-      tableoid      | a  | b
+      tableoid      | a  | b  
 --------------------+----+----
  part_aa_bb         | aA |   
  part_cc_dd         | cC |  1
@@ -384,10 +384,10 @@ insert into list_parted select 'Ff', s.a from generate_series(1, 29) s(a);
 insert into list_parted select 'gg', s.a from generate_series(1, 9) s(a);
 insert into list_parted (b) values (1);
 select tableoid::regclass::text, a, min(b) as min_b, max(b) as max_b from list_parted group by 1, 2 order by 1;
-   tableoid    | a  | min_b | max_b
+   tableoid    | a  | min_b | max_b 
 ---------------+----+-------+-------
- part_aa_bb    | aa |       |
- part_cc_dd    | cc |       |
+ part_aa_bb    | aa |       |      
+ part_cc_dd    | cc |       |      
  part_ee_ff1   | Ff |     1 |     9
  part_ee_ff2   | Ff |    10 |    19
  part_ee_ff3_1 | Ff |    20 |    24
@@ -417,7 +417,7 @@ insert into hpart3 values(11);
 -- view data
 select tableoid::regclass as part, a, a%4 as "remainder = a % 4"
 from hash_parted order by part;
-  part  | a  | remainder = a % 4
+  part  | a  | remainder = a % 4 
 --------+----+-------------------
  hpart0 |  4 |                 0
  hpart0 |  8 |                 0
@@ -438,10 +438,10 @@ from hash_parted order by part;
 -- partitions
 \d+ list_parted
                           Partitioned table "public.list_parted"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           |          |         | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           |          |         | plain    |              | 
 Partition key: LIST (lower(a))
 Partitions: part_aa_bb FOR VALUES IN ('aa', 'bb'),
             part_cc_dd FOR VALUES IN ('cc', 'dd'),
@@ -460,9 +460,9 @@ create table list_parted (a int) partition by list (a);
 create table part_default partition of list_parted default;
 \d+ part_default
                                Table "public.part_default"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              |
+ a      | integer |           |          |         | plain   |              | 
 Partition of: list_parted DEFAULT
 No partition constraint
 
@@ -470,9 +470,9 @@ insert into part_default values (null);
 insert into part_default values (1);
 insert into part_default values (-1);
 select tableoid::regclass, a from list_parted;
-   tableoid   | a
+   tableoid   | a  
 --------------+----
- part_default |
+ part_default |   
  part_default |  1
  part_default | -1
 (3 rows)
@@ -495,7 +495,7 @@ where attname = 'a'
    or attrelid = 'mlparted1'::regclass
    or attrelid = 'mlparted11'::regclass)
 order by attrelid::regclass::text;
-  attrelid  | attname | attnum
+  attrelid  | attname | attnum 
 ------------+---------+--------
  mlparted   | a       |      1
  mlparted1  | a       |      2
@@ -507,7 +507,7 @@ alter table mlparted attach partition mlparted1 for values from (1, 2) to (1, 10
 -- check that "(1, 2)" is correctly routed to mlparted11.
 insert into mlparted values (1, 2);
 select tableoid::regclass, * from mlparted;
-  tableoid  | a | b
+  tableoid  | a | b 
 ------------+---+---
  mlparted11 | 1 | 2
 (1 row)
@@ -564,7 +564,7 @@ alter table mlparted attach partition mlparted4 for values from (1, 30) to (1, 4
 with ins (a, b, c) as
   (insert into mlparted (b, a) select s.a, 1 from generate_series(2, 39) s(a) returning tableoid::regclass, *)
   select a, b, min(c), max(c) from ins group by a, b order by 1;
-     a      | b | min | max
+     a      | b | min | max 
 ------------+---+-----+-----
  mlparted11 | 1 |   2 |   4
  mlparted12 | 1 |   5 |   9
@@ -610,12 +610,12 @@ DETAIL:  Failing row contains (34, 50, null).
 create table mlparted_defd partition of mlparted_def default;
 insert into mlparted values (70, 100);
 select tableoid::regclass, * from mlparted_def;
-   tableoid    | a  |  b  | c
+   tableoid    | a  |  b  | c 
 ---------------+----+-----+---
- mlparted_def1 | 40 | 100 |
- mlparted_def1 | 42 | 100 |
- mlparted_def2 | 54 |  50 |
- mlparted_defd | 70 | 100 |
+ mlparted_def1 | 40 | 100 | 
+ mlparted_def1 | 42 | 100 | 
+ mlparted_def2 | 54 |  50 | 
+ mlparted_defd | 70 | 100 | 
 (4 rows)
 
 -- Check multi-level tuple routing with attributes dropped from the
@@ -756,7 +756,7 @@ ERROR:  new row for relation "mcrparted4" violates partition constraint
 DETAIL:  Failing row contains (30, 21, 20).
 -- check rows
 select tableoid::regclass::text, * from mcrparted order by 1;
-  tableoid  | a  |  b   |  c
+  tableoid  | a  |  b   |  c   
 ------------+----+------+------
  mcrparted0 |  0 |    1 |    1
  mcrparted0 |  0 |    1 |    1
@@ -824,7 +824,7 @@ copy donothingbrtrig_test from stdout;
 NOTICE:  b: baz
 NOTICE:  b: qux
 select tableoid::regclass, * from donothingbrtrig_test;
- tableoid | a | b
+ tableoid | a | b 
 ----------+---+---
 (0 rows)
 
@@ -843,10 +843,10 @@ create table mcrparted7_gt_common_lt_d partition of mcrparted for values from ('
 create table mcrparted8_ge_d partition of mcrparted for values from ('d', minvalue) to (maxvalue, maxvalue);
 \d+ mcrparted
                            Partitioned table "public.mcrparted"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           |          |         | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           |          |         | plain    |              | 
 Partition key: RANGE (a, b)
 Partitions: mcrparted1_lt_b FOR VALUES FROM (MINVALUE, MINVALUE) TO ('b', MINVALUE),
             mcrparted2_b FOR VALUES FROM ('b', MINVALUE) TO ('c', MINVALUE),
@@ -859,73 +859,73 @@ Partitions: mcrparted1_lt_b FOR VALUES FROM (MINVALUE, MINVALUE) TO ('b', MINVAL
 
 \d+ mcrparted1_lt_b
                               Table "public.mcrparted1_lt_b"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           |          |         | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           |          |         | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM (MINVALUE, MINVALUE) TO ('b', MINVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a < 'b'::text))
 
 \d+ mcrparted2_b
                                 Table "public.mcrparted2_b"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           |          |         | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           |          |         | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('b', MINVALUE) TO ('c', MINVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a >= 'b'::text) AND (a < 'c'::text))
 
 \d+ mcrparted3_c_to_common
                            Table "public.mcrparted3_c_to_common"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           |          |         | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           |          |         | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('c', MINVALUE) TO ('common', MINVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a >= 'c'::text) AND (a < 'common'::text))
 
 \d+ mcrparted4_common_lt_0
                            Table "public.mcrparted4_common_lt_0"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           |          |         | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           |          |         | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('common', MINVALUE) TO ('common', 0)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a = 'common'::text) AND (b < 0))
 
 \d+ mcrparted5_common_0_to_10
                          Table "public.mcrparted5_common_0_to_10"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           |          |         | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           |          |         | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('common', 0) TO ('common', 10)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a = 'common'::text) AND (b >= 0) AND (b < 10))
 
 \d+ mcrparted6_common_ge_10
                           Table "public.mcrparted6_common_ge_10"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           |          |         | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           |          |         | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('common', 10) TO ('common', MAXVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a = 'common'::text) AND (b >= 10))
 
 \d+ mcrparted7_gt_common_lt_d
                          Table "public.mcrparted7_gt_common_lt_d"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           |          |         | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           |          |         | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('common', MAXVALUE) TO ('d', MINVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a > 'common'::text) AND (a < 'd'::text))
 
 \d+ mcrparted8_ge_d
                               Table "public.mcrparted8_ge_d"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           |          |         | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           |          |         | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('d', MINVALUE) TO (MAXVALUE, MAXVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a >= 'd'::text))
 
@@ -933,7 +933,7 @@ insert into mcrparted values ('aaa', 0), ('b', 0), ('bz', 10), ('c', -10),
     ('comm', -10), ('common', -10), ('common', 0), ('common', 10),
     ('commons', 0), ('d', -10), ('e', 0);
 select tableoid::regclass, * from mcrparted order by a, b;
-         tableoid          |    a    |  b
+         tableoid          |    a    |  b  
 ---------------------------+---------+-----
  mcrparted1_lt_b           | aaa     |   0
  mcrparted2_b              | b       |   0
@@ -953,7 +953,7 @@ drop table mcrparted;
 create table returningwrtest (a int) partition by list (a);
 create table returningwrtest1 partition of returningwrtest for values in (1);
 insert into returningwrtest values (1) returning returningwrtest;
- returningwrtest
+ returningwrtest 
 -----------------
  (1)
 (1 row)
@@ -964,7 +964,7 @@ create table returningwrtest2 (b text, c int, a int);
 alter table returningwrtest2 drop c;
 alter table returningwrtest attach partition returningwrtest2 for values in (2);
 insert into returningwrtest values (2, 'foo') returning returningwrtest;
- returningwrtest
+ returningwrtest 
 -----------------
  (2,foo)
 (1 row)

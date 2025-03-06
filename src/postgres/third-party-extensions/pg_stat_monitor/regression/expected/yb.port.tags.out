@@ -1,13 +1,13 @@
 CREATE EXTENSION pg_stat_monitor;
-Set pg_stat_monitor.pgsm_extract_comments = 'yes';
+Set pg_stat_monitor.pgsm_extract_comments = 'yes'; 
 SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset
+ pg_stat_monitor_reset 
 -----------------------
-
+ 
 (1 row)
 
 SELECT 1 AS num /* { "application", psql_app, "real_ip", 192.168.1.3) */;
- num
+ num 
 -----
    1
 (1 row)
@@ -20,9 +20,9 @@ SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C";
 (2 rows)
 
 SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset
+ pg_stat_monitor_reset 
 -----------------------
-
+ 
 (1 row)
 
 DROP EXTENSION pg_stat_monitor;

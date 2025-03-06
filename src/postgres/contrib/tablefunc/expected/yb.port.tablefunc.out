@@ -4,7 +4,7 @@ CREATE EXTENSION tablefunc;
 -- no easy way to do this for regression testing
 --
 SELECT avg(normal_rand)::int, count(*) FROM normal_rand(100, 250, 0.2);
- avg | count
+ avg | count 
 -----+-------
  250 |   100
 (1 row)
@@ -18,7 +18,7 @@ ERROR:  number of rows cannot be negative
 CREATE TABLE ct(id int, rowclass text, rowid text, attribute text, val text);
 \copy ct from 'data/ct.data'
 SELECT * FROM crosstab2('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;');
- row_name | category_1 | category_2
+ row_name | category_1 | category_2 
 ----------+------------+------------
  test1    | val2       | val3
  test2    | val6       | val7
@@ -26,23 +26,23 @@ SELECT * FROM crosstab2('SELECT rowid, attribute, val FROM ct where rowclass = '
 (3 rows)
 
 SELECT * FROM crosstab3('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;');
- row_name | category_1 | category_2 | category_3
+ row_name | category_1 | category_2 | category_3 
 ----------+------------+------------+------------
- test1    | val2       | val3       |
- test2    | val6       | val7       |
-          | val10      | val11      |
+ test1    | val2       | val3       | 
+ test2    | val6       | val7       | 
+          | val10      | val11      | 
 (3 rows)
 
 SELECT * FROM crosstab4('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;');
- row_name | category_1 | category_2 | category_3 | category_4
+ row_name | category_1 | category_2 | category_3 | category_4 
 ----------+------------+------------+------------+------------
- test1    | val2       | val3       |            |
- test2    | val6       | val7       |            |
-          | val10      | val11      |            |
+ test1    | val2       | val3       |            | 
+ test2    | val6       | val7       |            | 
+          | val10      | val11      |            | 
 (3 rows)
 
 SELECT * FROM crosstab2('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
- row_name | category_1 | category_2
+ row_name | category_1 | category_2 
 ----------+------------+------------
  test1    | val1       | val2
  test2    | val5       | val6
@@ -50,7 +50,7 @@ SELECT * FROM crosstab2('SELECT rowid, attribute, val FROM ct where rowclass = '
 (3 rows)
 
 SELECT * FROM crosstab3('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
- row_name | category_1 | category_2 | category_3
+ row_name | category_1 | category_2 | category_3 
 ----------+------------+------------+------------
  test1    | val1       | val2       | val3
  test2    | val5       | val6       | val7
@@ -58,7 +58,7 @@ SELECT * FROM crosstab3('SELECT rowid, attribute, val FROM ct where rowclass = '
 (3 rows)
 
 SELECT * FROM crosstab4('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
- row_name | category_1 | category_2 | category_3 | category_4
+ row_name | category_1 | category_2 | category_3 | category_4 
 ----------+------------+------------+------------+------------
  test1    | val1       | val2       | val3       | val4
  test2    | val5       | val6       | val7       | val8
@@ -66,49 +66,49 @@ SELECT * FROM crosstab4('SELECT rowid, attribute, val FROM ct where rowclass = '
 (3 rows)
 
 SELECT * FROM crosstab2('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' and (attribute = ''att1'' or attribute = ''att2'') ORDER BY 1,2;');
- row_name | category_1 | category_2
+ row_name | category_1 | category_2 
 ----------+------------+------------
  test3    | val1       | val2
  test4    | val4       | val5
 (2 rows)
 
 SELECT * FROM crosstab3('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' and (attribute = ''att1'' or attribute = ''att2'') ORDER BY 1,2;');
- row_name | category_1 | category_2 | category_3
+ row_name | category_1 | category_2 | category_3 
 ----------+------------+------------+------------
- test3    | val1       | val2       |
- test4    | val4       | val5       |
+ test3    | val1       | val2       | 
+ test4    | val4       | val5       | 
 (2 rows)
 
 SELECT * FROM crosstab4('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' and (attribute = ''att1'' or attribute = ''att2'') ORDER BY 1,2;');
- row_name | category_1 | category_2 | category_3 | category_4
+ row_name | category_1 | category_2 | category_3 | category_4 
 ----------+------------+------------+------------+------------
- test3    | val1       | val2       |            |
- test4    | val4       | val5       |            |
+ test3    | val1       | val2       |            | 
+ test4    | val4       | val5       |            | 
 (2 rows)
 
 SELECT * FROM crosstab2('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' ORDER BY 1,2;');
- row_name | category_1 | category_2
+ row_name | category_1 | category_2 
 ----------+------------+------------
  test3    | val1       | val2
  test4    | val4       | val5
 (2 rows)
 
 SELECT * FROM crosstab3('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' ORDER BY 1,2;');
- row_name | category_1 | category_2 | category_3
+ row_name | category_1 | category_2 | category_3 
 ----------+------------+------------+------------
  test3    | val1       | val2       | val3
  test4    | val4       | val5       | val6
 (2 rows)
 
 SELECT * FROM crosstab4('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' ORDER BY 1,2;');
- row_name | category_1 | category_2 | category_3 | category_4
+ row_name | category_1 | category_2 | category_3 | category_4 
 ----------+------------+------------+------------+------------
- test3    | val1       | val2       | val3       |
- test4    | val4       | val5       | val6       |
+ test3    | val1       | val2       | val3       | 
+ test4    | val4       | val5       | val6       | 
 (2 rows)
 
 SELECT * FROM crosstab('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;') AS c(rowid text, att1 text, att2 text);
- rowid | att1 | att2
+ rowid | att1 | att2  
 -------+------+-------
  test1 | val1 | val2
  test2 | val5 | val6
@@ -116,7 +116,7 @@ SELECT * FROM crosstab('SELECT rowid, attribute, val FROM ct where rowclass = ''
 (3 rows)
 
 SELECT * FROM crosstab('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;') AS c(rowid text, att1 text, att2 text, att3 text);
- rowid | att1 | att2  | att3
+ rowid | att1 | att2  | att3  
 -------+------+-------+-------
  test1 | val1 | val2  | val3
  test2 | val5 | val6  | val7
@@ -124,7 +124,7 @@ SELECT * FROM crosstab('SELECT rowid, attribute, val FROM ct where rowclass = ''
 (3 rows)
 
 SELECT * FROM crosstab('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;') AS c(rowid text, att1 text, att2 text, att3 text, att4 text);
- rowid | att1 | att2  | att3  | att4
+ rowid | att1 | att2  | att3  | att4  
 -------+------+-------+-------+-------
  test1 | val1 | val2  | val3  | val4
  test2 | val5 | val6  | val7  | val8
@@ -138,7 +138,7 @@ RETURNS setof record
 AS '$libdir/tablefunc','crosstab'
 LANGUAGE C STABLE STRICT;
 SELECT * FROM crosstab_out('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
- rowid | att1 | att2  | att3
+ rowid | att1 | att2  | att3  
 -------+------+-------+-------
  test1 | val1 | val2  | val3
  test2 | val5 | val6  | val7
@@ -168,7 +168,7 @@ SELECT * FROM crosstab(
   'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1')
 AS c(rowid text, rowdt timestamp, temperature text, test_result text, test_startdate text, volts text);
- rowid |          rowdt           | temperature | test_result | test_startdate  |  volts
+ rowid |          rowdt           | temperature | test_result | test_startdate  |  volts  
 -------+--------------------------+-------------+-------------+-----------------+---------
  test1 | Sat Mar 01 00:00:00 2003 | 42          | PASS        |                 | 2.6987
  test2 | Sun Mar 02 00:00:00 2003 | 53          | FAIL        | 01 March 2003   | 3.1234
@@ -180,7 +180,7 @@ SELECT * FROM crosstab(
   'SELECT rowid, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1')
 AS c(rowid text, temperature text, test_result text, test_startdate text, volts text);
- rowid | temperature | test_result | test_startdate  |  volts
+ rowid | temperature | test_result | test_startdate  |  volts  
 -------+-------------+-------------+-----------------+---------
  test1 | 42          | PASS        |                 | 2.6987
  test2 | 53          | FAIL        | 01 March 2003   | 3.1234
@@ -192,7 +192,7 @@ SELECT * FROM crosstab(
   'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1')
 AS c(rowid text, rowdt timestamp, temperature int4, test_result text, test_startdate timestamp, volts float8);
- rowid |          rowdt           | temperature | test_result |      test_startdate      |  volts
+ rowid |          rowdt           | temperature | test_result |      test_startdate      |  volts  
 -------+--------------------------+-------------+-------------+--------------------------+---------
  test1 | Sat Mar 01 00:00:00 2003 |          42 | PASS        |                          |  2.6987
  test2 | Sun Mar 02 00:00:00 2003 |          53 | FAIL        | Sat Mar 01 00:00:00 2003 |  3.1234
@@ -204,9 +204,9 @@ SELECT * FROM crosstab(
   'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth WHERE attribute IN (''temperature'',''test_result'',''test_startdate'') ORDER BY 1')
 AS c(rowid text, rowdt timestamp, temperature int4, test_result text, test_startdate timestamp);
- rowid |          rowdt           | temperature | test_result |      test_startdate
+ rowid |          rowdt           | temperature | test_result |      test_startdate      
 -------+--------------------------+-------------+-------------+--------------------------
- test1 | Sat Mar 01 00:00:00 2003 |          42 | PASS        |
+ test1 | Sat Mar 01 00:00:00 2003 |          42 | PASS        | 
  test2 | Sun Mar 02 00:00:00 2003 |          53 | FAIL        | Sat Mar 01 00:00:00 2003
        | Thu Oct 25 00:00:00 2007 |          57 | PASS        | Wed Oct 24 00:00:00 2007
 (3 rows)
@@ -228,7 +228,7 @@ SELECT * FROM crosstab(
   'SELECT rowid, rowdt, attribute, val FROM cth WHERE false ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1')
 AS c(rowid text, rowdt timestamp, temperature text, test_result text, test_startdate text, volts text);
- rowid | rowdt | temperature | test_result | test_startdate | volts
+ rowid | rowdt | temperature | test_result | test_startdate | volts 
 -------+-------+-------------+-------------+----------------+-------
 (0 rows)
 
@@ -237,7 +237,7 @@ SELECT * FROM crosstab(
   'SELECT rowid, rowdt, attribute, val FROM cth WHERE false ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth WHERE false ORDER BY 1')
 AS c(rowid text, rowdt timestamp, temperature text, test_result text, test_startdate text, volts text);
- rowid | rowdt | temperature | test_result | test_startdate | volts
+ rowid | rowdt | temperature | test_result | test_startdate | volts 
 -------+-------+-------------+-------------+----------------+-------
 (0 rows)
 
@@ -252,7 +252,7 @@ LANGUAGE C STABLE STRICT;
 SELECT * FROM crosstab_named(
   'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1');
- rowid |          rowdt           | temperature | test_result |      test_startdate      |  volts
+ rowid |          rowdt           | temperature | test_result |      test_startdate      |  volts  
 -------+--------------------------+-------------+-------------+--------------------------+---------
  test1 | Sat Mar 01 00:00:00 2003 |          42 | PASS        |                          |  2.6987
  test2 | Sun Mar 02 00:00:00 2003 |          53 | FAIL        | Sat Mar 01 00:00:00 2003 |  3.1234
@@ -270,7 +270,7 @@ LANGUAGE C STABLE STRICT;
 SELECT * FROM crosstab_out(
   'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1');
- rowid |          rowdt           | temperature | test_result |      test_startdate      |  volts
+ rowid |          rowdt           | temperature | test_result |      test_startdate      |  volts  
 -------+--------------------------+-------------+-------------+--------------------------+---------
  test1 | Sat Mar 01 00:00:00 2003 |          42 | PASS        |                          |  2.6987
  test2 | Sun Mar 02 00:00:00 2003 |          53 | FAIL        | Sat Mar 01 00:00:00 2003 |  3.1234
@@ -285,7 +285,7 @@ CREATE TABLE connectby_text(keyid text, parent_keyid text, pos int, ybsort seria
 \copy connectby_text(keyid, parent_keyid, pos) from 'data/connectby_text.data'
 -- with branch, without orderby
 SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'row2', 0, '~') AS t(keyid text, parent_keyid text, level int, branch text);
- keyid | parent_keyid | level |       branch
+ keyid | parent_keyid | level |       branch        
 -------+--------------+-------+---------------------
  row2  |              |     0 | row2
  row4  | row2         |     1 | row2~row4
@@ -297,7 +297,7 @@ SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'row2', 0, '~
 
 -- without branch, without orderby
 SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'row2', 0) AS t(keyid text, parent_keyid text, level int);
- keyid | parent_keyid | level
+ keyid | parent_keyid | level 
 -------+--------------+-------
  row2  |              |     0
  row4  | row2         |     1
@@ -309,7 +309,7 @@ SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'row2', 0) AS
 
 -- with branch, with orderby
 SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'pos', 'row2', 0, '~') AS t(keyid text, parent_keyid text, level int, branch text, pos int) ORDER BY t.pos;
- keyid | parent_keyid | level |       branch        | pos
+ keyid | parent_keyid | level |       branch        | pos 
 -------+--------------+-------+---------------------+-----
  row2  |              |     0 | row2                |   1
  row5  | row2         |     1 | row2~row5           |   2
@@ -321,7 +321,7 @@ SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'pos', 'row2'
 
 -- without branch, with orderby
 SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'pos', 'row2', 0) AS t(keyid text, parent_keyid text, level int, pos int) ORDER BY t.pos;
- keyid | parent_keyid | level | pos
+ keyid | parent_keyid | level | pos 
 -------+--------------+-------+-----
  row2  |              |     0 |   1
  row5  | row2         |     1 |   2
@@ -336,7 +336,7 @@ CREATE TABLE connectby_int(keyid int, parent_keyid int, ybsort serial, PRIMARY K
 \copy connectby_int(keyid, parent_keyid) from 'data/connectby_int.data'
 -- with branch
 SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0, '~') AS t(keyid int, parent_keyid int, level int, branch text);
- keyid | parent_keyid | level | branch
+ keyid | parent_keyid | level | branch  
 -------+--------------+-------+---------
      2 |              |     0 | 2
      4 |            2 |     1 | 2~4
@@ -348,7 +348,7 @@ SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0, '~') A
 
 -- without branch
 SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0) AS t(keyid int, parent_keyid int, level int);
- keyid | parent_keyid | level
+ keyid | parent_keyid | level 
 -------+--------------+-------
      2 |              |     0
      4 |            2 |     1
@@ -367,7 +367,7 @@ SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0, '~') A
 ERROR:  infinite recursion detected
 -- infinite recursion failure avoided by depth limit
 SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 4, '~') AS t(keyid int, parent_keyid int, level int, branch text);
- keyid | parent_keyid | level |   branch
+ keyid | parent_keyid | level |   branch    
 -------+--------------+-------+-------------
      2 |              |     0 | 2
      4 |            2 |     1 | 2~4
@@ -394,7 +394,7 @@ ERROR:  invalid return type
 DETAIL:  Query must return at least two columns.
 -- query with two columns first value as NULL
 SELECT * FROM connectby('connectby_int', 'NULL::int, 1::int; --', 'parent_keyid', '2', 0) AS t(keyid int, parent_keyid int, level int);
- keyid | parent_keyid | level
+ keyid | parent_keyid | level 
 -------+--------------+-------
      2 |              |     0
        |            1 |     1
@@ -405,7 +405,7 @@ SELECT * FROM connectby('connectby_int', '1::int, NULL::int; --', 'parent_keyid'
 ERROR:  infinite recursion detected
 -- query with two columns, both values as NULL
 SELECT * FROM connectby('connectby_int', 'NULL::int, NULL::int; --', 'parent_keyid', '2', 0) AS t(keyid int, parent_keyid int, level int);
- keyid | parent_keyid | level
+ keyid | parent_keyid | level 
 -------+--------------+-------
      2 |              |     0
        |              |     1
@@ -420,10 +420,11 @@ INSERT INTO connectby_int VALUES(111,11);
 INSERT INTO connectby_int VALUES(1,111);
 -- this should not fail due to recursion detection
 SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '11', 0, '-') AS t(keyid int, parent_keyid int, level int, branch text);
- keyid | parent_keyid | level |  branch
+ keyid | parent_keyid | level |  branch  
 -------+--------------+-------+----------
     11 |              |     0 | 11
     10 |           11 |     1 | 11-10
    111 |           11 |     1 | 11-111
      1 |          111 |     2 | 11-111-1
 (4 rows)
+

@@ -1,13 +1,13 @@
-select yb_log_catcache_stats(pg_backend_pid());                         
- yb_log_catcache_stats                                                  
------------------------                                                 
-                                                                        
-(1 row)                                                                 
+select yb_log_catcache_stats(pg_backend_pid());
+ yb_log_catcache_stats 
+-----------------------
+ 
+(1 row)
 
-select yb_log_catcache_stats(0);                                        
-WARNING:  PID 0 is not a PostgreSQL server process                      
- yb_log_catcache_stats                                                  
------------------------                                                 
-                                                                        
-(1 row)                                                                 
+select yb_log_catcache_stats(0);
+WARNING:  PID 0 is not a PostgreSQL server process
+ yb_log_catcache_stats 
+-----------------------
+ 
+(1 row)
 

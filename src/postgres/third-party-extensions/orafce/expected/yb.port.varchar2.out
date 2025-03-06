@@ -41,14 +41,14 @@ INSERT INTO foo VALUES ('abc'::VARCHAR2(5));
 --
 -- equal
 SELECT 'abcde   '::VARCHAR2(10) = 'abcde   '::VARCHAR2(10);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- not equal
 SELECT 'abcde  '::VARCHAR2(10) = 'abcde   '::VARCHAR2(10);
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
@@ -58,14 +58,14 @@ SELECT 'abcde  '::VARCHAR2(10) = 'abcde   '::VARCHAR2(10);
 --
 -- substrb(varchar2, int, int)
 SELECT substrb('ABCありがとう'::VARCHAR2, 7, 6);
- substrb
+ substrb 
 ---------
  りが
 (1 row)
 
 -- returns 'f' (emtpy string is not NULL)
 SELECT substrb('ABCありがとう'::VARCHAR2, 7, 0) IS NULL;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
@@ -74,77 +74,78 @@ SELECT substrb('ABCありがとう'::VARCHAR2, 7, 0) IS NULL;
 -- of the string adjusting the length to be consistent with the "negative start"
 -- per SQL.
 SELECT substrb('ABCありがとう'::VARCHAR2, 0, 4);
- substrb
+ substrb 
 ---------
  ABC
 (1 row)
 
 -- substrb(varchar2, int)
 SELECT substrb('ABCありがとう', 5);
- substrb
+ substrb  
 ----------
  りがとう
 (1 row)
 
 -- strposb(varchar2, varchar2)
 SELECT strposb('ABCありがとう', 'りが');
- strposb
+ strposb 
 ---------
        7
 (1 row)
 
 -- returns 1 (start of the source string)
 SELECT strposb('ABCありがとう', '');
- strposb
+ strposb 
 ---------
        1
 (1 row)
 
 -- returns 0
 SELECT strposb('ABCありがとう', 'XX');
- strposb
+ strposb 
 ---------
        0
 (1 row)
 
 -- returns 't'
 SELECT strposb('ABCありがとう', NULL) IS NULL;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- lengthb(varchar2)
 SELECT lengthb('ABCありがとう');
- lengthb
+ lengthb 
 ---------
       18
 (1 row)
 
 -- returns 0
 SELECT lengthb('');
- lengthb
+ lengthb 
 ---------
        0
 (1 row)
 
 -- returs 't'
 SELECT lengthb(NULL) IS NULL;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- null safe concat (disabled by default)
 SELECT NULL || 'hello'::varchar2 || NULL;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SET orafce.varchar2_null_safe_concat TO true;
 SELECT NULL || 'hello'::varchar2 || NULL;
- ?column?
+ ?column? 
 ----------
  hello
 (1 row)
+

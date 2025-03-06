@@ -79,7 +79,7 @@ SECURITY LABEL ON SUBSCRIPTION dummy_sub IS 'classified';
 */ -- YB
 SELECT objtype, objname, provider, label FROM pg_seclabels
 	ORDER BY objtype, objname; -- YB: remove subscription from output
-   objtype   |           objname            | provider |    label
+   objtype   |           objname            | provider |    label     
 -------------+------------------------------+----------+--------------
  column      | dummy_seclabel_tbl1.a        | dummy    | unclassified
  domain      | dummy_seclabel_domain        | dummy    | classified

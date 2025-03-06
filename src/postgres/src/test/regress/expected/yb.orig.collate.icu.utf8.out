@@ -7,10 +7,10 @@ CREATE TABLE collate_test1 (
 );
 \d collate_test1
         Table "collate_tests.collate_test1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | text    | en-x-icu  | not null |
+ a      | integer |           |          | 
+ b      | text    | en-x-icu  | not null | 
 
 CREATE TABLE collate_test_fail (
     a int,
@@ -38,10 +38,10 @@ CREATE TABLE collate_test_like (
 );
 \d collate_test_like
       Table "collate_tests.collate_test_like"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | text    | en-x-icu  | not null |
+ a      | integer |           |          | 
+ b      | text    | en-x-icu  | not null | 
 
 CREATE TABLE collate_test2 (
     a int,
@@ -57,7 +57,7 @@ INSERT INTO collate_test3 SELECT * FROM collate_test1;
 -- Repeat the test with expression pushdown disabled
 set yb_enable_expression_pushdown to off;
 EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
-             QUERY PLAN
+             QUERY PLAN             
 ------------------------------------
  Sort
    Sort Key: a
@@ -66,7 +66,7 @@ EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
-             QUERY PLAN
+             QUERY PLAN             
 ------------------------------------
  Sort
    Sort Key: a
@@ -75,7 +75,7 @@ EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'bbc' order by 1;
-             QUERY PLAN
+             QUERY PLAN             
 ------------------------------------
  Sort
    Sort Key: a
@@ -84,7 +84,7 @@ EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'bbc' order by 1;
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
-             QUERY PLAN
+             QUERY PLAN             
 ------------------------------------
  Sort
    Sort Key: a
@@ -93,27 +93,27 @@ EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
 (4 rows)
 
 SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
- a |  b
+ a |  b  
 ---+-----
  3 | bbc
 (1 row)
 
 SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
- a |  b
+ a |  b  
 ---+-----
  2 | äbc
  3 | bbc
 (2 rows)
 
 SELECT * FROM collate_test3 WHERE b >= 'bbc' order by 1;
- a |  b
+ a |  b  
 ---+-----
  2 | äbc
  3 | bbc
 (2 rows)
 
 SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
- a |  b
+ a |  b  
 ---+-----
  1 | abc
  2 | äbc
@@ -121,7 +121,7 @@ SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
 (3 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Sort
    Sort Key: a
@@ -130,7 +130,7 @@ EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' ord
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  Sort
    Sort Key: a
@@ -139,7 +139,7 @@ EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" ord
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Sort
    Sort Key: a
@@ -152,21 +152,21 @@ ERROR:  collation mismatch between explicit collations "C" and "en-x-icu"
 LINE 1: ...* FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "e...
                                                              ^
 SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
- a |  b
+ a |  b  
 ---+-----
  2 | äbc
  3 | bbc
 (2 rows)
 
 SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
- a |  b
+ a |  b  
 ---+-----
  2 | äbc
  3 | bbc
 (2 rows)
 
 SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
- a |  b
+ a |  b  
 ---+-----
  2 | äbc
  3 | bbc
@@ -181,9 +181,9 @@ CREATE TABLE tab1(id varchar(10));
 INSERT INTO tab1 values ('aaaa');
 \d tab1
                    Table "collate_tests.tab1"
- Column |         Type          | Collation | Nullable | Default
+ Column |         Type          | Collation | Nullable | Default 
 --------+-----------------------+-----------+----------+---------
- id     | character varying(10) |           |          |
+ id     | character varying(10) |           |          | 
 
 -- test rewrites
 CREATE OR REPLACE FUNCTION trig_rewrite() RETURNS event_trigger
@@ -201,27 +201,27 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 NOTICE:  rewriting table
 \d tab1
                     Table "collate_tests.tab1"
- Column |         Type         |  Collation  | Nullable | Default
+ Column |         Type         |  Collation  | Nullable | Default 
 --------+----------------------+-------------+----------+---------
- id     | character varying(5) | en-US-x-icu |          |
+ id     | character varying(5) | en-US-x-icu |          | 
 
 CREATE TABLE tab2(id varchar(10) COLLATE "en-US-x-icu");
 CREATE INDEX tab2_id_idx on tab2(id COLLATE "C" desc);
 INSERT INTO tab2 VALUES ('aaaa');
 \d tab2
                     Table "collate_tests.tab2"
- Column |         Type          |  Collation  | Nullable | Default
+ Column |         Type          |  Collation  | Nullable | Default 
 --------+-----------------------+-------------+----------+---------
- id     | character varying(10) | en-US-x-icu |          |
+ id     | character varying(10) | en-US-x-icu |          | 
 Indexes:
     "tab2_id_idx" lsm (id COLLATE "C" DESC)
 
 ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) COLLATE "en-US-x-icu"; -- no rewrite
 \d tab2
                     Table "collate_tests.tab2"
- Column |         Type          |  Collation  | Nullable | Default
+ Column |         Type          |  Collation  | Nullable | Default 
 --------+-----------------------+-------------+----------+---------
- id     | character varying(20) | en-US-x-icu |          |
+ id     | character varying(20) | en-US-x-icu |          | 
 Indexes:
     "tab2_id_idx" lsm (id COLLATE "C" DESC)
 
@@ -251,7 +251,7 @@ CREATE TABLE tab(id text);
 INSERT INTO tab VALUES ('aaa'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab ORDER BY id) as id \gset
 SELECT :'id' = :'default_result';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -266,7 +266,7 @@ CREATE TABLE tab(id text);
 INSERT INTO tab VALUES ('aaa'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab ORDER BY id) as id \gset
 SELECT :'id' = :'posix_result';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -283,7 +283,7 @@ CREATE TABLE tab2(id text COLLATE "ucs_basic");
 INSERT INTO tab2 VALUES ('aaa'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab2 ORDER BY id) as id \gset
 SELECT :'id' = :'ucs_basic_result';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -298,7 +298,7 @@ CREATE TABLE tab(id text);
 INSERT INTO tab VALUES ('aaa'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab ORDER BY id) as id \gset
 SELECT :'id' = :'utf8_result';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -315,7 +315,7 @@ CREATE TABLE tab(id text);
 INSERT INTO tab VALUES ('aaa'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab ORDER BY id) as id \gset
 SELECT :'id' = :'en_us_x_icu_result';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -332,7 +332,7 @@ CREATE TABLE tab(id text);
 INSERT INTO tab VALUES ('aaa'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab ORDER BY id) as id \gset
 SELECT :'id' = :'utf8_result';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -407,16 +407,16 @@ ERROR:  could not use operator class "bpchar_pattern_ops" with column collation 
 HINT:  Use the COLLATE clause to set "C" collation explicitly.
 \d tab3
                 Table "collate_tests.tab3"
- Column |     Type      |  Collation  | Nullable | Default
+ Column |     Type      |  Collation  | Nullable | Default 
 --------+---------------+-------------+----------+---------
- id     | character(10) | en-US-x-icu |          |
+ id     | character(10) | en-US-x-icu |          | 
 
 CREATE INDEX tab3_id_idx ON tab3(id COLLATE "C" asc); -- ok;
 \d tab3
                 Table "collate_tests.tab3"
- Column |     Type      |  Collation  | Nullable | Default
+ Column |     Type      |  Collation  | Nullable | Default 
 --------+---------------+-------------+----------+---------
- id     | character(10) | en-US-x-icu |          |
+ id     | character(10) | en-US-x-icu |          | 
 Indexes:
     "tab3_id_idx" lsm (id COLLATE "C" ASC)
 
@@ -426,16 +426,16 @@ ERROR:  could not use operator class "varchar_pattern_ops" with column collation
 HINT:  Use the COLLATE clause to set "C" collation explicitly.
 \d tab4
                     Table "collate_tests.tab4"
- Column |         Type          |  Collation  | Nullable | Default
+ Column |         Type          |  Collation  | Nullable | Default 
 --------+-----------------------+-------------+----------+---------
- id     | character varying(10) | en-US-x-icu |          |
+ id     | character varying(10) | en-US-x-icu |          | 
 
 CREATE INDEX tab4_id_idx ON tab4(id COLLATE "C" asc); -- ok;
 \d tab4
                     Table "collate_tests.tab4"
- Column |         Type          |  Collation  | Nullable | Default
+ Column |         Type          |  Collation  | Nullable | Default 
 --------+-----------------------+-------------+----------+---------
- id     | character varying(10) | en-US-x-icu |          |
+ id     | character varying(10) | en-US-x-icu |          | 
 Indexes:
     "tab4_id_idx" lsm (id COLLATE "C" ASC)
 
@@ -445,16 +445,16 @@ ERROR:  could not use operator class "text_pattern_ops" with column collation "e
 HINT:  Use the COLLATE clause to set "C" collation explicitly.
 \d tab5
             Table "collate_tests.tab5"
- Column | Type |  Collation  | Nullable | Default
+ Column | Type |  Collation  | Nullable | Default 
 --------+------+-------------+----------+---------
- id     | text | en-US-x-icu |          |
+ id     | text | en-US-x-icu |          | 
 
 CREATE INDEX tab5_id_idx ON tab5(id COLLATE "C" asc); -- ok;
 \d tab5
             Table "collate_tests.tab5"
- Column | Type |  Collation  | Nullable | Default
+ Column | Type |  Collation  | Nullable | Default 
 --------+------+-------------+----------+---------
- id     | text | en-US-x-icu |          |
+ id     | text | en-US-x-icu |          | 
 Indexes:
     "tab5_id_idx" lsm (id COLLATE "C" ASC)
 
@@ -462,14 +462,14 @@ Indexes:
 CREATE TABLE collate_filter_pushdown (k text COLLATE "C", v text, PRIMARY KEY(k hash));
 INSERT INTO collate_filter_pushdown (SELECT s, s FROM generate_series(1,1000) s);
 EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' COLLATE "C"; -- should push down filter and result in Index scan.
-                                                 QUERY PLAN
+                                                 QUERY PLAN                                                  
 -------------------------------------------------------------------------------------------------------------
  Index Scan using collate_filter_pushdown_pkey on collate_filter_pushdown  (cost=0.00..4.11 rows=1 width=64)
    Index Cond: (k = 'A'::text COLLATE "C")
 (2 rows)
 
 EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' COLLATE "en_US"; -- should NOT push down filter and result in Seq scan.
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Seq Scan on collate_filter_pushdown  (cost=0.00..102.50 rows=1000 width=64)
    Filter: (k = 'A'::text COLLATE "en_US")
@@ -482,13 +482,13 @@ EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' COLLATE "en_US"; -- 
 CREATE DATABASE test_db1;
 CREATE DATABASE test_db2 TEMPLATE template0;
 SELECT datcollversion IS NULL FROM pg_database WHERE datname = 'test_db1';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT datcollversion IS NULL FROM pg_database WHERE datname = 'test_db2';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -497,13 +497,13 @@ SELECT datcollversion IS NULL FROM pg_database WHERE datname = 'test_db2';
 CREATE DATABASE test_db3 LOCALE 'en_US.UTF-8' TEMPLATE template0;
 CREATE DATABASE test_db4 LC_COLLATE 'en_US.UTF-8' TEMPLATE template0;
 SELECT datcollversion FROM pg_database WHERE datname = 'test_db3';
- datcollversion
+ datcollversion 
 ----------------
  yb-test-2.28
 (1 row)
 
 SELECT datcollversion FROM pg_database WHERE datname = 'test_db4';
- datcollversion
+ datcollversion 
 ----------------
  yb-test-2.28
 (1 row)
@@ -515,7 +515,7 @@ SELECT datcollversion FROM pg_database WHERE datname = 'test_db4';
 -- of OS and after OS upgrade PG computes a new collation version.
 CREATE DATABASE test_db5 LOCALE 'en_US.UTF-8' COLLATION_VERSION = 'blar' TEMPLATE template0;
 SELECT datcollversion FROM pg_database WHERE datname = 'test_db5';
- datcollversion
+ datcollversion 
 ----------------
  blar
 (1 row)
@@ -531,7 +531,7 @@ HINT:  Rebuild all objects in this database that use the default collation and r
 ALTER DATABASE test_db5 REFRESH COLLATION VERSION;
 NOTICE:  changing version from blar to yb-test-2.28
 SELECT datcollversion FROM pg_database WHERE datname = 'test_db5';
- datcollversion
+ datcollversion 
 ----------------
  yb-test-2.28
 (1 row)
@@ -543,7 +543,7 @@ SELECT datcollversion FROM pg_database WHERE datname = 'test_db5';
 -- Should not see a collation version mismatch warning.
 CREATE COLLATION test_coll1 (LOCALE = "C", VERSION = 'blar');
 SELECT collversion FROM pg_collation WHERE collname = 'test_coll1';
- collversion
+ collversion 
 -------------
  blar
 (1 row)
@@ -553,7 +553,7 @@ CREATE TABLE test_tab1(id text COLLATE test_coll1);
 ALTER COLLATION test_coll1 REFRESH VERSION;
 ERROR:  invalid collation version change
 SELECT collversion FROM pg_collation WHERE collname = 'test_coll1';
- collversion
+ collversion 
 -------------
  blar
 (1 row)
@@ -565,7 +565,7 @@ WARNING:  collation "test_coll2" has version mismatch
 DETAIL:  The collation in the database was created using version blar, but the operating system provides version yb-test-2.28.
 HINT:  Rebuild all objects affected by this collation and run ALTER COLLATION public.test_coll2 REFRESH VERSION, or build PostgreSQL with the right library version.
 SELECT collversion FROM pg_collation WHERE collname = 'test_coll2';
- collversion
+ collversion 
 -------------
  blar
 (1 row)
@@ -574,7 +574,7 @@ CREATE TABLE test_tab2(id text COLLATE test_coll2);
 ALTER COLLATION test_coll2 REFRESH VERSION;
 NOTICE:  changing version from blar to yb-test-2.28
 SELECT collversion FROM pg_collation WHERE collname = 'test_coll2';
- collversion
+ collversion  
 --------------
  yb-test-2.28
 (1 row)
@@ -583,7 +583,7 @@ SELECT collversion FROM pg_collation WHERE collname = 'test_coll2';
 SET yb_test_collation = TRUE;
 CREATE TABLE test_tab3(id text COLLATE "en-x-icu");
 SELECT collversion FROM pg_collation WHERE collname = 'en-x-icu';
- collversion
+ collversion 
 -------------
  153.112
 (1 row)
@@ -593,7 +593,7 @@ SELECT id FROM test_tab3 ORDER BY id;
 WARNING:  collation "en-x-icu" has version mismatch
 DETAIL:  The collation in the database was created using version 153.112, but the operating system provides version yb-test-2.28.
 HINT:  Rebuild all objects affected by this collation and run ALTER COLLATION pg_catalog."en-x-icu" REFRESH VERSION, or build PostgreSQL with the right library version.
- id
+ id  
 -----
  aaa
  ZZZ
@@ -602,14 +602,15 @@ HINT:  Rebuild all objects affected by this collation and run ALTER COLLATION pg
 ALTER COLLATION "en-x-icu" REFRESH VERSION;
 NOTICE:  changing version from 153.112 to yb-test-2.28
 SELECT collversion FROM pg_collation WHERE collname = 'en-x-icu';
- collversion
+ collversion  
 --------------
  yb-test-2.28
 (1 row)
 
 SELECT id FROM test_tab3 ORDER BY id;
- id
+ id  
 -----
  aaa
  ZZZ
 (2 rows)
+

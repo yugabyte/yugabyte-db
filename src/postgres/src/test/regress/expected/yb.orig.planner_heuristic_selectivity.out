@@ -3,14 +3,14 @@ CREATE INDEX test_a1 ON test (a1 HASH);
 INSERT INTO test (SELECT s, s, s, s FROM generate_series(1, 100000) s);
 -- ANALYZE has not been called and actual number of rows in the table are not known.
 SELECT reltuples FROM pg_class WHERE relname = 'test';
- reltuples
+ reltuples 
 -----------
         -1
 (1 row)
 
 -- Filter on full key of unique index, expect 1 row.
 EXPLAIN SELECT * FROM test WHERE h1 = 1 AND h2 = 1 AND a1 = 1;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using test_pkey on test  (cost=0.00..4.12 rows=1 width=16)
    Index Cond: ((h1 = 1) AND (h2 = 1) AND (a1 = 1))
@@ -18,7 +18,7 @@ EXPLAIN SELECT * FROM test WHERE h1 = 1 AND h2 = 1 AND a1 = 1;
 
 -- Filter on full key of non-unique index, expect 10 rows.
 EXPLAIN SELECT * FROM test WHERE a1 = 1;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using test_a1 on test  (cost=0.00..5.22 rows=10 width=16)
    Index Cond: (a1 = 1)
@@ -26,7 +26,7 @@ EXPLAIN SELECT * FROM test WHERE a1 = 1;
 
 -- Filter on only the hash columns in unique index, expect 100 rows
 EXPLAIN SELECT * FROM test WHERE h1 = 1 AND h2 = 1;
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Index Scan using test_pkey on test  (cost=0.00..15.50 rows=100 width=16)
    Index Cond: ((h1 = 1) AND (h2 = 1))
@@ -34,7 +34,7 @@ EXPLAIN SELECT * FROM test WHERE h1 = 1 AND h2 = 1;
 
 -- Filter on only a partial key, expect sequential scan with 1000 rows
 EXPLAIN SELECT * FROM test WHERE h1 = 1;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Seq Scan on test  (cost=0.00..102.50 rows=1000 width=16)
    Storage Filter: (h1 = 1)
@@ -42,7 +42,7 @@ EXPLAIN SELECT * FROM test WHERE h1 = 1;
 
 -- Filter on row with no index, expect sequential scan with 1000 rows
 EXPLAIN SELECT * FROM test WHERE v1 = 1;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Seq Scan on test  (cost=0.00..102.50 rows=1000 width=16)
    Storage Filter: (v1 = 1)
@@ -50,7 +50,7 @@ EXPLAIN SELECT * FROM test WHERE v1 = 1;
 
 -- No flter, expect sequential scan with 1000 rows
 EXPLAIN SELECT * FROM test;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Seq Scan on test  (cost=0.00..100.00 rows=1000 width=16)
 (1 row)
@@ -62,21 +62,21 @@ UPDATE pg_class SET reltuples=100000 WHERE relname='test';
 UPDATE pg_yb_catalog_version SET current_version=current_version+1 WHERE db_oid=1;
 -- Adding a sleep because changes to catalog need to be propogated asynchronously.
 select pg_sleep(1);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
 SET yb_non_ddl_txn_for_sys_tables_allowed = off;
 SELECT reltuples FROM pg_class where relname = 'test';
- reltuples
+ reltuples 
 -----------
     100000
 (1 row)
 
 -- Filter on full key of unique index, expect 1 row.
 EXPLAIN SELECT * FROM test WHERE h1 = 1 AND h2 = 1 AND a1 = 1;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using test_pkey on test  (cost=0.00..4.12 rows=1 width=16)
    Index Cond: ((h1 = 1) AND (h2 = 1) AND (a1 = 1))
@@ -84,7 +84,7 @@ EXPLAIN SELECT * FROM test WHERE h1 = 1 AND h2 = 1 AND a1 = 1;
 
 -- Filter on full key of non-unique index, expect 1% rows ie. 1000 rows
 EXPLAIN SELECT * FROM test WHERE a1 = 1;
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Index Scan using test_a1 on test  (cost=0.00..126.50 rows=1000 width=16)
    Index Cond: (a1 = 1)
@@ -92,7 +92,7 @@ EXPLAIN SELECT * FROM test WHERE a1 = 1;
 
 -- Filter on only the hash columns in unique index, expect 10% rows ie. 10000 rows
 EXPLAIN SELECT * FROM test WHERE h1 = 1 AND h2 = 1;
-                                  QUERY PLAN
+                                  QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Index Scan using test_pkey on test  (cost=0.00..1154.00 rows=10000 width=16)
    Index Cond: ((h1 = 1) AND (h2 = 1))
@@ -100,7 +100,7 @@ EXPLAIN SELECT * FROM test WHERE h1 = 1 AND h2 = 1;
 
 -- Filter on only a partial key, expect sequential scan with 100% rows
 EXPLAIN SELECT * FROM test WHERE h1 = 1;
-                          QUERY PLAN
+                          QUERY PLAN                          
 --------------------------------------------------------------
  Seq Scan on test  (cost=0.00..10250.00 rows=100000 width=16)
    Storage Filter: (h1 = 1)
@@ -108,7 +108,7 @@ EXPLAIN SELECT * FROM test WHERE h1 = 1;
 
 -- Filter on row with no index, expect sequential scan with 100% rows
 EXPLAIN SELECT * FROM test WHERE v1 = 1;
-                          QUERY PLAN
+                          QUERY PLAN                          
 --------------------------------------------------------------
  Seq Scan on test  (cost=0.00..10250.00 rows=100000 width=16)
    Storage Filter: (v1 = 1)
@@ -116,7 +116,7 @@ EXPLAIN SELECT * FROM test WHERE v1 = 1;
 
 -- No flter, expect sequential scan with 100% rows
 EXPLAIN SELECT * FROM test;
-                          QUERY PLAN
+                          QUERY PLAN                          
 --------------------------------------------------------------
  Seq Scan on test  (cost=0.00..10000.00 rows=100000 width=16)
 (1 row)
@@ -132,7 +132,7 @@ INSERT INTO t2 SELECT s, s FROM generate_series(1, 300000) s;
 -- Filter is propagated to t2.h1 = 123. h1 is the primary key in t2, and
 -- the filter should produce 1 row.
 EXPLAIN SELECT * FROM t1 LEFT JOIN t2 on t1.h1 = t2.h1 where t1.h1 = 123;
-                                  QUERY PLAN
+                                  QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Nested Loop Left Join  (cost=0.00..20.86 rows=100 width=20)
    Join Filter: (t1.h1 = t2.h1)
@@ -154,14 +154,14 @@ UPDATE pg_class SET reltuples=300000 WHERE relname='t2';
 UPDATE pg_yb_catalog_version SET current_version=current_version+1 WHERE db_oid=1;
 -- Adding a sleep because changes to catalog need to be propogated asynchronously.
 select pg_sleep(1);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
 SET yb_non_ddl_txn_for_sys_tables_allowed = off;
 EXPLAIN SELECT * FROM t1 LEFT JOIN t2 on t1.h1 = t2.h1 where t1.h1 = 123;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Nested Loop Left Join  (cost=0.00..3833.12 rows=30000 width=20)
    Join Filter: (t1.h1 = t2.h1)
