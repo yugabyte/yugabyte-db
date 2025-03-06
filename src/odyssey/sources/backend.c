@@ -483,6 +483,7 @@ static inline int od_backend_startup(od_server_t *server,
 			break;
 		}
 		case KIWI_BE_NOTICE_RESPONSE:
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 			/*
 			 * Store the client_id from the notice packet during authentication
 			 * if received.
@@ -496,6 +497,7 @@ static inline int od_backend_startup(od_server_t *server,
 					return -1;
 				}
 			}
+#endif
 			machine_msg_free(msg);
 			break;
 		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
