@@ -109,10 +109,10 @@ ALTER USER regress_testrol2 WITH NOREPLICATION;
 SELECT * FROM chkrolattr();
 ROLLBACK;
 
-ALTER ROLE "None" NOREPLICATION; -- YB: manual rollback 
-ALTER ROLE "Public" NOREPLICATION; -- YB: manual rollback 
-ALTER ROLE "current_user" NOREPLICATION; -- YB: manual rollback 
-ALTER ROLE "session_user" NOREPLICATION; -- YB: manual rollback 
+ALTER ROLE "None" NOREPLICATION; -- YB: manual rollback
+ALTER ROLE "Public" NOREPLICATION; -- YB: manual rollback
+ALTER ROLE "current_user" NOREPLICATION; -- YB: manual rollback
+ALTER ROLE "session_user" NOREPLICATION; -- YB: manual rollback
 ALTER ROLE "current_role" NOREPLICATION; -- YB: manual rollback  (see #1404)
 
 ALTER ROLE USER WITH LOGIN; -- error

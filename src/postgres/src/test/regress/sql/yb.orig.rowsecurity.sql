@@ -7,7 +7,7 @@ SET SESSION AUTHORIZATION yb_db_admin;
 SELECT * from foo ORDER BY a;
 DELETE FROM foo WHERE a = 2;
 SELECT * from foo ORDER BY a;
-UPDATE foo SET a = 5 WHERE a = 0;  
+UPDATE foo SET a = 5 WHERE a = 0;
 SELECT * from foo ORDER BY a;
 TRUNCATE foo;
 SELECT * from foo ORDER BY a;

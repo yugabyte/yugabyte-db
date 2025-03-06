@@ -23,7 +23,7 @@ EXPLAIN SELECT * FROM test WHERE v1 = 1;
 -- No flter, expect sequential scan with 1000 rows
 EXPLAIN SELECT * FROM test;
 
--- ANALYZE produces a rough estimate of the number of rows. This can make 
+-- ANALYZE produces a rough estimate of the number of rows. This can make
 -- the test flaky, so to simulate ANALYZE we write to pg_class.reltuples manually.
 SET yb_non_ddl_txn_for_sys_tables_allowed = on;
 UPDATE pg_class SET reltuples=100000 WHERE relname='test';
@@ -60,15 +60,15 @@ CREATE TABLE t2 (h1 INT, v1 INT, PRIMARY KEY (h1 HASH));
 INSERT INTO t1 SELECT s, s, s FROM generate_series(1, 300000) s;
 INSERT INTO t2 SELECT s, s FROM generate_series(1, 300000) s;
 
--- Without statistics, each table is assumed to have 1000 rows only. 
--- Filter is propagated to t2.h1 = 123. h1 is the primary key in t2, and 
+-- Without statistics, each table is assumed to have 1000 rows only.
+-- Filter is propagated to t2.h1 = 123. h1 is the primary key in t2, and
 -- the filter should produce 1 row.
 EXPLAIN SELECT * FROM t1 LEFT JOIN t2 on t1.h1 = t2.h1 where t1.h1 = 123;
 
--- With statistics, before this change the filter on t2 was estimated to 
+-- With statistics, before this change the filter on t2 was estimated to
 -- produce 300 rows because hard coded selectvity of 0.001 was applied to
 -- 300000 rows. After the fix, the index scan on t2 should produce 1 row.
--- ANALYZE produces a rough estimate of the number of rows. This can make 
+-- ANALYZE produces a rough estimate of the number of rows. This can make
 -- the test flaky, so to simulate ANALYZE we write to pg_class.reltuples manually.
 SET yb_non_ddl_txn_for_sys_tables_allowed = on;
 UPDATE pg_class SET reltuples=300000 WHERE relname='t1';

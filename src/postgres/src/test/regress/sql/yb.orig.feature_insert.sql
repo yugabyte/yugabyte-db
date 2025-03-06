@@ -2,7 +2,7 @@
 -- YB_FEATURE Testsuite: INSERT
 --   An introduction on whether or not a feature is supported in YugaByte.
 --   This test suite does not go in depth for each command.
--- 
+--
 -- Prepare two identical tables of all supported primitive types.
 CREATE TABLE feature_tab_dml(
 			 col_smallint			SMALLINT,

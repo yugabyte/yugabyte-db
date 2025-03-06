@@ -97,7 +97,7 @@ SELECT anon.mask_update();
 -- We're catching the output because the message
 -- PG10 would say "ERROR:  permission denied for relation people"
 -- PG11 would say "ERROR:  permission denied for table people"
--- 
+--
 \! PGPASSWORD=x ${YB_BUILD_ROOT}/postgres/bin/ysqlsh -U skynet -c "SELECT * FROM public.people;"  2>&1 | grep --silent 'ERROR:  permission denied' && echo 'ERROR:  permission denied' # YB: Use ysqlsh and the default database
 
 \! PGPASSWORD=x ${YB_BUILD_ROOT}/postgres/bin/ysqlsh -U skynet -c "SELECT name != 'Schwarzenegger' FROM people WHERE id = 1;" # YB: Use ysqlsh and the default database

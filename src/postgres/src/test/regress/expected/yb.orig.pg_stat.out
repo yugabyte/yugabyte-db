@@ -515,7 +515,6 @@ select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'p.i
  p3idx        |        1
 (3 rows)
 
-
 -- test for GIN idx_scan increment
 create table pendtest (ts tsvector);
 create index pendtest_idx on pendtest using gin(ts);
