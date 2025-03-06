@@ -172,7 +172,7 @@ RUN mkdir /licenses && \
       -o /licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 # Install azcopy
-ARG AZV=10.19.0
+ARG AZV=10.28.0
 RUN set -x; \
     [[ "$(uname -m)" == "aarch64" ]] && arch='arm64' || arch='amd64'; \
     pkg_name="azcopy_linux_${arch}_${AZV}"; \

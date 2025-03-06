@@ -482,6 +482,12 @@ Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(versi
 // Being used by DevSpace tool to build an archive without building the UI
 Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, buildDependentArtifacts).value
 
+// Copying 'support/thirdparty-dependencies.txt' into the YBA tarball at 'conf/thirdparty-dependencies.txt'.
+Universal / mappings ++= {
+  val tpdSourceFile = baseDirectory.value / "support" / "thirdparty-dependencies.txt"
+  Seq((tpdSourceFile, "conf/thirdparty-dependencies.txt"))
+}
+
 javaAgents += "io.kamon" % "kanela-agent" % "1.0.18"
 
 runPlatformTask := {
