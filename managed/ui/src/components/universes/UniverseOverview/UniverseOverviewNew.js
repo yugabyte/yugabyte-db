@@ -518,6 +518,8 @@ export default class UniverseOverviewNew extends Component {
       <Col lg={3} sm={6} md={6} xs={12}>
         <ClusterInfoPanelContainer
           type={'read-replica'}
+          // In case of dedicated nodes, the read replica cluster can have only TServer nodes.
+          isDedicatedNodes={false}
           universeInfo={currentUniverse}
           runtimeConfigs={this.props.runtimeConfigs}
         />

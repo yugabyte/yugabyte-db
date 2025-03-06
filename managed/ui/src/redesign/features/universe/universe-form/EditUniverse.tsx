@@ -175,11 +175,12 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
         userIntent.masterDeviceInfo = _.get(formData, MASTER_DEVICE_INFO_FIELD);
       }
 
-      if (isK8sUniverse && masterPlacement === MasterPlacementMode.DEDICATED) {
-        userIntent.masterK8SNodeResourceSpec = userIntent.dedicatedNodes
-          ? _.get(formData, MASTER_K8_NODE_SPEC_FIELD)
-          : null;
+      if (isK8sUniverse) {
+        userIntent.masterK8SNodeResourceSpec = _.get(formData, MASTER_K8_NODE_SPEC_FIELD);
         userIntent.tserverK8SNodeResourceSpec = _.get(formData, TSERVER_K8_NODE_SPEC_FIELD);
+        // In case of K8 universe, user intent dedicatedNodes will be false,
+        // hence we need to set masterDeviceInfo here as well
+        userIntent.masterDeviceInfo = _.get(formData, MASTER_DEVICE_INFO_FIELD);
       }
 
       payload.clusters[primaryIndex].placementInfo.cloudList[0].regionList = getPlacements(

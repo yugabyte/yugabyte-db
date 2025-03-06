@@ -107,7 +107,11 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
           </Box>
         )}
         <Box mt={2}>
-          <TotalNodesField disabled={isViewMode} />
+          <TotalNodesField
+            disabled={isViewMode}
+            isPrimary={isPrimary}
+            useK8CustomResources={useK8CustomResources}
+          />
         </Box>
         <Box mt={2}>
           <ReplicationFactor disabled={isEditMode} isPrimary={isPrimary} isViewMode={isViewMode} />
